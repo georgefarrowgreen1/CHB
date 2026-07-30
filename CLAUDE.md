@@ -2462,7 +2462,14 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   lib/dev — and the guard call is verified present; register new endpoints there),
   and **`test-content-keys.php`** (server-written content keys must be classified).
   PHPStan runs at **level 2** (a ratchet: regenerate `phpstan-baseline.neon` only
-  for a level raise, never to bury an error you introduced). CI PHP is **pinned**
+  for a level raise, never to bury an error you introduced). **It is the one gate
+  with no local runner** — the container has no `vendor/`, so a full green
+  gauntlet still says nothing about it, and #890 shipped a duplicate array key
+  and an undefined-variable path straight into a red CI on that basis. Fetch the
+  PINNED phar (the version is in ci.yml, currently 2.2.5) and run it before
+  pushing any PHP change: `curl -sSL https://github.com/phpstan/phpstan/releases/download/<ver>/phpstan.phar
+  -o /tmp/phpstan.phar && php /tmp/phpstan.phar analyse -c phpstan.neon.dist
+  --no-progress`. CI PHP is **pinned**
   (8.3, checks + integration jobs) — bump it together with the IONOS host, never
   let it float with the runner image. **`perf-budget.js`** gates the gzipped size
   of every shipped asset against `size-budget.json` — raising a budget is allowed
