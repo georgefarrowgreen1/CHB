@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 323;
+const ADMIN_BUNDLE_V = 325;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -915,6 +915,11 @@ function previewBlockedToast() {
         if (typeof toast === 'function') toast("Read-only preview — nothing here is saved.");
     } catch (e) {}
 }
+// `status` lets the offline-queue replayer keep 401/403 (re-auth) and drop other 4xx.
+// Object.assign, not assignment onto a bare Error, so both fields are part of the type.
+function apiErr(message, status, code) {
+    return Object.assign(new Error(message), { status: status, code: code ? String(code) : '' });
+}
 // NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission. A guard that
 // returned the SAME promise for an identical request already in flight was shipped and
 // WITHDRAWN: `apiPost` is not a write channel, it is the app's only POST channel, and
@@ -930,13 +935,9 @@ function previewBlockedToast() {
 // a `data-act` button; there are no inline `onclick`s left in the markup), and
 // `recent_send_at()` refuses a repeat server-side inside a window, which is the only
 // layer that survives a reload mid-request or a second device. See CLAUDE.md.
-/**
- * The one POST channel. Endpoints answer with arbitrary JSON, so the parsed body is
- * deliberately `any` — stated here because it used to be inferred, via a `Map.get()`
- * the withdrawn coalescing guard read from, and collapsing that made every caller's
- * property access a type error.
- * @returns {Promise<any>}
- */
+/** Endpoints answer arbitrary JSON, so the body is deliberately `any` — stated, not
+ * inferred (it used to fall out of the withdrawn guard's untyped Map).
+ * @returns {Promise<any>} */
 async function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
@@ -966,19 +967,16 @@ async function apiPost(endpoint, payload) {
         data = text ? JSON.parse(text) : {};
     } catch (e) {
         // Non-JSON response usually means a PHP error page; surface a hint.
-        const err = new Error(
-            res.ok
-                ? 'Unexpected server response.'
-                : 'Server error ' + res.status + (text ? ': ' + text.slice(0, 200) : ''),
+        throw apiErr(
+            res.ok ? 'Unexpected server response.' : 'Server error ' + res.status + (text ? ': ' + text.slice(0, 200) : ''),
+            res.status,
         );
-        err.status = res.status;
-        throw err;
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin();
-        const err = new Error(data.error || 'Request failed (' + res.status + ')');
-        err.status = res.status; // let the offline-queue replayer keep 401/403 (re-auth) vs drop other 4xx
-        throw err;
+        // `code` where the endpoint gives one, so a caller can tell apart outcomes that
+        // both arrive as "not done": `already_sent` means the guest HAS the email.
+        throw apiErr(data.error || 'Request failed (' + res.status + ')', res.status, data.code);
     }
     return data;
 }
@@ -4672,7 +4670,11 @@ async function sendArrivalInfo(bookingId) {
                     if (loc) showDetails(loc.propKey, dbBookings[loc.propKey][loc.idx]);
                 }
             } catch (e) {
-                glassAlert("Couldn't send: " + e.message);
+                // A refused repeat is INFORMATION — the guest has the email, so
+                // "Couldn't send" would state the opposite. It did not go now either way.
+                if (e && e.code === 'already_sent') toast(e.message);
+                else glassAlert("Couldn't send: " + e.message);
+                return false;
             }
         },
     });
@@ -9805,11 +9807,19 @@ async function previewAndSendEmail(opts) {
     const ok = got
         ? await showSendConfirm({ subject, html, text, to: opts.to, sendLabel: opts.sendLabel })
         : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`);
-    if (ok) await opts.doSend();
-    // Report whether it actually WENT. Every existing caller awaits and ignores
-    // this, so it changes nothing for them — but an inline action has to be able
-    // to tell "sent" from "you backed out" rather than claiming success either way.
-    return !!ok;
+    if (!ok) return false;
+    // Report whether it WENT, not whether the owner CONFIRMED. It used to `return !!ok`,
+    // so an inline act strip said "sent" for a send that had failed or been refused —
+    // doSend handles its own errors, so nothing threw here to notice. Returning false says
+    // it did not go; returning nothing keeps the old meaning, so no caller shifts by
+    // accident.
+    let went = true;
+    try {
+        went = (await opts.doSend()) !== false;
+    } catch (e) {
+        went = false;
+    }
+    return went;
 }
 // Promise<bool> — shows the rendered email in a sandboxed iframe with the
 // recipient + subject and Cancel / Send buttons. Resolves true only on Send.
@@ -13516,7 +13526,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'nocoal1';
+    const BUILD = 'resend3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

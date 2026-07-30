@@ -2506,13 +2506,48 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   only - the surrounding try/catch already re-enables on a non-promise. This covers every
   send affordance in the app: there are no inline `onclick`s left in `index.html` or
   `admin-views.html`, and none are generated for a send.
-  (2) **The server refuses a repeat inside a window** (`recent_send_at`,
-  `CHB_RESEND_GUARD_SECONDS` 180, `chb_ago` for the wording), because the client layer
-  does not survive a reload mid-request or a second device - those arrive as genuinely new
-  requests. Applied to `request_payment`, which emails a guest about money. Deliberately
-  a WINDOW, not a lock: chasing the same balance next week is necessary, and only the
-  second copy in the same breath is never wanted. An unreadable activity_log lets the
-  send through - a duplicate email is a smaller failure than being unable to chase.
+  (2) **The server refuses a repeat inside a window** (`resend_guard` →
+  `recent_send_at`, `CHB_RESEND_GUARD_SECONDS` 180, `chb_ago` for the wording), because
+  the client layer does not survive a reload mid-request or a second device - those arrive
+  as genuinely new requests. Deliberately a WINDOW, not a lock: chasing the same balance
+  next week is necessary, and only the second copy in the same breath is never wanted. An
+  unreadable activity_log lets the send through - a duplicate email is a smaller failure
+  than being unable to chase.
+  **THE REFUSAL HAS TO REACH THE OWNER, AND AT FIRST IT DID NOT.** It answered
+  `json_out(['error' => …], 200)`, and `apiPost` only throws on a NON-2xx - so nothing
+  inspected it. Measured in a browser: `requestPayment` toasted **"Balance request sent -
+  £NaN"** (`res.amount` absent) and `chbBulkRun` did `sent++` and added that guest's
+  balance to the "chasing £X" total, so re-running a half-failed batch reported "3
+  requests sent · £955 chased" for a batch the server sent NONE of. A guard that reports
+  the opposite of what happened is worse than no guard. `resend_guard()` is now the ONE
+  composer for the refusal - **409** (the request conflicts with the record's state; it is
+  not malformed and nothing is broken) plus **`code: 'already_sent'`**, carried through by
+  `apiPost` (`apiErr`, which builds the error with `Object.assign` so `status`/`code` are
+  part of the type rather than hand-assigned onto a bare `Error`). One sentence shape for
+  every send, so the call sites cannot drift.
+  **"ALREADY WENT" IS ITS OWN OUTCOME, distinct from both "sent" and "failed".** Re-running
+  a half-failed batch is meant to be safe - it recomputes from live `paymentSummary`, so
+  whoever still owes is chased again, and a guest emailed a minute ago still owes - so the
+  window refuses exactly those, correctly. `chbBulkRun` buckets them into `already` and
+  reports "Richard Berry already had it just now"; folding them into `failed` would say
+  "couldn't reach Richard Berry" about a guest holding the email. A batch where EVERYONE
+  already had theirs is not thrown as an error either: the set is in the state the owner
+  asked for. On the single path an `already_sent` is a plain toast, not a `glassAlert`
+  reading "Couldn't send".
+  **APPLIED TO `request_payment` AND `send_arrival`** - the two whose content is GENERATED
+  from the booking, so a second copy in the same breath is never a different message, and
+  both of which also go over a bulk set. **NOT `send_confirmation`**, deliberately and
+  gated as such: the normal flow is add booking → record the deposit → confirm, which fires
+  `add`'s own confirmation and then this one within a minute or two, and those two say
+  DIFFERENT things - a window there would refuse a genuinely different message.
+  **And `previewAndSendEmail` reports the SEND, not the CONFIRMATION.** It used to
+  `return !!ok` after awaiting `doSend`, and every `doSend` handles its own errors, so
+  nothing threw for it to notice - an inline act strip said "sent" for a send that had
+  failed or been refused. A `doSend` returning `false` now means "it did not go"; returning
+  nothing keeps the old meaning, so no caller shifts by accident. Gated by test-payrail
+  (the helper's status/code, all three wiring decisions incl. the deliberate omission) and
+  ui-test-command, which drives the real dialog against a stubbed 409 - break-tested by
+  putting the refusal back to 200, which reproduces both "Sent 2 of 3" and the £NaN toast.
 
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**

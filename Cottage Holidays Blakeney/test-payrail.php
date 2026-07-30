@@ -323,13 +323,34 @@ chk('a minute reads as a minute', chb_ago('2026-01-01 12:00:00', strtotime('2026
 chk('two minutes reads as two', chb_ago('2026-01-01 12:00:00', strtotime('2026-01-01 12:02:10')) === '2 minutes ago');
 chk('an unparseable timestamp still says something sensible', chb_ago('not a date') === 'just now');
 $bkS2 = (string) file_get_contents(__DIR__ . '/bookings.php');
+$dbS2 = (string) file_get_contents(__DIR__ . '/db.php');
+chk('there is ONE composer for the refusal, so the call sites cannot drift',
+    function_exists('resend_guard'));
 chk('the payment request asks before emailing a second one',
-    strpos($bkS2, "recent_send_at(\$id, 'payment.request')") !== false);
+    preg_match("/resend_guard\(\\\$id, 'payment\.request'/", $bkS2) === 1);
+// The arrival email is the app's other BULK send, and its content is generated from the
+// booking — so a second copy in the same breath is never a different message.
+chk('so does the arrival email — the other send that goes over a whole set',
+    preg_match("/resend_guard\(\\\$id, 'email\.arrival'/", $bkS2) === 1);
+// NOT the confirmation, and that is a decision: add booking → record deposit → confirm
+// fires two confirmations within a minute or two which say DIFFERENT things, so a window
+// there would refuse a genuinely different message. Assert the reason is on the record,
+// or the omission reads as an oversight to whoever audits this next.
+chk('the confirmation is deliberately NOT guarded, and says why',
+    strpos($bkS2, 'DELIBERATELY NOT resend_guard()ed') !== false
+    && preg_match("/resend_guard\(\\\$id, 'email\.confirmation'/", $bkS2) === 0);
 chk('…and the refusal names the guest and when it went, rather than failing silently',
-    preg_match('/That payment request has just gone to .*chb_ago\(\$already\)/', $bkS2) === 1);
+    preg_match('/has just gone to \' \. \(\$who.*chb_ago\(\$already\)/s', $dbS2) === 1);
+// THE REFUSAL HAS TO REACH THE OWNER. It answered 200 with an `error` key, and apiPost
+// only throws on a non-2xx — so nothing inspected it: requestPayment toasted "Balance
+// request sent — £NaN" and the bulk report counted it as sent and added its balance to
+// the chased total. Both measured in a browser; ui-test-command drives them.
+chk('a refused repeat comes back as a real status, not a 200 nobody inspects',
+    preg_match("/'code' => 'already_sent',\s*\]\, 409\)/", $dbS2) === 1);
+chk('…and carries a code, so a caller can tell "already went" from "failed"',
+    strpos($dbS2, "'already_sent'") !== false);
 // The guard reads a log; if the log cannot be read it must not block a send the owner
 // is asking for — a duplicate email is a smaller failure than being unable to chase.
-$dbS2 = (string) file_get_contents(__DIR__ . '/db.php');
 chk('an unreadable log lets the send through rather than blocking it',
     preg_match('/function recent_send_at.*?catch.*?return \x27\x27;/s', $dbS2) === 1);
 $appS = (string) file_get_contents(__DIR__ . '/app.js');
@@ -344,6 +365,18 @@ chk('…and the reason is recorded where the next reader will look',
 chk('a button whose handler is still running is disabled and announced busy',
     strpos($appS, "el.setAttribute('aria-busy', 'true')") !== false
     && preg_match("/r && typeof r\.then === 'function' && el\.tagName === 'BUTTON'/", $appS) === 1);
+chk('apiPost carries the endpoint\'s code through, so the refusal is distinguishable',
+    preg_match('/code: code \? String\(code\) : \x27\x27/', $appS) === 1
+    && preg_match("/throw apiErr\(data\.error \|\| .*, res\.status, data\.code\)/", $appS) === 1);
+// previewAndSendEmail returned whether the owner CONFIRMED and called it "sent" — so an
+// inline act strip claimed success for a send that had failed or been refused, since the
+// doSend callbacks handle their own errors and nothing threw here to notice.
+chk('the preview-and-send helper reports the SEND, not the confirmation',
+    preg_match('/went = \(await opts\.doSend\(\)\) !== false;/', $appS) === 1);
+$adS = (string) file_get_contents(__DIR__ . '/admin.js');
+chk('the bulk report separates "already had it" from "couldn\'t reach"',
+    strpos($adS, "if (e && e.code === 'already_sent') already.push(x);") !== false
+    && strpos($adS, 'already had theirs') !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

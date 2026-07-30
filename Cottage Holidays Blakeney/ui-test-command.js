@@ -24,6 +24,12 @@
 // ============================================================
 const { d, bootBrowser } = require('./ui-test-lib');
 let fails = 0; const ok = (c,m) => { console.log(`  ${c?'✓':'✗'} ${m}`); if (!c) fails++; };
+// Booking ids the server should REFUSE as already-sent, the way the resend window does:
+// 409 + code, which is what makes the refusal visible at all. It answered 200 with an
+// `error` key at first, and apiPost only throws on a non-2xx — so the refusal was
+// swallowed and the owner was told "Balance request sent — £NaN".
+let refuseIds = [];
+const NAMES = { 1: 'Richard Berry', 2: 'Cara Bell', 3: 'Dan Rowe' };
 const stub = (page) => page.route(/\.php/, (r) => {
   const url = r.request().url();
   let b = {}; try { b = JSON.parse(r.request().postData()||'{}'); } catch(e){}
@@ -34,6 +40,12 @@ const stub = (page) => page.route(/\.php/, (r) => {
   // Three owers, one of them with NO email address — the exact partial-send shape
   // the bulk report has to be honest about. Balances: 440 + 420 + 95 = £955 owed,
   // £860 of it actually reachable.
+  if (b && b.action === 'request_payment' && refuseIds.includes(b.id)) {
+    return r.fulfill({ status:409, contentType:'application/json', body: JSON.stringify({
+      error: `That payment request has just gone to ${NAMES[b.id] || 'the guest'} (a minute ago) — they have it.`,
+      code: 'already_sent',
+    }) });
+  }
   if (url.includes('bookings.php')) return json({ bookings:[
     {id:1,prop_key:'jollyboat',name:'Richard Berry',email:'rb@x.co',check_in:d(6),check_out:d(10),adults:2,children:0,payment:'deposit',deposit_paid:200,agreed_total:640,agreed_nightly:620,agreed_txn_fee:20,agreed_nights:4},
     {id:2,prop_key:'jollyboat',name:'Cara Bell',email:'cb@x.co',check_in:d(14),check_out:d(17),adults:2,children:0,payment:'deposit',deposit_paid:100,agreed_total:520,agreed_nightly:505,agreed_txn_fee:15,agreed_nights:3},
@@ -377,6 +389,60 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(/is-warn/.test(sent.cls), `BULK: as a PARTIAL, not a green tick (${sent.cls})`);
   ok(sent.role === 'status', 'BULK: announced — nothing navigated, so there is no page change to notice');
   ok(sent.undo === 0, 'BULK: no undo offered — an email cannot be unsent');
+
+  // ── ALREADY SENT IS NOT A FAILURE, AND IT IS CERTAINLY NOT A SUCCESS ──────────
+  // Re-running a half-failed batch is meant to be safe: it recomputes from live
+  // paymentSummary, so whoever still owes is chased again — and someone emailed a
+  // minute ago still owes. The server's resend window therefore refuses exactly those.
+  // Two ways to get this wrong, and the first shipped: count them as SENT (the 200
+  // refusal was invisible, so the strip said "3 requests sent · £955 chased" for a
+  // batch the server sent none of), or count them as FAILED, which reports "couldn't
+  // reach Richard Berry" about a guest holding the email.
+  const runBulk = () => page.evaluate(async () => {
+    const until = async (fn, ms = 9000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((rr) => setTimeout(rr, 50)); } };
+    const btn = [...document.querySelectorAll('#cmdk .cmdk-qa-row')].find((x) => /Request all/.test(x.textContent));
+    if (!btn) return { txt: '(no bulk action)', cls: '' };
+    btn.click();
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    document.getElementById('glass-dialog-ok').click();
+    await until(() => { const s = document.querySelector('#cmdk .cmdk-actmsg'); return s && !/is-busy/.test(s.className); });
+    const s = document.querySelector('#cmdk .cmdk-actmsg');
+    return { txt: s ? s.textContent.trim() : '(none)', cls: s ? s.className : '' };
+  });
+
+  refuseIds = [1]; // Richard already had his a minute ago; Cara has not
+  await openOwed();
+  const oneAlready = await runBulk();
+  ok(/Sent 1 of 3/.test(oneAlready.txt), `RESEND: a refused repeat is not counted as sent (${oneAlready.txt})`);
+  ok(/Richard Berry already had it just now/.test(oneAlready.txt), 'RESEND: …it is named as already having it');
+  ok(!/couldn.t reach Richard Berry/i.test(oneAlready.txt), 'RESEND: …and NOT reported as unreachable, which is a different thing');
+  ok(/is-warn/.test(oneAlready.cls), `RESEND: a partial stays a partial (${oneAlready.cls})`);
+
+  refuseIds = [1, 2]; // everyone reachable already had theirs
+  await openOwed();
+  const allAlready = await runBulk();
+  ok(/already had theirs just now/.test(allAlready.txt) && /nothing to re-send/.test(allAlready.txt),
+    `RESEND: a batch where everyone already had it says so (${allAlready.txt})`);
+  ok(!/is-err/.test(allAlready.cls) && !/Couldn.t send any/.test(allAlready.txt),
+    `RESEND: …and is not thrown as a failure — the set is in the state asked for (${allAlready.cls})`);
+
+  // The SINGLE-record path, which is where "Balance request sent — £NaN" was measured.
+  refuseIds = [1];
+  const single = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((rr) => setTimeout(rr, 50)); } };
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    const p = requestPayment('b1', 'balance');
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    document.getElementById('glass-dialog-ok').click();
+    const went = await p;
+    await new Promise((rr) => setTimeout(rr, 300));
+    return { went, toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.trim()).join(' | ') };
+  });
+  ok(single.went === false, `RESEND: previewAndSendEmail reports the SEND, not the confirmation (${single.went})`);
+  ok(/has just gone to Richard Berry/.test(single.toasts), `RESEND: the owner is told the guest already has it (${single.toasts})`);
+  ok(!/request sent/i.test(single.toasts) && !/NaN/.test(single.toasts),
+    `RESEND: and never told it was sent, with or without a figure (${single.toasts})`);
+  refuseIds = [];
 
   // A phone: the bulk action is the primary thing on that screen, so a lone action
   // must not sit in a half-width cell of the two-column grid with nothing beside it.

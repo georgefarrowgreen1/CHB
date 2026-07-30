@@ -1092,6 +1092,30 @@ function chb_ago($mysqlDatetime, $now = null)
     $mins = (int) round($secs / 60);
     return $mins <= 1 ? 'a minute ago' : $mins . ' minutes ago';
 }
+// THE REFUSAL HAS TO REACH THE OWNER, and the first version did not. It answered
+// `json_out(['error' => …], 200)`, and apiPost only throws on a NON-2XX response — so the
+// refusal came back as an ordinary payload nobody inspected: requestPayment toasted
+// "Balance request sent — £NaN" (reproduced in a browser, `res.amount` being absent) and
+// chbBulkRun counted it as sent and added its balance to the "chasing £X" total. A guard
+// that silently reports the opposite of what happened is worse than no guard.
+//
+// 409 is the accurate status — the request conflicts with the state of the record, it is
+// not a bad request and nothing is broken — and `code` lets a caller tell "it already
+// went" from "it failed", which are different things to put in front of the owner. One
+// sentence shape for every send, so the three call sites cannot drift apart.
+// $what names the thing in the guest's inbox ("payment request", "arrival email").
+function resend_guard($bookingId, $logAction, $who, $what)
+{
+    $already = recent_send_at($bookingId, $logAction);
+    if ($already === '') {
+        return;
+    }
+    json_out([
+        'error' => 'That ' . $what . ' has just gone to ' . ($who !== '' ? $who : 'the guest')
+            . ' (' . chb_ago($already) . ') — they have it.',
+        'code' => 'already_sent',
+    ], 409);
+}
 function recent_send_at($bookingId, $action, $withinSeconds = CHB_RESEND_GUARD_SECONDS)
 {
     try {
