@@ -219,6 +219,17 @@ if ($action === 'setup') {
 if ($action === 'payouts_refresh') {
     require_once __DIR__ . '/payouts-lib.php';
     require_once __DIR__ . '/bank-lib.php';
+    // AND ASK ABOUT THE REFUNDS WE HAVE ISSUED. reconcile_pending_refunds() ran from
+    // the Recent-payments view and the daily cron only — never from Move money out, and
+    // never from this button. So a deposit refund Square had ALREADY taken went on
+    // reading "waiting for Square to take it" until the owner happened to open a
+    // different screen, or until the 14-day ret_stale line gave up and assumed it. The
+    // owner pressing "Check Square now" is exactly the moment to ask.
+    require_once __DIR__ . '/payments-reconcile.php';
+    try {
+        reconcile_pending_refunds();
+    } catch (\Throwable $e) {
+    }
     // Both halves of the same question. A payout feed that reports nothing and a
     // missing bank account look identical on screen until you ask this too, so the
     // owner's one tap asks both rather than answering half of it.

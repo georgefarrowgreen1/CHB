@@ -12067,7 +12067,12 @@ async function renderSweep(refetch) {
     // "deposits to return" answer, both correctly gated on hasCheckedOut().
     const today = todayDashed();
     const depState = (it) => {
-        if (Number(it.awaiting || 0) > 0) return { when: 'left', date: it.check_out, note: 'Already refunded — waiting for Square to take it' };
+        // "waiting for Square to take it" asserted something we had not checked. Reported
+        // live: Square had ALREADY taken this one — out of the Square balance, since the
+        // money had never reached the bank — while the row insisted it was still coming.
+        // What we actually know is that we issued the refund and OUR ledger has not seen
+        // it settle, which is a statement about our records, not about Square.
+        if (Number(it.awaiting || 0) > 0) return { when: 'left', date: it.check_out, note: 'Refunded — not yet confirmed settled here (tap “Check Square now” below)' };
         // NOT ARRIVED is its own state. "Still staying" was said of a guest whose stay
         // had not started — the deposit is charged with the first payment, so it is held
         // from the moment they book, which can be months out. The arrival is the useful

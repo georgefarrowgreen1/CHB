@@ -1885,6 +1885,16 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   liability payload now sends `check_in` beside `check_out` (it cannot be told from the
   checkout alone), and each row leads with the date that matters to it: `arrives` before
   the stay, `leaves` during it, `left` after.
+  **AND "WAITING FOR SQUARE" WAS AN ASSERTION NOBODY HAD CHECKED.** A deposit refund
+  sat reading "Already refunded - waiting for Square to take it" when Square had ALREADY
+  taken it (out of the Square BALANCE, since that money had never reached the bank).
+  Two causes. The wording claimed something about Square that nothing had asked - it now
+  says what our ledger knows ("Refunded - not yet confirmed settled here") and points at
+  the control that asks. And `reconcile_pending_refunds()` ran from the Recent-payments
+  view and the daily cron ONLY - never from Move money out, never from "Check Square
+  now" - so a refund could stay non-terminal until the 14-day `ret_stale` line gave up
+  and assumed it. The owner's explicit refresh now reconciles refunds alongside the
+  payouts, which is the fair place for it under the no-page-waits-on-Square rule.
   **THE RING FENCE IS NOT A TO-DO LIST.** The deposits card was headed "Deposits still
   to return" over THREE states, two of which are no such thing: one already refunded and
   waiting for Square to debit it (the ROW said so while the heading contradicted it) and

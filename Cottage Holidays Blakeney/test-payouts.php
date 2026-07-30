@@ -328,6 +328,17 @@ pochk('the cache is stamped so staleness can be judged',
 $SQ_LOCATION = 'LOC_ONLINE_CHB';
 $SQ_CALLS = [];
 payouts_refresh();
+// THE OWNER'S "Check Square now" ASKS ABOUT REFUNDS TOO. reconcile_pending_refunds()
+// ran from the Recent-payments view and the daily cron only — never from Move money out
+// and never from this button — so a deposit refund Square had ALREADY taken went on
+// reading "waiting for Square to take it" until the 14-day ret_stale line gave up and
+// assumed it. Reported live, on money that had come out of the Square balance.
+$setupSrc = (string) file_get_contents(__DIR__ . '/square-setup.php');
+pochk('the owner\'s Square refresh reconciles pending refunds as well as payouts',
+    preg_match("/action === 'payouts_refresh'[\s\S]{0,900}reconcile_pending_refunds\(\)/", $setupSrc) === 1);
+pochk('…and requires the lib it calls, rather than relying on another file having done so',
+    preg_match("/action === 'payouts_refresh'[\s\S]{0,900}payments-reconcile\.php/", $setupSrc) === 1);
+
 pochk('the payout fetch names the location this site trades under',
     strpos($SQ_CALLS[0], 'location_id=LOC_ONLINE_CHB') !== false);
 pochk('…and the cache records which location the answer is about',
@@ -436,7 +447,16 @@ pochk('money under dispute becomes a duty too', preg_match("/kind: 'dispute'[\s\
 pochk('the disputed amount is added to what must stay in the account',
     preg_match('/const ring = Number\(L\.net \|\| 0\) \+ disp \+ buf;/', $adm) === 1);
 pochk('an issued-but-undebited refund is labelled, not shown as a job still to do',
-    strpos($adm, 'Already refunded — waiting for Square to take it') !== false);
+    strpos($adm, 'not yet confirmed settled here') !== false);
+// It used to read "waiting for Square to take it". Reported live: Square had ALREADY
+// taken it, out of the Square balance, because the money had never reached the bank —
+// so the row asserted something about Square that nothing had checked. What we can say
+// is what OUR ledger has seen.
+// Matched with the closing quote so this sees the STRING the owner reads, not the
+// comment beside it explaining why the wording changed — the comment necessarily
+// quotes the old phrase, and a bare substring search fails on that.
+pochk('…and does not assert what Square has done, which nothing had checked',
+    strpos($adm, "waiting for Square to take it'") === false);
 
 // The balance: stored WITH its date, rolled forward, and never overwritten mid-type.
 pochk('the balance is stored with its date under the internal key',
