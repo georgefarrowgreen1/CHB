@@ -301,6 +301,48 @@ if (preg_match("/if \(\\\$action === 'cancel'\)(.*?)\\\$emailResult = null;/s", 
     chk('the cancel block is present in bookings.php', false);
 }
 
+// ---- DON'T SEND IT TWICE ---------------------------------------------------
+// Three layers, because no single one is enough. The client coalesces an identical
+// write while one is in flight and disables the button that started it — neither
+// survives a reload mid-request or a second device, which arrive as genuinely new
+// requests. So anything that puts a message in front of a GUEST also asks the ledger
+// of what has already been sent, and refuses a repeat inside a short window.
+echo "\n== Don't send it twice ==\n";
+chk('there is a shared "have we just sent this?" question', function_exists('recent_send_at'));
+chk('the window is a real number of seconds, not zero', CHB_RESEND_GUARD_SECONDS > 0);
+// Deliberately a WINDOW, not a permanent lock: chasing the same balance again next week
+// is necessary. Only the second copy in the same breath is never wanted.
+chk('…and short enough that a legitimate later chase is unaffected', CHB_RESEND_GUARD_SECONDS <= 900);
+// The refusal wording is what the owner reads, so it has to be a sentence.
+chk('"just now" for something seconds old', chb_ago('2026-01-01 12:00:00', strtotime('2026-01-01 12:00:20')) === 'just now');
+chk('a minute reads as a minute', chb_ago('2026-01-01 12:00:00', strtotime('2026-01-01 12:01:00')) === 'a minute ago');
+chk('two minutes reads as two', chb_ago('2026-01-01 12:00:00', strtotime('2026-01-01 12:02:10')) === '2 minutes ago');
+chk('an unparseable timestamp still says something sensible', chb_ago('not a date') === 'just now');
+$bkS2 = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('the payment request asks before emailing a second one',
+    strpos($bkS2, "recent_send_at(\$id, 'payment.request')") !== false);
+chk('…and the refusal names the guest and when it went, rather than failing silently',
+    preg_match('/That payment request has just gone to .*chb_ago\(\$already\)/', $bkS2) === 1);
+// The guard reads a log; if the log cannot be read it must not block a send the owner
+// is asking for — a duplicate email is a smaller failure than being unable to chase.
+$dbS2 = (string) file_get_contents(__DIR__ . '/db.php');
+chk('an unreadable log lets the send through rather than blocking it',
+    preg_match('/function recent_send_at.*?catch.*?return \x27\x27;/s', $dbS2) === 1);
+$appS = (string) file_get_contents(__DIR__ . '/app.js');
+chk('the client coalesces an identical write already in flight',
+    strpos($appS, '__chbWriteInFlight') !== false
+    && strpos($appS, 'if (key && __chbWriteInFlight.has(key)) return __chbWriteInFlight.get(key);') !== false);
+// then(clear, clear) and NOT .finally(): finally returns a derived promise that
+// re-throws, and nothing handles that one, so every failed write raised an unhandled
+// rejection. An onRejected handler settles the derived chain quietly.
+chk('…and frees the key on failure too, so a retry is never blocked for good',
+    strpos($appS, 'p.then(clear, clear);') !== false && strpos($appS, 'p.finally(') === false);
+chk('apiPost is NOT async, or coalesced callers would get different promises',
+    preg_match('/\nfunction apiPost\(endpoint, payload\) \{/', $appS) === 1);
+chk('a button whose handler is still running is disabled and announced busy',
+    strpos($appS, "el.setAttribute('aria-busy', 'true')") !== false
+    && preg_match("/r && typeof r\.then === 'function' && el\.tagName === 'BUTTON'/", $appS) === 1);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

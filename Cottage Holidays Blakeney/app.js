@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 321;
+const ADMIN_BUNDLE_V = 322;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -460,6 +460,25 @@ function chbRunAct(el, name, event) {
         return;
     }
     if (r === false) event.preventDefault(); // inline `return false` semantics
+    // A BUTTON THAT IS STILL WORKING CANNOT BE PRESSED AGAIN. Every delegated control
+    // comes through here, so one guard replaces 25 hand-written disabled pairs and the
+    // ones never written. <button> only — disabling a checkbox mid-change breaks it.
+    // aria-busy: announced as working, not as unavailable.
+    if (r && typeof r.then === 'function' && el.tagName === 'BUTTON' && !el.disabled) {
+        el.disabled = true;
+        el.setAttribute('aria-busy', 'true');
+        const free = () => {
+            try {
+                el.disabled = false;
+                el.removeAttribute('aria-busy');
+            } catch (e) {}
+        };
+        try {
+            r.then(free, free);
+        } catch (e) {
+            free();
+        }
+    }
 }
 const CHB_EVT_ATTR = {
     click: 'act',
@@ -896,7 +915,25 @@ function previewBlockedToast() {
         if (typeof toast === 'function') toast("Read-only preview — nothing here is saved.");
     } catch (e) {}
 }
-async function apiPost(endpoint, payload) {
+// ONE WRITE AT A TIME PER INTENT. An IDENTICAL request already in flight returns the
+// SAME promise, so a double-tap or an impatient re-submit resolves from the first send
+// instead of sending twice. Keyed on endpoint + the exact body: two notes saves differ,
+// two taps of one Send button do not. IN-FLIGHT, not a cache — the entry goes the moment
+// it settles, so a retry after failure is untouched. Nothing here is an increment-by-one
+// write, where two identical concurrent calls would both be wanted. See CLAUDE.md.
+const __chbWriteInFlight = new Map();
+function chbWriteKey(endpoint, payload) {
+    let body = '';
+    try {
+        body = JSON.stringify(payload || {});
+    } catch (e) {
+        return ''; // uncloneable payload → no key, no coalescing
+    }
+    return endpoint + '|' + body;
+}
+// NOT async on purpose: an `async` wrapper hands each caller a FRESH promise, so two
+// coalesced callers would get different objects for one request.
+function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
     // whole preview safe (no payments, chats, reviews, profile edits, etc.).
@@ -904,6 +941,24 @@ async function apiPost(endpoint, payload) {
         previewBlockedToast();
         return Promise.reject(new Error('read-only account preview'));
     }
+    const key = chbWriteKey(endpoint, payload);
+    if (key && __chbWriteInFlight.has(key)) return __chbWriteInFlight.get(key);
+    const p = apiPostSend(endpoint, payload);
+    if (key) {
+        __chbWriteInFlight.set(key, p);
+        // then(clear, clear), NOT finally: a rejected send must free the key or retries
+        // are blocked for the life of the page — but .finally() returns a DERIVED promise
+        // that re-throws, and nothing handles that one, so every failed write became an
+        // unhandled rejection (measured: four guest ui-suites started reporting
+        // "Database connection failed" as a page error). Passing an onRejected handler
+        // HANDLES it, so the derived promise settles quietly while the caller still sees
+        // the original rejection on `p`.
+        const clear = () => __chbWriteInFlight.delete(key);
+        p.then(clear, clear);
+    }
+    return p;
+}
+async function apiPostSend(endpoint, payload) {
     let res;
     try {
         res = await fetchWithTimeout(API_BASE + endpoint, {
@@ -1003,6 +1058,14 @@ function forceAdminLogout() {
             nav('view-main');
         } catch (e) {}
     }
+    // Forget the remembered screen — AFTER the nav above, because nav() remembers the
+    // screen it moves to, so clearing first just got overwritten with 'view-main'.
+    // maybeRestoreView already refuses an owner target for a signed-out visitor, but
+    // leaving a booking id in the tab's storage after a session ends is state nobody
+    // asked us to keep.
+    try {
+        chbNavForget();
+    } catch (e) {}
     if (!__sessionExpiredNotified) {
         __sessionExpiredNotified = true;
         try {
@@ -1519,6 +1582,13 @@ function nav(viewId, anchorId = null) {
         console.warn(`nav(): unknown view "${viewId}"`);
         return;
     }
+    // Remember the SCREEN so a reload comes back to it. The hub and area openers
+    // overwrite this with a more specific target (a record, a section) immediately
+    // after their own nav() call — last write wins, which is what we want since
+    // theirs is the fuller description of where the owner actually is.
+    try {
+        chbNavRemember(viewId);
+    } catch (e) {}
     // Search is a WINDOW over the workspace now, not a page — so navigating
     // anywhere while it is open must tear it down: file the dead-end miss,
     // supersede any in-flight federated search, and clear the conversation
@@ -5459,6 +5529,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.error(e);
         } // ?open=booking-42 → the record a tapped notification is about
         try {
+            maybeRestoreView();
+        } catch (e) {
+            console.error(e);
+        } // …else back to the screen this tab was on before the reload
+        try {
             hsRestore();
         } catch (e) {
             console.error(e);
@@ -7031,9 +7106,14 @@ function dedupeExternalBlocks() {
     });
 }
 
+// EITHER id form: the click path holds the client id ('b42'), anything from the SERVER
+// holds the numeric dbId (?open=booking-42, and the remembered screen). It was
+// `b.id === bookingId` alone, so 'b42' === 42 was false and a tapped notification
+// bounced to Today claiming the booking was gone. Same record, nothing to disambiguate.
 function findBookingById(bookingId) {
+    const want = String(bookingId);
     for (const list of Object.values(dbBookings)) {
-        const found = list.find((b) => b.id === bookingId);
+        const found = list.find((b) => String(b.id) === want || String(b.dbId) === want);
         if (found) return found;
     }
     return null;
@@ -8123,6 +8203,94 @@ async function submitNewsletter(ev) {
 // Routed through the FACADE STUBS (openBookingHub, openEnquiryHub, openInbox …),
 // never admin globals directly — the stub loads the bundle and delegates, which is
 // exactly the case it exists for: arriving cold from a notification.
+// WHERE YOU WERE — survives a reload. sessionStorage, so it dies with the tab (a
+// reload keeps it; opening fresh tomorrow starts clean) and two tabs can't fight over
+// one view. Stored as a TARGET STRING in chbOpenTarget()'s vocabulary, so restoring
+// reuses the notification path rather than being a second way to navigate. See CLAUDE.md.
+const CHB_NAV_KEY = 'chb-nav';
+const CHB_NAV_TTL_MS = 4 * 3600e3; // a tab left open overnight starts fresh
+function chbNavRemember(target) {
+    // The account-preview frame must land on My Stays every time — that is the feature.
+    if (typeof ACCT_PREVIEW !== 'undefined' && ACCT_PREVIEW) return;
+    if (typeof PREVIEW_MODE !== 'undefined' && PREVIEW_MODE) return;
+    try {
+        sessionStorage.setItem(CHB_NAV_KEY, JSON.stringify({ t: String(target || ''), at: Date.now() }));
+    } catch (e) {
+        /* private browsing / quota — a convenience, never a requirement */
+    }
+}
+function chbNavForget() {
+    try {
+        sessionStorage.removeItem(CHB_NAV_KEY);
+    } catch (e) {}
+}
+// Restore on boot. True if it moved the app.
+async function maybeRestoreView() {
+    if (typeof ACCT_PREVIEW !== 'undefined' && ACCT_PREVIEW) return false;
+    if (typeof PREVIEW_MODE !== 'undefined' && PREVIEW_MODE) return false;
+    // An EXPLICIT destination always wins over a remembered one.
+    try {
+        const usp = new URLSearchParams(window.location.search);
+        if (usp.get('open') || usp.get('unsub') || usp.get('pay') || usp.get('acctpreview')) return false;
+    } catch (e) {}
+    let saved = null;
+    try {
+        saved = JSON.parse(sessionStorage.getItem(CHB_NAV_KEY) || 'null');
+    } catch (e) {}
+    if (!saved || !saved.t || !saved.at) return false;
+    if (Date.now() - Number(saved.at) > CHB_NAV_TTL_MS) {
+        chbNavForget();
+        return false;
+    }
+    // A guest must never be walked into the back office.
+    const ownerTarget = !/^view-/.test(saved.t) || ADMIN_VIEWS.indexOf(saved.t) !== -1;
+    if (ownerTarget && !(isAuthenticated && document.body.classList.contains('owner-mode'))) return false;
+    try {
+        return await chbOpenTarget(saved.t);
+    } catch (e) {
+        chbNavForget(); // a deleted record: default landing beats a broken screen
+        return false;
+    }
+}
+
+// OPEN A NAMED TARGET — one dispatcher for both `?open=` and the remembered view.
+//   booking-42 · enquiry-7 · inbox · today · calendar · diagnostics · moderation
+//   settings:rates · accounts:sweep · view-experiences (any plain page view)
+// Through the FACADE STUBS, never admin globals — arriving cold is why they exist.
+async function chbOpenTarget(target) {
+    target = String(target || '');
+    if (!target) return false;
+    const area = /^(settings|accounts):([a-z0-9-]+)$/.exec(target);
+    if (area) {
+        if (area[1] === 'settings') {
+            await openArea();
+            settingsOpen(area[2]);
+        } else {
+            await openAccounts();
+            accountsOpen(area[2]);
+        }
+        return true;
+    }
+    // A plain view id — the guest side has just pages.
+    if (/^view-[a-z0-9-]+$/.test(target)) {
+        if (!document.getElementById(target)) return false;
+        nav(target);
+        return true;
+    }
+    const m = /^([a-z]+)(?:-(\d+))?$/.exec(target);
+    if (!m) return false;
+    const [, kind, idRaw] = m;
+    const id = idRaw ? parseInt(idRaw, 10) : 0;
+    if (kind === 'booking' && id) await openBookingHub(id);
+    else if (kind === 'enquiry' && id) await openEnquiryHub(id);
+    else if (kind === 'messages' || kind === 'inbox') await openInbox();
+    else if (kind === 'today') await tryAccessBackOffice();
+    else if (kind === 'calendar') await settingsOpenCalendar();
+    else if (kind === 'diagnostics') { await openArea(); settingsOpen('diagnostics'); }
+    else if (kind === 'moderation') { await openArea(); settingsOpen('reviews'); }
+    else return false;
+    return true;
+}
 async function maybeHandleNotificationOpen() {
     let target = '';
     try {
@@ -8132,18 +8300,8 @@ async function maybeHandleNotificationOpen() {
     try {
         history.replaceState(null, '', window.location.pathname);
     } catch (e) {}
-    const m = /^([a-z]+)(?:-(\d+))?$/.exec(target);
-    if (!m) return;
-    const [, kind, idRaw] = m;
-    const id = idRaw ? parseInt(idRaw, 10) : 0;
     try {
-        if (kind === 'booking' && id) await openBookingHub(id);
-        else if (kind === 'enquiry' && id) await openEnquiryHub(id);
-        else if (kind === 'messages' || kind === 'inbox') await openInbox();
-        else if (kind === 'today') await tryAccessBackOffice();
-        else if (kind === 'calendar') await settingsOpenCalendar();
-        else if (kind === 'diagnostics') { await openArea(); settingsOpen('diagnostics'); }
-        else if (kind === 'moderation') { await openArea(); settingsOpen('reviews'); }
+        await chbOpenTarget(target);
     } catch (e) {
         /* a deleted record or a half-loaded bundle must never break the boot */
     }
@@ -13360,7 +13518,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sweep05';
+    const BUILD = 'resume1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

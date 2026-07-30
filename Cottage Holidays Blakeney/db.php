@@ -1062,6 +1062,55 @@ function booking_ledger_net($bookingId)
     return round(max(0, (float) $s->fetchColumn()), 2);
 }
 
+// HAS THIS ALREADY BEEN SENT? — the server half of the don't-send-twice guard.
+//
+// The client coalesces identical writes while one is in flight and disables the button
+// that started it, which stops a double-tap. Neither survives a page that reloads
+// mid-request, a second device, or a stale tab: the request arrives as a genuinely new
+// one. So anything that puts a message in front of a GUEST also asks the ledger of what
+// we have already sent — activity_log, which every send already writes to — and refuses
+// a repeat inside a short window.
+//
+// Deliberately a WINDOW, not a permanent lock: chasing the same balance again next week
+// is a legitimate, necessary thing to do. It is only the second copy in the same breath
+// that is never wanted.
+// Returns the timestamp of the recent send, or '' if there is none.
+const CHB_RESEND_GUARD_SECONDS = 180;
+// How long ago, in words, for the refusal message. Only ever spans the guard window,
+// so seconds and minutes are the whole vocabulary needed. $now is injectable so the
+// wording is testable without waiting for a clock.
+function chb_ago($mysqlDatetime, $now = null)
+{
+    $t = strtotime((string) $mysqlDatetime);
+    if ($t === false) {
+        return 'just now';
+    }
+    $secs = max(0, (int) ($now === null ? time() : $now) - $t);
+    if ($secs < 45) {
+        return 'just now';
+    }
+    $mins = (int) round($secs / 60);
+    return $mins <= 1 ? 'a minute ago' : $mins . ' minutes ago';
+}
+function recent_send_at($bookingId, $action, $withinSeconds = CHB_RESEND_GUARD_SECONDS)
+{
+    try {
+        $s = db()->prepare(
+            "SELECT created_at FROM activity_log
+              WHERE entity = 'booking' AND entity_id = ? AND action = ?
+                AND created_at >= (NOW() - INTERVAL ? SECOND)
+           ORDER BY created_at DESC LIMIT 1",
+        );
+        $s->execute([(string) (int) $bookingId, (string) $action, (int) $withinSeconds]);
+        return (string) ($s->fetchColumn() ?: '');
+    } catch (\Throwable $e) {
+        // An unreadable log must not block a send the owner is asking for — the
+        // client-side guards still stand, and a duplicate email is a smaller failure
+        // than being unable to chase a payment at all.
+        return '';
+    }
+}
+
 // HOW MUCH OF A DEPOSIT HAS ACTUALLY GONE BACK — for MANY bookings at once.
 // damages_returned($id) answers this per booking and correctly ignores FAILED and
 // REJECTED refunds. Three other places summed the same rows with NO status filter at
