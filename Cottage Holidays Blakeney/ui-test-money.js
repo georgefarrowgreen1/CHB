@@ -435,6 +435,49 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Square hasn't said/.test(s1d) && /£491\.25/.test(s1d), 'unvouched money is named as unknown, not counted as movable');
   ok(/Not counted as movable/i.test(s1d), 'and the screen says so in words');
 
+  // WHY it is unknown, which is not always "give it a day". The note used to claim
+  // the charges were not in the payout data "yet" in every case — reported from a
+  // live account with payouts checked THAT DAY, no error, and a charge 23 days old
+  // sitting there. Square pays out in a day or two, so "yet" was wrong about it, and
+  // the answer was already in the payload: `known` says whether Square's payout data
+  // covers anything at all. Three states, and they must read differently.
+  ok(/over a week ago/i.test(s1d) && /should have shown up by now/i.test(s1d),
+    `a charge too old to still be pending says so (${(s1d.match(/[^.]*over a week ago[^.]*\./) || ['none'])[0].trim().slice(0, 90)})`);
+  // The claim itself, not a slice of text near it: "aren't in the payout data YET"
+  // asserts a temporary wait the screen has no basis for. (A split-on-later-text
+  // version of this check passed against the old wording, because the "yet" sits
+  // BEFORE the phrase it split on — a check that cannot fail is worse than none.)
+  ok(!/payout data yet/i.test(s1d), 'and it no longer claims a temporary wait it cannot vouch for');
+
+  // Square returned NOTHING: not a delay, a Square-side setting. Naming the window
+  // matters — "no payouts at all in the last 60 days" is a different statement from
+  // "these two are missing", and only the server knows how far the fetch reached.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, { known: 0, lookback: 60 }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sNone = await sweepText();
+  ok(/hasn't reported any payouts at all/i.test(sNone), `no payout data at all is stated as such (${(sNone.match(/[^.]*any payouts at all[^.]*\./) || ['none'])[0].trim().slice(0, 90)})`);
+  ok(/60 days/.test(sNone), 'naming the window the fetch actually covered');
+  ok(/payouts paused|bank account/i.test(sNone), '…and what usually causes it, so there is something to go and check');
+  ok(!/over a week ago/i.test(sNone), 'the age story is NOT told when the feed itself returned nothing — that would be the wrong cause');
+
+  // And no false alarm: a charge taken today is legitimately not paid out yet.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, {
+      known: 2, lookback: 60,
+      items: Object.assign({}, sweepStub.payouts.items, {
+        unknown: [{ txn_id: 14, name: 'Fresh Charge', prop_key: 'jollyboat', paid_on: d(0), settled: 500, ringFence: 0, movable: 491.25, landed: null, arrival: '' }],
+      }),
+    }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sFresh = await sweepText();
+  ok(/Square hasn't said/.test(sFresh) && !/over a week ago/i.test(sFresh) && !/any payouts at all/i.test(sFresh),
+    'a charge taken today raises neither alarm — it is simply too soon');
+
   // MONEY UNDER DISPUTE is fenced beside the deposits — Square can pull it back, and
   // a chargeback on a whole stay dwarfs a £75 deposit. Its own line, not folded in.
   sweepStub = Object.assign({}, sweepStub, {

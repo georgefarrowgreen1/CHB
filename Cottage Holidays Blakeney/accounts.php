@@ -460,6 +460,9 @@ try {
     $sweep['payouts']['checked'] = is_array($poCache) ? (int) ($poCache['checked'] ?? 0) : 0;
     $sweep['payouts']['error'] = is_array($poCache) ? ($poCache['error'] ?? null) : null;
     $sweep['payouts']['known'] = is_array($poMap) ? count($poMap) : 0;
+    // The window the fetch actually covers, sent rather than re-typed in JS — the
+    // screen names it when it reports that Square returned nothing at all.
+    $sweep['payouts']['lookback'] = PAYOUTS_LOOKBACK_DAYS;
     $sweep['payouts']['fees'] = is_array($poCache) ? (float) ($poCache['payoutFees'] ?? 0) : 0.0;
     $sweep['payouts']['truncated'] = is_array($poCache) ? !empty($poCache['truncated']) : false;
     $sweep['payouts']['failed'] = payouts_failed(is_array($poCache) ? ($poCache['payouts'] ?? []) : []);

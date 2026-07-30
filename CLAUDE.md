@@ -1878,6 +1878,18 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   carry `type_charge_details` too, and arriving after the charge it would overwrite
   the real fee (break-tested; the first version of that check was vacuous because
   the fixture had no such entry).
+  **AND UNKNOWN SAYS WHY.** The unknown group's note claimed the charges were not in
+  the payout data **YET** — asserting a temporary wait the screen has no basis for.
+  Reported from the live account: payouts checked THAT DAY, no error, two charges
+  unknown and one of them 23 days old, which Square (1–2 working days) should long
+  since have paid out. The fact that explains it was already in the payload and
+  `renderSweep` never read it — `payouts.known` is how many charges the payout data
+  covers AT ALL. Two states now read differently: `known === 0` says Square reported no
+  payouts at all in the window (a Square-side setting — payouts paused, no bank account
+  linked — not a delay), and `known > 0` with a charge over **7 days** old says it
+  should have shown up by now. A charge taken today raises neither. The window is sent
+  as `payouts.lookback` from `PAYOUTS_LOOKBACK_DAYS` rather than re-typed in JS. Gated
+  by ui-test-money §7, all three states break-tested.
   **UNKNOWN IS ITS OWN ANSWER.** `payouts_landed` returns true/false/**null** —
   an unrecognised status, a missing or malformed `arrival_date`, a charge absent
   from the payout data. Null money is reported as its own figure ("Square hasn't
