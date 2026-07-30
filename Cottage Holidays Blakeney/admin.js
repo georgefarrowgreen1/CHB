@@ -12067,19 +12067,24 @@ async function renderSweep(refetch) {
     // "deposits to return" answer, both correctly gated on hasCheckedOut().
     const today = todayDashed();
     const depState = (it) => {
-        if (Number(it.awaiting || 0) > 0) return { when: 'left', note: 'Already refunded — waiting for Square to take it' };
+        if (Number(it.awaiting || 0) > 0) return { when: 'left', date: it.check_out, note: 'Already refunded — waiting for Square to take it' };
+        // NOT ARRIVED is its own state. "Still staying" was said of a guest whose stay
+        // had not started — the deposit is charged with the first payment, so it is held
+        // from the moment they book, which can be months out. The arrival is the useful
+        // date on that row; the checkout is the useful one once they are in.
+        if (it.check_in && it.check_in > today) return { when: 'arrives', date: it.check_in, note: 'Not arrived yet — held until after the stay' };
         // On checkout day the guest is still in until the checkout time, so "left today"
         // would be wrong for most of it — hasCheckedOut's reasoning, at the resolution
         // this payload carries (a date, no time).
-        if (it.check_out && it.check_out >= today) return { when: 'leaves', note: 'Still staying — nothing to hand back yet' };
-        return { when: 'left', note: 'Ready to return' };
+        if (it.check_out && it.check_out >= today) return { when: 'leaves', date: it.check_out, note: 'Still staying — nothing to hand back yet' };
+        return { when: 'left', date: it.check_out, note: 'Ready to return' };
     };
     const rows = (L.items || [])
         .map((it) => {
             const st = depState(it);
             return `<div class="act-row" style="display:block;">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · ${st.when} ${it.check_out === today ? 'today' : fmtDate(it.check_out)}` : ''}</span>
+                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${st.date ? ` · ${st.when} ${st.date === today ? 'today' : fmtDate(st.date)}` : ''}</span>
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
                     <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>

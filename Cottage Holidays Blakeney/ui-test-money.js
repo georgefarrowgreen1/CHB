@@ -527,8 +527,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // having left on a future date.
   sweepStub = Object.assign({}, sweepStub, {
     items: [
-      { outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Richard Berry', prop_key: '21a', check_out: d(-13) },
-      { outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_out: d(32) },
+      { outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Richard Berry', prop_key: '21a', check_in: d(-16), check_out: d(-13) },
+      { outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_in: d(29), check_out: d(32) },
     ],
     count: 2, gross: 150, feeBack: 2.16, net: 147.84,
   });
@@ -536,16 +536,35 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(500);
   const sPair = await sweepText();
   const ukd = (n) => d(n).split('-').reverse().join('/');
-  ok(new RegExp('leaves ' + ukd(32)).test(sPair), `a guest who has not left yet LEAVES on their date (${ukd(32)})`);
-  ok(!new RegExp('left ' + ukd(32)).test(sPair), '…and is never reported as having left on a date in the future');
+  // (This asserted "leaves 31/08" in the two-state version. It is now the ARRIVAL that
+  // leads the row for a stay still to come — the sMid scene below owns "leaves".)
+  ok(!new RegExp('left ' + ukd(32)).test(sPair), 'a guest is never reported as having left on a date in the future');
+  ok(!new RegExp('left ' + ukd(29)).test(sPair), '…nor as having left on their own arrival date');
   ok(new RegExp('left ' + ukd(-13)).test(sPair), `a guest who has gone still reads "left" (${ukd(-13)})`);
-  ok(/Still staying — nothing to hand back yet/.test(sPair), 'the one still in the cottage says there is nothing to do');
+  // ANNE HAS NOT ARRIVED, let alone stayed. "Still staying" was said of a guest whose
+  // booking starts in a month — the deposit is charged with the first payment, so it is
+  // held from the moment they book. Three future/present states, not two.
+  ok(/Not arrived yet — held until after the stay/.test(sPair), 'a guest who has not arrived is not described as staying');
+  ok(!/Still staying/.test(sPair), '…and the in-residence wording is not used for them');
+  ok(new RegExp('arrives ' + ukd(29)).test(sPair), `…their row leads with the ARRIVAL, the useful date for a stay still to come (${ukd(29)})`);
   ok(/Already refunded — waiting for Square to take it/.test(sPair), 'the refunded one still says it is only waiting on Square');
   ok(!/Ready to return/.test(sPair), 'and NEITHER of these two is presented as ready to hand back');
 
+  // MID-STAY is still its own state: arrived, not left, deposit held.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Mid Stay', prop_key: '21a', check_in: d(-2), check_out: d(3) }],
+    count: 1, gross: 75, feeBack: 1.31, net: 73.69,
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sMid = await sweepText();
+  ok(/Still staying — nothing to hand back yet/.test(sMid) && !/Not arrived yet/.test(sMid),
+    'a guest actually in the cottage IS described as staying');
+  ok(new RegExp('leaves ' + ukd(3)).test(sMid), `…and their row leads with the checkout (${ukd(3)})`);
+
   // The row that IS the job says so — otherwise the three states are two.
   sweepStub = Object.assign({}, sweepStub, {
-    items: [{ outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: '21a', check_out: d(-3) }],
+    items: [{ outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: '21a', check_in: d(-6), check_out: d(-3) }],
     count: 1, gross: 75, feeBack: 1.31, net: 73.69,
   });
   await page.evaluate(() => renderSweep());

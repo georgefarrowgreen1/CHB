@@ -1878,6 +1878,13 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   carry `type_charge_details` too, and arriving after the charge it would overwrite
   the real fee (break-tested; the first version of that check was vacuous because
   the fixture had no such entry).
+  **A DEPOSIT IS HELD FROM THE MOMENT THEY BOOK, so "not arrived" is its own state.**
+  The deposit is charged with the first payment, which can be months before the stay —
+  so the card carries FOUR states, not three, and saying "Still staying" of a guest whose
+  booking starts in a month was the second wrong thing said about the same row. The
+  liability payload now sends `check_in` beside `check_out` (it cannot be told from the
+  checkout alone), and each row leads with the date that matters to it: `arrives` before
+  the stay, `leaves` during it, `left` after.
   **THE RING FENCE IS NOT A TO-DO LIST.** The deposits card was headed "Deposits still
   to return" over THREE states, two of which are no such thing: one already refunded and
   waiting for Square to debit it (the ROW said so while the heading contradicted it) and
