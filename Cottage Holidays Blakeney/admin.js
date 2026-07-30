@@ -1578,6 +1578,11 @@ async function chbBulkRun(rows, opts) {
     let sent = 0;
     let chased = 0;
     const failed = [];
+    // ALREADY-SENT IS ITS OWN OUTCOME. Re-running a half-failed batch recomputes from
+    // live paymentSummary, and someone emailed a minute ago still owes — so the server's
+    // resend window refuses exactly those. Counting them as `failed` reports "couldn't
+    // reach Sarah" about a guest holding the email; counting them as `sent` is worse.
+    const already = [];
     for (const x of send) {
         // Same validated endpoint the single-record action reaches through
         // requestPayment — what bulk drops is the preview, never the server rules.
@@ -1588,12 +1593,19 @@ async function chbBulkRun(rows, opts) {
             sent++;
             chased += Math.max(0, (x.ps && x.ps.balance) || 0);
         } catch (e) {
-            failed.push(x);
+            if (e && e.code === 'already_sent') already.push(x);
+            else failed.push(x);
         }
     }
     const misses = [];
     if (skip.length) misses.push(`${chbBulkNames(skip)} ${skip.length === 1 ? '' : 'each '}${skip[0].skipWhy === 'no email address' ? (skip.length === 1 ? 'has no email address' : 'have no email address') : skip[0].skipWhy}`);
+    if (already.length) misses.push(`${chbBulkNames(already)} ${already.length === 1 ? 'already had it' : 'already had theirs'} just now`);
     if (failed.length) misses.push(`couldn't reach ${chbBulkNames(failed)}`);
+    // Nothing sent because they ALL already had it is not a failure to throw about —
+    // the set is in the state the owner was asking for.
+    if (!sent && !failed.length && already.length) {
+        return { say: `${chbBulkNames(already)} ${already.length === 1 ? 'already had it' : 'already had theirs'} just now — nothing to re-send` };
+    }
     if (!sent) {
         // Total failure is an ERROR, not a quiet partial — throwing puts it on the
         // error strip with its reason. An email cannot be unsent, so no branch here
@@ -14032,7 +14044,11 @@ async function requestPayment(bookingId, kind) {
                 });
                 toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
             } catch (e) {
-                glassAlert("Couldn't send the payment request: " + e.message);
+                // "It already went" is INFORMATION, not a failure — the guest has the
+                // email, which is what the owner wanted. It did not go NOW either way.
+                if (e && e.code === 'already_sent') toast(e.message);
+                else glassAlert("Couldn't send the payment request: " + e.message);
+                return false;
             }
         },
     });

@@ -983,6 +983,11 @@ if ($action === 'send_arrival') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
+    // Same window as the payment request, and for a stronger reason: the arrival email's
+    // content is GENERATED from the booking, so a second copy in the same breath is never
+    // a different message — and this is the app's other BULK send (chbBulkArrivalAction),
+    // where one tap covers a set and a repeat covers the whole set again.
+    resend_guard($id, 'email.arrival', (string) ($b['name'] ?? ''), 'arrival email');
     require_once __DIR__ . '/mailer.php'; // the arrival-email helpers live here
     $res = send_arrival_for_booking($b);
     if (!empty($res['ok'])) {
@@ -1002,6 +1007,12 @@ if ($action === 'send_confirmation') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
+    // DELIBERATELY NOT resend_guard()ed, unlike the payment request and the arrival email.
+    // A confirmation's content follows the booking's PAYMENT STATE, and the normal flow is
+    // add booking → record the deposit → confirm, which fires `add`'s own confirmation and
+    // then this one within a minute or two. Those two emails say different things, so a
+    // window here would refuse a genuinely different message — and this action exists to
+    // re-send. The button lock still covers the double-tap.
     // guest_only:true → re-send just the guest confirmation (no owner re-ping);
     // used when confirming a recorded payment.
     $guestOnly = !empty($in['guest_only']);
@@ -1105,15 +1116,12 @@ if ($action === 'request_payment') {
     // approval; the amount was always server-derived, and now the KIND is too.
     $kind = booking_payment_kind($b, $asked);
 
-    // DON'T ASK THE SAME GUEST TWICE IN THE SAME BREATH. The client already coalesces
-    // an identical in-flight write and disables the button, but neither survives a
-    // reload mid-request or a second device — that arrives as a genuinely new request.
-    // A repeat inside the window is refused in words, not silently swallowed, so the
-    // owner knows it went rather than wondering whether to try again.
-    $already = recent_send_at($id, 'payment.request');
-    if ($already !== '') {
-        json_out(['error' => 'That payment request has just gone to ' . ($b['name'] ?: 'the guest') . ' (' . chb_ago($already) . ') — they have it.'], 200);
-    }
+    // DON'T ASK THE SAME GUEST TWICE IN THE SAME BREATH. The client disables the button
+    // whose handler is still running, but that does not survive a reload mid-request or a
+    // second device — those arrive as genuinely new requests. A repeat inside the window
+    // is refused IN WORDS AND WITH A STATUS, so the owner knows it went rather than
+    // wondering whether to try again. See resend_guard() for why the status matters.
+    resend_guard($id, 'payment.request', (string) ($b['name'] ?? ''), 'payment request');
 
     require_once __DIR__ . '/mailer.php';
     $res = request_booking_payment($b, $kind);
