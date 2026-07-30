@@ -17,6 +17,16 @@
 //  403s and bank_refresh() NAMES that rather than reporting "no bank account",
 //  which would be a different and much more alarming claim.
 //
+//  WHAT IT CANNOT TELL US, and this was got wrong first time round. Square keeps ONE
+//  primary payout account, but ListBankAccounts does NOT say which of the linked
+//  accounts that is — there is no default/primary flag on the object (the
+//  `primary_bank_identification_number` field is a sort code, not a "this is the
+//  primary account" marker, and reads deceptively like one). So naming a single
+//  account as "your bank account" is only honest when exactly ONE is linked. With two,
+//  the first version picked whichever came back first and asserted it: reported live,
+//  it named a Lloyds account on a business paid out to Monzo. More than one linked ⇒
+//  list them and say Square does not tell us which it pays into.
+//
 //  THE TWO FIELDS THAT DECIDE IT, and they are not interchangeable:
 //    status      VERIFICATION_IN_PROGRESS | VERIFIED | DISABLED
 //    creditable  whether Square can SEND money to it — the payout direction.
@@ -51,14 +61,14 @@ const BANK_MAX = 20; // an owner has one or two; this only bounds a pathological
 function bank_read($accounts, $err = null)
 {
     if ($err !== null && $err !== '') {
-        return ['state' => 'unknown', 'count' => 0, 'why' => (string) $err, 'label' => ''];
+        return ['state' => 'unknown', 'count' => 0, 'why' => (string) $err, 'label' => '', 'all' => []];
     }
     if (!is_array($accounts)) {
-        return ['state' => 'unknown', 'count' => 0, 'why' => 'never checked', 'label' => ''];
+        return ['state' => 'unknown', 'count' => 0, 'why' => 'never checked', 'label' => '', 'all' => []];
     }
     $count = count($accounts);
     if ($count === 0) {
-        return ['state' => 'none', 'count' => 0, 'why' => '', 'label' => ''];
+        return ['state' => 'none', 'count' => 0, 'why' => '', 'label' => '', 'all' => []];
     }
     $ready = null;
     $verifying = null;
@@ -78,13 +88,29 @@ function bank_read($accounts, $err = null)
             $verifying = $a;
         }
     }
+    // Every account, each with its own verdict, so the screen can name them ALL when
+    // there is more than one — Square will not say which it pays into, and picking one
+    // is how the first version came to name the wrong bank.
+    $all = [];
+    foreach ($accounts as $a) {
+        if (!is_array($a)) {
+            continue;
+        }
+        $st = strtoupper((string) ($a['status'] ?? ''));
+        $all[] = [
+            'label' => bank_label($a),
+            'state' => $st === 'VERIFIED' && !empty($a['creditable'])
+                ? 'ready'
+                : ($st === 'VERIFICATION_IN_PROGRESS' ? 'verifying' : 'blocked'),
+        ];
+    }
     if ($ready !== null) {
-        return ['state' => 'ready', 'count' => $count, 'why' => '', 'label' => bank_label($ready)];
+        return ['state' => 'ready', 'count' => $count, 'why' => '', 'label' => bank_label($ready), 'all' => $all];
     }
     if ($verifying !== null) {
-        return ['state' => 'verifying', 'count' => $count, 'why' => '', 'label' => bank_label($verifying)];
+        return ['state' => 'verifying', 'count' => $count, 'why' => '', 'label' => bank_label($verifying), 'all' => $all];
     }
-    return ['state' => 'blocked', 'count' => $count, 'why' => '', 'label' => bank_label($accounts[0])];
+    return ['state' => 'blocked', 'count' => $count, 'why' => '', 'label' => bank_label($accounts[0]), 'all' => $all];
 }
 
 // How an account is NAMED to the owner: the bank and the last few digits, which is
@@ -114,6 +140,15 @@ function bank_slim($accounts)
     $out = [];
     foreach (is_array($accounts) ? $accounts : [] as $a) {
         if (!is_array($a)) {
+            continue;
+        }
+        // SELLER accounts only. ListBankAccounts returns customer bank accounts as
+        // well, told apart by customer_id (seller rows carry location_id instead) —
+        // and putting a GUEST's bank on the owner's money screen would be worse than
+        // any of the confusions this file exists to prevent. Excluding on customer_id
+        // rather than requiring location_id is the safe direction: it only drops rows
+        // we are certain belong to someone else.
+        if (trim((string) ($a['customer_id'] ?? '')) !== '') {
             continue;
         }
         $out[] = [

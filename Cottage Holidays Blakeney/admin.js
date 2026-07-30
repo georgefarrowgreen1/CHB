@@ -12121,6 +12121,13 @@ async function renderSweep(refetch) {
     // the `unknown` state falls back to the old hedge, because "we could not ask" must
     // never be rendered as "you have no bank account".
     const B = L.bank || null;
+    // NAMING ONE ACCOUNT IS ONLY HONEST WHEN THERE IS ONE. Square keeps a single
+    // primary payout account but does not say WHICH of the linked accounts it is, so
+    // the first version picked the first verified one and asserted it — reported live,
+    // it named a Lloyds account on a business paid out to Monzo. With more than one,
+    // list them and say plainly that Square has not told us.
+    const bankList = (B && Array.isArray(B.all) ? B.all : []).filter((x) => x && x.label);
+    const bankMany = bankList.length > 1;
     const bankWhy = !B
         ? ''
         : B.state === 'none'
@@ -12130,7 +12137,9 @@ async function renderSweep(refetch) {
             : B.state === 'blocked'
               ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked but Square cannot pay into it — it looks disabled at their end.`
               : B.state === 'ready'
-                ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked and verified, so the hold-up is something else — worth checking whether payouts are paused in Square.`
+                ? (bankMany
+                    ? ` You have ${bankList.length} bank accounts linked (${bankList.map((x) => escapeHtml(x.label || 'unnamed') + (x.state === 'ready' ? '' : x.state === 'verifying' ? ' — still being verified' : ' — Square cannot pay into it')).join(', ')}). Square does not say which one it pays into, so check that the right one is set as your payout account.`
+                    : ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked and verified, so the hold-up is something else — worth checking whether payouts are paused in Square.`)
                 : '';
     const unknownWhy = !P
         ? ''
