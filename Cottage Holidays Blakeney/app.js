@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 352;
+const ADMIN_BUNDLE_V = 353;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6742,6 +6742,22 @@ function displayGrand(p, ps, holdStatus) {
     return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
 }
 
+
+// WHAT A BOOKING STILL OWES YOU — one definition. Three surfaces gave two answers
+// on one screen: the row said "£340.00 due", Today's header and the bookings
+// summary said "£290 to collect". The row was right — paymentSummary().balance is
+// the RENTAL balance, and the refundable deposit is charged WITH the first payment
+// (pay.php charges amountDue + damagesDue), so until that lands it is still to
+// collect. displayGrand folds it in, counts it paid only once hold_status says it
+// was taken, and drops it once refunded. Use this for "how much is still to come
+// in"; keep paymentSummary for the RENTAL question.
+function bookingDue(propKey, b) {
+    const ps = paymentSummary(propKey, b);
+    const p =
+        b.agreedPrice ||
+        priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    return displayGrand(p, ps, b.holdStatus || 'none');
+}
 
 function gbp(n) {
     return (
@@ -13613,7 +13629,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'nodogs2';
+    const BUILD = 'owedfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

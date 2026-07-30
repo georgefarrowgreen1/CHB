@@ -80,7 +80,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/automation looks stopped/.test(s.labels[0] || ''), `automation warning leads (${s.labels[0]})`);
   ok(/Jane Doe/.test(s.labels[1] || '') && /waiting 2 days/.test(s.labels[1] || ''), `enquiry second with age (${s.labels[1]})`);
   ok(s.labels.some((l) => /damages deposit/.test(l)), 'deposit-return row present');
-  ok(s.labels.some((l) => /£520\.00 to collect from Sarah Pemberton/.test(l)), `chase row leads with the amount (${s.labels.find((l) => /520/.test(l)) || 'none'})`);
+  // £580 = £520 rental balance (640 − 120) + the £60 refundable deposit, which
+  // hold_status 'none' says has NOT been taken yet. It USED to read £520: the strip
+  // quoted the rental balance while the booking's own row quoted the deposit-aware
+  // figure, so one screen showed two numbers for one guest. See bookingDue().
+  ok(s.labels.some((l) => /£580\.00 to collect from Sarah Pemberton/.test(l)), `chase row leads with the amount owed INCLUDING the untaken deposit (${s.labels.find((l) => /to collect from Sarah/.test(l)) || 'none'})`);
   ok(!s.labels.some((l) => /Tom Hardy/.test(l)), 'far-future unpaid booking not nagged');
   ok(s.sevs[0] === 'danger' && s.sevs[1] === 'danger', 'severities: automation + 2-day-old enquiry are danger');
 

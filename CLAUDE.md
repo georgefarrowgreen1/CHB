@@ -1034,6 +1034,29 @@ about the number beside it, while its three siblings are all plain comparisons. 
 brief sub uses `fmtStayRange`, never two `fmtDate`s pasted together: that is not an
 exception to the DD/MM/YYYY rule, it is the house's own compact form, which the gap row
 was the last row not to use.
+**WHAT A BOOKING OWES YOU IS `bookingDue()`, NOT `paymentSummary().balance`** (app.js;
+gated by search-test §40 + ui-test-needs-you). Reported live: one screen showed two
+numbers for one guest — the booking's own row said "£340.00 due" while Today's header
+brief AND the bookings summary both said "£290 to collect". **The row was right.**
+`paymentSummary().balance` is the RENTAL balance; the refundable damages deposit is
+CHARGED with the guest's first payment (`pay.php` charges `amountDue + damagesDue`, so
+the card really does take the larger figure), which makes an untaken deposit money still
+to collect. `displayGrand` already folded it in — counting it paid only once
+`hold_status` says it was actually taken, dropping it once refunded — but only the
+Payments screen and the booking rows used it, and Payments' own comment already
+promised "the two screens always quote identical numbers". `bookingDue(propKey, b)` is
+that one definition, and every OWNER-FACING "still to collect" now goes through it: the
+bookings-list summary, `chbDuties` (so Today's strip and the brief both move), the
+greeting line, the balances-to-chase answer, the money overview, the owed family and the
+bulk chase it feeds, and the per-row inline chase + its balance watcher. **Deliberately
+NOT changed**: the questions that are genuinely about the rental — "who's put a deposit
+down" (`ps.deposit`) and "who's paid in full" (`ps.total`) — and the guest emails, whose
+`booking_amount_due` quotes the rental with the deposit explained separately, which is
+their own considered framing. NB the two shapes are NOT interchangeable — `paymentSummary`
+returns `{total, deposit, balance}` and `displayGrand` returns `{dep, total, paid,
+balance}`, so a blanket swap silently makes `ps.deposit` undefined; the `withPs` block
+keeps the rental summary and the owed branch maps in the due figure under the same name.
+
 **chbDuties — ONE decision about what needs the owner** (admin.js). There used to be
 two: `needsYouItems()` built the Today strip and `cmdkBriefBuild()` built the search
 pop-out's landing, from the same bookings and enquiries but with DIFFERENT rules. Today
