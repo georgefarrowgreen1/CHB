@@ -473,6 +473,13 @@ try {
     // Square. bank_read() is the one place the states are decided.
     require_once __DIR__ . '/bank-lib.php';
     $bankCache = bank_cached();
+    // Which location these figures are about, and what else there was to choose from.
+    // Without this the screen cannot say whose payouts it is reporting — and a silent
+    // default is what made sixty days of nothing look like a fact about the business.
+    $sweep['location'] = [
+        'id' => function_exists('square_location_id') ? square_location_id() : '',
+        'all' => is_array($bankCache) ? ($bankCache['locations'] ?? []) : [],
+    ];
     $sweep['bank'] = bank_read(
         is_array($bankCache) ? ($bankCache['accounts'] ?? null) : null,
         is_array($bankCache) ? ($bankCache['error'] ?? null) : null,

@@ -41,6 +41,14 @@ function content_value($key)
     global $SQ_STORE;
     return $SQ_STORE[$key] ?? '';
 }
+// The location this site trades under. The real one is in db.php, which this test does
+// not load (no DB), so it is stubbed like the rest of the environment.
+$SQ_LOCATION = '';
+function square_location_id()
+{
+    global $SQ_LOCATION;
+    return $SQ_LOCATION;
+}
 function content_set_scalar($key, $val)
 {
     global $SQ_STORE;
@@ -310,6 +318,25 @@ pochk('a landed payout carries WHEN it landed, for the roll-forward',
     (int) ($cache['payouts'][0]['landed_at'] ?? 0) > 0 && (int) ($cache['payouts'][1]['landed_at'] ?? -1) === 0);
 pochk('the cache is stamped so staleness can be judged',
     ($cache['at'] ?? 0) > 0 && array_key_exists('error', $cache) && $cache['error'] === null);
+
+// SCOPED TO ONE LOCATION, which is the whole reason the screen showed sixty days of
+// nothing. Square's own words for the missing parameter: "By default, payouts are
+// returned for the default (main) location associated with the seller" — so omitting it
+// is not "everywhere", it is a confident answer about a shop that may not be this
+// business. Measured on the live account: no payouts at all, while the money moved
+// under a location called Online CHB.
+$SQ_LOCATION = 'LOC_ONLINE_CHB';
+$SQ_CALLS = [];
+payouts_refresh();
+pochk('the payout fetch names the location this site trades under',
+    strpos($SQ_CALLS[0], 'location_id=LOC_ONLINE_CHB') !== false);
+pochk('…and the cache records which location the answer is about',
+    payouts_cached()['location'] === 'LOC_ONLINE_CHB');
+$SQ_LOCATION = '';
+$SQ_CALLS = [];
+payouts_refresh();
+pochk('unset sends no location_id, leaving Square its own default',
+    strpos($SQ_CALLS[0], 'location_id=') === false);
 
 // A REFUSAL the owner must be told about in words, not as a status code.
 $SQ_REPLY['/v2/payouts?'] = ['status' => 403, 'body' => []];

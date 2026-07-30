@@ -175,6 +175,27 @@ function bank_stale($cache, $now = null)
     return ($now - (int) $cache['at']) > BANK_TTL;
 }
 
+// THE LOCATIONS THE SELLER HAS, slimmed for the picker. Square scopes payouts and
+// bank accounts per location and silently defaults to the MAIN one, so an owner with
+// more than one has to be able to say which shop this site is. Sorted the way Square
+// sorts them (alphabetically by name) — no re-ordering, so the list matches what they
+// see in their own dashboard.
+function locations_slim($locations)
+{
+    $out = [];
+    foreach (is_array($locations) ? $locations : [] as $l) {
+        if (!is_array($l) || trim((string) ($l['id'] ?? '')) === '') {
+            continue;
+        }
+        $out[] = [
+            'id' => (string) $l['id'],
+            'name' => trim((string) ($l['name'] ?? '')) !== '' ? (string) $l['name'] : (string) $l['id'],
+            'status' => strtoupper((string) ($l['status'] ?? '')),
+        ];
+    }
+    return $out;
+}
+
 // ---- Impure below: DB + network. Guarded so the pure half above is testable
 // ---- without a database, exactly as payouts-lib.php is.
 if (function_exists('content_value')) {
@@ -214,7 +235,13 @@ if (function_exists('content_value')) {
         if (!function_exists('square_enabled') || !square_enabled()) {
             return $fail('Square payments are not switched on');
         }
-        $res = square_api('GET', '/v2/bank-accounts?limit=' . BANK_MAX);
+        // Scoped like the payouts. ListBankAccounts takes an optional location_id, and
+        // without it a multi-location seller gets every location's accounts mixed
+        // together — which is how a Lloyds account from another location came to be
+        // named on a business paid out to Monzo.
+        $loc = function_exists('square_location_id') ? square_location_id() : '';
+        $res = square_api('GET', '/v2/bank-accounts?limit=' . BANK_MAX
+            . ($loc !== '' ? '&location_id=' . rawurlencode($loc) : ''));
         if ((int) $res['status'] === 403) {
             // The predictable refusal, named for the same reason payouts does it:
             // "can't read bank accounts" is actionable, "no bank account" is a lie.
@@ -224,7 +251,18 @@ if (function_exists('content_value')) {
             return $fail('Square didn\'t answer (' . (int) $res['status'] . ')');
         }
         $accounts = bank_slim($res['body']['bank_accounts'] ?? []);
-        $store = ['accounts' => $accounts, 'at' => time(), 'checked' => time(), 'error' => null];
+        // The location list rides the same refresh — the picker needs names, and a
+        // settings screen that waits on Square is the poor-signal bug again. A failure
+        // here is not fatal: the setting still works, the names just go missing.
+        $locs = [];
+        try {
+            $lr = square_api('GET', '/v2/locations');
+            if ((int) $lr['status'] >= 200 && (int) $lr['status'] < 300) {
+                $locs = locations_slim($lr['body']['locations'] ?? []);
+            }
+        } catch (\Throwable $e) {
+        }
+        $store = ['accounts' => $accounts, 'at' => time(), 'checked' => time(), 'error' => null, 'location' => $loc, 'locations' => $locs];
         try {
             content_set_scalar(BANK_CACHE_KEY, json_encode($store));
         } catch (\Throwable $e) {

@@ -358,7 +358,16 @@ if (!function_exists('payouts_cached')) {
             return $fail('Square payments are not switched on');
         }
         $begin = gmdate('Y-m-d\TH:i:s\Z', time() - PAYOUTS_LOOKBACK_DAYS * 86400);
-        $res = square_api('GET', '/v2/payouts?limit=' . PAYOUTS_MAX . '&sort_order=DESC&begin_time=' . rawurlencode($begin));
+        // SCOPED TO THE LOCATION THIS SITE TRADES UNDER. Omitting location_id does not
+        // mean "everywhere" — Square's own words: "By default, payouts are returned for
+        // the default (main) location associated with the seller". So on a multi-location
+        // account this asked about the wrong shop and got a confident empty answer:
+        // measured, sixty days of "no payouts at all" while the money was moving under a
+        // location called Online CHB. Empty setting keeps the old default-location
+        // behaviour, and the screen says which it read.
+        $loc = function_exists('square_location_id') ? square_location_id() : '';
+        $res = square_api('GET', '/v2/payouts?limit=' . PAYOUTS_MAX . '&sort_order=DESC&begin_time=' . rawurlencode($begin)
+            . ($loc !== '' ? '&location_id=' . rawurlencode($loc) : ''));
         if ((int) $res['status'] === 403) {
             // The one predictable refusal: a token without PAYOUTS_READ. Named, so
             // the owner is told what to do rather than seeing an empty screen.
@@ -459,6 +468,10 @@ if (!function_exists('payouts_cached')) {
                 'disputes' => $disputes,
                 'payoutFees' => round($fees, 2),
                 'truncated' => $truncated,
+                // WHICH LOCATION THIS ANSWER IS ABOUT. Without it the screen cannot say
+                // whose payouts it is reporting, and a silent default is exactly what
+                // made sixty days of nothing look like a fact about the business.
+                'location' => $loc,
             ]));
         } catch (\Throwable $e) {
             return ['ok' => false, 'reason' => 'Couldn\'t store the payout data', 'payouts' => count($payouts), 'charges' => count($map)];

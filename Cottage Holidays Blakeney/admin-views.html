@@ -771,6 +771,21 @@
                         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
                     </details>
                 </div>
+                <!-- WHICH SQUARE LOCATION THIS SITE IS. Square scopes payouts and bank
+                     accounts per location and silently answers for the seller's MAIN one
+                     when you don't say, so a seller with more than one gets a confident,
+                     complete-looking answer about the wrong shop. Only rendered when
+                     there IS a choice to make. -->
+                <div class="accounts-stat" style="max-width:640px;margin-top:14px;" id="sq-loc-card" hidden>
+                    <div class="label">Which Square location is this site?</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 10px;">Your Square account has more than one location. The money screens read payouts and bank accounts for the one you pick here — leave it unset and Square answers for your main location, which may not be this business.</p>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <label for="sq-location" class="sr-only">Square location</label>
+                        <select id="sq-location" class="input-glass field-sm" style="margin:0;min-width:200px;"></select>
+                        <button class="btn-sm btn-edit" data-act="saveSquareLocation">Save</button>
+                    </div>
+                    <p id="sq-loc-msg" style="font-size:0.82rem;color:var(--text-muted);margin:10px 0 0;"></p>
+                </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
                     <div class="label">Bank transfer details</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 12px;">Used when you chase a guest who paid in cash or by transfer — they get these details instead of a card link. Guests who paid by card carry on getting the card link.</p>
