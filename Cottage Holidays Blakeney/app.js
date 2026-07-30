@@ -10383,12 +10383,19 @@ function renderDatePicker() {
             dpMode === 'admin'
                 ? !!(adminConflicts && modalDayState(adminConflicts, ds))
                 : dpMode !== 'search' && !isPast && isBookedNight(ds);
-        // A free future night whose free run is shorter than the minimum stay —
-        // unbookable, so shown crossed-out like a booked night (check-in only).
+        // A free future night that can START no stay — the run to the next booking is
+        // shorter than the minimum. A property of the NIGHT, so computed once; it
+        // used to carry `!pickingEnd` and so evaporated the moment a check-in was
+        // picked and came back when a checkout was, changing three times per
+        // selection. Each branch below decides whether the question applies.
         const tooShort =
-            guestPick && !pickingEnd && !isPast && !booked && minNights > 1 && !dpCheckinFits(date, minNights);
+            guestPick && !isPast && !booked && minNights > 1 && !dpCheckinFits(date, minNights);
         // Clickability rules (server enforces too — this is the friendly layer):
-        //  - picking check-in: any free future night (a checkout/turnover day IS free)
+        //  - picking check-in: any free future night that can start a stay (a
+        //    checkout/turnover day IS free)
+        //  - RESTARTING (tapping on or before the check-in): the same question, since
+        //    that is what it does. It asked only `!booked`, so a night the minimum
+        //    forbids could start a stay the server then rejects — after the form.
         //  - picking check-out: any later date, as long as no booked night falls
         //    inside the stay; the first day of an existing booking is a valid
         //    checkout (turnover day), so a "booked" cell can still end a stay.
@@ -10402,14 +10409,22 @@ function renderDatePicker() {
             clickable = true; // hero search: any future date
         else if (!pickingEnd) clickable = !booked && !tooShort;
         else if (ds <= dpState.start)
-            clickable = !booked; // restart selection
+            clickable = !booked && !tooShort; // restart selection — a NEW check-in
         else clickable = !rangeCrossesBooked(dpState.start, ds); // valid checkout
         const classes = ['dp-day'];
         if (isPast && dpMode !== 'admin') classes.push('dp-disabled');
-        // Cross out booked nights (and too-short gaps) — except when this cell is
-        // selectable as a checkout (turnover day), where crossing it out would be
-        // confusing. (Admin mode always keeps the shading — it's the conflict cue.)
-        if ((booked || tooShort) && (dpMode === 'admin' || !(pickingEnd && ds > dpState.start && clickable))) classes.push('dp-booked');
+        // A cross means "cannot be used", so it is wrong on a cell that IS being used:
+        // a turnover day offered as a checkout, and every night of a chosen stay. The
+        // second was missing, so picking a checkout crossed out both the night below
+        // it and the checkout itself while they stayed selected. Conditional on the
+        // range being clear, because the hero search seeds these dates and lets any
+        // through — a seeded stay that DOES cross a booking keeps its marks, which is
+        // the only place the guest can see which nights are the problem.
+        const chosenClear = !!(dpState.start && dpState.end && !rangeCrossesBooked(dpState.start, dpState.end));
+        const inChosenStay = chosenClear && ds >= dpState.start && ds <= dpState.end;
+        const offeredCheckout = pickingEnd && ds > dpState.start && clickable;
+        const crossed = (booked || tooShort) && (dpMode === 'admin' || !(offeredCheckout || inChosenStay));
+        if (crossed) classes.push('dp-booked');
         if (ds === formatDashed(today)) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
@@ -10420,10 +10435,12 @@ function renderDatePicker() {
         // pattern) and a full-date accessible name incl. its state — the cell's
         // bare number alone gave screen-reader users no way to enter dates, the
         // only path through the entire booking/enquiry funnel.
+        // The announced state is the PAINTED one — `booked` alone drove it, so a
+        // turnover day offered as a checkout was read out as "booked".
         const unavailNote = booked ? ' — booked, unavailable' : tooShort ? ` — minimum stay ${minNights} nights, unavailable` : '';
-        const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${booked ? ' — booked' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (booked || tooShort ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
-        const title = (booked || tooShort) && !clickable ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`) : '';
+        const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
+        const title = crossed && !clickable ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`) : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
     grid.innerHTML = cells;
@@ -13535,7 +13552,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'confset2';
+    const BUILD = 'dpfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
