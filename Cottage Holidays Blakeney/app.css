@@ -1243,6 +1243,25 @@ body.light-mode ::-webkit-scrollbar-thumb {
   cursor: not-allowed;
   text-decoration: line-through;
 }
+/* Free, but out of reach from the chosen check-in — a booking sits between. NOT
+   struck through: that is the "booked" mark and these nights are for sale, just
+   not on this stay. Dimmed so the refusal is visible; it rendered as an ordinary
+   cell that did nothing. */
+.dp-day.dp-out {
+  color: var(--text-muted);
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+/* A DAY THAT CANNOT BE TAPPED MUST NOT ANSWER THE POINTER: the shared hover lift
+   below lifts every .dp-day, so dead cells rose like live controls. Keyed on the
+   click hook, so it needs no list of dead states and admin (all cells pickable) is
+   exempt by construction. The id out-specifies the lift and .dp-day:hover above. */
+#date-picker .dp-day:not([data-act]):hover {
+  transform: none;
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+}
 /* Admin mode (Add/Edit Booking): taken nights are a cue, not a wall — the
    owner can still pick them (deliberate overlaps confirm at save). */
 #date-picker.dp-admin .dp-day.dp-booked {

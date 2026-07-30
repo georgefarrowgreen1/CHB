@@ -1193,6 +1193,32 @@ as "booked"), and the legend no longer says "already booked" — that was false 
 too-short night in the grid; the per-cell `title` still names the reason. NB admin mode is
 deliberately outside all of this: everything stays pickable and everything stays shaded,
 because a deliberate overlap is the owner's call.
+**A REFUSAL THE GUEST CANNOT SEE IS THE CALENDAR NOT WORKING.** The fixes above were
+right and the picker still felt broken, because refusing a date and SHOWING that it is
+refused were never the same code. A checkout past a booked night was correctly rejected
+and rendered as a plain cell — full opacity, pointer cursor, no mark — so measured, after
+picking a check-in and turning the page, **the whole of the next month came back 30 dead
+cells** indistinguishable from bookable ones: tap anything, nothing happens, nothing says
+why. Worse, the shared hover treatment later in app.css lifts and shadows EVERY `.dp-day`,
+so those cells rose to meet the pointer like live controls first. Three parts now:
+`dp-out` (dimmed, `not-allowed`, and deliberately **NOT** struck through — the line is the
+"booked" mark and these nights are for sale, just not on this stay), a hover-suppression
+rule keyed on `:not([data-act])` — the click hook itself, so it needs no list of dead
+states and admin, where every cell IS pickable, is exempt by construction — and the hint
+naming the limit up front (`dpNextBookedStart`: "Now select your check-out date — up to 28
+Aug 2026"). The general rule: **wherever this picker declines a tap, the cell must say so
+in the same render.** §6's `unmarked` sweep asserts that as a property over the whole grid
+rather than listing days, so a new refusal branch cannot ship invisible.
+**NB a night that cannot START a stay is NOT unsellable**, and it is easy to conclude
+otherwise: 6 Aug with 7 Aug booked and a 2-night minimum can't be an arrival day, but
+**5 → 7 sells it fine**. So the cottage page's read-only calendar is RIGHT to show it free
+with a price, and the two calendars are answering different questions rather than
+disagreeing — do not "fix" that one to match the picker.
+**The chat's live-calendar check now applies the booking RULES too** (`chatAvailRun`). It
+tested for an overlap and nothing else, so a stay under the minimum got "Good news —
+looks free" plus an Enquire button, and the enquiry was then refused by the rule it never
+consulted. `checkBookingRules` is the same helper the enquiry form and hero search already
+call — it was the one availability answer not using it. Gated by ui-test-datepicker §9.
 
 **Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
 rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their

@@ -7972,6 +7972,16 @@ async function chatAvailRun(uid) {
     const name = (propertyMeta[prop] || {}).name || prop;
     const nm = nightsBetween(ci, co);
     const span = `${dpPretty(ci)} → ${dpPretty(co)}`;
+    // A CLEAR CALENDAR IS NOT THE ONLY RULE. This asked about bookings and nothing
+    // else, so a stay under the cottage's minimum was answered "Good news — looks
+    // free", and the enquiry it then offered to start was refused by the very rule
+    // this never checked. checkBookingRules is the same helper the enquiry form and
+    // the hero search already use, and it returns the sentence to say.
+    const ruleErr = checkBookingRules(prop, ci, co);
+    if (!clash && ruleErr) {
+        chatBot(`${escapeHtml(name)} is free for ${span}, but ${ruleErr.charAt(0).toLowerCase()}${ruleErr.slice(1)} Try a longer stay and I'll check again.`);
+        return;
+    }
     if (clash) {
         chatBot(
             `Sorry — ${escapeHtml(name)} isn't available for ${span}; those dates overlap an existing booking. Try different dates, or I can let you know if they become available.` +
@@ -10250,6 +10260,17 @@ function isBookedNight(ds) {
     const ranges = propertyAvailability[activeFrontProperty] || [];
     return ranges.some((r) => ds >= r.start && ds < r.end);
 }
+// The start of the next booking after `from` — the LATEST date a stay beginning
+// there can check out on, since leaving on a turnover day takes nothing from the
+// next guest. Null when nothing is booked ahead, i.e. no limit.
+function dpNextBookedStart(from) {
+    const ranges = propertyAvailability[activeFrontProperty] || [];
+    let best = null;
+    ranges.forEach((r) => {
+        if (r.start > from && (!best || r.start < best)) best = r.start;
+    });
+    return best;
+}
 // True if staying nights [start, end) would include any booked night.
 function rangeCrossesBooked(start, end) {
     const ranges = propertyAvailability[activeFrontProperty] || [];
@@ -10349,8 +10370,12 @@ function renderDatePicker() {
     });
     const hint = document.getElementById('dp-hint');
     if (!dpState.start) hint.innerText = 'Select your check-in date';
-    else if (!dpState.end) hint.innerText = 'Now select your check-out date';
-    else
+    else if (!dpState.end) {
+        // SAY HOW FAR THEY CAN GO. Everything past the next booking is refused, and
+        // a guest who turns the page has no way to know why the month went quiet.
+        const stop = dpNextBookedStart(dpState.start);
+        hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
+    } else
         hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${nightsBetween(dpState.start, dpState.end)} night(s)`;
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
@@ -10425,6 +10450,15 @@ function renderDatePicker() {
         const offeredCheckout = pickingEnd && ds > dpState.start && clickable;
         const crossed = (booked || tooShort) && (dpMode === 'admin' || !(offeredCheckout || inChosenStay));
         if (crossed) classes.push('dp-booked');
+        // A REFUSAL HAS TO BE VISIBLE. A checkout past a booked night is correctly
+        // refused — but the refusal rendered as a plain cell: full opacity, pointer
+        // cursor, no mark. Measured, after picking a check-in the whole of the next
+        // month came back 30 dead cells, indistinguishable from bookable ones, so the
+        // picker simply stopped responding with nothing to explain it. NOT a
+        // line-through, which would say "booked": these are free nights, out of reach
+        // from THIS check-in only, and another check-in brings them back.
+        const outOfReach = !clickable && !crossed && !isPast && dpMode !== 'admin';
+        if (outOfReach) classes.push('dp-out');
         if (ds === formatDashed(today)) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
@@ -10437,10 +10471,20 @@ function renderDatePicker() {
         // only path through the entire booking/enquiry funnel.
         // The announced state is the PAINTED one — `booked` alone drove it, so a
         // turnover day offered as a checkout was read out as "booked".
-        const unavailNote = booked ? ' — booked, unavailable' : tooShort ? ` — minimum stay ${minNights} nights, unavailable` : '';
+        const unavailNote = booked
+            ? ' — booked, unavailable'
+            : tooShort
+              ? ` — minimum stay ${minNights} nights, unavailable`
+              : outOfReach
+                ? ' — too late, a booking falls before this date'
+                : '';
         const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
-        const title = crossed && !clickable ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`) : '';
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || outOfReach ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
+        const title = crossed && !clickable
+            ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
+            : outOfReach
+              ? ' title="There\'s a booking before this date"'
+              : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
     grid.innerHTML = cells;
@@ -13552,7 +13596,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dpfix1';
+    const BUILD = 'dpfix2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
