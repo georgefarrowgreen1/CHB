@@ -1878,6 +1878,19 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   carry `type_charge_details` too, and arriving after the charge it would overwrite
   the real fee (break-tested; the first version of that check was vacuous because
   the fixture had no such entry).
+  **THE RING FENCE IS NOT A TO-DO LIST.** The deposits card was headed "Deposits still
+  to return" over THREE states, two of which are no such thing: one already refunded and
+  waiting for Square to debit it (the ROW said so while the heading contradicted it) and
+  one whose guest has not left. Every row also read `left <date>` unconditionally, so a
+  guest checking out on 31/08 was reported as having LEFT on a date a month away
+  (reported from the live account). The card describes what is FENCED, so it is
+  "Deposits still held" and each row states its own case — already refunded / still
+  staying / ready to return — with the date tensed to match (`left` vs `leaves`, and
+  "leaves today" on checkout day, since the guest is in until the checkout time). The
+  headline sentence above it carried the same false claim and was fixed with it. The real
+  to-do is elsewhere and was already correct: `chbDuties` and the assistant's "deposits
+  to return" answer both gate on `hasCheckedOut()`. Gated by ui-test-money, all three
+  states break-tested.
   **AND UNKNOWN SAYS WHY.** The unknown group's note claimed the charges were not in
   the payout data **YET** — asserting a temporary wait the screen has no basis for.
   Reported from the live account: payouts checked THAT DAY, no error, two charges

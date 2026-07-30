@@ -512,6 +512,46 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(500);
   const sA = await sweepText();
   ok(/Already refunded — waiting for Square to take it/.test(sA), 'a pending refund is labelled, not shown as outstanding work');
+  // …and the CARD must not contradict its own row. It was headed "Deposits still to
+  // return" — a to-do — over rows that are nothing of the kind.
+  ok(!/Deposits still to return/.test(sA), 'the card no longer heads a ring fence as a to-do list');
+  ok(/Deposits still held/.test(sA), '…it describes what it is actually fencing');
+  // The headline above the list carried the same false claim, and it is the sentence
+  // that explains the ring-fence figure — so it has to be true of every row under it.
+  ok(/damage deposits? still held/.test(sA) && !/still to return/.test(sA),
+    'the ring-fence sentence says HELD, not "still to return"');
+
+  // THE EXACT PAIR REPORTED FROM THE LIVE ACCOUNT: one guest gone and already
+  // refunded, one who has not left yet. Both were headed "still to return", and BOTH
+  // rows read "left <date>" — so a guest checking out in a month was reported as
+  // having left on a future date.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [
+      { outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Richard Berry', prop_key: '21a', check_out: d(-13) },
+      { outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_out: d(32) },
+    ],
+    count: 2, gross: 150, feeBack: 2.16, net: 147.84,
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sPair = await sweepText();
+  const ukd = (n) => d(n).split('-').reverse().join('/');
+  ok(new RegExp('leaves ' + ukd(32)).test(sPair), `a guest who has not left yet LEAVES on their date (${ukd(32)})`);
+  ok(!new RegExp('left ' + ukd(32)).test(sPair), '…and is never reported as having left on a date in the future');
+  ok(new RegExp('left ' + ukd(-13)).test(sPair), `a guest who has gone still reads "left" (${ukd(-13)})`);
+  ok(/Still staying — nothing to hand back yet/.test(sPair), 'the one still in the cottage says there is nothing to do');
+  ok(/Already refunded — waiting for Square to take it/.test(sPair), 'the refunded one still says it is only waiting on Square');
+  ok(!/Ready to return/.test(sPair), 'and NEITHER of these two is presented as ready to hand back');
+
+  // The row that IS the job says so — otherwise the three states are two.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: '21a', check_out: d(-3) }],
+    count: 1, gross: 75, feeBack: 1.31, net: 73.69,
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sDue = await sweepText();
+  ok(/Ready to return/.test(sDue) && !/Still staying/.test(sDue), 'a finished stay with the deposit still held is the one marked ready');
 
   // THE BALANCE, ROLLED FORWARD. Pre-filled from what the owner last stated plus what
   // Square has done since — and labelled an estimate, with its working shown.
