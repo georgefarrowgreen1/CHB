@@ -352,7 +352,7 @@ try {
     // unknown must not be promoted to gone on a money screen. The 14-day line stops
     // a row nobody will ever confirm from fencing money forever.
     $liab = db()
-        ->query("SELECT b.id, b.name, b.prop_key, b.check_out, b.hold_amount, b.hold_status,
+        ->query("SELECT b.id, b.name, b.prop_key, b.check_in, b.check_out, b.hold_amount, b.hold_status,
                         p.amount AS charge_rental, p.fee AS charge_fee, p.square_payment_id,
                         COALESCE((SELECT SUM(r.amount) FROM payments r
                                   WHERE r.booking_id = b.id AND r.kind = 'damages_return'
@@ -394,6 +394,10 @@ try {
             'booking_id' => (int) $r['id'],
             'name' => (string) ($r['name'] ?? ''),
             'prop_key' => (string) ($r['prop_key'] ?? ''),
+            // Both ends of the stay: a deposit on a booking that has not STARTED is a
+            // different state from one mid-stay, and the screen said "Still staying" for
+            // both. check_out alone cannot tell them apart.
+            'check_in' => (string) ($r['check_in'] ?? ''),
             'check_out' => (string) ($r['check_out'] ?? ''),
         ];
     }
