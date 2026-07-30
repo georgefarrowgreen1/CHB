@@ -501,6 +501,32 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Your bank account \(Barclays ending 4471\) is linked and verified/.test(sReady),
     'a single linked account is still named plainly');
 
+  // WHOSE PAYOUTS ARE THESE? Square answers for the seller's MAIN location when the
+  // app does not name one — so a multi-location seller can be shown a complete-looking
+  // "no payouts at all" about a shop that is not this business. Measured: sixty days of
+  // exactly that, on an account whose money was moving under a location called Online CHB.
+  const withLoc = async (location) => {
+    sweepStub = Object.assign({}, sweepStub, { location });
+    await page.evaluate(() => renderSweep());
+    await page.waitForTimeout(400);
+    return await sweepText();
+  };
+  const twoLocs = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }, { id: 'L2', name: 'The Shop', status: 'ACTIVE' }];
+  const sUnset = await withLoc({ id: '', all: twoLocs });
+  ok(/2 Square locations/.test(sUnset), 'more than one location is disclosed, not silently collapsed');
+  ok(/has not been told which it is/.test(sUnset), '…and the screen admits it does not know which shop this is');
+  ok(/main/i.test(sUnset) && /Manage . Payments/.test(sUnset), '…naming both what it did instead and where to fix it');
+
+  const sSet = await withLoc({ id: 'L1', all: twoLocs });
+  ok(/for <strong>Online CHB<\/strong> only|for Online CHB only/.test(sSet), 'a chosen location is named, so the figures are attributable');
+  ok(!/has not been told which it is/.test(sSet), '…and the warning goes once it is set');
+
+  // ONE location cannot be the wrong one, so saying anything about it is noise.
+  const sOne = await withLoc({ id: '', all: [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }] });
+  ok(!/Square locations/.test(sOne) && !/only\./.test(sOne.split('Payouts checked')[1] || ''),
+    'a single-location seller is told nothing about locations at all');
+  sweepStub = Object.assign({}, sweepStub, { location: null });
+
   const sVerifying = await withBank({ state: 'verifying', count: 1, why: '', label: 'Barclays ending 4471' });
   ok(/still verifying/.test(sVerifying) && !/No bank account is linked/.test(sVerifying),
     'an account mid-verification is its own answer — linked, but nothing moves yet');

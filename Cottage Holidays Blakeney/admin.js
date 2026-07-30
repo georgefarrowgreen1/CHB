@@ -10338,7 +10338,7 @@ function settingsRenderSection(section) {
         loadAdminPasskeys();
         syncAdmin2faToggle();
     }
-    else if (section === 'payments') renderSquareSettings();
+    else if (section === 'payments') { renderSquareSettings(); try { renderSquareLocation(); } catch (e) {} }
     else if (section === 'accom') renderAccomList();
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
@@ -12141,6 +12141,19 @@ async function renderSweep(refetch) {
                     ? ` You have ${bankList.length} bank accounts linked (${bankList.map((x) => escapeHtml(x.label || 'unnamed') + (x.state === 'ready' ? '' : x.state === 'verifying' ? ' — still being verified' : ' — Square cannot pay into it')).join(', ')}). Square does not say which one it pays into, so check that the right one is set as your payout account.`
                     : ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked and verified, so the hold-up is something else — worth checking whether payouts are paused in Square.`)
                 : '';
+    // WHOSE PAYOUTS THESE ARE. Square answers for the seller's MAIN location when the
+    // app does not name one, so a multi-location seller can be shown a complete-looking
+    // "no payouts at all" about a shop that is not this business — measured, sixty days
+    // of it. Only said when there is more than one location, because with one there is
+    // no other shop it could have meant.
+    const LOC = L.location || null;
+    const locAll = (LOC && Array.isArray(LOC.all) ? LOC.all : []).filter((x) => x && x.id);
+    const locName = (id) => (locAll.find((x) => x.id === id) || {}).name || '';
+    const locWhy = locAll.length < 2
+        ? ''
+        : LOC && LOC.id
+          ? ` These figures are for <strong>${escapeHtml(locName(LOC.id) || LOC.id)}</strong> only.`
+          : ` You have ${locAll.length} Square locations and this site has not been told which it is, so these figures are for whichever Square treats as your MAIN one — set it in Manage → Payments.`;
     const unknownWhy = !P
         ? ''
         : P.known === 0
@@ -12217,6 +12230,7 @@ async function renderSweep(refetch) {
                     <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
                     <br>${notBalance}
                     ${P.fees > 0 ? `<br>Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.` : ''}
+                    ${locWhy ? '<br>' + locWhy.trim() : ''}
                     ${P.truncated ? '<br>Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
                     ${P.failed && P.failed.count ? `<br><strong>${P.failed.count} payout${P.failed.count === 1 ? '' : 's'} FAILED (${gbp(P.failed.amount)})</strong> — that money never arrived, and it usually means the bank details need fixing.` : ''}
                </p>`
@@ -14005,6 +14019,47 @@ async function offerUpdatedConfirmationEmail(bookingId) {
             }
         },
     });
+}
+// WHICH SQUARE LOCATION THIS SITE TRADES UNDER. Only offered when there is a genuine
+// choice: with one location there is nothing to get wrong, and a picker showing a single
+// option is a question the owner should not have to answer. The list rides the cached
+// bank/payout refresh, so opening Settings never waits on Square.
+async function saveSquareLocation() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    const msg = document.getElementById('sq-loc-msg');
+    if (!sel) return;
+    try {
+        await saveContent('square-location', sel.value || '');
+        if (msg) msg.textContent = sel.value
+            ? 'Saved. Tap “Check Square now” on Move money out to re-read with this location.'
+            : 'Saved — Square will answer for your main location.';
+        // The caches were fetched for the OLD location, so they now describe the wrong
+        // shop. Re-read at once rather than leaving stale figures on screen until the
+        // nightly cron: this is the one setting whose whole point is that the data
+        // changes with it.
+        try { await apiPost('square-setup.php', { action: 'payouts_refresh' }); } catch (e) {}
+        // renderSweep(true) re-fetches accounts.php, so the money screen stops showing
+        // figures gathered for the location the owner has just moved away from.
+        try { await renderSweep(true); } catch (e) {}
+        try { renderSquareLocation(); } catch (e) {}
+    } catch (e) {
+        if (msg) msg.textContent = "Couldn't save that just now.";
+    }
+}
+function renderSquareLocation() {
+    const card = document.getElementById('sq-loc-card');
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    if (!card || !sel) return;
+    // Read the SAME cached payload the money screen renders from (__sweepLiab), not a
+    // second fetch — the locations list rides it, so the picker costs no request.
+    const info = (__sweepLiab && __sweepLiab.location) || null;
+    const all = (info && Array.isArray(info.all) ? info.all : []).filter((x) => x && x.id);
+    // Nothing to choose between → no question. One location cannot be the wrong one.
+    card.hidden = all.length < 2;
+    if (all.length < 2) return;
+    const cur = (info && info.id) || '';
+    sel.innerHTML = '<option value="">Square’s main location (not chosen)</option>'
+        + all.map((x) => `<option value="${escapeHtml(x.id)}"${x.id === cur ? ' selected' : ''}>${escapeHtml(x.name)}${x.status === 'INACTIVE' ? ' (inactive)' : ''}</option>`).join('');
 }
 function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');

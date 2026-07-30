@@ -1898,6 +1898,23 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   to-do is elsewhere and was already correct: `chbDuties` and the assistant's "deposits
   to return" answer both gate on `hasCheckedOut()`. Gated by ui-test-money, all three
   states break-tested.
+  **EVERY SQUARE READ IS SCOPED TO ONE LOCATION** (`square_location_id()` in db.php,
+  internal key `square-location`; gated by test-payouts + test-bank + ui-test-money).
+  Omitting `location_id` does NOT mean "everywhere" — Square's own words on ListPayouts:
+  *"By default, payouts are returned for the default (main) location associated with the
+  seller"*. So on a multi-location account the app asked about the WRONG SHOP and got a
+  confident, complete-looking empty answer: measured live as sixty days of "Square hasn't
+  reported any payouts at all" on a business whose money was moving the whole time under
+  a location called **Online CHB**, and a bank account named from a different location
+  entirely. Both `/v2/payouts` and `/v2/bank-accounts` now send it, the cache records
+  WHICH location its answer is about, and the sweep screen SAYS so — but only when there
+  is more than one location, because with one there is no other shop it could have meant.
+  The picker (Manage → Payments) is likewise hidden unless there is a genuine choice. The
+  location list rides the bank refresh (`/v2/locations`, scope `MERCHANT_PROFILE_READ`),
+  so Settings never waits on Square, and changing it re-fetches at once rather than
+  leaving figures gathered for the old location on screen. A config const
+  `SQUARE_LOCATION_ID` wins if set; unset keeps Square's own default AND says that is
+  what it did.
   **IS THERE ANYWHERE FOR THE MONEY TO GO?** (**`bank-lib.php`**, gated by
   **`test-bank.php`** + ui-test-money §7.) The "no payouts at all" sentence had to END
   in a guess — "usually a Square-side setting (payouts paused, or no bank account

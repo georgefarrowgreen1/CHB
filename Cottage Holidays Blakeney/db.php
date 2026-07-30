@@ -673,6 +673,9 @@ function is_internal_content_key($key)
                      // (payouts_balance_estimate rolls it forward). Their money;
                      // never on the anonymous content GET.
     }
+    if ($key === 'square-location') {
+        return true; // which Square location the money screens read — back office only
+    }
     if ($key === 'square-bank') {
         return true; // linked-bank-account cache: the owner's banking, never public
     }
@@ -997,6 +1000,30 @@ function square_webhook_url()
         return SQUARE_WEBHOOK_URL;
     }
     return site_base_url() . 'square-webhook.php';
+}
+// WHICH SQUARE LOCATION THIS SITE TRADES UNDER. Square scopes payouts and bank
+// accounts PER LOCATION, and every one of its list endpoints quietly defaults to the
+// seller's MAIN location when you don't say ("By default, payouts are returned for the
+// default (main) location associated with the seller"). A seller with more than one
+// location therefore gets a confident, complete-looking answer about the wrong shop:
+// measured here as sixty days of "Square hasn't reported any payouts at all" on a
+// business whose money was moving the whole time under a location called Online CHB,
+// and a bank account named from a different location entirely.
+//
+// A config.php constant wins; otherwise whatever the owner picked in Manage → Payments.
+// Empty means "not chosen" — the callers then read the main location as before, and the
+// screen SAYS that is what it did rather than presenting it as the whole picture.
+const SQUARE_LOCATION_KEY = 'square-location';
+function square_location_id()
+{
+    if (defined('SQUARE_LOCATION_ID') && SQUARE_LOCATION_ID !== '') {
+        return (string) SQUARE_LOCATION_ID;
+    }
+    try {
+        return trim((string) content_value(SQUARE_LOCATION_KEY));
+    } catch (\Throwable $e) {
+        return '';
+    }
 }
 // The webhook signing key. A config.php constant wins; otherwise the key the app
 // captured when it created the subscription, stored encrypted at rest under the

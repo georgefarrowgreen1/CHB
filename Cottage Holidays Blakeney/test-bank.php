@@ -40,6 +40,15 @@ function content_value($key)
     global $SQ_STORE;
     return $SQ_STORE[$key] ?? '';
 }
+// Which location the site trades under. The real one lives in db.php, which this test
+// deliberately does not load (no DB) — so it is stubbed like square_api and the content
+// store, and driven by $SQ_LOCATION.
+$SQ_LOCATION = '';
+function square_location_id()
+{
+    global $SQ_LOCATION;
+    return $SQ_LOCATION;
+}
 function content_set_scalar($key, $val)
 {
     global $SQ_STORE;
@@ -168,7 +177,10 @@ $SQ_REPLY = ['/v2/bank-accounts' => ['status' => 200, 'body' => ['bank_accounts'
 $res = bank_refresh();
 chk('a good fetch reports ok', !empty($res['ok']) && $res['accounts'] === 1);
 chk('…and it actually asked Square for the bank accounts',
-    count($SQ_CALLS) === 1 && strpos($SQ_CALLS[0], 'GET /v2/bank-accounts') === 0);
+    count($SQ_CALLS) === 2 && strpos($SQ_CALLS[0], 'GET /v2/bank-accounts') === 0);
+// The location list rides the same refresh so the picker has names without a settings
+// screen waiting on Square.
+chk('…and for the locations, in the same refresh', strpos($SQ_CALLS[1], 'GET /v2/locations') === 0);
 $cache = bank_cached();
 chk('the cache holds the account', is_array($cache) && count($cache['accounts']) === 1);
 chk('…read from Square\'s OWN nesting (bank_accounts), not a guessed key',
@@ -179,6 +191,41 @@ chk('…and the decision comes out READY end to end',
 // Square's reply and have no business sitting in our content table.
 chk('the holder name is NOT cached', !isset($cache['accounts'][0]['holder_name']));
 chk('nor the bank identification number', !isset($cache['accounts'][0]['primary_bank_identification_number']));
+
+echo "\n== Scoped to ONE location ==\n";
+// Square scopes payouts and bank accounts per location and defaults to the seller's
+// MAIN one when you don't say — "By default, payouts are returned for the default
+// (main) location associated with the seller". On a multi-location account that is a
+// confident answer about the wrong shop: measured, sixty days of "no payouts at all"
+// while the money moved under a location called Online CHB.
+chk('the location is recorded on the cache, so the screen can say whose data it is',
+    array_key_exists('location', bank_cached()));
+chk('…and the list of locations is cached for the picker',
+    is_array(bank_cached()['locations']));
+
+$SQ_LOCATION = 'LOC_ONLINE_CHB';
+$SQ_CALLS = [];
+bank_refresh();
+chk('a chosen location is sent with the request',
+    strpos($SQ_CALLS[0], 'location_id=LOC_ONLINE_CHB') !== false);
+chk('…and stored alongside the answer', bank_cached()['location'] === 'LOC_ONLINE_CHB');
+$SQ_LOCATION = '';
+$SQ_CALLS = [];
+bank_refresh();
+chk('no chosen location sends none, keeping Square\'s own default',
+    strpos($SQ_CALLS[0], 'location_id=') === false);
+
+echo "\n== The locations list ==\n";
+$ls = locations_slim([
+    ['id' => 'L1', 'name' => 'Online CHB', 'status' => 'ACTIVE'],
+    ['id' => 'L2', 'name' => '', 'status' => 'INACTIVE'],
+    ['id' => '', 'name' => 'no id'],
+    'not an array',
+]);
+chk('rows without an id are dropped', count($ls) === 2);
+chk('a named location keeps its name', $ls[0]['name'] === 'Online CHB');
+chk('an unnamed one falls back to its id rather than an empty label', $ls[1]['name'] === 'L2');
+chk('the status rides along, so an inactive location can be shown as such', $ls[1]['status'] === 'INACTIVE');
 
 echo "\n== A genuinely empty list is not an error ==\n";
 $SQ_CALLS = [];
