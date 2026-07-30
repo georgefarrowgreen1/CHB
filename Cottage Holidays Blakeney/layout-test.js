@@ -163,7 +163,23 @@ async function waitForServer(url, tries = 40) {
       const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
       if (url.includes('rates.php')) return json({ properties: props, seasons: {}, occupancy: {} });
       if (url.includes('experiences.php')) return json({ experiences });
-      if (url.includes('bookings.php')) return json({ bookings });
+      // The email log has to be POPULATED, or the "Show email" button never renders
+      // and this gate cannot see the row it overflows. That is exactly how a live
+      // overflow (button.bk-email-log-view hanging 19px past a 420px screen) reached
+      // the owner's phone with the suite green — the harness sees only what RENDERS.
+      // Long labels on purpose: the row is a flex pair of nowrap items.
+      if (url.includes('bookings.php')) {
+        const body = (() => { try { return JSON.parse(route.request().postData() || '{}'); } catch (e) { return {}; } })();
+        // DOTTED actions from EMAIL_PREVIEWABLE — only those render the "Show email"
+        // button. And an `at` several days back, because the widest part of the row is
+        // the nowrap timestamp plus its "· N days ago" tail.
+        if (body.action === 'email_logs') return json({ logs: { 2: [
+          { action: 'email.confirmation', at: d(-12) + ' 09:14:00' },
+          { action: 'payment.request', at: d(-11) + ' 17:03:00' },
+          { action: 'email.arrival', at: d(-10) + ' 08:30:00' },
+        ] } });
+        return json({ bookings });
+      }
       if (url.includes('enquiries.php')) return json({ enquiries });
       // A real liability so the "Move money out" screen renders its figures + the
       // two number fields (iOS gives date/number inputs an intrinsic minimum width,

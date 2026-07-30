@@ -167,11 +167,21 @@ body.light-mode {
   justify-content: space-between;
   gap: 12px;
   padding: 4px 0;
+  /* WRAP, because neither side of this row can shrink: the label is a flex item at
+     its default min-width:auto, and both the timestamp and the "Show email" button
+     are white-space:nowrap. So the row's intrinsic width is fixed, and on a phone the
+     right-hand group simply hung past the edge — measured on the owner's device at
+     right=439 in a 420px viewport, taking the whole page 19px wider. Wrapping costs
+     nothing when it fits (identical layout) and is the only fix that holds at ANY
+     width rather than at the ones we happened to test. */
+  flex-wrap: wrap;
 }.bk-email-log-what {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   color: var(--text-light);
+  /* Lets the label give way first, so the row wraps only when it genuinely must. */
+  min-width: 0;
 }.bk-email-log-when {
   color: var(--text-muted);
   white-space: nowrap;
@@ -185,6 +195,9 @@ body.light-mode {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  /* Stays hard right whether it shares the line or wraps onto its own — with
+     space-between a lone wrapped item would otherwise jump to the left. */
+  margin-left: auto;
 }.bk-email-log-toggle {
   display: inline-flex;
   align-items: center;

@@ -2391,6 +2391,18 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   gate's stub has to serve a booking and the `search-record` state has to query its
   name; with an empty booking list §5 cannot see those rows at all (break-tested —
   the 23px row is invisible to the gate without the fixture).
+  **layout-test's fixtures decide what it can SEE, and an empty one is a blind spot.**
+  The admin booking-hub scene stubbed no email log, so `.bk-email-log-row` never
+  rendered — and that row is a flex pair whose label sits at the default
+  `min-width: auto` while both the timestamp and the "Show email" button are
+  `nowrap`, i.e. a row with a FIXED intrinsic width. It shipped overflowing: the
+  owner's own layout sentinel measured `button.bk-email-log-view` at right=439 in a
+  420px viewport, taking the page 19px wider. Two fixture bugs kept it invisible —
+  the log was keyed `b2` (the CLIENT key) where the hub looks up `b.dbId` (`2`), and
+  the actions were undotted, so `EMAIL_PREVIEWABLE` never matched and the button was
+  never emitted. With a real fixture the gate reproduces it at 390px (page over by
+  39px) and the fix is `flex-wrap` plus `min-width: 0`, which holds at ANY width
+  rather than the three we happen to test.
   §4/§5 have a real coverage limit, documented in the file:
   they see only what RENDERS in the harness, and a collapsed container (the cottage
   availability calendar) or the footer wrapper hides elements from them — check those
@@ -2426,6 +2438,31 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
   now checks both ends of the day on purpose (case 10 is the far end, and removing
   its pin fails the check, which is how you know the pin is load-bearing).
+
+## Deploy integrity
+- **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
+  `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a
+  deploy landed `accounts.php` carrying a new `require sweep-lib.php` while the lib
+  itself never arrived, 500-ing the Payments screen (reported from the owner's phone:
+  "Failed opening required '/home/www/public/sweep-lib.php'") until a later deploy
+  happened to complete. deploy.yml now sets **`cmd:fail-exit yes`** so a failed
+  transfer fails the job, and runs a **second idempotent mirror pass** (mirror only
+  sends what differs, so it is a no-op when the first was complete and a repair when it
+  was not).
+- **smoke-test §7 catches the sibling class**: it derives every
+  `require_once __DIR__ . '/x.php'` target from the source and every basename the
+  deploy's `rm -f` lines strip, and fails if a required file is stripped or absent from
+  the repo. `config.php` is the one legitimate exception (the host keeps its own; the
+  deploy never deletes remote-only files). Vacuity-guarded at both ends — if either
+  derivation stops finding anything, the check fails rather than covering nothing.
+- **DO NOT verify a deploy by HTTP status.** An HTTP completeness check was built and
+  REMOVED: `enquiry-actions.php` answers a direct request with `http_response_code(404)`
+  on purpose (a lib refusing direct access), so 404 cannot distinguish "not deployed"
+  from "deliberately hidden" — it reported a false missing file against the real
+  production host. A verification that would block every deploy is worse than the bug
+  it guards. If this is ever revisited, compare the REMOTE FILE LISTING (`lftp cls`)
+  against the staged set, which is a filesystem question with no HTTP semantics to
+  misread.
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
