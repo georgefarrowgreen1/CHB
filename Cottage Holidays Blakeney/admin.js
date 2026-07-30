@@ -9541,6 +9541,11 @@ async function openBookingHub(bookingId, quiet) {
         if (content && home && content.parentElement !== home) home.appendChild(content);
         nav('view-booking-hub');
         if (!alreadyHere) adminHistPush('view-booking-hub', null, { hubBooking: bookingId });
+        // A hub without its record is a blank screen, so remember WHICH booking —
+        // stamped after the record resolved, so a failed open never becomes the target
+        // a reload lands on. The NUMERIC dbId, so the remembered target and the
+        // notification URL (?open=booking-42) speak one vocabulary.
+        chbNavRemember('booking-' + (b && b.dbId != null ? b.dbId : bookingId));
         window.scrollTo({ top: 0 });
     }
     renderBookingHub();
@@ -10249,6 +10254,8 @@ function settingsOpen(section) {
         return;
     }
     adminHistPush('view-settings', section);
+    // Same as accountsOpen: come back to the section, not the index.
+    if (section) chbNavRemember('settings:' + section);
     __settingsPath = section ? { section } : null;
     const idx = document.getElementById('settings-index');
     const panel = document.getElementById('settings-panel');
@@ -11576,6 +11583,9 @@ function accountsShowIndex() {
 }
 function accountsOpen(section) {
     adminHistPush('view-accounts', section);
+    // Remember the SECTION, not just the Payments index — an owner deep in Income &
+    // tax should come back to it, not to the list of links.
+    if (section) chbNavRemember('accounts:' + section);
     __accountsSection = section || null;
     const idx = document.getElementById('accounts-index');
     const panel = document.getElementById('accounts-panel');
@@ -13717,6 +13727,11 @@ async function logoutStaff() {
     setAuthUI();
     glassAlert('You have been securely logged out.');
     nav('view-main');
+    // AFTER the nav, for the reason forceAdminLogout documents: nav() remembers where
+    // it went, so a forget before it is overwritten a line later.
+    try {
+        chbNavForget();
+    } catch (e) {}
 }
 
 // Save a single content value (text or image URL) to the backend store,
@@ -18833,6 +18848,7 @@ async function openEnquiryHub(enqId) {
         const alreadyHere = prev && prev.id === 'view-enquiry-hub';
         nav('view-enquiry-hub');
         if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: enqId });
+        chbNavRemember('enquiry-' + enqId);
         window.scrollTo({ top: 0 });
     }
     renderEnquiryHub();

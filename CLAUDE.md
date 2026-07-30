@@ -2439,6 +2439,55 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   now checks both ends of the day on purpose (case 10 is the far end, and removing
   its pin fails the check, which is how you know the pin is load-bearing).
 
+## Where you were, and sending things once
+
+- **A RELOAD COMES BACK TO THE SCREEN YOU WERE ON** (`chbNavRemember`/`maybeRestoreView`,
+  internal key **`chb-nav`** in sessionStorage; gated by **`ui-test-resume.js`**). There
+  is no router — `nav()` just toggles `.page-view.active` — so a refresh dropped the
+  owner back on Today however deep into a task they were, and the app reloads ITSELF
+  where that hurts most: `startVersionWatch` when a new build ships, and the stale-cache
+  self-heal. sessionStorage on purpose, not localStorage or the URL: a reload keeps the
+  tab so it survives, opening fresh tomorrow starts clean, two tabs cannot fight over one
+  view, and the URL is deliberately kept clean here (`?open=`/`?unsub=` are both
+  replaceState'd away) - view names in a shared link would leak the back office's shape.
+  **Stored as a TARGET STRING in `chbOpenTarget()`'s vocabulary** (`booking-42`,
+  `settings:rates`, `accounts:sweep`, `view-experiences`), the same dispatcher `?open=`
+  uses - restoring reuses the notification path rather than being a second way to
+  navigate, and both speak the numeric db id. Refuses, each break-tested: an owner target
+  for a signed-out visitor, anything older than `CHB_NAV_TTL_MS` (4h, forgotten as it is
+  refused so it cannot retry), a view that no longer exists, and any explicit destination
+  (`?open=`/`?unsub=`/`?pay=`/`?acctpreview=`) - which always wins. Cleared on both logout
+  paths, and the clear must come AFTER their `nav('view-main')`, because nav() remembers
+  where it went and a forget before it is overwritten a line later.
+  **`findBookingById` now accepts EITHER id form**, which fixed a live bug on the way
+  past: the click path holds the client id (`'b42'`) while anything from the server holds
+  the numeric `dbId`, so `?open=booking-42` from a tapped "Payment received" notification
+  never resolved and bounced the owner to Today claiming the booking was gone.
+- **NOTHING IS SENT TWICE** - three layers, because no one of them survives every case.
+  (1) **`apiPost` coalesces an identical in-flight write**: same endpoint + same body
+  returns the SAME promise, so a double-tap or an impatient re-submit resolves from the
+  first send. IN-FLIGHT, not a cache - the entry goes the moment it settles, so a retry
+  after a failure still sends. Nothing here is an increment-by-one write where two
+  identical concurrent calls would both be wanted; such an endpoint would have to opt
+  out. NB `apiPost` is deliberately **not `async`**: an async wrapper hands each caller a
+  fresh promise, so coalesced callers would hold different objects for one request.
+  **And the cleanup is `p.then(clear, clear)`, never `.finally()`** - finally returns a
+  derived promise that RE-THROWS, and nothing handles that one, so every failed write
+  raised an unhandled rejection (measured: four guest ui-suites began reporting
+  "Database connection failed" as a page error, which is how it was caught).
+  (2) **The `data-act` dispatcher disables its own control** while an async handler runs,
+  with `aria-busy` so it reads as working rather than unavailable - one guard replacing
+  25 hand-written `disabled` pairs and the ones never written. `<button>` only: disabling
+  a checkbox mid-change breaks it (break-tested). The `typeof r.then` half is defensive
+  only - the surrounding try/catch already re-enables on a non-promise.
+  (3) **The server refuses a repeat inside a window** (`recent_send_at`,
+  `CHB_RESEND_GUARD_SECONDS` 180, `chb_ago` for the wording), because neither client
+  layer survives a reload mid-request or a second device - those arrive as genuinely new
+  requests. Applied to `request_payment`, which emails a guest about money. Deliberately
+  a WINDOW, not a lock: chasing the same balance next week is necessary, and only the
+  second copy in the same breath is never wanted. An unreadable activity_log lets the
+  send through - a duplicate email is a smaller failure than being unable to chase.
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a

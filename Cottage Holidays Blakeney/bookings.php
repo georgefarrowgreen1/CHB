@@ -1105,6 +1105,16 @@ if ($action === 'request_payment') {
     // approval; the amount was always server-derived, and now the KIND is too.
     $kind = booking_payment_kind($b, $asked);
 
+    // DON'T ASK THE SAME GUEST TWICE IN THE SAME BREATH. The client already coalesces
+    // an identical in-flight write and disables the button, but neither survives a
+    // reload mid-request or a second device — that arrives as a genuinely new request.
+    // A repeat inside the window is refused in words, not silently swallowed, so the
+    // owner knows it went rather than wondering whether to try again.
+    $already = recent_send_at($id, 'payment.request');
+    if ($already !== '') {
+        json_out(['error' => 'That payment request has just gone to ' . ($b['name'] ?: 'the guest') . ' (' . chb_ago($already) . ') — they have it.'], 200);
+    }
+
     require_once __DIR__ . '/mailer.php';
     $res = request_booking_payment($b, $kind);
     if (!empty($res['ok'])) {
