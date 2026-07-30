@@ -711,6 +711,49 @@ if (typeof get('chbSwallow') !== 'function') {
     check('survives a missing report hook', !threw3);
 }
 
+// ============================================================
+//  §7. EVERY REQUIRED FILE IS ACTUALLY DEPLOYED.
+//  A `require_once __DIR__ . '/x.php'` is a file its endpoint cannot run without.
+//  The deploy strips dev-only files by name, so adding a lib whose name happens to
+//  match one of those patterns — or adding a require to a file that was always
+//  dev-only — ships an app that fatals on the host. That is the sibling of the
+//  outage this section was written for: accounts.php reached production carrying a
+//  new `require sweep-lib.php` while the lib had not arrived, and the Payments
+//  screen 500-ed until the next deploy completed. (The transfer failure itself is
+//  handled in deploy.yml by cmd:fail-exit + a second idempotent mirror pass; this
+//  catches the case where the file was never going to be sent at all.)
+// ============================================================
+console.log('\n== 7. Every required PHP file survives the deploy ==');
+{
+    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+    // The deploy stages a copy of the app folder then `rm -f`s the dev-only files.
+    // Collect every basename those lines remove.
+    const stripped = new Set();
+    for (const m of wf.matchAll(/rm -f ([^\n]+)/g)) {
+        for (const t of m[1].matchAll(/"\$OUT\/([^"]+)"|"\$OUT"\/(\S+)/g)) {
+            stripped.add((t[1] || t[2]).replace(/^\//, ''));
+        }
+    }
+    check(`the deploy's strip list was parsed (${stripped.size} entries)`, stripped.size > 20);
+    // Every require target, derived from the source rather than listed here.
+    const required = new Set();
+    for (const f of fs.readdirSync(__dirname).filter((x) => x.endsWith('.php'))) {
+        const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+        for (const m of src.matchAll(/require(?:_once)?\s+__DIR__\s*\.\s*'\/([A-Za-z0-9._-]+\.php)'/g)) {
+            required.add(m[1]);
+        }
+    }
+    check(`require targets were derived (${required.size} files)`, required.size > 20);
+    // config.php is the one legitimate exception: it IS stripped, because the host
+    // keeps its own (the deploy never deletes remote-only files).
+    const clash = [...required].filter((f) => stripped.has(f) && f !== 'config.php');
+    check(`no required file is stripped from the deploy${clash.length ? ' — ' + clash.join(', ') : ''}`, clash.length === 0);
+    // A required file must also EXIST in the repo, or the checkout ships a dangling
+    // require — the same fatal, one step earlier.
+    const absent = [...required].filter((f) => !fs.existsSync(path.join(__dirname, f)));
+    check(`every required file exists in the repo${absent.length ? ' — ' + absent.join(', ') : ''}`, absent.length === 0);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

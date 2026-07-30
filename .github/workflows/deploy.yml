@@ -107,7 +107,16 @@ jobs:
           # No --delete, so remote-only files (uploaded photos, config.php) are kept.
           # The password is read from LFTP_PASSWORD via --env-password, so it never
           # appears on the command line and special characters can't mangle it.
-          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
+          # cmd:fail-exit makes lftp exit NON-ZERO when a transfer fails. Without it
+          # lftp can finish with files un-uploaded and still exit 0 — which is how a
+          # deploy landed accounts.php carrying a new `require sweep-lib.php` while the
+          # lib itself never arrived, 500-ing the Payments screen until the next deploy
+          # happened to complete. A partial upload of an app whose files reference each
+          # other is a broken app, so it must fail the job.
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
+          # Second pass: idempotent (mirror only sends what differs), so it is a no-op
+          # when the first pass was complete and repairs it when it was not.
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set net:max-retries 3; mirror -R --no-perms ./deploy/ \"$REMOTE\"; bye"
           echo "Deploy complete."
 
       # Best-effort post-deploy hooks: apply any new DB migrations and ping the
