@@ -531,6 +531,35 @@ it_check('…and the booking is still there to cancel properly',
 $orOk = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $orId, 'refund_amount' => 0]);
 it_check('a cancellation within the cap goes through', !empty($orOk['json']['ok']), $orOk['raw']);
 
+// (E) A FAILED DEPOSIT REFUND IS NOT MONEY RETURNED. Three display sites summed
+// damages_return with no status filter while the guard excluded FAILED/REJECTED — so a
+// failed refund made the deposit look settled everywhere the owner or the guest could
+// see, dropped it off the "Deposits to return" queue, and it was never re-tried. Only
+// a real request proves the endpoints report the filtered figure.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Failed Refund','fr@x.co','2026-03-01','2026-03-04',2,0,'paid',300,300,300,0,3,'charged',80)");
+$frId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($frId,'damages_return',80,'FAILED','sq_fr_ref', NOW())");
+$frQueue = http($admin, 'POST', '/bookings.php', ['action' => 'deposit_returns']);
+// ABSENT from the map is the correct answer — a booking with no non-failed return has
+// no row at all — so this reads absent as zero. The COMPLETED case below is what stops
+// that being vacuous: it asserts the £80 IS reported once the refund settles.
+$frReturned = (float) (($frQueue['json']['returns'] ?? [])[(string) $frId] ?? 0);
+it_check('a FAILED refund is not counted in the deposits-to-return queue',
+    isset($frQueue['json']['returns']) && abs($frReturned) < 0.005, 'returned=' . $frReturned . ' ' . $frQueue['raw']);
+$frRows = http($admin, 'GET', '/bookings.php');
+$frRow = null;
+foreach (($frRows['json']['bookings'] ?? []) as $r) {
+    if ((int) ($r['id'] ?? 0) === $frId) {
+        $frRow = $r;
+    }
+}
+it_check('…nor on the booking row the hub renders from',
+    $frRow !== null && abs((float) ($frRow['damages_returned'] ?? -1)) < 0.005, json_encode($frRow['damages_returned'] ?? 'absent'));
+// A COMPLETED one still counts, or the fix would just be "never count anything".
+$rootDb->exec("UPDATE payments SET status='COMPLETED' WHERE square_payment_id='sq_fr_ref'");
+$frQueue2 = http($admin, 'POST', '/bookings.php', ['action' => 'deposit_returns']);
+it_check('…and a COMPLETED one still does', abs((float) (($frQueue2['json']['returns'] ?? [])[(string) $frId] ?? 0) - 80.0) < 0.02, $frQueue2['raw']);
+
 // ---- 12. set_payment on a LEGACY pre-snapshot booking (finding 10) --------
 echo "\n== 11. set_payment legacy fallback ==\n";
 // A booking with agreed_total NULL (predates the snapshot migration) but real

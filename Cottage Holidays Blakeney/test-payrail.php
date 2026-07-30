@@ -222,8 +222,11 @@ chk('booking_ledger_net case-folds (the primitive every paid/refund calc builds 
     && preg_match("/UPPER\(status\) NOT IN \('FAILED','REJECTED'\)/", $dbS) === 1);
 chk('find_charge_for_refund case-folds',
     preg_match("/kind IN \('deposit','balance'\) AND UPPER\(status\) IN \('COMPLETED','APPROVED'\)/", $bkS) === 1);
-chk('damages_returned case-folds — the double-return guard',
-    preg_match("/kind = 'damages_return' AND \(status IS NULL OR UPPER\(status\) NOT IN \('FAILED','REJECTED'\)\)/", $bkS) === 1);
+// The filter now lives ONCE, in damages_returned_map — bookings.php delegates to it.
+chk('the returned-so-far filter is stated once, case-folded',
+    preg_match("/kind = 'damages_return' AND \(status IS NULL OR UPPER\(status\) NOT IN \('FAILED','REJECTED'\)\)/", $dbS) === 1);
+chk('damages_returned — the double-return guard — delegates to it',
+    preg_match('/function damages_returned\(\$bookingId\)\s*\{[^}]*damages_returned_map\(\[\(int\) \$bookingId\]\)/s', $bkS) === 1);
 chk('the reconciler case-folds when picking rows to re-poll',
     preg_match("/UPPER\(status\) NOT IN \('COMPLETED','FAILED','REJECTED'\)/", $rcS) === 1);
 // And every writer normalises, so it cannot recur for new rows.
@@ -239,6 +242,46 @@ chk('…and no longer writes an unvalidated value',
     strpos($whS, "->execute([(string) (\$refund['status'] ?? ''), (string) \$refund['id']])") === false);
 
 // ---- MONEY AUDIT: the cancellation refund is capped ----------------------
+// ---- MONEY AUDIT 2: a FAILED refund is not money returned ------------------
+// Three display sites summed damages_return with NO status filter while the guard
+// excluded FAILED/REJECTED. The worst of them fed the "Deposits to return" queue and
+// its Needs-you duty, so a failed refund dropped the deposit off the owner's to-do
+// list and was never re-tried — and my-bookings.php showed the GUEST money back they
+// had never received.
+echo "\n== Money audit: a FAILED refund is not a return ==\n";
+$mybS = (string) file_get_contents(__DIR__ . '/my-bookings.php');
+chk('there is one shared map for what has actually gone back', function_exists('damages_returned_map'));
+chk('the admin booking rows use it', preg_match('/\$ret = damages_returned_map\(\);/', $bkS) === 1);
+chk('the deposit_returns queue uses it', preg_match('/foreach \(damages_returned_map\(\) as \$bid => \$t\)/', $bkS) === 1);
+chk("the guest's own account uses it", strpos($mybS, 'damages_returned_map($ids)') !== false);
+// …and none of them keeps its own unfiltered copy of the SQL.
+chk('no unfiltered damages_return sum is left anywhere',
+    preg_match("/kind = 'damages_return' GROUP BY booking_id/", $bkS) !== 1
+    && preg_match("/kind = 'damages_return' AND booking_id IN/", $mybS) !== 1);
+
+// ---- MONEY AUDIT 2: the guest INVOICE ------------------------------------
+// A money document the guest can open, and it had two wrong figures.
+echo "\n== Money audit: the guest invoice ==\n";
+$invS = (string) file_get_contents(__DIR__ . '/invoice.php');
+chk('the invoice quotes the SHARED paid-so-far figure, not deposit_paid alone',
+    strpos($invS, 'booking_paid_so_far($b)') !== false
+    && strpos($invS, "round((float) (\$b['deposit_paid'] ?? 0) + (\$depositCharged") === false);
+// agreed_booking_fee is RE-SNAPSHOTTED when a stay changes; hold_amount is what was
+// actually taken. Extending a booking whose deposit was already charged therefore made
+// the invoice bill the new figure and count it as paid.
+chk('…and bills the deposit ACTUALLY charged (hold_amount), not the re-snapshotted one',
+    strpos($invS, '$damages = round((float) $b[\'hold_amount\'], 2);') !== false
+    && strpos($invS, '$depositCharged && (float) ($b[\'hold_amount\'] ?? 0) > 0') !== false);
+
+// ---- MONEY AUDIT 2: the sweep's liability join ---------------------------
+// A legacy CAPTURED hold writes kind='damages' keyed on the same hold_payment_id with
+// the DEPOSIT as its amount, so an unrestricted join read that as the charge's rental
+// portion and apportioned the fee against a doubled gross.
+echo "\n== Money audit: the liability join ==\n";
+$acctS2 = (string) file_get_contents(__DIR__ . '/accounts.php');
+chk('the liability join only matches RENTAL rows',
+    preg_match("/LEFT JOIN payments p ON p\.square_payment_id = b\.hold_payment_id\s*\n\s*AND p\.kind IN \('deposit','balance'\)/", $acctS2) === 1);
+
 echo "\n== Money audit: capped cancellation refund ==\n";
 // The per-row 'refund' action capped by booking_ledger_net; cancel took a free-typed
 // figure with no cap, so a typo was only caught by Square rejecting it — which aborts

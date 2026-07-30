@@ -161,8 +161,21 @@ if ($b['agreed_total'] !== null) {
 $holdStatus = (string) ($b['hold_status'] ?? 'none');
 if (in_array($holdStatus, ['returned', 'released'], true)) $damages = 0.0;
 $depositCharged = in_array($holdStatus, ['charged', 'captured', 'kept'], true);
+// BILL WHAT WAS ACTUALLY TAKEN. $damages above comes from agreed_booking_fee, but the
+// update action RE-SNAPSHOTS that field whenever the stay changes while hold_amount —
+// the sum genuinely charged — stays put. So extending a booking whose deposit had
+// already been charged made this invoice show the new figure as both the deposit and
+// as money paid, overstating both. damages_collected() reads hold_amount for exactly
+// this reason; so does this now, once the deposit is charged.
+if ($depositCharged && (float) ($b['hold_amount'] ?? 0) > 0) {
+    $damages = round((float) $b['hold_amount'], 2);
+}
 $grand = round($total + $damages, 2);
-$paid = round((float) ($b['deposit_paid'] ?? 0) + ($depositCharged ? $damages : 0), 2);
+// The SHARED paid-so-far figure (booking_paid_so_far), not deposit_paid alone: with
+// the card ledger ahead of the reconciled column, an invoice reading the column
+// understated Paid and overstated Balance due — on a document the guest opens. The
+// email, the pay screen and the charge were unified; this was the fourth site.
+$paid = round(booking_paid_so_far($b) + ($depositCharged ? $damages : 0), 2);
 $balance = max(0, round($grand - $paid, 2));
 
 $disp = prop_display($b['prop_key']);

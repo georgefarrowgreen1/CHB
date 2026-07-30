@@ -1660,6 +1660,34 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   a return in the following tax year leaves a phantom negative in that year. A returned
   deposit was never income and must not move profit at all. Gated by
   test-integration §14 (7 checks; three of them fail against the old query).
+- **A FAILED REFUND IS NOT MONEY RETURNED** (`damages_returned_map`, db.php; gated by
+  test-payrail + test-integration §10b(E)). `damages_returned($id)` always excluded
+  FAILED/REJECTED — but THREE display sites summed the same rows with **no status
+  filter at all**: the admin booking rows (so the hub showed the deposit settled), the
+  `deposit_returns` action (which feeds the Money screen's "Deposits to return" queue
+  AND its Needs-you duty, so the deposit dropped off the owner's to-do list and the
+  failed refund was never re-tried) and `my-bookings.php` (so the GUEST was shown money
+  back they had never received). The server's `return_deposit` guard used the correct
+  figure throughout, so the money could still be returned — nothing was telling anyone
+  to. One map helper now, and `damages_returned` delegates to it so there is a single
+  query shape.
+- **THE GUEST INVOICE HAD TWO WRONG FIGURES** (invoice.php; gated by test-payrail).
+  It read `deposit_paid` alone — the FOURTH "already paid" site, missed when the email,
+  the pay screen and the charge were unified — so with the ledger ahead it understated
+  Paid and overstated Balance due on a document the guest opens. And it billed
+  `agreed_booking_fee` as the refundable deposit, which the `update` action
+  RE-SNAPSHOTS whenever the stay changes while `hold_amount` (the sum actually taken)
+  stays put: extending a booking whose deposit was already charged therefore showed the
+  new figure as both the deposit and as money paid. `damages_collected()` reads
+  `hold_amount` for exactly this reason; so does the invoice now.
+- **THE LIABILITY JOIN ONLY MATCHES RENTAL ROWS** (accounts.php; gated by test-payrail).
+  A legacy CAPTURED hold writes its ledger row as `kind='damages'` keyed on the same
+  `hold_payment_id`, with the DEPOSIT as its amount — so the unrestricted join read
+  that as the charge's rental portion and apportioned the fee against a doubled gross
+  (over-fencing, the safe direction, but wrong). With no rental row the deposit rode
+  its own charge, which is what a captured hold IS, and the estimate is then correct.
+  A defect in the code #869 shipped; the per-transaction list was already safe because
+  it filters `kind IN ('deposit','balance')`.
 - **ONE DEFINITION OF "ALREADY PAID"** (`booking_paid_so_far`, db.php; gated by
   test-payrail). There were two. `bookings.deposit_paid` is the reconciled headline
   figure and `booking_ledger_net()` is what the card ledger shows; they agree once
