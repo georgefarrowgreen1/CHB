@@ -12058,19 +12058,33 @@ async function renderSweep(refetch) {
     const safe = hasBal ? Math.max(0, bal - ring) : null;
     const short = hasBal ? Math.max(0, ring - bal) : 0;
 
+    // THREE STATES, NOT ONE LIST. This card explains the RING FENCE, and was headed
+    // "Deposits still to return" — a TO-DO that two of its three rows are not: one
+    // already refunded and waiting on Square (the row said so while the heading
+    // contradicted it), and one whose guest has not left. Every row also read "left
+    // <date>", so a guest checking out in a month was reported as having left on a
+    // future date. The real to-do is the Needs-you strip and the assistant's
+    // "deposits to return" answer, both correctly gated on hasCheckedOut().
+    const today = todayDashed();
+    const depState = (it) => {
+        if (Number(it.awaiting || 0) > 0) return { when: 'left', note: 'Already refunded — waiting for Square to take it' };
+        // On checkout day the guest is still in until the checkout time, so "left today"
+        // would be wrong for most of it — hasCheckedOut's reasoning, at the resolution
+        // this payload carries (a date, no time).
+        if (it.check_out && it.check_out >= today) return { when: 'leaves', note: 'Still staying — nothing to hand back yet' };
+        return { when: 'left', note: 'Ready to return' };
+    };
     const rows = (L.items || [])
-        .map(
-            (it) =>
-                `<div class="act-row" style="display:block;">
+        .map((it) => {
+            const st = depState(it);
+            return `<div class="act-row" style="display:block;">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · left ${fmtDate(it.check_out)}` : ''}</span>
+                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · ${st.when} ${it.check_out === today ? 'today' : fmtDate(it.check_out)}` : ''}</span>
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
-                    ${Number(it.awaiting || 0) > 0
-                        ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">Already refunded — waiting for Square to take it</div>`
-                        : ''}
-                </div>`,
-        )
+                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>
+                </div>`;
+        })
         .join('');
 
     // PER TRANSACTION, SPLIT BY WHERE THE MONEY ACTUALLY IS — Square settles a
@@ -12143,7 +12157,7 @@ async function renderSweep(refetch) {
             <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">
                 ${L.count === 0
                     ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
-                    : `${L.count} damage deposit${L.count === 1 ? '' : 's'} still to return. Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee at the same time, so ${gbp(L.net)} is what actually leaves.`}
+                    : `${L.count} damage deposit${L.count === 1 ? '' : 's'} still held. Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
             </p>
             ${disp > 0
                 ? `<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;">Plus ${gbp(disp)} under dispute — ${L.disputes.count === 1 ? 'a card payment is' : L.disputes.count + ' card payments are'} being challenged and Square may take it back. Held here until it is settled.</p>`
@@ -12154,7 +12168,7 @@ async function renderSweep(refetch) {
         </div>` +
         (L.count
             ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                <div class="label">Deposits still to return</div>
+                <div class="label">Deposits still held</div>
                 <div style="margin-top:6px;">${rows}</div>
                </div>`
             : '') +
