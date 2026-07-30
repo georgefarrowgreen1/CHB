@@ -673,6 +673,9 @@ function is_internal_content_key($key)
                      // (payouts_balance_estimate rolls it forward). Their money;
                      // never on the anonymous content GET.
     }
+    if ($key === 'square-bank') {
+        return true; // linked-bank-account cache: the owner's banking, never public
+    }
     if ($key === 'square-payouts') {
         return true; // the cached Square payout ledger (payouts-lib.php) — what has
                      // reached the owner's bank and when. Machinery, and it names

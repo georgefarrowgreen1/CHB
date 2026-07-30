@@ -60,6 +60,10 @@ try {
 // failure, so a bad night reads as "last checked yesterday", not as no payouts.
 try {
     require_once __DIR__ . '/payouts-lib.php';
+    require_once __DIR__ . '/bank-lib.php';
+    if (bank_stale(bank_cached(), time())) {
+        bank_refresh(); // whether there is anywhere for the money to GO
+    }
     if (payouts_stale(payouts_cached(), time())) {
         payouts_refresh();
     }

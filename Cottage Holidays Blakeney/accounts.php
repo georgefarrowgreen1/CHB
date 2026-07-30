@@ -467,6 +467,16 @@ try {
     // The window the fetch actually covers, sent rather than re-typed in JS — the
     // screen names it when it reports that Square returned nothing at all.
     $sweep['payouts']['lookback'] = PAYOUTS_LOOKBACK_DAYS;
+    // IS THERE ANYWHERE FOR THE MONEY TO GO? Rides the same payload — the screen
+    // used to GUESS at this ("usually payouts paused, or no bank account linked")
+    // because nothing could tell it. Cached like the payouts, so no page waits on
+    // Square. bank_read() is the one place the states are decided.
+    require_once __DIR__ . '/bank-lib.php';
+    $bankCache = bank_cached();
+    $sweep['bank'] = bank_read(
+        is_array($bankCache) ? ($bankCache['accounts'] ?? null) : null,
+        is_array($bankCache) ? ($bankCache['error'] ?? null) : null,
+    );
     $sweep['payouts']['fees'] = is_array($poCache) ? (float) ($poCache['payoutFees'] ?? 0) : 0.0;
     $sweep['payouts']['truncated'] = is_array($poCache) ? !empty($poCache['truncated']) : false;
     $sweep['payouts']['failed'] = payouts_failed(is_array($poCache) ? ($poCache['payouts'] ?? []) : []);

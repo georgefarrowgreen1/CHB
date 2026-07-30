@@ -157,6 +157,7 @@ $REGISTRY = [
     'config.php' => ['lib', [], 'constants only'],
     'csp-lib.php' => ['lib', [], 'pure CSP severity/matcher for csp-report.php (no I/O, no entry)'],
     'sweep-lib.php' => ['lib', [], 'pure safe-to-move arithmetic for accounts.php (no I/O, no entry)'],
+    'bank-lib.php' => ['lib', [], 'Square linked-bank-account cache + the can-money-move decision; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
