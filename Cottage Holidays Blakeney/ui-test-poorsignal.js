@@ -52,7 +52,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
             await new Promise((r) => setTimeout(r, 8000));
             return route.abort('failed');
         }
-        if (route.request().method() === 'POST' && !/ical-import/.test(url)) return json({ ok: true, events: [], logs: {} });
+        // `logs` carries a marker row so §7 can WAIT for the booking hub's own
+        // fire-and-forget email-log read to land before it seeds the store. Booking 99
+        // does not exist, so nothing renders it. See the drain below.
+        if (route.request().method() === 'POST' && !/ical-import/.test(url)) return json({ ok: true, events: [], logs: { 99: [{ action: 'drain', summary: '', at: '' }] } });
         if (url.includes('bookings.php')) return json({ bookings: [booking] });
         if (url.includes('enquiries.php')) return json({ enquiries: [enquiry] });
         if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
@@ -146,6 +149,20 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     ok(good.ok === true && good.n === 1, `on a good link loadData reports ok and refills (${good.n} booking)`);
     const backOk = await page.evaluate(async () => { await window.openBookingHub(1); return (document.querySelector('.page-view.active') || {}).id; });
     ok(backOk === 'view-booking-hub' || backOk === 'view-backoffice', `…and a booking still opens normally (${backOk})`);
+
+    // DRAIN before §7 seeds. openBookingHub fires loadBookingEmailLogs() UNAWAITED (it
+    // fills its own card when it lands), so on a good link that read was still in flight
+    // when §7 wrote its fixture — and it then assigned the server's empty log over the
+    // top, failing the assertion below for a reason that had nothing to do with the
+    // rule being checked (measured: 1 run in 5). Waiting on the marker row makes it
+    // deterministic: the hub's read has DEFINITELY landed before the seed goes in.
+    let drained = true;
+    try {
+        await page.waitForFunction(() => typeof bookingEmailLogs === 'object' && bookingEmailLogs && bookingEmailLogs['99'], null, { timeout: 5000 });
+    } catch (e) {
+        drained = false;
+    }
+    ok(drained, "the hub's own email-log read has landed, so the fixture below is not racing it");
 
     // ── 7. The same rule, everywhere else that caches server data ───────────
     // Found by auditing for the loadData shape. Each of these emptied its own

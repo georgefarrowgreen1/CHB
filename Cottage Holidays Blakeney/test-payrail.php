@@ -302,11 +302,15 @@ if (preg_match("/if \(\\\$action === 'cancel'\)(.*?)\\\$emailResult = null;/s", 
 }
 
 // ---- DON'T SEND IT TWICE ---------------------------------------------------
-// Three layers, because no single one is enough. The client coalesces an identical
-// write while one is in flight and disables the button that started it — neither
-// survives a reload mid-request or a second device, which arrive as genuinely new
-// requests. So anything that puts a message in front of a GUEST also asks the ledger
-// of what has already been sent, and refuses a repeat inside a short window.
+// Two layers, because neither is enough alone. The client disables the control whose
+// handler is still running — but that does not survive a reload mid-request or a second
+// device, which arrive as genuinely new requests. So anything that puts a message in
+// front of a GUEST also asks the ledger of what has already been sent, and refuses a
+// repeat inside a short window.
+// There is deliberately NO third layer coalescing identical in-flight POSTs: apiPost is
+// the app's only POST channel and serves reads too, so that guard could answer a read
+// issued after a state change with one issued before it. Asserted below so it cannot
+// come back by accident.
 echo "\n== Don't send it twice ==\n";
 chk('there is a shared "have we just sent this?" question', function_exists('recent_send_at'));
 chk('the window is a real number of seconds, not zero', CHB_RESEND_GUARD_SECONDS > 0);
@@ -329,16 +333,14 @@ $dbS2 = (string) file_get_contents(__DIR__ . '/db.php');
 chk('an unreadable log lets the send through rather than blocking it',
     preg_match('/function recent_send_at.*?catch.*?return \x27\x27;/s', $dbS2) === 1);
 $appS = (string) file_get_contents(__DIR__ . '/app.js');
-chk('the client coalesces an identical write already in flight',
-    strpos($appS, '__chbWriteInFlight') !== false
-    && strpos($appS, 'if (key && __chbWriteInFlight.has(key)) return __chbWriteInFlight.get(key);') !== false);
-// then(clear, clear) and NOT .finally(): finally returns a derived promise that
-// re-throws, and nothing handles that one, so every failed write raised an unhandled
-// rejection. An onRejected handler settles the derived chain quietly.
-chk('…and frees the key on failure too, so a retry is never blocked for good',
-    strpos($appS, 'p.then(clear, clear);') !== false && strpos($appS, 'p.finally(') === false);
-chk('apiPost is NOT async, or coalesced callers would get different promises',
-    preg_match('/\nfunction apiPost\(endpoint, payload\) \{/', $appS) === 1);
+// The ratchet against reintroduction. apiPost carries reads (`email_logs`, `history`,
+// `deposit_returns`, `recent_payments`), so a same-request-in-flight cache here can serve
+// a pre-change answer to a post-change read — the failure it was meant to prevent, in
+// reverse. If a future send genuinely needs collapsing, do it at the intent, not here.
+chk('apiPost does not answer one POST with another one already in flight',
+    strpos($appS, '__chbWriteInFlight') === false);
+chk('…and the reason is recorded where the next reader will look',
+    strpos($appS, 'NO IN-FLIGHT COALESCING HERE') !== false);
 chk('a button whose handler is still running is disabled and announced busy',
     strpos($appS, "el.setAttribute('aria-busy', 'true')") !== false
     && preg_match("/r && typeof r\.then === 'function' && el\.tagName === 'BUTTON'/", $appS) === 1);

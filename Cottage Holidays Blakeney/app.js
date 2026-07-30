@@ -915,50 +915,36 @@ function previewBlockedToast() {
         if (typeof toast === 'function') toast("Read-only preview — nothing here is saved.");
     } catch (e) {}
 }
-// ONE WRITE AT A TIME PER INTENT. An IDENTICAL request already in flight returns the
-// SAME promise, so a double-tap or an impatient re-submit resolves from the first send
-// instead of sending twice. Keyed on endpoint + the exact body: two notes saves differ,
-// two taps of one Send button do not. IN-FLIGHT, not a cache — the entry goes the moment
-// it settles, so a retry after failure is untouched. Nothing here is an increment-by-one
-// write, where two identical concurrent calls would both be wanted. See CLAUDE.md.
-const __chbWriteInFlight = new Map();
-function chbWriteKey(endpoint, payload) {
-    let body = '';
-    try {
-        body = JSON.stringify(payload || {});
-    } catch (e) {
-        return ''; // uncloneable payload → no key, no coalescing
-    }
-    return endpoint + '|' + body;
-}
-// NOT async on purpose: an `async` wrapper hands each caller a FRESH promise, so two
-// coalesced callers would get different objects for one request.
-function apiPost(endpoint, payload) {
+// NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission. A guard that
+// returned the SAME promise for an identical request already in flight was shipped and
+// WITHDRAWN: `apiPost` is not a write channel, it is the app's only POST channel, and
+// several of the busiest calls through it are READS (`email_logs`, `history`,
+// `deposit_returns`, `recent_payments`). Two identical reads are indistinguishable from
+// each other by endpoint + body, so a read issued AFTER a state change could be answered
+// by one issued BEFORE it — which is worse than the thing the guard was for: an email log
+// fetched after a send, showing the state before it, invites sending the same email
+// again. Measured: it reproduced as ui-test-poorsignal losing a store it is meant to keep
+// (~1 run in 3; 4 of 4 green with the guard removed).
+// The double-send safeguards live where the INTENT is known instead — `chbRunAct`
+// disables a control whose handler is still running (every send affordance in this app is
+// a `data-act` button; there are no inline `onclick`s left in the markup), and
+// `recent_send_at()` refuses a repeat server-side inside a window, which is the only
+// layer that survives a reload mid-request or a second device. See CLAUDE.md.
+/**
+ * The one POST channel. Endpoints answer with arbitrary JSON, so the parsed body is
+ * deliberately `any` — stated here because it used to be inferred, via a `Map.get()`
+ * the withdrawn coalescing guard read from, and collapsing that made every caller's
+ * property access a type error.
+ * @returns {Promise<any>}
+ */
+async function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
     // whole preview safe (no payments, chats, reviews, profile edits, etc.).
     if (ACCT_PREVIEW) {
         previewBlockedToast();
-        return Promise.reject(new Error('read-only account preview'));
+        throw new Error('read-only account preview');
     }
-    const key = chbWriteKey(endpoint, payload);
-    if (key && __chbWriteInFlight.has(key)) return __chbWriteInFlight.get(key);
-    const p = apiPostSend(endpoint, payload);
-    if (key) {
-        __chbWriteInFlight.set(key, p);
-        // then(clear, clear), NOT finally: a rejected send must free the key or retries
-        // are blocked for the life of the page — but .finally() returns a DERIVED promise
-        // that re-throws, and nothing handles that one, so every failed write became an
-        // unhandled rejection (measured: four guest ui-suites started reporting
-        // "Database connection failed" as a page error). Passing an onRejected handler
-        // HANDLES it, so the derived promise settles quietly while the caller still sees
-        // the original rejection on `p`.
-        const clear = () => __chbWriteInFlight.delete(key);
-        p.then(clear, clear);
-    }
-    return p;
-}
-async function apiPostSend(endpoint, payload) {
     let res;
     try {
         res = await fetchWithTimeout(API_BASE + endpoint, {
@@ -13530,7 +13516,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'resume2';
+    const BUILD = 'nocoal1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
