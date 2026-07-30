@@ -1165,6 +1165,35 @@ a typed question on-device before it reaches a person, and admin.js reuses the m
 draft enquiry replies.) Gated by search-test §36 (brief composition, stale-miss silence,
 undo round-trip incl. prior-state payload).
 
+**The guest DATE PICKER crosses a night out for TWO different reasons, and they are not
+interchangeable** (app.js `renderDatePicker`; gated by `ui-test-datepicker.js`, whose
+fixture is the August the owner reported). A night is either **BOOKED** (`isBookedNight`)
+or **`tooShort`** — free, but the run to the next booking is shorter than the cottage's
+`minNights`, so no stay can START there (`dpCheckinFits`). Three bugs came from treating
+them as one thing, all reproduced in a browser before being fixed:
+`tooShort` used to be computed `guestPick && **!pickingEnd** && …`, i.e. it was a fact
+about the QUESTION rather than about the night — so choosing a check-in silently
+un-crossed every too-short night in the month and choosing a checkout crossed them again;
+the same night changed availability three times in one selection. It is computed once now,
+and each branch decides whether the question applies. That exposed the second: the
+**"restart selection" branch (`ds <= dpState.start`) asked only `!booked`** — but
+restarting IS picking a check-in, so a night the minimum forbids could be tapped to begin
+a stay `enquiries.php`'s min-nights guard then rejects, after the guest had filled in the
+form. It asks `!booked && !tooShort`, the same as the check-in branch. Third, **a cross
+means "cannot be used", so it is wrong on a cell that IS being used**: the exception
+covered a turnover day offered as a checkout but NOT the nights of a stay already chosen,
+so picking checkout 28 (the next guest's arrival — nights 24–27 free, a legitimate
+turnover) crossed out both the 27 underneath it and the 28 itself while both stayed
+selected — the picker contradicting its own answer. `inChosenStay` is guarded on
+`chosenClear`, because the hero search (`dpMode 'search'`) lets ANY date through and seeds
+these inputs: a seeded stay that really does cross a booking keeps its marks, since this
+is the only screen that can show the guest which nights are the problem. The `aria-label`
+follows the PAINTED state rather than `booked` alone (a turnover day on offer was read out
+as "booked"), and the legend no longer says "already booked" — that was false of every
+too-short night in the grid; the per-cell `title` still names the reason. NB admin mode is
+deliberately outside all of this: everything stays pickable and everything stays shaded,
+because a deliberate overlap is the owner's call.
+
 **Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
 rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their
 favourite cottage = mode of COMPLETED stays, live cottages only; an upcoming-only first
