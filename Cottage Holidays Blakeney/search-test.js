@@ -2189,6 +2189,43 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('…and the row LEADS with the figure, not the arrival', /^£[\d,]+\.\d{2} to collect from /.test(bal[0].label), bal[0].label);
         check('…with the timing in the sub, where the dates already are', /^Arriving in \d+ days · /.test(bal[0].sub), bal[0].sub);
         check('…and leave the one 60 days out alone (the 21-day window)', !bal.some((d) => /Later Guest/.test(d.label)));
+
+        // B) WHAT IS OWED INCLUDES THE DEPOSIT THAT HAS NOT BEEN TAKEN YET.
+        // Reported from the live back office: the booking's own row said "£340.00
+        // due" while Today's header and the bookings summary both said "£290 to
+        // collect". The row was right — the refundable damages deposit is charged
+        // WITH the guest's first payment (pay.php charges amountDue + damagesDue),
+        // so until that lands it is money still to come in. Two composers, one truth.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[{id:81,dbId:81,name:'Debbie',email:'d@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(8)}',
+              adults:2,children:0,payment:'deposit',depositPaid:300,holdStatus:'none',
+              agreedPrice:{total:590,perNight:570,nights:3,txnFee:20,damagesDeposit:50}}];`, ctx);
+        // dbBookings is a lexical const in app.js — reachable only from inside the
+        // context, not as a ctx property (the defaultRates trap smoke-test documents).
+        const owedNow = () => vm.runInContext(`bookingDue('jollyboat', dbBookings.jollyboat[0]).balance`, ctx);
+        const rentNow = () => vm.runInContext(`paymentSummary('jollyboat', dbBookings.jollyboat[0]).balance`, ctx);
+        check('the RENTAL balance is still the rental balance (£290)', Math.abs(rentNow() - 290) < 0.005, String(rentNow()));
+        check('…but what is still TO COLLECT includes the untaken deposit (£340)', Math.abs(owedNow() - 340) < 0.005, String(owedNow()));
+        const bal2 = ctx.chbDuties().filter((d) => d.kind === 'balance');
+        check('…and the duty every surface formats quotes THAT figure', bal2.length === 1 && /£340\.00 to collect/.test(bal2[0].label), bal2[0] && bal2[0].label);
+        // Once the deposit HAS been taken it stops being owed — otherwise the same
+        // £50 would be chased for ever.
+        vm.runInContext(`dbBookings.jollyboat[0].holdStatus='charged';`, ctx);
+        check('a deposit already charged is not owed twice', Math.abs(owedNow() - 290) < 0.005, String(owedNow()));
+        // …and a refunded one leaves the figure entirely.
+        vm.runInContext(`dbBookings.jollyboat[0].holdStatus='returned';`, ctx);
+        check('a refunded deposit drops out of what is owed', Math.abs(owedNow() - 290) < 0.005, String(owedNow()));
+        // PUT THE FIXTURE BACK. The checks below this point assert against the
+        // ORIGINAL bookings + enquiry, and a shared mutable fixture has to be
+        // restored rather than just replaced — leaving Debbie in place made four
+        // later checks read her figures instead (the ui-test-money lesson).
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            enquiries=[{id:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
+            dbBookings.jollyboat=[
+              {id:71,dbId:71,name:'Soon Guest',email:'s@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:540,perNight:520,nights:4,txnFee:20}},
+              {id:72,dbId:72,name:'Later Guest',email:'l@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:615,perNight:600,nights:4,txnFee:15}}];`, ctx);
+        // …and a refunded one leaves the figure entirely.
+        vm.runInContext(`dbBookings.jollyboat[0].holdStatus='returned';`, ctx);
         const enqD = duties.filter((d) => d.kind === 'enquiry');
         check('an enquiry is AGED, not counted', enqD.length === 1 && /waiting 3 days/.test(enqD[0].label), enqD[0] && enqD[0].label);
         check('…and escalated past two days', enqD[0] && enqD[0].sev === 'danger', enqD[0] && enqD[0].sev);

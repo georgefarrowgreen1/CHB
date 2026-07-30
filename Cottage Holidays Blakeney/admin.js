@@ -1451,7 +1451,9 @@ function cmdkBookingActions(b, pk) {
     if (!b || b.id == null) return [];
     const acts = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); openBookingEmail(b.id); } }];
     let ps = null;
-    try { ps = typeof paymentSummary === 'function' ? paymentSummary(pk, b) : null; } catch (e) {}
+    // The DEPOSIT-AWARE figure: this is the amount the card will actually take,
+    // and the same one the booking's own row shows. See bookingDue().
+    try { ps = typeof bookingDue === 'function' ? bookingDue(pk, b) : null; } catch (e) {}
     if (ps && !ps.fullyPaid && ps.balance > 0.5) {
         // FIRST INLINE ACTION. The preview is KEPT — it is a deliberate feature and
         // one-tap-send-blind would be a downgrade. What changes is that search no
@@ -3152,7 +3154,7 @@ function chbNlgBrief() {
             // A throw here would drop this booking's balance from the day's "to
             // collect" total — the owner would read a figure that's quietly too
             // low — so record it instead of losing it.
-            try { const ps = paymentSummary(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
+            try { const ps = bookingDue(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
         }));
         Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
             if (isOtaBlock(bl)) { if (bl.checkIn === today) arr++; if (bl.checkOut === today) dep++; }
@@ -4616,7 +4618,7 @@ function cmdkIntent(q) {
     // 0g) Balances to chase — unpaid, arriving within three weeks or already overdue.
     if (/overdue|to chase|\bchase\b|chasing|behind|due soon|balances? (due|to chase|overdue|outstanding)|payments? (due|overdue)/.test(q)) {
         const rows = flat
-            .map((x) => ({ x, ps: paymentSummary(x.pk, x.b) }))
+            .map((x) => ({ x, ps: bookingDue(x.pk, x.b) }))
             .filter((r) => !r.ps.fullyPaid && r.ps.balance > 0.5)
             .map((r) => ({ ...r, days: Math.round((new Date((r.x.b.checkIn || today) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) }))
             .filter((r) => r.days <= 21)
@@ -4750,7 +4752,7 @@ function cmdkIntent(q) {
     if (/^\s*(the\s+)?(money|payments?|takings|finances?|accounts?|cash)\s*(overview|summary|dashboard)?\s*$/.test(q)) {
         let outstanding = 0, owers = 0, held = 0, depN = 0;
         flat.forEach((x) => {
-            const ps = paymentSummary(x.pk, x.b);
+            const ps = bookingDue(x.pk, x.b);
             if (!ps.fullyPaid && ps.balance > 0.5) { outstanding += ps.balance; owers++; }
             // Same as the brief: swallowing here silently under-reports how much
             // deposit money is being held.
@@ -4892,7 +4894,12 @@ function cmdkIntent(q) {
         }
         // Default (owes / hasn't paid in full) — outstanding balances, led by the total
         // and the biggest single ower so the answer reads like a person, not a table.
-        const rows = withPs.filter((x) => !x.ps.fullyPaid && x.ps.balance > 0.5).sort(byIn);
+        // Deposit-aware, because "who owes me" means what is still to come IN.
+        // The sibling branches above stay on the rental summary on purpose.
+        const rows = withPs
+            .map((x) => ({ ...x, ps: bookingDue(x.pk, x.b) }))
+            .filter((x) => !x.ps.fullyPaid && x.ps.balance > 0.5)
+            .sort(byIn);
         const total = rows.reduce((s, x) => s + x.ps.balance, 0);
         const n = rows.length;
         const big = rows.slice().sort((a, b) => b.ps.balance - a.ps.balance)[0];
@@ -7439,7 +7446,7 @@ function cmdkBriefBuild() {
                 }
             }
         } catch (e) {}
-        try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
+        try { const ps = bookingDue(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
         // No 'today' in these two labels: the board is CAPTIONED Today, so the word was
         // stated three times on one card and informed in one of them.
         items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
@@ -7852,7 +7859,7 @@ function cmdkDetailHtml() {
     if (b.checkIn) bits.push(escapeHtml(fmtDate(b.checkIn) + (b.checkOut ? ' → ' + fmtDate(b.checkOut) : '')));
     let money = '';
     try {
-        const ps = paymentSummary(pk, b);
+        const ps = bookingDue(pk, b);
         money = ps.fullyPaid
             ? `<span class="cmdk-dt-pill is-ok">Paid in full</span>`
             : `<span class="cmdk-dt-pill is-due">${escapeHtml(gbp(ps.balance))} still due</span>`;
@@ -8420,7 +8427,7 @@ function cmdkRefreshRow(i) {
             const loc = findBookingLocation(it.id);
             if (b && loc) {
                 const m = { money: '', dep: '' };
-                const ps = paymentSummary(loc.propKey, b);
+                const ps = bookingDue(loc.propKey, b);
                 m.money = ps.fullyPaid ? 'paid in full' : ps.balance > 0.5 ? `${gbp(ps.balance)} still due` : 'nothing paid yet';
                 const bits = [m.money, (propertyMeta[loc.propKey] || {}).name || loc.propKey];
                 if (b.checkIn) bits.push(`${fmtDate(b.checkIn)}–${fmtDate(b.checkOut)}`);
@@ -9201,7 +9208,9 @@ function renderBookings() {
     rows = rows.filter(({ propKey, b }) => {
         if (f === 'upcoming') return (b.checkOut || '') >= today;
         if (f === 'past') return (b.checkOut || '') < today;
-        if (f === 'needspay') return !paymentSummary(propKey, b).fullyPaid && (b.checkOut || '') >= today;
+        // Deposit-aware, so this list holds exactly the bookings the header's
+        // "£X to collect" button just counted — it links straight here.
+        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && (b.checkOut || '') >= today;
         return true; // 'all'
     });
     rows.sort((a, b) =>
@@ -9217,8 +9226,10 @@ function renderBookings() {
         let owed = 0;
         rows.forEach(({ propKey, b }) => {
             if ((b.checkOut || '') >= today) {
-                const ps = paymentSummary(propKey, b);
-                if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
+                // The deposit-aware figure, so this agrees with each row's own
+                // "£X due" chip instead of quoting the rental balance alone.
+                const due = bookingDue(propKey, b);
+                if (!due.fullyPaid) owed += Math.max(0, due.balance || 0);
             }
         });
         sum.textContent = rows.length
@@ -14901,7 +14912,7 @@ function chbDuties() {
             // `checkIn >= today` guard silently dropped — a guest already arrived
             // (or gone up to 14 days) still owing. Bounded so an ancient
             // never-reconciled booking can't nag forever; floored like family 0g.
-            const ps = paymentSummary(k, b);
+            const ps = bookingDue(k, b);
             if (!ps.fullyPaid && ps.balance > 0.5 && b.checkIn) {
                 const days = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
                 const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / dayMs) : 0;
@@ -14983,7 +14994,7 @@ function chbOwedLater() {
     try {
         Object.keys(dbBookings || {}).forEach((k) =>
             (dbBookings[k] || []).forEach((b) => {
-                const ps = paymentSummary(k, b);
+                const ps = bookingDue(k, b);
                 if (ps.fullyPaid || !(ps.balance > 0.5) || !b.checkIn) return;
                 const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
                 if (days > 21) { total += ps.balance; n++; }
@@ -15087,7 +15098,9 @@ function todayOpsLine() {
                 outToday = true;
             }
             if ((b.checkOut || '') >= today) {
-                const ps = paymentSummary(k, b);
+                // THE HEADER LINE the owner reads first — deposit-aware, so it agrees
+                // with the bookings summary below it and with each booking's own row.
+                const ps = bookingDue(k, b);
                 if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
             }
         });
