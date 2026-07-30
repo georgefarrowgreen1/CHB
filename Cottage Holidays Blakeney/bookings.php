@@ -1460,6 +1460,9 @@ if ($action === 'confirm_return_settled') {
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
     }
+    // json_out() exits, so the catch below never falls through — but a static reader
+    // cannot know that, and an empty list is the right answer if it ever did.
+    $rows = [];
     try {
         $q = db()->prepare(
             "SELECT id, amount FROM payments

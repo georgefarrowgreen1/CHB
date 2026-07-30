@@ -397,9 +397,6 @@ try {
             // Both ends of the stay: a deposit on a booking that has not STARTED is a
             // different state from one mid-stay, and the screen said "Still staying" for
             // both. check_out alone cannot tell them apart.
-            // The row's Confirm-settled button acts on this booking, so the id has to
-            // travel with it — the screen had no way to name what it was confirming.
-            'booking_id' => (int) $r['id'],
             'check_in' => (string) ($r['check_in'] ?? ''),
             'check_out' => (string) ($r['check_out'] ?? ''),
         ];
