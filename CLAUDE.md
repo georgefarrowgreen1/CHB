@@ -1671,6 +1671,30 @@ smoke-test §6g/§6h guard them; if you move that markup, update cottage.php/hom
 They're deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure,
 which would corrupt these HTML routes); on ANY error they serve index.html untouched.
 
+**A BAD FEED MUST NEVER EMPTY THE CALENDAR** (`ical-lib.php`, gated by
+**`test-ical.php`**). Every other double-booking guard is a REFUSAL — the endpoints
+check `dates_clash` and say no. The platform sync is the exception and therefore the
+most dangerous code in the app: `sync_property` DELETEs a source's blocks and
+re-inserts from the feed, so treating a bad response as a good one leaves the cottage
+reading FREE for every Airbnb stay, and no endpoint guard can save it — the clash
+check faithfully finds nothing, because there is nothing left to find. The guards were
+all present and correct and NOTHING tested them, the same gap the clash guards had.
+**`ical_feed_usable($res)`** is that decision stated once (it was two inline conditions
+inside `sync_property`): a failed fetch is unusable, a 200 whose body lacks
+`BEGIN:VCALENDAR` is unusable (a login page, an HTML error, a moved link — all parse to
+zero events and would look exactly like "no bookings"), and a REAL calendar with no
+events IS usable, because "everything is free now" is a legitimate answer — that is how
+an external cancellation frees the dates and the waitlist gets told. NB an Airbnb
+`DTEND` is the CHECKOUT day, so the feed is end-exclusive like everything else here;
+§2 pins 10th→14th as FOUR nights, and making it inclusive fails that check (the
+off-by-one would sell an OTA guest's last night twice). The pure judgement lives in a
+lib for the same reason sweep-lib / payouts-lib / bank-lib do — `ical-import.php` routes
+and calls `require_admin()`, so a test that required it would exit. **No network**: a
+suite that depends on Airbnb's uptime fails for reasons that are nothing to do with this
+codebase, and `ical_url_public` blocks a local fixture URL anyway (correctly — trusted-user
+SSRF is still SSRF; §3 pins loopback / 10.x / 192.168.x / 169.254.x / IPv6 loopback with
+bare IPs, so no DNS is involved and the checks are hermetic).
+
 **A TIMELINE DAY CELL ANSWERS FOR THE NIGHT IT ACTUALLY IS** (`renderCalendar`, gated by
 ui-test-workspace §1b). The bars are inset half a day at each end so a changeover reads
 as shared between two stays — good, and it leaves a bare strip of the underlying

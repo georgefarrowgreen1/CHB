@@ -17,6 +17,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php'; // get_rate() for the manual-block property check
+require_once __DIR__ . '/ical-lib.php'; // URL/response/parse judgement, unit-tested
 
 // ---- helpers ----
 // ical_token() lives in db.php (shared with ical-export.php).
@@ -38,54 +39,6 @@ function get_feeds($prop)
     return is_array($d) ? $d : [];
 }
 
-// Is this an http(s) URL to a PUBLIC host? Blocks SSRF to internal/loopback/
-// link-local targets (169.254.x, 127.x, 10.x, 192.168.x, …) even though only an
-// admin sets the feed URL — trusted-user SSRF is still worth closing.
-function ical_url_public($url)
-{
-    $u = parse_url((string) $url);
-    if (!$u || !in_array(strtolower($u['scheme'] ?? ''), ['http', 'https'], true) || empty($u['host'])) {
-        return false;
-    }
-    $host = $u['host'];
-    // Collect EVERY address this host resolves to (IPv4 + IPv6). A bare IP is
-    // checked as-is. If nothing resolves, fail CLOSED — an unresolvable or
-    // IPv6-only name must never skip the private-range check (the old
-    // gethostbyname-only path let those through).
-    $ips = [];
-    if (filter_var($host, FILTER_VALIDATE_IP)) {
-        $ips[] = $host;
-    } else {
-        foreach ((array) @dns_get_record($host, DNS_A) as $r) {
-            if (!empty($r['ip'])) {
-                $ips[] = $r['ip'];
-            }
-        }
-        foreach ((array) @dns_get_record($host, DNS_AAAA) as $r) {
-            if (!empty($r['ipv6'])) {
-                $ips[] = $r['ipv6'];
-            }
-        }
-        if (!$ips) {
-            $g = gethostbyname($host); // fallback where dns_get_record is unavailable
-            if ($g !== $host) {
-                $ips[] = $g;
-            }
-        }
-    }
-    if (!$ips) {
-        return false; // could not resolve — refuse rather than trust cURL's own lookup
-    }
-    foreach ($ips as $ip) {
-        if (
-            !filter_var($ip, FILTER_VALIDATE_IP) ||
-            !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
-        ) {
-            return false; // unparseable, private, or reserved — refuse
-        }
-    }
-    return true;
-}
 
 // Fetch a URL (cURL preferred, falls back to file_get_contents).
 function fetch_url($url)
@@ -147,50 +100,8 @@ function fetch_url($url)
     }
 }
 
-// Parse an iCal string into [['uid'=>, 'start'=>'YYYY-MM-DD', 'end'=>'YYYY-MM-DD'], ...]
-function parse_ical($text)
-{
-    // Unfold folded lines (continuation lines begin with a space or tab).
-    $text = preg_replace("/\r\n[ \t]/", '', $text);
-    $text = preg_replace("/\n[ \t]/", '', $text);
-    $lines = preg_split("/\r\n|\n|\r/", $text);
-    $events = [];
-    $cur = null;
-    foreach ($lines as $line) {
-        if (strpos($line, 'BEGIN:VEVENT') === 0) {
-            $cur = ['uid' => null, 'start' => null, 'end' => null];
-            continue;
-        }
-        if (strpos($line, 'END:VEVENT') === 0) {
-            if ($cur && $cur['start'] && $cur['end']) {
-                $events[] = $cur;
-            }
-            $cur = null;
-            continue;
-        }
-        if ($cur === null) {
-            continue;
-        }
-        if (strpos($line, 'UID') === 0) {
-            $cur['uid'] = substr($line, strpos($line, ':') + 1);
-        } elseif (strpos($line, 'DTSTART') === 0) {
-            $cur['start'] = ical_date(substr($line, strpos($line, ':') + 1));
-        } elseif (strpos($line, 'DTEND') === 0) {
-            $cur['end'] = ical_date(substr($line, strpos($line, ':') + 1));
-        }
-    }
-    return $events;
-}
 
-// Normalise an iCal date/datetime value to YYYY-MM-DD.
-function ical_date($v)
-{
-    $v = trim($v);
-    if (preg_match('/(\d{4})(\d{2})(\d{2})/', $v, $m)) {
-        return $m[1] . '-' . $m[2] . '-' . $m[3];
-    }
-    return null;
-}
+
 
 // Sync one property's feeds: refresh ical_blocks from all its feed URLs.
 function sync_property($prop)
@@ -208,17 +119,13 @@ function sync_property($prop)
         if ($url === '') {
             continue;
         }
+        // One decision, stated in ical_feed_usable: anything short of a real
+        // calendar KEEPS the blocks we already hold rather than replacing them
+        // with nothing.
         $res = fetch_url($url);
-        if (!$res['ok']) {
-            $summary[] = ['source' => $source, 'ok' => false, 'error' => $res['error']];
-            continue;
-        }
-        // Same protection as the HTTP-status check: a 200 that isn't actually
-        // iCal (login page, HTML error, moved link) must keep the existing
-        // blocks, not replace them with nothing. A real feed with zero events
-        // still contains BEGIN:VCALENDAR, so "all dates free" passes through.
-        if (stripos($res['body'], 'BEGIN:VCALENDAR') === false) {
-            $summary[] = ['source' => $source, 'ok' => false, 'error' => 'not a calendar feed — check the link'];
+        $usable = ical_feed_usable($res);
+        if (!$usable['ok']) {
+            $summary[] = ['source' => $source, 'ok' => false, 'error' => $usable['error']];
             continue;
         }
         $events = parse_ical($res['body']);
