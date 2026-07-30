@@ -158,6 +158,58 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }));
   ok(sec.v === 'view-settings' && sec.vis, `the reload reopened the section itself (${sec.v}, visible=${sec.vis})`);
 
+  // ---- 3b. the Inbox FOLDER survives, not just the Inbox ------------------
+  // Three folders live behind one view id, so `view-inbox` came back to Enquiries
+  // however deep into the email or the chats you were — and admin.js's own comment
+  // beside inboxFolder already promised "the owner comes back to the folder they were
+  // in", which held across in-session navigation and not across the refresh the app
+  // performs on itself when a new build ships.
+  console.log('3b. the Inbox folder survives');
+  await page.evaluate(async () => { await openInbox(); inboxFolder('email'); });
+  await page.waitForTimeout(700);
+  ok(/inbox:email/.test(await page.evaluate(() => sessionStorage.getItem('chb-nav') || '')),
+    `the FOLDER is remembered, not just the Inbox (${await page.evaluate(() => sessionStorage.getItem('chb-nav'))})`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1300);
+  await settle();
+  await page.waitForTimeout(900);
+  const fold = await page.evaluate(() => ({
+    v: (document.querySelector('.page-view.active') || {}).id,
+    folder: typeof __inboxFolder === 'string' ? __inboxFolder : '(unset)',
+    shown: [...document.querySelectorAll('#view-inbox [id^="inbox-folder-"]')]
+      .filter((el) => el.style.display !== 'none').map((el) => el.id).join(','),
+  }));
+  ok(fold.v === 'view-inbox', `the reload came back to the Inbox (${fold.v})`);
+  ok(fold.folder === 'email', `…and to the EMAIL folder, not Enquiries (${fold.folder})`);
+  ok(fold.shown === 'inbox-folder-email', `…and it is the folder actually on screen (${fold.shown})`);
+
+  // The email folder's own Inbox|Sent switch is a place too. It applies AFTER the
+  // folder because switching to email kicks the lazy loadMailbox() — which used to
+  // reset the tab at the end and would have clobbered this.
+  await page.evaluate(() => mailboxTab('sent'));
+  await page.waitForTimeout(300);
+  ok(/inbox:email:sent/.test(await page.evaluate(() => sessionStorage.getItem('chb-nav') || '')),
+    `Sent is remembered at the same grain (${await page.evaluate(() => sessionStorage.getItem('chb-nav'))})`);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1300);
+  await settle();
+  await page.waitForTimeout(900);
+  const tab = await page.evaluate(() => ({
+    folder: typeof __inboxFolder === 'string' ? __inboxFolder : '(unset)',
+    tab: typeof __mbxTab === 'string' ? __mbxTab : '(unset)',
+  }));
+  ok(tab.folder === 'email' && tab.tab === 'sent',
+    `the reload came back to Sent, not to the mailbox's Inbox (${tab.folder}/${tab.tab})`);
+
+  // Tapping the Inbox button must not DOWNGRADE the folder: nav() remembers the plain
+  // view id, so re-entering the Inbox while reading email would send the next reload
+  // back to Enquiries even though the DOM state kept you on email. openInbox()
+  // re-asserts the folder for exactly this.
+  await page.evaluate(async () => { nav('view-backoffice'); await openInbox(); });
+  await page.waitForTimeout(600);
+  const reEnter = await page.evaluate(() => sessionStorage.getItem('chb-nav') || '');
+  ok(/inbox:email/.test(reEnter), `re-entering the Inbox keeps the folder in the memory (${reEnter})`);
+
   // ---- 4. the refusals --------------------------------------------------
   // Restoring the wrong thing is worse than not restoring: a guest must never be
   // walked into the back office, and a stale target must not outlive its welcome.

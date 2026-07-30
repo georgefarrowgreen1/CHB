@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 327;
+const ADMIN_BUNDLE_V = 329;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -141,7 +141,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxFolder","mailboxTab","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -8270,6 +8270,16 @@ async function chbOpenTarget(target) {
         }
         return true;
     }
+    // Three folders behind one view id, so "the screen you were on" is the FOLDER. The
+    // tab is applied after it: switching to email kicks the lazy loadMailbox(), which no
+    // longer resets the tab (that reset was a live bug of its own).
+    const inbox = /^inbox:(enquiries|messages|email)(?::(sent))?$/.exec(target);
+    if (inbox) {
+        await openInbox();
+        inboxFolder(inbox[1]);
+        if (inbox[2] && inbox[1] === 'email') mailboxTab('sent');
+        return true;
+    }
     // A plain view id — the guest side has just pages.
     if (/^view-[a-z0-9-]+$/.test(target)) {
         if (!document.getElementById(target)) return false;
@@ -13525,7 +13535,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mailfail2';
+    const BUILD = 'inboxfold2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

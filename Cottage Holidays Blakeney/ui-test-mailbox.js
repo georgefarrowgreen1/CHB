@@ -202,6 +202,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // the reply sent in step 3 tops the list; the ledger row sits beneath
   ok(st.rows === 2 && /old@example\.com/.test(st.text) && /guest@example\.com/.test(st.text), `Sent tab lists the just-sent reply + the ledger (${st.rows} rows)`);
   ok(/Sent/.test(st.on) && st.sel === 'false,true', `the switch moves its selected state with the tap (on=${st.on}, aria=${st.sel})`);
+  // REFRESH IS A DATA REFRESH, NOT A RESET. loadMailbox() forced __mbxTab='inbox' and
+  // __mbxQuery='' at the end — and its own Refresh button reaches it, so checking for new
+  // mail while reading Sent threw the owner back to Inbox and wiped their search
+  // (measured before the fix: sent → inbox, "old" → ""). Driven by CLICKING the button,
+  // because that is the path that was broken.
+  await page.evaluate(() => mailboxSearch('old'));
+  await page.waitForTimeout(200);
+  await page.click('#mailbox-body .cal-refresh-btn');
+  await page.waitForTimeout(700);
+  const refreshed = await page.evaluate(() => ({
+    tab: __mbxTab, q: __mbxQuery,
+    on: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn.is-on')].map((b) => b.textContent.trim()).join(','),
+  }));
+  ok(refreshed.tab === 'sent' && /Sent/.test(refreshed.on),
+    `Refresh keeps you on the tab you were reading (${refreshed.tab}, selected: ${refreshed.on})`);
+  ok(refreshed.q === 'old', `…and keeps your search rather than wiping it ("${refreshed.q}")`);
+
   await page.evaluate(() => mailboxTab('inbox'));
   await page.waitForTimeout(200);
   await page.evaluate(() => mailboxSearch('parking'));

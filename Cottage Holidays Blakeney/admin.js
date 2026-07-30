@@ -8997,6 +8997,9 @@ async function openInbox() {
     }
     nav('view-inbox'); // nav() calls renderInboxScreen() for us
     adminHistPush('view-inbox');
+    // nav() remembers the plain view id, which would DOWNGRADE a remembered folder: tap
+    // Inbox while reading email and the next reload lands on Enquiries. Re-assert it.
+    inboxRemember();
 }
 // The comms automations (instant chat answers / away auto-reply / follow-up
 // emails) now live in Manage → Messages as ordinary settings sections
@@ -9016,6 +9019,13 @@ function hydrateFollowUpToggles() {
 // owner comes back to the folder they were in. ----
 let __inboxFolder = 'enquiries';
 let __mbxOpenedOnce = false;
+// WHERE IN THE INBOX YOU ARE, in chbOpenTarget's vocabulary. The comment above promised
+// the folder survives — true in-session (the display toggles persist in the DOM), false
+// across the refresh the app performs on itself when a new build ships. ONE definition:
+// the folder switch, the Inbox|Sent switch and openInbox() all have to agree.
+function inboxRemember() {
+    chbNavRemember('inbox:' + __inboxFolder + (__inboxFolder === 'email' && __mbxTab === 'sent' ? ':sent' : ''));
+}
 function inboxFolder(which) {
     if (!['enquiries', 'messages', 'email'].includes(which)) which = 'enquiries';
     __inboxFolder = which;
@@ -9066,6 +9076,7 @@ function inboxFolder(which) {
                   : 'Select an enquiry on the left — its details and actions appear here.';
         hint.style.display = '';
     }
+    inboxRemember();
     if (which === 'enquiries') markInboxSelection();
     // The mailbox is lazy: first open fetches, after that the rendered list
     // stays live in the DOM and the Refresh button re-pulls on demand.
@@ -19901,8 +19912,10 @@ async function loadMailbox() {
         __mbxMessages = inbox.messages || [];
         __mbxHasMore = !!inbox.hasMore;
         __mbxSent = sent.messages || [];
-        __mbxTab = 'inbox';
-        __mbxQuery = '';
+        // NO TAB/QUERY RESET. This is a DATA refresh and its own Refresh button reaches
+        // it, so resetting threw the owner from Sent back to Inbox and wiped their search
+        // (measured: sent → inbox, "old" → ""). On a first open both are already at their
+        // declared defaults, so nothing about that changes.
         renderMailboxList();
     } catch (e) {
         el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
@@ -19921,6 +19934,7 @@ async function mailboxOlder() {
 }
 function mailboxTab(tab) {
     __mbxTab = tab === 'sent' ? 'sent' : 'inbox';
+    inboxRemember(); // Inbox|Sent is a place too, at the same grain as the folder
     renderMailboxList();
 }
 function mailboxSearch(q) {
