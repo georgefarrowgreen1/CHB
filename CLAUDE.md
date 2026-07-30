@@ -2450,9 +2450,28 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   tab so it survives, opening fresh tomorrow starts clean, two tabs cannot fight over one
   view, and the URL is deliberately kept clean here (`?open=`/`?unsub=` are both
   replaceState'd away) - view names in a shared link would leak the back office's shape.
+  **THE FOLDER IS PART OF THE PLACE.** The Inbox is three folders behind ONE view id, and
+  its email folder has its own Inbox|Sent switch, so `view-inbox` came back to Enquiries
+  however deep into the email or the chats you were - while admin.js's own comment beside
+  `inboxFolder` already promised "the owner comes back to the folder they were in", which
+  is true in-session (the display toggles persist in the DOM) and false across the refresh
+  the app performs on ITSELF when a new build ships. `inbox:<folder>[:sent]` joins the
+  vocabulary, written by **`inboxRemember()`** - ONE definition, because the folder switch,
+  the Inbox|Sent switch and `openInbox()` all have to agree. `openInbox()` calling it is
+  load-bearing, not belt-and-braces: `nav()` remembers the plain view id, so tapping Inbox
+  while reading email would DOWNGRADE the memory and send the next reload to Enquiries
+  (break-tested). The tab is applied AFTER the folder in `chbOpenTarget`, because switching
+  to email kicks the lazy `loadMailbox()`.
+  **That exposed a live bug of its own: `loadMailbox()` reset `__mbxTab` and `__mbxQuery`.**
+  It is a DATA refresh and its own Refresh button (`data-act="loadMailbox"`) reaches it, so
+  checking for new mail while reading Sent threw the owner back to Inbox and wiped their
+  search - measured, `sent` → `inbox` and `"old"` → `""`. On a first open both are already
+  at their declared defaults, so removing the reset changes nothing there; it also removed
+  what would have clobbered the tab restore. Gated by ui-test-mailbox (driven by CLICKING
+  Refresh) and ui-test-resume §3b.
   **Stored as a TARGET STRING in `chbOpenTarget()`'s vocabulary** (`booking-42`,
-  `settings:rates`, `accounts:sweep`, `view-experiences`), the same dispatcher `?open=`
-  uses - restoring reuses the notification path rather than being a second way to
+  `settings:rates`, `accounts:sweep`, `inbox:email:sent`, `view-experiences`), the same
+  dispatcher `?open=` uses - restoring reuses the notification path rather than being a second way to
   navigate, and both speak the numeric db id. Refuses, each break-tested: an owner target
   for a signed-out visitor, anything older than `CHB_NAV_TTL_MS` (4h, forgotten as it is
   refused so it cannot retry), a view that no longer exists, and any explicit destination
