@@ -7446,7 +7446,7 @@ function cmdkBriefBuild() {
                 }
             }
         } catch (e) {}
-        try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
+        try { const ps = bookingDue(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
         // No 'today' in these two labels: the board is CAPTIONED Today, so the word was
         // stated three times on one card and informed in one of them.
         items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
@@ -7859,7 +7859,7 @@ function cmdkDetailHtml() {
     if (b.checkIn) bits.push(escapeHtml(fmtDate(b.checkIn) + (b.checkOut ? ' → ' + fmtDate(b.checkOut) : '')));
     let money = '';
     try {
-        const ps = paymentSummary(pk, b);
+        const ps = bookingDue(pk, b);
         money = ps.fullyPaid
             ? `<span class="cmdk-dt-pill is-ok">Paid in full</span>`
             : `<span class="cmdk-dt-pill is-due">${escapeHtml(gbp(ps.balance))} still due</span>`;
@@ -8427,7 +8427,7 @@ function cmdkRefreshRow(i) {
             const loc = findBookingLocation(it.id);
             if (b && loc) {
                 const m = { money: '', dep: '' };
-                const ps = paymentSummary(loc.propKey, b);
+                const ps = bookingDue(loc.propKey, b);
                 m.money = ps.fullyPaid ? 'paid in full' : ps.balance > 0.5 ? `${gbp(ps.balance)} still due` : 'nothing paid yet';
                 const bits = [m.money, (propertyMeta[loc.propKey] || {}).name || loc.propKey];
                 if (b.checkIn) bits.push(`${fmtDate(b.checkIn)}–${fmtDate(b.checkOut)}`);
@@ -9208,7 +9208,9 @@ function renderBookings() {
     rows = rows.filter(({ propKey, b }) => {
         if (f === 'upcoming') return (b.checkOut || '') >= today;
         if (f === 'past') return (b.checkOut || '') < today;
-        if (f === 'needspay') return !paymentSummary(propKey, b).fullyPaid && (b.checkOut || '') >= today;
+        // Deposit-aware, so this list holds exactly the bookings the header's
+        // "£X to collect" button just counted — it links straight here.
+        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && (b.checkOut || '') >= today;
         return true; // 'all'
     });
     rows.sort((a, b) =>
@@ -14992,7 +14994,7 @@ function chbOwedLater() {
     try {
         Object.keys(dbBookings || {}).forEach((k) =>
             (dbBookings[k] || []).forEach((b) => {
-                const ps = paymentSummary(k, b);
+                const ps = bookingDue(k, b);
                 if (ps.fullyPaid || !(ps.balance > 0.5) || !b.checkIn) return;
                 const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
                 if (days > 21) { total += ps.balance; n++; }
@@ -15096,7 +15098,9 @@ function todayOpsLine() {
                 outToday = true;
             }
             if ((b.checkOut || '') >= today) {
-                const ps = paymentSummary(k, b);
+                // THE HEADER LINE the owner reads first — deposit-aware, so it agrees
+                // with the bookings summary below it and with each booking's own row.
+                const ps = bookingDue(k, b);
                 if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
             }
         });

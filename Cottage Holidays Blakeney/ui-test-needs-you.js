@@ -85,6 +85,42 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // quoted the rental balance while the booking's own row quoted the deposit-aware
   // figure, so one screen showed two numbers for one guest. See bookingDue().
   ok(s.labels.some((l) => /£580\.00 to collect from Sarah Pemberton/.test(l)), `chase row leads with the amount owed INCLUDING the untaken deposit (${s.labels.find((l) => /to collect from Sarah/.test(l)) || 'none'})`);
+
+  // THE HEADER LINE THE OWNER READS FIRST, and the list its button links to.
+  // Reported live: the header said "£290 to collect" while the booking's own row
+  // said "£340.00 due" — the header summed the RENTAL balance. It is the same
+  // question as the row, so it has to be the same number; and the needspay filter
+  // behind the button has to contain exactly the bookings that figure counted, or
+  // the owner taps a total and lands on a list missing one of them.
+  const ops = await page.evaluate(() => {
+    try { todayOpsLine(); } catch (e) {}
+    const el = document.getElementById('today-date');
+    return el ? el.textContent : '';
+  });
+  // Asserted as a PROPERTY, not a pinned number: the line must equal the sum of
+  // the deposit-aware figures, and must exceed the rental-only sum — otherwise a
+  // fixture change silently re-pins whichever total happens to print.
+  const sums = await page.evaluate(() => {
+    let due = 0, rent = 0;
+    const today = todayDashed();
+    Object.keys(dbBookings).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+      if ((b.checkOut || '') < today) return;
+      const d = bookingDue(k, b), r = paymentSummary(k, b);
+      if (!d.fullyPaid) due += Math.max(0, d.balance || 0);
+      if (!r.fullyPaid) rent += Math.max(0, r.balance || 0);
+    }));
+    return { due: Math.round(due), rent: Math.round(rent) };
+  });
+  ok(sums.due > sums.rent, `the fixture really has an untaken deposit to find (due ${sums.due} > rental ${sums.rent})`);
+  ok(ops.includes('£' + sums.due.toLocaleString('en-GB') + ' to collect'),
+    `the day line quotes the deposit-aware total (${ops})`);
+  ok(!ops.includes('£' + sums.rent.toLocaleString('en-GB') + ' to collect'),
+    '…and not the rental-only one it used to');
+  const needsPay = await page.evaluate(() => {
+    try { openBookings(); bookingsSetFilter('needspay'); } catch (e) {}
+    return document.querySelectorAll('#bookings-list .bk-row').length;
+  });
+  ok(needsPay >= 1, `…and the list its button opens contains that booking (${needsPay} rows)`);
   ok(!s.labels.some((l) => /Tom Hardy/.test(l)), 'far-future unpaid booking not nagged');
   ok(s.sevs[0] === 'danger' && s.sevs[1] === 'danger', 'severities: automation + 2-day-old enquiry are danger');
 

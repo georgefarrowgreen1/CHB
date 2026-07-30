@@ -1046,9 +1046,15 @@ to collect. `displayGrand` already folded it in — counting it paid only once
 Payments screen and the booking rows used it, and Payments' own comment already
 promised "the two screens always quote identical numbers". `bookingDue(propKey, b)` is
 that one definition, and every OWNER-FACING "still to collect" now goes through it: the
-bookings-list summary, `chbDuties` (so Today's strip and the brief both move), the
-greeting line, the balances-to-chase answer, the money overview, the owed family and the
-bulk chase it feeds, and the per-row inline chase + its balance watcher. **Deliberately
+**day line under the header** (`todayOpsLine` — the exact "£290 to collect" reported, and
+the last one found: its string is BUILT BY CONCATENATION, so a grep for the phrase in a
+template literal missed it — check the rendered words, not the source shape), the
+`needspay` FILTER that line's button links to (or the owner taps a total and lands on a
+list missing the booking it counted), the bookings-list summary, `chbDuties` (so Today's
+strip and the brief both move), the greeting line, the balances-to-chase answer, the
+money overview, `chbOwedLater`, the owed family and the bulk chase it feeds, the per-row
+inline chase + its balance watcher, and the per-booking money lines in the search
+dossier/detail pill/record sub. **Deliberately
 NOT changed**: the questions that are genuinely about the rental — "who's put a deposit
 down" (`ps.deposit`) and "who's paid in full" (`ps.total`) — and the guest emails, whose
 `booking_amount_due` quotes the rental with the deposit explained separately, which is
