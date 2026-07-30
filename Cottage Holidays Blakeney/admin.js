@@ -10111,6 +10111,7 @@ function renderBookingHub() {
                 ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
                 ${b.address || b.postcode ? `<div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${escapeHtml([b.address, b.postcode].filter(Boolean).join(', '))}</span></div>` : ''}
                 ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
+                ${contact('No dog', b.noDogsAt ? 'Confirmed ' + escapeHtml(b.noDogsAt) : '<span class="bhub-mut">Not recorded</span>')}
             </div>
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>

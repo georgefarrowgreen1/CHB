@@ -1,0 +1,16 @@
+-- migration-102-booking-no-dogs.sql — carry the guest's "no dog" declaration
+-- onto the BOOKING.
+--
+-- migration-101 stored it on the enquiry, which is where the owner reviews it.
+-- But approval consumes the enquiry (it is deleted), so by arrival — the moment
+-- the declaration actually matters — there was nowhere left to look. Copied
+-- across on approve exactly as terms_accepted_at already is.
+--
+-- NULL for everything that predates this, and for bookings the owner adds by
+-- hand: there was no guest at the keyboard to ask, and a timestamp we invented
+-- would be worse than an honest blank.
+--
+-- Idempotent the way the others are: plain ADD COLUMN, with migrate.php treating
+-- a duplicate-column error as already-applied (MySQL 8 has no ADD COLUMN IF NOT
+-- EXISTS, so we must NOT use it here).
+ALTER TABLE bookings ADD COLUMN no_dogs_at DATETIME NULL;

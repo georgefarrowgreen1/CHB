@@ -192,8 +192,8 @@ function enquiry_approve($id, $priceOverride = null)
             'INSERT INTO bookings
         (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
          agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,
-         terms_accepted_at,terms_version,sms_opt_in,price_override)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+         terms_accepted_at,terms_version,sms_opt_in,price_override,no_dogs_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $e['prop_key'],
@@ -222,6 +222,10 @@ function enquiry_approve($id, $priceOverride = null)
             $e['terms_version'] ?? null,
             $e['sms_opt_in'] ?? 0,
             $priceOverride,
+            // Approval DELETES the enquiry, so this is the only chance to keep the
+            // declaration — by arrival, when it matters, there would be nowhere left
+            // to look it up.
+            $e['no_dogs_at'] ?? null,
         ]);
     $bookingId = db()->lastInsertId();
     db()
