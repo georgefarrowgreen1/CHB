@@ -18735,13 +18735,41 @@ function renderCalendar() {
     const rows = keys
         .map((k) => {
             const meta = propertyMeta[k] || { name: k, short: k };
+            // WHICH NIGHTS ARE TAKEN, and by whom. Bars inset half a day at each end
+            // so a changeover reads as shared, leaving a bare strip on the check-in
+            // AND checkout day; both offered "add a booking here". The checkout one
+            // is right (that night IS free); the check-in one prefilled a stay on a
+            // night already sold, which the server then refuses. End-exclusive, the
+            // same model as the guest picker, so the two calendars agree.
+            const takenBy = new Map();
+            const markNights = (ci, co, id) => {
+                if (!ci || !co) return;
+                for (let s = ci; s < co; s = ukShiftDays(s, 1)) {
+                    if (!takenBy.has(s)) takenBy.set(s, id);
+                }
+            };
+            (dbBookings[k] || []).forEach((b) => markNights(b.checkIn, b.checkOut, b.id));
+            (dbBlocks[k] || []).forEach((bl) => markNights(bl.checkIn, bl.checkOut, ''));
             let cells = '';
             for (let i = 0; i < N; i++) {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
                 const mstart = d.getDate() === 1 && i > 0;
                 const past = dates[i] < todayIso;
-                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
+                // A taken night belongs to its stay, so tapping anywhere on it opens
+                // that booking, as the bar does. Leaving it inert would just move the
+                // defect — a strip that looks live and answers nothing. An imported
+                // platform stay has no hub (display-only), so it only names itself.
+                const owner = takenBy.get(dates[i]);
+                const bk = owner ? findBookingById(owner) : null;
+                let act = '';
+                if (past) act = '';
+                else if (bk)
+                    act = ` ${chbAttrs('openBookingHub', String(owner))} data-act-keydown="activate" role="button" tabindex="0" aria-label="${escapeHtml(bk.name || 'Guest')} at ${escapeHtml(meta.name)} on ${fmtDate(dates[i])}" title="${escapeHtml(bk.name || 'Guest')} — ${fmtDate(dates[i])}"`;
+                else if (takenBy.has(dates[i])) act = ` title="Booked — ${fmtDate(dates[i])}"`;
+                else
+                    act = ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`;
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${act}></span>`;
             }
             let bars = '';
             // Bars run noon-to-noon (check-in afternoon → checkout morning): the

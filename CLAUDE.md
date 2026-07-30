@@ -1671,6 +1671,19 @@ smoke-test §6g/§6h guard them; if you move that markup, update cottage.php/hom
 They're deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure,
 which would corrupt these HTML routes); on ANY error they serve index.html untouched.
 
+**A TIMELINE DAY CELL ANSWERS FOR THE NIGHT IT ACTUALLY IS** (`renderCalendar`, gated by
+ui-test-workspace §1b). The bars are inset half a day at each end so a changeover reads
+as shared between two stays — good, and it leaves a bare strip of the underlying
+`.tl-cell` exposed on BOTH the check-in and the checkout day. Every future cell carried
+`tlAddAt`, so both strips offered "add a booking here": the checkout one is right (that
+night IS free again — the same turnover the clash guard allows) and the check-in one is
+not, since it prefilled a stay on a night already sold, which the server then refuses.
+`takenBy` maps each night to its booking (end-exclusive, the guest picker's model, so the
+two calendars agree), a taken night opens THAT booking rather than starting a new one —
+leaving it inert would only move the defect, a live-looking strip that answers nothing —
+and an imported platform stay just names itself, having no hub to open. Hit-tested at
+real pixels in §1b, because the defect is an exposed strip and no class check can see it.
+
 **THE CALENDAR CANNOT BE DOUBLE-BOOKED — and that is now GATED, which it was not**
 (test-integration §15, 26 checks against a real database through the real endpoints).
 The guards were all there and all correct; what was missing was any test of them, so

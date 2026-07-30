@@ -57,6 +57,39 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(w1.docked && w1.hubName === 'First Guest', `first booking auto-docked in the pane (${w1.hubName})`);
   ok(w1.scrollY === 0, `auto-select did NOT scroll the page (scrollY ${w1.scrollY})`);
 
+  // ---- The lane's own cells must agree with the bars on it ----------------
+  // Bars are inset half a day at each end so a changeover reads as shared, which
+  // leaves a bare strip on the check-in day and the checkout day. Measured, BOTH
+  // offered "add a booking here": the checkout one is right (that night is free
+  // again) and the check-in one prefilled a stay on a night already sold, which
+  // the server then refuses. Hit-tested at the real pixels, because the defect is
+  // the exposed strip and a class check cannot see it.
+  console.log('1b. every day cell answers for the night it actually is');
+  const lane = await page.evaluate(() => {
+    const bar = Array.from(document.querySelectorAll('#cal-body .tl-bar')).find((b) => b.textContent.trim() === 'First');
+    if (!bar) return { err: 'no bar' };
+    const r = bar.getBoundingClientRect();
+    const dayW = parseFloat(getComputedStyle(document.querySelector('#cal-body .tl-cell')).width);
+    const y = r.top + r.height / 2;
+    const at = (x) => {
+      const e = document.elementFromPoint(x, y);
+      return e ? e.getAttribute('data-act') || '-' : 'none';
+    };
+    return {
+      checkinLeftHalf: at(r.left - dayW * 0.25),
+      insideBar: at(r.left + 10),
+      checkoutRightHalf: at(r.right + dayW * 0.25),
+      // A day nobody has booked, well clear of both stays.
+      freeDay: at(r.right + dayW * 3),
+    };
+  });
+  ok(lane.checkinLeftHalf === 'openBookingHub',
+    `the exposed strip of a check-in day belongs to that stay, not to a new one (${lane.checkinLeftHalf})`);
+  ok(lane.insideBar === 'openBookingHub', `the bar itself still opens the booking (${lane.insideBar})`);
+  ok(lane.checkoutRightHalf === 'tlAddAt',
+    `a checkout day still offers a booking — that night IS free (${lane.checkoutRightHalf})`);
+  ok(lane.freeDay === 'tlAddAt', `and a genuinely free day still does (${lane.freeDay})`);
+
   console.log('2. timeline bar tap swaps the docked hub + scrolls to it');
   await page.evaluate(() => {
     const bar = Array.from(document.querySelectorAll('#cal-body .tl-bar')).find((b) => b.textContent.trim() === 'Second');
