@@ -930,6 +930,13 @@ function previewBlockedToast() {
 // a `data-act` button; there are no inline `onclick`s left in the markup), and
 // `recent_send_at()` refuses a repeat server-side inside a window, which is the only
 // layer that survives a reload mid-request or a second device. See CLAUDE.md.
+/**
+ * The one POST channel. Endpoints answer with arbitrary JSON, so the parsed body is
+ * deliberately `any` — stated here because it used to be inferred, via a `Map.get()`
+ * the withdrawn coalescing guard read from, and collapsing that made every caller's
+ * property access a type error.
+ * @returns {Promise<any>}
+ */
 async function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
