@@ -136,6 +136,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-payouts.php
 
+      - name: Bank accounts — is there anywhere for the money to go
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-bank.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

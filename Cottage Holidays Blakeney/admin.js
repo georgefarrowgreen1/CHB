@@ -12114,10 +12114,28 @@ async function renderSweep(refetch) {
             ? 0
             : Math.round((Date.parse(todayDashed() + 'T00:00:00Z') - Date.parse(iso + 'T00:00:00Z')) / 86400000);
     const lateUnknown = unknownRows.filter((it) => daysSince(it.paid_on) > PO_LATE_DAYS);
+    // WHY NOTHING IS BEING PAID OUT, as a FACT where Square will tell us one. This
+    // used to end "usually a Square-side setting (payouts paused, or no bank account
+    // linked)" — a guess, because nothing in the app could see the bank account. It can
+    // now: bank_read() (bank-lib.php) turns ListBankAccounts into one state, and only
+    // the `unknown` state falls back to the old hedge, because "we could not ask" must
+    // never be rendered as "you have no bank account".
+    const B = L.bank || null;
+    const bankWhy = !B
+        ? ''
+        : B.state === 'none'
+          ? ' <strong>No bank account is linked to Square</strong>, so there is nowhere for it to pay out to — that is the thing to fix.'
+          : B.state === 'verifying'
+            ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked but Square is still verifying it, so nothing will be paid out until that finishes.`
+            : B.state === 'blocked'
+              ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked but Square cannot pay into it — it looks disabled at their end.`
+              : B.state === 'ready'
+                ? ` Your bank account${B.label ? ' (' + escapeHtml(B.label) + ')' : ''} is linked and verified, so the hold-up is something else — worth checking whether payouts are paused in Square.`
+                : '';
     const unknownWhy = !P
         ? ''
         : P.known === 0
-          ? ` Square hasn't reported <strong>any</strong> payouts at all${P.lookback ? ` in the last ${P.lookback} days` : ''} — not just these — so there is nothing to match them against. That is usually a Square-side setting (payouts paused, or no bank account linked) rather than a delay.`
+          ? ` Square hasn't reported <strong>any</strong> payouts at all${P.lookback ? ` in the last ${P.lookback} days` : ''} — not just these — so there is nothing to match them against.${bankWhy || ' That is usually a Square-side setting (payouts paused, or no bank account linked) rather than a delay.'}`
           : lateUnknown.length
             ? ` ${lateUnknown.length === 1 ? 'One of these was' : lateUnknown.length + ' of these were'} taken over a week ago, and Square normally pays out within a day or two — so ${lateUnknown.length === 1 ? 'it' : 'they'} should have shown up by now. Worth checking Square directly.`
             : '';

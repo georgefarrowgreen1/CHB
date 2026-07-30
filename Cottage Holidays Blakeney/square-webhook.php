@@ -68,6 +68,18 @@ if (strpos($type, 'payout.') === 0) {
     json_out(['ok' => true]);
 }
 
+// The linked bank account changed — created, verified or disabled. It decides
+// whether Square has anywhere to pay out to at all, and the owner makes that change
+// in Square rather than here, so refresh at once instead of waiting for the cron.
+if (strpos($type, 'bank_account.') === 0) {
+    try {
+        require_once __DIR__ . '/bank-lib.php';
+        bank_refresh();
+    } catch (\Throwable $e) {
+    }
+    json_out(['ok' => true]);
+}
+
 // Disputes / chargebacks: a guest's bank has pulled a payment back. This needs
 // the owner's attention (evidence deadline, lost funds), so log it prominently.
 if (strpos($type, 'dispute.') === 0) {

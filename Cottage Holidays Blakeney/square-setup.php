@@ -36,6 +36,13 @@ const SQ_WEBHOOK_EVENTS = [
     'payout.sent',
     'payout.paid',
     'payout.failed',
+    // The bank account itself (bank-lib.php). A newly linked or newly verified
+    // account is the difference between "nowhere for the money to go" and "on its
+    // way", and the owner does that in Square, not here — so without these the
+    // screen keeps saying no bank account until the next nightly cron.
+    'bank_account.created',
+    'bank_account.verified',
+    'bank_account.disabled',
 ];
 
 // Find OUR subscription (matching notification_url) among the merchant's, paging
@@ -189,12 +196,17 @@ if ($action === 'setup') {
 // because they chose it and the button says what it is doing.
 if ($action === 'payouts_refresh') {
     require_once __DIR__ . '/payouts-lib.php';
+    require_once __DIR__ . '/bank-lib.php';
+    // Both halves of the same question. A payout feed that reports nothing and a
+    // missing bank account look identical on screen until you ask this too, so the
+    // owner's one tap asks both rather than answering half of it.
+    $bank = bank_refresh();
     $r = payouts_refresh();
     if (empty($r['ok'])) {
         // A plain sentence, not a status code: this reaches the owner's screen.
         json_out(['error' => $r['reason'] ?: 'Couldn\'t reach Square just now.'], 200);
     }
-    json_out(['ok' => true, 'payouts' => $r['payouts'], 'charges' => $r['charges'], 'checked' => time()]);
+    json_out(['ok' => true, 'payouts' => $r['payouts'], 'charges' => $r['charges'], 'bank' => (int) ($bank['accounts'] ?? 0), 'checked' => time()]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

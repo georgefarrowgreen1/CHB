@@ -1898,6 +1898,31 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   to-do is elsewhere and was already correct: `chbDuties` and the assistant's "deposits
   to return" answer both gate on `hasCheckedOut()`. Gated by ui-test-money, all three
   states break-tested.
+  **IS THERE ANYWHERE FOR THE MONEY TO GO?** (**`bank-lib.php`**, gated by
+  **`test-bank.php`** + ui-test-money §7.) The "no payouts at all" sentence had to END
+  in a guess — "usually a Square-side setting (payouts paused, or no bank account
+  linked)" — because nothing in the app could see the bank account. Square's **Bank
+  Accounts API** answers it: `GET /v2/bank-accounts` (scope `BANK_ACCOUNTS_READ`), and
+  `bank_read()` turns the reply into ONE state — `ready` / `verifying` / `blocked` /
+  `none` / `unknown` — which the screen renders as a fact ("No bank account is linked to
+  Square, so there is nowhere for it to pay out to" / "Barclays ending 4471 is linked and
+  verified, so the hold-up is something else"). **READY means VERIFIED *and*
+  `creditable`**, and those are not interchangeable: `creditable` is the direction Square
+  SENDS money, `debitable` the direction it takes; an account it can only take from pays
+  out nothing. A missing flag counts as NOT creditable — claiming an account is ready is
+  the assertion that misleads. **`unknown` is the load-bearing state**: a 403 on the
+  scope falls back to the OLD hedge and never to "you have no bank account", because
+  failing to ask and being told there are none are different facts and only one of them
+  alarms the owner about their own banking. Cached under the INTERNAL key `square-bank`
+  (slimmed to five fields — the holder name and sort code stay out of our content
+  table), refreshed by the daily cron, by the owner's "Check Square now" (which now asks
+  both halves of the same question) and live by the `bank_account.created/verified/
+  disabled` webhooks. NB adding those events makes an EXISTING install report as
+  not-connected until "Connect" is re-run — the same intended prompt the payout events
+  caused. **AND THERE IS STILL NO BALANCE ENDPOINT** — confirmed with Square (their
+  developer advocate, Aug 2024, reaffirmed Feb 2025: "the ability to get the current
+  balance for a location within a Square account isn't currently possible"), so the
+  typed-balance design stays; don't go looking for one again.
   **AND UNKNOWN SAYS WHY.** The unknown group's note claimed the charges were not in
   the payout data **YET** — asserting a temporary wait the screen has no basis for.
   Reported from the live account: payouts checked THAT DAY, no error, two charges

@@ -461,6 +461,44 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/hasn't reported any payouts at all/i.test(sNone), `no payout data at all is stated as such (${(sNone.match(/[^.]*any payouts at all[^.]*\./) || ['none'])[0].trim().slice(0, 90)})`);
   ok(/60 days/.test(sNone), 'naming the window the fetch actually covered');
   ok(/payouts paused|bank account/i.test(sNone), '…and what usually causes it, so there is something to go and check');
+
+  // WHY, AS A FACT. That sentence ended in a guess — "usually payouts paused, or no
+  // bank account linked" — because nothing in the app could see the bank account.
+  // ListBankAccounts answers it, and bank_read() turns the reply into one state. The
+  // states must read as four DIFFERENT things, and "we couldn't ask" must never be
+  // rendered as "you have no bank account": that is the alarming one, and it would be
+  // our bug rather than Square's.
+  const withBank = async (bank) => {
+    sweepStub = Object.assign({}, sweepStub, { bank });
+    await page.evaluate(() => renderSweep());
+    await page.waitForTimeout(400);
+    return await sweepText();
+  };
+  const sNoBank = await withBank({ state: 'none', count: 0, why: '', label: '' });
+  ok(/No bank account is linked to Square/.test(sNoBank), 'no linked account is stated outright, not guessed at');
+  ok(/nowhere for it to pay out to/.test(sNoBank), '…in terms of what it means for the money');
+  ok(!/usually a Square-side setting/.test(sNoBank), '…and the old hedge is gone once the fact is known');
+
+  const sReady = await withBank({ state: 'ready', count: 1, why: '', label: 'Barclays ending 4471' });
+  ok(/linked and verified/.test(sReady) && /Barclays ending 4471/.test(sReady),
+    'a working bank account is named, so the owner knows to look elsewhere');
+  ok(/hold-up is something else/.test(sReady), '…and the screen says the cause is elsewhere rather than blaming the bank');
+  ok(!/No bank account is linked/.test(sReady), '…and never contradicts itself');
+
+  const sVerifying = await withBank({ state: 'verifying', count: 1, why: '', label: 'Barclays ending 4471' });
+  ok(/still verifying/.test(sVerifying) && !/No bank account is linked/.test(sVerifying),
+    'an account mid-verification is its own answer — linked, but nothing moves yet');
+
+  const sBlocked = await withBank({ state: 'blocked', count: 1, why: '', label: 'Barclays ending 4471' });
+  ok(/cannot pay into it/.test(sBlocked), 'a disabled account says money cannot move, not that none is linked');
+
+  // THE ONE THAT MATTERS MOST. A 403 on the scope must fall back to the hedge, never
+  // to the alarm — telling an owner their bank account is missing when we simply
+  // could not ask is worse than the guess this replaced.
+  const sUnknown = await withBank({ state: 'unknown', count: 0, why: "the access token can't read bank accounts", label: '' });
+  ok(!/No bank account is linked/.test(sUnknown), 'a failed bank check NEVER claims there is no bank account');
+  ok(/usually a Square-side setting/.test(sUnknown), '…it falls back to the honest hedge instead');
+  sweepStub = Object.assign({}, sweepStub, { bank: null });
   ok(!/over a week ago/i.test(sNone), 'the age story is NOT told when the feed itself returned nothing — that would be the wrong cause');
 
   // And no false alarm: a charge taken today is legitimately not paid out yet.
