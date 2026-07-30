@@ -19157,6 +19157,7 @@ function renderEnquiryHub() {
                 <div class="detail-grid" style="margin-top:0;">
                     ${contact('Email', e.email ? `<a href="mailto:${escapeHtml(e.email)}" style="color:var(--text-light);">${escapeHtml(e.email)}</a>` : '')}
                     ${contact('Phone', e.phone ? `<a href="tel:${escapeHtml(e.phone)}" style="color:var(--text-light);">${escapeHtml(e.phone)}</a>` : '')}
+                    ${contact('No dog', e.noDogsAt ? 'Confirmed ' + escapeHtml(e.noDogsAt) : '<span class="bhub-mut" style="margin:0;">Not confirmed</span>')}
                     <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${e.address || e.postcode ? escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>
                 </div>
             </section>

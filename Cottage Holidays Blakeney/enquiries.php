@@ -276,7 +276,17 @@ if ($action === 'submit') {
     if (!$isAdminEdit && empty($in['terms_accepted'])) {
         json_out(['error' => 'Please accept the booking terms to send your enquiry.'], 400);
     }
+    // Same rule for the no-dog declaration: the client blocks submit without it,
+    // and this stops a direct public POST creating an enquiry that never made it.
+    // Admin-created and admin-edited enquiries are exempt for the same reason as
+    // the terms — there was no guest at the keyboard to ask.
+    if (!$isAdminEdit && empty($in['no_dogs'])) {
+        json_out(['error' => 'Please confirm you will not be bringing a dog to send your enquiry.'], 400);
+    }
     $termsAt = !empty($in['terms_accepted']) ? date('Y-m-d H:i:s') : null;
+    // Stored, not just checked. A declaration nobody keeps is theatre: if a dog
+    // turns up, the owner needs to be able to point at what was agreed and when.
+    $noDogsAt = !empty($in['no_dogs']) ? date('Y-m-d H:i:s') : null;
     $termsVer = $termsAt ? clean($in['terms_version'] ?? '') : null;
     // Admin Edit/Move works as decline + resubmit — carry the guest's ORIGINAL
     // acceptance across so an edit never silently wipes (or re-dates) it.
@@ -287,12 +297,20 @@ if ($action === 'submit') {
             $termsVer = clean($in['terms_version'] ?? '') ?: null;
         }
     }
+    // Same carry-across for the no-dog declaration, or the owner opening an
+    // enquiry to fix a typo would silently erase what the guest confirmed.
+    if ($isAdminEdit && $noDogsAt === null && !empty($in['no_dogs_at_passthrough'])) {
+        $origDog = clean($in['no_dogs_at_passthrough']);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/', $origDog)) {
+            $noDogsAt = $origDog;
+        }
+    }
 
     db()
         ->prepare(
             'INSERT INTO enquiries
-        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version,sms_opt_in)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version,sms_opt_in,no_dogs_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $propKey,
@@ -312,6 +330,7 @@ if ($action === 'submit') {
             $termsVer,
             // SMS consent only counts if they actually left a number to text.
             !empty($in['sms_opt_in']) && clean($in['phone'] ?? '') !== '' ? 1 : 0,
+            $noDogsAt,
         ]);
     $enqId = (int) db()->lastInsertId();
     // A real enquiry supersedes any abandoned-draft rescue for this email.

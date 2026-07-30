@@ -230,7 +230,7 @@ $r = http($guest, 'POST', '/enquiries.php', [
     'check_in' => $in, 'check_out' => $out, 'adults' => 2, 'children' => 0,
     'email' => 'ivy.tester@gmail.com', 'phone' => '07700900123',
     'message' => 'Two of us, integration test.', 'address' => '1 Test Lane, Blakeney', 'postcode' => 'NR25 7NQ',
-    'terms_accepted' => 1,
+    'terms_accepted' => 1, 'no_dogs' => 1,
 ]);
 it_check('public enquiry submit succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
 $r = http($admin, 'GET', '/enquiries.php');
@@ -767,7 +767,7 @@ $r = http($guest, 'POST', '/enquiries.php', [
     'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Late Enquirer',
     'check_in' => $dd(301), 'check_out' => $dd(304), 'adults' => 2, 'children' => 0,
     'email' => 'late@example.com', 'phone' => '07700900124', 'message' => 'Any chance?',
-    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1,
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1, 'no_dogs' => 1,
 ]);
 it_check('a public enquiry for occupied dates is refused', empty($r['json']['ok']), $r['raw']);
 
@@ -778,7 +778,7 @@ $r = http($guest, 'POST', '/enquiries.php', [
     'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Overtaken Enquirer',
     'check_in' => $dd(400), 'check_out' => $dd(404), 'adults' => 2, 'children' => 0,
     'email' => 'overtaken@example.com', 'phone' => '07700900125', 'message' => 'Please',
-    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1,
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1, 'no_dogs' => 1,
 ]);
 it_check('…the enquiry is accepted while the dates are free', !empty($r['json']['ok']), $r['raw']);
 $r = http($admin, 'GET', '/enquiries.php');
@@ -814,6 +814,32 @@ $pub = http($guest, 'GET', '/availability.php?prop=' . urlencode($propKey));
 it_check('…and the dates stop being published as blocked', !$has($pub['json']['ranges'] ?? [], $dd(300)), substr($pub['raw'], 0, 200));
 $r = $addBooking($dd(300), $dd(305), 'Rebooked After Cancel');
 it_check('…so the freed dates can be booked again, with no clash', $r['code'] === 200 && !empty($r['json']['id']) && empty($r['json']['clash']), $r['raw']);
+
+// ---- 16. The no-dog declaration is required AND recorded -------------------
+// The client blocks the send, so this is the other half: a direct public POST
+// must not be able to create an enquiry that never made the declaration, and
+// what the guest confirmed has to survive in the row — a declaration nobody
+// keeps is theatre, and the owner needs it if a dog turns up.
+echo "\n== 16. The no-dog declaration ==\n";
+$enqBody = [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Dogless Guest',
+    'check_in' => $dd(600), 'check_out' => $dd(604), 'adults' => 2, 'children' => 0,
+    'email' => 'dogless@example.com', 'phone' => '07700900126', 'message' => 'Just the two of us.',
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1,
+];
+$r = http($guest, 'POST', '/enquiries.php', $enqBody);           // no_dogs omitted
+it_check('a public enquiry WITHOUT the declaration is refused', $r['code'] === 400, $r['raw']);
+it_check('…and says which box, in the guest\'s words', stripos((string) ($r['json']['error'] ?? ''), 'dog') !== false, $r['raw']);
+$r = http($guest, 'POST', '/enquiries.php', $enqBody + ['no_dogs' => 1]);
+it_check('with it, the enquiry is accepted', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$row = $rootDb->query("SELECT no_dogs_at, terms_accepted_at FROM enquiries WHERE name = 'Dogless Guest' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+it_check('…and it is RECORDED with a server timestamp', $row && !empty($row['no_dogs_at']), json_encode($row));
+it_check('…dated, like terms acceptance is', $row && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', (string) $row['no_dogs_at']), (string) ($row['no_dogs_at'] ?? ''));
+// The migration has to have actually applied on this fresh database — a column
+// that only exists in schema.sql would pass everything above and fail on the
+// owner's live site, which upgrades by migration.
+$cols = $rootDb->query("SHOW COLUMNS FROM enquiries LIKE 'no_dogs_at'")->fetchAll();
+it_check('the column exists after schema + migrations on a fresh DB', count($cols) === 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 350;
+const ADMIN_BUNDLE_V = 351;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1318,6 +1318,7 @@ function mapEnquiryFromApi(row) {
         message: row.message || '',
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
+        noDogsAt: row.no_dogs_at || '',
         received: (row.created_at || '').split(' ')[0] || '',
         receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
@@ -12077,6 +12078,13 @@ async function submitEnquiry(propKey) {
         setEnqMsg('details', occErr);
         return;
     }
+    // Checked FIRST because it sits above the terms: pointing at the second
+    // unticked box while the first is also unticked sends the guest back twice.
+    const dogsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-nodogs'));
+    if (!dogsBox || !dogsBox.checked) {
+        setEnqMsg('details', 'Please confirm you will not be bringing a dog before sending your enquiry.');
+        return;
+    }
     const termsBox = document.getElementById('enq-terms');
     if (!termsBox || !termsBox.checked) {
         setEnqMsg(
@@ -12123,6 +12131,9 @@ async function submitEnquiry(propKey) {
             children,
             message,
             terms_accepted: true,
+            // Literal `true` like terms_accepted: the guard above has already
+            // refused to get here unticked.
+            no_dogs: true,
             terms_version: TERMS_VERSION,
             sms_opt_in:
                 document.getElementById('enq-sms-optin') && document.getElementById('enq-sms-optin').checked ? 1 : 0,
@@ -12223,6 +12234,8 @@ function resetEnquiryForm() {
     if (c) c.value = 0;
     const tb = document.getElementById('enq-terms');
     if (tb) tb.checked = false;
+    const dogBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-nodogs'));
+    if (dogBox) dogBox.checked = false;
     dpState.start = null;
     dpState.end = null;
     try {
@@ -13179,6 +13192,9 @@ async function saveModal() {
                 // Preserve the guest's original terms acceptance across the
                 // decline+resubmit edit (otherwise it's silently wiped).
                 terms_accepted_at_passthrough: enq.termsAcceptedAt || '',
+                // Carried across for the same reason: an admin edit is a
+                // decline + resubmit, and must not wipe what the GUEST declared.
+                no_dogs_at_passthrough: enq.noDogsAt || '',
                 terms_version: enq.termsVersion || '',
             });
             await loadData();
@@ -13596,7 +13612,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'tlcell1';
+    const BUILD = 'nodogs1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
