@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     agreed_on          DATE          NULL,
     price_override     DECIMAL(10,2) NULL,   -- if set, this is the agreed TOTAL (manual back-office price)
     terms_accepted_at  DATETIME      NULL,
+    no_dogs_at         DATETIME      NULL,           -- guest confirmed no dog (carried from the enquiry)
     terms_version      VARCHAR(20)   NULL,
     -- Refundable damage deposit taken as a Square card HOLD (see migration-damage-hold.sql)
     hold_payment_id    VARCHAR(64)   NULL,

@@ -841,6 +841,27 @@ it_check('…dated, like terms acceptance is', $row && preg_match('/^\d{4}-\d{2}
 $cols = $rootDb->query("SHOW COLUMNS FROM enquiries LIKE 'no_dogs_at'")->fetchAll();
 it_check('the column exists after schema + migrations on a fresh DB', count($cols) === 1);
 
+// IT HAS TO SURVIVE APPROVAL. Approving DELETES the enquiry, so without this the
+// declaration existed only while the owner was reviewing — and vanished exactly
+// when it starts to matter, at arrival, by which point it is a booking.
+$r = http($admin, 'GET', '/enquiries.php');
+$dogEnq = array_values(array_filter($r['json']['enquiries'] ?? [], fn($e) => ($e['name'] ?? '') === 'Dogless Guest'));
+it_check('the enquiry is on the owner\'s list', (bool) $dogEnq, substr($r['raw'], 0, 160));
+it_check('…carrying the declaration for the owner to see', !empty($dogEnq[0]['no_dogs_at'] ?? ''), json_encode($dogEnq[0]['no_dogs_at'] ?? null));
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => (int) ($dogEnq[0]['id'] ?? 0)]);
+$dogBookingId = (int) ($r['json']['booking_id'] ?? 0);
+it_check('approving it creates the booking', $dogBookingId > 0, $r['raw']);
+$bk = $rootDb->query("SELECT no_dogs_at, terms_accepted_at FROM bookings WHERE id = $dogBookingId")->fetch(PDO::FETCH_ASSOC);
+it_check('…and the declaration is carried onto it, like terms acceptance', $bk && !empty($bk['no_dogs_at']), json_encode($bk));
+it_check('…with the guest\'s ORIGINAL timestamp, not the approval\'s',
+    $bk && $bk['no_dogs_at'] === ($dogEnq[0]['no_dogs_at'] ?? '!'), json_encode([$bk['no_dogs_at'] ?? null, $dogEnq[0]['no_dogs_at'] ?? null]));
+// A booking the OWNER adds by hand never had a guest to ask, so it stays blank
+// rather than claiming a declaration nobody made.
+$r = $addBooking($dd(700), $dd(703), 'Owner Added');
+$ownId = (int) ($r['json']['id'] ?? 0);
+$own = $rootDb->query("SELECT no_dogs_at FROM bookings WHERE id = $ownId")->fetch(PDO::FETCH_ASSOC);
+it_check('an owner-added booking claims no declaration', $own && $own['no_dogs_at'] === null, json_encode($own));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

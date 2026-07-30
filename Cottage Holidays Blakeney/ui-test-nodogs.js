@@ -130,6 +130,52 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(450);
   ok(sent().length === before, '…so the next send is blocked until it is ticked again');
 
+  console.log('7. the owner can SEE it on the booking, at arrival time');
+  // Storing it on the booking is only worth anything if it is on screen where the
+  // owner looks when the guest turns up. Driven through the real hub rather than
+  // asserting the field, because a value nothing renders is the same as no value.
+  const hub = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  hub.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  await hub.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const bk = (id, name, noDogsAt) => ({
+    id, prop_key: 'jollyboat', name, email: 'g@example.com', phone: '', address: '1 Lane', postcode: 'NR25 7AB',
+    check_in: d(4), check_out: d(7), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+    payment: 'unpaid', deposit_paid: 0, payment_method: '', payment_date: '', agreed_total: 440,
+    agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0,
+    agreed_txn_fee: 0, agreed_on: d(0), hold_status: 'none', notes: '',
+    terms_accepted_at: '2026-07-01 09:00:00', terms_version: '1',
+    no_dogs_at: noDogsAt,
+  });
+  await hub.route(/\.php/, (route) => {
+    const url = route.request().url();
+    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (route.request().method() === 'POST') return json({ ok: true, events: [], logs: {} });
+    if (url.includes('bookings.php')) return json({ bookings: [bk(1, 'Declared Guest', '2026-07-01 09:00:00'), bk(2, 'Owner Added', null)] });
+    if (url.includes('rates.php')) return json({ properties: [{ prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 4, max_children: 2, max_total: 4, sort_order: 1 }], seasons: {}, occupancy: {} });
+    return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [] });
+  });
+  await hub.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await hub.waitForTimeout(1300);
+  await hub.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+  await hub.evaluate(() => window.loadAdminBundle());
+  await hub.waitForTimeout(700);
+  await hub.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
+  await hub.waitForTimeout(1200);
+  // openBookingHub takes the CLIENT id ('b1'), not the numeric dbId.
+  const hubText = async (id) => {
+    await hub.evaluate((i) => openBookingHub(i), id);
+    await hub.waitForTimeout(700);
+    return hub.evaluate(() => (document.querySelector('#booking-hub-content') || document.body).innerText);
+  };
+  const declared = await hubText('b1');
+  ok(/no dog/i.test(declared), 'the booking hub has a "No dog" row');
+  ok(/Confirmed 2026-07-01/.test(declared),
+    `…showing WHEN they confirmed it (${(declared.match(/NO DOG\n([^\n]*)/i) || ['', 'nothing'])[1]})`);
+  // …and it must not claim a declaration for a booking the owner typed in.
+  const ownerAdded = await hubText('b2');
+  ok(/no dog/i.test(ownerAdded) && /Not recorded/i.test(ownerAdded),
+    'an owner-added booking says Not recorded rather than inventing one');
+
   console.log(fails ? `\n  NO-DOGS SUITE FAILED ❌ (${fails})` : '\n  NO-DOGS SUITE PASSED ✅');
   await done(fails);
 })();

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 351;
+const ADMIN_BUNDLE_V = 352;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1259,6 +1259,7 @@ function mapBookingFromApi(row) {
         paymentDate: row.payment_date || '',
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
+        noDogsAt: row.no_dogs_at || '',
         holdStatus: row.hold_status || 'none',
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
@@ -13612,7 +13613,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'nodogs1';
+    const BUILD = 'nodogs2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

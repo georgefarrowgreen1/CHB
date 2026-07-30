@@ -1234,7 +1234,18 @@ forced the same passthrough the terms have (`no_dogs_at_passthrough`), because a
 Edit/Move is a decline + resubmit and would otherwise silently erase what the guest
 confirmed; the enquiry hub shows it as a "No dog" row so the stored value is not
 write-only. The dog box is deliberately FIRST and validated first — pointing at the
-second unticked box while the first is also unticked sends the guest back twice. NB
+second unticked box while the first is also unticked sends the guest back twice.
+**AND IT SURVIVES APPROVAL** (`bookings.no_dogs_at`, migration-102, copied in
+`enquiry-actions.php` beside `terms_accepted_at`). Approving DELETES the enquiry, so
+without this the declaration existed only while the owner was reviewing and vanished
+exactly when it starts to matter — at arrival, by which point it is a booking. The
+booking hub carries the same "No dog" row, with the guest's ORIGINAL timestamp rather
+than the approval's. A booking the OWNER adds by hand stays NULL and reads "Not
+recorded": there was no guest at the keyboard, and an invented timestamp is worse than
+an honest blank. NB there is exactly ONE guest route into `enquiries.php` `submit` —
+`#enq-submit-btn` → `submitEnquiry` — with no `<form>` around those fields (the page's
+only form is the newsletter), so there is no native-submit bypass of either box; the
+second `submit` caller is the admin edit, exempt by design. NB
 adding the server requirement broke three existing enquiry fixtures in test-integration
 that predate it (13 checks, all downstream of §5's submit); they now send the field,
 which is the correct fix and not a workaround — every real client does.
