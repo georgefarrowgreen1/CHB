@@ -112,6 +112,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(s[0] && s[0].no_dogs === true, 'the declaration travels with it, for the server to record');
   ok(s[0] && s[0].terms_accepted === true, '…alongside the terms acceptance');
 
+  console.log('6. a second enquiry must be declared again');
+  // The form is reused, so a tick left behind would let the NEXT guest — or the
+  // same one making a second enquiry — send without declaring anything. The
+  // declaration would then be recorded for a stay nobody confirmed.
+  const after = await page.evaluate(() => {
+    resetEnquiryForm();
+    return {
+      dog: document.getElementById('enq-nodogs').checked,
+      terms: document.getElementById('enq-terms').checked,
+    };
+  });
+  ok(after.dog === false, 'the reset clears the dog box, as it does the terms');
+  ok(after.terms === false, '…and the terms box with it');
+  const before = sent().length;
+  await page.evaluate(() => submitEnquiry());
+  await page.waitForTimeout(450);
+  ok(sent().length === before, '…so the next send is blocked until it is ticked again');
+
   console.log(fails ? `\n  NO-DOGS SUITE FAILED ❌ (${fails})` : '\n  NO-DOGS SUITE PASSED ✅');
   await done(fails);
 })();
