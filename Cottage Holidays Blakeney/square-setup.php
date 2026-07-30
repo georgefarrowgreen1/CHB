@@ -91,6 +91,26 @@ $apiV = defined('SQUARE_API_VERSION') ? SQUARE_API_VERSION : '2024-01-18';
 
 // ---- Read-only status ----
 if ($action === 'status') {
+    // The Square LOCATIONS ride this response, because the Payments settings screen
+    // already makes this one call — the picker had been reading a variable that only
+    // the Move-money-out screen fills (__sweepLiab), so opening Settings directly left
+    // it empty and the card hid itself every time. A control that cannot appear is
+    // worse than no control.
+    require_once __DIR__ . '/bank-lib.php';
+    $bc = bank_cached();
+    $locs = is_array($bc) ? ($bc['locations'] ?? []) : [];
+    if (!$locs && square_enabled()) {
+        // Nothing cached yet (a fresh install, or before the first refresh since this
+        // shipped). Ask directly rather than making the owner wait for a cron: this is
+        // an explicit settings screen and the endpoint is already talking to Square.
+        try {
+            $lr = square_api('GET', '/v2/locations');
+            if ((int) $lr['status'] >= 200 && (int) $lr['status'] < 300) {
+                $locs = locations_slim($lr['body']['locations'] ?? []);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
     $out = [
         'square' => square_enabled(),
         'url' => $url,
@@ -98,6 +118,8 @@ if ($action === 'status') {
         'connected' => false,
         'enabled' => false,
         'events' => [],
+        'locations' => $locs,
+        'location' => square_location_id(),
     ];
     if (!$out['square']) {
         json_out($out); // Square off → nothing to report
