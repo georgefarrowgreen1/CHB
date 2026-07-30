@@ -1909,7 +1909,14 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   entirely. Both `/v2/payouts` and `/v2/bank-accounts` now send it, the cache records
   WHICH location its answer is about, and the sweep screen SAYS so — but only when there
   is more than one location, because with one there is no other shop it could have meant.
-  The picker (Manage → Payments) is likewise hidden unless there is a genuine choice. The
+  The picker (Manage → Payments) is likewise hidden unless there is a genuine choice, and
+  is driven by **`square-setup.php`'s `status`** — the call that screen already makes.
+  It first read `__sweepLiab`, which only the MOVE-MONEY-OUT screen fills, so opening
+  Settings the ordinary way left it null and the card hid itself EVERY time: a control
+  that could not appear. The gate for it drives `openArea()`/`settingsOpen('payments')`
+  rather than calling the renderer, because calling the renderer is precisely what hid
+  the bug. `status` falls back to a live `/v2/locations` when the cache has none yet, so
+  the picker works on the first open rather than after a cron. The
   location list rides the bank refresh (`/v2/locations`, scope `MERCHANT_PROFILE_READ`),
   so Settings never waits on Square, and changing it re-fetches at once rather than
   leaving figures gathered for the old location on screen. A config const

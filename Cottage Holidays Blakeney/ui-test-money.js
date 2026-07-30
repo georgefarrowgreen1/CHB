@@ -39,6 +39,9 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // wants it — absent is the failed-query state, which must not read as £0.
   let sweepStub = null;
   let acctGets = 0;
+  // What Square says the seller's locations are, and which one is chosen.
+  let sqLocations = [];
+  let sqLocation = '';
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -54,6 +57,9 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         if (b.action === 'return_deposit') { const r = rows.find((x) => x.id === b.id); if (r) r.hold_status = 'returned'; return json({ ok: true }); }
         return json({ ok: true });
       }
+      // The Square settings status, which now carries the LOCATIONS the picker offers.
+      if (b.__url === 'square-setup.php' && b.action === 'status')
+        return json({ square: true, connected: true, enabled: true, events: [], locations: sqLocations, location: sqLocation });
       if (b.__url === 'expenses.php') return json({ ok: true, expenses: [{ id: 1, date: d(-40), category: 'Maintenance', note: 'Boiler service', amount: 120 }] });
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
@@ -734,6 +740,51 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(500);
   const s5 = await sweepText();
   ok(/nothing has to stay behind/i.test(s5) && !/Couldn't work out/i.test(s5), 'no deposits outstanding says so plainly');
+
+  // ── THE LOCATION PICKER, opened the way an owner opens it ──────────────────────
+  // It first read __sweepLiab — the Move-money-out screen's cache — so opening Manage →
+  // Payments directly left it null and the card hid itself EVERY time. Reported live as
+  // "where's locations?". Driven through openArea/settingsOpen rather than by calling
+  // the renderer, because calling the renderer is exactly what hid the bug.
+  console.log('8. the Square location picker');
+  sqLocations = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }, { id: 'L2', name: 'The Shop', status: 'ACTIVE' }];
+  sqLocation = '';
+  await page.evaluate(async () => { await openArea(); settingsOpen('payments'); });
+  await page.waitForTimeout(1000);
+  const pick = await page.evaluate(() => {
+    const card = document.getElementById('sq-loc-card');
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+    return {
+      shown: !!card && !card.hidden,
+      opts: sel ? [...sel.options].map((o) => o.textContent.trim()) : [],
+    };
+  });
+  ok(pick.shown, 'with two locations the picker is ON SCREEN in Manage → Payments');
+  ok(pick.opts.some((t) => /Online CHB/.test(t)) && pick.opts.some((t) => /The Shop/.test(t)),
+    `…listing every location (${pick.opts.join(' | ')})`);
+  ok(pick.opts.some((t) => /main location/i.test(t)), '…plus the unset option, which is what Square does today');
+
+  // Choosing one saves it and re-reads, so the money screens stop describing the old shop.
+  sqLocation = 'L1';
+  const saved = await page.evaluate(async () => {
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('sq-location'));
+    sel.value = 'L1';
+    await saveSquareLocation();
+    await new Promise((r) => setTimeout(r, 600));
+    return (document.getElementById('sq-loc-msg') || {}).textContent || '';
+  });
+  ok(/Saved/i.test(saved) && /read(s|ing)? this location|now read this location/i.test(saved),
+    `saving reports what it DID, not another button to press (${saved.slice(0, 70)})`);
+  ok(posts.some((p) => JSON.stringify(p).includes('square-location')), 'the choice is written to square-location');
+  ok(posts.some((p) => p.__url === 'square-setup.php' && p.action === 'payouts_refresh'),
+    'and Square is re-read at once, so stale figures for the old location do not linger');
+
+  // ONE location is not a choice, so there is no control to get wrong.
+  sqLocations = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }];
+  await page.evaluate(async () => { await loadSquareWebhookStatus(); });
+  await page.waitForTimeout(500);
+  ok(!(await page.evaluate(() => { const c = document.getElementById('sq-loc-card'); return !!c && !c.hidden; })),
+    'a single-location seller is never asked which location this is');
 
   console.log(fails ? `MONEY CHECK FAILED ❌ (${fails})` : 'MONEY CHECK PASSED ✅');
   await done(fails);

@@ -10338,7 +10338,7 @@ function settingsRenderSection(section) {
         loadAdminPasskeys();
         syncAdmin2faToggle();
     }
-    else if (section === 'payments') { renderSquareSettings(); try { renderSquareLocation(); } catch (e) {} }
+    else if (section === 'payments') renderSquareSettings();
     else if (section === 'accom') renderAccomList();
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
@@ -14030,9 +14030,11 @@ async function saveSquareLocation() {
     if (!sel) return;
     try {
         await saveContent('square-location', sel.value || '');
+        // Says what it is DOING, not what to do: the re-read happens below, so telling
+        // the owner to go and press a button would be a second, unnecessary instruction.
         if (msg) msg.textContent = sel.value
-            ? 'Saved. Tap “Check Square now” on Move money out to re-read with this location.'
-            : 'Saved — Square will answer for your main location.';
+            ? 'Saved — re-reading Square for this location…'
+            : 'Saved — Square will answer for your main location. Re-reading…';
         // The caches were fetched for the OLD location, so they now describe the wrong
         // shop. Re-read at once rather than leaving stale figures on screen until the
         // nightly cron: this is the one setting whose whole point is that the data
@@ -14041,23 +14043,26 @@ async function saveSquareLocation() {
         // renderSweep(true) re-fetches accounts.php, so the money screen stops showing
         // figures gathered for the location the owner has just moved away from.
         try { await renderSweep(true); } catch (e) {}
-        try { renderSquareLocation(); } catch (e) {}
+        try { await loadSquareWebhookStatus(); } catch (e) {}
+        if (msg) msg.textContent = 'Saved. The money screens now read this location.';
     } catch (e) {
         if (msg) msg.textContent = "Couldn't save that just now.";
     }
 }
-function renderSquareLocation() {
+// Driven by square-setup.php's `status`, which the Payments screen already fetches.
+// It first read __sweepLiab — the Move-money-out screen's cache — so opening Settings
+// directly left it null and the card hid itself EVERY time: a control that could not
+// appear. Reported from the live account, and the reason this now takes its data as an
+// argument rather than reaching for a global filled somewhere else.
+function renderSquareLocation(d) {
     const card = document.getElementById('sq-loc-card');
     const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
     if (!card || !sel) return;
-    // Read the SAME cached payload the money screen renders from (__sweepLiab), not a
-    // second fetch — the locations list rides it, so the picker costs no request.
-    const info = (__sweepLiab && __sweepLiab.location) || null;
-    const all = (info && Array.isArray(info.all) ? info.all : []).filter((x) => x && x.id);
+    const all = (d && Array.isArray(d.locations) ? d.locations : []).filter((x) => x && x.id);
     // Nothing to choose between → no question. One location cannot be the wrong one.
     card.hidden = all.length < 2;
     if (all.length < 2) return;
-    const cur = (info && info.id) || '';
+    const cur = (d && d.location) || '';
     sel.innerHTML = '<option value="">Square’s main location (not chosen)</option>'
         + all.map((x) => `<option value="${escapeHtml(x.id)}"${x.id === cur ? ' selected' : ''}>${escapeHtml(x.name)}${x.status === 'INACTIVE' ? ' (inactive)' : ''}</option>`).join('');
 }
@@ -14117,6 +14122,8 @@ async function loadSquareWebhookStatus() {
     if (!line) return;
     let d = null;
     try { d = await apiPost('square-setup.php', { action: 'status' }); } catch (e) {}
+    // The location picker rides this same response — see renderSquareLocation.
+    try { renderSquareLocation(d); } catch (e) {}
     if (!d) {
         line.innerHTML = '<span style="color:var(--text-muted);">●</span> Couldn\'t check just now.';
         if (btn) btn.style.display = 'none';
