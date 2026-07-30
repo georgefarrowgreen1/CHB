@@ -107,6 +107,42 @@ chk('verifying beats blocked when nothing is ready',
     bank_read([$acct('DISABLED', true), $acct('VERIFICATION_IN_PROGRESS', true)])['state'] === 'verifying');
 chk('the count is reported', bank_read([$acct('VERIFIED'), $acct('DISABLED')])['count'] === 2);
 
+echo "\n== Square does NOT say which account it pays into ==\n";
+// The defect this section exists for, reported from the live account: with a Lloyds
+// and a Monzo both linked, the screen named Lloyds as "your bank account" because it
+// came back first. Square keeps ONE primary payout account and ListBankAccounts does
+// not flag it (primary_bank_identification_number is a SORT CODE, not a primary-account
+// marker), so every linked account has to be carried and named.
+$two = bank_read([$acct('VERIFIED', true, 'Lloyds Bank Plc', '968'), $acct('VERIFIED', true, 'Monzo', '1234')]);
+chk('both accounts are carried, not just the one that came back first', count($two['all']) === 2);
+chk('…with the second named too', $two['all'][1]['label'] === 'Monzo ending 1234');
+chk('…and each carries its own verdict', $two['all'][0]['state'] === 'ready' && $two['all'][1]['state'] === 'ready');
+$mixed = bank_read([$acct('VERIFIED', true, 'Lloyds Bank Plc', '968'), $acct('VERIFICATION_IN_PROGRESS', true, 'Monzo', '1234')]);
+chk('a half-verified pair reports each state separately',
+    $mixed['all'][0]['state'] === 'ready' && $mixed['all'][1]['state'] === 'verifying');
+chk('…while the overall state is still READY, because one of them can be paid into',
+    $mixed['state'] === 'ready');
+chk('a single account still carries its one entry', count(bank_read([$acct('VERIFIED')])['all']) === 1);
+chk('none carries an empty list rather than a missing key', bank_read([])['all'] === []);
+chk('unknown carries one too, so the client can rely on the key',
+    bank_read(null, 'boom')['all'] === []);
+
+echo "\n== A CUSTOMER's bank account is never the owner's ==\n";
+// ListBankAccounts returns customer bank accounts alongside the seller's, told apart
+// by customer_id. Naming a GUEST's bank on the owner's money screen would be worse
+// than any confusion this file exists to prevent.
+$SQ_CALLS = [];
+$SQ_REPLY = ['/v2/bank-accounts' => ['status' => 200, 'body' => ['bank_accounts' => [
+    ['status' => 'VERIFIED', 'creditable' => true, 'bank_name' => 'Monzo', 'account_number_suffix' => '1234', 'location_id' => 'L1'],
+    ['status' => 'VERIFIED', 'creditable' => true, 'bank_name' => 'A Guest Bank', 'account_number_suffix' => '9999', 'customer_id' => 'CUST1'],
+]]]];
+bank_refresh();
+$cache = bank_cached();
+chk('the customer account is dropped', count($cache['accounts']) === 1);
+chk('…and it is the SELLER account that survives', $cache['accounts'][0]['bank_name'] === 'Monzo');
+$r = bank_read($cache['accounts'], $cache['error']);
+chk('…so the guest bank is never named to the owner', strpos(json_encode($r), 'A Guest Bank') === false);
+
 echo "\n== Naming an account with pieces missing ==\n";
 chk('no bank name still gives the digits', bank_label(['account_number_suffix' => '4471']) === 'ending 4471');
 chk('no digits still gives the bank', bank_label(['bank_name' => 'Barclays']) === 'Barclays');
@@ -123,6 +159,7 @@ echo "\n== bank_refresh() against a real reply shape ==\n";
 // The part a pure test cannot see: whether the library reads Square's actual
 // nesting. Wrong key => empty list => the screen says "no bank account linked",
 // which is the most alarming thing it can say and would be our bug, not Square's.
+$SQ_CALLS = []; // this section counts the calls, so it starts from zero
 $SQ_REPLY = ['/v2/bank-accounts' => ['status' => 200, 'body' => ['bank_accounts' => [
     ['id' => 'ba1', 'status' => 'VERIFIED', 'creditable' => true, 'debitable' => false,
      'bank_name' => 'Barclays', 'account_number_suffix' => '4471', 'currency' => 'GBP',

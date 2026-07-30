@@ -1910,7 +1910,21 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `creditable`**, and those are not interchangeable: `creditable` is the direction Square
   SENDS money, `debitable` the direction it takes; an account it can only take from pays
   out nothing. A missing flag counts as NOT creditable — claiming an account is ready is
-  the assertion that misleads. **`unknown` is the load-bearing state**: a 403 on the
+  the assertion that misleads. **IT CANNOT SAY WHICH ACCOUNT SQUARE PAYS INTO, so naming one is only honest when
+  there is ONE.** Square keeps a single primary payout account and `ListBankAccounts`
+  does NOT flag it — there is no default/primary field, and `primary_bank_identification_number`
+  is a SORT CODE that reads deceptively like one. The first version picked the first
+  VERIFIED+creditable row and asserted it: reported live, it named a **Lloyds** account on
+  a business paid out to **Monzo**. `bank_read` carries `all` (every account with its own
+  verdict) and the screen lists them with the states — "2 bank accounts linked (Lloyds
+  ending 968, Monzo ending 1234 — still being verified). Square does not say which one it
+  pays into" — while a lone account is still named plainly, because that claim is fair.
+  **A CUSTOMER'S BANK ACCOUNT IS NEVER THE OWNER'S**: `ListBankAccounts` returns customer
+  accounts alongside the seller's, told apart by `customer_id`, and `bank_slim` drops them
+  — naming a GUEST's bank on the owner's money screen is worse than any confusion this
+  file prevents. Excluding on `customer_id` rather than requiring `location_id` is the
+  safe direction: it only drops rows we are certain belong to someone else.
+  **`unknown` is the load-bearing state**: a 403 on the
   scope falls back to the OLD hedge and never to "you have no bank account", because
   failing to ask and being told there are none are different facts and only one of them
   alarms the owner about their own banking. Cached under the INTERNAL key `square-bank`

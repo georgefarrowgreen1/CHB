@@ -485,6 +485,22 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/hold-up is something else/.test(sReady), '…and the screen says the cause is elsewhere rather than blaming the bank');
   ok(!/No bank account is linked/.test(sReady), '…and never contradicts itself');
 
+  // TWO ACCOUNTS LINKED: naming one is a guess, and it named the wrong one. Square
+  // keeps a single primary payout account and does not say which — reported live, the
+  // screen said "Lloyds ending 968" on a business paid out to Monzo.
+  const sTwo = await withBank({
+    state: 'ready', count: 2, why: '', label: 'Lloyds Bank Plc ending 968',
+    all: [{ label: 'Lloyds Bank Plc ending 968', state: 'ready' }, { label: 'Monzo ending 1234', state: 'verifying' }],
+  });
+  ok(/2 bank accounts linked/.test(sTwo), 'two linked accounts are reported as two, not as one');
+  ok(/Lloyds Bank Plc ending 968/.test(sTwo) && /Monzo ending 1234/.test(sTwo), '…and BOTH are named');
+  ok(/Monzo ending 1234 — still being verified/.test(sTwo), '…each with its own state, so the odd one out is visible');
+  ok(/does not say which one it pays into/.test(sTwo), '…and the screen admits Square has not told us which');
+  ok(!/Your bank account \(Lloyds/.test(sTwo), '…never asserting one of them IS the payout account');
+  // One account is still named outright — that claim is fair when there is only one.
+  ok(/Your bank account \(Barclays ending 4471\) is linked and verified/.test(sReady),
+    'a single linked account is still named plainly');
+
   const sVerifying = await withBank({ state: 'verifying', count: 1, why: '', label: 'Barclays ending 4471' });
   ok(/still verifying/.test(sVerifying) && !/No bank account is linked/.test(sVerifying),
     'an account mid-verification is its own answer — linked, but nothing moves yet');
