@@ -317,6 +317,23 @@ const SCAN = (INTERACTIVE) => {
         const b = el.getBoundingClientRect();
         if (b.width < 24 || b.height < 24) res.small.push(`${desc(el)} ${Math.round(b.width)}×${Math.round(b.height)}`);
     }
+    // (d) THE HEADING OUTLINE, which needed a reliable SCOPE before it could be checked
+    // at all — this is a SPA with twenty-odd .page-view sections, most of them
+    // display:none, so a document-wide h1..h6 query concatenates screens the owner
+    // cannot see into one meaningless list. Measured: scanning `body` reported the admin
+    // Today h1 as the HOME page's heading. The scope is the ACTIVE view, or the topmost
+    // open dialog when there is one — which is also what a screen reader gets from
+    // `aria-modal`. Only VISIBLE headings: a section's title sits in the DOM whether its
+    // screen is open or not, and the point is what the owner is actually looking at.
+    res.outline = [];
+    const dlg = [...document.querySelectorAll('[aria-modal="true"], [role="dialog"]')].filter(vis).pop();
+    const scope = dlg || document.querySelector('.page-view.active');
+    res.scope = dlg ? 'dialog' : 'view';
+    res.scopeId = scope ? scope.id || scope.className : '(none)';
+    for (const h of (scope ? scope.querySelectorAll('h1,h2,h3,h4,h5,h6') : [])) {
+        if (!vis(h)) continue;
+        res.outline.push({ lvl: +h.tagName[1], txt: (h.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) });
+    }
     return res;
 };
 
@@ -409,12 +426,22 @@ const stub = (page) => page.route(/\.php/, (r) => {
         // Back is rendered too (step 1 renders a spacer <span> in its place).
         ['walkthrough', "(async()=>{coachWalk('add-booking');await new Promise(r=>setTimeout(r,900));coachSequence(CHB_WALK['add-booking'].steps,2);await new Promise(r=>setTimeout(r,400));})()"],
         ['walkthrough-off', "(async()=>{coachSeqStop();closeModal();await new Promise(r=>setTimeout(r,300));})()"],
+        // Added for §6: the screens carrying the most headings, which is where a skipped
+        // level would actually hide. They cost §3–§5 nothing and widen their cover too.
+        ['admin-manage-index', "(async()=>{await openArea();await new Promise(r=>setTimeout(r,600));})()"],
+        ['admin-payments-index', "(async()=>{await openAccounts();await new Promise(r=>setTimeout(r,700));})()"],
+        ['admin-inbox', "(async()=>{await openInbox();await new Promise(r=>setTimeout(r,500));})()"],
+        ['admin-inbox-email', "(async()=>{inboxFolder('email');await new Promise(r=>setTimeout(r,700));})()"],
+        ['admin-pricing', "(async()=>{await openArea();settingsOpen('pricing');await new Promise(r=>setTimeout(r,600));})()"],
+        ['admin-learning', "(async()=>{await openArea();settingsOpen('search-learning');await new Promise(r=>setTimeout(r,600));})()"],
     ];
     const totals = { unnamed: new Set(), tiny: new Set(), small: new Set() };
+    const outlines = [];
     for (const [key, open] of VIEWS) {
         if (open) { try { await page.evaluate((c) => eval(c), open); } catch (e) {} await page.waitForTimeout(900); }
         const r = await page.evaluate(SCAN, INTERACTIVE);
         for (const k of Object.keys(totals)) for (const v of r[k]) totals[k].add(`${key}: ${v}`);
+        outlines.push({ key, scope: r.scope, scopeId: r.scopeId, outline: r.outline });
     }
 
     console.log('\n== 3. every interactive element has an accessible name ==');
@@ -434,6 +461,51 @@ const stub = (page) => page.route(/\.php/, (r) => {
     if (sm.length > budget.smallTargets) sm.slice(0, 12).forEach((x) => console.log('     ' + x));
     ok(sm.length <= budget.smallTargets, `sub-24px controls: ${sm.length} (budget ${budget.smallTargets})`);
     if (sm.length < budget.smallTargets) console.log(`     ↓ lower "smallTargets" to ${sm.length} in a11y-budget.json in this PR`);
+
+    // ==========================================================================
+    //  6. HEADING OUTLINE. Two questions, and the levels chosen for each are the point.
+    //
+    //  SKIPS are the rule WCAG actually implies: a heading must not descend by more than
+    //  one level, because h2 → h4 tells a screen-reader user there is a section they have
+    //  missed. Budgeted at 0 and break-tested by injecting an h4 under an h2.
+    //
+    //  STARTING BELOW h2 is the second, and the threshold is deliberate. An h1 is NOT
+    //  required by WCAG, and several admin screens legitimately top out at h2: drilling
+    //  into a Manage or Payments section hides the big "Manage"/"Payments" title on
+    //  purpose — settingsOpen()'s own comment says "the section shows ONE back link + its
+    //  own title instead of two stacked headers" — so the h1 is in the DOM, hidden with
+    //  the index it titles, and the section's h2 is that screen's title. Demanding an h1
+    //  there would be asking the app to reverse a UI decision to satisfy a rule nobody
+    //  wrote. What IS worth failing on is a screen whose top heading is h3 or lower,
+    //  which means levels 1 AND 2 are both absent — measured, no page view does that.
+    // ==========================================================================
+    console.log('\n== 6. the heading outline of each screen ==');
+    const skips = [];
+    const noTop = [];
+    for (const o of outlines) {
+        if (!o.outline.length) continue;
+        console.log(`     ${o.key} [${o.scopeId}]: ${o.outline.map((h) => 'h' + h.lvl).join(' \u2192 ')}`);
+        for (let i = 1; i < o.outline.length; i++) {
+            if (o.outline[i].lvl - o.outline[i - 1].lvl > 1)
+                skips.push(`${o.key}: h${o.outline[i - 1].lvl} \u2192 h${o.outline[i].lvl} at "${o.outline[i].txt}"`);
+        }
+        // Dialogs are EXCLUDED from the top-level question on purpose: a dialog is named
+        // by aria-labelledby/aria-label, not by owning the document's h1, so demanding
+        // one inside it would be inventing a rule rather than checking one.
+        if (o.scope === 'view' && o.outline[0].lvl > 2) noTop.push(`${o.key}: starts at h${o.outline[0].lvl}`);
+    }
+    skips.forEach((x) => console.log('     \u2717 ' + x));
+    ok(skips.length <= budget.headingSkips, `skipped heading levels: ${skips.length} (budget ${budget.headingSkips})`);
+    if (skips.length < budget.headingSkips) console.log(`     \u2193 lower "headingSkips" to ${skips.length} in a11y-budget.json in this PR`);
+    noTop.forEach((x) => console.log('     \u2022 ' + x));
+    ok(noTop.length <= budget.headingNoTop, `views whose outline starts below h2: ${noTop.length} (budget ${budget.headingNoTop})`);
+    if (noTop.length < budget.headingNoTop) console.log(`     \u2193 lower "headingNoTop" to ${noTop.length} in a11y-budget.json in this PR`);
+    // A VACUITY GUARD, the same one §1b carries. §6 is worth nothing unless it is looking
+    // at real outlines: if the scope query ever stops resolving — a renamed .page-view
+    // class, a dialog that loses aria-modal — every list above goes empty and both checks
+    // pass by seeing absolutely nothing.
+    const seen = outlines.filter((o) => o.outline.length).length;
+    ok(seen >= 10, `outlines collected: ${seen} of ${outlines.length} scenes (a scope that stopped resolving would pass \u00A76 in silence)`);
 
     console.log(fails ? `\n  ${fails} A11Y CHECK(S) FAILED ❌` : '\n  A11Y CHECKS PASSED ✅');
     await t.done(fails);
