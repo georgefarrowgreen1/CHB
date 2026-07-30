@@ -5,9 +5,10 @@
 //     ITSELF when a new build ships (startVersionWatch) and on the stale-cache
 //     self-heal, so losing your place happens most when you did not ask for it.
 //
-//  2. NOTHING IS SENT TWICE. Three layers, and this drives the two client ones: an
-//     identical write already in flight returns the SAME promise instead of a second
-//     request, and a button whose handler is still running cannot be pressed again.
+//  2. NOTHING IS SENT TWICE. Two layers, and this drives the client one: a button whose
+//     handler is still running cannot be pressed again. §5 guards the counterpart — that
+//     apiPost never answers one request with another already in flight, a guard that was
+//     shipped, proved unsafe for reads, and withdrawn (see there).
 //
 // A real browser is the only place either can be checked: the first needs an actual
 // page reload with sessionStorage surviving it, the second needs real clicks against a
@@ -190,26 +191,34 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.evaluate(() => { sessionStorage.setItem('chb-nav', JSON.stringify({ t: 'booking-1', at: Date.now() })); forceAdminLogout(); });
   ok((await page.evaluate(() => sessionStorage.getItem('chb-nav'))) === null, 'signing out forgets the screen entirely');
 
-  // ---- 5. an identical write in flight is not sent twice ------------------
-  console.log('5. one write at a time per intent');
+  // ---- 5. apiPost NEVER answers one request with another -------------------
+  // This section used to assert the opposite: that an identical POST already in flight
+  // returned the SAME promise, so a double-tap sent once. That guard was withdrawn.
+  // apiPost is the app's only POST channel and carries READS as well as writes, and two
+  // identical reads cannot be told apart by endpoint + body — so a read issued after a
+  // state change could be answered by one issued before it, which is exactly the
+  // "you already sent that" lie the guard existed to prevent, pointing the other way.
+  // Measured as a real regression: ui-test-poorsignal lost a store it is meant to keep,
+  // about one run in three. The double-send guarantee is §6 (the control locks itself)
+  // plus the server-side window, which is the only layer a reload cannot get past.
+  console.log('5. every POST is its own request');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
   await settle();
   slowMs = 600;
   posts.length = 0;
-  const coalesced = await page.evaluate(async () => {
-    // Two identical writes fired together — a double-tap, or two handlers on one click.
-    const a = apiPost('bookings.php', { action: 'set_notes', id: 1, notes: 'hello' });
-    const b = apiPost('bookings.php', { action: 'set_notes', id: 1, notes: 'hello' });
-    const same = a === b; // the SAME promise, not merely an equal result
+  const overlapping = await page.evaluate(async () => {
+    // The same READ twice, overlapping — the shape that made the withdrawn guard unsafe.
+    const a = apiPost('bookings.php', { action: 'email_logs' });
+    const b = apiPost('bookings.php', { action: 'email_logs' });
     await Promise.all([a, b]);
-    return same;
+    return a === b;
   });
-  const sends = posts.filter((p) => p.action === 'set_notes').length;
-  ok(sends === 1, `two identical writes reached the server once (${sends})`);
-  ok(coalesced, 'the second caller got the first promise back, so it sees the real result');
+  ok(overlapping === false, 'two overlapping identical reads are two requests, not one shared promise');
+  ok(posts.filter((p) => p.action === 'email_logs').length === 2,
+    `…and both actually reach the server (${posts.filter((p) => p.action === 'email_logs').length} of 2)`);
 
-  // It must NOT collapse writes that differ, or saving two things would lose one.
+  // Writes that differ must obviously both go, or saving two things would lose one.
   posts.length = 0;
   await page.evaluate(async () => {
     await Promise.all([
@@ -217,22 +226,23 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       apiPost('bookings.php', { action: 'set_notes', id: 2, notes: 'two' }),
     ]);
   });
-  ok(posts.filter((p) => p.action === 'set_notes').length === 2, 'two DIFFERENT writes both go — this is not a cache');
+  ok(posts.filter((p) => p.action === 'set_notes').length === 2, 'two different writes both go');
 
-  // And a retry after the first has settled must go, or a failed save could never be
-  // repeated.
+  // And a repeat after the first has settled goes, or a failed save could never be
+  // retried.
   posts.length = 0;
   slowMs = 0;
   await page.evaluate(async () => {
     await apiPost('bookings.php', { action: 'set_notes', id: 9, notes: 'again' });
     await apiPost('bookings.php', { action: 'set_notes', id: 9, notes: 'again' });
   });
-  ok(posts.filter((p) => p.action === 'set_notes').length === 2, 'the same write again LATER is not blocked — the guard is in-flight only');
+  ok(posts.filter((p) => p.action === 'set_notes').length === 2, 'the same write again later is not blocked');
 
-  // A FAILING write must not raise an unhandled rejection. The first version freed the
-  // in-flight key with .finally(), which returns a DERIVED promise that re-throws — and
+  // A FAILING write must not raise an unhandled rejection — the withdrawn guard freed its
+  // in-flight key with .finally(), which returns a DERIVED promise that re-throws, and
   // nothing handled that one, so every failed write reported a page error. Four guest
-  // suites started failing on it, which is how it was caught.
+  // suites started failing on it, which is how it was caught. Kept as a standing check on
+  // the rejection path.
   const rejected = await page.evaluate(async () => {
     const seen = [];
     const onUnhandled = (e) => { seen.push(String((e.reason && e.reason.message) || e.reason)); e.preventDefault(); };

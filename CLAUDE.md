@@ -2479,26 +2479,36 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   past: the click path holds the client id (`'b42'`) while anything from the server holds
   the numeric `dbId`, so `?open=booking-42` from a tapped "Payment received" notification
   never resolved and bounced the owner to Today claiming the booking was gone.
-- **NOTHING IS SENT TWICE** - three layers, because no one of them survives every case.
-  (1) **`apiPost` coalesces an identical in-flight write**: same endpoint + same body
-  returns the SAME promise, so a double-tap or an impatient re-submit resolves from the
-  first send. IN-FLIGHT, not a cache - the entry goes the moment it settles, so a retry
-  after a failure still sends. Nothing here is an increment-by-one write where two
-  identical concurrent calls would both be wanted; such an endpoint would have to opt
-  out. NB `apiPost` is deliberately **not `async`**: an async wrapper hands each caller a
-  fresh promise, so coalesced callers would hold different objects for one request.
-  **And the cleanup is `p.then(clear, clear)`, never `.finally()`** - finally returns a
-  derived promise that RE-THROWS, and nothing handles that one, so every failed write
-  raised an unhandled rejection (measured: four guest ui-suites began reporting
-  "Database connection failed" as a page error, which is how it was caught).
-  (2) **The `data-act` dispatcher disables its own control** while an async handler runs,
+- **NOTHING IS SENT TWICE** - two layers, because neither survives every case. And a
+  WITHDRAWN third, recorded here because it looks like the obvious first thing to build
+  and is a trap: **`apiPost` must NOT coalesce an identical request already in flight.**
+  It shipped (#875) doing exactly that - same endpoint + same body returns the SAME
+  promise, so a double-tap resolves from the first send - and the flaw is that `apiPost`
+  is not a write channel, it is the app's ONLY POST channel, and several of the busiest
+  calls through it are READS (`email_logs`, `history`, `deposit_returns`,
+  `recent_payments`). Two identical reads are indistinguishable by endpoint + body, so a
+  read issued AFTER a state change can be answered by one issued BEFORE it - an email log
+  fetched after a send showing the state before it, which invites sending the same email
+  again: the very failure the guard was for, pointing the other way. Measured, not
+  theorised: it made `ui-test-poorsignal` lose a store it exists to keep, about one run in
+  three (4 of 4 green with the guard removed). If a future send genuinely needs
+  collapsing, do it where the INTENT is known - never here. `test-payrail` ratchets its
+  absence, and `ui-test-resume` §5 asserts two overlapping identical reads are two
+  requests. (One lesson from it worth keeping: the cleanup was `p.then(clear, clear)` and
+  never `.finally()`, because finally returns a derived promise that RE-THROWS with
+  nothing handling it, so every failed write raised an unhandled rejection - four guest
+  ui-suites began reporting "Database connection failed" as a page error, which is how
+  that one was caught. Applies to any promise bookkeeping added here.)
+  (1) **The `data-act` dispatcher disables its own control** while an async handler runs,
   with `aria-busy` so it reads as working rather than unavailable - one guard replacing
   25 hand-written `disabled` pairs and the ones never written. `<button>` only: disabling
   a checkbox mid-change breaks it (break-tested). The `typeof r.then` half is defensive
-  only - the surrounding try/catch already re-enables on a non-promise.
-  (3) **The server refuses a repeat inside a window** (`recent_send_at`,
-  `CHB_RESEND_GUARD_SECONDS` 180, `chb_ago` for the wording), because neither client
-  layer survives a reload mid-request or a second device - those arrive as genuinely new
+  only - the surrounding try/catch already re-enables on a non-promise. This covers every
+  send affordance in the app: there are no inline `onclick`s left in `index.html` or
+  `admin-views.html`, and none are generated for a send.
+  (2) **The server refuses a repeat inside a window** (`recent_send_at`,
+  `CHB_RESEND_GUARD_SECONDS` 180, `chb_ago` for the wording), because the client layer
+  does not survive a reload mid-request or a second device - those arrive as genuinely new
   requests. Applied to `request_payment`, which emails a guest about money. Deliberately
   a WINDOW, not a lock: chasing the same balance next week is necessary, and only the
   second copy in the same breath is never wanted. An unreadable activity_log lets the
