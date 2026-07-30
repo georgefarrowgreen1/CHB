@@ -43,6 +43,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       const b = JSON.parse(route.request().postData() || '{}');
       b.__url = url.split('/').pop().split('?')[0];
       posts.push(b);
+      // A LIVE admin session, so the page's own boot signs in and reaches
+      // maybeRestoreView() in the real order (auth → setAuthUI → restore). Calling the
+      // function by hand proved the function; this proves the FEATURE.
+      if (b.__url === 'auth.php' && b.action === 'admin_status') return json({ admin: true });
       if (slowMs) await new Promise((r) => setTimeout(r, slowMs));
       if (b.__url === 'bookings.php') {
         if (b.action === 'history') return json({ ok: true, events: [] });
@@ -61,24 +65,19 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [], threads: [], reviews: [], photos: [] });
   });
 
-  const signIn = async (restore) => {
-    await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
-    await page.evaluate(() => window.loadAdminBundle());
-    await page.waitForTimeout(700);
-    await page.evaluate(() => loadData());
-    await page.waitForTimeout(500);
-    // The boot calls maybeRestoreView() after the session is known; the stub serves no
-    // admin cookie, so the suite reaches that point by hand and in the same order.
-    if (restore) {
-      await page.evaluate(() => maybeRestoreView());
-      await page.waitForTimeout(700);
-    }
+  // The boot signs itself in from the stubbed admin_status, loads the bundle and calls
+  // maybeRestoreView() by itself — so "after a reload" means exactly that, with nothing
+  // driven by hand. This just waits for that chain to finish.
+  const settle = async () => {
+    await page.waitForTimeout(2600);
+    await page.evaluate(() => loadData()).catch(() => {});
+    await page.waitForTimeout(600);
   };
   const activeView = () => page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
 
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
-  await signIn();
+  await settle();
 
   // ---- 1. a plain screen survives a reload -------------------------------
   console.log('1. the screen survives a reload');
@@ -90,14 +89,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
 
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
-  await signIn(true);
+  await settle();
   await page.waitForTimeout(900);
   ok((await activeView()) === 'view-inbox', `…and the reload came back to it, not to Today (${await activeView()})`);
 
   // ---- 2. a RECORD survives, not just its screen -------------------------
   // A hub without its booking is a blank screen, so the id has to be remembered too.
   console.log('2. the record survives too');
-  // Opened with the CLIENT id, the way showDetails does from a row click…
   // NARROW on purpose: at >=1200px the hub DOCKS into Today's side pane by design, so
   // the standalone view-booking-hub is the phone/tablet path — and that is where losing
   // your place hurts, since no pane is left showing the record.
@@ -111,7 +109,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/"booking-1"/.test(await page.evaluate(() => sessionStorage.getItem('chb-nav') || '')), `the BOOKING is remembered by db id (${await page.evaluate(() => sessionStorage.getItem('chb-nav'))})`);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
-  await signIn(true);
+  await settle();
   await page.waitForTimeout(1100);
   const after = await page.evaluate(() => ({
     v: (document.querySelector('.page-view.active') || {}).id,
@@ -121,6 +119,24 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Sarah Pemberton/.test(after.txt), 'and the hub is filled in — the record came back with it');
 
   await page.setViewportSize({ width: 1280, height: 950 });
+
+  // The reason section 1 and 3 were silently broken at desktop width: renderBookings
+  // auto-selects the first booking so Today never shows an empty pane, and that dock
+  // NAVIGATED — dragging the owner to Today the moment the bookings finished loading,
+  // over a restored screen and over a tapped ?open= notification alike. Docking is
+  // right; moving them is not.
+  const autoDock = await page.evaluate(async () => {
+    nav('view-inbox');
+    __hubBookingId = null;
+    renderBookings();
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      v: (document.querySelector('.page-view.active') || {}).id,
+      docked: __hubBookingId,
+    };
+  });
+  ok(autoDock.v === 'view-inbox', `the auto-dock does not drag you off the screen you are on (${autoDock.v})`);
+  ok(!!autoDock.docked, `…while still docking the record, so Today is never empty (${autoDock.docked})`);
 
   // ---- 3. a SECTION survives ---------------------------------------------
   // An owner deep in Manage should come back to the section, not the index of links.
@@ -132,7 +148,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/settings:diagnostics/.test(await page.evaluate(() => sessionStorage.getItem('chb-nav') || '')), 'the section is remembered, not just Manage');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
-  await signIn(true);
+  await settle();
   await page.waitForTimeout(1000);
   const sec = await page.evaluate(() => ({
     v: (document.querySelector('.page-view.active') || {}).id,
@@ -146,31 +162,28 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // walked into the back office, and a stale target must not outlive its welcome.
   console.log('4. what it refuses to restore');
   const guestBlocked = await page.evaluate(async () => {
-    sessionStorage.setItem('chb-nav', JSON.stringify({ t: 'booking-1', at: Date.now() }));
     isAuthenticated = false;
     document.body.classList.remove('owner-mode');
-    return await maybeRestoreView();
+    return await maybeRestoreView({ t: 'booking-1', at: Date.now() });
   });
   ok(guestBlocked === false, 'an owner screen is not restored for a signed-out visitor');
   const stale = await page.evaluate(async () => {
     isAuthenticated = true; document.body.classList.add('owner-mode');
     sessionStorage.setItem('chb-nav', JSON.stringify({ t: 'view-inbox', at: Date.now() - 5 * 3600e3 }));
-    const r = await maybeRestoreView();
+    const r = await maybeRestoreView({ t: 'view-inbox', at: Date.now() - 5 * 3600e3 });
     return { r, left: sessionStorage.getItem('chb-nav') };
   });
   ok(stale.r === false, 'a target older than the window is not restored');
   ok(stale.left === null, '…and is forgotten, so it cannot be retried');
   const explicit = await page.evaluate(async () => {
-    sessionStorage.setItem('chb-nav', JSON.stringify({ t: 'view-inbox', at: Date.now() }));
     history.replaceState(null, '', location.pathname + '?open=booking-1');
-    const r = await maybeRestoreView();
+    const r = await maybeRestoreView({ t: 'view-inbox', at: Date.now() });
     history.replaceState(null, '', location.pathname);
     return r;
   });
   ok(explicit === false, 'an explicit ?open= destination wins over the remembered one');
   const goneRecord = await page.evaluate(async () => {
-    sessionStorage.setItem('chb-nav', JSON.stringify({ t: 'view-nope-does-not-exist', at: Date.now() }));
-    return await maybeRestoreView();
+    return await maybeRestoreView({ t: 'view-nope-does-not-exist', at: Date.now() });
   });
   ok(goneRecord === false, 'a view that no longer exists is not navigated to');
   // Signing out clears it outright.
@@ -181,7 +194,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   console.log('5. one write at a time per intent');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
-  await signIn();
+  await settle();
   slowMs = 600;
   posts.length = 0;
   const coalesced = await page.evaluate(async () => {

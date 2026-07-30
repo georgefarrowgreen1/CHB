@@ -2459,7 +2459,23 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   (`?open=`/`?unsub=`/`?pay=`/`?acctpreview=`) - which always wins. Cleared on both logout
   paths, and the clear must come AFTER their `nav('view-main')`, because nav() remembers
   where it went and a forget before it is overwritten a line later.
-  **`findBookingById` now accepts EITHER id form**, which fixed a live bug on the way
+  **IT DID NOT WORK WHEN FIRST SHIPPED (#875), AND THE TEST WAS WHY.** The suite called
+  `maybeRestoreView()` by hand after signing in, which proved the FUNCTION and not the
+  FEATURE — driven by the real boot it restored nothing, every time. Two causes, both
+  ordering: (1) the boot's own default landing calls `nav()`, and nav()'s remember hook
+  overwrote the stored target with `view-backoffice` BEFORE the restore read it back —
+  hence the load-time snapshot (`__chbNavAtLoad`), read at parse time, before any nav()
+  can fire; and (2) `renderBookings`' wide-split auto-select called
+  `openBookingHub(id, true)`, and `quiet` only suppressed the SCROLL, so docking the
+  first booking NAVIGATED to Today the moment the bookings finished loading — measured,
+  the restore landed view-inbox at 260ms and this pulled it to view-backoffice at 367ms.
+  `quiet` now means "dock it, don't move the owner", which also stops the same auto-dock
+  clobbering a tapped `?open=` notification at =1200px. The suite drives the real boot
+  now (a stubbed `admin_status` signs the page in on its own) — the only version of the
+  assertion that can fail when the ordering is wrong. NB the call site was ALSO moved to
+  after `setAuthUI`, but break-testing shows that one is belt-and-braces: setAuthUI
+  leaves an owner alone once they are on an admin view.
+    **`findBookingById` now accepts EITHER id form**, which fixed a live bug on the way
   past: the click path holds the client id (`'b42'`) while anything from the server holds
   the numeric `dbId`, so `?open=booking-42` from a tapped "Payment received" notification
   never resolved and bounced the owner to Today claiming the booking was gone.
