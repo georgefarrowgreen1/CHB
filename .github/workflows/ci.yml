@@ -140,6 +140,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-bank.php
 
+      - name: Calendar sync — a bad feed must never empty the calendar
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-ical.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

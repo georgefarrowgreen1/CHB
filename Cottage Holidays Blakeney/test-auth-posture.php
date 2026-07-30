@@ -78,6 +78,7 @@ $REGISTRY = [
     'direct-followup.php' => ['admin', [$CRON]],
     'enquiry-nudge.php' => ['admin', [$CRON]],
     'ical-import.php' => ['admin', [$CRON]],
+    'ical-lib.php' => ['lib', [], 'URL/response/parse judgement for the platform-calendar sync'],
     'mailbox-read.php' => ['admin', [$CRON]],
     'migrate.php' => ['admin', [$CRON]],
     'owner-digest.php' => ['admin', [$CRON]],
