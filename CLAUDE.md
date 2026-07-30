@@ -2403,6 +2403,28 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   never emitted. With a real fixture the gate reproduces it at 390px (page over by
   39px) and the fix is `flex-wrap` plus `min-width: 0`, which holds at ANY width
   rather than the three we happen to test.
+  **§6 is the heading OUTLINE, and it needed a reliable scope before it could exist at
+  all** (backlog #76 was blocked on exactly that). This is a SPA with twenty-odd
+  `.page-view` sections, most `display:none`, so a document-wide `h1..h6` query
+  concatenates screens the owner cannot see — measured, scanning `body` reported the admin
+  Today `h1` as the HOME page's heading. The scope is the **ACTIVE view, or the topmost
+  open dialog**, visible headings only, which is also what `aria-modal` gives a screen
+  reader. Two questions, and the thresholds are the point: **skipped levels** (a descent
+  of more than one, `h2 → h4`) are budgeted at **0**, and **starting below h2** is a
+  separate check at 0 — deliberately h2 and not h1, because WCAG does not require an h1
+  and several admin screens legitimately top out at one: `settingsOpen()` HIDES the big
+  "Manage"/"Payments" title while drilled in ("the section shows ONE back link + its own
+  title instead of two stacked headers"), so the h1 is in the DOM, hidden with the index
+  it titles, and the section's h2 is that screen's title. Demanding an h1 there would ask
+  the app to reverse a UI decision to satisfy a rule nobody wrote; a top heading of h3 or
+  lower, where levels 1 AND 2 are both absent, is what earns a failure. It carries a
+  VACUITY GUARD (≥10 outlines collected) for the reason §1b does — break-tested by
+  renaming the scope selector, which leaves the skip check passing at `✓ 0` while the
+  guard catches it. Six scenes were added for it, which cost §3–§5 nothing and immediately
+  earned their keep: they caught `#mbx-search` named only by its placeholder and the
+  income-forecast chart's axis labels at **9.6px**, both now fixed. The one outline defect
+  it found: the Inbox's **Email folder had no heading at all** while both its sibling
+  folders carry an `h2`, so switching to Email lost the section heading — it has one now.
   §4/§5 have a real coverage limit, documented in the file:
   they see only what RENDERS in the harness, and a collapsed container (the cottage
   availability calendar) or the footer wrapper hides elements from them — check those

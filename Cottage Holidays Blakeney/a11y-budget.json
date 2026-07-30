@@ -3,5 +3,7 @@
     "accentAsText": 19,
     "unnamed": 0,
     "tinyText": 0,
-    "smallTargets": 0
+    "smallTargets": 0,
+    "headingSkips": 0,
+    "headingNoTop": 0
 }

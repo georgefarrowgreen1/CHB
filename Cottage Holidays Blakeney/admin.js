@@ -18367,9 +18367,9 @@ function osVBars(items, fmt) {
             .map((i) => {
                 const h = Math.max(3, Math.round(((i.value || 0) / peak) * 100));
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
-                    <span style="font-size:0.62rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>
+                    <span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>
                     <div style="width:100%;max-width:36px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}%;"></div>
-                    <span style="font-size:0.6rem;color:var(--text-muted);white-space:nowrap;">${escapeHtml(i.short || i.label)}</span>
+                    <span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${escapeHtml(i.short || i.label)}</span>
                 </div>`;
             })
             .join('') +
@@ -20019,7 +20019,7 @@ function renderMailboxList(keepSearchFocus) {
             </div>
         </div>
         <div class="bo-search" style="margin-bottom:14px;">
-            <input type="search" class="input-glass" id="mbx-search" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
+            <input type="search" class="input-glass" id="mbx-search" aria-label="Find an email" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
         </div>
         ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'All caught up — nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;
