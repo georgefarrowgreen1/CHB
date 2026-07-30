@@ -316,6 +316,13 @@ $keptTotal = array_sum(array_map(fn($r) => (float) $r['a'], $keptInYear));
 // rental + deposit). LEFT JOIN because a legacy card-hold deposit, or one whose
 // charge predates the ledger, still has to be counted; sweep_row() then estimates
 // from the observed rate rather than dropping it.
+//
+// The join is restricted to RENTAL kinds on purpose. A legacy CAPTURED hold writes its
+// ledger row as kind='damages' keyed on the same hold_payment_id, with the DEPOSIT as
+// its amount — so an unrestricted join read that deposit as the charge's rental
+// portion and apportioned the fee against a doubled gross (over-fencing, the safe
+// direction, but wrong). With no rental row the deposit rode its own charge, which is
+// exactly what a captured hold is, and the fee estimate is then correct.
 require_once __DIR__ . '/sweep-lib.php';
 $sweep = ['gross' => 0.0, 'feeBack' => 0.0, 'net' => 0.0, 'count' => 0, 'items' => [], 'rate' => SWEEP_RATE_DEFAULT];
 try {
@@ -360,6 +367,7 @@ try {
                                     AND r.created_at < DATE_SUB(NOW(), INTERVAL 14 DAY)), 0) AS ret_stale
                    FROM bookings b
                    LEFT JOIN payments p ON p.square_payment_id = b.hold_payment_id
+                                       AND p.kind IN ('deposit','balance')
                   WHERE COALESCE(b.hold_amount, 0) > 0
                     AND (b.hold_status IN ('charged','captured')
                          OR (b.hold_status = 'returned' AND EXISTS (

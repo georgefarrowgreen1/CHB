@@ -1062,6 +1062,46 @@ function booking_ledger_net($bookingId)
     return round(max(0, (float) $s->fetchColumn()), 2);
 }
 
+// HOW MUCH OF A DEPOSIT HAS ACTUALLY GONE BACK — for MANY bookings at once.
+// damages_returned($id) answers this per booking and correctly ignores FAILED and
+// REJECTED refunds. Three other places summed the same rows with NO status filter at
+// all, so a refund that FAILED read as money returned:
+//   * the admin booking rows (bookings.php) — the hub showed the deposit settled
+//   * the deposit_returns action — which feeds the Money screen's "Deposits to
+//     return" queue AND the Needs-you duty, so the deposit dropped off the owner's
+//     to-do list and the failed refund was never re-tried
+//   * my-bookings.php — the GUEST was shown money back they had never received
+// The server's own return_deposit guard used the correct figure throughout, so the
+// money could still be returned; nothing was telling anyone to do it.
+//
+// $ids limits the query to a set of bookings (my-bookings.php has one guest's few);
+// null returns every booking with a return against it. Never throws.
+function damages_returned_map(?array $ids = null)
+{
+    $out = [];
+    try {
+        $where = "kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))";
+        if ($ids !== null) {
+            $ids = array_values(array_unique(array_map('intval', $ids)));
+            if (!$ids) {
+                return [];
+            }
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $s = db()->prepare("SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments WHERE $where AND booking_id IN ($ph) GROUP BY booking_id");
+            $s->execute($ids);
+            $rows = $s->fetchAll();
+        } else {
+            $rows = db()->query("SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments WHERE $where GROUP BY booking_id")->fetchAll();
+        }
+        foreach ($rows as $r) {
+            $out[(int) $r['booking_id']] = round((float) $r['t'], 2);
+        }
+    } catch (\Throwable $e) {
+        return $out; // best-effort: an unreadable ledger must not empty a booking list
+    }
+    return $out;
+}
+
 // LEDGER STATUS, NORMALISED ON WRITE. Every status this app stores comes from Square
 // (uppercase) or is the literal 'MANUAL', so the ledger has always been uppercase in
 // practice — but the READERS disagreed about whether that was guaranteed: accounts.php

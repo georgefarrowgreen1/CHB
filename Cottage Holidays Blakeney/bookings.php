@@ -332,15 +332,9 @@ function damages_collected($b)
 }
 function damages_returned($bookingId)
 {
-    try {
-        $s = db()->prepare(
-            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))",
-        );
-        $s->execute([$bookingId]);
-        return round((float) $s->fetchColumn(), 2);
-    } catch (\Throwable $e) {
-        return 0.0;
-    }
+    // Delegates so there is ONE query shape for "what has actually gone back" — the
+    // three display sites had drifted into an unfiltered copy of it.
+    return damages_returned_map([(int) $bookingId])[(int) $bookingId] ?? 0.0;
 }
 
 // Build the email payload from a saved booking row and send the confirmation +
@@ -447,14 +441,9 @@ function bookings_admin_payload()
     // Attach the refunded-deposit total per booking (for the invoice's deposit
     // status when an owner downloads it). One grouped query, best-effort.
     try {
-        $ret = [];
-        foreach (
-            db()->query(
-                "SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments WHERE kind = 'damages_return' GROUP BY booking_id",
-            ) as $r
-        ) {
-            $ret[(int) $r['booking_id']] = round((float) $r['t'], 2);
-        }
+        // The SHARED figure — this used to sum every damages_return row regardless of
+        // status, so a FAILED refund made the hub show the deposit as settled.
+        $ret = damages_returned_map();
         foreach ($rows as &$bk) {
             $bk['damages_returned'] = $ret[(int) $bk['id']] ?? 0;
         }
@@ -1838,14 +1827,12 @@ if ($action === 'email_render') {
 // Per-booking damage-deposit returns, summed (Money & income dashboard).
 if ($action === 'deposit_returns') {
     try {
-        $rows = db()
-            ->query(
-                "SELECT booking_id, COALESCE(SUM(amount),0) total FROM payments WHERE kind = 'damages_return' GROUP BY booking_id",
-            )
-            ->fetchAll();
+        // The SHARED figure. Unfiltered, a FAILED refund removed the deposit from the
+        // owner's "Deposits to return" queue (and its Needs-you duty), so the failed
+        // refund was never re-tried and the guest never got their money.
         $map = [];
-        foreach ($rows as $r) {
-            $map[(string) $r['booking_id']] = round((float) $r['total'], 2);
+        foreach (damages_returned_map() as $bid => $t) {
+            $map[(string) $bid] = $t;
         }
         json_out(['returns' => $map]);
     } catch (\Throwable $e) {

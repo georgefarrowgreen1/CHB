@@ -39,15 +39,10 @@ function my_bookings_payload(string $email, bool $preview = false): array
     $returnedByBooking = [];
     try {
         if ($ids) {
-            $ph = implode(',', array_fill(0, count($ids), '?'));
-            $rs = db()->prepare(
-                "SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments
-                 WHERE kind = 'damages_return' AND booking_id IN ($ph) GROUP BY booking_id",
-            );
-            $rs->execute($ids);
-            foreach ($rs->fetchAll() as $row) {
-                $returnedByBooking[(int) $row['booking_id']] = round((float) $row['t'], 2);
-            }
+            // The SHARED figure — this used to count every damages_return row whatever
+            // its status, so a refund that FAILED showed the guest money back they had
+            // never received.
+            $returnedByBooking = damages_returned_map($ids);
         }
     } catch (\Throwable $e) {
     }
