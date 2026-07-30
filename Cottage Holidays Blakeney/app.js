@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 325;
+const ADMIN_BUNDLE_V = 327;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -916,7 +916,7 @@ function previewBlockedToast() {
     } catch (e) {}
 }
 // `status` lets the offline-queue replayer keep 401/403 (re-auth) and drop other 4xx.
-// Object.assign, not assignment onto a bare Error, so both fields are part of the type.
+// Object.assign, not assignment, so both fields are part of the type.
 function apiErr(message, status, code) {
     return Object.assign(new Error(message), { status: status, code: code ? String(code) : '' });
 }
@@ -935,8 +935,7 @@ function apiErr(message, status, code) {
 // a `data-act` button; there are no inline `onclick`s left in the markup), and
 // `recent_send_at()` refuses a repeat server-side inside a window, which is the only
 // layer that survives a reload mid-request or a second device. See CLAUDE.md.
-/** Endpoints answer arbitrary JSON, so the body is deliberately `any` — stated, not
- * inferred (it used to fall out of the withdrawn guard's untyped Map).
+/** Endpoints answer arbitrary JSON, so the body is `any` — stated, not inferred.
  * @returns {Promise<any>} */
 async function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
@@ -4659,16 +4658,13 @@ async function sendArrivalInfo(bookingId) {
         fallbackConfirm: `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
         doSend: async () => {
             try {
-                const res = await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
-                if (res && res.error) glassAlert(res.error);
-                else {
-                    toast(`Arrival info sent to ${b.email}.`);
-                    await loadData();
-                    renderCalendar();
-                    // Refresh the open details panel so the "(sent ✓)" state shows
-                    const loc = findBookingLocation(bookingId);
-                    if (loc) showDetails(loc.propKey, dbBookings[loc.propKey][loc.idx]);
-                }
+                await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
+                toast(`Arrival info sent to ${b.email}.`);
+                await loadData();
+                renderCalendar();
+                // Refresh the open details panel so the "(sent ✓)" state shows
+                const loc = findBookingLocation(bookingId);
+                if (loc) showDetails(loc.propKey, dbBookings[loc.propKey][loc.idx]);
             } catch (e) {
                 // A refused repeat is INFORMATION — the guest has the email, so
                 // "Couldn't send" would state the opposite. It did not go now either way.
@@ -4698,11 +4694,14 @@ async function sendConfirmationEmail(bookingId) {
         fallbackConfirm: `Send a confirmation email to ${b.email}?`,
         doSend: async () => {
             try {
-                const res = await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId });
-                if (res && res.error) glassAlert(res.error);
-                else toast(`Confirmation email sent to ${b.email}.`);
+                // No `res.error` branch: a mail failure now arrives as a failing STATUS,
+                // so it lands in the catch. Hand-checking a 200 body let three other call
+                // sites report a send that never happened.
+                await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId });
+                toast(`Confirmation email sent to ${b.email}.`);
             } catch (e) {
                 glassAlert("Couldn't send the email: " + e.message);
+                return false;
             }
         },
     });
@@ -13526,7 +13525,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'resend3';
+    const BUILD = 'mailfail2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

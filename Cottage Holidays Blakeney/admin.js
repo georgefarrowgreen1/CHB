@@ -13921,6 +13921,7 @@ async function offerUpdatedConfirmationEmail(bookingId) {
                 toast('Updated confirmation sent.');
             } catch (e) {
                 glassAlert("Saved, but the email didn't send: " + e.message);
+                return false;
             }
         },
     });

@@ -29,6 +29,10 @@ let fails = 0; const ok = (c,m) => { console.log(`  ${c?'✓':'✗'} ${m}`); if 
 // `error` key at first, and apiPost only throws on a non-2xx — so the refusal was
 // swallowed and the owner was told "Balance request sent — £NaN".
 let refuseIds = [];
+// Booking ids whose send should FAIL for real (SMTP down). The four send actions all
+// reported this at 200 with an `error` key except send_arrival, so the same £NaN toast
+// and the same false "sent" strip arrived from a genuine mail failure too.
+let failIds = [];
 const NAMES = { 1: 'Richard Berry', 2: 'Cara Bell', 3: 'Dan Rowe' };
 const stub = (page) => page.route(/\.php/, (r) => {
   const url = r.request().url();
@@ -37,15 +41,18 @@ const stub = (page) => page.route(/\.php/, (r) => {
   if (url.includes('auth.php')) { if (b.action==='admin_status') return json({ok:true,admin:true});
     if (b.action==='guest_status') return json({ok:true,guest:null}); return json({ok:true}); }
   if (url.includes('rates.php')) return json({ properties:[{prop_key:'jollyboat',name:'Jollyboat',slug:'jollyboat',couple_rate:130,booking_fee:75,transaction_pct:3,max_adults:2,max_children:0,max_total:2,sort_order:1}], seasons:{}, occupancy:{} });
-  // Three owers, one of them with NO email address — the exact partial-send shape
-  // the bulk report has to be honest about. Balances: 440 + 420 + 95 = £955 owed,
-  // £860 of it actually reachable.
+  if (b && b.action === 'request_payment' && failIds.includes(b.id)) {
+    return r.fulfill({ status:500, contentType:'application/json', body: JSON.stringify({ error: 'SMTP connect failed' }) });
+  }
   if (b && b.action === 'request_payment' && refuseIds.includes(b.id)) {
     return r.fulfill({ status:409, contentType:'application/json', body: JSON.stringify({
       error: `That payment request has just gone to ${NAMES[b.id] || 'the guest'} (a minute ago) — they have it.`,
       code: 'already_sent',
     }) });
   }
+  // Three owers, one of them with NO email address — the exact partial-send shape
+  // the bulk report has to be honest about. Balances: 440 + 420 + 95 = £955 owed,
+  // £860 of it actually reachable.
   if (url.includes('bookings.php')) return json({ bookings:[
     {id:1,prop_key:'jollyboat',name:'Richard Berry',email:'rb@x.co',check_in:d(6),check_out:d(10),adults:2,children:0,payment:'deposit',deposit_paid:200,agreed_total:640,agreed_nightly:620,agreed_txn_fee:20,agreed_nights:4},
     {id:2,prop_key:'jollyboat',name:'Cara Bell',email:'cb@x.co',check_in:d(14),check_out:d(17),adults:2,children:0,payment:'deposit',deposit_paid:100,agreed_total:520,agreed_nightly:505,agreed_txn_fee:15,agreed_nights:3},
@@ -443,6 +450,41 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(!/request sent/i.test(single.toasts) && !/NaN/.test(single.toasts),
     `RESEND: and never told it was sent, with or without a figure (${single.toasts})`);
   refuseIds = [];
+
+  // ── A MAIL FAILURE IS A FAILURE, in every path that reports one ────────────────
+  // Three of the four send actions returned a genuine SMTP failure as 200 + {error}, so
+  // the £NaN toast and the false "sent" strip arrived from a dead mail server exactly as
+  // they did from the resend window. send_arrival had always used 500; the others match
+  // it now. The consumer here is real: the inline balance action renders its strip off
+  // previewAndSendEmail's boolean.
+  failIds = [1];
+  const failInline = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((rr) => setTimeout(rr, 50)); } };
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    const p = requestPayment('b1', 'balance');
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    document.getElementById('glass-dialog-ok').click();
+    const went = await p;
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'), 3000);
+    const alertTxt = (document.getElementById('glass-dialog-msg') || {}).textContent || '';
+    const c = document.getElementById('glass-dialog-cancel') || document.getElementById('glass-dialog-ok');
+    if (c) c.click();
+    return { went, alertTxt, toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.trim()).join(' | ') };
+  });
+  ok(failInline.went === false, `MAILFAIL: a dead mail server is reported as not sent (${failInline.went})`);
+  ok(/SMTP connect failed/.test(failInline.alertTxt), `MAILFAIL: …with the reason, not a shrug (${failInline.alertTxt.slice(0, 60)})`);
+  ok(!/request sent/i.test(failInline.toasts) && !/NaN/.test(failInline.toasts),
+    `MAILFAIL: and never toasted as sent, with or without a figure (${failInline.toasts || 'no toast'})`);
+
+  await openOwed();
+  const failBulk = await runBulk();
+  ok(/Couldn.t send any/.test(failBulk.txt) || /Sent 1 of 3/.test(failBulk.txt),
+    `MAILFAIL: the bulk report does not count a failed send (${failBulk.txt})`);
+  ok(/couldn.t reach Richard Berry/i.test(failBulk.txt),
+    'MAILFAIL: …and names them as unreachable, which is what a mail failure IS');
+  ok(!/Richard Berry already had it/.test(failBulk.txt),
+    'MAILFAIL: …not as already having it — a failure is not a duplicate');
+  failIds = [];
 
   // A phone: the bulk action is the primary thing on that screen, so a lone action
   // must not sit in a half-width cell of the two-column grid with nothing beside it.

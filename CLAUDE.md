@@ -2534,6 +2534,18 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   already had theirs is not thrown as an error either: the set is in the state the owner
   asked for. On the single path an `already_sent` is a plain toast, not a `glassAlert`
   reading "Couldn't send".
+  **AND A MAIL FAILURE IS A FAILURE, in every send.** The refusal was only half of it:
+  three of the four send actions ALSO answered a genuine SMTP failure with
+  `json_out(['error' => …], 200)`, so the identical false reports arrived from a dead mail
+  server - `£NaN` on the single path, a counted send in bulk, and a green
+  "Balance request sent to Sarah" strip (the inline `balance` action renders off
+  `previewAndSendEmail`'s boolean) sitting beside a `glassAlert` saying the opposite.
+  `send_arrival` had always used **500**; `request_payment`, `send_confirmation` and the
+  legacy `hold_request` now match it, which also made the two hand-written
+  `if (res && res.error)` checks in app.js unreachable, so they are gone - checking a 200
+  body for an error is the shape that caused this, and it should not be modelled anywhere.
+  Gated by test-payrail (three 500s, zero 200s, the confirmation's own line) and
+  ui-test-command's MAILFAIL block, both break-tested in both directions.
   **APPLIED TO `request_payment` AND `send_arrival`** - the two whose content is GENERATED
   from the booking, so a second copy in the same breath is never a different message, and
   both of which also go over a bulk set. **NOT `send_confirmation`**, deliberately and
