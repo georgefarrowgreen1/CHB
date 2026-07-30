@@ -166,7 +166,79 @@ const TOO_SHORT = [6, 11, 18, 27];
   ok(/available/i.test(legend) && !/booked/i.test(legend),
     `it says unavailable and does not claim every crossed night is booked (${legend.trim()})`);
 
-  console.log('6. a seeded range that DOES cross a booking keeps its marks');
+  console.log('6. a date that cannot be tapped LOOKS like it cannot be tapped');
+  // The bug this section exists for: a checkout past a booked night is correctly
+  // refused, and the refusal was invisible — full opacity, pointer cursor, no mark.
+  // §3 asserted the refusal and passed while the guest saw an ordinary date that
+  // did nothing. Measured before the fix: picking a check-in and turning the page
+  // gave 30 dead cells in September, none distinguishable from a bookable one.
+  await page.evaluate(() => { dpClear(); dpState.view = new Date(2026, 7, 1); renderDatePicker(); dpPick('2026-08-24'); });
+  await page.waitForTimeout(150);
+  const look = await page.evaluate(() => {
+    const o = {};
+    document.querySelectorAll('#dp-grid .dp-day').forEach((el) => {
+      const n = parseInt(el.textContent.trim(), 10);
+      if (!n) return;
+      const cs = getComputedStyle(el);
+      o[n] = {
+        clickable: el.getAttribute('data-act') === 'dpPick',
+        marked: el.classList.contains('dp-booked') || el.classList.contains('dp-out'),
+        opacity: parseFloat(cs.opacity),
+        cursor: cs.cursor,
+        struck: cs.textDecorationLine.includes('line-through'),
+        title: el.getAttribute('title') || '',
+      };
+    });
+    return o;
+  });
+  const unmarked = Object.keys(look).filter((n) => !look[n].clickable && !look[n].marked);
+  ok(unmarked.length === 0, `no date is refused without looking refused (${unmarked.join(', ') || 'none'})`);
+  ok(look[31] && look[31].opacity < 0.6 && look[31].cursor === 'not-allowed',
+    `an out-of-reach night is dimmed and not-allowed (opacity ${look[31] && look[31].opacity})`);
+  // …but it must not read as BOOKED. 31 Aug is free and for sale — just not on a
+  // stay starting the 24th, with a booking in between.
+  ok(look[31] && !look[31].struck, '…and is NOT struck through, because it is not booked');
+  ok(/booking before this date/.test(look[31].title), `…it says why (${look[31].title})`);
+  ok(look[29] && look[29].struck, 'a genuinely booked night still reads as booked (29)');
+
+  // The whole of the next month was the reported symptom.
+  await page.evaluate(() => dpChangeMonth(1));
+  await page.waitForTimeout(150);
+  const sept = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('#dp-grid .dp-day')].filter((e) => parseInt(e.textContent.trim(), 10));
+    return {
+      total: cells.length,
+      bare: cells.filter((e) => e.getAttribute('data-act') !== 'dpPick'
+        && !e.classList.contains('dp-booked') && !e.classList.contains('dp-out')).length,
+    };
+  });
+  ok(sept.total > 0 && sept.bare === 0,
+    `turning to the next month never shows a page of dead-but-normal dates (${sept.bare} of ${sept.total})`);
+
+  // …and it must not ANSWER the pointer either. A shared hover rule lifts and
+  // shadows every .dp-day, so a dead cell rose like a live control before doing
+  // nothing. Measured by hovering for real, at a fine pointer. (Back to August
+  // first — the check above left the picker on September.)
+  await page.evaluate(() => dpChangeMonth(-1));
+  await page.waitForTimeout(150);
+  const liftOf = async (day) => {
+    const el = page.locator(`#dp-grid .dp-day`).filter({ hasText: new RegExp(`^${day}$`) }).first();
+    await el.hover();
+    await page.waitForTimeout(160);
+    return el.evaluate((n) => getComputedStyle(n).transform);
+  };
+  const deadLift = await liftOf(31);
+  const liveLift = await liftOf(25);
+  ok(deadLift === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(deadLift),
+    `an unpickable day does not lift under the pointer (${deadLift})`);
+  ok(liveLift !== deadLift, `…while a pickable one still does (${liveLift})`);
+
+  console.log('7. the hint says how far the guest can go');
+  const hint = await page.evaluate(() => document.getElementById('dp-hint').innerText);
+  ok(/check-out/.test(hint) && /28 Aug 2026/.test(hint),
+    `it names the latest possible checkout rather than leaving them to find it (${hint})`);
+
+  console.log('8. a seeded range that DOES cross a booking keeps its marks');
   // The picker's own rules can never produce an overlapping range — but the hero
   // search lets any date through (dpMode 'search'), and those values seed this
   // picker. So "don't cross out the chosen stay" is conditional on the stay being
@@ -183,6 +255,29 @@ const TOO_SHORT = [6, 11, 18, 27];
   g = await grid();
   ok(g[19].crossed && g[20].crossed, 'the booked nights inside an impossible range are still crossed (19, 20)');
   ok(g[18].crossed, '…and so is the too-short night it starts on (18)');
+
+  console.log('9. the chat\'s live-calendar check applies the same rules');
+  // It tested for a booking clash and nothing else, so a stay under the minimum was
+  // answered "Good news — looks free" and offered an enquiry the rule then refused.
+  // checkBookingRules is the helper the enquiry form and hero search already use.
+  const chat = await page.evaluate(async () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<select id="t-prop"><option value="jollyboat">J</option></select>'
+      + '<input id="t-ci" value="2026-08-24"><input id="t-co" value="2026-08-25">';
+    document.body.appendChild(host);
+    const said = [];
+    const real = window.chatBot;
+    window.chatBot = (m) => said.push(m);
+    await chatAvailRun('t');                       // 1 night, calendar clear, minimum 2
+    document.getElementById('t-co').value = '2026-08-26';
+    await chatAvailRun('t');                       // 2 nights, both free
+    window.chatBot = real;
+    host.remove();
+    return said.map((s) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+  });
+  ok(/minimum stay of 2 nights/.test(chat[0] || ''), `a stay under the minimum is refused, with the reason (${(chat[0] || '').slice(0, 70)})`);
+  ok(!/Good news/.test(chat[0] || ''), '…and is NOT announced as available');
+  ok(/Good news/.test(chat[1] || ''), 'a stay that clears both rules still gets the good news');
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
