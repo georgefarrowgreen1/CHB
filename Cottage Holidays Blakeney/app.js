@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 322;
+const ADMIN_BUNDLE_V = 323;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -5429,6 +5429,14 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         }
+        // AFTER setAuthUI, which decides the default landing. Belt-and-braces, not
+        // load-bearing — the earlier position also passes, because setAuthUI leaves an
+        // owner alone once on an admin view. Kept here so it doesn't depend on that.
+        try {
+            maybeRestoreView();
+        } catch (e) {
+            console.error(e);
+        }
         try {
             wireCallButtons();
         } catch (e) {
@@ -5528,11 +5536,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         } // ?open=booking-42 → the record a tapped notification is about
-        try {
-            maybeRestoreView();
-        } catch (e) {
-            console.error(e);
-        } // …else back to the screen this tab was on before the reload
         try {
             hsRestore();
         } catch (e) {
@@ -8209,6 +8212,17 @@ async function submitNewsletter(ev) {
 // reuses the notification path rather than being a second way to navigate. See CLAUDE.md.
 const CHB_NAV_KEY = 'chb-nav';
 const CHB_NAV_TTL_MS = 4 * 3600e3; // a tab left open overnight starts fresh
+// SNAPSHOT AT LOAD, and load-bearing: the boot's own default landing calls nav(), whose
+// remember hook overwrote the stored target with Today BEFORE the restore read it — so
+// re-reading sessionStorage there found 'view-backoffice' and the feature did nothing at
+// all. Parse time is before any nav() can fire. See CLAUDE.md.
+const __chbNavAtLoad = (() => {
+    try {
+        return JSON.parse(sessionStorage.getItem(CHB_NAV_KEY) || 'null');
+    } catch (e) {
+        return null;
+    }
+})();
 function chbNavRemember(target) {
     // The account-preview frame must land on My Stays every time — that is the feature.
     if (typeof ACCT_PREVIEW !== 'undefined' && ACCT_PREVIEW) return;
@@ -8225,7 +8239,8 @@ function chbNavForget() {
     } catch (e) {}
 }
 // Restore on boot. True if it moved the app.
-async function maybeRestoreView() {
+// $entry lets a test drive the refusals directly; production uses the load-time snapshot.
+async function maybeRestoreView(entry) {
     if (typeof ACCT_PREVIEW !== 'undefined' && ACCT_PREVIEW) return false;
     if (typeof PREVIEW_MODE !== 'undefined' && PREVIEW_MODE) return false;
     // An EXPLICIT destination always wins over a remembered one.
@@ -8233,10 +8248,7 @@ async function maybeRestoreView() {
         const usp = new URLSearchParams(window.location.search);
         if (usp.get('open') || usp.get('unsub') || usp.get('pay') || usp.get('acctpreview')) return false;
     } catch (e) {}
-    let saved = null;
-    try {
-        saved = JSON.parse(sessionStorage.getItem(CHB_NAV_KEY) || 'null');
-    } catch (e) {}
+    const saved = entry === undefined ? __chbNavAtLoad : entry;
     if (!saved || !saved.t || !saved.at) return false;
     if (Date.now() - Number(saved.at) > CHB_NAV_TTL_MS) {
         chbNavForget();
@@ -13518,7 +13530,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'resume1';
+    const BUILD = 'resume2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

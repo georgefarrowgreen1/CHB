@@ -9521,6 +9521,17 @@ async function openBookingHub(bookingId, quiet) {
         // #booking-hub-content node re-parents into the pane) — no page swap.
         const pane = document.getElementById('bookings-detail-pane');
         if (content && content.parentElement !== pane) pane.appendChild(content);
+        // QUIET MEANS DON'T MOVE THE OWNER, not just don't scroll. The only quiet caller
+        // is renderBookings' auto-select, which exists so Today never shows an empty
+        // pane — a reason that only applies when you are ON Today. From anywhere else it
+        // was dragging you to Today the moment the bookings finished loading, which
+        // clobbered both a restored screen and a tapped `?open=` notification at =1200px
+        // (measured: restore landed view-inbox at 260ms, this pulled it to
+        // view-backoffice at 367ms). Dock silently instead.
+        if (quiet && prev && prev.id !== 'view-backoffice') {
+            markBookingsSelection();
+            return;
+        }
         if (!prev || prev.id !== 'view-backoffice') {
             nav('view-backoffice');
             adminHistPush('view-backoffice');
