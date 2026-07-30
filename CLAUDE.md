@@ -1220,6 +1220,25 @@ looks free" plus an Enquire button, and the enquiry was then refused by the rule
 consulted. `checkBookingRules` is the same helper the enquiry form and hero search already
 call — it was the one availability answer not using it. Gated by ui-test-datepicker §9.
 
+**TWO DECLARATIONS ON THE ENQUIRY FORM, not one** (`#enq-nodogs` beside `#enq-terms`;
+gated by **`ui-test-nodogs.js`** + test-integration §16). The guest must confirm they are
+not bringing a dog before the enquiry can be sent, alongside accepting the terms. Built
+the same way the terms are, because the same things can go wrong: the client refuses to
+submit, **and `enquiries.php` refuses a direct public POST** (`no_dogs`), so a stale tab
+or a crafted request cannot create an enquiry that never made the declaration — admin
+edits are exempt for the same reason terms are, there being no guest at the keyboard.
+**It is RECORDED, not just checked** (`enquiries.no_dogs_at`, migration-101, and in
+schema.sql because that file is kept current): a declaration nobody keeps is theatre —
+if a dog turns up the owner has to be able to point at what was agreed and when. That
+forced the same passthrough the terms have (`no_dogs_at_passthrough`), because an admin
+Edit/Move is a decline + resubmit and would otherwise silently erase what the guest
+confirmed; the enquiry hub shows it as a "No dog" row so the stored value is not
+write-only. The dog box is deliberately FIRST and validated first — pointing at the
+second unticked box while the first is also unticked sends the guest back twice. NB
+adding the server requirement broke three existing enquiry fixtures in test-integration
+that predate it (13 checks, all downstream of §5's submit); they now send the field,
+which is the correct fix and not a workaround — every real client does.
+
 **Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
 rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their
 favourite cottage = mode of COMPLETED stays, live cottages only; an upcoming-only first

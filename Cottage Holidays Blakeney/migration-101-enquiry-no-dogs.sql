@@ -1,0 +1,13 @@
+-- migration-101-enquiry-no-dogs.sql — record the guest's "no dog" declaration.
+--
+-- The enquiry form now asks the guest to confirm they are not bringing a dog,
+-- alongside accepting the terms. A declaration nobody keeps is theatre — if a
+-- dog turns up, the owner needs to be able to point at what was agreed — so it
+-- is stored the same way terms acceptance is: a server-side timestamp, NULL for
+-- anything that predates the box (and for admin-created enquiries, which never
+-- had a guest to ask).
+--
+-- Idempotent the way the others are: plain ADD COLUMN, with migrate.php treating
+-- a duplicate-column error as already-applied (MySQL 8 has no ADD COLUMN IF NOT
+-- EXISTS, so we must NOT use it here).
+ALTER TABLE enquiries ADD COLUMN no_dogs_at DATETIME NULL;
