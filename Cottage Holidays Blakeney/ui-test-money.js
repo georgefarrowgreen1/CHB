@@ -597,7 +597,12 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.evaluate(() => renderSweep());
   await page.waitForTimeout(500);
   const sA = await sweepText();
-  ok(/Already refunded — waiting for Square to take it/.test(sA), 'a pending refund is labelled, not shown as outstanding work');
+  ok(/not yet confirmed settled here/.test(sA), 'a pending refund is labelled, not shown as outstanding work');
+  // It must not claim what SQUARE has done. Reported live: Square had already taken the
+  // money out of the Square balance while this row said it was still waiting for them.
+  ok(!/waiting for Square to take it/.test(sA),
+    '…and does not assert what Square has or has not done, which we had not checked');
+  ok(/Check Square now/.test(sA), '…it points at the one control that actually asks');
   // …and the CARD must not contradict its own row. It was headed "Deposits still to
   // return" — a to-do — over rows that are nothing of the kind.
   ok(!/Deposits still to return/.test(sA), 'the card no longer heads a ring fence as a to-do list');
@@ -633,7 +638,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Not arrived yet — held until after the stay/.test(sPair), 'a guest who has not arrived is not described as staying');
   ok(!/Still staying/.test(sPair), '…and the in-residence wording is not used for them');
   ok(new RegExp('arrives ' + ukd(29)).test(sPair), `…their row leads with the ARRIVAL, the useful date for a stay still to come (${ukd(29)})`);
-  ok(/Already refunded — waiting for Square to take it/.test(sPair), 'the refunded one still says it is only waiting on Square');
+  ok(/not yet confirmed settled here/.test(sPair), 'the refunded one still says it is only waiting on Square');
   ok(!/Ready to return/.test(sPair), 'and NEITHER of these two is presented as ready to hand back');
 
   // MID-STAY is still its own state: arrived, not left, deposit held.
