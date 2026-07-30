@@ -228,7 +228,7 @@ chk('the returned-so-far filter is stated once, case-folded',
 chk('damages_returned — the double-return guard — delegates to it',
     preg_match('/function damages_returned\(\$bookingId\)\s*\{[^}]*damages_returned_map\(\[\(int\) \$bookingId\]\)/s', $bkS) === 1);
 chk('the reconciler case-folds when picking rows to re-poll',
-    preg_match("/UPPER\(status\) NOT IN \('COMPLETED','FAILED','REJECTED'\)/", $rcS) === 1);
+    preg_match("/UPPER\\(status\\) NOT IN \\('COMPLETED','FAILED','REJECTED','MANUAL'\\)/", $rcS) === 1);
 // And every writer normalises, so it cannot recur for new rows.
 chk('the ledger insert normalises', substr_count($bkS, 'payment_status_norm($status)') >= 2);
 chk('the reconciler normalises and validates', strpos($rcS, 'payment_status_known($status)') !== false && strpos($rcS, 'payment_status_norm($status)') !== false);
@@ -389,6 +389,47 @@ $adS = (string) file_get_contents(__DIR__ . '/admin.js');
 chk('the bulk report separates "already had it" from "couldn\'t reach"',
     strpos($adS, "if (e && e.code === 'already_sent') already.push(x);") !== false
     && strpos($adS, 'already had theirs') !== false);
+
+// ---- CONFIRMING A REFUND HAS ACTUALLY GONE --------------------------------
+// Square's API lags what the owner can see on their own statement: a deposit refund
+// taken out of the Square balance read "not yet confirmed settled here" for days while
+// the money was demonstrably gone. The owner can now say so. The danger is the
+// opposite one — under-fencing is how an account goes short — so the interesting
+// checks here are the things it REFUSES to do.
+echo "\n== Confirming a refund has gone ==\n";
+chk('there is one definition of a DECIDED status', function_exists('payment_status_terminal'));
+chk('settled and hand-settled are both decided',
+    payment_status_terminal('COMPLETED') && payment_status_terminal('MANUAL'));
+// FAILED/REJECTED are decided but NOT settled — the money did not go. Both facts
+// matter: nothing may resurrect them as pending, and nothing may count them as returned.
+chk('a failed refund is decided too, so nothing resurrects it as pending',
+    payment_status_terminal('FAILED') && payment_status_terminal('REJECTED'));
+chk('…but PENDING is not decided', !payment_status_terminal('PENDING'));
+chk('an unknown value is not decided either', !payment_status_terminal('') && !payment_status_terminal('WHATEVER'));
+
+$bkS3 = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('the confirm action exists and is admin-only',
+    preg_match("/action === 'confirm_return_settled'[\s\S]{0,200}require_admin\(\)/", $bkS3) === 1);
+// The three things it must not do, all expressed in the one WHERE clause.
+chk('…it only ever touches damages_return rows, never a rental charge',
+    preg_match("/confirm_return_settled[\s\S]{0,1600}UPDATE payments SET status = 'MANUAL'[\s\S]{0,200}kind = 'damages_return'/", $bkS3) === 1);
+chk('…and cannot resurrect a FAILED refund as settled',
+    preg_match("/confirm_return_settled[\s\S]{0,1600}UPDATE payments SET status = 'MANUAL'[\s\S]{0,300}NOT IN \('COMPLETED','MANUAL','FAILED','REJECTED'\)/", $bkS3) === 1);
+chk('…and it is logged as the owner\'s own assertion, not as something Square said',
+    strpos($bkS3, 'deposit.confirm_settled') !== false && strpos($bkS3, 'confirmed settled by hand') !== false);
+
+// THE CONFIRMATION HAS TO SURVIVE. Without these it would be undone within the hour:
+// the poller re-asks Square, Square still says PENDING, and the row goes back to
+// unsettled — a button that appears to work and quietly reverses itself.
+$recS = (string) file_get_contents(__DIR__ . '/payments-reconcile.php');
+chk('the poller does not re-ask about a hand-confirmed refund',
+    strpos($recS, "NOT IN ('COMPLETED','FAILED','REJECTED','MANUAL')") !== false);
+chk('…and refuses to write over a decided row even if one settles mid-poll',
+    strpos($recS, '!payment_status_terminal(') !== false);
+$hookS = (string) file_get_contents(__DIR__ . '/square-webhook.php');
+chk('the refund webhook cannot downgrade a decided row either (events arrive out of order)',
+    strpos($hookS, 'payment_status_terminal($refund[\'status\'])') !== false
+    && strpos($hookS, "NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED')") !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

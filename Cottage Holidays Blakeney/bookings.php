@@ -1443,6 +1443,67 @@ if ($action === 'refund') {
     json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
 }
 
+// CONFIRM BY HAND THAT A REFUND HAS ACTUALLY GONE. Square's API can lag what the
+// owner can already see on their own statement — a deposit refund taken out of the
+// Square balance sat reading "not yet confirmed settled here" for days. This is the
+// owner asserting a fact they have verified, so the ledger stops fencing money that
+// has left. MANUAL is the existing word for "settled by hand"; ret_settled and
+// damages_returned already treat it as settled, so nothing downstream has to change.
+//
+// Deliberately narrow: it only ever moves a NON-TERMINAL damages_return to MANUAL. It
+// cannot resurrect a FAILED refund (that money genuinely did not go), cannot touch a
+// rental charge, and cannot invent a return that was never issued.
+if ($action === 'confirm_return_settled') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    // json_out() exits, so the catch below never falls through — but a static reader
+    // cannot know that, and an empty list is the right answer if it ever did.
+    $rows = [];
+    try {
+        $q = db()->prepare(
+            "SELECT id, amount FROM payments
+              WHERE booking_id = ? AND kind = 'damages_return'
+                AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED'))",
+        );
+        $q->execute([$id]);
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) {
+        json_out(['error' => "Couldn't read the refunds for this booking."], 500);
+    }
+    if (!$rows) {
+        // Nothing waiting is not an error — it is the state the owner wanted. Saying so
+        // beats a silent no-op that leaves them tapping again.
+        json_out(['ok' => true, 'confirmed' => 0, 'note' => 'Nothing was waiting to be confirmed.']);
+    }
+    $sum = 0.0;
+    foreach ($rows as $r) {
+        $sum += (float) $r['amount'];
+    }
+    try {
+        db()
+            ->prepare(
+                "UPDATE payments SET status = 'MANUAL'
+                  WHERE booking_id = ? AND kind = 'damages_return'
+                    AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED'))",
+            )
+            ->execute([$id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => "Couldn't record that just now."], 500);
+    }
+    // Logged as the owner's assertion, not as something Square told us — if the money
+    // turns out not to have gone, this line is where the answer starts.
+    log_activity('payment', 'deposit.confirm_settled', 'Deposit refund confirmed settled by hand — £' . number_format($sum, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), [
+        'prop_key' => $b['prop_key'] ?? '',
+        'entity' => 'booking',
+        'entity_id' => (string) $id,
+    ]);
+    json_out(['ok' => true, 'confirmed' => count($rows), 'amount' => round($sum, 2)]);
+}
+
 // Return the held refundable damage deposit (full or partial) after checkout.
 // Tracked as 'damages_return' so it never changes the rental payment status.
 if ($action === 'return_deposit') {
