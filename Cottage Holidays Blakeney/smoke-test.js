@@ -754,6 +754,34 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
     check(`every required file exists in the repo${absent.length ? ' — ' + absent.join(', ') : ''}`, absent.length === 0);
 }
 
+// ---- 12. Nothing overrides the double-booking guard on its own ------------
+// The server's clash check is a SOFT stop: it answers {clash:true} and proceeds
+// only if the caller sends override_clash, which exists so the owner can overlap
+// deliberately. That makes the flag the single bypass of the one guarantee this
+// business cannot trade away — so it may only ever be set AFTER a human has read
+// the clash and said yes. The Test Centre's demo-booking button sent it
+// unconditionally, so the one control that creates a booking with nobody reading
+// the answer could also silently overlap a real guest.
+console.log('\n== 12. The clash guard has exactly one bypass, and it is a human ==');
+{
+    const files = ['app.js', 'admin.js', 'guest-app.js'];
+    const sites = [];
+    for (const f of files) {
+        const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+        for (const m of src.matchAll(/override_clash\s*[:=]\s*true/g)) {
+            // The 400 characters before it — a confirm has to be close enough to
+            // be the thing that gated this line.
+            sites.push({ file: f, before: src.slice(Math.max(0, m.index - 400), m.index) });
+        }
+    }
+    check(`override_clash sites were found (${sites.length})`, sites.length > 0);
+    const unconfirmed = sites.filter((s) => !/glassConfirm|confirm\(/.test(s.before));
+    check(
+        `every override_clash is set only after a confirm${unconfirmed.length ? ' — ' + unconfirmed.map((s) => s.file).join(', ') : ''}`,
+        unconfirmed.length === 0,
+    );
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

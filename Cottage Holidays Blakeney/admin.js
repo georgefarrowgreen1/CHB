@@ -17314,7 +17314,11 @@ async function tcCreateBooking(preset, btn) {
             children: 0,
             payment: 'unpaid',
             notes: '[CHB-TEST] safe to delete',
-            override_clash: true,
+            // NO override_clash. It used to send it unconditionally, so the one
+            // button in the app that creates a booking without a human reading the
+            // answer could also silently overlap a real guest — and the handler
+            // below already had the refusal wording ready, unreachable, because
+            // the override guaranteed the server would never send it.
         });
         if (r && r.id) {
             show('Created ✓', true);

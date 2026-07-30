@@ -1671,6 +1671,35 @@ smoke-test §6g/§6h guard them; if you move that markup, update cottage.php/hom
 They're deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure,
 which would corrupt these HTML routes); on ANY error they serve index.html untouched.
 
+**THE CALENDAR CANNOT BE DOUBLE-BOOKED — and that is now GATED, which it was not**
+(test-integration §15, 26 checks against a real database through the real endpoints).
+The guards were all there and all correct; what was missing was any test of them, so
+the single guarantee this business cannot trade away rested on code nothing exercised.
+The shape to keep in mind: **the picker is only the friendly layer** — it can be
+bypassed by a stale tab, a second device, a slow network or a bug like the three fixed
+this week — so what matters is the ENDPOINTS. `dates_clash` (db.php, boolean) and
+`clash_message` (bookings.php, the wording) are the two forms of one rule, tested
+`existing.start < new.end AND existing.end > new.start`; both cover `bookings` AND
+`ical_blocks`, so an Airbnb stay blocks the calendar exactly like one of ours.
+Admin `add`/`update` hold `book_lock` and answer `{clash:true}` — a SOFT stop, since
+the owner may overlap on purpose, and **`override_clash` is the only way through**;
+enquiry `submit` refuses outright, and **approval re-checks under `book_lock`**, which
+is the race that actually happens (the enquiry was legitimate when made and the dates
+went while it sat in the inbox). Two directions are gated because they cost the same
+money: an overlap that gets through is a double booking, and a "clash" that is really a
+legal TURNOVER — arriving on the day someone leaves, leaving on the day someone
+arrives — is a booking refused for nothing. Break-testing `<` to `<=` fails exactly the
+turnover checks, which is the point of having them. `cancel` DELETEs the row (not a
+status flag), so the dates return to `dates_clash` AND to `availability.php` and the
+waitlist is notified — gated end to end, because a cancellation that left the row
+behind would quietly block those dates for ever.
+**`override_clash` may only ever be set after a human has read the clash**, gated by
+smoke-test §12 (it scans the shipped JS and requires a `glassConfirm` within 400 chars
+of every site). The Test Centre's demo-booking button was sending it unconditionally —
+the one control that creates a booking with nobody reading the answer could therefore
+silently overlap a real guest, and its own "Those dates clash — try again" branch was
+unreachable because the override guaranteed the server would never say so.
+
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
 Settings → System check → Run migrations). Migrations are idempotent
