@@ -1021,8 +1021,13 @@ if ($action === 'send_confirmation') {
         log_activity('comms', 'email.confirmation', 'Confirmation re-sent — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true, 'email' => $result]);
     }
+    // A MAIL FAILURE IS A FAILURE, so it gets a failing status. This answered 200 with
+    // an `error` key, and apiPost only throws on a non-2xx — so a caller that did not
+    // hand-check `res.error` reported a send that never happened (admin.js's
+    // record-a-payment flow toasted "Updated confirmation sent."). send_arrival has
+    // always used 500 for exactly this; the other three sends now match it.
     $reason = $result['error'] ?? ($result['guest']['error'] ?? 'Unknown mail error');
-    json_out(['error' => 'Email not sent: ' . $reason, 'email' => $result], 200);
+    json_out(['error' => $reason, 'email' => $result], 500);
 }
 
 // Build the branded email HTML for the composer's live preview (no send).
@@ -1138,7 +1143,7 @@ if ($action === 'request_payment') {
         }
         json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $kind]);
     }
-    json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
+    json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
 }
 
 // Return the secure pay link for a booking (to copy/share by WhatsApp, SMS, etc.)
@@ -1226,7 +1231,7 @@ if ($action === 'hold_request') {
         }
         json_out(['ok' => true, 'amount' => $amt]);
     }
-    json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
+    json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
 }
 
 // Capture the hold (keep the money — used when there IS damage). Square's

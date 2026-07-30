@@ -349,6 +349,18 @@ chk('a refused repeat comes back as a real status, not a 200 nobody inspects',
     preg_match("/'code' => 'already_sent',\s*\]\, 409\)/", $dbS2) === 1);
 chk('…and carries a code, so a caller can tell "already went" from "failed"',
     strpos($dbS2, "'already_sent'") !== false);
+// A MAIL FAILURE IS A FAILURE, in every send. Three of the four answered 200 with an
+// `error` key — and apiPost only throws on a non-2xx, so a caller that did not hand-check
+// the body reported a send that never happened: the inline balance action rendered a green
+// "Balance request sent to Sarah" strip off previewAndSendEmail's boolean while a
+// glassAlert said the opposite, requestPayment toasted "£NaN", and the bulk report counted
+// it. send_arrival had always used 500; the others match it now.
+chk('every send reports a mail failure with a failing status, not a 200',
+    preg_match_all("/Email failed to send'\], 500\)/", $bkS2) === 3
+    && preg_match_all("/Email failed to send'\], 200\)/", $bkS2) === 0
+    // Single-quoted: in a double-quoted PHP string `\\$reason` is a backslash followed by
+    // an INTERPOLATED variable, so the pattern silently became "…=> , 'email' => …".
+    && preg_match('/\'error\' => \$reason, \'email\' => \$result\], 500\)/', $bkS2) === 1);
 // The guard reads a log; if the log cannot be read it must not block a send the owner
 // is asking for — a duplicate email is a smaller failure than being unable to chase.
 chk('an unreadable log lets the send through rather than blocking it',
