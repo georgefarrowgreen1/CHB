@@ -12079,6 +12079,29 @@ async function renderSweep(refetch) {
     // than rounded into either. payouts-lib.php owns that reasoning.
     const T = L.transactions || null;
     const P = L.payouts || null;
+    // WHY A CHARGE IS UNKNOWN, WHICH IS NOT ALWAYS "GIVE IT A DAY". The note claimed the
+    // charges were not in the payout data YET — a temporary wait the screen has no basis
+    // for. Reported live: payouts checked THAT DAY, no error, two charges unknown, one 23
+    // days old. The answer was already in the payload — the server sends `known` (how many
+    // charges the payout data covers at all) and renderSweep never read it.
+    //   known === 0 → Square returned NO payout records: a Square-side setting, not a wait.
+    //   known  >  0 → the feed works but skipped these; only then is age the story.
+    const PO_LATE_DAYS = 7; // 1-2 working days is normal; a week clears any weekend
+    const unknownRows = (P && P.items && P.items.unknown) || [];
+    // UTC-anchored both ends — a local-in/UTC-out mix is a day out for an hour every
+    // night under BST (see ukShiftDays).
+    const daysSince = (iso) =>
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
+            ? 0
+            : Math.round((Date.parse(todayDashed() + 'T00:00:00Z') - Date.parse(iso + 'T00:00:00Z')) / 86400000);
+    const lateUnknown = unknownRows.filter((it) => daysSince(it.paid_on) > PO_LATE_DAYS);
+    const unknownWhy = !P
+        ? ''
+        : P.known === 0
+          ? ` Square hasn't reported <strong>any</strong> payouts at all${P.lookback ? ` in the last ${P.lookback} days` : ''} — not just these — so there is nothing to match them against. That is usually a Square-side setting (payouts paused, or no bank account linked) rather than a delay.`
+          : lateUnknown.length
+            ? ` ${lateUnknown.length === 1 ? 'One of these was' : lateUnknown.length + ' of these were'} taken over a week ago, and Square normally pays out within a day or two — so ${lateUnknown.length === 1 ? 'it' : 'they'} should have shown up by now. Worth checking Square directly.`
+            : '';
     const txRow = (it) => {
         const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
         const held = Number(it.ringFence || 0);
@@ -12138,7 +12161,7 @@ async function renderSweep(refetch) {
         (T && T.count && P
             ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
               txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
-              txGroup(P.items.unknown, "Square hasn't said", P.unknown, "These charges aren't in the payout data yet, so there's no telling whether they've landed. Not counted as movable.") +
+              txGroup(P.items.unknown, "Square hasn't said", P.unknown, "These charges aren't in the payout data, so there's no telling whether they've landed. Not counted as movable." + unknownWhy) +
               `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
                     ${P.error
                         ? `Payout data may be out of date — ${escapeHtml(String(P.error))}.`
