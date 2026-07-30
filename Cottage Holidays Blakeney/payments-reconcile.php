@@ -28,9 +28,9 @@ function reconcile_pending_refunds($limit = 12)
         // resolve (it's a manual refund with no real Square id) — polling it every
         // view forever just wastes a serial API round-trip and can starve fresh rows.
         $q = db()->prepare(
-            "SELECT id, square_payment_id FROM payments
+            "SELECT id, square_payment_id, status FROM payments
              WHERE kind IN ('refund','damages_return')
-               AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','FAILED','REJECTED'))
+               AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','FAILED','REJECTED','MANUAL'))
                AND square_payment_id IS NOT NULL AND square_payment_id <> ''
                AND created_at >= (NOW() - INTERVAL 60 DAY)
              ORDER BY id DESC LIMIT " . (int) $limit,
@@ -46,7 +46,10 @@ function reconcile_pending_refunds($limit = 12)
             $status = $res['body']['refund']['status'] ?? '';
             // Only a recognised Square status overwrites the row — a 404/error
             // (e.g. a manually recorded refund with no Square id) leaves it as-is.
-            if (payment_status_known($status)) {
+            // Never downgrade a decided row. The query above already skips them, but a
+            // row can settle between the SELECT and this write, and Square's own events
+            // arrive out of order — so the guard belongs at the write too.
+            if (payment_status_known($status) && !payment_status_terminal((string) ($r['status'] ?? ''))) {
                 db()->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute([payment_status_norm($status), (int) $r['id']]);
             }
         } catch (\Throwable $e) {

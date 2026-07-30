@@ -55,6 +55,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
         if (b.action === 'return_deposit') { const r = rows.find((x) => x.id === b.id); if (r) r.hold_status = 'returned'; return json({ ok: true }); }
+        if (b.action === 'confirm_return_settled') return json({ ok: true, confirmed: 1, amount: 73.69 });
         return json({ ok: true });
       }
       // The Square settings status, which now carries the LOCATIONS the picker offers.
@@ -662,6 +663,59 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(500);
   const sDue = await sweepText();
   ok(/Ready to return/.test(sDue) && !/Still staying/.test(sDue), 'a finished stay with the deposit still held is the one marked ready');
+
+  // CONFIRMING BY HAND THAT A REFUND HAS GONE. Square's API lags what the owner can
+  // already see: reported live, the money was out of the Square balance while the row
+  // said our records had not seen it settle. Every scene above carries NO booking_id,
+  // so none of them could ever have rendered this button — the fixture is the gate.
+  const confirmBtn = () => page.locator('#asec-sweep button[data-act="confirmReturnSettled"]');
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ booking_id: 77, outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_in: d(-16), check_out: d(-13) }],
+    count: 1, gross: 75, feeBack: 1.31, net: 73.69,
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  ok((await confirmBtn().count()) === 1, 'a refund our records have not seen settle offers a confirm button');
+  const sCfA = await sweepText();
+  // Two routes to one job read as two jobs. The row-level pointer at the page-level
+  // refresh is only for a row that has no button of its own.
+  ok(!/not yet confirmed settled here \(tap/.test(sCfA), '…and the row does not ALSO tell them to go and press something else');
+
+  // It is offered ONLY where there is something waiting. A deposit still held is not a
+  // refund to confirm, and offering it there would invite marking money gone that never left.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ booking_id: 77, outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_in: d(-16), check_out: d(-13) }],
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(400);
+  ok((await confirmBtn().count()) === 0, '…and never on a deposit that has not been refunded at all');
+
+  // Driven for real: the dialog, the button in it, and what actually goes to the server.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ booking_id: 77, outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_in: d(-16), check_out: d(-13) }],
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(400);
+  // BACKING OUT SENDS NOTHING. Under-fencing is how the account goes short, so a
+  // mis-tap must cost nothing.
+  const postsBefore = posts.length;
+  await confirmBtn().click();
+  await page.waitForTimeout(400);
+  const dlg = await page.textContent('#glass-dialog-msg');
+  ok(/actually left your Square balance/.test(dlg || ''), 'it asks first, in terms of what the owner can verify');
+  ok(/could end up short/.test(dlg || ''), '…and states the consequence of getting it wrong, not the mechanism');
+  await page.click('#glass-dialog-cancel');
+  await page.waitForTimeout(400);
+  ok(!posts.slice(postsBefore).some((p) => p.action === 'confirm_return_settled'), 'cancelling sends nothing');
+
+  await confirmBtn().click();
+  await page.waitForTimeout(400);
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(700);
+  const sent = posts.filter((p) => p.action === 'confirm_return_settled');
+  ok(sent.length === 1, `confirming posts exactly once (${sent.length})`);
+  ok(sent[0] && sent[0].__url === 'bookings.php' && sent[0].id === 77,
+    `…naming the booking it is confirming (${sent[0] ? sent[0].id : 'none'})`);
 
   // THE BALANCE, ROLLED FORWARD. Pre-filled from what the owner last stated plus what
   // Square has done since — and labelled an estimate, with its working shown.

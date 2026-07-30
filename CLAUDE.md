@@ -1820,6 +1820,37 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   bites is a booking still `charged` with an old unconfirmed PARTIAL return: for an
   already-`returned` booking the WHERE clause decides it, which is why the first
   integration break-test for it did not fire and a second fixture was added.
+  **AND THE OWNER CAN SAY SO THEMSELVES** (`confirm_return_settled` in bookings.php,
+  `confirmReturnSettled` in admin.js; gated by test-payrail + ui-test-money §7). The
+  14-day `ret_stale` escape is the floor, not the answer: Square's API can lag what the
+  owner is already looking at, and it did — reported live, a deposit refund had come out
+  of the Square balance (never having reached the bank) while the row still said our
+  records had not seen it settle. The confirm button on that row is the owner asserting a
+  fact they have VERIFIED, so the ledger stops fencing money that has gone. `MANUAL` is
+  the existing word for "settled by hand" and both `ret_settled` and `damages_returned`
+  already treat it as settled, so nothing downstream changed. Deliberately narrow: it
+  only ever moves a NON-TERMINAL `damages_return` to MANUAL — it cannot resurrect a
+  FAILED refund, touch a rental charge, or invent a return that was never issued — and
+  it asks first, in terms of what the owner can check ("has it actually left your Square
+  balance") with the CONSEQUENCE stated, because under-fencing is how the account goes
+  short. The row's pointer at the page-level "Check Square now" is suppressed when the
+  row has its own button, or one job reads as two.
+  **"DECIDED" IS ONE DEFINITION, AND NOTHING MAY WALK A ROW BACK FROM IT**
+  (`payment_status_terminal` / `PAYMENT_STATUSES_TERMINAL` in db.php). Building the
+  confirm surfaced that a `MANUAL` row would still be polled by
+  `reconcile_pending_refunds()`, Square would answer `PENDING`, and the confirmation
+  would silently reverse itself — the poller undoing the owner precisely because
+  Square's API being behind is the whole reason they confirmed. Auditing that found the
+  same hole already open on a path nobody had connected to it: **Square's events arrive
+  out of order**, so a late `refund.updated` carrying PENDING could overwrite a
+  COMPLETED row and put money that had already gone back into the ring fence. So the
+  poller now excludes MANUAL *and* guards its write (a row can settle between the SELECT
+  and the UPDATE), and the webhook's write carries the same guard in SQL. FAILED and
+  REJECTED are terminal too: not "settled" in the money sense — `damages_returned` and
+  `ret_settled` both exclude them — but DECIDED, and a later PENDING must not resurrect
+  a refund known not to have gone. A terminal status may still be corrected to another
+  TERMINAL one (a refund that later FAILS is news the owner must have), which is why the
+  guard tests the INCOMING value and not the stored row alone.
   **UNKNOWN IS ITS OWN ANSWER.** `payouts_landed` returns true/false/**null** — an
   unrecognised status, a missing or malformed `arrival_date`, a charge absent from the
   payout data. Null money gets its own figure ("Square hasn't said · not counted as

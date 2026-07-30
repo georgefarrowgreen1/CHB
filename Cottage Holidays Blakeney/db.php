@@ -1228,6 +1228,24 @@ function payment_status_known($s)
     return in_array(payment_status_norm($s), PAYMENT_STATUSES, true);
 }
 
+// IS THIS STATUS SETTLED FOR GOOD? A row that has reached one of these is a decided
+// fact, and nothing may quietly walk it back to "we're still waiting".
+//
+// This matters in two places. Square's events can arrive OUT OF ORDER, so a late
+// `refund.updated` carrying PENDING could overwrite a COMPLETED row and put money that
+// has already gone back into the ring fence. And MANUAL means a human has confirmed it
+// — the whole point of that confirmation is that Square's own API is behind, so letting
+// the poller answer PENDING over it would undo the confirmation the moment it was made.
+//
+// FAILED and REJECTED are terminal too: they are not "settled" in the money sense
+// (damages_returned and ret_settled both exclude them), but they ARE decided, and a
+// later PENDING must not resurrect a refund that is known not to have gone.
+const PAYMENT_STATUSES_TERMINAL = ['COMPLETED', 'MANUAL', 'FAILED', 'REJECTED'];
+function payment_status_terminal($s)
+{
+    return in_array(payment_status_norm($s), PAYMENT_STATUSES_TERMINAL, true);
+}
+
 // HOW MUCH THIS BOOKING HAS ALREADY PAID — one definition, because there were two.
 // `bookings.deposit_paid` is the reconciled headline figure; `booking_ledger_net()` is
 // what the card ledger actually shows. They agree once reconciliation has run, and

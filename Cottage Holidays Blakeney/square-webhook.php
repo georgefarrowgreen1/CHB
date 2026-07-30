@@ -45,9 +45,23 @@ if (strpos($type, 'refund.') === 0) {
     // `$status !== ''`; three paths, three rules, and this was the unguarded one.
     if ($refund && !empty($refund['id']) && payment_status_known($refund['status'] ?? '')) {
         try {
+            // AND NEVER DOWNGRADE A DECIDED ROW. Square's events arrive out of order, so
+            // a late PENDING could overwrite a COMPLETED one — putting money that has
+            // already gone back into the ring fence — or undo a MANUAL confirmation the
+            // owner made precisely because Square's API was behind. A terminal status may
+            // still be corrected to another TERMINAL one (a refund that later FAILS is
+            // news the owner must have), so the guard is on the incoming value, not on
+            // the row alone.
             db()
-                ->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')
-                ->execute([payment_status_norm($refund['status']), (string) $refund['id']]);
+                ->prepare(
+                    "UPDATE payments SET status = ? WHERE square_payment_id = ?"
+                    . " AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED') OR ? = 1)",
+                )
+                ->execute([
+                    payment_status_norm($refund['status']),
+                    (string) $refund['id'],
+                    payment_status_terminal($refund['status']) ? 1 : 0,
+                ]);
         } catch (\Throwable $e) {
         }
     }

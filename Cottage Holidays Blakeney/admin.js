@@ -12072,7 +12072,15 @@ async function renderSweep(refetch) {
         // money had never reached the bank — while the row insisted it was still coming.
         // What we actually know is that we issued the refund and OUR ledger has not seen
         // it settle, which is a statement about our records, not about Square.
-        if (Number(it.awaiting || 0) > 0) return { when: 'left', date: it.check_out, note: 'Refunded — not yet confirmed settled here (tap “Check Square now” below)' };
+        // The pointer to "Check Square now" is only offered when this row has NO confirm
+        // button of its own — otherwise the row gives two instructions for one job.
+        if (Number(it.awaiting || 0) > 0) {
+            return {
+                when: 'left',
+                date: it.check_out,
+                note: 'Refunded — not yet confirmed settled here' + (it.booking_id ? '' : ' (tap “Check Square now” below)'),
+            };
+        }
         // NOT ARRIVED is its own state. "Still staying" was said of a guest whose stay
         // had not started — the deposit is charged with the first payment, so it is held
         // from the moment they book, which can be months out. The arrival is the useful
@@ -12093,6 +12101,9 @@ async function renderSweep(refetch) {
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
                     <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>
+                    ${Number(it.awaiting || 0) > 0 && it.booking_id
+                        ? `<div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('confirmReturnSettled', String(it.booking_id))}>It has gone — confirm settled</button></div>`
+                        : ''}
                 </div>`;
         })
         .join('');
@@ -14024,6 +14035,28 @@ async function offerUpdatedConfirmationEmail(bookingId) {
             }
         },
     });
+}
+// THE OWNER CONFIRMING WHAT THEY CAN ALREADY SEE. Square's API lags: a deposit refund
+// taken out of the Square balance read "not yet confirmed settled here" while the money
+// was demonstrably gone. This says so once, and the ledger stops fencing it.
+//
+// It asks first, and the confirm states the CONSEQUENCE rather than the mechanism —
+// under-fencing is how an account goes short, so this is one of the few places where a
+// wrong tap costs real money later.
+async function confirmReturnSettled(bookingId) {
+    const ok = await glassConfirm(
+        'Only do this if you can see the refund has actually left your Square balance or bank account.\n\n'
+            + 'It stops being held back from what you can move out, so if it has NOT gone you could end up short.',
+        'Yes, it has gone',
+    );
+    if (!ok) return;
+    try {
+        const r = await apiPost('bookings.php', { action: 'confirm_return_settled', id: Number(bookingId) });
+        toast(r && r.confirmed ? 'Marked as settled — it is no longer held back.' : (r && r.note) || 'Nothing was waiting.');
+        await renderSweep(true);
+    } catch (e) {
+        glassAlert("Couldn't record that: " + e.message);
+    }
 }
 // WHICH SQUARE LOCATION THIS SITE TRADES UNDER. Only offered when there is a genuine
 // choice: with one location there is nothing to get wrong, and a picker showing a single
