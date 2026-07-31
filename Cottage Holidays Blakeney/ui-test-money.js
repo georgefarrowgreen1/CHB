@@ -709,6 +709,15 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!!oneWrote && oneMarks['11'] > 0, `ticking one records it (${oneWrote ? oneWrote.value : 'no write'})`);
   ok(!!oneWrote && !oneMarks['15'],
     '…and leaves the other booking alone, which is the whole point of a per-booking pick');
+  // THE PANEL YOU ARE WORKING IN STAYS OPEN. A tick saves and re-renders, and this
+  // box is rebuilt by innerHTML — so the workings snapped shut on every tick and
+  // had to be reopened to reach the next row, in the one flow whose whole point is
+  // ticking several rows. Measured `open: false` before the fix.
+  const stillOpen = await page.evaluate(() => {
+    const dd = document.querySelector('#sweep-body details');
+    return dd ? dd.open : null;
+  });
+  ok(stillOpen === true, `the workings stay open after a tick (${stillOpen})`);
 
   // THE WHOLE LOT still has its own button, and it CONFIRMS — it acts on a set you
   // cannot see from where it sits, unlike a row's own tick.
@@ -789,6 +798,21 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(headline === '', `no transfer figure is offered once everything is marked (${headline || 'none'})`);
   const sMoved = await sweepText();
   ok(/Already transferred out/.test(sMoved) && /£294\.75/.test(sMoved), 'it is SHOWN as transferred, not silently dropped');
+  // IT SAYS WHEN YOU SAID SO. `moved_at` was computed on the server, carried to
+  // the client and rendered NOWHERE — built with no way in, the shape this
+  // codebase keeps finding. It is the fact that makes the group checkable against
+  // a bank statement, and without it the group's own "you told me" cannot be dated.
+  const movedGroupTx = await page.evaluate(() => {
+    const g = [...document.querySelectorAll('#sweep-body .accounts-stat')]
+      .find((el) => /Already transferred out/i.test(el.textContent));
+    return g ? g.textContent.replace(/\s+/g, ' ') : '';
+  });
+  ok(/You marked this on \d\d\/\d\d\/\d{4}/.test(movedGroupTx),
+    `the moved row dates the mark (${movedGroupTx.slice(0, 160)})`);
+  // Labelled, not a bare second date: the row already carries the date the money
+  // came IN, and two unlabelled dates side by side say nothing.
+  ok(/You marked this on/.test(movedGroupTx) && /£294\.75/.test(movedGroupTx),
+    '…and says which date it is, beside the one the money arrived on');
   // THE OVERRIDE GOES BOTH WAYS. A mark is the owner's memory, and a memory can be
   // wrong — without an undo, one mistaken tap hides that money for good.
   posts.length = 0;
@@ -857,6 +881,16 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!!autoMap && autoMap['11'] > 0,
     `…and marks what Square had already paid in, because that balance already contains it (${autoMoved ? autoMoved.value : 'no write'})`);
   ok(!!autoMap && autoMap['99'] === 1750000000, '…adding to the record rather than replacing it');
+  // IT SAYS WHAT IT DID. Noting a balance also marks every payment inside it, which
+  // is a change to a money figure the owner did not explicitly ask for — and the
+  // toast said only "Balance noted", so charges silently stopped counting as
+  // movable. A side effect on money has to be reported where it happens.
+  const autoToast = await page.evaluate(() => {
+    const s = document.getElementById('app-toasts');
+    return s ? s.textContent.replace(/\s+/g, ' ').trim() : '';
+  });
+  ok(/Balance noted/.test(autoToast) && /\b2 payments\b/.test(autoToast),
+    `noting a balance says how many payments it just took out of the figure (${autoToast})`);
   await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
   await page.evaluate(() => renderSweep(false));
   await page.waitForTimeout(300);

@@ -12160,9 +12160,17 @@ let __sweepBuffer = '';
 // typing with the rolled-forward estimate.
 let __sweepBalTouched = false;
 let __sweepLiab = null; // cached: typing a balance must not re-query the server
+// Whether the owner has the workings open. Ticking a payment off SAVES and
+// re-renders, and this box is rebuilt by innerHTML — so without remembering it,
+// the panel you are working in snaps shut on every tick and has to be reopened to
+// reach the next row. Measured: `open` was false immediately after a tick. Read
+// from the live DOM at the top of each render, before the refetch wipes the box.
+let __sweepWorkingsOpen = false;
 async function renderSweep(refetch) {
     const box = document.getElementById('sweep-body');
     if (!box) return;
+    const openNow = /** @type {HTMLDetailsElement|null} */ (box.querySelector('details.sweep-detail'));
+    if (openNow) __sweepWorkingsOpen = openNow.open;
     if (refetch !== false) __sweepLiab = null;
     if (!__sweepLiab) {
         box.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Working out what Square will claw back…</p>`;
@@ -12523,6 +12531,17 @@ async function renderSweep(refetch) {
                             <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
                             <span style="white-space:nowrap;color:var(--text-muted);">${gbp(it.movable)}</span>
                         </div>
+                        ${/* WHEN the owner said so. `moved_at` was computed on the
+                              server, sent to the client and rendered NOWHERE — the
+                              built-with-no-way-in shape. It is the fact that makes
+                              this group checkable against a bank statement, and
+                              without it the group's own "you told me" claim cannot
+                              be dated. Labelled, because the row already carries the
+                              date the money came IN and two bare dates would be
+                              indistinguishable. */ ''}
+                        ${Number(it.moved_at) > 0
+                            ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">You marked this on ${fmtDate(new Date(Number(it.moved_at) * 1000).toISOString().slice(0, 10))}</div>`
+                            : ''}
                         <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('sweepUnmarkTransferred', String(it.txn_id != null ? it.txn_id : ''))}>Not transferred after all</button></div>
                     </div>`).join('')}
                     <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
@@ -12553,7 +12572,7 @@ async function renderSweep(refetch) {
         answer +
         alertHtml +
         confirmHtml +
-        `<details class="sweep-detail" style="max-width:620px;margin-top:14px;">
+        `<details class="sweep-detail"${__sweepWorkingsOpen ? ' open' : ''} style="max-width:620px;margin-top:14px;">
             <summary style="cursor:pointer;padding:12px 2px;font-size:0.85rem;color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
          </details>` +
@@ -12674,10 +12693,18 @@ async function sweepRememberBalance() {
         // counts only movements strictly AFTER the stated instant; here it just
         // has to hold for the DERIVED figure too.
         const map = sweepMovedMap();
+        let marked = 0;
         ((__sweepLiab && __sweepLiab.payouts && __sweepLiab.payouts.items && __sweepLiab.payouts.items.inBank) || [])
-            .forEach((it) => { if (it.txn_id != null) map[String(it.txn_id)] = now; });
+            .forEach((it) => { if (it.txn_id != null) { map[String(it.txn_id)] = now; marked++; } });
         await saveContent('sweep-moved', JSON.stringify(map));
-        toast('Balance noted', 'success');
+        // SAY WHAT IT DID. This marks payments as already transferred — a change to
+        // a money figure the owner did not explicitly ask for — and "Balance noted"
+        // reported none of it, so charges silently stopped counting as movable.
+        // Named here rather than hidden as a side effect of noting a number; the
+        // rows themselves are in "Already transferred out", with an undo each.
+        toast(marked
+            ? `Balance noted — ${marked} payment${marked === 1 ? '' : 's'} already in it won't be offered again`
+            : 'Balance noted', 'success');
     } catch (e) {
         return; // saveContent has already told them, and it rethrows on purpose
     }
