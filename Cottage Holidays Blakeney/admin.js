@@ -9669,6 +9669,16 @@ function bookingHubBack() {
 }
 
 // The stage strip + the single next action for a booking's current state.
+// THE EMAIL ASK A BOOKING IS UP TO — deposit first, then the balance once
+// something is in; a finished stay only ever chases the balance. ONE definition,
+// because the banner's CTA (hubPipelineHtml) and the Payments row's email button
+// (renderBookingHub) both read it and the two are on screen together — derived
+// separately they could ask for different stages of the same money. The server
+// still derives the SUM (booking_payment_kind upgrades a deposit ask to the full
+// amount inside the balance window); this names the stage, not the figure.
+function hubAskKind(gt, past) {
+    return gt.paid > 0 || past ? 'balance' : 'deposit';
+}
 function hubPipelineHtml(propKey, b, gt, dh) {
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
@@ -9717,6 +9727,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         .map((s, i) => pill(s, s.now || i === curIdx ? nowCls(s) : s.done ? 'is-done' : ''))
         .join(arrow);
 
+    const askKind = hubAskKind(gt, past);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
     let next = null; // { text, onclick, btn }
@@ -9725,13 +9736,13 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         if (!(gt.paid > 0)) {
             next = {
                 text: `Nothing received yet — ${gbp(gt.balance)} due.`,
-                onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'deposit') : chbAttrs('recordPayment', String(b.id)),
+                onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
             };
         } else {
             next = {
                 text: `${gbp(gt.balance)} balance remaining.`,
-                onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'balance') : chbAttrs('recordPayment', String(b.id)),
+                onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
             };
         }
@@ -9742,7 +9753,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         const canCard = squareAdminEnabled && b.email;
         next = {
             text: `${gbp(gt.balance)} still owed from this finished stay.`,
-            onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'balance') : chbAttrs('recordPayment', String(b.id)),
+            onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
         };
     } else if (flow.hasReg && !b.regSubmitted && !past) {
@@ -10002,6 +10013,7 @@ function renderBookingHub() {
     // already carries "Request … by card" when a balance is due, so the button
     // row keeps only the complementary actions (record a manual payment, copy a
     // link to paste into a chat, the invoice) — never the same action twice.
+    const askKind = hubAskKind(gt, past);
     const payBlock = `
         <div class="bhub-headpay">
             <span class="bhub-headpay-cap">Payments</span>
@@ -10009,6 +10021,16 @@ function renderBookingHub() {
             ${discloseBtn}
             ${depositLine}
             <div class="bhub-btn-row">
+                ${/* The email ask, IN the Payments section — the banner carries it
+                      too, but the owner working this block should not have to go
+                      back up for the one action that asks for the money. Staged by
+                      askKind (shared with the banner, so the two can never ask for
+                      different things): the deposit ask first, then the SUBSEQUENT
+                      balance ask once something is in. Hidden when paid in full or
+                      with no email on file, same as Copy pay link. */ ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email
+                    ? `<button class="btn-sm btn-edit" ${chbAttrs('requestPayment', String(b.id), askKind)}>${askKind === 'deposit' ? 'Email deposit link' : 'Email balance link'}</button>`
+                    : ''}
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
                 <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>

@@ -137,7 +137,11 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(uni.payInHead && uni.payTitle, 'payments block (breakdown + actions) lives INSIDE the header section');
   ok(uni.noPayCard, 'no separate Payments card remains in the grid');
   ok(uni.noPaypipe, 'the duplicate money mini-pipeline is gone (journey strip carries the stages)');
-  ok(uni.reqBtns <= 1, `"Request … by card" appears at most once — the banner owns it (${uni.reqBtns})`);
+  // Square is OFF at this point, so no email ask renders anywhere — the banner
+  // falls back to Record a payment. (The banner-owns-it rule was retired at the
+  // owner's request: with Square ON, the Payments row carries the ask too — see
+  // the "email ask in the Payments row" section below, which owns that contract.)
+  ok(uni.reqBtns === 0, `no email ask without Square (${uni.reqBtns})`);
   // The money folds to ONE payline in EVERY state — untouched booking reads the
   // total (banner already leads with the balance), full maths behind disclose,
   // and the figure can never wrap into a broken multi-line mess.
@@ -183,6 +187,44 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.waitForTimeout(500);
   const pastPay = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
   ok(/still owed from this finished stay/.test(pastPay) && !/All set/.test(pastPay), `finished + unpaid → chases the balance, not "all set" (${pastPay.trim().slice(0, 60)})`);
+
+  // ---------- A2c. the email ask lives IN the Payments row too ----------
+  // The banner asks for the money, but the owner working the Payments block had
+  // to go back up for the one action that asks for it — Record/Copy/Invoice were
+  // there and the email was not. Staged: the deposit ask first, then the
+  // SUBSEQUENT balance ask once something is in. One derivation (askKind) feeds
+  // the banner AND the row, gated here by comparing what each actually carries.
+  console.log('A2c. email ask in the Payments row');
+  const askShape = async () => page.evaluate(() => {
+    const row = document.querySelector('.bhub-headpay .bhub-btn-row [data-act="requestPayment"]');
+    const ban = document.querySelector('.bhub-next [data-act="requestPayment"]');
+    const kind = (el) => { try { return JSON.parse(el.getAttribute('data-args') || '[]')[1] || ''; } catch (e) { return ''; } };
+    return {
+      rowLabel: row ? row.textContent.trim() : '',
+      rowKind: row ? kind(row) : '',
+      banKind: ban ? kind(ban) : '',
+      both: !!row && !!ban,
+    };
+  });
+  // b4 is part-paid (deposit in, balance owed) and Square is on → the SUBSEQUENT ask.
+  let ask = await askShape();
+  ok(ask.rowLabel === 'Email balance link' && ask.rowKind === 'balance',
+    `a part-paid booking's row offers the subsequent balance email (${ask.rowLabel} / ${ask.rowKind})`);
+  ok(ask.both && ask.rowKind === ask.banKind,
+    `…and the row and the banner ask for the SAME stage (${ask.rowKind} vs ${ask.banKind})`);
+  // b1 has nothing paid → the deposit ask.
+  await page.evaluate(() => showDetails('21a', findBookingById('b1')));
+  await page.waitForTimeout(500);
+  ask = await askShape();
+  ok(ask.rowLabel === 'Email deposit link' && ask.rowKind === 'deposit',
+    `an unpaid booking's row offers the deposit email (${ask.rowLabel} / ${ask.rowKind})`);
+  ok(ask.both && ask.rowKind === ask.banKind,
+    `…agreeing with the banner again (${ask.rowKind} vs ${ask.banKind})`);
+  // b3 is paid in full → nothing left to ask for.
+  await page.evaluate(() => showDetails('21a', findBookingById('b3')));
+  await page.waitForTimeout(500);
+  ask = await askShape();
+  ok(ask.rowLabel === '' && !ask.both, 'a paid-in-full booking offers no email ask at all');
 
   // ---------- A3. finished stay: Edit is soft-locked ----------
   // A checked-out booking is a record (invoices, guest register, directory) —

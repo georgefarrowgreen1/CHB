@@ -883,8 +883,17 @@ delegates to `openBookingHub()` (admin.js): status pipeline + next action + the
 payments block are ONE unified header section (`.bhub-head` → `payBlock` /
 `.bhub-headpay` — there is NO separate Payments card and NO second money
 mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-test-hub
-§A; the journey strip carries the money stages, the banner owns the "Request … by
-card" CTA so the button row keeps only record/copy-link/invoice); then emails,
+§A; the journey strip carries the money stages. The email ask lives in the banner
+AND the Payments button row — the banner-owns-it rule was retired at the owner's
+request, because working the Payments block meant going back up for the one action
+that asks for the money. The row's button is STAGED: "Email deposit link" until
+something is in, then the SUBSEQUENT "Email balance link"; hidden when paid in
+full or with no email on file. `hubAskKind(gt, past)` is the ONE derivation both
+the banner and the row read — derived separately they could ask for different
+stages of the same money, and ui-test-hub §A2c compares what each node actually
+carries. The server still derives the SUM (`booking_payment_kind` upgrades a
+deposit ask to the full amount inside the balance window) — the label names the
+stage, not the figure); then emails,
 guest, change history via `bookings.php` `history` as grid cards; on desktop
 (≥900px) the status pipeline shows ALL stages (upcoming = red dot), compact
 Done·Now·Next below that; the payments block folds to ONE `.bhub-payline` in EVERY
