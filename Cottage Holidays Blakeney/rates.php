@@ -12,6 +12,7 @@
 //  payment/booking logic keys off the prop_key row, which is never deleted.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php'; // square_deposit_pct() / payment_balance_days()
 
 // The public GET payload, as a function so bootstrap.php can serve the SAME data
 // in its combined first-paint response without duplicating this logic.
@@ -61,7 +62,20 @@ function rates_public_payload()
         }
     } catch (\Throwable $e) {
     }
-    return ['properties' => $rows, 'seasons' => $seasons, 'occupancy' => occupancy_limits()];
+    // The PAYMENT SCHEDULE, so the terms the guest signs can state the numbers the
+    // server actually enforces rather than repeating them as prose. Both are
+    // published payment terms, not secrets, and they ride the payload the client
+    // already fetches at boot — a second request for two integers would be a poor
+    // trade (the `feeds` precedent in admin-bootstrap.php).
+    return [
+        'properties' => $rows,
+        'seasons' => $seasons,
+        'occupancy' => occupancy_limits(),
+        'payment' => [
+            'deposit_pct' => square_deposit_pct(),
+            'balance_days' => payment_balance_days(),
+        ],
+    ];
 }
 
 // When bootstrap.php includes this file for the payload helper, stop before the

@@ -1422,7 +1422,9 @@ function cancellation_policy_line($propKey)
     $policies = [
         'flexible' => ['Flexible', 'full refund at least 1 day before check-in; partial refund within 1 day of check-in'],
         'moderate' => ['Moderate', 'full refund at least 5 days before check-in; partial refund within 5 days of check-in'],
-        'limited' => ['Limited', 'full refund at least 14 days before check-in; partial refund 7–14 days before check-in'],
+        // Kept word-for-word in step with CANCELLATION_POLICIES in app.js — the
+        // cottage page, the terms and this email line are the same promise.
+        'limited' => ['Limited', 'full refund at least 14 days before check-in; partial refund 7–14 days before check-in; no refund within 7 days of check-in'],
     ];
     $key = function_exists('content_value') ? content_value($propKey . '-cancellation-policy') : '';
     $pol = $policies[$key] ?? $policies['flexible'];
