@@ -129,10 +129,20 @@ function booking_occupancy_warning($propKey, $adults, $children)
 // (prop_is_archived() lives in db.php — shared with the approval path.)
 
 // Reconcile a deposit amount against a chosen status + total. Returns float or null(invalid).
-function reconcile_deposit($status, $total, $currentDep, $proposedDep)
+// $withDeposit: the agreed damages deposit when the owner says they collected it
+// in cash/bank alongside the rental (the cash rail's version of pay.php bundling
+// it into the first card payment). Only ever added on 'paid' — the one state
+// where "everything, including the deposit" is unambiguous — and only the exact
+// agreed figure, never an arbitrary overpayment. Before this there was NO way to
+// record a cash-collected deposit at all: 'paid' clamped to the rental total and
+// a deposit-inclusive partial was refused, so the £50 in the drawer was invisible
+// to the deposits-to-return queue, the duties list and the return flow — while
+// every DISPLAY of the state was already consistent (displayGrand, the
+// confirmation, damages_collected all read paid-above-rental as the deposit).
+function reconcile_deposit($status, $total, $currentDep, $proposedDep, $withDeposit = 0.0)
 {
     if ($status === 'paid') {
-        return round($total, 2);
+        return round($total + max(0.0, (float) $withDeposit), 2);
     }
     if ($status === 'unpaid') {
         return 0.0;
@@ -276,7 +286,17 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
     $prior = round((float) ($b['deposit_paid'] ?? 0), 2);
     $paid = round(max(0, max($ledgerNet, $prior - (float) $refundJustIssued)), 2);
     if ($total > 0) {
-        $paid = min($total, $paid);
+        // The cap allows the CASH-collected damages deposit on top of the rental
+        // (hold_status 'none' — the card rail records its deposit on hold_*, so
+        // its cap stays the rental). Without the headroom, the first card event
+        // on a booking whose owner had recorded rental + deposit clamped
+        // deposit_paid back to the rental — silently erasing the deposit from
+        // the deposits-to-return queue it had just joined.
+        $cap =
+            ($b['hold_status'] ?? 'none') === 'none'
+                ? round($total + max(0.0, (float) ($b['agreed_booking_fee'] ?? 0)), 2)
+                : $total;
+        $paid = min($cap, $paid);
     }
     $status = derive_payment_status($total, $paid);
     // Do NOT restamp payment_date on a refund — accounts.php allocates the WHOLE
@@ -946,7 +966,16 @@ if ($action === 'set_payment') {
         }
     }
     $status = in_array($in['payment'] ?? '', ['unpaid', 'deposit', 'paid']) ? $in['payment'] : $b['payment'];
-    $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
+    // "I also collected the damages deposit" — cash-rail only (hold_status 'none';
+    // the card rail records its deposit on hold_* when pay.php charges it), and
+    // only ever the exact agreed figure. damages_collected then reads it back as
+    // paid-above-rental, which lights up the deposits-to-return queue, the duty
+    // and the (already-manual-capable) return flow end to end.
+    $withDep =
+        !empty($in['deposit_collected']) && ($b['hold_status'] ?? 'none') === 'none'
+            ? round(max(0.0, (float) ($b['agreed_booking_fee'] ?? 0)), 2)
+            : 0.0;
+    $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null, $withDep);
     if ($dep === null) {
         json_out(
             ['error' => "Deposit must be more than £0 and less than the total. Use 'Paid' or 'Unpaid' otherwise."],

@@ -14372,27 +14372,52 @@ async function recordPayment(bookingId) {
             booking.checkOut,
         ).total ||
         0;
+    // THE DAMAGES DEPOSIT CAN BE RECORDED ON THE CASH RAIL. It used to be
+    // excluded by construction ("rental only, not the damage deposit" + a clamp
+    // at the rental total + the server refusing anything above it) — so the £50
+    // a cash guest handed over was invisible to the deposits-to-return queue,
+    // the duty and the return flow, while the card rail recorded its deposit
+    // automatically via pay.php. Cash-rail only (holdStatus 'none'); the exact
+    // agreed figure, chosen with a yes/no rather than typed, so an arbitrary
+    // overpayment still cannot be recorded.
+    const dmg = Math.max(0, Number(booking.damagesDeposit != null
+        ? booking.damagesDeposit
+        : (booking.agreedPrice && booking.agreedPrice.damagesDeposit) || 0));
+    const askDep = dmg > 0 && (booking.holdStatus || 'none') === 'none';
+    /** @type {Array<{id:string,label:string,type?:string,value?:*,min?:number,step?:number,placeholder?:string,options?:{value:string,label:string}[]}>} */
+    const fields = [
+        {
+            id: 'amount',
+            label: 'Rental received so far (£)',
+            type: 'number',
+            min: 0,
+            step: 0.01,
+            value: booking.depositPaid > 0 ? Math.min(booking.depositPaid, total) : '',
+            placeholder: 'e.g. 100',
+        },
+        { id: 'date', label: 'Payment date', type: 'date', value: booking.paymentDate || todayDashed() },
+        {
+            id: 'method',
+            label: 'Payment method (optional)',
+            type: 'text',
+            value: booking.paymentMethod || '',
+            placeholder: 'Card / Bank transfer / Cash …',
+        },
+    ];
+    if (askDep)
+        fields.push({
+            id: 'withdep',
+            label: `Damages deposit (${gbp(dmg)})`,
+            type: 'select',
+            options: [
+                { value: 'no', label: 'Not collected yet' },
+                { value: 'yes', label: `Collected too (cash/bank) — refunded after the stay` },
+            ],
+            value: booking.depositPaid > total + 0.001 ? 'yes' : 'no',
+        });
     const vals = await glassForm(
-        `Record a payment from ${booking.name || 'the guest'}.\nRental total ${gbp(total)} — enter the total received so far (rental only, not the damage deposit).`,
-        [
-            {
-                id: 'amount',
-                label: 'Total received so far (£)',
-                type: 'number',
-                min: 0,
-                step: 0.01,
-                value: booking.depositPaid > 0 ? booking.depositPaid : '',
-                placeholder: 'e.g. 100',
-            },
-            { id: 'date', label: 'Payment date', type: 'date', value: booking.paymentDate || todayDashed() },
-            {
-                id: 'method',
-                label: 'Payment method (optional)',
-                type: 'text',
-                value: booking.paymentMethod || '',
-                placeholder: 'Card / Bank transfer / Cash …',
-            },
-        ],
+        `Record a payment from ${booking.name || 'the guest'}.\nRental total ${gbp(total)}${askDep ? ` + ${gbp(dmg)} refundable damages deposit` : ''} — enter the rental received so far.`,
+        fields,
     );
     if (vals === null) return;
     let dep = Math.max(0, parseFloat(vals.amount) || 0);
@@ -14403,6 +14428,10 @@ async function recordPayment(bookingId) {
     else status = 'deposit';
 
     const payload = { id: booking.dbId, payment: status };
+    // Only meaningful with 'paid' (the server applies it nowhere else): the
+    // deposit rides the FULL settlement on the cash rail, exactly as pay.php
+    // bundles it into the first card payment.
+    if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {
         const d = (vals.date || '').trim();
