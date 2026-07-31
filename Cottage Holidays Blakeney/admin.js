@@ -12235,7 +12235,7 @@ async function renderSweep(refetch) {
             const st = depState(it);
             return `<div class="act-row" style="display:block;">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${st.date ? ` · ${st.when} ${st.date === today ? 'today' : fmtDate(st.date)}` : ''}</span>
+                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${st.date ? ` · ${st.when} ${st.date === today ? 'today' : fmtDate(st.date)}` : ''}</span>
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
                     <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>
@@ -12316,7 +12316,7 @@ async function renderSweep(refetch) {
             ? ` ${lateUnknown.length === 1 ? 'One of these was' : lateUnknown.length + ' of these were'} taken over a week ago, and Square normally pays out within a day or two — so ${lateUnknown.length === 1 ? 'it' : 'they'} should have shown up by now. Worth checking Square directly.`
             : '';
     const txRow = (it) => {
-        const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
+        const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : '');
         const held = Number(it.ringFence || 0);
         return `<div class="act-row" style="display:block;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
@@ -12349,58 +12349,25 @@ async function renderSweep(refetch) {
     const notBalance =
         'This is what those payments brought in — not the account balance, which also holds older money and whatever you\'ve already moved or spent.';
 
-    box.innerHTML =
-        `<div class="accounts-stat" style="max-width:620px;">
-            <div class="label">Keep in the account</div>
-            <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;">${gbp(ring - buf)}</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">
-                ${L.count === 0
-                    ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
-                    : `${L.count} damage deposit${L.count === 1 ? '' : 's'} still held. Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
-            </p>
-            ${disp > 0
-                ? `<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;">Plus ${gbp(disp)} under dispute — ${L.disputes.count === 1 ? 'a card payment is' : L.disputes.count + ' card payments are'} being challenged and Square may take it back. Held here until it is settled.</p>`
-                : ''}
-            ${L.disputes && L.disputes.error
-                ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">Couldn't check for disputes — ${escapeHtml(String(L.disputes.error))}. Anything under dispute is NOT included above.</p>`
-                : ''}
-        </div>` +
-        (L.count
-            ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                <div class="label">Deposits still held</div>
-                <div style="margin-top:6px;">${rows}</div>
-               </div>`
-            : '') +
-        (T && T.count && P
-            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
-              txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
-              txGroup(P.items.unknown, "Square hasn't said", P.unknown, "These charges aren't in the payout data, so there's no telling whether they've landed. Not counted as movable." + unknownWhy) +
-              `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
-                    ${P.error
-                        ? `Payout data may be out of date — ${escapeHtml(String(P.error))}.`
-                        : P.checked
-                          ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
-                          : 'Payouts have not been checked yet.'}
-                    <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
-                    <br>${notBalance}
-                    ${P.fees > 0 ? `<br>Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.` : ''}
-                    ${locWhy ? '<br>' + locWhy.trim() : ''}
-                    ${P.truncated ? '<br>Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
-                    ${P.failed && P.failed.count ? `<br><strong>${P.failed.count} payout${P.failed.count === 1 ? '' : 's'} FAILED (${gbp(P.failed.amount)})</strong> — that money never arrived, and it usually means the bank details need fixing.` : ''}
-               </p>`
-            : T && T.count
-              ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
-                <div class="label">Movable, payment by payment</div>
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
-                <div>${txFlat}</div>
-                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
-                    <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
-                </div>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account. ${notBalance} <button class="btn-sm btn-edit" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button></p>
-               </div>`
-              : '') +
-        `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+    // ---- THE ANSWER FIRST, THEN ONLY WHAT IS WRONG -------------------------
+    // The page has ONE question in its name and used to answer it LAST, below the
+    // ring fence, the deposit list and three groups of per-charge workings — ~15
+    // figures on a phone before the one the owner came for. The same deposit was
+    // also stated three times (headline, own row, "held back" on the charge that
+    // carries it), which reads as three liabilities. Order now: the answer, what
+    // NEEDS the owner, then the workings on demand. Nothing is deleted — a money
+    // screen has to be checkable — just one tap away instead of in the way.
+    // NB "still to return" is the wording removed for calling a deposit a to-do
+    // when its guest has not arrived; it must not creep back. And the breakdown is
+    // printed only when it BREAKS DOWN — with one component it restated the total
+    // ("Leaves £73.92 behind — £73.92 for the deposit").
+    const ringParts = [`${gbp(L.net)} for the deposit${L.count === 1 ? '' : 's'} still held`]
+        .concat(disp > 0 ? [`${gbp(disp)} under dispute`] : [])
+        .concat(buf > 0 ? [`your ${gbp(buf)} cushion`] : []);
+    const ringNote = ringParts.length > 1
+        ? `Leaves ${gbp(ring)} behind — ${ringParts.join(', ')}.`
+        : `Leaves ${gbp(ring)} behind for the deposit${L.count === 1 ? '' : 's'} still held.`;
+    const answer = `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">How much can I move?</div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">${est
                 ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''}. That's an <strong>estimate</strong> — correct it if the account says otherwise.`
@@ -12418,11 +12385,97 @@ async function renderSweep(refetch) {
                   : `<div style="margin:14px 0 0;">
                         <div class="label">Safe to move</div>
                         <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(safe)}</div>
-                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Leaves ${gbp(ring)} behind — ${gbp(L.net)} for the deposits still to return${disp > 0 ? `, ${gbp(disp)} under dispute` : ''}${buf > 0 ? `, plus your ${gbp(buf)} cushion` : ''}.</p>
+                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">${L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.'}</p>
                         <button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Stored with today's date so next time it can start from here and add what Square has paid in since.</p>
                      </div>`}
         </div>`;
+
+    // WHAT IS WRONG STAYS IN THE OPEN — the only things here that ask anything of
+    // the owner, so never behind the disclosure (ui-test-money asserts the DOM).
+    const alerts = [];
+    if (disp > 0) {
+        alerts.push(['danger', `${gbp(disp)} under dispute — ${L.disputes.count === 1 ? 'a card payment is' : L.disputes.count + ' card payments are'} being challenged and Square may take it back. Held back above until it is settled.`]);
+    }
+    if (L.disputes && L.disputes.error) {
+        alerts.push(['muted', `Couldn't check for disputes — ${escapeHtml(String(L.disputes.error))}. Anything under dispute is NOT included above.`]);
+    }
+    if (P && P.failed && P.failed.count) {
+        alerts.push(['danger', `<strong>${P.failed.count} payout${P.failed.count === 1 ? '' : 's'} FAILED (${gbp(P.failed.amount)})</strong> — that money never arrived, and it usually means the bank details need fixing.`]);
+    }
+    // WHY money is unaccounted for is an exception; WHICH charges is detail. This
+    // sentence lived inside the unknown GROUP, so burying the groups would have
+    // buried the one line saying Square is paying out nothing at all.
+    if (P && P.unknown > 0) {
+        alerts.push(['warn', `${gbp(P.unknown)} of charges aren't in the payout data, so there's no telling whether they've landed. Not counted as movable.${unknownWhy}`]);
+    }
+    if (P && P.error) {
+        alerts.push(['warn', `Payout data may be out of date — ${escapeHtml(String(P.error))}.`]);
+    }
+    const alertHtml = !alerts.length
+        ? ''
+        : `<div class="accounts-stat sweep-alerts" style="max-width:620px;margin-top:14px;">
+            ${alerts.map(([tone, html]) => `<p style="font-size:0.85rem;margin:0 0 8px;color:var(--${tone === 'danger' ? 'danger' : tone === 'warn' ? 'warn-text' : 'text-muted'});">${html}</p>`).join('')}
+           </div>`.replace(/<\/p>\s*<\/div>/, '</p></div>');
+
+    // THE WORKINGS — checkable, one tap away. <details> is native, keyboard-
+    // operable and needs no script.
+    // WHAT IS HELD BACK, itemised. In the open: the rows carry the "confirm
+    // settled" button, and an action behind a disclosure is one nobody takes.
+    const held = !L.count
+        ? ''
+        : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+            <div class="label">Keep in the account</div>
+            <div style="font-family:var(--font-display);font-size:1.5rem;margin:4px 0 2px;">${gbp(ring - buf)}</div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
+            <div>${rows}</div>
+           </div>`;
+
+    const workings =
+        `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 4px;max-width:620px;">
+            ${L.count === 0
+                ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
+                : `Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
+         </p>` +
+        `<p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;max-width:620px;">${notBalance}</p>` +
+        (T && T.count && P
+            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
+              txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
+              txGroup(P.items.unknown, "Square hasn't said", P.unknown, 'Not counted as movable.') +
+              `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
+                    ${P.fees > 0 ? `Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.<br>` : ''}
+                    ${locWhy ? locWhy.trim() + '<br>' : ''}
+                    ${P.truncated ? 'Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
+               </p>`
+            : T && T.count
+              ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                <div class="label">Movable, payment by payment</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
+                <div>${txFlat}</div>
+                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
+                    <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
+                </div>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
+               </div>`
+              : '');
+
+    box.innerHTML =
+        answer +
+        alertHtml +
+        held +
+        `<details class="sweep-detail" style="max-width:620px;margin-top:14px;">
+            <summary style="cursor:pointer;padding:12px 2px;font-size:0.85rem;color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
+            <div style="padding-top:4px;">${workings}</div>
+         </details>` +
+        `<p style="font-size:0.78rem;color:var(--text-muted);margin:14px 0 0;max-width:620px;">
+            ${P
+                ? P.checked
+                    ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
+                    : 'Payouts have not been checked yet.'
+                : 'No payout data yet.'}
+            <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
+         </p>`;
 }
 function sweepSet(which, value) {
     if (which === 'balance') {

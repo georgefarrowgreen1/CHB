@@ -565,6 +565,43 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Square hasn't said/.test(sFresh) && !/over a week ago/i.test(sFresh) && !/any payouts at all/i.test(sFresh),
     'a charge taken today raises neither alarm — it is simply too soon');
 
+  // ---- THE PAGE ANSWERS ITS OWN QUESTION FIRST ------------------------------
+  // "Move money out" used to answer "how much can I move?" LAST, below the ring
+  // fence, the deposit list and three groups of per-charge workings — on a phone,
+  // ~15 figures before the one the owner opened the page for. The workings are now
+  // behind a disclosure. These checks are about ORDER and VISIBILITY, which
+  // textContent cannot see (it reads inside a closed <details> just the same), so
+  // they measure the DOM.
+  const sweepShape = () => page.evaluate(() => {
+    const body = document.getElementById('sweep-body');
+    const det = body.querySelector('details');
+    const inDetails = (el) => !!(el && det && det.contains(el));
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+    return {
+      firstLabel: txt(body.querySelector('.label')),
+      hasDetails: !!det,
+      detailsOpen: !!(det && det.open),
+      summary: txt(det && det.querySelector('summary')),
+      balanceInDetails: inDetails(document.getElementById('sweep-balance')),
+      // Every control that ASKS SOMETHING OF THE OWNER must be reachable without
+      // opening anything — an action behind a disclosure is an action nobody takes.
+      confirmInDetails: [...body.querySelectorAll('[data-act="confirmReturnSettled"]')].some(inDetails),
+      refreshInDetails: [...body.querySelectorAll('[data-act="sweepRefreshPayouts"]')].some(inDetails),
+      alertsInDetails: inDetails(body.querySelector('.sweep-alerts')),
+      // The per-charge groups ARE workings and belong inside.
+      groupsInDetails: [...body.querySelectorAll('.accounts-stat .label')]
+        .filter((el) => /In the bank|On its way|Square hasn't said|payment by payment/i.test(el.textContent))
+        .every(inDetails),
+    };
+  });
+  const shape = await sweepShape();
+  ok(/how much can i move/i.test(shape.firstLabel), `the page leads with its own question (${shape.firstLabel})`);
+  ok(!shape.balanceInDetails, 'the balance box is not hidden behind the disclosure');
+  ok(shape.hasDetails && !shape.detailsOpen, 'the workings start collapsed');
+  ok(/worked out/i.test(shape.summary), `…behind a summary that says what is in there (${shape.summary})`);
+  ok(shape.groupsInDetails, 'the per-charge groups are workings, and sit inside');
+  ok(!shape.refreshInDetails, '"Check Square now" stays reachable without expanding');
+
   // MONEY UNDER DISPUTE is fenced beside the deposits — Square can pull it back, and
   // a chargeback on a whole stay dwarfs a £75 deposit. Its own line, not folded in.
   sweepStub = Object.assign({}, sweepStub, {
@@ -604,10 +641,19 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!/waiting for Square to take it/.test(sA),
     '…and does not assert what Square has or has not done, which we had not checked');
   ok(/Check Square now/.test(sA), '…it points at the one control that actually asks');
+  // An issued-but-unconfirmed refund carries a BUTTON. It must not be behind the
+  // disclosure — this is the check that failed when the deposits list was first
+  // moved into the workings wholesale.
+  const sAshape = await sweepShape();
+  ok(!sAshape.confirmInDetails, 'the "confirm settled" button is reachable without expanding the workings');
   // …and the CARD must not contradict its own row. It was headed "Deposits still to
   // return" — a to-do — over rows that are nothing of the kind.
   ok(!/Deposits still to return/.test(sA), 'the card no longer heads a ring fence as a to-do list');
-  ok(/Deposits still held/.test(sA), '…it describes what it is actually fencing');
+  // The ring-fence figure and the deposits it is made of are ONE card now (they
+  // were two, which stated the same £73.69 twice under two headings), so the
+  // guarantee is checked against that card: it is headed by what it IS.
+  ok(/Keep in the account/.test(sA) && /damage deposit still held/.test(sA),
+    '…it describes what it is actually fencing');
   // The headline above the list carried the same false claim, and it is the sentence
   // that explains the ring-fence figure — so it has to be true of every row under it.
   ok(/damage deposits? still held/.test(sA) && !/still to return/.test(sA),
