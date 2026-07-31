@@ -366,7 +366,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Keep in the account/i.test(s1) && /£147\.38/.test(s1), `the ring fence is the NET figure (${s1.slice(0, 90)})`);
   ok(/£150\.00/.test(s1) && /£2\.62/.test(s1), 'and the gross debit + fee credit are both shown, so the number can be checked');
   ok(/Sarah Pemberton/.test(s1) && /Dan Rowe/.test(s1), 'the deposits it is holding back for are named');
-  ok(/Enter the balance/.test(s1) && !/Leaves £/.test(s1), 'with no balance typed it does not invent a safe figure');
+  ok(/Type what the account holds/.test(s1) && !/Leaves £/.test(s1) && !/£1,?\d\d\d\./.test(s1),
+    'no balance AND no payout data → it invents no transfer figure at all');
 
   // PER TRANSACTION: the movable figure for each charge, and the total. The
   // arithmetic is test-sweep's; what this proves is that the per-charge figure and
@@ -425,6 +426,45 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!/Movable from these/.test(s1c), 'the old undifferentiated total is gone — it counted un-paid-out money');
   ok(new RegExp('due ' + d(2).split('-').reverse().join('/')).test(s1c), `an unpaid charge says when it is due (${d(2)})`);
   ok(/Payouts checked/.test(s1c), 'the screen says how fresh the payout data is');
+
+  // ---- THE FIGURE YOU ACT ON, BEFORE ANYTHING IS TYPED ---------------------
+  // The page led with what to KEEP and gave the number you transfer only after a
+  // balance was typed. Square's payout data already answers most of it: P.inBank
+  // sums the charges Square has actually paid IN, each already net of its fee and
+  // of any deposit ringfenced out of it — so £294.75 here, not £982.50 (which
+  // includes money Square has taken but not paid out) and not £368.44 (gross).
+  //
+  // These are claims about the ANSWER CARD, so they read only that card. Against
+  // the whole page they were meaningless: £294.75 legitimately appears again as a
+  // workings ROW, and "older money" is in the long-standing not-the-balance
+  // caveat — both made a passing check that proved nothing.
+  const sweepAnswer = async () => (await page.evaluate(() => {
+    const c = document.querySelector('#sweep-body .accounts-stat');
+    return c ? c.textContent : '';
+  })).replace(/\s+/g, ' ').trim();
+
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
+  await page.evaluate(() => renderSweep(false));
+  await page.waitForTimeout(400);
+  const aT = await sweepAnswer();
+  ok(/^Transfer out/.test(aT) && /£294\.75/.test(aT), `a transfer figure without typing anything (${aT.slice(0, 70)})`);
+  ok(!/£982\.50/.test(aT), '…and it is NOT money Square has taken but not paid out');
+  ok(!/£368\.44/.test(aT), '…nor the gross before Square took its fee');
+  // It is a FLOOR, not the balance: the account also holds older money and
+  // whatever has already been moved, so saying so is not optional beside a number
+  // labelled "transfer out".
+  ok(/older money/.test(aT) && /exact figure/.test(aT), 'it says the balance is the authoritative answer, not this');
+  ok(/after holding £147\.38 back/.test(aT), '…and names what it already held back');
+  // A TYPED BALANCE WINS. It is the only figure that accounts for older money.
+  await page.fill('#sweep-balance', '500');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(400);
+  const aT2 = await sweepAnswer();
+  ok(/£352\.62/.test(aT2) && !/£294\.75/.test(aT2), `the typed balance replaces the derived figure, 500 − 147.38 (${aT2.slice(0, 60)})`);
+  ok(!/older money/.test(aT2), '…and the floor caveat goes with it');
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
+  await page.evaluate(() => renderSweep(false));
+  await page.waitForTimeout(300);
 
   // Money Square has said nothing about must be its OWN figure — rounding it into
   // "movable" invites moving it, and rounding it into "on its way" invents a date.
@@ -595,7 +635,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     };
   });
   const shape = await sweepShape();
-  ok(/how much can i move/i.test(shape.firstLabel), `the page leads with its own question (${shape.firstLabel})`);
+  ok(/transfer out/i.test(shape.firstLabel), `the page leads with the figure you act on (${shape.firstLabel})`);
   ok(!shape.balanceInDetails, 'the balance box is not hidden behind the disclosure');
   ok(shape.hasDetails && !shape.detailsOpen, 'the workings start collapsed');
   ok(/worked out/i.test(shape.summary), `…behind a summary that says what is in there (${shape.summary})`);
@@ -818,7 +858,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.locator('#sweep-balance').press('Tab');
   await page.waitForTimeout(400);
   const s2 = await sweepText();
-  ok(/Safe to move/.test(s2) && /£1,?852\.62/.test(s2) && /Leaves £147\.38 behind/.test(s2), `£2000 balance − £147.38 = £1852.62 safe (${s2.slice(-140)})`);
+  ok(/Transfer out/.test(s2) && /£1,?852\.62/.test(s2) && /Leaves £147\.38 behind/.test(s2), `£2000 balance − £147.38 = £1852.62 to transfer (${s2.slice(-140)})`);
   ok(acctGets === getsBefore, `typing the balance costs no request (${acctGets - getsBefore})`);
 
   await page.fill('#sweep-buffer', '250');
