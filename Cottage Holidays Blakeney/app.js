@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 354;
+const ADMIN_BUNDLE_V = 355;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3510,7 +3510,7 @@ async function renderGuestBookings() {
             priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
         const ps = paymentSummary(propKey, b);
         // Deposit folded into the shown total/paid/balance until it's refunded.
-        const gt = displayGrand(p, ps, b.holdStatus);
+        const gt = displayGrand(p, ps, b.holdStatus, b);
         // Derive the label from the reconciled summary so it can never
         // contradict the balance shown below or on the PDF.
         const payState = ps.fullyPaid ? 'paid' : ps.deposit > 0 ? 'deposit' : 'unpaid';
@@ -4802,12 +4802,14 @@ async function downloadInvoice(bookingId) {
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
     // Deposit folded into the shown total/paid until it's refunded.
-    const gt = displayGrand(p, ps, b.holdStatus || 'none');
+    const gt = displayGrand(p, ps, b.holdStatus || 'none', b);
 
     // Refundable damages deposit — amount + human status for its own invoice
     // section. It's now CHARGED with the guest's first payment and refunded
     // after checkout, so the invoice must show it paid and, later, refunded.
-    const depAmt = Math.max(0, Math.round((p.damagesDeposit || 0) * 100) / 100);
+    // The sum TAKEN, not the sum agreed — see depositTakenAmt. invoice.php bills
+    // hold_amount for the same reason; these are one booking's two invoices.
+    const depAmt = Math.max(0, Math.round(depositTakenAmt(p, b) * 100) / 100);
     const depStatus = depositInvoiceStatus(
         depAmt,
         b.holdStatus || 'none',
@@ -6779,9 +6781,20 @@ function depositRefunded(holdStatus) {
     const st = holdStatus || 'none';
     return st === 'returned' || st === 'released';
 }
+// WHAT THE DEPOSIT ACTUALLY WAS. agreed_booking_fee moves whenever the owner
+// edits it; hold_amount is the sum the card took — what damages_collected() caps
+// a refund at and what invoice.php bills. Reading the agreed figure made the
+// DOWNLOADED invoice disagree with the EMAILED one for one booking, and promise
+// back money return_deposit cannot pay. `b` optional: a quote has no booking, and
+// then the agreed figure is the only answer there is.
+function depositTakenAmt(p, b) {
+    const agreed = Math.max(0, (p && p.damagesDeposit) || 0);
+    const held = Math.max(0, Number(b && b.holdAmount) || 0);
+    return b && depositCharged(b.holdStatus) && held > 0 ? held : agreed;
+}
 // The deposit amount to fold into a shown total (0 once refunded).
-function displayDepositAmt(p, holdStatus) {
-    return depositRefunded(holdStatus) ? 0 : Math.max(0, (p && p.damagesDeposit) || 0);
+function displayDepositAmt(p, holdStatus, b) {
+    return depositRefunded(holdStatus) ? 0 : depositTakenAmt(p, b);
 }
 // Has the refundable damages deposit actually been COLLECTED? It rides on a
 // Square payment (pay.php sets hold_status 'charged'; legacy card-holds settle
@@ -6802,8 +6815,8 @@ function displayGrandTotal(rentalTotal, p, holdStatus) {
 // A manually-recorded cash/bank payment leaves hold_status 'none', so the deposit
 // is NOT counted as paid — otherwise a £100 cash deposit would show as £150 paid.
 // `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
-function displayGrand(p, ps, holdStatus) {
-    const dep = displayDepositAmt(p, holdStatus);
+function displayGrand(p, ps, holdStatus, b) {
+    const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
     const chargedDep = depositCharged(holdStatus) ? dep : 0; // only if actually collected
     const paid = Math.round((ps.deposit + chargedDep) * 100) / 100;
@@ -6825,7 +6838,7 @@ function bookingDue(propKey, b) {
     const p =
         b.agreedPrice ||
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-    return displayGrand(p, ps, b.holdStatus || 'none');
+    return displayGrand(p, ps, b.holdStatus || 'none', b);
 }
 
 function gbp(n) {
@@ -6905,7 +6918,7 @@ function bookingFlow(propKey, b) {
     const inStay = !past && hasCheckedIn(b);
     const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
-    const gt = displayGrand(p, ps, b.holdStatus);
+    const gt = displayGrand(p, ps, b.holdStatus, b);
     const hold = b.holdStatus || 'none';
     const hasReg = !!b.regUrl;
     const hasDamage = (gt.dep || 0) > 0 || ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(hold);
@@ -13751,7 +13764,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'custaudit1';
+    const BUILD = 'custaudit2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

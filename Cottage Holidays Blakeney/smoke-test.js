@@ -567,6 +567,44 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check('legacy hold → "Held on your card"', /Held on your card/i.test(dis(75, 'authorized', 0, '')));
         check('no deposit → empty status', dis(0, 'none', 0, '') === '');
     }
+
+    // THE DEPOSIT ON A GUEST'S INVOICE IS THE SUM TAKEN, NOT THE SUM AGREED.
+    // agreed_booking_fee moves whenever the owner edits the deposit; hold_amount
+    // is what the card really took and what damages_collected() caps a refund at.
+    // Once charged, only hold_amount is true — invoice.php has billed it since the
+    // same defect was fixed there, and the client PDF (downloadInvoice) plus every
+    // displayGrand figure read the agreed one, so the two invoices for ONE booking
+    // could quote different deposits and the PDF promised back money that cannot
+    // be refunded. The gap only opens when the two differ, so every case below
+    // uses 75 agreed against 100 held.
+    const dta = get('depositTakenAmt');
+    const dGrand = get('displayGrand');
+    if (typeof dta !== 'function' || typeof dGrand !== 'function') { fail('depositTakenAmt / displayGrand are not defined'); }
+    else {
+        const p = { damagesDeposit: 75, total: 400 };
+        const bk = (holdStatus, holdAmount) => ({ holdStatus, holdAmount });
+        check('charged → the invoice bills what the card took', dta(p, bk('charged', 100)) === 100);
+        check('captured (legacy hold) → the same rule', dta(p, bk('captured', 100)) === 100);
+        check('kept → still the sum taken', dta(p, bk('kept', 100)) === 100);
+        // Before it is charged there is nothing to have taken, so the AGREED
+        // figure is the only answer — and it is the one that WILL be charged.
+        check('not yet charged → the agreed figure, which is what pay.php will take', dta(p, bk('none', 0)) === 75);
+        check('cash/bank booking (never charged) keeps the agreed figure', dta(p, bk('none', 100)) === 75);
+        // A fresh quote has no booking at all.
+        check('no booking (a quote) → the agreed figure', dta(p, null) === 75);
+        // A charged booking with no recorded hold_amount is an older row; the
+        // agreed figure is the best that is known, not zero.
+        check('charged but no hold_amount recorded → the agreed figure, never £0', dta(p, bk('charged', 0)) === 75);
+        // …and the folded TOTAL and PAID move with it, since displayGrand counts
+        // the deposit as paid once hold_status says it was taken.
+        const ps = { total: 400, deposit: 400, fullyPaid: true };
+        const gt = dGrand(p, ps, 'charged', bk('charged', 100));
+        check('the shown total folds in the sum taken', gt.total === 500);
+        check('…and counts exactly that much as paid', gt.paid === 500);
+        check('…leaving no phantom balance', gt.balance === 0);
+        // Refunded still drops out entirely, whichever figure it was.
+        check('refunded → the deposit leaves the shown total', dGrand(p, ps, 'returned', bk('returned', 100)).total === 400);
+    }
 }
 
 // ---------- §8: stylesheet structural integrity ----------
