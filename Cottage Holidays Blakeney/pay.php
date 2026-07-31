@@ -117,6 +117,12 @@ if ($action === 'summary') {
         'amountDue' => $amountDue,
         // The refundable damage deposit bundled into (and charged with) this payment.
         'damagesDue' => $damagesDue,
+        // …and the one ALREADY taken (charged with the first payment, or a
+        // captured/kept legacy hold), so the pay screen's "of £X total · £Y
+        // already paid" can fold it into both sides — the guest whose card took
+        // £225 was shown "£175.00 already paid" of a "£700.00 total" here while
+        // every other document said £225 of £750. The balance is unmoved.
+        'depositCharged' => in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $holdAmount : 0.0,
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
     ]);

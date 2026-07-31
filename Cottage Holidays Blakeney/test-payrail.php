@@ -130,6 +130,60 @@ chk('no deposit → the request adds no deposit sentence', stripos($askP['text']
 chk('no deposit → the reminder adds none either', stripos($chaseP['text'], 'refundable security deposit') === false);
 chk('nothing paid yet → the request claims no payment', stripos($askP['text'], 'already paid:') === false);
 chk('nothing paid yet → the reminder claims none either', stripos($chaseP['text'], 'already paid:') === false);
+
+// ---- "ALREADY PAID" IS WHAT LEFT THE GUEST'S CARD, IN BOTH DEPOSIT ERAS -----
+// Once the deposit has been CHARGED (it rides the first payment), `damages` is 0
+// and `paid` is the rental rail — so the balance chase read "£175.00 already
+// paid" of "£700.00 total" at a guest whose card took £225 and whose
+// confirmation, receipt, invoice and My Stays all say £225 of £750 (reported
+// with a screenshot — the one document telling a different story). The payload
+// now carries deposit_charged, and payment_money_facts folds it into BOTH the
+// stay total and the paid figure, so the balance itself is unmoved.
+$charged = array_merge(bk('Square card', 0.0), [
+    'kind' => 'balance', 'amount' => 525.0, 'total' => 700.0,
+    'paid' => 175.0, 'deposit_charged' => 50.0,
+]);
+$askC = payment_request_body($charged, $URL, '#C79A64', $BANK);
+$chaseC = payment_reminder_body($charged, $URL, '#C79A64', $BANK);
+foreach ([['request', $askC], ['reminder', $chaseC]] as [$which, $m]) {
+    chk("the $which counts the charged deposit in what is already paid (£225.00)",
+        strpos($m['text'], 'Already paid: £225.00') !== false);
+    chk("…the $which says the deposit is inside that figure",
+        strpos($m['text'], '(including your £50.00 refundable deposit)') !== false);
+    chk("…and the $which never claims the rental-rail £175.00 as the paid figure",
+        strpos($m['text'], '£175.00') === false && strpos($m['html'], '175.00') === false);
+}
+chk('the request quotes the full £750.00 stay, not the £700.00 rental',
+    strpos($askC['text'], 'full stay total is £750.00') !== false && strpos($askC['html'], '750.00') !== false);
+chk('…and the balance asked for is unmoved — the deposit adds equally to both sides',
+    strpos($askC['text'], '£525.00') !== false);
+// The facts themselves: the two deposit eras land on the SAME stay total, so no
+// email's figures depend on when it happened to be sent.
+$fRiding = payment_money_facts(['amount' => 175.0, 'total' => 700.0, 'damages' => 50.0, 'paid' => 0.0]);
+$fCharged = payment_money_facts(['amount' => 525.0, 'total' => 700.0, 'damages' => 0.0, 'paid' => 175.0, 'deposit_charged' => 50.0]);
+chk('stay total agrees across the deposit eras (riding vs charged)',
+    abs($fRiding['stayTotal'] - 750.0) < 0.005 && abs($fCharged['stayTotal'] - 750.0) < 0.005);
+chk('…and the rental rail stays available raw for the callers that mean it',
+    abs($fCharged['paidRental'] - 175.0) < 0.005 && abs($fCharged['paid'] - 225.0) < 0.005);
+// THE WIRING, not just the composer: the checks above hand the builders a payload
+// carrying deposit_charged themselves, so request_booking_payment simply not
+// sending it left every one of them green while the real emails kept the rental
+// rail — measured by deleting the payload line, which failed nothing until this.
+$mailW = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('request_booking_payment derives the charged deposit from the hold state',
+    preg_match("/function request_booking_payment[\s\S]{0,2500}\\\$depCharged = in_array\(\(\\\$b\['hold_status'\][\s\S]{0,120}'charged', 'captured', 'kept'/", $mailW) === 1);
+chk('…and actually sends it with the payload',
+    preg_match("/function request_booking_payment[\s\S]{0,4000}'deposit_charged' => \\\$depCharged,/", $mailW) === 1);
+// The pay screen is the same fact on a different surface (its balance view read
+// "£175.00 already paid" of "£700.00 total" too) — the summary must carry it and
+// the client must fold it into BOTH sides.
+$payW = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('the pay-screen summary carries the charged deposit',
+    preg_match("/'depositCharged' => in_array\(\\\$holdStatus, \['charged', 'captured', 'kept'\]/", $payW) === 1);
+$appW = (string) file_get_contents(__DIR__ . '/app.js');
+chk('…and the client folds it into the total AND the paid figure',
+    strpos($appW, 'Number(s.total) + dep + depCharged') !== false
+    && strpos($appW, 'Number(s.alreadyPaid || 0) + depCharged') !== false);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
 $mailS = file_get_contents(__DIR__ . '/mailer.php');
@@ -508,6 +562,35 @@ chk('booking_amount_due asks off the override-resolved total',
 $payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php charges off the same override-resolved total',
     preg_match('/\$total = \$b\[.price_override.\] !== null[\s\S]{0,900}\$depositAmount = round\(\$total \*/', $payS2) === 1);
+// AND THE RENTAL FLOOR FOLLOWS THE OVERRIDE IN BOTH DIRECTIONS. It used to be
+// max()'d in, which is wrong in the direction overrides are actually used — a
+// DISCOUNT: agreed £700 against a £910 snapshot, £750 paid in cash, and
+// damages_collected read paid − rental as negative, so the £50 deposit the owner
+// was genuinely holding reported as NOT collected (never listed to return,
+// unreturnable — return_deposit caps at £0) while accounts.php counted it as
+// taxable rental income. The card rail dodged it (hold_status 'charged' short-
+// circuits before the rental maths), which is why it survived: only cash/BACS
+// bookings with a discounted agreed price ever hit this branch.
+$ovb = ['agreed_nightly' => 910.0, 'agreed_txn_fee' => 0.0];
+chk('a discounted override IS the rental price, not a floor under the snapshot',
+    abs(booking_rental_price($ovb + ['price_override' => 700.0]) - 700.0) < 0.005);
+chk('…a raised override still wins exactly as before',
+    abs(booking_rental_price($ovb + ['price_override' => 1200.0]) - 1200.0) < 0.005);
+chk('…and no override keeps the snapshot sum',
+    // array_merge, NOT `+`: the union operator keeps the LEFT side's keys, so
+    // `$ovb + [...]` silently discarded the fee this case exists to add.
+    abs(booking_rental_price(array_merge($ovb, ['agreed_txn_fee' => 13.5])) - 923.5) < 0.005);
+chk('…an empty-string override (unset form field) is no override',
+    abs(booking_rental_price($ovb + ['price_override' => '']) - 910.0) < 0.005);
+// The consequence, in damages_collected's own arithmetic (its 'none' branch is
+// min(agreed deposit, paid − rental)): the £50 cash deposit is collectable again.
+$cashPaid = 750.0;
+$collected = max(0.0, min(50.0, $cashPaid - booking_rental_price($ovb + ['price_override' => 700.0])));
+chk('the £50 cash deposit on a discounted booking reads as collected', abs($collected - 50.0) < 0.005);
+// …and a legacy override with the deposit folded IN still cannot over-return:
+// paid equals the override there, so nothing sits above the rental.
+$legacy = max(0.0, min(50.0, 700.0 - booking_rental_price($ovb + ['price_override' => 700.0])));
+chk('…while a deposit-folded legacy override still collects £0 (no over-return)', $legacy === 0.0);
 
 echo "\n== Summary ==\n";
 if ($fail) {

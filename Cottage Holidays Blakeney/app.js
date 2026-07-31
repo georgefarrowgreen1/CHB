@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 365;
+const ADMIN_BUNDLE_V = 367;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3892,16 +3892,28 @@ async function openPayView(token, bookingId, kind) {
                   ? 'Balance due'
                   : 'Deposit due';
         document.getElementById('pay-amount').textContent = gbp(payTotal);
-        const grandTotalRef = Math.round((Number(s.total) + dep) * 100) / 100;
+        // The deposit ALREADY charged folds into BOTH the total and the paid
+        // figure (the balance is unmoved) — otherwise a guest whose first card
+        // payment took £225 read "of £700.00 total · £175.00 already paid" here,
+        // against the £225-of-£750 their receipt, confirmation and My Stays say.
+        const depCharged = s.kind === 'hold' ? 0 : Math.round(Number(s.depositCharged || 0) * 100) / 100;
+        const grandTotalRef = Math.round((Number(s.total) + dep + depCharged) * 100) / 100;
         // The headline sub carries only the money shape; the deposit explanation
         // gets its own quiet line instead of a dense parenthetical run-on.
-        const paidSoFar = Math.round(Number(s.alreadyPaid || 0) * 100) / 100;
+        const paidSoFar = Math.round((Number(s.alreadyPaid || 0) + depCharged) * 100) / 100;
+        // The deposit sub must ITEMISE when the damages deposit rides the payment:
+        // "25% deposit · £750.00 total" under a £225.00 headline invited checking
+        // 25% × 750 = £187.50 — the percentage was against the rental while the
+        // total beside it was the grand, so the line never reconciled with the
+        // figure above it. Stated as its own sum now, it always does.
         document.getElementById('pay-amount-sub').textContent =
             s.kind === 'hold'
                 ? 'held, not charged — released after checkout'
                 : s.kind === 'balance'
                   ? `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`
-                  : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
+                  : dep > 0
+                    ? `${gbp(Number(s.amountDue))} deposit (${s.depositPct}%) + ${gbp(dep)} refundable deposit`
+                    : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
         const noteEl = document.getElementById('pay-amount-note');
         if (noteEl) {
             noteEl.textContent = dep > 0 ? `Includes a ${gbp(dep)} refundable damages deposit — returned after your stay.` : '';
@@ -13822,7 +13834,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'askrow1';
+    const BUILD = 'paidline';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

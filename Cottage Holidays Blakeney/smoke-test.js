@@ -620,6 +620,20 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
         // 4) Legacy, only the rental paid so far → no deposit collected yet.
         check('legacy rental-only paid → £0 held',
             dh('21a', { agreedPrice: { total: 555, rentalTotal: 480, damagesDeposit: 75 }, depositPaid: 480, payment: 'deposit', holdStatus: 'none', dbId: 4 }).held === 0);
+        // 5) DISCOUNTED agreed price, paid in cash (hold_status stays 'none' on
+        // that rail): the override REPLACES the rental floor. Max()'d in, the
+        // floor stayed at the £910 snapshot, so £750 cash against an agreed £700
+        // read paid − rental < 0 → the £50 deposit the owner genuinely holds
+        // reported £0 collected: never listed in "Deposits to return" and
+        // unreturnable (return_deposit caps at collected − returned). Mirrors
+        // booking_rental_price (db.php), pinned the same way in test-payrail.
+        const disc = { agreedPrice: { total: 700, rentalTotal: 910, damagesDeposit: 50, isOverride: true }, priceOverride: 700, payment: 'paid', holdStatus: 'none' };
+        check('discounted override + rental-and-deposit paid in cash → the £50 IS held',
+            dh('21a', { ...disc, depositPaid: 750, dbId: 5 }).held === 50);
+        check('…paying only the discounted rental still collects nothing',
+            dh('21a', { ...disc, depositPaid: 700, dbId: 6 }).held === 0);
+        check('…and a RAISED override keeps its higher floor exactly as before',
+            dh('21a', { agreedPrice: { total: 1200, rentalTotal: 910, damagesDeposit: 50, isOverride: true }, priceOverride: 1200, depositPaid: 1200, payment: 'paid', holdStatus: 'none', dbId: 7 }).held === 0);
     }
 }
 

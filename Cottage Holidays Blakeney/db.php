@@ -1307,18 +1307,28 @@ function derive_payment_status($total, $paid)
     return $paid > 0.001 ? 'deposit' : 'unpaid';
 }
 
-// The RENTAL price of a booking from its agreed snapshot (nightly + txn fee, a
-// manual override raising the floor) — the figure the damages deposit sits above
-// and accounts.php attributes income up to. Duplicated in accounts.php and
-// damages_collected(); one definition keeps them from drifting. accounts.php adds
-// its own legacy "no snapshot → treat everything as income" fallback on top.
+// The RENTAL price of a booking from its agreed snapshot (nightly + txn fee; a
+// manual override REPLACES it) — the figure the damages deposit sits above and
+// accounts.php attributes income up to. One definition (JS mirror: damageHeld,
+// admin.js) keeps damages_collected() and accounts.php from drifting.
+// The override used to be max()'d in ("raising the floor"), which is wrong in
+// the direction overrides are actually used: a DISCOUNT. Agreed £700 against a
+// £910 snapshot, guest pays £750 cash (rental + £50 damages deposit,
+// hold_status stays 'none' on that rail) — with the floor at 910,
+// damages_collected read paid − rental as negative, so the £50 the owner was
+// genuinely holding reported as NOT collected: never listed in "Deposits to
+// return", unreturnable through return_deposit (capped at £0), and counted as
+// taxable rental income by accounts.php. An override is the deliberate rental
+// price in BOTH directions, so it replaces. Over-return is still impossible:
+// damages_collected caps at the agreed deposit AND at what was actually paid
+// above the rental — a legacy override with the deposit folded in has
+// paid == override, so it still collects £0 there.
 function booking_rental_price($b)
 {
-    $rental = (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
     if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
-        $rental = max($rental, (float) $b['price_override']);
+        return (float) $b['price_override'];
     }
-    return $rental;
+    return (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
 }
 
 // DO THE ITEMISED LINES EXPLAIN THE TOTAL? A custom price (price_override, or an

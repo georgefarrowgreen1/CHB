@@ -1795,8 +1795,14 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     // amount the card will be charged today so the emailed figure matches checkout.
     $damages = round((float) ($b['damages'] ?? 0), 2);
     $chargedToday = round((float) $b['amount'] + $damages, 2);
-    // Full stay total includes the refundable deposit while it's still being charged.
-    $stayTotalGrand = round((float) $b['total'] + $damages, 2);
+    // ONE composer for the stay total + already-paid (payment_money_facts): the
+    // local total here was `total + damages`, which reads £700 the moment the
+    // deposit has been CHARGED (damages 0) — beside a confirmation, receipt and
+    // My Stays all saying £750. The facts fold the charged deposit into BOTH the
+    // stay total and the paid figure, so the balance is unmoved and the guest's
+    // documents finally agree.
+    $f = payment_money_facts($b);
+    $stayTotalGrand = $f['stayTotal'];
     // "…charged to your card today" is a CARD sentence. On the bank-transfer rail
     // nothing is charged to anything — the guest is sending the money themselves,
     // so the same fact has to be stated as a total to send.
@@ -1823,7 +1829,7 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         '.' .
         // What they have ALREADY put down — a balance request that never says so
         // leaves the guest to work it out from two other numbers.
-        (payment_money_facts($b)['paidLine'] !== '' ? ' ' . payment_money_facts($b)['paidLine'] : '') .
+        ($f['paidLine'] !== '' ? ' ' . $f['paidLine'] : '') .
         " You can reply to this email with any questions.\n\n" .
         'Cottage Holidays Blakeney';
 
@@ -1844,7 +1850,7 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
             ucfirst($what) . ' due',
             $money($b['amount']),
             'of ' . $money($stayTotalGrand) . ' total'
-                . (payment_money_facts($b)['paid'] > 0.005 ? ' · ' . $money(payment_money_facts($b)['paid']) . ' already paid' : ''),
+                . ($f['paid'] > 0.005 ? ' · ' . $money($f['paid']) . ' already paid' : ''),
         ) .
         ($damages > 0
             ? email_p(
@@ -1908,6 +1914,16 @@ function request_booking_payment($b, $kind, $reminder = false)
             $damages = round((float) ($pp['damagesDeposit'] ?? 0), 2);
         }
     }
+    // The deposit ALREADY taken (charged with the first payment, or a captured/kept
+    // legacy hold) — the other half of the deposit story from $damages above, which
+    // is only the deposit still TO ride this payment. Without it a balance chase
+    // quoted the rental rail ("£175.00 already paid" of "£700.00 total") at a guest
+    // whose card took £225 and whose confirmation, receipt, invoice and My Stays all
+    // say £225 of £750 — the one document telling a different story, reported with a
+    // screenshot. Mirrors send_booking_confirmation's $chargedDep derivation.
+    $depCharged = in_array(($b['hold_status'] ?? 'none'), ['charged', 'captured', 'kept'], true)
+        ? round((float) ($b['hold_amount'] ?? ($b['agreed_booking_fee'] ?? 0)), 2)
+        : 0.0;
     $payload = [
         'name' => $b['name'],
         'email' => $b['email'],
@@ -1919,6 +1935,7 @@ function request_booking_payment($b, $kind, $reminder = false)
         'amount' => $amt['due'],
         'total' => $amt['total'],
         'damages' => $damages,
+        'deposit_charged' => $depCharged,
         // booking_amount_due already works this out and it was being discarded, so
         // neither email could tell a part-paid guest what they had put down.
         'paid' => $amt['alreadyPaid'],
@@ -1947,14 +1964,26 @@ function payment_money_facts($b)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $due = round((float) ($b['amount'] ?? 0), 2);
     $damages = round((float) ($b['damages'] ?? 0), 2);
-    $paid = round((float) ($b['paid'] ?? 0), 2);
+    // The deposit ALREADY taken — the £50 that rode the first card payment. The
+    // guest's "already paid" must include it, because it is money that left their
+    // card and every other document (receipt, confirmation, invoice, My Stays)
+    // already counts it: the chase said "£175.00 already paid" of "£700.00 total"
+    // to a guest whose card took £225 of a £750 stay. `paid` from the payload is
+    // the RENTAL rail (booking_paid_so_far) and stays available raw as paidRental.
+    $depCharged = round((float) ($b['deposit_charged'] ?? 0), 2);
+    $paidRental = round((float) ($b['paid'] ?? 0), 2);
+    $paid = round($paidRental + $depCharged, 2);
     $rentalTotal = round((float) ($b['total'] ?? 0), 2);
     return [
         'due' => $due,
         'damages' => $damages,
         'paid' => $paid,
+        'paidRental' => $paidRental,
         'chargedNow' => round($due + $damages, 2),
-        'stayTotal' => round($rentalTotal + $damages, 2),
+        // The full stay figure in BOTH deposit eras: still to ride ($damages) or
+        // already taken ($depCharged) — never both, and the balance is unmoved
+        // either way because the deposit adds equally to total and paid.
+        'stayTotal' => round($rentalTotal + $damages + $depCharged, 2),
         'money' => $money,
         // The deposit sentence, in the same words both emails use.
         'depositTail' => $damages > 0
@@ -1963,8 +1992,14 @@ function payment_money_facts($b)
                 . ' will be charged to your card today.'
             : '',
         // Stated only when there IS something already paid — "£0.00 already paid"
-        // on a fresh request is noise, not information.
-        'paidLine' => $paid > 0.005 ? 'Already paid: ' . $money($paid) . '.' : '',
+        // on a fresh request is noise, not information. When the refundable deposit
+        // is inside the figure, say so, or £225 against a remembered £175 deposit
+        // ask reads as a £50 mystery in the other direction.
+        'paidLine' => $paid > 0.005
+            ? 'Already paid: ' . $money($paid)
+                . ($depCharged > 0.005 ? ' (including your ' . $money($depCharged) . ' refundable deposit)' : '')
+                . '.'
+            : '',
     ];
 }
 
