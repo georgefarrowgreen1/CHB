@@ -13054,9 +13054,14 @@ function damageHeld(propKey, b) {
     // rental ledger to return here.
     if (['returned', 'kept', 'authorized', 'captured', 'released', 'expired'].includes(st))
         return { collected: 0, returned: 0, held: 0, deposit: dep };
-    // Pure rental (deposit excluded); a price override raises the floor.
-    let rental = p.rentalTotal != null ? p.rentalTotal : Math.max(0, p.total);
-    if (b.priceOverride != null) rental = Math.max(rental, b.priceOverride);
+    // Pure rental (deposit excluded); a price override REPLACES it — the same
+    // direction fix as booking_rental_price (db.php, the server mirror this must
+    // stay in lockstep with): max() kept a discounted booking's floor at the
+    // snapshot, so a £750 cash payment against an agreed £700 read as £0 deposit
+    // collected and the job never surfaced.
+    let rental = b.priceOverride != null
+        ? b.priceOverride
+        : p.rentalTotal != null ? p.rentalTotal : Math.max(0, p.total);
     const paid = Math.max(0, Number(b.depositPaid) || 0);
     const collected = Math.round(Math.max(0, Math.min(dep, paid - rental)) * 100) / 100;
     const returned = Math.round((Number(damagesReturnedMap[b.dbId]) || 0) * 100) / 100;

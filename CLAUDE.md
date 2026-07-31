@@ -938,7 +938,9 @@ actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywher
 ONE definition each — never re-inline them):** `booking_ledger_net($id)` = settled
 card charges − non-failed refunds (the raw net every paid/refund calc builds on;
 callers add their own cap/floor), and `booking_rental_price($b)` = agreed nightly +
-txn fee with an override floor. The FAILED-refund audit fix had to touch four copies
+txn fee, a price_override REPLACING it (see the Gotchas entry — it was max()'d in as
+a floor, which broke every discounted agreed price on the cash rail; JS mirror
+`damageHeld`). The FAILED-refund audit fix had to touch four copies
 of the first — consolidating removed that whole "half-fixed across copies" class. Key endpoints: `auth.php`
 (guest/admin sessions, magic link), `enquiries.php`, `pay.php` (Square),
 `pricing.php` (authoritative price model), `reviews.php`/`photos.php`/`experiences.php`
@@ -1957,6 +1959,27 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   "Calculated total" beside the agreed one — that is an owner surface explaining the
   derivation, not a guest document asserting a sum. The five renderers are one
   booking's documents: any new price-box render must take the same branch.
+- **A PRICE OVERRIDE REPLACES THE RENTAL FLOOR — IT IS NOT MAX()'D IN**
+  (`booking_rental_price` in db.php, JS mirror `damageHeld` in admin.js; gated by
+  test-payrail + smoke-test §9 + ui-test-pay). Found by the full payment-surface
+  audit. The override used to "raise the floor" (max of snapshot and override),
+  which is wrong in the direction overrides are actually used — a DISCOUNT: agreed
+  £700 against a £910 snapshot, guest pays £750 CASH (rental + £50 damages deposit;
+  `hold_status` stays `none` on that rail), and `damages_collected`'s 'none' branch
+  read paid − rental as negative — so the £50 the owner genuinely holds reported £0
+  collected: never listed in "Deposits to return", never a duty, unreturnable
+  (`return_deposit` caps at collected − returned), while accounts.php counted it as
+  taxable rental income AND the balance watcher kept saying the guest still owed the
+  snapshot difference. The CARD rail dodged all of it (`hold_status='charged'`
+  short-circuits to `hold_amount` before the rental maths), which is why it
+  survived. Replace is safe in every era: over-return stays impossible because
+  collected is min-capped at the agreed deposit AND at what was paid above the
+  rental — a legacy override with the deposit folded in has paid == override, so it
+  still collects £0. From the same audit: **the pay screen's deposit sub-line now
+  ITEMISES to its own headline** ("£175.00 deposit (25%) + £50.00 refundable
+  deposit" under £225.00) — "25% deposit · £750.00 total" had the percentage
+  against the rental beside the grand total, so the line never reconciled with the
+  figure the guest was about to pay whenever a damages deposit rode the payment.
   A legacy CAPTURED hold writes its ledger row as `kind='damages'` keyed on the same
   `hold_payment_id`, with the DEPOSIT as its amount — so the unrestricted join read
   that as the charge's rental portion and apportioned the fee against a doubled gross

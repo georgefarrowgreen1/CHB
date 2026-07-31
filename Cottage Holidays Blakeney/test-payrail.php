@@ -508,6 +508,35 @@ chk('booking_amount_due asks off the override-resolved total',
 $payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php charges off the same override-resolved total',
     preg_match('/\$total = \$b\[.price_override.\] !== null[\s\S]{0,900}\$depositAmount = round\(\$total \*/', $payS2) === 1);
+// AND THE RENTAL FLOOR FOLLOWS THE OVERRIDE IN BOTH DIRECTIONS. It used to be
+// max()'d in, which is wrong in the direction overrides are actually used — a
+// DISCOUNT: agreed £700 against a £910 snapshot, £750 paid in cash, and
+// damages_collected read paid − rental as negative, so the £50 deposit the owner
+// was genuinely holding reported as NOT collected (never listed to return,
+// unreturnable — return_deposit caps at £0) while accounts.php counted it as
+// taxable rental income. The card rail dodged it (hold_status 'charged' short-
+// circuits before the rental maths), which is why it survived: only cash/BACS
+// bookings with a discounted agreed price ever hit this branch.
+$ovb = ['agreed_nightly' => 910.0, 'agreed_txn_fee' => 0.0];
+chk('a discounted override IS the rental price, not a floor under the snapshot',
+    abs(booking_rental_price($ovb + ['price_override' => 700.0]) - 700.0) < 0.005);
+chk('…a raised override still wins exactly as before',
+    abs(booking_rental_price($ovb + ['price_override' => 1200.0]) - 1200.0) < 0.005);
+chk('…and no override keeps the snapshot sum',
+    // array_merge, NOT `+`: the union operator keeps the LEFT side's keys, so
+    // `$ovb + [...]` silently discarded the fee this case exists to add.
+    abs(booking_rental_price(array_merge($ovb, ['agreed_txn_fee' => 13.5])) - 923.5) < 0.005);
+chk('…an empty-string override (unset form field) is no override',
+    abs(booking_rental_price($ovb + ['price_override' => '']) - 910.0) < 0.005);
+// The consequence, in damages_collected's own arithmetic (its 'none' branch is
+// min(agreed deposit, paid − rental)): the £50 cash deposit is collectable again.
+$cashPaid = 750.0;
+$collected = max(0.0, min(50.0, $cashPaid - booking_rental_price($ovb + ['price_override' => 700.0])));
+chk('the £50 cash deposit on a discounted booking reads as collected', abs($collected - 50.0) < 0.005);
+// …and a legacy override with the deposit folded IN still cannot over-return:
+// paid equals the override there, so nothing sits above the rental.
+$legacy = max(0.0, min(50.0, 700.0 - booking_rental_price($ovb + ['price_override' => 700.0])));
+chk('…while a deposit-folded legacy override still collects £0 (no over-return)', $legacy === 0.0);
 
 echo "\n== Summary ==\n";
 if ($fail) {
