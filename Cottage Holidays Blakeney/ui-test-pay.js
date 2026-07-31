@@ -137,6 +137,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
 
+  // A DECLINED CARD KEEPS THE RETRY ALIVE. The decline must land as an inline
+  // message with the form still on screen and the button re-enabled — routed
+  // through showPayError it would hide the form behind a terminal panel whose
+  // only button is "Back to the site", leaving the guest unable to try another
+  // card without re-opening the email link. Nothing gated the distinction.
+  await page.route(/pay\.php/, (route) => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    if (b.action === 'charge') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: "Your card couldn't be authorised. Please try another card." }) });
+    return route.fallback();
+  });
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const declined = await page.evaluate(() => ({
+    msg: (document.getElementById('pay-msg') || {}).textContent || '',
+    formShown: document.getElementById('pay-body').style.display !== 'none',
+    errPanel: (document.getElementById('pay-error') || { style: {} }).style.display !== 'none',
+    btnOn: !(document.getElementById('pay-btn') || {}).disabled,
+    btnLabel: (document.getElementById('pay-btn') || {}).textContent || '',
+  }));
+  ok(/try another card/i.test(declined.msg), `a decline says the server's own sentence, inline (${declined.msg.slice(0, 60)})`);
+  ok(declined.formShown && !declined.errPanel, 'the card form STAYS — no terminal panel over a retryable failure');
+  ok(declined.btnOn && /^Pay £/.test(declined.btnLabel), `the button re-enables with its label back (${declined.btnLabel})`);
+  await page.unroute(/pay\.php/);
+
   // Happy path: tokenize (stub) → charge → receipt state.
   await page.evaluate(() => document.getElementById('pay-btn').click());
   await page.waitForTimeout(700);
