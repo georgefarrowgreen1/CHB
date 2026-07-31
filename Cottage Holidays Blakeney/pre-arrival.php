@@ -63,12 +63,7 @@ foreach ($due as $b) {
         ]);
         try {
             require_once __DIR__ . '/sms.php';
-            sms_notify_booking(
-                $b,
-                'Cottage Holidays Blakeney: your stay starts ' .
-                    uk_date($b['check_in']) .
-                    '. We\'ve emailed your arrival info, directions and key details — see you soon!',
-            );
+            sms_notify_booking($b, sms_body_arrival(uk_date($b['check_in'])));
         } catch (\Throwable $e) {
         }
     }

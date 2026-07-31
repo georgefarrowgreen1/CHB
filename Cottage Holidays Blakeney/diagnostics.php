@@ -69,7 +69,7 @@ if ($action === 'sms_test') {
     if (sms_normalize_uk($to) === '') {
         json_out(['ok' => false, 'error' => "That doesn't look like a UK mobile number."]);
     }
-    $res = sms_send($to, 'Cottage Holidays Blakeney: this is a test message from your back office. Texts are working.');
+    $res = sms_send($to, sms_body_test());
     json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => sms_normalize_uk($to)]);
 }
 

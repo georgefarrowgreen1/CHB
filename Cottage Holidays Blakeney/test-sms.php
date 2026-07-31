@@ -178,6 +178,54 @@ schk('the const value is used, not a stored one', sms_setting('TWILIO_FROM', 'sm
 sms_store(['sms-from' => '+447700999888']);
 schk('a stored value cannot override a set const', sms_setting('TWILIO_FROM', 'sms-from') === '+447700111222');
 
+echo "\n== SMS: every message is ONE segment ==\n";
+// A text is BILLED PER SEGMENT: GSM-7 fits 160 characters in one, but a single
+// character outside that alphabet switches the whole message to UCS-2, where a
+// segment holds 70. Measured before this was fixed, an em dash made the balance
+// nudge bill as THREE texts and the arrival nudge as TWO. Driving the REAL
+// builders (not copies of the strings) is what makes this a gate: reword a
+// message with a curly apostrophe and it fails here rather than on the bill.
+$bodies = [
+    'balance, with an amount' => sms_body_balance('15/08/2026', 340),
+    'balance, no amount' => sms_body_balance('15/08/2026', null),
+    'arrival info' => sms_body_arrival('15/08/2026'),
+    'test message' => sms_body_test(),
+    // The longest figure this business could plausibly chase — the fixed prose
+    // is what eats the budget, so a bigger number must not tip it over.
+    'balance, £10,000.00' => sms_body_balance('15/08/2026', 10000),
+];
+foreach ($bodies as $label => $body) {
+    $seg = sms_segments($body);
+    schk("$label is ONE segment", $seg['segments'] === 1, "{$seg['chars']} chars, {$seg['encoding']}, {$seg['segments']} segments");
+    schk("…and stays in GSM-7", $seg['encoding'] === 'GSM-7', $seg['encoding']);
+}
+
+// The alphabet itself. `$` and `¥` are the two that a PHP double-quoted string
+// silently eats — identifiers may contain bytes >= 0x80, so `$¥` parses as a
+// VARIABLE. Losing them would make any message containing one measure as UCS-2.
+schk('the GSM-7 alphabet kept its dollar sign', strpos(SMS_GSM7, '$') !== false);
+schk('…and its yen sign', mb_strpos(SMS_GSM7, '¥') !== false);
+schk('a pound sign is GSM-7 (it is IN the alphabet)', sms_segments('£340.00')['encoding'] === 'GSM-7');
+
+// The normaliser, on the characters English prose actually picks up.
+schk('em dash becomes a hyphen', sms_plain('due — pay') === 'due - pay');
+schk('en dash too', sms_plain('7–14 days') === '7-14 days');
+schk('curly apostrophe becomes straight', sms_plain("We\u{2019}ve") === "We've");
+schk('curly quotes become straight', sms_plain("\u{201C}hi\u{201D}") === '"hi"');
+schk('an ellipsis becomes three dots', sms_plain("wait\u{2026}") === 'wait...');
+schk('a non-breaking space becomes a space', sms_plain("a\u{00A0}b") === 'a b');
+schk('a soft hyphen is removed (invisible, and still UCS-2)', sms_plain("co\u{00AD}ttage") === 'cottage');
+// …and what it must NOT do. A guest's name spelled with an unusual accent should
+// arrive CORRECT as two segments rather than mangled into one.
+schk('an accented name is left alone, not stripped', sms_plain('Zoë Ferrão') === 'Zoë Ferrão');
+schk('plain text is untouched', sms_plain('Balance due 15/08/2026.') === 'Balance due 15/08/2026.');
+
+// And the choke point applies it, so a message composed anywhere benefits —
+// including one written later by someone who never reads this file.
+$normalised = sms_plain('Cottage Holidays Blakeney: your balance — please pay.');
+schk('the normaliser makes a dashed sentence one segment', sms_segments($normalised)['segments'] === 1);
+schk('…which it was NOT before normalising', sms_segments('Cottage Holidays Blakeney: your balance — please pay.')['encoding'] === 'UCS-2');
+
 echo "\n== SMS: UK numbers in, E.164 out ==\n";
 // sms_send() refuses anything this returns '' for, so a malformed number is
 // skipped rather than sent — worth pinning because the owner types the FROM
