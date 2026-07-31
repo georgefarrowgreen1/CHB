@@ -2138,9 +2138,19 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   **AUTOMATIC** — `sweepRememberBalance` marks everything Square has already paid in,
   because a stated balance is the truth about the account at that instant and therefore
   already contains it (the same reasoning `payouts_balance_estimate` uses when it counts
-  only movements strictly AFTER the stated instant); and **MANUAL** — an "I've
-  transferred this" button on the answer card, confirmed first because it changes a money
-  figure. Rules, each break-tested: **only a LANDED charge can have been transferred**
+  only movements strictly AFTER the stated instant); and **MANUAL**, at two grains.
+  **PER BOOKING** (`sweepMarkOneTransferred`) is the everyday one — a tick on each row
+  of the movable group, because a payout usually goes on its own and the only way to say
+  so used to be marking the lot and putting the rest back. It carries NO confirm,
+  deliberately: the row directly above it names the guest, the date and the figure, so
+  the tap is unambiguous in a way the set-level one is not, and the undo sits in the
+  group below. Its `aria-label` names whose money it is — "I've transferred this one"
+  repeated down a list is a name that identifies nothing. **THE WHOLE LOT**
+  (`sweepMarkTransferred`, on the answer card) keeps its confirm, because it acts on a
+  set you cannot see from where it sits, and it renders only at **≥2** landed charges:
+  with one, "I've transferred all 1" is the row's own tick wearing a worse label — the
+  same judgement the bulk chase makes under two owers. It also names the count, or
+  beside per-row ticks it reads as "the one I was looking at". Rules, each break-tested: **only a LANDED charge can have been transferred**
   (money Square has not paid out cannot have left the bank, so a stale mark on `onWay`
   or `unknown` money is ignored rather than quietly removing it from the figure); a mark
   is KEPT AND SHOWN in an "Already transferred out" group with a per-row undo, never

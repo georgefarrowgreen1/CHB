@@ -661,18 +661,68 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // moved OUT, so without a record the same money is offered on every visit. The
   // arithmetic is test-payouts'; what this proves is the round trip — the button
   // exists, writes the right map, and the undo takes it back out.
+  // TWO landed charges, because one cannot tell a per-row tick from a whole-lot
+  // one: with a single row both act on the same money and either would pass every
+  // check below. It is also the real shape — a payout is usually moved on its own.
+  const twoLanded = [
+    { txn_id: 11, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12), settled: 368.44, ringFence: 73.69, movable: 294.75, landed: true, arrival: d(-10), fee_actual: true },
+    { txn_id: 15, name: 'Richard Berry', prop_key: 'jollyboat', paid_on: d(-9), settled: 200, ringFence: 0, movable: 200.00, landed: true, arrival: d(-7), fee_actual: true },
+  ];
+  const twoStub = {
+    inBank: 494.75, moved: 0,
+    counts: { inBank: 2, onWay: 1, unknown: 1, moved: 0 },
+    movedMap: {},
+    items: Object.assign({}, sweepStub.payouts.items, { inBank: twoLanded, moved: [] }),
+  };
+  sweepStub = Object.assign({}, sweepStub, { payouts: Object.assign({}, sweepStub.payouts, twoStub) });
   await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
-  await page.evaluate(() => renderSweep(false));
-  await page.waitForTimeout(400);
+  // REFETCH — renderSweep(false) renders the cached payload, so the new stub would
+  // not be read and the rows would still be the previous section's. (It reported
+  // one row while the whole-lot button, reading the same list, said "all 2".)
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { const dd = document.querySelector('#sweep-body details'); if (dd) dd.open = true; });
+  await page.waitForTimeout(200);
+  posts.length = 0;
+
+  // ONE BOOKING AT A TIME, where that booking is listed. The whole-lot button
+  // suits "I moved everything"; in practice a payout goes on its own, and without
+  // this the only way to say so was to mark the lot and put the rest back.
+  const oneBtns = page.locator('#asec-sweep button[data-act="sweepMarkOneTransferred"]');
+  ok(await oneBtns.count() === 2, `every movable payment can be ticked off where it is listed (${await oneBtns.count()})`);
+  // …and ONLY the movable ones. Money Square has not paid out cannot have left the
+  // bank, so a tick there would claim something the server would refuse anyway.
+  const markableIds = await page.evaluate(() =>
+    [...document.querySelectorAll('#asec-sweep button[data-act="sweepMarkOneTransferred"]')]
+      .map((b) => JSON.parse(b.getAttribute('data-args') || '[]')[0]));
+  ok(markableIds.sort().join() === '11,15',
+    `…and nothing on its way or unvouched-for offers one (${markableIds.join()})`);
+  // The name is not "I've transferred this one" five times over: a screen reader
+  // gets the guest, the date and the figure it is about.
+  const oneLabel = await oneBtns.first().getAttribute('aria-label');
+  ok(/Sarah Pemberton/.test(oneLabel || '') && /£294\.75/.test(oneLabel || ''),
+    `…each naming whose money it is (${oneLabel})`);
+  await oneBtns.first().click();
+  await page.waitForTimeout(600);
+  const oneWrote = posts.filter((p) => p.action === 'set' && p.key === 'sweep-moved').pop();
+  const oneMarks = oneWrote ? JSON.parse(oneWrote.value) : {};
+  ok(!!oneWrote && oneMarks['11'] > 0, `ticking one records it (${oneWrote ? oneWrote.value : 'no write'})`);
+  ok(!!oneWrote && !oneMarks['15'],
+    '…and leaves the other booking alone, which is the whole point of a per-booking pick');
+
+  // THE WHOLE LOT still has its own button, and it CONFIRMS — it acts on a set you
+  // cannot see from where it sits, unlike a row's own tick.
   posts.length = 0;
   const markBtn = page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]');
   ok(await markBtn.count() === 1, 'a transfer can be recorded from the answer card');
+  ok(/all 2/.test(await markBtn.textContent() || ''),
+    `…and says how many it acts on, so it cannot read as "the one I was looking at" (${await markBtn.textContent()})`);
   await markBtn.click();
   await page.waitForTimeout(300);
   // It CONFIRMS first — this changes a money figure and the owner may have tapped
   // it meaning to read it.
   const askTx = await page.evaluate(() => (document.getElementById('glass-dialog-msg') || {}).textContent || '');
-  ok(/transferred out/i.test(askTx) && /£294\.75/.test(askTx), `it asks first, naming the amount (${askTx.slice(0, 70)})`);
+  ok(/transferred out/i.test(askTx) && /£494\.75/.test(askTx), `it asks first, naming the amount (${askTx.slice(0, 70)})`);
   await page.click('#glass-dialog-cancel');
   await page.waitForTimeout(300);
   ok(!posts.some((p) => p.action === 'set' && p.key === 'sweep-moved'), 'cancelling records nothing');
@@ -683,8 +733,27 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const wrote = posts.filter((p) => p.action === 'set' && p.key === 'sweep-moved').pop();
   ok(!!wrote, 'confirming writes the record');
   const marks = wrote ? JSON.parse(wrote.value) : {};
-  ok(Object.keys(marks).length === 1 && marks['11'] > 0, `only the LANDED charge is marked, with when (${JSON.stringify(marks)})`);
+  ok(Object.keys(marks).length === 2 && marks['11'] > 0 && marks['15'] > 0,
+    `only the LANDED charges are marked, with when (${JSON.stringify(marks)})`);
   ok(!marks['12'], '…never one Square has not paid out — that money cannot have left the bank');
+
+  // WITH ONE landed payment there is no lot, and "I've transferred all 1" is the
+  // row's own tick wearing a worse label — the same judgement the bulk chase makes
+  // under two owers.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, {
+      inBank: 294.75, counts: { inBank: 1, onWay: 1, unknown: 1, moved: 0 },
+      items: Object.assign({}, sweepStub.payouts.items, { inBank: [twoLanded[0]] }),
+    }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { const dd = document.querySelector('#sweep-body details'); if (dd) dd.open = true; });
+  await page.waitForTimeout(200);
+  ok(await page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]').count() === 0,
+    'a single movable payment gets no "all of it" button beside its own tick');
+  ok(await page.locator('#asec-sweep button[data-act="sweepMarkOneTransferred"]').count() === 1,
+    '…the row keeps the one that names it');
 
   // The server applies the marks, so drive the payload it would then return.
   // `movedMap` carries a SECOND mark (99) whose charge has aged out of the payout
@@ -749,13 +818,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // again next visit would offer the same money twice.
   sweepStub = Object.assign({}, sweepStub, {
     payouts: Object.assign({}, sweepStub.payouts, {
-      inBank: 294.75, moved: 0,
-      counts: { inBank: 1, onWay: 1, unknown: 1, moved: 0 },
+      inBank: 494.75, moved: 0,
+      counts: { inBank: 2, onWay: 1, unknown: 1, moved: 0 },
       movedMap: { 99: 1750000000 },
-      items: Object.assign({}, sweepStub.payouts.items, {
-        inBank: [{ txn_id: 11, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12), settled: 368.44, ringFence: 73.69, movable: 294.75, landed: true, arrival: d(-10), fee_actual: true }],
-        moved: [],
-      }),
+      items: Object.assign({}, sweepStub.payouts.items, { inBank: twoLanded, moved: [] }),
     }),
   });
   await page.evaluate(() => renderSweep());
@@ -764,7 +830,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // a transfer — established here so the claim below is about the BALANCE and not
   // about there being nothing to mark. (Asserting it after the undo section looked
   // right and proved nothing: that stub has an empty inBank, so the button is
-  // absent whatever the balance says.)
+  // absent whatever the balance says.) TWO landed charges, so it is not absent for
+  // the "no lot to act on" reason either.
   ok(await page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]').count() === 1,
     'landed money with no balance typed offers the manual record');
   await page.fill('#sweep-balance', '2000');
