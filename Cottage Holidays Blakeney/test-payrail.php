@@ -192,6 +192,27 @@ chk('…and the client folds it into the total AND the paid figure',
 $bkW = (string) file_get_contents(__DIR__ . '/bookings.php');
 chk('the confirmation credits a cash-collected deposit as paid',
     preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $bkW) === 1);
+
+// ---- THE CASH DEPOSIT CAN BE RECORDED AT ALL -------------------------------
+// Every display of a cash-collected deposit was made consistent (paid-above-
+// rental = the deposit) and then the audit found the state was UNREACHABLE:
+// reconcile_deposit clamped 'paid' to exactly the rental total and refused a
+// deposit-inclusive partial, so the £50 in the drawer could never enter
+// deposit_paid — invisible to the deposits-to-return queue, the duty and the
+// return flow (which already handles cash: no charge → a MANUAL return row).
+// Four links, each scanned because bookings.php is an endpoint (requiring it
+// exits) — and each break-tested by reverting the site, which fails exactly one.
+chk('reconcile_deposit adds the collected deposit on the full settlement only',
+    preg_match('/function reconcile_deposit\(\$status, \$total, \$currentDep, \$proposedDep, \$withDeposit = 0\.0\)[\s\S]{0,220}round\(\$total \+ max\(0\.0, \(float\) \$withDeposit\), 2\)/', $bkW) === 1);
+chk('set_payment derives it from the booking, gated to the cash rail',
+    preg_match('/\$withDep =\s*\n\s*!empty\(\$in\[.deposit_collected.\]\) && \(\$b\[.hold_status.\] \?\? .none.\) === .none./', $bkW) === 1
+    && strpos($bkW, ", \$in['deposit'] ?? null, \$withDep)") !== false);
+chk('the reconciler leaves headroom for it — a card event must not erase the deposit',
+    preg_match('/\$cap =\s*\n\s*\(\$b\[.hold_status.\] \?\? .none.\) === .none.\s*\n\s*\? round\(\$total \+ max\(0\.0, \(float\) \(\$b\[.agreed_booking_fee.\] \?\? 0\)\), 2\)/', $bkW) === 1);
+$admW = (string) file_get_contents(__DIR__ . '/admin.js');
+chk('Record Payment offers the deposit as a yes/no and sends the flag only on paid',
+    strpos($admW, "vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true") !== false
+    && preg_match('/askDep = dmg > 0 && \(booking\.holdStatus \|\| .none.\) === .none./', $admW) === 1);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
 $mailS = file_get_contents(__DIR__ . '/mailer.php');
