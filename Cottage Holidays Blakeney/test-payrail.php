@@ -654,6 +654,30 @@ chk('the £50 cash deposit on a discounted booking reads as collected', abs($col
 $legacy = max(0.0, min(50.0, 700.0 - booking_rental_price($ovb + ['price_override' => 700.0])));
 chk('…while a deposit-folded legacy override still collects £0 (no over-return)', $legacy === 0.0);
 
+// ---- THE RECEIPT AND THE DEPOSIT-RETURN EMAIL, pinned -----------------------
+// The full payment-email sweep found both composing coherent figures — and
+// carrying ZERO gate coverage, so that coherence was one edit from silently
+// gone. The receipt's two load-bearing facts: its HEADLINE is what the card
+// took (amount + deposit_charged — the ledger-row lesson, £175 shown for a
+// £225 charge, must not recur here), and its paid-so-far line stays LABELLED
+// "Rental" beside its own rental total (coherent because labelled — the frame
+// is fine exactly as long as it says which frame it is).
+$mailR = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk("the receipt's headline is what the card took, not the rental portion",
+    preg_match("/function send_payment_receipt[\s\S]{0,700}\\\$paidNow = round\(\(float\) \\\$b\['amount'\] \+ \\\$dep, 2\);/", $mailR) === 1);
+chk('…and its paid-so-far line is labelled as the RENTAL rail',
+    preg_match("/function send_payment_receipt[\s\S]{0,2400}'Rental paid so far: '/", $mailR) === 1
+    && preg_match("/function send_payment_receipt[\s\S]{0,4200}\['Rental paid so far', /", $mailR) === 1);
+// The deposit-return email: a PARTIAL return must state what was retained (the
+// difference against what was held, with the reason), and a hand-recorded
+// return must not say "to the card you paid with" — the manual flag carries
+// the honest wording, wired from return_deposit's own MANUAL outcome.
+chk('a partial deposit return states the retained difference',
+    preg_match("/function send_deposit_return_email[\s\S]{0,700}\\\$retained = round\(max\(0, \\\$held - \(float\) \\\$b\['amount'\]\), 2\);/", $mailR) === 1);
+chk('…and a manual return never claims the card rail',
+    preg_match("/function send_deposit_return_email[\s\S]{0,900}!empty\(\\\$b\['manual'\]\) \? 'by the method we agreed' : 'to the card you paid with'/", $mailR) === 1
+    && strpos($bkW3, "'manual' => \$status === 'MANUAL',") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
