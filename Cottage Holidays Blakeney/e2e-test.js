@@ -85,6 +85,18 @@ async function waitForServer(url, tries = 40) {
           { action: 'email.receipt', summary: 'Payment receipt emailed — £450.00 · Sarah Pemberton', at: d(0) + ' 09:40:00', subject: '', body: '' },
           { action: 'booking.email', summary: 'Emailed guest — Sarah Pemberton', at: d(0) + ' 10:20:00', subject: 'Your booking — 21A Westgate', body: 'Hi Sarah,\nParking is on the street out front. See you soon!' },
         ] } });
+        // The hub's Activity feed asks hub_bundle (payments + events in one round
+        // trip). Booking 1 (Sarah) carries the same three logged emails as events;
+        // any other id answers empty, which is the "no emails" hub the suite checks.
+        if (act === 'hub_bundle') {
+          let bid = 0; try { bid = Number(JSON.parse(post || '{}').id) || 0; } catch (e) {}
+          if (bid !== 1) return json({ ok: true, payments: [], events: [] });
+          return json({ ok: true, payments: [], events: [
+            { action: 'email.confirmation', summary: 'Booking confirmation emailed — Sarah Pemberton', actor: 'Owner', at: d(0) + ' 09:15:00', subject: '', body: '' },
+            { action: 'email.receipt', summary: 'Payment receipt emailed — £450.00 · Sarah Pemberton', actor: 'System', at: d(0) + ' 09:40:00', subject: '', body: '' },
+            { action: 'booking.email', summary: 'Emailed guest — Sarah Pemberton', actor: 'Owner', at: d(0) + ' 10:20:00', subject: 'Your booking — 21A Westgate', body: 'Hi Sarah,\nParking is on the street out front. See you soon!' },
+          ] });
+        }
         return json({ bookings });
       }
       if (url.includes('enquiries.php')) return json({ enquiries });
@@ -294,20 +306,24 @@ async function waitForServer(url, tries = 40) {
     // hub fills the pane with 3 logged emails (incl. a payment receipt).
     await page.locator('#bookings-list .bk-row').first().click();
     await page.waitForTimeout(700);
-    (await page.locator('#hub-email-log .bk-email-log-row').count()) === 3 ? pass('hub email log lists sent emails (3)') : fail('email log wrong count: ' + (await page.locator('#hub-email-log .bk-email-log-row').count()));
-    ((await page.locator('#hub-email-log .bk-email-log-when').first().textContent()) || '').match(/\d{1,2} \w{3} \d{4}/) ? pass('email log shows a formatted date') : fail('email log date not formatted');
-    (await page.locator('#hub-email-log .bk-email-log-what', { hasText: 'Payment receipt' }).count()) === 1 ? pass('payment receipt appears in the log') : fail('payment receipt not shown in log');
-    // The free-text message is expandable and reveals its body.
-    (await page.locator('#hub-email-log details.bk-email-log-item').count()) === 1 ? pass('free-text message is expandable') : fail('expandable message missing');
-    await page.locator('#hub-email-log details.bk-email-log-item > summary').first().click();
+    // The sent emails now live in the ACTIVITY feed (one chronological story),
+    // served by the real hub_bundle endpoint — same logged emails, now beside
+    // the booking's other events, with the free-text body expanding in place.
+    await page.waitForSelector('#hub-history .bhub-hist-row', { timeout: 5000 });
+    const feedTx = (await page.locator('#hub-history').textContent()) || '';
+    /Payment receipt/.test(feedTx) ? pass('payment receipt appears in the feed') : fail('payment receipt not in feed');
+    /Booking confirmation/.test(feedTx) ? pass('confirmation appears in the feed') : fail('confirmation not in feed');
+    (await page.locator('#hub-history details.bhub-feed-mail').count()) >= 1 ? pass('logged email is expandable in the feed') : fail('feed expander missing');
+    await page.locator('#hub-history details.bhub-feed-mail > summary').first().click();
     await page.waitForTimeout(150);
-    ((await page.locator('#hub-email-log .bk-email-log-msg').first().textContent()) || '').includes('Parking is on the street') ? pass('expanding shows the message body') : fail('message body not revealed');
+    ((await page.locator('#hub-history .bhub-feed-mailbody').first().textContent()) || '').includes('Parking is on the street') ? pass('expanding shows the message body') : fail('message body not revealed');
     // A booking with no emails shows "None yet" on ITS hub.
     await page.evaluate(() => { bookingsSetSearch('emma'); });
     await page.waitForTimeout(200);
     await page.locator('#bookings-list .bk-row').first().click();
     await page.waitForTimeout(700);
-    (await page.locator('#hub-email-log .bk-email-log-empty').count()) === 1 ? pass('booking with no emails shows "None yet"') : fail('empty email log missing');
+    await page.waitForTimeout(500);
+    !/Show email/.test((await page.locator('#hub-history').textContent()) || '') ? pass('a booking with no emails has no email rows in its feed') : fail('unexpected email rows in feed');
     await page.evaluate(() => { bookingsSetSearch(''); openBookingEmail('b1'); });
     await page.waitForTimeout(300);
     (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');

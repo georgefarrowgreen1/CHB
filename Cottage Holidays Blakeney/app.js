@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 368;
+const ADMIN_BUNDLE_V = 369;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 119;
+const ADMIN_CSS_V = 120;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1260,6 +1260,10 @@ function mapBookingFromApi(row) {
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
         noDogsAt: row.no_dogs_at || '',
+        // Did the guest tick "text me booking updates"? Stored since the enquiry
+        // form gained the box; surfaced by the hub's status chips (it was written
+        // and shown nowhere).
+        smsOptIn: !!Number(row.sms_opt_in),
         holdStatus: row.hold_status || 'none',
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
@@ -7381,8 +7385,16 @@ async function loadBookingPayments(bookingId) {
             el.textContent = 'No online payments yet.';
             return;
         }
-        el.innerHTML = list
-            .map((p) => {
+        el.innerHTML = list.map((p) => hubLedgerRowHtml(p, bookingId, refundOff)).join('');
+    } catch (e) {
+        el.textContent = 'Could not load payments.';
+    }
+}
+// ONE ledger row — shared by the (legacy) per-block loader above and the hub's
+// Activity feed, so the row a gate reads is the row every surface renders.
+function hubLedgerRowHtml(p, bookingId, refundOff) {
+    {
+        {
                 const isCharge = p.kind === 'deposit' || p.kind === 'balance';
                 const live = p.status === 'COMPLETED' || p.status === 'APPROVED';
                 const refundBtn =
@@ -7414,10 +7426,7 @@ async function loadBookingPayments(bookingId) {
                 const sMeta = paymentStatusMeta(p.kind, p.status);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
                         <span>${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
-            })
-            .join('');
-    } catch (e) {
-        el.textContent = 'Could not load payments.';
+        }
     }
 }
 async function refundPayment(bookingId, squareId, maxAmount) {
@@ -13856,7 +13865,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ledger1';
+    const BUILD = 'hubfeed31jul';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

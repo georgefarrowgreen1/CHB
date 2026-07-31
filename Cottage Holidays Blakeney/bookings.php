@@ -1865,6 +1865,55 @@ if ($action === 'email_logs') {
     }
 }
 
+// ONE round trip for everything the hub renders after open. The hub used to
+// fire three requests (payments, history, email logs) and fill three cards as
+// each landed — on a weak signal the page assembled visibly, card by card. The
+// bundle also powers the ACTIVITY FEED: the ledger rows (with their live Square
+// status + deposit_carried) interleaved with this booking's activity-log events,
+// whose comms rows carry subject/body meta so an email can be read in place.
+// The single-purpose actions above/below are KEPT — tests and other callers use
+// them, and one shared helper (booking_payments_rows) means they cannot drift.
+if ($action === 'hub_bundle') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $payments = [];
+    $events = [];
+    try {
+        $payments = booking_payments_rows($id);
+    } catch (\Throwable $e) {
+    }
+    try {
+        $st = db()->prepare(
+            "SELECT action, summary, actor, meta, created_at
+               FROM activity_log
+              WHERE entity = 'booking' AND entity_id = ?
+           ORDER BY id DESC
+              LIMIT 80",
+        );
+        $st->execute([(string) $id]);
+        foreach ($st->fetchAll() as $r) {
+            $meta = [];
+            if (!empty($r['meta'])) {
+                $decoded = json_decode((string) $r['meta'], true);
+                if (is_array($decoded)) {
+                    $meta = $decoded;
+                }
+            }
+            $events[] = [
+                'action' => $r['action'],
+                'summary' => $r['summary'],
+                'actor' => $r['actor'] ?: 'system',
+                'at' => $r['created_at'],
+                'subject' => isset($meta['subject']) ? (string) $meta['subject'] : '',
+                'body' => isset($meta['body']) ? (string) $meta['body'] : '',
+            ];
+        }
+    } catch (\Throwable $e) {
+        // activity_log not migrated yet -> feed shows the ledger alone
+    }
+    json_out(['ok' => true, 'payments' => $payments, 'events' => $events]);
+}
+
 // Everything the activity log recorded about ONE booking — created, edited,
 // payments recorded, emails, cancellation — newest first. Powers the booking
 // hub's History card, so "what happened on this booking?" is answerable in
@@ -1974,34 +2023,36 @@ if ($action === 'deposit_returns') {
 }
 
 // List the Square payment ledger for a booking (admin detail panel).
+// ONE definition of a booking's ledger rows (incl. the deposit_carried flag) —
+// consumed by the 'payments' action and by 'hub_bundle', so the hub's activity
+// feed and any direct caller can never disagree about what a charge took.
+function booking_payments_rows($id)
+{
+    $s = db()->prepare(
+        'SELECT square_payment_id, kind, amount, status, note, created_at FROM payments WHERE booking_id = ? ORDER BY id ASC',
+    );
+    $s->execute([$id]);
+    $rows = $s->fetchAll();
+    // WHICH ROW THE DAMAGES DEPOSIT RODE — see the 'payments' action's original
+    // comment (#921): payments.amount is RENTAL-only, so the row the guest's
+    // card statement disagrees with is flagged with the carried sum.
+    $bq = db()->prepare('SELECT hold_payment_id, hold_amount FROM bookings WHERE id = ?');
+    $bq->execute([$id]);
+    $hb = $bq->fetch();
+    $hpid = (string) ($hb['hold_payment_id'] ?? '');
+    foreach ($rows as &$r) {
+        $r['deposit_carried'] =
+            $hpid !== '' && (string) $r['square_payment_id'] === $hpid && in_array($r['kind'], ['deposit', 'balance'], true)
+                ? round((float) ($hb['hold_amount'] ?? 0), 2)
+                : 0.0;
+    }
+    unset($r);
+    return $rows;
+}
 if ($action === 'payments') {
     $id = (int) ($in['id'] ?? 0);
     try {
-        $s = db()->prepare(
-            'SELECT square_payment_id, kind, amount, status, note, created_at FROM payments WHERE booking_id = ? ORDER BY id ASC',
-        );
-        $s->execute([$id]);
-        $rows = $s->fetchAll();
-        // WHICH ROW THE DAMAGES DEPOSIT RODE. payments.amount is RENTAL-only —
-        // pay.php bundles the deposit into the first charge but records it on
-        // hold_* — so the ledger row read "Deposit · £175.00" for a card the
-        // guest watched take £225 (reported with a screenshot). The client can't
-        // know without hold_payment_id, so the row that carried it is flagged
-        // with the sum, and the hub shows the charge as the card statement shows
-        // it. hold_status is NOT consulted: once bundled, the historical charge
-        // took £225 whatever later happened to the deposit (its return is its
-        // own −£50 row below).
-        $bq = db()->prepare('SELECT hold_payment_id, hold_amount FROM bookings WHERE id = ?');
-        $bq->execute([$id]);
-        $hb = $bq->fetch();
-        $hpid = (string) ($hb['hold_payment_id'] ?? '');
-        foreach ($rows as &$r) {
-            $r['deposit_carried'] =
-                $hpid !== '' && (string) $r['square_payment_id'] === $hpid && in_array($r['kind'], ['deposit', 'balance'], true)
-                    ? round((float) ($hb['hold_amount'] ?? 0), 2)
-                    : 0.0;
-        }
-        unset($r);
+        $rows = booking_payments_rows($id);
         json_out(['payments' => $rows]);
     } catch (\Throwable $e) {
         json_out(['payments' => []]);

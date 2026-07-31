@@ -883,18 +883,47 @@ delegates to `openBookingHub()` (admin.js): status pipeline + next action + the
 payments block are ONE unified header section (`.bhub-head` → `payBlock` /
 `.bhub-headpay` — there is NO separate Payments card and NO second money
 mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-test-hub
-§A; the journey strip carries the money stages. The email ask lives in the banner
-AND the Payments button row — the banner-owns-it rule was retired at the owner's
-request, because working the Payments block meant going back up for the one action
-that asks for the money. The row's button is STAGED: "Email deposit link" until
-something is in, then the SUBSEQUENT "Email balance link"; hidden when paid in
-full or with no email on file. `hubAskKind(gt, past)` is the ONE derivation both
-the banner and the row read — derived separately they could ask for different
-stages of the same money, and ui-test-hub §A2c compares what each node actually
-carries. The server still derives the SUM (`booking_payment_kind` upgrades a
-deposit ask to the full amount inside the balance window) — the label names the
-stage, not the figure); then emails,
-guest, change history via `bookings.php` `history` as grid cards; on desktop
+§A; the journey strip carries the money stages. **A MONEY next-action renders
+INSIDE the Payments header** (`.bhub-payask`, deliberately still carrying
+`.bhub-next` so the gates that read the banner read the same node) and
+`nextHtml()` returns '' for it — the ask is said ONCE, where the money lives;
+non-money banners (arrival prep etc.) keep the top slot. The Payments button row's
+email ask is STAGED: "Email deposit link" until something is in, then the
+SUBSEQUENT "Email balance link"; hidden when paid in full or with no email on
+file. `hubAskKind(gt, past)` is the ONE derivation both the header ask and the row
+read — derived separately they could ask for different stages of the same money,
+and ui-test-hub §A2c compares what each node actually carries. The server still
+derives the SUM (`booking_payment_kind` upgrades a deposit ask to the full amount
+inside the balance window) — the label names the stage, not the figure).
+**The hub fills from ONE round trip**: `bookings.php` `hub_bundle` returns the
+payment ledger (`booking_payments_rows()`, the helper the `payments` action shares)
+plus the booking's activity-log events together, so a weak signal paints the page
+at once instead of card by card. The old Emails card (`#hub-email-log`) and the
+separate history/payments/email-log fetches are GONE from the hub — the
+**Activity card** (`#hub-history` — id kept so the ledger gates keep firing)
+renders `hubActivityHtml`: ledger rows via the shared `hubLedgerRowHtml`
+(extracted from `loadBookingPayments`, which still serves the Payments screen)
+interleaved with events newest-first; `payment.card` events are FILTERED because
+the ledger row is the same fact said better (ui-test-hub §C pins the twin
+dropped), and a logged email's subject/body expands in place
+(`details.bhub-feed-mail` — e2e clicks it open). **Status chips** under
+`.bhub-sub` (`hubChipsHtml`): terms vN, no-dog, guest register, payment rail
+(match `/card|square/i`, and EMPTY means card — nothing recorded is a guest who
+hasn't paid yet), and Texts OK only when opted in (`smsOptIn`, newly mapped in
+`mapBookingFromApi`). **Gap chip**: a 2–4-night hole starting at this stay's
+checkout rides `chbGapScan`/`chbGapPlan` — the SAME plan the Pricing page and
+brief use, one-tap `nyGapOffer` or "offer live" → seasongrid. **Phone sticky
+action bar** (`.bhub-sticky`, hidden ≥901px, inset by the `--safe-b` token): the
+next action plus tel:/mailto: icon buttons at the 44px floor; a money label
+carries the figure. **Share** (`shareStayDetails`, hub ⋯ menu): navigator.share
+with clipboard fallback, and NO money in the shared text — it goes to cleaners
+and co-hosts, not the guest. **✨ Draft reply** in the booking email composer
+(`chbDraftBookingReply` + `draftBookingReply` — deterministic template like the
+enquiry drafter; the balance line reads `bookingDue`, the one owner-facing due
+figure, so the draft can never quote a different number than the hub above it).
+All gated by ui-test-hub §C/§C2 (feed contract incl. order + twin-drop, all five
+affordances, sticky shown/hidden by width, share text, draft figure) + e2e (real
+hub_bundle shape end to end). Then the guest/intel grid cards; on desktop
 (≥900px) the status pipeline shows ALL stages (upcoming = red dot), compact
 Done·Now·Next below that; the payments block folds to ONE `.bhub-payline` in EVERY
 state (settled "Paid in full £X ✓", part-paid "Received so far £X of £Y", untouched
