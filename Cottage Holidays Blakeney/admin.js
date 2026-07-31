@@ -12239,9 +12239,7 @@ async function renderSweep(refetch) {
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
                     <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>
-                    ${Number(it.awaiting || 0) > 0 && it.booking_id
-                        ? `<div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('confirmReturnSettled', String(it.booking_id))}>It has gone — confirm settled</button></div>`
-                        : ''}
+                    ${/* the button for these rows is lifted out of the fold — see needsConfirm */ ''}
                 </div>`;
         })
         .join('');
@@ -12431,6 +12429,22 @@ async function renderSweep(refetch) {
     if (P && P.error) {
         alerts.push(['warn', `Payout data may be out of date — ${escapeHtml(String(P.error))}.`]);
     }
+    // A refund issued but not seen to settle is the only row here that asks
+    // anything of the owner, so it stays out of the fold with its button.
+    const needsConfirm = (L.items || []).filter((it) => Number(it.awaiting || 0) > 0 && it.booking_id);
+    const confirmHtml = !needsConfirm.length
+        ? ''
+        : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+            <div class="label">Waiting on your confirmation</div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Refunded, but our records haven't seen it leave your Square balance — so it is still held back from the figure above.</p>
+            ${needsConfirm.map((it) => `<div class="act-row" style="display:block;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                    <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}</span>
+                    <span style="white-space:nowrap;">${gbp(it.net)}</span>
+                </div>
+                <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('confirmReturnSettled', String(it.booking_id))}>It has gone — confirm settled</button></div>
+            </div>`).join('')}
+           </div>`;
     const alertHtml = !alerts.length
         ? ''
         : `<div class="accounts-stat sweep-alerts" style="max-width:620px;margin-top:14px;">
@@ -12439,11 +12453,15 @@ async function renderSweep(refetch) {
 
     // THE WORKINGS — checkable, one tap away. <details> is native, keyboard-
     // operable and needs no script.
-    // WHAT IS HELD BACK, itemised. In the open: the rows carry the "confirm
-    // settled" button, and an action behind a disclosure is one nobody takes.
+    // WHAT IS HELD BACK, itemised — in the WORKINGS. It was a card of its own,
+    // headed with the figure to LEAVE IN, directly under the figure to take out:
+    // two competing headlines for one decision, and the wrong one was the
+    // instruction. The transfer figure is already net of the fence and its
+    // sentence names it, so the fence is a derivation now, not an answer. NB one
+    // part cannot fold away — see `needsConfirm`.
     const held = !L.count
         ? ''
-        : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+        : `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
             <div style="font-family:var(--font-display);font-size:1.5rem;margin:4px 0 2px;">${gbp(ring - buf)}</div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
@@ -12451,7 +12469,8 @@ async function renderSweep(refetch) {
            </div>`;
 
     const workings =
-        `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 4px;max-width:620px;">
+        held +
+        `<p style="font-size:0.85rem;color:var(--text-muted);margin:14px 0 4px;max-width:620px;">
             ${L.count === 0
                 ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
                 : `Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
@@ -12482,7 +12501,7 @@ async function renderSweep(refetch) {
     box.innerHTML =
         answer +
         alertHtml +
-        held +
+        confirmHtml +
         `<details class="sweep-detail" style="max-width:620px;margin-top:14px;">
             <summary style="cursor:pointer;padding:12px 2px;font-size:0.85rem;color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
