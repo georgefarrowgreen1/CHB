@@ -1067,9 +1067,23 @@ money overview, `chbOwedLater`, the owed family and the bulk chase it feeds, the
 inline chase + its balance watcher, and the per-booking money lines in the search
 dossier/detail pill/record sub. **Deliberately
 NOT changed**: the questions that are genuinely about the rental — "who's put a deposit
-down" (`ps.deposit`) and "who's paid in full" (`ps.total`) — and the guest emails, whose
-`booking_amount_due` quotes the rental with the deposit explained separately, which is
-their own considered framing. NB the two shapes are NOT interchangeable — `paymentSummary`
+down" (`ps.deposit`) and "who's paid in full" (`ps.total`). The guest CHASE emails and
+the pay screen were originally left on the rental frame under the same reasoning, and
+that half was REVISED at the owner's ask (screenshot): once the damages deposit had been
+CHARGED, the balance chase read "£175.00 already paid" of a "£700.00 total" at a guest
+whose card took £225 and whose confirmation, receipt, invoice and My Stays all said £225
+of £750 — the one document telling a different story. `payment_money_facts` now folds
+`deposit_charged` (carried by `request_booking_payment`, mirroring the confirmation's
+`$chargedDep`) into BOTH the stay total and the paid figure — the balance is unmoved,
+because the deposit adds equally to both sides — and says "(including your £X refundable
+deposit)"; the pay screen's summary carries `depositCharged` and the client folds it the
+same way. `paidRental` stays available raw for any caller that means the rental rail.
+The RECEIPT keeps its frame on purpose: it says "RENTAL paid so far" and lists the
+deposit on its own labelled line — coherent because labelled. Gated by test-payrail
+(the real composers driven with a charged-deposit payload, plus the WIRING — the first
+break-test round proved the payload line could be deleted with every check green, the
+helper-tested-alone trap yet again) + ui-test-pay (the £525-of-£750 balance view).
+NB the two shapes are NOT interchangeable — `paymentSummary`
 returns `{total, deposit, balance}` and `displayGrand` returns `{dep, total, paid,
 balance}`, so a blanket swap silently makes `ps.deposit` undefined; the `withPs` block
 keeps the rental summary and the owed branch maps in the due figure under the same name.

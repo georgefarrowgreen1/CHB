@@ -130,6 +130,60 @@ chk('no deposit → the request adds no deposit sentence', stripos($askP['text']
 chk('no deposit → the reminder adds none either', stripos($chaseP['text'], 'refundable security deposit') === false);
 chk('nothing paid yet → the request claims no payment', stripos($askP['text'], 'already paid:') === false);
 chk('nothing paid yet → the reminder claims none either', stripos($chaseP['text'], 'already paid:') === false);
+
+// ---- "ALREADY PAID" IS WHAT LEFT THE GUEST'S CARD, IN BOTH DEPOSIT ERAS -----
+// Once the deposit has been CHARGED (it rides the first payment), `damages` is 0
+// and `paid` is the rental rail — so the balance chase read "£175.00 already
+// paid" of "£700.00 total" at a guest whose card took £225 and whose
+// confirmation, receipt, invoice and My Stays all say £225 of £750 (reported
+// with a screenshot — the one document telling a different story). The payload
+// now carries deposit_charged, and payment_money_facts folds it into BOTH the
+// stay total and the paid figure, so the balance itself is unmoved.
+$charged = array_merge(bk('Square card', 0.0), [
+    'kind' => 'balance', 'amount' => 525.0, 'total' => 700.0,
+    'paid' => 175.0, 'deposit_charged' => 50.0,
+]);
+$askC = payment_request_body($charged, $URL, '#C79A64', $BANK);
+$chaseC = payment_reminder_body($charged, $URL, '#C79A64', $BANK);
+foreach ([['request', $askC], ['reminder', $chaseC]] as [$which, $m]) {
+    chk("the $which counts the charged deposit in what is already paid (£225.00)",
+        strpos($m['text'], 'Already paid: £225.00') !== false);
+    chk("…the $which says the deposit is inside that figure",
+        strpos($m['text'], '(including your £50.00 refundable deposit)') !== false);
+    chk("…and the $which never claims the rental-rail £175.00 as the paid figure",
+        strpos($m['text'], '£175.00') === false && strpos($m['html'], '175.00') === false);
+}
+chk('the request quotes the full £750.00 stay, not the £700.00 rental',
+    strpos($askC['text'], 'full stay total is £750.00') !== false && strpos($askC['html'], '750.00') !== false);
+chk('…and the balance asked for is unmoved — the deposit adds equally to both sides',
+    strpos($askC['text'], '£525.00') !== false);
+// The facts themselves: the two deposit eras land on the SAME stay total, so no
+// email's figures depend on when it happened to be sent.
+$fRiding = payment_money_facts(['amount' => 175.0, 'total' => 700.0, 'damages' => 50.0, 'paid' => 0.0]);
+$fCharged = payment_money_facts(['amount' => 525.0, 'total' => 700.0, 'damages' => 0.0, 'paid' => 175.0, 'deposit_charged' => 50.0]);
+chk('stay total agrees across the deposit eras (riding vs charged)',
+    abs($fRiding['stayTotal'] - 750.0) < 0.005 && abs($fCharged['stayTotal'] - 750.0) < 0.005);
+chk('…and the rental rail stays available raw for the callers that mean it',
+    abs($fCharged['paidRental'] - 175.0) < 0.005 && abs($fCharged['paid'] - 225.0) < 0.005);
+// THE WIRING, not just the composer: the checks above hand the builders a payload
+// carrying deposit_charged themselves, so request_booking_payment simply not
+// sending it left every one of them green while the real emails kept the rental
+// rail — measured by deleting the payload line, which failed nothing until this.
+$mailW = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('request_booking_payment derives the charged deposit from the hold state',
+    preg_match("/function request_booking_payment[\s\S]{0,2500}\\\$depCharged = in_array\(\(\\\$b\['hold_status'\][\s\S]{0,120}'charged', 'captured', 'kept'/", $mailW) === 1);
+chk('…and actually sends it with the payload',
+    preg_match("/function request_booking_payment[\s\S]{0,4000}'deposit_charged' => \\\$depCharged,/", $mailW) === 1);
+// The pay screen is the same fact on a different surface (its balance view read
+// "£175.00 already paid" of "£700.00 total" too) — the summary must carry it and
+// the client must fold it into BOTH sides.
+$payW = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('the pay-screen summary carries the charged deposit',
+    preg_match("/'depositCharged' => in_array\(\\\$holdStatus, \['charged', 'captured', 'kept'\]/", $payW) === 1);
+$appW = (string) file_get_contents(__DIR__ . '/app.js');
+chk('…and the client folds it into the total AND the paid figure',
+    strpos($appW, 'Number(s.total) + dep + depCharged') !== false
+    && strpos($appW, 'Number(s.alreadyPaid || 0) + depCharged') !== false);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
 $mailS = file_get_contents(__DIR__ . '/mailer.php');

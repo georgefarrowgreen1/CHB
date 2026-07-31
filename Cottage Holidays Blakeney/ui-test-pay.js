@@ -45,6 +45,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
           damagesDue: 50, holdAmount: 50, holdStatus: 'none',
         });
+        // Booking 9: the SAME booking after that first payment — deposit CHARGED,
+        // balance link opened. The screenshotted state: the card took £225, so
+        // "already paid" must say £225 of a £750 stay, never the rental-rail
+        // £175 of £700 beside a confirmation and receipt that both say £225.
+        if (b.booking_id === '9') return json({
+          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
+          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
+          total: 700, alreadyPaid: 175, balance: 525, depositPct: 25, amountDue: 525,
+          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged',
+        });
         return json({
           ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
@@ -107,6 +117,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/£175\.00 deposit \(25%\) \+ £50\.00 refundable deposit/.test(dv.sub),
     `…and the sub ITEMISES to that headline (${dv.sub})`);
   ok(!/£750\.00 total/.test(dv.sub), '…naming no total its own percentage cannot reach');
+  // THE BALANCE ASK AFTER THE DEPOSIT WAS CHARGED — the screenshotted state.
+  // "of £700.00 total · £175.00 already paid" under the £525 hero was the rental
+  // rail talking to a guest whose card took £225 of a £750 stay; the charged
+  // deposit now folds into BOTH sides, and the balance itself is unmoved.
+  await page.evaluate(() => openPayView('paytok', '9', 'balance'));
+  await page.waitForTimeout(900);
+  const cv = await page.evaluate(() => ({
+    amount: (document.getElementById('pay-amount') || {}).textContent || '',
+    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
+  }));
+  ok(cv.amount === '£525.00', `the balance hero is unmoved by the fold (${cv.amount})`);
+  ok(/of £750\.00 total · £225\.00 already paid/.test(cv.sub),
+    `…and the sub counts the charged deposit on both sides (${cv.sub})`);
+  ok(!/£700\.00/.test(cv.sub) && !/£175\.00/.test(cv.sub),
+    '…with the rental-rail figures gone from the guest\'s view');
+
   // Back to the balance ask for the happy-path charge below.
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
