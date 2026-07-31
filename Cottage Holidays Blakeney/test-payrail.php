@@ -184,6 +184,14 @@ $appW = (string) file_get_contents(__DIR__ . '/app.js');
 chk('…and the client folds it into the total AND the paid figure',
     strpos($appW, 'Number(s.total) + dep + depCharged') !== false
     && strpos($appW, 'Number(s.alreadyPaid || 0) + depCharged') !== false);
+// A CASH deposit counts as paid in the confirmation's own derivation too —
+// hold_status is a card-rail fact, and $rentalPaid caps at the total, so a
+// re-sent confirmation for £750 handed over in cash read "Paid so far £700 ·
+// Balance remaining £50" about a settled stay. Same arithmetic as
+// damages_collected; JS mirror displayGrand (gated in smoke-test §9).
+$bkW = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('the confirmation credits a cash-collected deposit as paid',
+    preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $bkW) === 1);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
 $mailS = file_get_contents(__DIR__ . '/mailer.php');

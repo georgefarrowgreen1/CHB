@@ -6889,7 +6889,19 @@ function displayGrand(p, ps, holdStatus, b) {
     const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
     const chargedDep = depositCharged(holdStatus) ? dep : 0; // only if actually collected
-    const paid = Math.round((ps.deposit + chargedDep) * 100) / 100;
+    // A CASH deposit counts as paid too — the same arithmetic damages_collected
+    // uses in the ledger (what was paid ABOVE the rental, capped at the agreed
+    // deposit). hold_status is a CARD-rail fact and cash never sets it, and
+    // paymentSummary caps depositPaid at the rental total — so a guest who handed
+    // over £750 (£700 + £50 deposit, recorded as one sum) read "£50 still to
+    // come" on every owner surface while damageHeld listed the same £50 as in
+    // hand and returnable. Zero for a legacy folded-total booking (paid never
+    // exceeds the total there) and zero once the deposit is charged/settled on
+    // the card rail (holdStatus leaves 'none').
+    const cashDep = holdStatus === 'none' && b
+        ? Math.min(dep, Math.max(0, Math.round(((Number(b.depositPaid) || 0) - ps.total) * 100) / 100))
+        : 0;
+    const paid = Math.round((ps.deposit + chargedDep + cashDep) * 100) / 100;
     const balance = Math.round((total - paid) * 100) / 100;
     return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
 }
@@ -13834,7 +13846,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paidline';
+    const BUILD = 'cashdep1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

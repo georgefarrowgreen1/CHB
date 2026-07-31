@@ -389,7 +389,17 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
         $grand = round($total + $depAmt, 2);
         $rentalPaid = $b['payment'] === 'paid' ? $total : min($total, (float) ($b['deposit_paid'] ?? 0));
         $chargedDep = in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $depAmt : 0.0;
-        $paidSoFar = round($rentalPaid + $chargedDep, 2);
+        // A CASH deposit counts as paid too — what was recorded ABOVE the rental,
+        // capped at the agreed deposit (damages_collected's own arithmetic; JS
+        // mirror displayGrand). hold_status is a card-rail fact cash never sets,
+        // and $rentalPaid caps at the total — so a re-sent confirmation for a
+        // guest who handed over £750 in cash said "Paid so far £700 · Balance
+        // remaining £50" about a settled stay. Zero for legacy folded totals
+        // (paid never exceeds the total there).
+        $cashDep = $holdStatus === 'none'
+            ? min($depAmt, max(0.0, round((float) ($b['deposit_paid'] ?? 0) - $total, 2)))
+            : 0.0;
+        $paidSoFar = round($rentalPaid + $chargedDep + $cashDep, 2);
         $balanceDue = round(max(0, $grand - $paidSoFar), 2);
 
         return send_booking_emails([

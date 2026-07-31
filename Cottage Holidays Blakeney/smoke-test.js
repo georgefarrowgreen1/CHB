@@ -634,6 +634,36 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
             dh('21a', { ...disc, depositPaid: 700, dbId: 6 }).held === 0);
         check('…and a RAISED override keeps its higher floor exactly as before',
             dh('21a', { agreedPrice: { total: 1200, rentalTotal: 910, damagesDeposit: 50, isOverride: true }, priceOverride: 1200, depositPaid: 1200, payment: 'paid', holdStatus: 'none', dbId: 7 }).held === 0);
+
+        // A CASH DEPOSIT COUNTS AS PAID ON SCREEN, exactly as damages_collected
+        // counts it in the ledger. displayGrand only credited the deposit via
+        // hold_status ('charged'/'captured'), which cash never sets — and
+        // paymentSummary CAPS depositPaid at the rental total, so a guest who
+        // handed over £750 (£700 rental + £50 deposit, owner recorded the lot)
+        // read "£700 received of £750, £50 still to come" on every owner surface,
+        // while the server's own deposits-to-return queue said the £50 was in
+        // hand. The client and server disagreed about whether money in the drawer
+        // exists — the paid-so-far species again, one layer down.
+        const gt = get('displayGrand');
+        const cashB = { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 750, payment: 'deposit', holdStatus: 'none', dbId: 8 };
+        const cashPs = get('paymentSummary')('21a', cashB);
+        const cashGt = gt(cashB.agreedPrice, cashPs, 'none', cashB);
+        check('cash rental+deposit recorded → paid reads £750, nothing left',
+            cashGt.paid === 750 && cashGt.balance === 0 && cashGt.fullyPaid === true);
+        // …and the deposit the guest paid in cash is HELD, matching the screen.
+        check('…and damageHeld agrees the £50 is in hand',
+            dh('21a', cashB).held === 50);
+        // Rental-only cash: the deposit genuinely is still to collect.
+        const cashPart = { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'deposit', holdStatus: 'none', dbId: 9 };
+        const partGt = gt(cashPart.agreedPrice, get('paymentSummary')('21a', cashPart), 'none', cashPart);
+        check('rental-only cash → the £50 deposit stays outstanding',
+            partGt.paid === 700 && partGt.balance === 50);
+        // A LEGACY booking (deposit folded INTO the total) must not double-credit:
+        // paid equals the folded total, so nothing sits above the rental.
+        const legB = { agreedPrice: { total: 555, rentalTotal: 480, damagesDeposit: 75 }, depositPaid: 555, payment: 'paid', holdStatus: 'none', dbId: 10 };
+        const legGt = gt(legB.agreedPrice, get('paymentSummary')('21a', legB), 'none', legB);
+        check('legacy folded-total booking is unchanged by the cash credit',
+            Math.abs(legGt.paid - legGt.total) < 0.006 || legGt.paid === 555);
     }
 }
 
