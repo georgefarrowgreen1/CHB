@@ -493,6 +493,21 @@ chk('…and the HTML price box does too, not just the text half',
 $invS = (string) file_get_contents(__DIR__ . '/invoice.php');
 chk('the server invoice takes the same branch — one booking, one shape of document',
     preg_match('/booking_price_is_custom\([\s\S]{0,200}Agreed price for your stay/', $invS) === 1);
+// …AND A CUSTOM PRICE STILL FOLLOWS THE PAYMENT PROCEDURE. Rendering was the
+// defect; these pin that the MONEY never had it: both places that derive an ask
+// resolve price_override into the total BEFORE the deposit-percentage and
+// balance maths, so deposit-then-balance (and the in-window full-amount upgrade,
+// gated above) stage off the agreed figure. Order is the claim — an override
+// applied after the pct line would quote a deposit off the wrong total. The
+// client half is behavioural, in smoke-test (mapBookingFromApi →
+// paymentSummary/bookingDue: £700 override → £175-shaped deposit staging, £525
+// balance, settled at £700 with the £910 snapshot never owed).
+$priS = (string) file_get_contents(__DIR__ . '/pricing.php');
+chk('booking_amount_due asks off the override-resolved total',
+    preg_match('/function booking_amount_due[\s\S]{0,400}price_override[\s\S]{0,600}\$depositAmount = round\(\$total \*/', $priS) === 1);
+$payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php charges off the same override-resolved total',
+    preg_match('/\$total = \$b\[.price_override.\] !== null[\s\S]{0,900}\$depositAmount = round\(\$total \*/', $payS2) === 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {
