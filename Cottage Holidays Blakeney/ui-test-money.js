@@ -638,6 +638,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       groupsInDetails: [...body.querySelectorAll('.accounts-stat .label')]
         .filter((el) => /In the bank|On its way|Square hasn't said|payment by payment/i.test(el.textContent))
         .every(inDetails),
+      // …and so is the ring fence. The transfer figure is already net of it, so a
+      // card headed with the amount to LEAVE IN was a second headline competing
+      // with the one you act on.
+      fenceInDetails: [...body.querySelectorAll('.accounts-stat .label')]
+        .filter((el) => /Keep in the account/i.test(el.textContent))
+        .every(inDetails),
+      fenceFound: [...body.querySelectorAll('.accounts-stat .label')].some((el) => /Keep in the account/i.test(el.textContent)),
     };
   });
   const shape = await sweepShape();
@@ -647,6 +654,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/worked out/i.test(shape.summary), `…behind a summary that says what is in there (${shape.summary})`);
   ok(shape.groupsInDetails, 'the per-charge groups are workings, and sit inside');
   ok(!shape.refreshInDetails, '"Check Square now" stays reachable without expanding');
+  ok(shape.fenceFound && shape.fenceInDetails, 'the amount to LEAVE IN is a derivation, not a second headline');
 
   // MONEY UNDER DISPUTE is fenced beside the deposits — Square can pull it back, and
   // a chargeback on a whole stay dwarfs a £75 deposit. Its own line, not folded in.
