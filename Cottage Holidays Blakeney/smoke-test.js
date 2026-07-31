@@ -333,6 +333,37 @@ else {
     check('…and nothing reads £NaN', !/NaN/.test(ovrBox));
 }
 
+// AND A CUSTOM PRICE STILL FOLLOWS THE PAYMENT PROCEDURE. The lines above are
+// display; this is the money: deposit-then-balance must be staged off the AGREED
+// total, not the standard snapshot beside it. Driven through the REAL row mapper
+// (mapBookingFromApi is where the override replaces agreedPrice.total) into the
+// REAL paymentSummary/bookingDue — the figures the hub's banner, the ask buttons
+// and the journey pipeline all read. The server half is the same shape by
+// construction (booking_amount_due and pay.php both resolve price_override before
+// the pct/balance maths — gated in test-payrail).
+{
+    const evalIn = (src) => vm.runInContext(src, ctx);
+    const row = (extra) => Object.assign({
+        id: 9101, prop_key: 'jollyboat', name: 'Custom Guest', check_in: '2027-05-10',
+        check_out: '2027-05-17', adults: 2, children: 0, payment: 'unpaid', deposit_paid: 0,
+        agreed_total: 910, agreed_per_night: 130, agreed_nights: 7, agreed_nightly: 910,
+        agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_booking_fee: 50, price_override: 700,
+    }, extra);
+    const ps = (extra) => evalIn(`paymentSummary('jollyboat', mapBookingFromApi(${JSON.stringify(row(extra))}))`);
+    const fresh = ps({});
+    check('an untouched custom booking owes the AGREED total, not the snapshot',
+        fresh.total === 700 && fresh.balance === 700 && !fresh.fullyPaid);
+    const part = ps({ payment: 'deposit', deposit_paid: 175 });
+    check('a 25% deposit staged off the agreed £700 leaves a £525 balance',
+        part.total === 700 && part.balance === 525 && !part.fullyPaid);
+    check('paying the agreed £700 settles it — the £910 snapshot is never owed',
+        ps({ payment: 'deposit', deposit_paid: 700 }).fullyPaid === true);
+    // bookingDue folds the damages deposit exactly as for a standard booking.
+    const due = evalIn(`bookingDue('jollyboat', mapBookingFromApi(${JSON.stringify(row({}))}))`);
+    check('the owner-facing due figure = agreed £700 + the £50 deposit',
+        due.total === 750 && due.balance === 750);
+}
+
 // THE REVIEW FORM PROMISES ONLY WHAT reviews.php DELIVERS. `submit` writes
 // status='pending' and `set_status` can DECLINE one, so "will appear on our site
 // shortly" guaranteed a publication the site does not — and the toast on the very
