@@ -48,27 +48,28 @@ if (!$b) {
 // check-in was still far off would still take 25% if opened days before arrival.
 $kind = booking_payment_kind($b, $kind);
 
-// Effective total = manual override if set, else the locked agreed total
-// (fall back to a live calc only for legacy rows missing the snapshot).
+// ONE ask derivation. This block used to re-derive total/deposit/already-paid
+// inline — a second copy of booking_amount_due's arithmetic (pricing.php), the
+// exact two-copies shape behind most of this codebase's money drift. The emails
+// (request_booking_payment) and the cron chasers already quote booking_amount_due,
+// so delegating makes it impossible for the ask in the email and the charge on
+// this screen to disagree. The one behaviour kept from the inline copy: a legacy
+// row with no snapshot AND no property rate is a hard 404 here (the helper
+// returns total 0, which as a charge would read "already settled" — a lie).
 $rate = get_rate($b['prop_key']);
-if ($b['agreed_total'] !== null) {
-    $total = $b['price_override'] !== null ? (float) $b['price_override'] : (float) $b['agreed_total'];
-} else {
-    if (!$rate) {
-        json_out(['error' => 'Property not found'], 404);
-    }
-    $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-    $total = $p['total'];
+if ($b['agreed_total'] === null && !$rate) {
+    json_out(['error' => 'Property not found'], 404);
 }
-$total = round($total, 2);
-
-// Deposit policy: a global percentage in the content table (default 25%).
+$amt = booking_amount_due($b, $kind === 'hold' ? 'deposit' : $kind);
+$total = $amt['total'];
+$alreadyPaid = $amt['alreadyPaid'];
+// Deposit policy: a global percentage in the content table (default 25%). The
+// pre-lock due figures come from $amt; $depositAmount is still needed by the
+// UNDER-LOCK recompute at charge time, which re-derives the due figure against a
+// fresh paid read so a retry cannot double-charge (deleting it here left that
+// recompute reading an undefined £0 — caught before it shipped).
 $depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
-// The SAME definition the charge below uses (booking_paid_so_far) — quoting
-// deposit_paid alone asked for more than the card would take whenever the ledger
-// was ahead of the reconciled figure.
-$alreadyPaid = booking_paid_so_far($b);
 
 // Refundable damages deposit (bundled into the first payment). Use the frozen
 // snapshot; fall back to a live calc ONLY for legacy rows that have no snapshot at
@@ -91,11 +92,12 @@ $holdStatus = $b['hold_status'] ?? 'none';
 $damagesDue = $holdStatus === 'none' ? $holdAmount : 0.0;
 
 // Amount due for this request, derived from kind (never trusted from the client).
+// The rental asks are booking_amount_due's own figure ($amt); only the legacy
+// 'hold' flow keeps its special case (the hold IS the deposit, not a rental ask).
 if ($kind === 'hold') {
     $amountDue = in_array($holdStatus, ['authorized', 'captured'], true) ? 0.0 : $holdAmount;
 } else {
-    $amountDue =
-        $kind === 'balance' ? round(max(0, $total - $alreadyPaid), 2) : round(max(0, $depositAmount - $alreadyPaid), 2);
+    $amountDue = $amt['due'];
 }
 
 $propName = $rate['name'] ?? $b['prop_key'];

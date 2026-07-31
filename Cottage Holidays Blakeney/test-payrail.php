@@ -213,6 +213,24 @@ $admW = (string) file_get_contents(__DIR__ . '/admin.js');
 chk('Record Payment offers the deposit as a yes/no and sends the flag only on paid',
     strpos($admW, "vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true") !== false
     && preg_match('/askDep = dmg > 0 && \(booking\.holdStatus \|\| .none.\) === .none./', $admW) === 1);
+// …and returning that cash deposit must NEVER refund a card charge: hold_status
+// 'none' means the deposit was recorded by hand, so return_deposit records a
+// MANUAL return instead of falling through to find_charge_for_refund — which, on
+// a booking that also carries rental card rows, would push the guest's cash back
+// onto their card. Break-tested by restoring the unconditional fallthrough.
+chk('a hand-recorded deposit returns MANUALLY, never against a rental card charge',
+    preg_match("/\(\\\$hs === 'none' \? null : find_charge_for_refund\(\\\$id, \\\$amount\)\)/", $bkW2 = (string) file_get_contents(__DIR__ . '/bookings.php')) === 1);
+// ONE ask derivation: pay.php's summary/charge preamble used to re-derive the
+// total/paid/due inline — a second copy of booking_amount_due's arithmetic, the
+// two-copies shape behind most of this file's history. Break-tested by restoring
+// the inline derivation.
+$payW2 = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php asks booking_amount_due instead of re-deriving the ask',
+    preg_match('/\$amt = booking_amount_due\(\$b, \$kind === .hold. \? .deposit. : \$kind\);/', $payW2) === 1
+    && strpos($payW2, "\$amountDue = \$amt['due'];") !== false);
+chk('…keeping the under-lock recompute its own deposit figure (retry safety)',
+    preg_match('/\$depositAmount = round\(\$total \* \(\$depPct \/ 100\), 2\);/', $payW2) === 1
+    && strpos($payW2, 'round(max(0, $depositAmount - $nowPaid), 2)') !== false);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
 $mailS = file_get_contents(__DIR__ . '/mailer.php');
@@ -311,7 +329,11 @@ chk('a failing ledger query falls back to the recorded figure rather than propag
 
 $payS = (string) file_get_contents(__DIR__ . '/pay.php');
 $priceS = (string) file_get_contents(__DIR__ . '/pricing.php');
-chk('the pay screen QUOTES the shared figure', strpos($payS, '$alreadyPaid = booking_paid_so_far($b);') !== false);
+// The pay screen now takes the shared figure THROUGH booking_amount_due (the
+// stage-1 overhaul deleted its inline copy), so the claim is the delegation —
+// the helper's own booking_paid_so_far read is pinned two lines below.
+chk('the pay screen QUOTES the shared figure (via booking_amount_due)',
+    strpos($payS, "\$alreadyPaid = \$amt['alreadyPaid'];") !== false);
 chk('the CHARGE uses it too, on a deposit_paid re-read under the lock',
     strpos($payS, "booking_paid_so_far(['id' => \$bookingId, 'deposit_paid' => \$bookingPaid])") !== false);
 chk('the EMAIL uses it (booking_amount_due)', strpos($priceS, '$alreadyPaid = booking_paid_so_far($b);') !== false);
@@ -589,8 +611,10 @@ $priS = (string) file_get_contents(__DIR__ . '/pricing.php');
 chk('booking_amount_due asks off the override-resolved total',
     preg_match('/function booking_amount_due[\s\S]{0,400}price_override[\s\S]{0,600}\$depositAmount = round\(\$total \*/', $priS) === 1);
 $payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
-chk('pay.php charges off the same override-resolved total',
-    preg_match('/\$total = \$b\[.price_override.\] !== null[\s\S]{0,900}\$depositAmount = round\(\$total \*/', $payS2) === 1);
+// Stage-1 overhaul: the override resolution moved INSIDE booking_amount_due
+// (pinned above); pay.php's claim is now that its total IS the helper's.
+chk('pay.php charges off the same override-resolved total (delegated)',
+    preg_match('/\$amt = booking_amount_due\(\$b,[\s\S]{0,120}\$total = \$amt\[.total.\];/', $payS2) === 1);
 // AND THE RENTAL FLOOR FOLLOWS THE OVERRIDE IN BOTH DIRECTIONS. It used to be
 // max()'d in, which is wrong in the direction overrides are actually used — a
 // DISCOUNT: agreed £700 against a £910 snapshot, £750 paid in cash, and
