@@ -12315,17 +12315,23 @@ async function renderSweep(refetch) {
           : lateUnknown.length
             ? ` ${lateUnknown.length === 1 ? 'One of these was' : lateUnknown.length + ' of these were'} taken over a week ago, and Square normally pays out within a day or two — so ${lateUnknown.length === 1 ? 'it' : 'they'} should have shown up by now. Worth checking Square directly.`
             : '';
+    // ONE FIGURE PER CUSTOMER: what you can transfer. The row carried the whole
+    // derivation ("£677.97 settled · £73.92 held back"), restating the ring fence
+    // a third time and putting the GROSS beside the figure you act on — two
+    // similar amounts on one line is how the wrong one reaches a bank transfer.
+    // The sub-line survives only where it says what the figure cannot: when an
+    // unpaid charge is due, and that a fee is estimated.
     const txRow = (it) => {
         const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : '');
-        const held = Number(it.ringFence || 0);
+        const notes = [];
+        if (it.landed === false && it.arrival) notes.push(`due ${fmtDate(it.arrival)}`);
+        if (!it.fee_actual) notes.push('fee estimated');
         return `<div class="act-row" style="display:block;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
                 <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
-                <span style="white-space:nowrap;font-weight:600;${held > 0 ? '' : `color:var(--ok-text);`}">${gbp(it.movable)}</span>
+                <span style="white-space:nowrap;font-weight:600;">${gbp(it.movable)}</span>
             </div>
-            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
-                ${gbp(it.settled)} settled${held > 0 ? ` · ${gbp(held)} held back for the deposit` : ' · nothing held back'}${it.landed === false && it.arrival ? ` · due ${fmtDate(it.arrival)}` : ''}${it.fee_actual ? '' : ' · fee estimated'}
-            </div>
+            ${notes.length ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${notes.join(' · ')}</div>` : ''}
         </div>`;
     };
     const txGroup = (rows, label, total, note) =>

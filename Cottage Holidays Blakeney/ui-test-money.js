@@ -388,8 +388,14 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(500);
   const s1b = await sweepText();
   ok(/£294\.75/.test(s1b) && /£687\.75/.test(s1b), `each charge reports its own movable figure (${s1b.slice(0, 60)})`);
-  ok(/£368\.44 settled/.test(s1b) && /£73\.69 held back/.test(s1b), 'a charge carrying a deposit shows what settled and what is held back');
-  ok(/nothing held back/.test(s1b), 'a charge carrying no deposit says so, rather than looking identical');
+  // ONE FIGURE PER CUSTOMER — the transferable one. The rows used to carry the
+  // whole derivation ("£368.44 settled · £73.69 held back for the deposit"),
+  // which restated the ring fence a third time AND put the gross on the same line
+  // as the figure you act on. The gross being gone is the half that matters: two
+  // similar amounts side by side is how the wrong one gets copied into a bank
+  // transfer.
+  ok(/£294\.75/.test(s1b) && !/£368\.44/.test(s1b), 'a row shows what you can transfer, never the gross beside it');
+  ok(!/held back for the deposit/.test(s1b), '…and not the derivation, which the ring-fence card already states');
   ok(/£982\.50/.test(s1b) && /Movable from these 2 payments/.test(s1b), 'the movable total is stated for the set');
   ok(/not the account balance/i.test(s1b), 'and it does not claim to be the account balance');
   // With no payout data at all (Square off, or the cron has not run) the flat list
