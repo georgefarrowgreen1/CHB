@@ -664,6 +664,30 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
         const legGt = gt(legB.agreedPrice, get('paymentSummary')('21a', legB), 'none', legB);
         check('legacy folded-total booking is unchanged by the cash credit',
             Math.abs(legGt.paid - legGt.total) < 0.006 || legGt.paid === 555);
+
+        // THE ERA MATRIX, as INVARIANTS (the stage-4 overhaul sweep). Every era a
+        // booking can be in, driven through the same helpers every owner surface
+        // reads, asserting the properties no era may break: paid + balance always
+        // equals the shown total (the arithmetic can never contradict itself on
+        // one card), and a settled-in-full era reads fullyPaid. Single-case
+        // checks above prove figures; this proves the SHAPE holds everywhere, so
+        // a new era or a helper edit cannot ship a self-contradicting card.
+        const psFn = get('paymentSummary');
+        const eras = [
+            ['card deposit charged', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 175, payment: 'deposit', holdStatus: 'charged', holdAmount: 50, dbId: 11 }, false],
+            ['card paid in full, deposit charged', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'charged', holdAmount: 50, dbId: 12 }, true],
+            ['cash collected incl. deposit', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 750, payment: 'paid', holdStatus: 'none', dbId: 13 }, true],
+            ['deposit RETURNED after the stay', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'returned', dbId: 14 }, true],
+            ['deposit KEPT for damage', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'kept', holdAmount: 50, dbId: 15 }, true],
+            ['discounted override, card deposit charged', { agreedPrice: { total: 620, rentalTotal: 910, damagesDeposit: 50, isOverride: true }, priceOverride: 620, depositPaid: 155, payment: 'deposit', holdStatus: 'charged', holdAmount: 50, dbId: 16 }, false],
+        ];
+        eras.forEach(([name, b, settled]) => {
+            const g = gt(b.agreedPrice, psFn('21a', b), b.holdStatus, b);
+            check(`era invariant — ${name}: paid + balance = total (${g.paid}+${g.balance} vs ${g.total})`,
+                Math.abs(g.paid + g.balance - g.total) < 0.006);
+            check(`era invariant — ${name}: fullyPaid ${settled ? 'holds' : 'is not claimed early'}`,
+                g.fullyPaid === settled);
+        });
     }
 }
 
