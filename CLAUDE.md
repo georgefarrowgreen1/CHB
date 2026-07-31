@@ -1249,6 +1249,60 @@ looks free" plus an Enquire button, and the enquiry was then refused by the rule
 consulted. `checkBookingRules` is the same helper the enquiry form and hero search already
 call — it was the one availability answer not using it. Gated by ui-test-datepicker §9.
 
+**THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
+`paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in
+`rates_public_payload()`; gated by **`ui-test-terms.js`** + test-integration §4).
+Clause 1's *Deposit* / *Balance due date* / *Security deposit* and the whole of clause 5
+were written out as "25%", "4 weeks" and "typically £75" — numbers the app does not
+derive from, on the one document the guest agrees to. **Two were already wrong**: the
+window is `PAYMENT_BALANCE_DAYS` (30 days, not 28), so a booking made 29 days out was
+promised a deposit by clause 5 while `booking_payment_kind()` forced `'balance'`, and
+payments-due.php chases the balance at 30 days rather than the 28 the contract named.
+The percentage is owner-editable and the refundable deposit is per cottage. The schedule
+now rides the rates payload the client already fetches at boot (published payment terms,
+not secrets — the `feeds` precedent), and the clauses are generated per cottage exactly
+as clause 7 already was. Three refusals, each break-tested: an OLDER server (no `payment`
+block) keeps pricing.php's own defaults rather than telling the guest their deposit is
+**0%**; a cottage with no deposit gets the sentence WITHOUT a figure, never "a refundable
+£0.00" (which reads as a term of the contract rather than the absence of one); and the
+literals left in `termsSections` are **labels only** — the text after the colon is
+discarded, so dead copy cannot drift back in. `TERMS_VERSION` bumped with the wording.
+The gate serves a deliberately NON-default 30% / 45-day / £60 fixture, so the old prose
+cannot pass any of its checks.
+**And the LIMITED cancellation policy publishes the window it enforces.**
+`rentalRefundBlocked()` (and its mirror `rental_refund_blocked()`) refuse a rental refund
+inside 7 days under Limited, and the published points stopped at "partial refund 7–14
+days" — so a guest cancelling 3 days out got nothing back from a policy that never said
+so. The third point is stated in app.js's `CANCELLATION_POLICIES` **and** mailer.php's
+`cancellation_policy_line()` together: the cottage page, the terms and the confirmation
+email are one promise, and the two definitions must be kept in step by hand.
+
+**A CHILD IS UNDER 16** (`CHILD_UNDER_AGE`, app.js; gated by smoke-test §5). Two things
+already depended on that boundary: `childRate` prices the children count, and
+guest-details.php takes `$expected = $b['adults']` and registers those as "everyone
+staying who is 16 or over" while never counting children — so it decides who lands on the
+register the Immigration (Hotel Records) Order 1972 requires. NB the register PAGE always
+stated the rule ("Children under 16 don't need to be listed"); what was missing is the
+band at the two PICKERS — the hero search and the enquiry form — where the guest actually
+chooses, and where a wrong choice either misprices the stay or leaves a 16- or
+17-year-old off a legal record. The gate does NOT assert three files each say 16: it
+EXTRACTS the number from index.html, app.js and guest-details.php and requires them
+equal, so moving one without the others fails. `occupancyHint` pluralises now too — it
+read "max 2 adults, 2 child".
+
+**A REVIEW SAYS WHAT HAPPENS TO IT** (`guestReviewForm`, app.js; gated by smoke-test §5).
+The form promised "Your review will appear on our site shortly" while reviews.php writes
+`status='pending'` and `set_status` can DECLINE one — and the toast on the very next tap
+already said "submitted for approval", so one screen made two claims and the one read
+first was the one the site cannot keep. The PENDING note likewise read "Thank you for
+staying with us!", an answer to a question nobody asked at the one moment the guest is
+wondering what became of what they wrote; it names the cottage now, as its approved
+sibling always did. NB the explanation lives in a JS comment, NOT an HTML one: a comment
+inside that template SHIPS, and the first draft quoted the old sentence back at the guest
+until smoke-test caught it. A DECLINED review still falls through both branches (the form
+returns with the old text and no note, which reads as "never submitted") — deliberately
+left, being a decision about tone rather than about facts.
+
 **TWO DECLARATIONS ON THE ENQUIRY FORM, not one** (`#enq-nodogs` beside `#enq-terms`;
 gated by **`ui-test-nodogs.js`** + test-integration §16). The guest must confirm they are
 not bringing a dog before the enquiry can be sent, alongside accepting the terms. Built
@@ -1855,11 +1909,29 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   It read `deposit_paid` alone — the FOURTH "already paid" site, missed when the email,
   the pay screen and the charge were unified — so with the ledger ahead it understated
   Paid and overstated Balance due on a document the guest opens. And it billed
-  `agreed_booking_fee` as the refundable deposit, which the `update` action
-  RE-SNAPSHOTS whenever the stay changes while `hold_amount` (the sum actually taken)
-  stays put: extending a booking whose deposit was already charged therefore showed the
-  new figure as both the deposit and as money paid. `damages_collected()` reads
-  `hold_amount` for exactly this reason; so does the invoice now.
+  `agreed_booking_fee` as the refundable deposit, which the `update` action RE-SNAPSHOTS
+  while `hold_amount` (the sum actually taken) stays put, so the two diverge and the
+  invoice showed the new figure as both the deposit and as money paid.
+  `damages_collected()` reads `hold_amount` for exactly this reason; so does the invoice.
+  **NB the trigger is narrower than this entry used to claim** — it said "whenever the
+  stay changes", but `$depForSnap` PRESERVES `$currentDeposit` unless a different
+  `damages_deposit` is supplied, so it takes a deliberate deposit EDIT, not any stay
+  edit. Checked while fixing the client half.
+- **AND THE CLIENT HALF WAS THE SAME BUG** (`depositTakenAmt`, app.js; gated by
+  smoke-test + ui-test-yourstay §11). invoice.php bills `hold_amount`; the DOWNLOADED
+  PDF (`downloadInvoice`) and every `displayGrand` figure read `p.damagesDeposit`, i.e.
+  the agreed one — so a guest could hold **two invoices for one stay quoting different
+  deposits**, and the PDF promised back money `return_deposit` is capped from paying
+  (`damages_collected()` reads `hold_amount` too). Measured at £90 agreed against £50
+  held: the My Stays card read "deposit £90.00 · Total £480.00 · Paid in full £480.00"
+  for a stay whose card took £440. Three cases the helper must keep right: BEFORE the
+  charge the agreed figure is correct (it is what pay.php will take), a cash/bank
+  booking never charges it so `hold_status` stays `none`, and an older charged row with
+  no `hold_amount` falls back to the agreed figure rather than reading £0. The owner's
+  EDIT MODAL deliberately keeps showing the AGREED deposit — it is what its own input
+  edits and what saving preserves. NB the BALANCE is unaffected either way (total and
+  paid move together), which is why every balance-shaped test in the suite was blind
+  to this.
 - **THE LIABILITY JOIN ONLY MATCHES RENTAL ROWS** (accounts.php; gated by test-payrail).
   A legacy CAPTURED hold writes its ledger row as `kind='damages'` keyed on the same
   `hold_payment_id`, with the DEPOSIT as its amount — so the unrestricted join read
