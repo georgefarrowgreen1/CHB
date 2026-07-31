@@ -656,6 +656,144 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!shape.refreshInDetails, '"Check Square now" stays reachable without expanding');
   ok(shape.fenceFound && shape.fenceInDetails, 'the amount to LEAVE IN is a derivation, not a second headline');
 
+  // ---- TRANSFERS THE OWNER HAS ALREADY MADE --------------------------------
+  // Square reports what it paid INTO the bank; nothing reports what the owner
+  // moved OUT, so without a record the same money is offered on every visit. The
+  // arithmetic is test-payouts'; what this proves is the round trip — the button
+  // exists, writes the right map, and the undo takes it back out.
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
+  await page.evaluate(() => renderSweep(false));
+  await page.waitForTimeout(400);
+  posts.length = 0;
+  const markBtn = page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]');
+  ok(await markBtn.count() === 1, 'a transfer can be recorded from the answer card');
+  await markBtn.click();
+  await page.waitForTimeout(300);
+  // It CONFIRMS first — this changes a money figure and the owner may have tapped
+  // it meaning to read it.
+  const askTx = await page.evaluate(() => (document.getElementById('glass-dialog-msg') || {}).textContent || '');
+  ok(/transferred out/i.test(askTx) && /£294\.75/.test(askTx), `it asks first, naming the amount (${askTx.slice(0, 70)})`);
+  await page.click('#glass-dialog-cancel');
+  await page.waitForTimeout(300);
+  ok(!posts.some((p) => p.action === 'set' && p.key === 'sweep-moved'), 'cancelling records nothing');
+  await markBtn.click();
+  await page.waitForTimeout(300);
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(600);
+  const wrote = posts.filter((p) => p.action === 'set' && p.key === 'sweep-moved').pop();
+  ok(!!wrote, 'confirming writes the record');
+  const marks = wrote ? JSON.parse(wrote.value) : {};
+  ok(Object.keys(marks).length === 1 && marks['11'] > 0, `only the LANDED charge is marked, with when (${JSON.stringify(marks)})`);
+  ok(!marks['12'], '…never one Square has not paid out — that money cannot have left the bank');
+
+  // The server applies the marks, so drive the payload it would then return.
+  // `movedMap` carries a SECOND mark (99) whose charge has aged out of the payout
+  // window, so it has no row on screen. It is here because the client amends this
+  // map and saves it back: rebuilt from the visible rows instead, recording or
+  // undoing one transfer would silently forget every older one.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, {
+      inBank: 0, moved: 294.75,
+      counts: { inBank: 0, onWay: 1, unknown: 1, moved: 1 },
+      movedMap: { 11: Math.floor(Date.now() / 1000), 99: 1750000000 },
+      items: Object.assign({}, sweepStub.payouts.items, {
+        inBank: [],
+        moved: [{ txn_id: 11, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12), settled: 368.44, ringFence: 73.69, movable: 294.75, landed: true, moved_at: Math.floor(Date.now() / 1000) }],
+      }),
+    }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const aMoved = await sweepAnswer();
+  // The HEADLINE, not the card text: the sentence below legitimately names
+  // £294.75 as the amount already transferred, so a card-wide regex would fail on
+  // the explanation it is supposed to want.
+  // Scoped to the ANSWER CARD, like sweepAnswer above: a document-wide
+  // querySelector falls through to the ring-fence figure inside the workings the
+  // moment the answer has no headline, which is exactly the state under test —
+  // it reported £147.38 ("Keep in the account") as the transfer figure.
+  const headline = await page.evaluate(() => {
+    const c = document.querySelector('#sweep-body .accounts-stat');
+    const el = c && c.querySelector('div[style*="--font-display"]');
+    return el ? el.textContent.trim() : '';
+  });
+  ok(headline === '', `no transfer figure is offered once everything is marked (${headline || 'none'})`);
+  const sMoved = await sweepText();
+  ok(/Already transferred out/.test(sMoved) && /£294\.75/.test(sMoved), 'it is SHOWN as transferred, not silently dropped');
+  // THE OVERRIDE GOES BOTH WAYS. A mark is the owner's memory, and a memory can be
+  // wrong — without an undo, one mistaken tap hides that money for good.
+  posts.length = 0;
+  // The answer must SAY money was excluded, or a lower figure looks like a bug.
+  ok(/already transferred/i.test(aMoved), `the answer explains why it is lower (${aMoved.slice(0, 90)})`);
+  const undoBtn = page.locator('#asec-sweep button[data-act="sweepUnmarkTransferred"]');
+  ok(await undoBtn.count() === 1, 'and can be put back');
+  // Deliberately inside the workings: the FACT is on the answer card (above), the
+  // CORRECTION is where the record of what you marked lives. Opened to click it.
+  await page.evaluate(() => { const d = document.querySelector('#sweep-body details'); if (d) d.open = true; });
+  await page.waitForTimeout(200);
+  await undoBtn.click();
+  await page.waitForTimeout(600);
+  const undone = posts.filter((p) => p.action === 'set' && p.key === 'sweep-moved').pop();
+  const left = undone ? JSON.parse(undone.value) : null;
+  ok(!!left && !left['11'], `the undo removes the mark (${undone ? undone.value : 'no write'})`);
+  // …and ONLY that one. 99 is a transfer recorded months ago whose charge has since
+  // aged out of the payout window, so it has no row on screen — reconstructing the
+  // record from the visible rows would erase it here, which is a correction to one
+  // transfer silently deleting another.
+  ok(!!left && left['99'] === 1750000000,
+    `…without forgetting a mark whose charge has aged out of the window (${undone ? undone.value : 'no write'})`);
+
+
+  // THE AUTOMATIC HALF: a stated balance is the truth about the account at that
+  // moment, so everything Square has already paid in is inside it. Counting those
+  // again next visit would offer the same money twice.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, {
+      inBank: 294.75, moved: 0,
+      counts: { inBank: 1, onWay: 1, unknown: 1, moved: 0 },
+      movedMap: { 99: 1750000000 },
+      items: Object.assign({}, sweepStub.payouts.items, {
+        inBank: [{ txn_id: 11, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12), settled: 368.44, ringFence: 73.69, movable: 294.75, landed: true, arrival: d(-10), fee_actual: true }],
+        moved: [],
+      }),
+    }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(400);
+  // With landed money and NO balance typed, the manual button is the way to record
+  // a transfer — established here so the claim below is about the BALANCE and not
+  // about there being nothing to mark. (Asserting it after the undo section looked
+  // right and proved nothing: that stub has an empty inBank, so the button is
+  // absent whatever the balance says.)
+  ok(await page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]').count() === 1,
+    'landed money with no balance typed offers the manual record');
+  await page.fill('#sweep-balance', '2000');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(400);
+  // ONE recording action per state. The headline is now the BALANCE's figure while
+  // "I've transferred this" confirms what SQUARE has paid in — measured at £2000,
+  // the card read "transfer out £1852.62" over a dialog asking to mark £294.75, a
+  // different number for the tap directly beneath it. "Remember this balance" is
+  // the recording action here and already marks everything landed, so the other one
+  // has nothing left to do and no figure on screen to agree with.
+  ok(await page.locator('#asec-sweep button[data-act="sweepMarkTransferred"]').count() === 0,
+    'a typed balance leaves ONE way to record a transfer, not two disagreeing about the amount');
+  ok(await page.locator('#asec-sweep button[data-act="sweepRememberBalance"]').count() === 1,
+    '…and it is the one whose figure is the figure on screen');
+  posts.length = 0;
+  await page.click('#asec-sweep button[data-act="sweepRememberBalance"]');
+  await page.waitForTimeout(700);
+  const autoBal = posts.filter((p) => p.action === 'set' && p.key === 'sweep-balance').pop();
+  const autoMoved = posts.filter((p) => p.action === 'set' && p.key === 'sweep-moved').pop();
+  ok(!!autoBal, 'recording the balance stores it');
+  const autoMap = autoMoved ? JSON.parse(autoMoved.value) : null;
+  ok(!!autoMap && autoMap['11'] > 0,
+    `…and marks what Square had already paid in, because that balance already contains it (${autoMoved ? autoMoved.value : 'no write'})`);
+  ok(!!autoMap && autoMap['99'] === 1750000000, '…adding to the record rather than replacing it');
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
+  await page.evaluate(() => renderSweep(false));
+  await page.waitForTimeout(300);
+
   // MONEY UNDER DISPUTE is fenced beside the deposits — Square can pull it back, and
   // a chargeback on a whole stay dwarfs a £75 deposit. Its own line, not folded in.
   sweepStub = Object.assign({}, sweepStub, {

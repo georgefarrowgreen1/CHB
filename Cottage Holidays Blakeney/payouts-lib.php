@@ -39,6 +39,44 @@ const PAYOUTS_TTL = 21600; // 6h — how old a cache has to be before a refresh 
 // The balance the owner last stated, WITH its date. Written by the client through the
 // ordinary content save (no new endpoint), classified internal in db.php.
 const SWEEP_BALANCE_KEY = 'sweep-balance';
+// Charges the owner has told us they have ALREADY transferred out of the bank.
+// There is no bank feed — Square can say what it paid IN, never what the owner
+// moved OUT — so without this the movable figure counts the same money on every
+// visit until a fresh balance is typed. A map of charge id => unix seconds,
+// written by the client through the ordinary content save; classified internal
+// in db.php.
+const SWEEP_MOVED_KEY = 'sweep-moved';
+// Bounded like the other owner-written lists. Older marks fall off the end; a
+// charge that has dropped out of the payout window is no longer shown anyway.
+const SWEEP_MOVED_MAX = 200;
+
+// The owner's record of what they have already transferred out. Bounded and
+// sanitised on read: this is owner-written JSON reaching money arithmetic, so a
+// malformed value must degrade to "nothing marked" rather than to an exception.
+function payouts_moved_map()
+{
+    $raw = function_exists('content_value') ? content_value(SWEEP_MOVED_KEY) : '';
+    if ($raw === '') {
+        return [];
+    }
+    $d = json_decode($raw, true);
+    if (!is_array($d)) {
+        return [];
+    }
+    $out = [];
+    foreach ($d as $k => $v) {
+        $k = (string) $k;
+        $ts = (int) $v;
+        if ($k !== '' && $ts > 0) {
+            $out[$k] = $ts;
+        }
+    }
+    if (count($out) > SWEEP_MOVED_MAX) {
+        arsort($out); // newest marks win
+        $out = array_slice($out, 0, SWEEP_MOVED_MAX, true);
+    }
+    return $out;
+}
 
 // ---- PURE: what the payout data MEANS --------------------------------------
 
@@ -164,15 +202,38 @@ function payouts_apply(array $txns, array $map)
 // a date on it, and 'unknown' is money we cannot vouch for — reported as its own
 // figure rather than folded into either, because silently rounding it down to
 // "not yours" is as wrong as rounding it up.
-function payouts_split_totals(array $items)
+// The charge id a mark is keyed on. `txn_id` is the payments-table row and is
+// what sweep_txn carries; fall back to Square's own id so a payload shape that
+// omits one is not silently unmarkable.
+function payouts_charge_key(array $it)
 {
-    $sum = ['inBank' => 0.0, 'onWay' => 0.0, 'unknown' => 0.0];
-    $lists = ['inBank' => [], 'onWay' => [], 'unknown' => []];
+    foreach (['txn_id', 'square_payment_id', 'payment_id'] as $k) {
+        if (isset($it[$k]) && (string) $it[$k] !== '') {
+            return (string) $it[$k];
+        }
+    }
+    return '';
+}
+// A FOURTH BUCKET: money that HAS landed but the owner has already moved on.
+// Kept separate rather than dropped, because "you have already transferred this"
+// is a different statement from "Square never paid it", and the owner has to be
+// able to see what they marked — and unmark it.
+function payouts_split_totals(array $items, array $moved = [])
+{
+    $sum = ['inBank' => 0.0, 'onWay' => 0.0, 'unknown' => 0.0, 'moved' => 0.0];
+    $lists = ['inBank' => [], 'onWay' => [], 'unknown' => [], 'moved' => []];
     $nextArrival = '';
     foreach ($items as $it) {
         $landed = $it['landed'] ?? null;
         $movable = round((float) ($it['movable'] ?? 0), 2);
-        if ($landed === true) {
+        $key = payouts_charge_key($it);
+        // Only a LANDED charge can have been transferred: money Square has not
+        // paid out cannot have left the bank, so a stale mark on one must not
+        // quietly remove it from the figure.
+        if ($landed === true && $key !== '' && isset($moved[$key])) {
+            $it['moved_at'] = (int) $moved[$key];
+            $bucket = 'moved';
+        } elseif ($landed === true) {
             $bucket = 'inBank';
         } elseif ($landed === false && (string) ($it['arrival'] ?? '') !== '') {
             // A dated payout that has not arrived. A FAILED payout also lands here
@@ -191,9 +252,15 @@ function payouts_split_totals(array $items)
         'inBank' => round($sum['inBank'], 2),
         'onWay' => round($sum['onWay'], 2),
         'unknown' => round($sum['unknown'], 2),
+        'moved' => round($sum['moved'], 2),
         'nextArrival' => $nextArrival,
         'items' => $lists,
-        'counts' => ['inBank' => count($lists['inBank']), 'onWay' => count($lists['onWay']), 'unknown' => count($lists['unknown'])],
+        'counts' => [
+            'inBank' => count($lists['inBank']),
+            'onWay' => count($lists['onWay']),
+            'unknown' => count($lists['unknown']),
+            'moved' => count($lists['moved']),
+        ],
     ];
 }
 

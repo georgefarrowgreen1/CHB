@@ -71,6 +71,25 @@ function pochk($name, $cond, $detail = '')
     }
 }
 $eq = fn($a, $b) => abs((float) $a - (float) $b) < 0.005;
+// The source of ONE function, for the checks whose claim is about a particular
+// function rather than about the file. A whole-file strpos passes on a comment
+// quoting the string, and fails on a refactor that changed nothing that matters —
+// both have happened here. Ends at the next top-level declaration.
+function pofn($src, $sig)
+{
+    $i = strpos($src, $sig);
+    if ($i === false) {
+        return '';
+    }
+    $end = strlen($src);
+    foreach (["\nfunction ", "\nasync function ", "\nconst ", "\nclass "] as $stop) {
+        $j = strpos($src, $stop, $i + strlen($sig));
+        if ($j !== false && $j < $end) {
+            $end = $j;
+        }
+    }
+    return substr($src, $i, $end - $i);
+}
 $TODAY = '2026-07-29';
 // ONE reader for the fake content row. Inline json_decode(... ?? '{}') let PHPStan
 // narrow the result to an empty array, so every offset read was an error; the
@@ -180,7 +199,68 @@ pochk('the three buckets account for every penny',
     $eq($split['inBank'] + $split['onWay'] + $split['unknown'], 294.75 + 687.75 + 100 + 491.25));
 pochk('the SOONEST arrival is the one reported', $split['nextArrival'] === '2026-07-30', 'got ' . $split['nextArrival']);
 pochk('each bucket keeps its rows for the screen',
-    $split['counts'] === ['inBank' => 1, 'onWay' => 2, 'unknown' => 1], json_encode($split['counts']));
+    $split['counts'] === ['inBank' => 1, 'onWay' => 2, 'unknown' => 1, 'moved' => 0], json_encode($split['counts']));
+
+// ---- MONEY THE OWNER HAS ALREADY TRANSFERRED OUT -------------------------
+// There is no bank feed: Square can say what it paid IN, never what the owner
+// moved OUT. So without a record of transfers made, the movable figure counts
+// the same money on every visit. A mark takes a charge out of `inBank` and into
+// its own bucket — kept, not dropped, because "you already moved this" is a
+// different statement from "Square never paid it", and it has to be undoable.
+$markable = [
+    ['txn_id' => 11, 'name' => 'Gone', 'movable' => 294.75, 'landed' => true, 'arrival' => '2026-07-27'],
+    ['txn_id' => 12, 'name' => 'Still here', 'movable' => 500.00, 'landed' => true, 'arrival' => '2026-07-27'],
+];
+$mk = payouts_split_totals($markable, ['11' => 1750000000]);
+pochk('a marked charge leaves the movable figure', $eq($mk['inBank'], 500.00), 'got ' . $mk['inBank']);
+pochk('…and is reported as its own total', $eq($mk['moved'], 294.75), 'got ' . $mk['moved']);
+pochk('…kept as a row so it can be seen and undone', $mk['counts']['moved'] === 1 && ($mk['items']['moved'][0]['name'] ?? '') === 'Gone');
+pochk('…carrying WHEN it was marked', (int) ($mk['items']['moved'][0]['moved_at'] ?? 0) === 1750000000);
+pochk('an unmarked charge is untouched', $mk['counts']['inBank'] === 1 && ($mk['items']['inBank'][0]['name'] ?? '') === 'Still here');
+pochk('every penny is still accounted for', $eq($mk['inBank'] + $mk['moved'], 794.75));
+
+// ONLY LANDED MONEY CAN HAVE BEEN TRANSFERRED. A mark on a charge Square has not
+// paid out must be IGNORED — that money never reached the bank, so removing it
+// from the figure would hide money the owner still has coming.
+$stale = payouts_split_totals([
+    ['txn_id' => 21, 'movable' => 300.00, 'landed' => false, 'arrival' => '2026-08-02'],
+    ['txn_id' => 22, 'movable' => 200.00, 'landed' => null, 'arrival' => ''],
+], ['21' => 1750000000, '22' => 1750000000]);
+pochk('a mark on money still on its way is ignored', $eq($stale['onWay'], 300.00) && $eq($stale['moved'], 0));
+pochk('…and so is one on money Square has not vouched for', $eq($stale['unknown'], 200.00));
+
+// A charge with no id cannot be marked, and must not be matched by accident.
+$noId = payouts_split_totals([['movable' => 50, 'landed' => true]], ['' => 1750000000]);
+pochk('a charge with no id is never treated as moved', $eq($noId['inBank'], 50) && $eq($noId['moved'], 0));
+
+// THE STORED MAP IS OWNER-WRITTEN JSON REACHING MONEY ARITHMETIC, so a malformed
+// value degrades to "nothing marked" rather than throwing on a money screen.
+// Driven through content_value (stubbed above) so this exercises the real
+// sanitiser — asserting on a hand-passed [] would have proved only that an empty
+// map marks nothing, which payouts_split_totals could never get wrong.
+$movedCase = function ($stored) {
+    global $SQ_STORE;
+    $SQ_STORE[SWEEP_MOVED_KEY] = $stored;
+    return payouts_moved_map();
+};
+pochk('nothing stored is nothing marked', $movedCase('') === []);
+pochk('a non-JSON value reads as nothing marked', $movedCase('{not json') === []);
+pochk('…and so does a JSON scalar where a map was expected', $movedCase('42') === []);
+pochk('a good map is read back', $movedCase('{"p1":1750000000}') === ['p1' => 1750000000]);
+pochk('a zero or negative timestamp is dropped — a mark with no when is not a mark',
+    $movedCase('{"p1":0,"p2":-5,"p3":1750000000}') === ['p3' => 1750000000]);
+pochk('…as is an empty charge id', $movedCase('{"":1750000000}') === []);
+pochk('a non-numeric timestamp does not become 1970', $movedCase('{"p1":"soon"}') === []);
+// Bounded like the other owner-written lists, newest kept: an unbounded map is a
+// content row that only ever grows.
+$many = [];
+for ($i = 0; $i < SWEEP_MOVED_MAX + 20; $i++) {
+    $many['p' . $i] = 1750000000 + $i;
+}
+$capped = $movedCase(json_encode($many));
+pochk('the map is capped', count($capped) === SWEEP_MOVED_MAX, 'got ' . count($capped));
+pochk('…keeping the newest marks', isset($capped['p' . (SWEEP_MOVED_MAX + 19)]) && !isset($capped['p0']));
+$SQ_STORE[SWEEP_MOVED_KEY] = '';
 // A FAILED payout is landed=false with no arrival date. It must NOT be movable, and
 // calling it "on its way" would be a lie — it goes to unknown, which is honest.
 $failed = payouts_split_totals([['movable' => 50, 'landed' => false, 'arrival' => '']]);
@@ -391,6 +471,27 @@ pochk('accounts.php tags its transactions and splits them',
     strpos($acct, "require_once __DIR__ . '/payouts-lib.php'") !== false
     && strpos($acct, 'payouts_apply($txns') !== false
     && strpos($acct, 'payouts_split_totals(') !== false);
+// THE TRANSFER RECORD, wired — not just the helper. payouts_split_totals takes the
+// map as an OPTIONAL argument defaulting to "nothing marked", so accounts.php
+// simply not passing it leaves every moved-bucket check green while the feature
+// does nothing at all on the screen. Measured: reverting the call site failed
+// nothing before this check existed.
+// Accepts the map inline OR via a local, because the same call is also the source
+// of `movedMap` in the payload and hoisting it to a variable is not a change to
+// this claim — a regex pinned to the one-liner failed on exactly that.
+$movedVar = preg_match('/(\$\w+)\s*=\s*payouts_moved_map\(\)/', $acct, $mv) ? preg_quote($mv[1], '/') : '';
+pochk('…giving it what the owner has already transferred out',
+    preg_match('/payouts_split_totals\([^;]*payouts_moved_map\(\)/s', $acct) === 1
+    || ($movedVar !== '' && preg_match('/payouts_split_totals\([^;]*,\s*' . $movedVar . '\s*\)/s', $acct) === 1));
+// The client amends the stored map and saves it back, so it has to be given the
+// WHOLE record — rebuilt from the rows on screen, one recorded transfer silently
+// forgets every mark whose charge has aged out of the payout window.
+pochk('…and hands back the whole stored record, not just the marks still on screen',
+    preg_match('/\[.movedMap.\]\s*=/', $acct) === 1
+    && $movedVar !== '' && preg_match('/\[.movedMap.\]\s*=\s*\(object\)\s*' . $movedVar . '/', $acct) === 1);
+// The owner's record of their own bank transfers is not for anonymous visitors.
+pochk('…under a key the public content GET cannot serve',
+    strpos(file_get_contents(__DIR__ . '/db.php'), "'sweep-moved'") !== false);
 // The order matters: the real fee has to land BEFORE the money is priced, or the
 // arithmetic runs on the estimate and Square's figure is decoration.
 pochk('the real fee is applied BEFORE the money is priced',
@@ -459,8 +560,15 @@ pochk('…and does not assert what Square has done, which nothing had checked',
     strpos($adm, "waiting for Square to take it'") === false);
 
 // The balance: stored WITH its date, rolled forward, and never overwritten mid-type.
+// Scoped to the FUNCTION that saves it. A document-wide search for the literal
+// `at: Math.floor(Date.now() / 1000)` broke the moment that expression was hoisted
+// to a const the same statement then used — a true change to the source's shape and
+// no change at all to the claim, which is that the balance is stored with its date.
+$remember = pofn($adm, 'async function sweepRememberBalance');
 pochk('the balance is stored with its date under the internal key',
-    strpos($adm, "saveContent('sweep-balance'") !== false && strpos($adm, 'at: Math.floor(Date.now() / 1000)') !== false
+    strpos($remember, "saveContent('sweep-balance'") !== false
+    && preg_match('/\bat:\s*\w/', $remember) === 1
+    && strpos($remember, 'Math.floor(Date.now() / 1000)') !== false
     && strpos($db, "\$key === 'sweep-balance'") !== false);
 pochk('the field starts from the rolled-forward estimate, labelled as one',
     strpos($adm, '__sweepBalTouched') !== false && strpos($adm, '<strong>estimate</strong>') !== false);

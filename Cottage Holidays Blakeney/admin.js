@@ -12382,6 +12382,8 @@ async function renderSweep(refetch) {
     // whatever has already been moved or spent, so this can overstate if some of it
     // has gone. That caveat is not optional next to a number labelled "transfer
     // out"; the typed balance stays the authoritative answer and says so.
+    const landedItems = (P && P.items && P.items.inBank) || [];
+    const movedItems = (P && P.items && P.items.moved) || [];
     const landed = P && Number(P.inBank) > 0 ? Number(P.inBank) : null;
     const transferOut = hasBal ? safe : landed;
     const answer = `<div class="accounts-stat" style="max-width:620px;">
@@ -12389,11 +12391,13 @@ async function renderSweep(refetch) {
             ${hasBal && short > 0
                 ? `<p style="margin:6px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
                 : transferOut === null
-                  ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">Type what the account holds below and I'll work it out.</p>`
+                  ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">${movedItems.length
+                        ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
+                        : `Type what the account holds below and I'll work it out.`}</p>`
                   : `<div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
                      <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">${hasBal
                         ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
-                        : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
+                        : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}${movedItems.length ? `, and not counting ${gbp(P.moved)} you have already transferred` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;">
                 <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Balance now</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
@@ -12403,9 +12407,23 @@ async function renderSweep(refetch) {
             <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">${est
                 ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
                 : `There's no bank feed, so the balance is the one figure I can't work out for you.`}</p>
-            ${hasBal && short <= 0
-                ? `<button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
-                : ''}
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                ${hasBal && short <= 0
+                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
+                    : ''}
+                ${/* RECORDING A TRANSFER IS THE ONLY WAY THIS SCREEN CAN KNOW. Square
+                      reports what it paid IN; nothing reports what the owner moved
+                      OUT, so without this the same money is offered again on every
+                      visit. `!hasBal` keeps it to ONE recording action per state:
+                      with a balance typed the headline is the BALANCE's figure while
+                      this confirms `P.inBank` — measured at £2000, "transfer out
+                      £1852.62" over a dialog asking to mark £294.75. "Remember this
+                      balance" is the recording action there, and already marks
+                      everything landed. */ ''}
+                ${!hasBal && landedItems.length
+                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepMarkTransferred')}>I've transferred this</button>`
+                    : ''}
+            </div>
         </div>`;
 
     // WHAT IS WRONG STAYS IN THE OPEN — the only things here that ask anything of
@@ -12480,6 +12498,23 @@ async function renderSweep(refetch) {
             ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
               txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
               txGroup(P.items.unknown, "Square hasn't said", P.unknown, 'Not counted as movable.') +
+              (movedItems.length
+                ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                    <div class="label">Already transferred out</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">You told me these have left the account, so they are not counted above. Put one back if that was wrong.</p>
+                    ${movedItems.map((it) => `<div class="act-row" style="display:block;">
+                        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                            <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
+                            <span style="white-space:nowrap;color:var(--text-muted);">${gbp(it.movable)}</span>
+                        </div>
+                        <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('sweepUnmarkTransferred', String(it.txn_id != null ? it.txn_id : ''))}>Not transferred after all</button></div>
+                    </div>`).join('')}
+                    <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
+                        <span><strong>${movedItems.length} transferred</strong></span>
+                        <span style="white-space:nowrap;color:var(--text-muted);">${gbp(P.moved)}</span>
+                    </div>
+                   </div>`
+                : '') +
               `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
                     ${P.fees > 0 ? `Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.<br>` : ''}
                     ${locWhy ? locWhy.trim() + '<br>' : ''}
@@ -12522,14 +12557,91 @@ function sweepSet(which, value) {
     } else __sweepBuffer = String(value || '');
     renderSweep(false); // recompute from the cached liability — no round trip
 }
+// ---- TRANSFERS THE OWNER HAS ALREADY MADE ---------------------------------
+// Square's API answers what it paid INTO the bank. Nothing answers what the owner
+// moved OUT — there is no bank feed, and Square has no balance endpoint (asked and
+// confirmed; see the sweep notes). So the only way this screen can stop offering
+// the same money twice is for the owner to say when they have moved it.
+//
+// The marks live under the internal content key `sweep-moved`, a map of charge id
+// => when it was marked, written through the ordinary content save like the dated
+// balance beside it. payouts_split_totals() applies them server-side, so the
+// figure and the rows can never disagree about which charges were counted.
+//
+// MIRROR-FIRST is deliberately NOT used here (unlike the search pins): renderSweep
+// refetches the whole liability payload anyway, and a local mirror of a money
+// figure that the server also computes is exactly the kind of second definition
+// this file keeps removing.
+// The owner's WHOLE record of what they have transferred out, as the server holds
+// it — deliberately not rebuilt from the `moved` ROWS on screen. Those are only the
+// marks whose charge is still inside the payout window, so amending that and saving
+// it back would drop every older mark: recording one transfer would silently forget
+// another. The server sends the raw map for exactly this.
+function sweepMovedMap() {
+    const P = (__sweepLiab && __sweepLiab.payouts) || null;
+    const raw = (P && P.movedMap) || {};
+    const out = {};
+    Object.keys(raw).forEach((k) => { if (Number(raw[k]) > 0) out[k] = Number(raw[k]); });
+    return out;
+}
+async function sweepSaveMoved(map) {
+    await saveContent('sweep-moved', JSON.stringify(map));
+    await renderSweep(); // refetch — the server owns the arithmetic
+}
+// The MANUAL override: everything currently counted as movable has just been sent.
+// Confirmed first, because it changes a money figure and the owner may have tapped
+// it meaning to read it.
+async function sweepMarkTransferred() {
+    const P = (__sweepLiab && __sweepLiab.payouts) || null;
+    const items = (P && P.items && P.items.inBank) || [];
+    if (!items.length) return;
+    const gbp = (n) => '£' + Number(n || 0).toFixed(2);
+    const ok = await glassConfirm(
+        `Mark ${gbp(P.inBank)} as transferred out?\n\n${items.length === 1 ? 'This payment stops' : 'These ' + items.length + ' payments stop'} counting towards what you can move. You can put ${items.length === 1 ? 'it' : 'them'} back if you change your mind.`,
+        'Yes, I have transferred it',
+    );
+    if (!ok) return;
+    const map = sweepMovedMap();
+    const now = Math.floor(Date.now() / 1000);
+    items.forEach((it) => { if (it.txn_id != null) map[String(it.txn_id)] = now; });
+    try {
+        await sweepSaveMoved(map);
+        toast('Recorded — these no longer count as movable', 'success');
+    } catch (e) {
+        return; // saveContent has already told them, and it rethrows on purpose
+    }
+}
+// The other half of the override: put one back. A mark is the owner's memory, and
+// a memory can be wrong — without this, one mistaken tap hides that money for good.
+async function sweepUnmarkTransferred(id) {
+    if (id === '' || id == null) return;
+    const map = sweepMovedMap();
+    delete map[String(id)];
+    try {
+        await sweepSaveMoved(map);
+        toast('Put back — it counts as movable again', 'success');
+    } catch (e) {}
+}
+
 // Store the balance WITH today's date. A bare remembered figure would be stale; a
 // dated one is a starting point, and the estimate refuses to roll one older than 30
 // days forward rather than compounding drift.
 async function sweepRememberBalance() {
     const amt = parseFloat(__sweepBalance);
     if (isNaN(amt) || amt < 0) return;
+    const now = Math.floor(Date.now() / 1000);
     try {
-        await saveContent('sweep-balance', JSON.stringify({ amount: Math.round(amt * 100) / 100, at: Math.floor(Date.now() / 1000) }));
+        await saveContent('sweep-balance', JSON.stringify({ amount: Math.round(amt * 100) / 100, at: now }));
+        // THE AUTOMATIC HALF. A stated balance is the truth about the account AT
+        // THAT MOMENT, so every payment Square has already paid in is inside it —
+        // counting those again next visit would offer the same money twice. This
+        // is the same reasoning payouts_balance_estimate already uses when it
+        // counts only movements strictly AFTER the stated instant; here it just
+        // has to hold for the DERIVED figure too.
+        const map = sweepMovedMap();
+        ((__sweepLiab && __sweepLiab.payouts && __sweepLiab.payouts.items && __sweepLiab.payouts.items.inBank) || [])
+            .forEach((it) => { if (it.txn_id != null) map[String(it.txn_id)] = now; });
+        await saveContent('sweep-moved', JSON.stringify(map));
         toast('Balance noted', 'success');
     } catch (e) {
         return; // saveContent has already told them, and it rethrows on purpose

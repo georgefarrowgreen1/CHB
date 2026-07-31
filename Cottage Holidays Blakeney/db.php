@@ -673,6 +673,11 @@ function is_internal_content_key($key)
                      // (payouts_balance_estimate rolls it forward). Their money;
                      // never on the anonymous content GET.
     }
+    if ($key === 'sweep-moved') {
+        return true; // which charges the owner has already transferred out of the
+                     // bank. There is no bank feed, so this is the only record of
+                     // it — their money movements; never on the public content GET.
+    }
     if ($key === 'square-location') {
         return true; // which Square location the money screens read — back office only
     }
