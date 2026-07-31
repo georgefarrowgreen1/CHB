@@ -7397,13 +7397,23 @@ async function loadBookingPayments(bookingId) {
                           ? 'Deposit return'
                           : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
                 const sign = isReturn ? '−' : '';
+                // The figure the guest's CARD STATEMENT shows. payments.amount is
+                // rental-only (the bundled damages deposit lives on hold_*), so
+                // this row read "Deposit · £175.00" for a charge that took £225 —
+                // beside a Received-so-far line already counting the £225. The
+                // carried deposit is shown inside the figure and named, and the
+                // REFUND cap deliberately stays the rental portion: the damages
+                // half goes back through Return deposit, so its state is tracked.
+                const carried = Math.max(0, Number(p.deposit_carried) || 0);
+                const shown = Math.round(((parseFloat(p.amount) || 0) + carried) * 100) / 100;
+                const carriedNote = carried > 0 ? ` <span style="opacity:.7;">— incl. ${gbp(carried)} damages deposit</span>` : '';
                 const note = (p.note || '').trim();
                 // Status shows as a traffic-light DOT (green done / amber in-progress /
                 // red problem) — same system as the Payments screen; the word rides
                 // along as the hover + screen-reader label so it's never colour-only.
                 const sMeta = paymentStatusMeta(p.kind, p.status);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
-                        <span>${label} · ${sign}${gbp(p.amount)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
+                        <span>${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
             })
             .join('');
     } catch (e) {
@@ -13846,7 +13856,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cashrec1';
+    const BUILD = 'ledger1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

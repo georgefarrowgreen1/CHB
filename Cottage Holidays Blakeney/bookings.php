@@ -1981,7 +1981,28 @@ if ($action === 'payments') {
             'SELECT square_payment_id, kind, amount, status, note, created_at FROM payments WHERE booking_id = ? ORDER BY id ASC',
         );
         $s->execute([$id]);
-        json_out(['payments' => $s->fetchAll()]);
+        $rows = $s->fetchAll();
+        // WHICH ROW THE DAMAGES DEPOSIT RODE. payments.amount is RENTAL-only —
+        // pay.php bundles the deposit into the first charge but records it on
+        // hold_* — so the ledger row read "Deposit · £175.00" for a card the
+        // guest watched take £225 (reported with a screenshot). The client can't
+        // know without hold_payment_id, so the row that carried it is flagged
+        // with the sum, and the hub shows the charge as the card statement shows
+        // it. hold_status is NOT consulted: once bundled, the historical charge
+        // took £225 whatever later happened to the deposit (its return is its
+        // own −£50 row below).
+        $bq = db()->prepare('SELECT hold_payment_id, hold_amount FROM bookings WHERE id = ?');
+        $bq->execute([$id]);
+        $hb = $bq->fetch();
+        $hpid = (string) ($hb['hold_payment_id'] ?? '');
+        foreach ($rows as &$r) {
+            $r['deposit_carried'] =
+                $hpid !== '' && (string) $r['square_payment_id'] === $hpid && in_array($r['kind'], ['deposit', 'balance'], true)
+                    ? round((float) ($hb['hold_amount'] ?? 0), 2)
+                    : 0.0;
+        }
+        unset($r);
+        json_out(['payments' => $rows]);
     } catch (\Throwable $e) {
         json_out(['payments' => []]);
     }

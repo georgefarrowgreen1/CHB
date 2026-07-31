@@ -209,6 +209,15 @@ chk('set_payment derives it from the booking, gated to the cash rail',
     && strpos($bkW, ", \$in['deposit'] ?? null, \$withDep)") !== false);
 chk('the reconciler leaves headroom for it — a card event must not erase the deposit',
     preg_match('/\$cap =\s*\n\s*\(\$b\[.hold_status.\] \?\? .none.\) === .none.\s*\n\s*\? round\(\$total \+ max\(0\.0, \(float\) \(\$b\[.agreed_booking_fee.\] \?\? 0\)\), 2\)/', $bkW) === 1);
+// THE LEDGER ROW SHOWS WHAT THE CARD TOOK. payments.amount is rental-only, so
+// the hub's charge row read "Deposit · £175.00" for a card that took £225
+// (screenshot-reported). The payments action flags the row hold_payment_id
+// points at with the carried deposit; ui-test-hub drives the client render, but
+// its stub IS the endpoint — this pins the server half (the helper-tested-alone
+// trap). Kind-restricted so a damages_return row can never carry the flag.
+$bkW3 = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('the payments action flags the charge the deposit rode',
+    preg_match("/\\\$r\['deposit_carried'\] =\s*\n\s*\\\$hpid !== '' && \(string\) \\\$r\['square_payment_id'\] === \\\$hpid && in_array\(\\\$r\['kind'\], \['deposit', 'balance'\], true\)/", $bkW3) === 1);
 $admW = (string) file_get_contents(__DIR__ . '/admin.js');
 chk('Record Payment offers the deposit as a yes/no and sends the flag only on paid',
     strpos($admW, "vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true") !== false

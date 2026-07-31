@@ -53,7 +53,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
         if (b.action === 'email_logs') return json({ logs: { 1: [{ action: 'email.confirmation', summary: 'Booking confirmation emailed', at: d(-2) + ' 18:31:00' }] } });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'payments') return json({ ok: true, payments: [
-          { kind: 'balance', amount: '556.20', status: 'COMPLETED', square_payment_id: 'sq1', note: '' },
+          // deposit_carried: the £75 damages deposit rode this charge (the server
+          // flags the row hold_payment_id points at) — the card took £631.20, and
+          // the row must say so rather than quoting the rental-only ledger amount.
+          { kind: 'balance', amount: '556.20', status: 'COMPLETED', square_payment_id: 'sq1', note: '', deposit_carried: 75 },
           { kind: 'damages_return', amount: '75.00', status: 'PENDING', square_payment_id: 'sq2', note: '' },
         ] });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); } return json({ ok: true }); }
@@ -180,6 +183,24 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(!!led && /feed-dot-ok/.test(led.dots[0] || '') && /feed-dot-ok/.test(led.dots[1] || ''), `settled charge AND issued return both read green (${led && led.dots.join(' | ')})`);
   ok(!!led && led.labels.join('|') === 'Completed|Completed', `the word rides as the aria/hover label (${led && led.labels.join('|')})`);
   ok(!!led && !/\(COMPLETED\)|\(PENDING\)/.test(led.text), 'no raw status text left in the ledger rows');
+  // THE LEDGER ROW SHOWS WHAT THE CARD TOOK. payments.amount is rental-only (the
+  // bundled damages deposit lives on hold_*), so the charge row read the rental
+  // figure while the guest's statement — and Received-so-far directly above —
+  // both counted the deposit (reported with a screenshot: "Deposit · £175.00"
+  // under a £225 charge). The carried deposit folds into the shown figure and is
+  // named; the deposit's own return stays its own −£75.00 row.
+  ok(!!led && /£631\.20/.test(led.text) && !/£556\.20/.test(led.text),
+    `the charge row shows the card's own figure, not the rental-only ledger amount (${led && led.text.replace(/\s+/g, ' ').slice(0, 90)})`);
+  ok(!!led && /incl\. £75\.00 damages deposit/.test(led.text),
+    '…and names the deposit inside it');
+  // The REFUND cap deliberately stays the RENTAL portion — the damages half goes
+  // back through Return deposit so its hold state is tracked; a £631.20 cap here
+  // would let one refund orphan the deposit accounting.
+  const refundCap = await page.evaluate(() => {
+    const btn = document.querySelector('.sq-pay-history [data-act="refundPayment"]');
+    try { return JSON.parse(btn.getAttribute('data-args') || '[]')[2]; } catch (e) { return null; }
+  });
+  ok(refundCap === 556.2, `…while the refund cap stays the rental portion (${refundCap})`);
 
   // ---------- A2b. a finished stay that still owes money chases the balance ----------
   console.log('A2b. past-but-unpaid banner');
