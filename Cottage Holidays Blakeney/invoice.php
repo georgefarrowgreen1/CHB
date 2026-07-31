@@ -31,9 +31,16 @@ function render_invoice_html($d)
         '<tr><td style="padding:9px 0;color:#57524A;' . ($bold ? 'font-weight:700;' : '') . '">' . $e($l) .
         '</td><td align="right" style="padding:9px 0;color:#2b2b2b;' . ($bold ? 'font-weight:700;' : '') . '">' . $v . '</td></tr>';
 
+    // A custom price (override / agreed enquiry price) is ONE line — the standard
+    // per-night + fee snapshot cannot reach the agreed total, and this invoice and
+    // the confirmation email are one booking's documents (booking_price_is_custom
+    // is the shared decision, db.php).
+    $nightsLbl = (int) ($d['nights'] ?? 0) . ' night' . ((int) ($d['nights'] ?? 0) === 1 ? '' : 's');
     $priceRows =
-        $row($e($money($d['per_night'] ?? 0)) . ' × ' . (int) ($d['nights'] ?? 0) . ' night' . ((int) ($d['nights'] ?? 0) === 1 ? '' : 's'), $money($d['nightly'] ?? 0)) .
-        $row('Transaction fee (' . $e($d['tx_pct'] ?? 0) . '%)', $money($d['tx_fee'] ?? 0)) .
+        (booking_price_is_custom($d['nightly'] ?? 0, $d['tx_fee'] ?? 0, $d['total'] ?? 0)
+            ? $row('Agreed price for your stay (' . $nightsLbl . ')', $money($d['total'] ?? 0))
+            : $row($e($money($d['per_night'] ?? 0)) . ' × ' . $nightsLbl, $money($d['nightly'] ?? 0)) .
+              $row('Transaction fee (' . $e($d['tx_pct'] ?? 0) . '%)', $money($d['tx_fee'] ?? 0))) .
         ($damages > 0 ? $row('Refundable damages deposit', $money($damages)) : '') .
         '<tr><td colspan="2" style="border-top:1px solid #e6ddca;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>' .
         $row('Total', $money($d['grand_total'] ?? 0), true) .

@@ -1473,8 +1473,19 @@ function send_booking_emails($b)
         // the stay, so it's part of the total the guest pays until then.
         $depAmt = round((float) ($b['damages_deposit'] ?? 0), 2);
         $grandTotal = round((float) $b['total'] + $depAmt, 2);
-        $body .= $money($b['per_night']) . " x {$nightsTxt}: " . $money($b['nightly']) . "\n";
-        $body .= "Transaction fee ({$b['tx_pct']}%): " . $money($b['tx_fee']) . "\n";
+        // A CUSTOM PRICE IS ONE LINE, SAID SO. With a price_override / agreed
+        // enquiry price, `total` is the agreed figure while per_night/nightly/
+        // tx_fee are still the standard snapshot — printing them alongside it
+        // sent "£130.00 × 7 nights: £910.00 … Total £750.00" to a guest, lines
+        // that cannot add up to their own total. booking_price_is_custom is the
+        // one definition of that test (db.php).
+        $customPrice = booking_price_is_custom($b['nightly'], $b['tx_fee'], $b['total']);
+        if ($customPrice) {
+            $body .= "Agreed price for your stay ({$nightsTxt}): " . $money($b['total']) . "\n";
+        } else {
+            $body .= $money($b['per_night']) . " x {$nightsTxt}: " . $money($b['nightly']) . "\n";
+            $body .= "Transaction fee ({$b['tx_pct']}%): " . $money($b['tx_fee']) . "\n";
+        }
         if ($depAmt > 0) {
             $body .= 'Refundable damages deposit: ' . $money($depAmt) . "\n";
         }
@@ -1522,8 +1533,12 @@ function send_booking_emails($b)
             '</td></tr>';
         $priceBox =
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
-            $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
-            $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee'])) .
+            // Same branch as the plain-text body above — a custom price is one
+            // coherent line, not standard-rate maths beside a total it can't reach.
+            ($customPrice
+                ? $pr('Agreed price for your stay <span style="color:#A0987F;">(' . $nightsTxt . ')</span>', $money($b['total']))
+                : $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
+                  $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee']))) .
             ($depAmt > 0 ? $pr('Refundable damages deposit', $money($depAmt)) : '') .
             '<tr><td colspan="2" style="border-top:1px solid #ECE4D3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
             '<tr><td style="padding:12px 0 4px;font-family:' .

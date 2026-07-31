@@ -462,6 +462,38 @@ chk('the refund webhook cannot downgrade a decided row either (events arrive out
     strpos($hookS, 'payment_status_terminal($refund[\'status\'])') !== false
     && strpos($hookS, "NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED')") !== false);
 
+// ---- A CUSTOM PRICE RENDERS AS ONE COHERENT LINE ---------------------------
+// price_override (and an enquiry's agreed price) replace the rental TOTAL while
+// per_night/nightly/tx_fee stay the standard snapshot — so the confirmation went
+// out reading "£130.00 × 7 nights: £910.00 / fee £0.00 / Total £750.00": lines
+// that cannot add up to their own total, on the guest's own document (reported
+// with a screenshot). booking_price_is_custom (db.php) is the ONE decision; when
+// true, every renderer prints an "Agreed price" line instead of the per-night +
+// fee pair. JS mirror: priceIsCustom (app.js), gated in smoke-test.
+chk('standard snapshot: lines explain the total, nothing is relabelled',
+    booking_price_is_custom(910.00, 0.00, 910.00) === false);
+chk('an override below the itemised sum is custom (the screenshot case)',
+    booking_price_is_custom(910.00, 0.00, 700.00) === true);
+chk('…and one above it is custom too — direction does not matter',
+    booking_price_is_custom(650.00, 13.00, 700.00) === true);
+chk('an override typed EQUAL to the standard price keeps the standard lines',
+    booking_price_is_custom(686.27, 13.73, 700.00) === false);
+chk('a half-penny of float noise is not a custom price',
+    booking_price_is_custom(233.3333, 466.6667, 700.00) === false);
+// THE WIRING. The helper alone proves nothing — both the text and HTML halves of
+// the confirmation, and the invoice, must consult it (each break-tested by
+// reverting the call site, which fails exactly one of these).
+$mailS2 = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('the confirmation decides custom-vs-standard once, via the shared helper',
+    preg_match('/\$customPrice = booking_price_is_custom\(/', $mailS2) === 1);
+chk('…the plain-text body branches on it',
+    preg_match('/\$customPrice[\s\S]{0,700}Agreed price for your stay \(\{\$nightsTxt\}\)/', $mailS2) === 1);
+chk('…and the HTML price box does too, not just the text half',
+    preg_match('/\$customPrice\s*\n?\s*\?\s*\$pr\(\'Agreed price for your stay/', $mailS2) === 1);
+$invS = (string) file_get_contents(__DIR__ . '/invoice.php');
+chk('the server invoice takes the same branch — one booking, one shape of document',
+    preg_match('/booking_price_is_custom\([\s\S]{0,200}Agreed price for your stay/', $invS) === 1);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

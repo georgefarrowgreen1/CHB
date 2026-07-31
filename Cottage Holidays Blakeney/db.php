@@ -1321,6 +1321,22 @@ function booking_rental_price($b)
     return $rental;
 }
 
+// DO THE ITEMISED LINES EXPLAIN THE TOTAL? A custom price (price_override, or an
+// enquiry's agreed price) replaces the rental TOTAL while the per-night snapshot
+// stays put — so "£130.00 × 7 nights: £910.00 / fee £0.00 / Total £750.00" went
+// out on a guest's own confirmation, lines and total contradicting each other.
+// When this is true, every renderer of the price box prints ONE "Agreed price"
+// line instead of the per-night + fee lines, so the sum is coherent AND the
+// custom price is stated as what it is. One definition (JS mirror:
+// priceIsCustom, app.js) because the email, the invoice, My Stays and the hub
+// breakdown are one booking's documents and must agree about which shape they
+// take. Half-penny tolerance: an override typed EQUAL to the standard price
+// leaves the standard lines, which then add up and need no relabelling.
+function booking_price_is_custom($nightly, $txFee, $rentalTotal)
+{
+    return abs(((float) $nightly + (float) $txFee) - (float) $rentalTotal) > 0.005;
+}
+
 // Unguessable, login-free token that authorises PAYING a specific booking.
 // One-way from APP_SECRET (same idea as ical_token) — leaks nothing if seen.
 function pay_token($bookingId)

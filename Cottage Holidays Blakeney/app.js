@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 363;
+const ADMIN_BUNDLE_V = 364;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3338,6 +3338,17 @@ async function guestLogout() {
     nav('view-main');
 }
 
+// DO THE ITEMISED LINES EXPLAIN THE TOTAL? A price_override swaps
+// agreedPrice.total while perNight/nightly/txFee stay the snapshot, so the
+// standard lines printed beside it cannot add up ("£130 × 7: £910 … Total £750",
+// a guest's real confirmation). True → every renderer prints ONE "Agreed price"
+// line instead. Mirrors booking_price_is_custom (db.php); partial figures are
+// false — the renderers' own skip-guards handle those.
+function priceIsCustom(p) {
+    const fin = (n) => typeof n === 'number' && isFinite(n);
+    if (!fin(p.total) || !fin(p.nightly) || !fin(p.txFee)) return false;
+    return Math.abs(p.nightly + p.txFee - p.total) > 0.005;
+}
 // ---- Guest price box: ONE renderer for the itemised price on My-Stays cards
 // (pending enquiries and confirmed bookings), so the two can't drift. Guards
 // partial price data — a manually-added booking may carry only a total, so a
@@ -3345,9 +3356,12 @@ async function guestLogout() {
 function guestPriceBoxHtml(p, o) {
     const fin = (n) => typeof n === 'number' && isFinite(n);
     const rows = [];
-    if (fin(p.perNight) && fin(p.nights) && fin(p.nightly))
+    const custom = priceIsCustom(p);
+    if (custom)
+        rows.push(`<div class="price-row"><span>Agreed price for your stay${fin(p.nights) && p.nights > 0 ? ` (${p.nights} night${p.nights === 1 ? '' : 's'})` : ''}</span><span>${gbp(p.total)}</span></div>`);
+    if (!custom && fin(p.perNight) && fin(p.nights) && fin(p.nightly))
         rows.push(`<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>`);
-    if (fin(p.txFee) && fin(p.transactionPct))
+    if (!custom && fin(p.txFee) && fin(p.transactionPct))
         rows.push(`<div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>`);
     if (o.dep > 0)
         rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
@@ -4941,13 +4955,20 @@ async function downloadInvoice(bookingId) {
     line(y);
     y += 28;
 
-    // Charges
+    // Charges. A custom price is ONE line (priceIsCustom) — the standard
+    // per-night + fee snapshot cannot reach the agreed total, and this PDF and
+    // the emailed confirmation are one booking's documents.
     sectionTitle('Charges', y);
     y += 20;
-    rowLR(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly), y);
-    y += 18;
-    rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
-    y += 18;
+    if (priceIsCustom(p)) {
+        rowLR(`Agreed price for your stay (${p.nights} night${p.nights === 1 ? '' : 's'})`, gbp(p.total), y);
+        y += 18;
+    } else {
+        rowLR(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly), y);
+        y += 18;
+        rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
+        y += 18;
+    }
     if (gt.dep > 0) {
         rowLR('Refundable damages deposit', gbp(gt.dep), y);
         y += 18;
@@ -13801,7 +13822,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'xferpol1';
+    const BUILD = 'agreedln';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
