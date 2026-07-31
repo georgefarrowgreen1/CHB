@@ -105,6 +105,37 @@ chk('cash, no details on file: asks them to reply', stripos($rNone['text'], 'rep
 $rNew = payment_request_body(array_merge(bk(''), ['kind' => 'deposit']), $URL, '#C79A64', $BANK);
 chk('a fresh booking (no method) still gets the card link', strpos($rNew['text'], $URL) !== false);
 
+// ---- THE ASK AND ITS CHASE MUST QUOTE THE SAME SUM --------------------------
+// The request and the reminder chase the SAME money and were composed
+// independently. Measured before this: the request said "£340.00 will be charged
+// to your card today" (rental + the refundable deposit, which pay.php really does
+// bundle) while the reminder — the one sent again and again until they pay — said
+// only "£290.00". Both are handed the same payload; the reminder ignored damages.
+$payload = array_merge(bk('Square card', 50.0), ['paid' => 290.0]);
+$askT = payment_request_body($payload, $URL, '#C79A64', $BANK);
+$chaseT = payment_reminder_body($payload, $URL, '#C79A64', $BANK);
+foreach ([['request', $askT], ['reminder', $chaseT]] as [$which, $m]) {
+    chk("the $which names the balance itself (£290.00)", strpos($m['text'], '£290.00') !== false);
+    chk("the $which says what the card will ACTUALLY take (£340.00)", strpos($m['text'], '£340.00') !== false);
+    chk("the $which explains the deposit rather than just adding it on", stripos($m['text'], 'refundable security deposit') !== false);
+    chk("the $which states what is ALREADY paid", strpos($m['text'], 'Already paid: £290.00') !== false);
+    chk("…and the $which's HTML says it too", strpos($m['html'], '340.00') !== false && strpos($m['html'], '290.00') !== false);
+}
+// …and with NO deposit outstanding neither invents one, nor claims a payment that
+// has not happened: "£0.00 already paid" on a fresh ask is noise, not information.
+$plain = bk('Square card', 0.0);
+$askP = payment_request_body($plain, $URL, '#C79A64', $BANK);
+$chaseP = payment_reminder_body($plain, $URL, '#C79A64', $BANK);
+chk('no deposit → the request adds no deposit sentence', stripos($askP['text'], 'refundable security deposit') === false);
+chk('no deposit → the reminder adds none either', stripos($chaseP['text'], 'refundable security deposit') === false);
+chk('nothing paid yet → the request claims no payment', stripos($askP['text'], 'already paid:') === false);
+chk('nothing paid yet → the reminder claims none either', stripos($chaseP['text'], 'already paid:') === false);
+// The figure was computed and thrown away — the payload has to carry it or no
+// email can state it.
+$mailS = file_get_contents(__DIR__ . '/mailer.php');
+chk('the payload carries alreadyPaid through to the emails',
+    preg_match("/'paid' => \\\$amt\\['alreadyPaid'\\]/", $mailS) === 1);
+
 echo "\n== The refundable deposit sentence follows the rail too ==\n";
 // "…will be charged to your card today" is a CARD sentence; on the transfer rail
 // nothing is charged to anything, the guest sends it.

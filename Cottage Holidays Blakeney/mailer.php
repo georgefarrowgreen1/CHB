@@ -1803,7 +1803,11 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         'The full stay total is ' .
         $money($stayTotalGrand) .
         ($damages > 0 ? ' (including the refundable deposit)' : '') .
-        ". You can reply to this email with any questions.\n\n" .
+        '.' .
+        // What they have ALREADY put down — a balance request that never says so
+        // leaves the guest to work it out from two other numbers.
+        (payment_money_facts($b)['paidLine'] !== '' ? ' ' . payment_money_facts($b)['paidLine'] : '') .
+        " You can reply to this email with any questions.\n\n" .
         'Cottage Holidays Blakeney';
 
     $inner =
@@ -1819,7 +1823,12 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
                 $esc(uk_date($b['check_out'])) .
                 ').',
         ) .
-        email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($stayTotalGrand) . ' total') .
+        email_amount(
+            ucfirst($what) . ' due',
+            $money($b['amount']),
+            'of ' . $money($stayTotalGrand) . ' total'
+                . (payment_money_facts($b)['paid'] > 0.005 ? ' · ' . $money(payment_money_facts($b)['paid']) . ' already paid' : ''),
+        ) .
         ($damages > 0
             ? email_p(
                 'This payment also includes a <strong>' .
@@ -1893,6 +1902,9 @@ function request_booking_payment($b, $kind, $reminder = false)
         'amount' => $amt['due'],
         'total' => $amt['total'],
         'damages' => $damages,
+        // booking_amount_due already works this out and it was being discarded, so
+        // neither email could tell a part-paid guest what they had put down.
+        'paid' => $amt['alreadyPaid'],
         // Carried so the email can pick the guest's rail (payment_rail): someone
         // who paid their deposit in cash gets bank details, not a card link.
         'payment_method' => $b['payment_method'] ?? '',
@@ -1900,6 +1912,43 @@ function request_booking_payment($b, $kind, $reminder = false)
     $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
     $res['amount'] = $amt['due'];
     return $res;
+}
+
+// THE MONEY FACTS OF A PAYMENT ASK, stated once. The request and its own reminder
+// chase the SAME money and were composed independently, so they disagreed: the
+// request said "£340.00 will be charged to your card today" (rental + the
+// refundable deposit, which pay.php really does bundle) while the reminder — the
+// one sent repeatedly until the guest pays — said only "£290.00". Both are handed
+// the same payload; the reminder simply ignored `damages`.
+//
+// Returns everything either email needs to be honest about the sum: what is being
+// charged now, what the deposit adds, what has already been paid, and the full
+// stay total. `paid` is optional (0 when the caller has no figure) so the line is
+// only claimed when it is known.
+function payment_money_facts($b)
+{
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $due = round((float) ($b['amount'] ?? 0), 2);
+    $damages = round((float) ($b['damages'] ?? 0), 2);
+    $paid = round((float) ($b['paid'] ?? 0), 2);
+    $rentalTotal = round((float) ($b['total'] ?? 0), 2);
+    return [
+        'due' => $due,
+        'damages' => $damages,
+        'paid' => $paid,
+        'chargedNow' => round($due + $damages, 2),
+        'stayTotal' => round($rentalTotal + $damages, 2),
+        'money' => $money,
+        // The deposit sentence, in the same words both emails use.
+        'depositTail' => $damages > 0
+            ? 'This payment also includes a refundable security deposit of ' . $money($damages)
+                . ' (returned after checkout), so ' . $money(round($due + $damages, 2))
+                . ' will be charged to your card today.'
+            : '',
+        // Stated only when there IS something already paid — "£0.00 already paid"
+        // on a fresh request is noise, not information.
+        'paidLine' => $paid > 0.005 ? 'Already paid: ' . $money($paid) . '.' : '',
+    ];
 }
 
 // A gentler nudge for a balance that's been requested but not yet paid, sent in
@@ -1915,12 +1964,18 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     $rail = payment_rail($b);
     $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay the remaining ' . $money($b['amount']));
 
+    // The SAME facts the request stated, so the chase cannot quote a smaller sum
+    // than the one the card will take.
+    $f = payment_money_facts($b);
+
     $subject = "Reminder: balance due for {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Just a friendly reminder that the balance for your stay at {$prop} is still outstanding, " .
         "and your arrival is {$when} (" . uk_date($b['check_in']) . ").\n\n" .
         $cta['text'] .
+        ($f['depositTail'] !== '' ? "\n\n" . $f['depositTail'] : '') .
+        ($f['paidLine'] !== '' ? "\n\n" . $f['paidLine'] : '') .
         "\n\n" .
         "If you've already paid, thank you — please ignore this. Any questions, just reply.\n\n" .
         'Cottage Holidays Blakeney';
@@ -1938,7 +1993,12 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
                 $esc(uk_date($b['check_in'])) .
                 ').',
         ) .
-        email_amount('Balance due', $money($b['amount'])) .
+        email_amount(
+            'Balance due',
+            $money($b['amount']),
+            $f['damages'] > 0 ? $f['money']($f['chargedNow']) . ' charged today, incl. deposit' : '',
+        ) .
+        ($f['paidLine'] !== '' ? email_p($esc($f['paidLine']), true) : '') .
         $cta['html'] .
         email_p('Already paid? Thank you — please ignore this.', true) .
         email_p('Cottage Holidays Blakeney', true);

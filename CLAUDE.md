@@ -2400,7 +2400,27 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   both sides. Gated by **test-payrail.php** (13 new checks: window behaviour, both
   boundary sides, hold passthrough, missing check-in, plus a WIRING scan of all three
   endpoints — each break-tested, including restoring the client-trusting line).
-- **A CHASE EMAIL FOLLOWS THE GUEST'S RAIL** (`payment_rail($b)` in db.php — 'card'
+- **AN ASK AND ITS CHASE QUOTE THE SAME SUM** (`payment_money_facts`, gated by
+test-payrail). `send_payment_request` and `send_payment_reminder` chase the SAME money
+and were composed independently, so they disagreed: driven with a £50 deposit
+outstanding, the request said "so **£340.00** will be charged to your card today"
+(rental + the refundable deposit, which `pay.php` really does bundle) while the
+reminder — the one sent again and again until the guest pays — said only "£290.00".
+Both are handed the same payload by the shared sender; the reminder simply ignored
+`damages`. One composer now states what is being charged now, what the deposit adds,
+what is already paid and the full stay total, and both emails render from it.
+**`alreadyPaid` was computed and thrown away**: `booking_amount_due` returns it, the
+payload never carried it, so no email could tell a part-paid guest what they had put
+down. It is carried now and shown only when there IS something paid — "£0.00 already
+paid" on a fresh ask is noise. The other guest emails were AUDITED and are correct:
+the confirmation already does the deposit-aware thing properly (`grand = total +
+deposit`, `paid_so_far` includes the charged deposit, balance derived from both — it
+is the model the owner side was fixed to match), the receipt distinguishes "Rental
+paid so far" from the deposit "(refunded after checkout)", and the enquiry
+acknowledgement quotes the total with the deposit explained. The arrival email states
+no money by design — chasing is the payments-due cron's job, not its.
+
+**A CHASE EMAIL FOLLOWS THE GUEST'S RAIL** (`payment_rail($b)` in db.php — 'card'
   or 'bacs'). A guest who paid their deposit in cash or by transfer has no use for a
   Square link, and chasing them with one asks them to switch rails mid-booking; they
   get bank details instead. The decision is taken ONCE, so the first balance request
