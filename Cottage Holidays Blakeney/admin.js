@@ -9286,7 +9286,7 @@ function bookingListRow(propKey, b, today) {
     const p =
         b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
-    const gt = displayGrand(p, ps, b.holdStatus);
+    const gt = displayGrand(p, ps, b.holdStatus, b);
     let payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
     let payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
     // Live operational status instead of "Paid": a guest who has actually checked
@@ -9902,7 +9902,7 @@ function renderBookingHub() {
     }
     if (!p || !fin(p.total)) p = { total: 0, perNight: 0, nights: 0, nightly: 0, damagesDeposit: 0, transactionPct: 0, txFee: 0 };
     const ps = paymentSummary(propKey, b);
-    const gt = displayGrand(p, ps, b.holdStatus || 'none');
+    const gt = displayGrand(p, ps, b.holdStatus || 'none', b);
     const dh = damageHeld(propKey, b);
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
@@ -12835,7 +12835,7 @@ function renderMoneyOverview() {
                 const pG =
                     b.agreedPrice ||
                     priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-                const gt = displayGrand(pG, ps, b.holdStatus);
+                const gt = displayGrand(pG, ps, b.holdStatus, b);
                 receivedUpcoming += gt.paid || 0;
                 if (!ps.fullyPaid) {
                     owedUpcoming += gt.balance || 0;
@@ -12962,7 +12962,7 @@ function renderMoneyPanel() {
             const p =
                 b.agreedPrice ||
                 priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-            rows.push({ propKey, b, ps, gt: displayGrand(p, ps, b.holdStatus) });
+            rows.push({ propKey, b, ps, gt: displayGrand(p, ps, b.holdStatus, b) });
         });
     });
     // "Owed to you" focus: unpaid/part-paid first (an action queue), then settled;
@@ -14021,7 +14021,7 @@ async function offerUpdatedConfirmationEmail(bookingId) {
         const p =
             b.agreedPrice ||
             priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-        gt = displayGrand(p, paymentSummary(propKey, b), b.holdStatus || 'none');
+        gt = displayGrand(p, paymentSummary(propKey, b), b.holdStatus || 'none', b);
     } catch (e) {}
     const statusLine =
         gt && gt.paid > 0
@@ -19500,7 +19500,7 @@ function openBookingEmail(bookingId) {
                 b.agreedPrice ||
                 priceBreakdown(loc.propKey, b.adults, b.children, b.checkIn, b.checkOut);
             const ps = paymentSummary(loc.propKey, b);
-            const gt = displayGrand(p, ps, b.holdStatus);
+            const gt = displayGrand(p, ps, b.holdStatus, b);
             const status = gt.fullyPaid
                 ? 'Paid in full'
                 : gt.paid > 0

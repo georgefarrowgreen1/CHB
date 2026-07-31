@@ -155,6 +155,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `at 23:59 a 23:59 checkout IS reached → Past stay (hub=${s.inStay}, badges=${s.badges.join(',')})`);
   await page.close();
 
+  // 11) THE DEPOSIT ON THE GUEST'S CARD IS THE SUM THAT WAS TAKEN. The owner can
+  // edit a booking's deposit after it has been charged: agreed_booking_fee moves,
+  // hold_amount stays. invoice.php bills hold_amount (and return_deposit is capped
+  // by it), so a card quoting the agreed figure told the guest they had paid more
+  // than they had, and promised back money that cannot be refunded. Served here as
+  // agreed £90 against £50 actually held, so the agreed figure cannot pass.
+  page = await openPage({ name: 'Charged Guest', email: 'cg@x.co' }, [mk('jollyboat', d(20), d(23), {
+    payment: 'paid', deposit_paid: 390, agreed_total: 390, agreed_per_night: 130, agreed_nights: 3,
+    agreed_nightly: 390, agreed_booking_fee: 90, agreed_txn_pct: 0, agreed_txn_fee: 0,
+    hold_status: 'charged', hold_amount: 50,
+  })], { at: todayAt(9, 0) });
+  const money = await page.evaluate(() => {
+    const box = document.querySelector('.guest-price-box');
+    return box ? box.innerText.replace(/\s+/g, ' ') : '';
+  });
+  ok(/Refundable damages deposit £50\.00/.test(money), `the card quotes the deposit actually taken (${money.slice(0, 120)})`);
+  ok(!/£90\.00/.test(money), 'the agreed figure the owner later typed is nowhere on it');
+  ok(/Total \(incl\. deposit\) £440\.00/.test(money), 'the total folds in that same £50, not the £90');
+  ok(/Paid in full £440\.00/.test(money), '…and the paid line agrees with it, so no phantom balance appears');
+  await page.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();
