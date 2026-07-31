@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 355;
+const ADMIN_BUNDLE_V = 356;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6516,6 +6516,20 @@ let propertyRates = JSON.parse(JSON.stringify(defaultRates));
 // because the Terms state these numbers to the guest. Below is only the
 // offline/first-paint fallback, and matches the defaults in pricing.php.
 let paymentTerms = { depositPct: 25, balanceDays: 30 };
+// Can the site text a guest at all (Manage → Text messages)? FALSE until the
+// server says otherwise, so the form never offers a text that cannot be sent.
+let smsAvailable = false;
+function applySmsAvailability() {
+    const row = document.getElementById('enq-sms-row');
+    if (!row) return;
+    row.style.display = smsAvailable ? 'flex' : 'none';
+    // Cleared, not just hidden: a ticked box would otherwise travel with the
+    // enquiry and be recorded against a booking nobody can text.
+    if (!smsAvailable) {
+        const box = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-sms-optin'));
+        if (box) box.checked = false;
+    }
+}
 // Seasonal couple-rate overrides per property: { propKey: [{label,start_date,end_date,couple_rate}] }
 let propertySeasons = {};
 // The cottages as the server knows them (source of truth for add/remove).
@@ -6574,6 +6588,11 @@ async function loadRates(pre) {
         const properties = res.properties;
         // Seasonal rates per property (may be absent if migration not run)
         propertySeasons = res.seasons || {};
+        // The opt-in box used to show unconditionally, so with Twilio
+        // unconfigured a guest ticked something nothing could act on. Absent
+        // (older server) reads FALSE — no promise beats an empty one.
+        smsAvailable = !!res.sms;
+        applySmsAvailability();
         // Absent only against an older server — keep the fallback rather than
         // zeroing it, or the terms would quote the guest a "0% deposit".
         if (res.payment && typeof res.payment === 'object') {
@@ -13782,7 +13801,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'custaudit3';
+    const BUILD = 'smsmanage1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

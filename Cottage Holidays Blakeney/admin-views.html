@@ -414,6 +414,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/><path d="M15.5 14.5l2 2 3.5-3.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Follow-up emails</span><span class="settings-row-sub">Automatic nudges to enquirers &amp; past guests</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="sms text message twilio mobile phone balance reminder arrival number send texts" data-act="settingsOpen" data-arg="sms">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Text messages</span><span class="settings-row-sub">Balance reminders &amp; arrival info by SMS</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
 
             <div class="settings-section-label">Account &amp; system</div>
@@ -510,6 +514,47 @@
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Gentle automatic emails that chase interest without you lifting a finger.</p>
                 <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="enquiry-nudge-off" data-invert="1"> Email a friendly follow-up to enquirers who haven't booked after 2 days, plus a one-off "finish your enquiry" note to visitors who started one but never sent it</label>
                 <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="anniversary-nudge-off" data-invert="1"> Invite last year's guests back with a one-off email, timed to how far ahead they book</label>
+            </div>
+
+            <!-- Text messages (Twilio). All four settings live here rather than in
+                 config.php, so switching SMS on no longer means editing a PHP file
+                 on the host. The auth token is WRITE-ONLY: it never comes back from
+                 the server, so the field is left blank and blank means "keep it". -->
+            <div class="settings-sec" id="sec-sms" style="display:none;">
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
+                    <p id="sms-state" role="status" aria-live="polite" style="font-size:0.88rem;font-weight:600;margin:0 0 12px;line-height:1.45;">Checking…</p>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 18px;line-height:1.5;">Text guests the two messages that matter: a nudge when their balance falls due, and their arrival details the day before. Only guests who tick “Text me booking updates” on the enquiry form are ever texted, and only about their own stay — never marketing. You need a <strong>Twilio</strong> account (twilio.com); the three details below are on its Console dashboard.</p>
+
+                    <label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;color:var(--text-light);margin:0 0 18px;cursor:pointer;"><input type="checkbox" id="sms-on" style="width:auto;margin:0;"> Send booking texts</label>
+
+                    <label class="modal-label" for="sms-sid">Account SID</label>
+                    <input type="text" id="sms-sid" class="input-glass" placeholder="AC…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
+                    <p style="font-size:0.76rem;color:var(--text-muted);margin:4px 0 14px;line-height:1.45;">Starts <code>AC</code>. Not a secret — it just names your account.</p>
+
+                    <label class="modal-label" for="sms-token">Auth token</label>
+                    <input type="password" id="sms-token" class="input-glass" placeholder="leave blank to keep the saved one" autocomplete="new-password" spellcheck="false" style="font-family:monospace;">
+                    <p id="sms-token-state" style="font-size:0.76rem;color:var(--text-muted);margin:4px 0 14px;line-height:1.45;">Stored encrypted, and never shown again once saved.</p>
+
+                    <label class="modal-label" for="sms-from">Your Twilio number</label>
+                    <input type="tel" id="sms-from" class="input-glass" placeholder="+447700900000" autocomplete="off" spellcheck="false" style="font-family:monospace;">
+                    <p style="font-size:0.76rem;color:var(--text-muted);margin:4px 0 14px;line-height:1.45;">In full international form, starting <code>+44</code>. It must be a number Twilio says can send SMS.</p>
+
+                    <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn-sm btn-edit" data-act="saveSmsSettings">Save</button>
+                        <span id="sms-msg" style="font-size:0.82rem;"></span>
+                    </div>
+                </div>
+
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;margin-top:16px;">
+                    <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 6px;">Send yourself a test</h3>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">The only way to find out that a number can't send texts, or that a trial account will only text verified numbers, without waiting for a real reminder to go missing.</p>
+                    <label class="modal-label" for="sms-test-to">Your mobile number</label>
+                    <input type="tel" id="sms-test-to" class="input-glass" placeholder="07700 900000" autocomplete="tel" inputmode="tel">
+                    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn-sm btn-edit" data-act="sendSmsTest">Send test text</button>
+                        <span id="sms-test-msg" style="font-size:0.82rem;"></span>
+                    </div>
+                </div>
             </div>
 
             <!-- API keys / integrations -->

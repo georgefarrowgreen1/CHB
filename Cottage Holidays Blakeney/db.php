@@ -688,6 +688,14 @@ function is_internal_content_key($key)
         return true; // the cached Blakeney forecast (weather-data.php) — machinery,
                      // not content; weather.php serves the data itself publicly
     }
+    if ($key === 'sms-enabled' || $key === 'sms-from') {
+        return true; // Manage → Text messages: the Twilio on/off switch and the
+                     // sender number. Owner-only configuration — the guest form
+                     // learns whether SMS is available from a DERIVED boolean on
+                     // the rates payload, never from these. (The SID and auth
+                     // token are `apikey-` keys, so they are PRIVATE and
+                     // encrypted at rest rather than merely internal.)
+    }
     if ($key === 'notify-prefs') {
         return true; // which alerts may buzz the owner's devices, and their quiet
                      // hours. Owner-only settings, and the quiet window says when

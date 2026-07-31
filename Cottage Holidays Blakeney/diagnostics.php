@@ -6,8 +6,10 @@
 //
 //  POST {action:'run'}         -> the full report (admin only)
 //  POST {action:'test_email'}  -> send a test email to OWNER_NOTIFY_EMAIL
+//  POST {action:'sms_status'}  -> Manage → Text messages: is Twilio wired up?
+//  POST {action:'sms_test'}    -> send one test text to a number the owner types
 //
-//  Read-only: it never writes data (other than the optional test email send).
+//  Read-only: it never writes data (other than the optional test sends).
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/webpush.php';
@@ -39,6 +41,36 @@ if ($action === 'test_email') {
         ),
     );
     json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => OWNER_NOTIFY_EMAIL]);
+}
+
+// ---- Manage → Text messages --------------------------------------------
+// The settings page reads its state from here rather than from the content GET,
+// because the auth token must never leave the server: sms_status() reports only
+// whether one is STORED. Same call answers "is it on", "which account", and
+// "is a config.php const overriding all of this".
+if ($action === 'sms_status') {
+    require_once __DIR__ . '/sms.php';
+    json_out(['ok' => true, 'sms' => sms_status()]);
+}
+// A test text to a number the OWNER types — never a guest's. This is the only
+// way to find out that a Twilio number isn't SMS-capable, or that the account is
+// still in trial and can only text verified numbers, without waiting for a real
+// balance reminder to go missing. sms_send() carries Twilio's own sentence back
+// on failure, which is what makes the answer actionable.
+if ($action === 'sms_test') {
+    require_once __DIR__ . '/sms.php';
+    if (!sms_enabled()) {
+        json_out(['ok' => false, 'error' => 'Text messages are not switched on yet — fill in all three Twilio details and tick the box first.']);
+    }
+    $to = clean($in['to'] ?? '');
+    if ($to === '') {
+        json_out(['ok' => false, 'error' => 'Type the mobile number to test.']);
+    }
+    if (sms_normalize_uk($to) === '') {
+        json_out(['ok' => false, 'error' => "That doesn't look like a UK mobile number."]);
+    }
+    $res = sms_send($to, 'Cottage Holidays Blakeney: this is a test message from your back office. Texts are working.');
+    json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => sms_normalize_uk($to)]);
 }
 
 // ---- gather schema ------------------------------------------------------

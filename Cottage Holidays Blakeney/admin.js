@@ -285,6 +285,7 @@ function cmdkRegistry() {
         { id: 'host', label: 'Profile', sub: 'Host bio & contact', kw: 'bio about phone', sec: 'host' },
         { id: 'notify', label: 'Notifications', sub: 'Phone alerts', kw: 'push alerts', sec: 'notify' },
         { id: 'security', label: 'Security', sub: 'Password & quick sign-in', kw: 'password passkey 2fa face id fingerprint', sec: 'security' },
+        { id: 'sms', label: 'Text messages', sub: 'Balance reminders & arrival info by SMS', kw: 'sms text message twilio mobile phone number send texts balance reminder arrival', sec: 'sms' },
         { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
         { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check backup diagnostics updates migrations database storage', sec: 'diagnostics' },
         { id: 'search-learning', label: 'Search learning', sub: "Teach the assistant & see what it's learned", kw: 'search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand', sec: 'search-learning' },
@@ -10196,6 +10197,7 @@ const SETTINGS_TITLES = {
     experiences: 'Experiences',
     content: 'Home page & menu',
     photos: 'Guest photos',
+    sms: 'Text messages',
     apis: 'Integrations',
     diagnostics: 'Status',
     testcentre: 'Test centre',
@@ -10345,6 +10347,7 @@ function settingsRenderSection(section) {
     else if (section === 'follow-ups') hydrateFollowUpToggles();
     else if (section === 'diagnostics') loadDiagnostics();
     else if (section === 'testcentre') renderTestCentreList();
+    else if (section === 'sms') renderSms();
     else if (section === 'apis') renderApis();
     else if (section === 'security') {
         loadAdminPasskeys();
@@ -10776,6 +10779,129 @@ function contentEditImage(key) {
         if (th) th.style.backgroundImage = `url('${url}')`;
     });
 }
+// ---- Manage → Text messages (Twilio) ---------------------------------------
+// The four settings used to be config.php constants, so switching SMS on meant
+// editing a PHP file on the host — and because the enquiry form offered "Text me
+// booking updates" regardless, a guest could tick a box that nothing could act
+// on. They are owner-editable now.
+//
+// The AUTH TOKEN is write-only: content.php's get_all refuses to decrypt it into
+// any browser payload, so this page never has the value to show. The field is
+// therefore always blank and blank means KEEP — which is why saving reads the
+// status back afterwards rather than assuming what it wrote.
+let __smsStatus = null;
+// The fields are all <input>s; getElementById types them as bare HTMLElement, so
+// one cast here beats nine at the call sites (the tsc ratchet is on a budget).
+const smsEl = (id) => /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+async function renderSms() {
+    const on = smsEl('sms-on');
+    const sid = smsEl('sms-sid');
+    const from = smsEl('sms-from');
+    const tok = smsEl('sms-token');
+    if (tok) tok.value = ''; // never prefilled — see above
+    const msg = document.getElementById('sms-msg');
+    if (msg) msg.textContent = '';
+    const tmsg = document.getElementById('sms-test-msg');
+    if (tmsg) tmsg.textContent = '';
+    smsPaintState(null); // "Checking…" until the server answers
+    let st = null;
+    try {
+        const r = await apiPost('diagnostics.php', { action: 'sms_status' });
+        st = (r && r.sms) || null;
+    } catch (e) {
+        smsPaintState('error');
+        return;
+    }
+    __smsStatus = st;
+    if (!st) return;
+    if (on) on.checked = !!st.on;
+    // The SID is an identifier, not a credential, so it round-trips — but the
+    // server only ever sends its last 4, enough to confirm WHICH account.
+    if (sid) sid.value = st.sid_set ? '' : '';
+    if (sid) sid.placeholder = st.sid_set ? '•••• ' + (st.sid_tail || '') + ' — blank keeps it' : 'AC…';
+    if (from) from.value = st.from || '';
+    const ts = document.getElementById('sms-token-state');
+    if (ts) {
+        ts.textContent = st.token_set
+            ? 'A token is saved. Leave blank to keep it, or paste a new one to replace it.'
+            : 'Stored encrypted, and never shown again once saved.';
+    }
+    smsPaintState(st);
+    // A config.php constant silently outranks everything on this page, so say so
+    // rather than letting the owner edit fields that cannot take effect.
+    [on, sid, from, tok].forEach((el) => {
+        if (el) el.disabled = !!(st && st.from_config);
+    });
+
+}
+// One sentence for the state, so the page always leads with what is true. Styled
+// from the tokens directly rather than through new classes: the settings CSS
+// lives in app.css, which every anonymous visitor downloads and which is held
+// flat — and the surrounding markup in this panel is inline-styled anyway.
+function smsPaintState(st) {
+    const el = document.getElementById('sms-state');
+    if (!el) return;
+    const say = (text, colour) => {
+        el.textContent = text;
+        el.style.color = colour;
+    };
+    if (st === null) return say('Checking…', 'var(--text-muted)');
+    if (st === 'error') return say("Couldn't check whether texts are set up.", 'var(--warn-text)');
+    if (st.from_config) {
+        return say('Texts are set up in config.php on the server. Those settings win, so this page is read-only.', 'var(--ok-text)');
+    }
+    if (st.ready) {
+        return say('Texts are on. Guests who tick the box get balance reminders and arrival info.', 'var(--ok-text)');
+    }
+    if (st.on) {
+        return say('Switched on, but not usable yet — fill in all three Twilio details below.', 'var(--warn-text)');
+    }
+    return say('Texts are off. The enquiry form does not offer them, and nobody is texted.', 'var(--text-muted)');
+}
+async function saveSmsSettings() {
+    const msg = document.getElementById('sms-msg');
+    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger)'; msg.textContent = t; } };
+    const val = (id) => ((smsEl(id) || { value: '' }).value || '').trim();
+    const on = !!(smsEl('sms-on') || { checked: false }).checked;
+    const sid = val('sms-sid');
+    const token = val('sms-token');
+    const from = val('sms-from');
+    // Refuse to switch ON without the details, rather than saving a state whose
+    // own status line would immediately call it unusable.
+    const known = __smsStatus || {};
+    if (on && !sid && !known.sid_set) { say('Add the Account SID before switching texts on.', false); return; }
+    if (on && !token && !known.token_set) { say('Add the Auth token before switching texts on.', false); return; }
+    if (on && !from) { say('Add your Twilio number before switching texts on.', false); return; }
+    if (from && !/^\+\d{8,15}$/.test(from)) { say('The Twilio number needs its country code, e.g. +447700900000.', false); return; }
+    try {
+        // A BLANK secret means "leave it alone", so it is simply not sent — the
+        // opposite of the usual save-what-is-on-screen, and the only way a
+        // write-only field can work.
+        await apiPost('content.php', { action: 'set', key: 'sms-from', value: from });
+        if (sid) await apiPost('content.php', { action: 'set', key: 'apikey-twilio-sid', value: sid });
+        if (token) await apiPost('content.php', { action: 'set', key: 'apikey-twilio-token', value: token });
+        await apiPost('content.php', { action: 'set', key: 'sms-enabled', value: on ? '1' : '' });
+        say('Saved ✓', true);
+        await renderSms(); // re-read: the server decides what is actually usable
+    } catch (e) {
+        say("Couldn't save: " + e.message, false);
+    }
+}
+async function sendSmsTest() {
+    const msg = document.getElementById('sms-test-msg');
+    const say = (t, ok) => { if (msg) { msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger)'; msg.textContent = t; } };
+    const to = ((smsEl('sms-test-to') || { value: '' }).value || '').trim();
+    if (!to) { say('Type your mobile number first.', false); return; }
+    say('Sending…', true);
+    try {
+        const r = await apiPost('diagnostics.php', { action: 'sms_test', to });
+        if (r && r.ok) say('Sent to ' + (r.to || to) + ' — check your phone.', true);
+        else say(r && r.error ? r.error : "Couldn't send.", false);
+    } catch (e) {
+        say("Couldn't send: " + e.message, false);
+    }
+}
+
 // ---- Manage → API keys ----
 function renderApis() {
     const el = document.getElementById('apikey-tides-input');

@@ -799,7 +799,8 @@
                             <p id="enq-pc-status" role="status" aria-live="polite" style="font-size: 0.75rem; min-height: 1.1em; margin: 0 0 8px;"></p>
                         </div>
                     </div>
-                    <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;cursor:pointer;">
+                    <!-- Hidden by default; shown only when the server says texts can be sent (applySmsAvailability). -->
+                    <label id="enq-sms-row" style="display:none;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;cursor:pointer;">
                         <input type="checkbox" id="enq-sms-optin"> Text me booking updates (balance reminders &amp; arrival info)
                     </label>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
@@ -1730,7 +1731,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=613"></script>
+    <script defer src="app.js?v=614"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
