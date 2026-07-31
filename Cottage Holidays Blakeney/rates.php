@@ -13,6 +13,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php'; // square_deposit_pct() / payment_balance_days()
+require_once __DIR__ . '/sms.php'; // sms_enabled() — see the `sms` flag below
 
 // The public GET payload, as a function so bootstrap.php can serve the SAME data
 // in its combined first-paint response without duplicating this logic.
@@ -75,6 +76,14 @@ function rates_public_payload()
             'deposit_pct' => square_deposit_pct(),
             'balance_days' => payment_balance_days(),
         ],
+        // Can this site actually text a guest? The enquiry form offers "Text me
+        // booking updates", and offered it unconditionally — so with Twilio
+        // unconfigured (the shipped default) a guest ticked a box that could
+        // never do anything, and might then watch their phone instead of the
+        // email that carries the payment link. A DERIVED boolean, never the
+        // settings themselves: nothing about the owner's Twilio account belongs
+        // on a public payload.
+        'sms' => sms_enabled(),
     ];
 }
 

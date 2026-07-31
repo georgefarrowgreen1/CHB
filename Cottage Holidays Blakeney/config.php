@@ -84,9 +84,15 @@ define('PAYMENT_REMINDER_FROM_DAYS', 14);
 define('PAYMENT_REMINDER_STOP_DAYS', 3);
 
 // --- Optional transactional SMS (balance reminders + pre-arrival nudges) ---
-// OFF by default. Set SMS_ENABLED = true and fill the Twilio values to switch it
-// on; only guests who ticked "text me booking updates" on their enquiry are ever
-// texted, and only about their own booking. See SETUP-SMS.md.
+// SET THIS UP IN THE BACK OFFICE, NOT HERE: Manage → Text messages holds all
+// four settings (the SID and token encrypted at rest), shows whether Twilio is
+// actually usable, and can send you a test text. Only guests who ticked "text me
+// booking updates" are ever texted, and only about their own booking.
+//
+// The constants below still WIN where one is set, so an install already
+// configured this way keeps working untouched. Leave them as they are unless you
+// specifically want to pin the settings to this file and lock the Manage page —
+// note an EMPTY constant counts as unset, so these defaults change nothing.
 define('SMS_ENABLED', false);
 define('TWILIO_SID', '');     // Twilio Account SID (starts AC…)
 define('TWILIO_TOKEN', '');   // Twilio Auth Token — SECRET

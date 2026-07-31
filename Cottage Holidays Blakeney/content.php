@@ -70,10 +70,14 @@ if ($action === 'get_all') {
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
     $out = [];
     foreach ($rows as $r) {
-        // Server-only secrets that have NO editor field (the Square webhook signing
-        // key is captured + used entirely server-side) are never decrypted into the
-        // browser payload — the Settings UI never needs them, so don't ship them.
-        if ($r['item_key'] === 'apikey-square-webhook') {
+        // WRITE-ONLY secrets are never decrypted into the browser payload. The
+        // Square webhook signing key is captured + used entirely server-side and
+        // has no editor field at all; the Twilio auth token HAS one, but it is
+        // write-only by design — the settings page shows whether a token is
+        // stored (sms_status()) and treats a blank field as "leave it alone", so
+        // the secret has no route back out of the server. Contrast the WorldTides
+        // key, which is round-tripped into its input on purpose.
+        if ($r['item_key'] === 'apikey-square-webhook' || $r['item_key'] === 'apikey-twilio-token') {
             continue;
         }
         $val = is_private_content_key($r['item_key']) ? decrypt_value($r['item_value']) : $r['item_value'];
