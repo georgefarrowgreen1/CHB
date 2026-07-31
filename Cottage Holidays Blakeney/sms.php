@@ -35,25 +35,54 @@ const SMS_KEY_ON = 'sms-enabled';
 // UNSET rather than as an explicit blank, or defining the four consts as ''
 // (which config.php ships as the default!) would permanently shadow the
 // settings page and nothing the owner typed would ever apply.
+// Memoised for the life of the REQUEST, because content_value() is an uncached
+// SELECT and these are read in loops: payments-due.php calls sms_notify_booking()
+// once per booking it chases (4 reads each), sms_send() resolves three more per
+// message, and rates_public_payload() — the PUBLIC boot payload — asks on every
+// anonymous first paint and every live-update tick. Collapsing four boot calls
+// into one bootstrap request was a deliberate decision on this shared host, and
+// four fresh queries per guest would quietly hand that back. A save happens in a
+// different request, so there is nothing to invalidate.
+//
+// Held in a GLOBAL rather than a function-static purely so it can be cleared:
+// test-sms.php changes the stored settings many times inside one process.
+function sms_settings_reset()
+{
+    $GLOBALS['__sms_memo'] = ['set' => [], 'on' => null];
+    return true;
+}
 function sms_setting($const, $key)
 {
-    if (defined($const)) {
-        $v = trim((string) constant($const));
-        if ($v !== '') {
-            return $v;
-        }
+    if (!isset($GLOBALS['__sms_memo'])) {
+        sms_settings_reset();
     }
-    return trim((string) content_value($key));
+    if (array_key_exists($key, $GLOBALS['__sms_memo']['set'])) {
+        return $GLOBALS['__sms_memo']['set'][$key];
+    }
+    $out = '';
+    if (defined($const)) {
+        $out = trim((string) constant($const));
+    }
+    if ($out === '') {
+        $out = trim((string) content_value($key));
+    }
+    $GLOBALS['__sms_memo']['set'][$key] = $out;
+    return $out;
 }
 // The master switch. SMS_ENABLED is a BOOLEAN const, so it cannot use
 // sms_setting() — `false` and "not set" are the same string there. A const set
 // to true forces it on; otherwise the stored toggle decides.
 function sms_switched_on()
 {
-    if (defined('SMS_ENABLED') && SMS_ENABLED) {
-        return true;
+    if (!isset($GLOBALS['__sms_memo'])) {
+        sms_settings_reset();
     }
-    return content_value(SMS_KEY_ON) === '1';
+    if ($GLOBALS['__sms_memo']['on'] !== null) {
+        return $GLOBALS['__sms_memo']['on'];
+    }
+    $on = (defined('SMS_ENABLED') && SMS_ENABLED) ? true : content_value(SMS_KEY_ON) === '1';
+    $GLOBALS['__sms_memo']['on'] = $on;
+    return $on;
 }
 // Is a provider fully configured AND switched on? Every send path gates on this.
 function sms_enabled()

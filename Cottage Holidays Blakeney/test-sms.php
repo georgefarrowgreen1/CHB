@@ -23,8 +23,10 @@
 // ============================================================
 
 $GLOBALS['__sms_store'] = [];
+$GLOBALS['__sms_reads'] = 0;
 function content_value($key)
 {
+    $GLOBALS['__sms_reads']++;
     return (string) ($GLOBALS['__sms_store'][$key] ?? '');
 }
 // THE EMPTY-CONSTANT CASE IS THE SHIPPED DEFAULT, and define() cannot be undone
@@ -61,6 +63,9 @@ function schk($name, $cond, $extra = '')
 function sms_store($map)
 {
     $GLOBALS['__sms_store'] = $map;
+    // The resolved values are memoised per REQUEST (an uncached SELECT read in
+    // loops); this test is many "requests" in one process, so clear it.
+    sms_settings_reset();
 }
 $FULL = [
     'sms-enabled' => '1',
@@ -139,6 +144,24 @@ schk('…by its last 4 only', $st['sid_tail'] === 'abcd' && strpos((string) $fla
 schk('the sender number IS returned (the owner must be able to correct it)', $st['from'] === '+447700900000');
 schk('status agrees with sms_enabled', $st['ready'] === true && $st['on'] === true);
 
+// ---- 5b. THE MEMO ACTUALLY CACHES -----------------------------------------
+// A memo that resolved every time would pass every check above and quietly cost
+// four uncached SELECTs per booking in the payments-due chase loop. Counted at
+// the stub, which is the only place a real read can be observed.
+$reads = 0;
+$GLOBALS['__sms_count'] = true;
+sms_store($FULL);
+sms_enabled();
+$first = $GLOBALS['__sms_reads'];
+sms_enabled();
+sms_enabled();
+sms_status();
+schk('repeat lookups cost no further reads', $GLOBALS['__sms_reads'] === $first, "first=$first now={$GLOBALS['__sms_reads']}");
+schk('…and the first call did read (the counter works)', $first > 0);
+sms_store($FULL); // a reset must make it read again, or the test suite lies to itself
+sms_enabled();
+schk('a reset re-reads', $GLOBALS['__sms_reads'] > $first);
+
 // ---- 6. A CONFIG CONSTANT STILL WINS ---------------------------------------
 // An install that already had SMS in config.php must keep working with an empty
 // settings table — that is the whole compatibility promise.
@@ -177,6 +200,22 @@ foreach ($out as $line) {
     }
 }
 schk('the empty-constant run passed', $rc === 0, implode(' | ', $out));
+
+// NOTHING IN THE APP MAY CLEAR THE MEMO. sms_settings_reset() exists for this
+// file alone — a production caller would mean some request mutates settings
+// mid-flight, which this app does not do, and would silently reintroduce the
+// per-booking query cost the memo removes.
+$callers = 0;
+foreach (glob(__DIR__ . '/*.php') ?: [] as $f) {
+    if (basename($f) === 'sms.php' || strpos(basename($f), 'test-') === 0) {
+        continue;
+    }
+    if (strpos((string) file_get_contents($f), 'sms_settings_reset') !== false) {
+        $callers++;
+        echo "    (called from " . basename($f) . ")\n";
+    }
+}
+schk('sms_settings_reset() is test-only — nothing in the app calls it', $callers === 0);
 
 echo "\n== Summary ==\n";
 echo $fails ? "  $fails SMS CHECK(S) FAILED ❌\n\n" : "  ALL SMS CHECKS PASSED ✅\n\n";
