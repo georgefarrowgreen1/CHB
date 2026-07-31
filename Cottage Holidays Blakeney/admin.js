@@ -12367,28 +12367,41 @@ async function renderSweep(refetch) {
     const ringNote = ringParts.length > 1
         ? `Leaves ${gbp(ring)} behind — ${ringParts.join(', ')}.`
         : `Leaves ${gbp(ring)} behind for the deposit${L.count === 1 ? '' : 's'} still held.`;
+    // THE NUMBER YOU TYPE INTO THE BANK, up front. The page led with what to KEEP
+    // (£73.92) — the constraint, not the instruction — and gave the figure you act
+    // on only after you typed a balance. Square's payout data already answers most
+    // of it: P.inBank sums the charges Square has actually paid into the account,
+    // each already net of its fee AND of any deposit ringfenced out of it. So there
+    // is a real transfer figure before anything is typed.
+    //
+    // It is a FLOOR, not the balance — the account also holds older money, and
+    // whatever has already been moved or spent, so this can overstate if some of it
+    // has gone. That caveat is not optional next to a number labelled "transfer
+    // out"; the typed balance stays the authoritative answer and says so.
+    const landed = P && Number(P.inBank) > 0 ? Number(P.inBank) : null;
+    const transferOut = hasBal ? safe : landed;
     const answer = `<div class="accounts-stat" style="max-width:620px;">
-            <div class="label">How much can I move?</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">${est
-                ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''}. That's an <strong>estimate</strong> — correct it if the account says otherwise.`
-                : `Type what the account holds right now. There's no bank feed, so this is the one figure I can't work out for you.`}</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="label">Transfer out</div>
+            ${hasBal && short > 0
+                ? `<p style="margin:6px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
+                : transferOut === null
+                  ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">Type what the account holds below and I'll work it out.</p>`
+                  : `<div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
+                     <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">${hasBal
+                        ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
+                        : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;">
                 <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Balance now</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
                 <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Extra cushion (optional)</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
             </div>
-            ${!hasBal
-                ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:14px 0 0;">Enter the balance and I'll tell you what's safe to move.</p>`
-                : short > 0
-                  ? `<p style="margin:14px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it — top it up before the next refund goes out.</p>`
-                  : `<div style="margin:14px 0 0;">
-                        <div class="label">Safe to move</div>
-                        <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(safe)}</div>
-                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">${L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.'}</p>
-                        <button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Stored with today's date so next time it can start from here and add what Square has paid in since.</p>
-                     </div>`}
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">${est
+                ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
+                : `There's no bank feed, so the balance is the one figure I can't work out for you.`}</p>
+            ${hasBal && short <= 0
+                ? `<button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>`
+                : ''}
         </div>`;
 
     // WHAT IS WRONG STAYS IN THE OPEN — the only things here that ask anything of
