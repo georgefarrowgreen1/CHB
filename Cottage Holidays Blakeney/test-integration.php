@@ -71,6 +71,9 @@ function fatal_it($msg)
 // migrate.php's pure helpers (split_sql for applying schema.sql); its request
 // bootstrap returns early because the running script isn't migrate.php.
 require __DIR__ . '/migrate.php';
+// The payment-schedule helpers, so §4 can assert the public payload against the
+// SERVER'S own answer rather than against a number written down twice.
+require_once __DIR__ . '/pricing.php';
 
 // ---- 1. Fresh database --------------------------------------------------
 echo "== 1. Fresh database + schema.sql ==\n";
@@ -220,6 +223,24 @@ $r = http($guest, 'GET', '/rates.php');
 $rateRows = $r['json']['properties'] ?? [];
 $mine = array_values(array_filter($rateRows, fn($p) => is_array($p) && ($p['prop_key'] ?? '') === $propKey));
 it_check('public rates list includes it at £100', $mine && abs((float) $mine[0]['couple_rate'] - 100.0) < 0.005, substr($r['raw'], 0, 160));
+// The PAYMENT SCHEDULE rides this payload because the Terms & Conditions state
+// it to the guest, and used to state it as prose: "25%" against an owner-editable
+// percentage, and "4 weeks" against a 30-day PAYMENT_BALANCE_DAYS — so a booking
+// made 29 days out was promised a deposit by the contract and asked to pay in
+// full by pricing.php. Asserted against the SERVER'S own functions rather than
+// against 25/30, so changing either config can never leave the terms behind.
+$paySched = $r['json']['payment'] ?? null;
+it_check('public rates payload carries the payment schedule', is_array($paySched), substr($r['raw'], 0, 200));
+it_check(
+    'deposit % is the one square_deposit_pct() returns',
+    $paySched && abs((float) $paySched['deposit_pct'] - square_deposit_pct()) < 0.005,
+    json_encode($paySched),
+);
+it_check(
+    'balance window is the one payment_balance_days() enforces',
+    $paySched && (int) $paySched['balance_days'] === payment_balance_days(),
+    json_encode($paySched),
+);
 
 // ---- 6. Enquiry → approval → booking with a locked snapshot --------------
 echo "\n== 5. Enquiry → booking (price snapshot through the real stack) ==\n";

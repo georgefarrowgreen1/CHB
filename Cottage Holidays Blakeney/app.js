@@ -2476,9 +2476,15 @@ const CANCELLATION_POLICIES = {
     },
     limited: {
         name: 'Limited',
+        // The third point is what the code ENFORCES and the policy used to omit:
+        // rentalRefundBlocked() (and its mirror rental_refund_blocked()) refuse a
+        // rental refund inside 7 days here, so a guest cancelling 3 days out got
+        // nothing back from a policy whose last line stopped at 7. Kept in step
+        // with mailer.php's cancellation_policy_line().
         points: [
             'Full refund at least 14 days before check-in',
             'Partial refund 7–14 days before check-in',
+            'No refund within 7 days of check-in',
         ],
     },
 };
@@ -4571,11 +4577,63 @@ function cancellationClauseParagraphs(propKey) {
         'Leaving early or not turning up counts as a cancellation with no refund.',
     ];
 }
-// termsSections with clause 7 swapped for the selected policy's terms.
-function effectiveTermsSections(propKey) {
-    return termsSections.map((s) =>
-        s.h.startsWith('7.') ? { h: s.h, p: cancellationClauseParagraphs(propKey) } : s,
+// ---- The money facts in the Terms are the SERVER'S, never prose ----
+// Clause 1's Deposit / Balance due date / Security deposit and all of clause 5
+// were written out as "25%", "4 weeks" and "typically £75" — numbers the app
+// does not derive from, on the document the guest agrees to. Two were wrong:
+// the window is PAYMENT_BALANCE_DAYS (30 days, not 28), so a booking made 29
+// days out was promised a deposit by clause 5 while pricing.php demanded the
+// full amount, and payments-due.php chases at 30 days. Generated per cottage
+// exactly as clause 7 is.
+function termsPct() {
+    return String(Math.round(paymentTerms.depositPct * 100) / 100);
+}
+function termsDays() {
+    const n = paymentTerms.balanceDays;
+    return n + ' day' + (n === 1 ? '' : 's');
+}
+// A figure when ONE cottage is in view, a promise otherwise (the footer link
+// opens the terms with no cottage), and never "£0.00" for a cottage with none.
+function termsSecurityDeposit(propKey) {
+    const r = propertyRates[propKey] || {};
+    const dep = Number(r.damagesDeposit);
+    const amount = dep > 0 ? 'a refundable ' + gbp(dep) : 'a refundable amount, shown with your price before you book,';
+    return (
+        amount +
+        ' charged together with your first payment and refunded after your stay, provided there is no damage.'
     );
+}
+const TERMS_MONEY_DEFS = {
+    Deposit: () => termsPct() + '% of the Price, payable when you book.',
+    'Balance due date': () => termsDays() + ' before your arrival date.',
+};
+function paymentClauseParagraphs() {
+    return [
+        'The price is confirmed in your confirmation.',
+        `Booking ${termsDays()} or more before your arrival date: pay the ${termsPct()}% deposit now, with the balance due by the balance due date.`,
+        `Booking less than ${termsDays()} before your arrival date: pay in full when you book.`,
+        'We can’t let you in until the full price is paid.',
+    ];
+}
+// Swap clause 1's money facts for the live ones, keeping the list's order and
+// every other definition in one place above.
+function definitionParagraphs(propKey) {
+    const defs = (termsSections.find((s) => s.h.startsWith('1.')) || { p: [] }).p;
+    return defs.map((par) => {
+        const label = (par.match(/^([^:]{1,26}):\s/) || [])[1];
+        if (label === 'Security deposit') return label + ': ' + termsSecurityDeposit(propKey);
+        if (label && TERMS_MONEY_DEFS[label]) return label + ': ' + TERMS_MONEY_DEFS[label]();
+        return par;
+    });
+}
+// termsSections with the money + cancellation clauses swapped for the live ones.
+function effectiveTermsSections(propKey) {
+    return termsSections.map((s) => {
+        if (s.h.startsWith('1.')) return { h: s.h, p: definitionParagraphs(propKey) };
+        if (s.h.startsWith('5.')) return { h: s.h, p: paymentClauseParagraphs() };
+        if (s.h.startsWith('7.')) return { h: s.h, p: cancellationClauseParagraphs(propKey) };
+        return s;
+    });
 }
 function renderTerms(propKey) {
     if (propKey === undefined) propKey = activeFrontProperty;
@@ -5649,7 +5707,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-07a';
+const TERMS_VERSION = '2026-07b';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -5660,9 +5718,12 @@ const termsSections = [
             'Booking request: your request to book — it becomes a Booking only once we confirm it in writing.',
             'Confirmation: our written acceptance of your booking request, with arrival/departure details, directions and the House Rules.',
             'Price: the total cost of your stay, shown on the website and in our confirmation.',
-            'Deposit: 25% of the Price, payable when you book.',
-            'Balance due date: 4 weeks before your arrival date.',
-            'Security deposit: a refundable amount (typically £75) charged together with your first payment and refunded after your stay, provided there is no damage.',
+            // These three carry only their LABEL and their place in the order — the
+            // text is generated per cottage from the live payment schedule and the
+            // cottage's own deposit. See definitionParagraphs().
+            'Deposit: (generated)',
+            'Balance due date: (generated)',
+            'Security deposit: (generated)',
             'House Rules: a short separate document we send with your confirmation; it forms part of these terms.',
             'Permitted pets: any animal the owner has agreed in writing you may bring.',
             'Group: you and everyone staying or visiting under your booking.',
@@ -5708,12 +5769,8 @@ const termsSections = [
     },
     {
         h: '5. Price and payment',
-        p: [
-            'The price is confirmed in your confirmation.',
-            'Booking more than 4 weeks ahead: pay the 25% deposit now, with the balance due by the balance due date.',
-            'Booking within 4 weeks of arrival: pay in full when you book.',
-            'We can’t let you in until the full price is paid.',
-        ],
+        // Generated from the live payment schedule — see paymentClauseParagraphs().
+        p: [],
     },
     {
         h: '6. Our responsibility to you',
@@ -6435,6 +6492,10 @@ const defaultRates = {
     },
 };
 let propertyRates = JSON.parse(JSON.stringify(defaultRates));
+// The PAYMENT SCHEDULE as the server enforces it, fetched with the rates at boot,
+// because the Terms state these numbers to the guest. Below is only the
+// offline/first-paint fallback, and matches the defaults in pricing.php.
+let paymentTerms = { depositPct: 25, balanceDays: 30 };
 // Seasonal couple-rate overrides per property: { propKey: [{label,start_date,end_date,couple_rate}] }
 let propertySeasons = {};
 // The cottages as the server knows them (source of truth for add/remove).
@@ -6493,6 +6554,14 @@ async function loadRates(pre) {
         const properties = res.properties;
         // Seasonal rates per property (may be absent if migration not run)
         propertySeasons = res.seasons || {};
+        // Absent only against an older server — keep the fallback rather than
+        // zeroing it, or the terms would quote the guest a "0% deposit".
+        if (res.payment && typeof res.payment === 'object') {
+            const dp = parseFloat(res.payment.deposit_pct);
+            const bd = parseInt(res.payment.balance_days, 10);
+            if (dp > 0 && dp <= 100) paymentTerms.depositPct = dp;
+            if (bd > 0) paymentTerms.balanceDays = bd;
+        }
         // Occupancy caps come from the server (single source of truth); the
         // hardcoded occupancyLimits below act only as an offline fallback.
         if (res.occupancy && typeof res.occupancy === 'object') {
@@ -7787,11 +7856,52 @@ function chatQuick(text) {
 //  Pure client-side (no owner ping) so common questions self-serve; the guest
 //  can still type below for a real reply. Answers are owner-editable in
 //  Manage → Guest messages (content keys below), with sensible defaults.
+// 24h → the way the copy reads it: '15:00' → '3pm', '15:30' → '3.30pm'.
+function fmtClock12(hhmm) {
+    const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return '';
+    const h = Number(m[1]),
+        mins = Number(m[2]);
+    const suffix = h < 12 ? 'am' : 'pm';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + (mins ? '.' + String(mins).padStart(2, '0') : '') + suffix;
+}
+// The times the cottages ACTUALLY use — the active cottage's, else the shared
+// pair when every live cottage agrees; null when they differ and none is in view,
+// since one sentence can't answer for three changeovers. renderHouseRules already
+// derived from these; the chat's built-in FAQ answer did not, so an owner who
+// moved check-in to 4pm updated one surface and left the chat saying 3pm.
+function activeCottageTimes() {
+    const timesOf = (k) => {
+        const r = propertyRates[k] || defaultRates[k] || {};
+        return { ci: r.checkInTime || '15:00', co: r.checkOutTime || '10:00' };
+    };
+    if (typeof activeFrontProperty !== 'undefined' && activeFrontProperty && propertyRates[activeFrontProperty])
+        return timesOf(activeFrontProperty);
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    if (!keys.length) return null;
+    const first = timesOf(keys[0]);
+    return keys.every((k) => {
+        const t = timesOf(k);
+        return t.ci === first.ci && t.co === first.co;
+    })
+        ? first
+        : null;
+}
 const CHAT_FAQ = {
     checkin: {
         q: 'What time is check-in and check-out?',
         key: 'chat-ans-checkin',
-        def: "Check-in is from 3pm and check-out is by 10am. If you need a little flexibility, just ask — we'll always try to help around our changeover.",
+        // ONE sentence, filled from the cottage's own times when they are knowable
+        // and from the house default otherwise.
+        say: (ci, co) => `Check-in is from ${ci} and check-out is by ${co}. If you need a little flexibility, just ask — we'll always try to help around our changeover.`,
+        get def() {
+            return this.say('3pm', '10am');
+        },
+        live() {
+            const t = activeCottageTimes();
+            return t ? this.say(fmtClock12(t.ci), fmtClock12(t.co)) : '';
+        },
     },
     parking: {
         q: 'Is there parking at the cottage?',
@@ -7825,10 +7935,23 @@ const GUEST_FAQ_SYN = {
     accessible: 'wheelchair disabled access stairs mobility', highchair: 'high-chair child baby',
 };
 const GUEST_FAQ_STOP = new Set(['the', 'a', 'an', 'is', 'are', 'do', 'does', 'can', 'could', 'would', 'will', 'i', 'we', 'you', 'my', 'our', 'to', 'at', 'for', 'and', 'of', 'it', 'in', 'on', 'with', 'have', 'has', 'any', 'there', 'be', 'if', 'how', 'what', 'whats', 'when', 'where', 'which', 'get', 'got', 'this', 'that', 'your', 'their', 'am', 'me', 'us', 'or', 'please', 'thanks', 'thank', 'hi', 'hello', 'hey']);
+// ONE resolver, so the chat buttons and the on-device matcher can never quote
+// different text. The owner's saved answer wins (a deliberate override), then
+// anything derived from live settings, then the static copy.
+function chatFaqAnswer(f) {
+    if (!f) return '';
+    const saved = ((typeof siteContent === 'object' && siteContent && siteContent[f.key]) || '').trim();
+    if (saved) return saved;
+    let live = '';
+    try {
+        live = (f.live && f.live()) || '';
+    } catch (e) {}
+    return live || f.def;
+}
 function guestFaqCorpus() {
     const out = [];
     try {
-        Object.keys(CHAT_FAQ).forEach((k) => { const f = CHAT_FAQ[k]; out.push({ q: f.q, a: ((typeof siteContent === 'object' && siteContent && siteContent[f.key]) || '').trim() || f.def }); });
+        Object.keys(CHAT_FAQ).forEach((k) => { const f = CHAT_FAQ[k]; out.push({ q: f.q, a: chatFaqAnswer(f) }); });
     } catch (e) {}
     try {
         const meta = typeof propertyMeta === 'object' && propertyMeta ? propertyMeta : {};
@@ -7919,8 +8042,7 @@ function chatFaq(which) {
     if (!f) return;
     chatClearEmpty();
     chatAppendMe(f.q);
-    const ans = ((siteContent && siteContent[f.key]) || '').trim() || f.def;
-    chatBot(escapeHtml(ans).replace(/\n/g, '<br>'));
+    chatBot(escapeHtml(chatFaqAnswer(f)).replace(/\n/g, '<br>'));
 }
 // An instant FAQ answer to a TYPED question, with a one-tap "reach a person"
 // fallback (re-sends the exact question to the owner, bypassing the matcher).
@@ -13629,7 +13751,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'owedfix2';
+    const BUILD = 'custaudit1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
