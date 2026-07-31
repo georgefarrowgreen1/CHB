@@ -2129,6 +2129,36 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   counts a FAILED payout as arrived, and is always labelled an ESTIMATE with a
   correct-it field. `__sweepBalTouched` stops a re-render overwriting what the owner is
   mid-way through typing.
+  **AND WHAT THE OWNER HAS ALREADY MOVED OUT IS RECORDED, because nothing else can
+  tell this screen** (`payouts_moved_map`, `SWEEP_MOVED_KEY` `sweep-moved`, a fourth
+  **`moved`** bucket in `payouts_split_totals`; client `sweepMovedMap`/
+  `sweepMarkTransferred`/`sweepUnmarkTransferred`). Square reports what it paid IN and
+  has no idea what left the bank afterwards, so without this the same £294.75 is
+  offered as movable on every visit until a fresh balance is typed. Two halves:
+  **AUTOMATIC** — `sweepRememberBalance` marks everything Square has already paid in,
+  because a stated balance is the truth about the account at that instant and therefore
+  already contains it (the same reasoning `payouts_balance_estimate` uses when it counts
+  only movements strictly AFTER the stated instant); and **MANUAL** — an "I've
+  transferred this" button on the answer card, confirmed first because it changes a money
+  figure. Rules, each break-tested: **only a LANDED charge can have been transferred**
+  (money Square has not paid out cannot have left the bank, so a stale mark on `onWay`
+  or `unknown` money is ignored rather than quietly removing it from the figure); a mark
+  is KEPT AND SHOWN in an "Already transferred out" group with a per-row undo, never
+  dropped, because "you already moved this" is a different statement from "Square never
+  paid it" and a memory can be wrong; and there is **ONE recording action per state** —
+  `!hasBal` gates the manual button, since with a balance typed the headline is the
+  BALANCE's figure while the button confirms `P.inBank` (measured at £2000: "transfer
+  out £1852.62" over a dialog asking to mark £294.75, a different number for the tap
+  directly beneath it) and "Remember this balance" already does the marking there.
+  NB the server sends the WHOLE stored map back as `payouts.movedMap`, and the client
+  amends THAT: rebuilding it from the `moved` ROWS on screen — which are only the marks
+  whose charge is still inside the payout window — makes recording or undoing one
+  transfer silently forget every older one. Owner-written JSON reaching money
+  arithmetic, so the read sanitises (non-JSON, a scalar, an empty id or a
+  zero/non-numeric timestamp all degrade to "nothing marked") and caps at
+  `SWEEP_MOVED_MAX` 200, newest kept. Gated by test-payouts (the bucket, the sanitiser,
+  the cap, AND the wiring — reverting accounts.php's call site failed nothing until that
+  check existed, the helper-tested-alone trap again) + ui-test-money §7.
   Also: **`payouts_money()` refuses a non-GBP amount** rather than mixing currencies (a
   foreign fee reads as unknown, not wrong); payout-level transfer fees (instant
   deposits) are reported, never apportioned per charge; the 90-day/30-payout caps are

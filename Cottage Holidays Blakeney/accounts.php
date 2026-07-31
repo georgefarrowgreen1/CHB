@@ -460,7 +460,15 @@ try {
     $poMap = is_array($poCache) ? ($poCache['charges'] ?? []) : [];
     $txns = payouts_apply($txns, is_array($poMap) ? $poMap : []);
     $sweep['transactions'] = sweep_txn_totals($txns, $rate);
-    $sweep['payouts'] = payouts_split_totals($sweep['transactions']['items']);
+    // Charges the owner has said they already moved out of the bank drop into
+    // their own bucket rather than counting towards movable a second time.
+    $movedMap = payouts_moved_map();
+    $sweep['payouts'] = payouts_split_totals($sweep['transactions']['items'], $movedMap);
+    // The WHOLE stored record, not just the marks whose charge is still in the
+    // payout window. The client amends this map and saves it back, so rebuilding it
+    // from the visible rows would silently forget every mark that has aged out —
+    // one recorded transfer quietly erasing an older one.
+    $sweep['payouts']['movedMap'] = (object) $movedMap;
     $sweep['payouts']['checked'] = is_array($poCache) ? (int) ($poCache['checked'] ?? 0) : 0;
     $sweep['payouts']['error'] = is_array($poCache) ? ($poCache['error'] ?? null) : null;
     $sweep['payouts']['known'] = is_array($poMap) ? count($poMap) : 0;
