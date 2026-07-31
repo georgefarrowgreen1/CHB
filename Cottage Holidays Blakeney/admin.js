@@ -12319,26 +12319,36 @@ async function renderSweep(refetch) {
     // similar amounts on one line is how the wrong one reaches a bank transfer.
     // The sub-line survives only where it says what the figure cannot: when an
     // unpaid charge is due, and that a fee is estimated.
-    const txRow = (it) => {
+    // `canMark` is the LANDED group only, and that is the same rule the server
+    // enforces: money Square has not paid out cannot have left the bank, so a row
+    // on its way or unvouched-for offers nothing to tick. No confirm on a single
+    // row — unlike the whole-lot button, which acts on a set you cannot see from
+    // where it sits, this one names its guest and its figure directly above itself
+    // and the undo is one tap in the group below.
+    const txRow = (it, canMark) => {
         const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : '');
         const notes = [];
         if (it.landed === false && it.arrival) notes.push(`due ${fmtDate(it.arrival)}`);
         if (!it.fee_actual) notes.push('fee estimated');
+        const when = it.paid_on ? ` · ${fmtDate(it.paid_on)}` : '';
         return `<div class="act-row" style="display:block;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
+                <span>${who}${when}</span>
                 <span style="white-space:nowrap;font-weight:600;">${gbp(it.movable)}</span>
             </div>
             ${notes.length ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${notes.join(' · ')}</div>` : ''}
+            ${canMark && it.txn_id != null
+                ? `<div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" aria-label="Mark ${escapeHtml(it.name || 'this guest')}${when}, ${gbp(it.movable)}, as transferred out" ${chbAttrs('sweepMarkOneTransferred', String(it.txn_id))}>I've transferred this one</button></div>`
+                : ''}
         </div>`;
     };
-    const txGroup = (rows, label, total, note) =>
+    const txGroup = (rows, label, total, note, canMark) =>
         !rows || !rows.length
             ? ''
             : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                 <div class="label">${label}</div>
                 ${note ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">${note}</p>` : '<div style="height:6px;"></div>'}
-                <div>${rows.map(txRow).join('')}</div>
+                <div>${rows.map((r) => txRow(r, canMark)).join('')}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
                     <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(total)}</span>
@@ -12420,8 +12430,14 @@ async function renderSweep(refetch) {
                       £1852.62" over a dialog asking to mark £294.75. "Remember this
                       balance" is the recording action there, and already marks
                       everything landed. */ ''}
-                ${!hasBal && landedItems.length
-                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepMarkTransferred')}>I've transferred this</button>`
+                ${/* "I've transferred this" while every row carries its own tick
+                      reads as though it acts on whichever one you last looked at.
+                      It acts on the LOT, and with one landed payment there is no
+                      lot — the per-row control is the same act with a clearer
+                      label, so this one stands down rather than saying the same
+                      thing twice about the same money. */ ''}
+                ${!hasBal && landedItems.length > 1
+                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sweepMarkTransferred')}>I've transferred all ${landedItems.length}</button>`
                     : ''}
             </div>
         </div>`;
@@ -12495,7 +12511,7 @@ async function renderSweep(refetch) {
          </p>` +
         `<p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;max-width:620px;">${notBalance}</p>` +
         (T && T.count && P
-            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
+            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it. Tick one off once you've moved it.", true) +
               txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
               txGroup(P.items.unknown, "Square hasn't said", P.unknown, 'Not counted as movable.') +
               (movedItems.length
@@ -12609,6 +12625,25 @@ async function sweepMarkTransferred() {
         toast('Recorded — these no longer count as movable', 'success');
     } catch (e) {
         return; // saveContent has already told them, and it rethrows on purpose
+    }
+}
+// ONE booking's money, ticked off where it is listed. The whole-lot button suits
+// "I moved everything"; in practice a payout is often moved on its own, and
+// without this the only way to say so was to mark the lot and put the rest back.
+// No confirm, deliberately: the row above it names the guest, the date and the
+// figure, so the tap is unambiguous in a way the set-level one is not — and the
+// undo sits in the group directly below. `landed` is enforced by the SERVER, so a
+// mark on money still on its way is ignored even if this button ever leaks onto
+// one; the button is only rendered on the landed group.
+async function sweepMarkOneTransferred(id) {
+    if (id === '' || id == null) return;
+    const map = sweepMovedMap();
+    map[String(id)] = Math.floor(Date.now() / 1000);
+    try {
+        await sweepSaveMoved(map);
+        toast('Recorded — that one no longer counts as movable', 'success');
+    } catch (e) {
+        // saveContent has already told them, and it rethrows on purpose.
     }
 }
 // The other half of the override: put one back. A mark is the owner's memory, and
