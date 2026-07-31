@@ -89,14 +89,7 @@ foreach ($due as $b) {
         // Optional SMS nudge (no-op unless configured + the guest opted in).
         try {
             require_once __DIR__ . '/sms.php';
-            sms_notify_booking(
-                $b,
-                'Cottage Holidays Blakeney: the balance' .
-                    (isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '') .
-                    ' for your ' .
-                    uk_date($b['check_in']) .
-                    ' stay is now due — please check your email for the secure payment link.',
-            );
+            sms_notify_booking($b, sms_body_balance(uk_date($b['check_in']), $res['amount'] ?? null));
         } catch (\Throwable $e) {
         }
         $sent++;
