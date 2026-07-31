@@ -1932,7 +1932,22 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   edits and what saving preserves. NB the BALANCE is unaffected either way (total and
   paid move together), which is why every balance-shaped test in the suite was blind
   to this.
-- **THE LIABILITY JOIN ONLY MATCHES RENTAL ROWS** (accounts.php; gated by test-payrail).
+- **A CUSTOM PRICE RENDERS AS ONE COHERENT LINE, SAID SO** (`booking_price_is_custom`
+  in db.php, JS mirror `priceIsCustom` in app.js; gated by test-payrail + smoke-test +
+  ui-test-yourstay §12). `price_override` (and an enquiry's agreed price) replaces the
+  rental TOTAL while `per_night`/`nightly`/`tx_fee` stay the standard snapshot — so the
+  confirmation email, invoice.php, the My Stays card, the client PDF and the hub
+  breakdown popup ALL printed "£130.00 × 7 nights: £910.00 / fee £0.00 / Total £750.00":
+  lines that cannot add up to their own total, on the guest's own documents (reported
+  with a screenshot). One decision now — custom ⇔ |nightly + txFee − total| > ½p — and
+  when true every renderer prints "Agreed price for your stay (N nights)" in place of
+  the per-night + fee pair, so the sum coheres AND the custom price is stated as what it
+  is. An override typed EQUAL to the standard price keeps the standard lines (they add
+  up; relabelling them is noise). Deliberately untouched: the EDIT MODAL and the
+  custom-booking preview, which already show the override honestly as a struck-through
+  "Calculated total" beside the agreed one — that is an owner surface explaining the
+  derivation, not a guest document asserting a sum. The five renderers are one
+  booking's documents: any new price-box render must take the same branch.
   A legacy CAPTURED hold writes its ledger row as `kind='damages'` keyed on the same
   `hold_payment_id`, with the DEPOSIT as its amount — so the unrestricted join read
   that as the charge's rental portion and apportioned the fee against a doubled gross

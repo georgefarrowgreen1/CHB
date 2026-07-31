@@ -176,6 +176,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/Paid in full £440\.00/.test(money), '…and the paid line agrees with it, so no phantom balance appears');
   await page.close();
 
+  // 12) A CUSTOM PRICE IS ONE COHERENT LINE ON THE CARD. price_override swaps
+  // agreedPrice.total to the agreed figure while the per-night snapshot stays
+  // (mapBookingFromApi — this drives that real path, which the smoke-test render
+  // check cannot), so the card read "£130.00 × 7 nights £910.00 … Total £750.00":
+  // standard-rate lines beside a total they cannot reach, on the guest's own
+  // screen. The screenshot the owner reported, reproduced as the fixture.
+  page = await openPage({ name: 'Agreed Guest', email: 'ag@x.co' }, [mk('jollyboat', d(30), d(37), {
+    payment: 'unpaid', agreed_total: 910, agreed_per_night: 130, agreed_nights: 7,
+    agreed_nightly: 910, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0,
+    price_override: 700,
+  })]);
+  const custom = await page.evaluate(() => {
+    const box = document.querySelector('.guest-price-box');
+    return box ? box.innerText.replace(/\s+/g, ' ') : '';
+  });
+  ok(/Agreed price for your stay \(7 nights\) £700\.00/.test(custom),
+    `an override booking's card states the agreed price as one line (${custom.slice(0, 110)})`);
+  ok(!/£910\.00/.test(custom) && !/× 7 nights/.test(custom) && !/Transaction fee/.test(custom),
+    '…and the standard-rate maths that could not add up to it is gone');
+  ok(/Total \(incl\. deposit\) £750\.00/.test(custom),
+    `…so the lines now SUM to the total shown (${custom.slice(-60)})`);
+  await page.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

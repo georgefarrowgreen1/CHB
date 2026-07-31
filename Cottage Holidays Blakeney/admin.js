@@ -9929,8 +9929,13 @@ function renderBookingHub() {
     const agreedNote = b.agreedPrice
         ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
         : '';
-    const breakdownRows =
-        fin(p.perNight) && fin(p.nightly) && p.nights > 0
+    // A custom price is ONE line (priceIsCustom, app.js — the shared decision):
+    // with a price_override the snapshot's per-night lines cannot reach the agreed
+    // total, and this popup printed both — the same contradiction the guest's
+    // confirmation email carried, on the owner's own screen.
+    const breakdownRows = priceIsCustom(p)
+        ? `<div class="price-row"><span>Agreed price (custom) · ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.total)}</span></div>`
+        : fin(p.perNight) && fin(p.nightly) && p.nights > 0
             ? `<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                <div class="price-row"><span>Transaction fee (${fin(p.transactionPct) ? p.transactionPct : 0}%)</span><span>${gbp(fin(p.txFee) ? p.txFee : 0)}</span></div>`
             : '';

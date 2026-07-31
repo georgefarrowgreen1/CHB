@@ -302,6 +302,37 @@ else {
     evalIn('delete occupancyLimits.__kidtest');
 }
 
+// A CUSTOM PRICE RENDERS AS ONE COHERENT LINE. price_override swaps
+// agreedPrice.total to the agreed figure while perNight/nightly/txFee stay the
+// standard snapshot (mapBookingFromApi), so My Stays, the PDF and the emailed
+// confirmation all printed "£130.00 × 7 nights: £910.00 … Total £750.00" — lines
+// that cannot add up to their own total, on the guest's own documents (reported
+// with a screenshot). priceIsCustom is the ONE decision (PHP mirror:
+// booking_price_is_custom, gated in test-payrail); this drives the REAL renderer.
+{
+    const evalIn = (src) => vm.runInContext(src, ctx);
+    const custom = (p) => evalIn(`priceIsCustom(${JSON.stringify(p)})`);
+    const std = { perNight: 130, nights: 7, nightly: 910, transactionPct: 0, txFee: 0, total: 910, damagesDeposit: 50 };
+    const ovr = Object.assign({}, std, { total: 700, isOverride: true });
+    check('a coherent snapshot is not custom', custom(std) === false);
+    check('an override total the lines cannot reach is', custom(ovr) === true);
+    check('partial price data (a total alone) is not custom — the skip-guards own that case',
+        custom({ total: 700 }) === false);
+    const box = (p, dep, total) => evalIn(
+        `guestPriceBoxHtml(${JSON.stringify(p)}, { dep: ${dep}, total: ${total} })`);
+    const stdBox = box(std, 50, 960);
+    check('a standard booking keeps its per-night and fee lines',
+        /£130\.00 × 7 nights/.test(stdBox) && /Transaction fee \(0%\)/.test(stdBox));
+    const ovrBox = box(ovr, 50, 750);
+    check('a custom-priced booking says so in one line',
+        /Agreed price for your stay \(7 nights\)/.test(ovrBox) && /£700\.00/.test(ovrBox));
+    check('…and the standard-rate maths is GONE, not printed beside it',
+        !/× 7 nights/.test(ovrBox) && !/Transaction fee/.test(ovrBox) && !/£910\.00/.test(ovrBox));
+    check('…deposit and total still render, so the box still adds up',
+        /Refundable damages deposit/.test(ovrBox) && /£750\.00/.test(ovrBox));
+    check('…and nothing reads £NaN', !/NaN/.test(ovrBox));
+}
+
 // THE REVIEW FORM PROMISES ONLY WHAT reviews.php DELIVERS. `submit` writes
 // status='pending' and `set_status` can DECLINE one, so "will appear on our site
 // shortly" guaranteed a publication the site does not — and the toast on the very
