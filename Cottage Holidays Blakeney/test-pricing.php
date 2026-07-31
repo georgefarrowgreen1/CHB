@@ -159,7 +159,9 @@ chk('booking_price: no snapshot and no rate → null', booking_price(null, $bLiv
 // and update the expected count here in the same PR.
 $allowedDirectCalls = [
     'bookings.php' => 3, // snapshot_fields() + confirmation-email fallback + hold-request deposit fallback
-    'pay.php' => 2, // total + damages-deposit legacy fallbacks
+    'pay.php' => 1, // damages-deposit legacy fallback only — the TOTAL's fallback
+    // moved inside booking_amount_due when pay.php's inline ask derivation was
+    // deleted (the stage-1 overhaul: one ask derivation, not two copies)
     'mailer.php' => 1, // payment-request damages-deposit legacy fallback
     'invoice.php' => 1, // legacy pre-snapshot fallback
     'square-webhook.php' => 1, // legacy pre-snapshot fallback

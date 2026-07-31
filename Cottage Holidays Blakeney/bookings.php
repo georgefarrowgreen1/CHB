@@ -1586,10 +1586,20 @@ if ($action === 'return_deposit') {
     // 'refund' action instead — this is the server-side guard for direct calls.)
     $charge = null;
     if (square_enabled()) {
+        // A CASH-COLLECTED deposit must never refund a card charge. With
+        // hold_status 'none' the deposit was recorded by hand (paid above the
+        // rental — recordPayment's "collected too"), so falling through to
+        // find_charge_for_refund on a booking that ALSO carries rental card rows
+        // would push the guest's cash back onto their card: mis-attributed at
+        // Square, and the drawer still holds the cash. 'none' → always a MANUAL
+        // return. The find_charge_for_refund fallthrough remains for the LEGACY
+        // shapes it existed for (pre-hold-model rows whose deposit rode the
+        // rental ledger with hold_status long since cleared to ''/other).
+        $hs = (string) ($b['hold_status'] ?? '');
         $charge =
-            in_array($b['hold_status'] ?? '', ['charged', 'captured'], true) && !empty($b['hold_payment_id'])
+            in_array($hs, ['charged', 'captured'], true) && !empty($b['hold_payment_id'])
                 ? $b['hold_payment_id']
-                : find_charge_for_refund($id, $amount);
+                : ($hs === 'none' ? null : find_charge_for_refund($id, $amount));
     }
     if ($charge) {
         $rr = record_square_refund($id, $charge, $amount, 'damages_return', $note, $b['name'], $b['prop_key']);
