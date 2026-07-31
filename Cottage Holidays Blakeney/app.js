@@ -4517,8 +4517,17 @@ function guestReviewForm(propKey) {
     let note = '';
     if (existing && existing.status === 'approved')
         note = `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`;
+    // A PENDING REVIEW SAYS WHERE IT IS. This read "Thank you for staying with
+    // us!" — an answer to a question nobody asked, at the one moment the guest is
+    // wondering what became of the review they wrote. Its sibling above names
+    // where an approved one went; this one now does too.
     else if (existing && existing.status === 'pending')
-        note = `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thank you for staying with us!</div>`;
+        note = `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thanks for your review of ${escapeHtml(meta.name)} — it goes on the site once we&rsquo;ve read it.</div>`;
+    // The line beside Submit says what the site DOES. It promised the review would
+    // appear "shortly", but reviews.php writes status='pending' and set_status can
+    // DECLINE one — and the toast on the next tap said "submitted for approval",
+    // so one screen made two claims. (A JS comment, not an HTML one: a comment in
+    // this template would ship, quoting the wrong sentence back at the guest.)
     const stars = existing ? existing.stars : 5;
     const starOpts = [5, 4, 3, 2, 1]
         .map(
@@ -4534,7 +4543,7 @@ function guestReviewForm(propKey) {
                     <textarea id="grf-text-${propKey}" rows="3" maxlength="1000" class="input-glass field-sm" placeholder="How was your stay at ${escapeHtml(meta.name)}?">${existing ? escapeHtml(existing.text) : ''}</textarea>
                     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
                         <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit review</button>
-                        <span style="font-size:0.72rem;color:var(--text-muted);">Your review will appear on our site shortly.</span>
+                        <span style="font-size:0.72rem;color:var(--text-muted);">We read every review before it goes on the site.</span>
                     </div>
                 </div>
             </div>`;
@@ -5694,12 +5703,21 @@ function checkOccupancy(propKey, adults, children) {
     return null;
 }
 
+// A CHILD IS UNDER 16 — one definition. Two things already depended on that
+// boundary and neither said so: childRate prices this count, and
+// guest-details.php registers the booking's ADULTS as "everyone staying who is
+// 16 or over" while never counting children, so a 16- or 17-year-old booked as a
+// child was missing from a register the law requires. The guest had to guess.
+// smoke-test §5 asserts this, both pickers' labels and the register agree.
+const CHILD_UNDER_AGE = 16;
 // Build a short, friendly description of a property's limit (for hints).
 function occupancyHint(propKey) {
     const lim = occupancyLimits[propKey];
     if (!lim) return '';
     if (lim.maxChildren === 0) return `Sleeps up to ${lim.maxAdults} adults.`;
-    return `Sleeps up to ${lim.maxTotal} (max ${lim.maxAdults} adults, ${lim.maxChildren} child).`;
+    // …and the count is pluralised: it read "max 2 adults, 2 child".
+    const kids = `${lim.maxChildren} child${lim.maxChildren === 1 ? '' : 'ren'} under ${CHILD_UNDER_AGE}`;
+    return `Sleeps up to ${lim.maxTotal} (max ${lim.maxAdults} adults, ${kids}).`;
 }
 
 // Per-property page content (title, description, gallery images, amenities).
@@ -13764,7 +13782,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'custaudit2';
+    const BUILD = 'custaudit3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

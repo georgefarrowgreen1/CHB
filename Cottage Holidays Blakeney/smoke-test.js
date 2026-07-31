@@ -262,6 +262,64 @@ else {
     check('garbage in comes back unchanged, not Invalid Date', usd('not-a-date', 3) === 'not-a-date');
 }
 
+// A CHILD IS UNDER 16, AND THREE FILES HAVE TO AGREE ABOUT IT. The guest picks a
+// number of children (index.html), pricing applies childRate to it (app.js), and
+// guest-details.php registers the booking's ADULTS as "everyone staying who is 16
+// or over" while never counting children — so the boundary decides who appears on
+// a register the Immigration (Hotel Records) Order 1972 requires. None of the
+// three used to STATE it, and the guest was left to guess. The numbers are
+// extracted and COMPARED rather than each asserted as 16, so moving one without
+// the others fails here.
+// NB read through the context, not `get()`: a top-level const is a lexical
+// binding and never becomes a property of the sandbox (the defaultRates trick
+// above, same reason).
+{
+    const evalIn = (src) => vm.runInContext(src, ctx);
+    const cua = evalIn('typeof CHILD_UNDER_AGE !== "undefined" ? CHILD_UNDER_AGE : null');
+    const kidBands = [...markup.matchAll(/class="hs-gband">under (\d+)</g)].map((m) => Number(m[1]));
+    const adultBands = [...markup.matchAll(/class="hs-gband">(\d+)\+</g)].map((m) => Number(m[1]));
+    let regAge = null;
+    try {
+        const reg = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'guest-details.php'), 'utf8');
+        const m = reg.match(/is <strong>(\d+) or over<\/strong>/);
+        regAge = m ? Number(m[1]) : null;
+    } catch (e) {}
+    check('app.js states the age a child is under', cua === 16);
+    // Both pickers the guest decides at — the hero search and the enquiry form.
+    check(`both guest pickers band their children (${kidBands.length} found)`, kidBands.length === 2);
+    check(`…and their adults (${adultBands.length} found)`, adultBands.length === 2);
+    check('the register states the age it collects from', regAge === 16);
+    check('every one of them means the SAME age',
+        cua != null && regAge != null && kidBands.length > 0 && adultBands.length > 0 &&
+        kidBands.every((n) => n === cua) && adultBands.every((n) => n === cua) && regAge === cua);
+    // …and the hint printed beneath the enquiry pickers agrees, pluralised: it
+    // used to read "max 2 adults, 2 child".
+    const hint = (a, c, t) => evalIn(
+        `occupancyLimits.__kidtest = { maxAdults: ${a}, maxChildren: ${c}, maxTotal: ${t} }; occupancyHint('__kidtest')`);
+    check('the occupancy hint names the band', /2 children under 16/.test(hint(2, 2, 4)));
+    check('…and reads "1 child under 16", not "1 children"', /1 child under 16/.test(hint(2, 1, 3)));
+    check('an adults-only cottage names no band at all', hint(2, 0, 2) === 'Sleeps up to 2 adults.');
+    evalIn('delete occupancyLimits.__kidtest');
+}
+
+// THE REVIEW FORM PROMISES ONLY WHAT reviews.php DELIVERS. `submit` writes
+// status='pending' and `set_status` can DECLINE one, so "will appear on our site
+// shortly" guaranteed a publication the site does not — and the toast on the very
+// next tap already said "submitted for approval", so one screen made two claims.
+{
+    const review = (mine) => vm.runInContext(
+        `myGuestReviews = ${JSON.stringify(mine)}; guestReviewForm('jollyboat')`, ctx);
+    const fresh = review({});
+    check('no review yet → no promise that it will be published', !/appear on our site/i.test(fresh));
+    check('…it says it is read first', /read every review before it goes on the site/i.test(fresh));
+    const pending = review({ jollyboat: { stars: 5, text: 'Lovely', status: 'pending' } });
+    check('a pending review says where it IS, not just thank you', /goes on the site once we/i.test(pending));
+    check('…and names the cottage it was about', /Thanks for your review of /i.test(pending));
+    check('an approved one still says it is live',
+        /live on our home page/i.test(review({ jollyboat: { stars: 5, text: 'Lovely', status: 'approved' } })));
+    vm.runInContext('myGuestReviews = {}', ctx);
+}
+
 console.log('\n== 6. Structural integrity (raw HTML) ==');
 // 6a. Every onclick handler references a function that exists (catches deleted/renamed fns).
 // The back office lives in admin.js (with facade stubs in app.js), so a handler is

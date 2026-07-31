@@ -8515,6 +8515,12 @@ body.light-mode .hs-field:hover {
   font-size: 0.8rem;
   min-width: 54px;
 }
+/* Age band beside Adults / Children: quieter than the label it qualifies. */
+.hs-gband {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  white-space: nowrap;
+}
 .hs-step {
   width: 40px; /* comfortable touch target (was 28px) */
   height: 40px;

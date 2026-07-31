@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=221">
+    <link rel="stylesheet" href="app.css?v=222">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -417,12 +417,12 @@
                     <div class="hs-field hs-guests">
                         <span class="hs-label">Guests</span>
                         <div class="hs-guest-rows">
-                            <div class="hs-guest"><span class="hs-gtype">Adults</span>
+                            <div class="hs-guest"><span class="hs-gtype">Adults <span class="hs-gband">16+</span></span>
                                 <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">&minus;</button>
                                 <span class="hs-count" id="hs-adults">2</span>
                                 <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
                             </div>
-                            <div class="hs-guest"><span class="hs-gtype">Children</span>
+                            <div class="hs-guest"><span class="hs-gtype">Children <span class="hs-gband">under 16</span></span>
                                 <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="-1" aria-label="Fewer children">&minus;</button>
                                 <span class="hs-count" id="hs-children">0</span>
                                 <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="1" aria-label="More children">+</button>
@@ -753,7 +753,7 @@
                     <input type="hidden" id="enq-children" value="0">
                     <div class="enq-guests">
                         <div class="enq-guest-row">
-                            <span>Adults</span>
+                            <span>Adults <span class="hs-gband">16+</span></span>
                             <div class="enq-step-group">
                                 <button type="button" class="hs-step" data-act="enqAdjust" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">&minus;</button>
                                 <span class="hs-count" id="enq-adults-count">2</span>
@@ -761,7 +761,7 @@
                             </div>
                         </div>
                         <div class="enq-guest-row" id="enq-children-field">
-                            <span>Children</span>
+                            <span>Children <span class="hs-gband">under 16</span></span>
                             <div class="enq-step-group">
                                 <button type="button" class="hs-step" data-act="enqAdjust" data-arg="children" data-arg2="-1" aria-label="Fewer children">&minus;</button>
                                 <span class="hs-count" id="enq-children-count">0</span>
@@ -1730,7 +1730,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=612"></script>
+    <script defer src="app.js?v=613"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
