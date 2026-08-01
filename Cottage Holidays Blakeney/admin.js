@@ -14958,10 +14958,12 @@ function hubPlanHtml(b, ps, gt, past) {
         ? (Number(depositTakenAmt(b)) || 0)
         : 0;
     const depAsk = Math.round((dep + depTake) * 100) / 100;
+    // The caption's badge already says "custom" — the rows never repeat it
+    // (owner's ask); a custom row just states its own figure's provenance.
     const depFrom = (b.depositAmountOverride > 0
-        ? 'fixed — custom'
+        ? 'fixed amount'
         : b.depositPctOverride > 0
-          ? `${b.depositPctOverride}% — custom`
+          ? `${b.depositPctOverride}%`
           : `${paymentTerms.depositPct || 25}% — site standard`)
         + (depTake > 0 ? ` + ${gbp(depTake)} refundable deposit` : '');
     // Paid ✓ against the FOLDED figure, read off gt (displayGrand), which only
@@ -14977,7 +14979,7 @@ function hubPlanHtml(b, ps, gt, past) {
           ? `Link sent ${day(b.depositRequestedAt)}`
           : 'Not asked yet');
     const dueFrom = b.balanceDueDate
-        ? `custom — standard would be ${fmtDate(stdDue)}`
+        ? `standard would be ${fmtDate(stdDue)}`
         : `${paymentTerms.balanceDays || 30} days before arrival`;
     const balState = gt.fullyPaid
         ? dot(true) + '<span class="bhub-plan-ok">Paid in full ✓</span>'

@@ -719,9 +719,12 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(!!planPost && planPost.deposit_pct === '30' && planPost.deposit_amount === '' && planPost.balance_due_date === d(20),
     `the dialog states the plan, never a figure to charge (${JSON.stringify(planPost && { pct: planPost.deposit_pct, amt: planPost.deposit_amount, due: planPost.balance_due_date })})`);
   const plan1 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
-  ok(/£182\.00 deposit/.test(plan1) && /30% — custom/.test(plan1),
+  ok(/£182\.00 deposit/.test(plan1) && /30%/.test(plan1),
     `the panel re-renders the custom deposit (£182 = 30% of £440 + the £50 the card carries) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
-  ok(/custom — standard would be/.test(plan1), 'and names the custom date against the standard it replaces');
+  ok(/standard would be/.test(plan1), 'and names the standard date the custom one replaces');
+  // The badge says "custom" ONCE — the rows never repeat it (owner's ask:
+  // "Remove custom, it already says that above").
+  ok((plan1.match(/custom/gi) || []).length === 1, 'the word "custom" appears exactly once — the badge');
   // The panel's FACTS carry sentence weight and a custom plan wears the badge —
   // the owner reported the whole panel as washed-out grey beside the payline.
   const planEmphasis = await page.evaluate(() => {
