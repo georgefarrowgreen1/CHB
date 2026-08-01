@@ -92,6 +92,10 @@ CREATE TABLE IF NOT EXISTS bookings (
     agreed_txn_fee     DECIMAL(10,2) NULL,
     agreed_on          DATE          NULL,
     price_override     DECIMAL(10,2) NULL,   -- if set, this is the agreed TOTAL (manual back-office price)
+    -- Per-booking payment plan (migration-103): NULL = site standard.
+    deposit_pct_override    DECIMAL(5,2)  NULL,  -- this booking's deposit %, replacing square-deposit-pct
+    deposit_amount_override DECIMAL(10,2) NULL,  -- …or a fixed £ deposit (wins over the pct; capped at the total)
+    balance_due_date        DATE          NULL,  -- when the balance falls due, replacing check-in − PAYMENT_BALANCE_DAYS
     terms_accepted_at  DATETIME      NULL,
     no_dogs_at         DATETIME      NULL,           -- guest confirmed no dog (carried from the enquiry)
     terms_version      VARCHAR(20)   NULL,

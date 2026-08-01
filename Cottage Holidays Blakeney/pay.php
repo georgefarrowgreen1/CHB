@@ -63,13 +63,15 @@ if ($b['agreed_total'] === null && !$rate) {
 $amt = booking_amount_due($b, $kind === 'hold' ? 'deposit' : $kind);
 $total = $amt['total'];
 $alreadyPaid = $amt['alreadyPaid'];
-// Deposit policy: a global percentage in the content table (default 25%). The
-// pre-lock due figures come from $amt; $depositAmount is still needed by the
-// UNDER-LOCK recompute at charge time, which re-derives the due figure against a
-// fresh paid read so a retry cannot double-charge (deleting it here left that
-// recompute reading an undefined £0 — caught before it shipped).
-$depPct = square_deposit_pct();
-$depositAmount = round($total * ($depPct / 100), 2);
+// Deposit policy: the BOOKING'S OWN figure (per-booking plan, else the global
+// percentage) via the one helper booking_amount_due itself reads. The pre-lock
+// due figures come from $amt; $depositAmount is still needed by the UNDER-LOCK
+// recompute at charge time, which re-derives the due figure against a fresh
+// paid read so a retry cannot double-charge (deleting it here left that
+// recompute reading an undefined £0 — caught before it shipped). Reading the
+// global pct here would let the charge disagree with the ask whenever a custom
+// deposit is set — the exact drift the delegation above exists to prevent.
+$depositAmount = booking_deposit_amount($b, $total);
 
 // Refundable damages deposit (bundled into the first payment). Use the frozen
 // snapshot; fall back to a live calc ONLY for legacy rows that have no snapshot at
@@ -115,7 +117,11 @@ if ($action === 'summary') {
         'total' => $total,
         'alreadyPaid' => $alreadyPaid,
         'balance' => round(max(0, $total - $alreadyPaid), 2),
-        'depositPct' => $depPct,
+        // The EFFECTIVE share, derived from the booking's own deposit figure —
+        // under a per-booking plan the global pct is not what this screen is
+        // charging, and the itemised sub-line ("£267.00 deposit (30%)") must
+        // describe the ask in front of the guest, not the site default.
+        'depositPct' => $total > 0 ? round($depositAmount / $total * 100) : square_deposit_pct(),
         'amountDue' => $amountDue,
         // The refundable damage deposit bundled into (and charged with) this payment.
         'damagesDue' => $damagesDue,

@@ -174,6 +174,23 @@ function payment_balance_days()
 {
     return defined('PAYMENT_BALANCE_DAYS') && (int) PAYMENT_BALANCE_DAYS > 0 ? (int) PAYMENT_BALANCE_DAYS : 30;
 }
+// When does THIS booking's balance fall due? The per-booking payment plan
+// (migration-103) may name a date; otherwise it is the site standard, check-in
+// minus the balance window. Returns 'Y-m-d', or null when there is no check-in
+// to anchor on. ONE definition — the window test below, the chaser's SQL and
+// the hub's plan panel all describe the same date, and stating it here is what
+// lets them agree.
+function booking_balance_due_date($b)
+{
+    if (!empty($b['balance_due_date'])) {
+        return substr((string) $b['balance_due_date'], 0, 10);
+    }
+    if (empty($b['check_in'])) {
+        return null;
+    }
+    return date('Y-m-d', strtotime($b['check_in'] . ' -' . payment_balance_days() . ' days'));
+}
+
 // Is this booking INSIDE the balance window (check-in closer than the window, or
 // already begun)? Inside it the FULL amount is due, so a deposit makes no sense:
 // the balance would fall due immediately after, and the guest would be asked to
@@ -187,13 +204,22 @@ function payment_balance_days()
 // the hub's own banner beside the button read "Nothing received yet — £Y due" with
 // the FULL figure. Same expression as enquiry-actions used, kept identical so the
 // two paths cannot answer differently.
+//
+// A CUSTOM due date is "due BY that day" — the window opens ON it (inclusive), so
+// the day the owner named is the day the full amount is asked. The STANDARD path
+// keeps its original boundary exactly (a booking made precisely 30 days out is
+// still asked for a deposit — gated from both sides in test-payrail), which is
+// strictly after the derived date; the two comparisons are deliberate, not drift.
 function booking_within_balance_window($b)
 {
-    if (empty($b['check_in'])) {
+    $due = booking_balance_due_date($b);
+    if ($due === null) {
         return false;
     }
-    $days = (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400);
-    return $days < payment_balance_days();
+    if (!empty($b['balance_due_date'])) {
+        return date('Y-m-d') >= $due;
+    }
+    return date('Y-m-d') > $due;
 }
 
 // What a booking should ACTUALLY be asked for, whatever was requested. Inside the
@@ -228,6 +254,28 @@ function square_deposit_pct()
     }
     return 25.0;
 }
+// THE deposit figure for one booking, given its rental total. The per-booking
+// plan wins: a fixed £ override first (capped at the total — a deposit larger
+// than the stay is a typo, not a plan), then a per-booking percentage, then the
+// site-wide square_deposit_pct(). Zero/blank overrides mean "not set", never
+// "0% deposit" — waiving the deposit is what the balance-window upgrade already
+// does honestly, and a silent £0 ask would read as settled. Every caller that
+// asks "what deposit?" goes through here (booking_amount_due, pay.php's
+// under-lock recompute), so the email, the pay screen and the charge cannot
+// quote three different shares of the same stay.
+function booking_deposit_amount($b, $total)
+{
+    $amt = isset($b['deposit_amount_override']) && $b['deposit_amount_override'] !== null && $b['deposit_amount_override'] !== '' ? (float) $b['deposit_amount_override'] : 0.0;
+    if ($amt > 0) {
+        return round(min($amt, (float) $total), 2);
+    }
+    $pct = isset($b['deposit_pct_override']) && $b['deposit_pct_override'] !== null && $b['deposit_pct_override'] !== '' ? (float) $b['deposit_pct_override'] : 0.0;
+    if ($pct > 0 && $pct <= 100) {
+        return round((float) $total * ($pct / 100), 2);
+    }
+    return round((float) $total * (square_deposit_pct() / 100), 2);
+}
+
 // Effective total + amount due for a kind ('deposit'|'balance'), server-authoritative.
 // 'balance' = everything still outstanding; 'deposit' = the deposit % minus anything paid.
 function booking_amount_due($b, $kind)
@@ -250,7 +298,7 @@ function booking_amount_due($b, $kind)
     // here asked the guest for more than the card would take whenever the ledger was
     // ahead of the reconciled figure.
     $alreadyPaid = booking_paid_so_far($b);
-    $depositAmount = round($total * (square_deposit_pct() / 100), 2);
+    $depositAmount = booking_deposit_amount($b, $total);
     $due = $kind === 'balance' ? max(0, $total - $alreadyPaid) : max(0, $depositAmount - $alreadyPaid);
     return ['total' => $total, 'alreadyPaid' => $alreadyPaid, 'due' => round($due, 2)];
 }

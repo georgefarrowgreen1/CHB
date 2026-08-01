@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 369;
+const ADMIN_BUNDLE_V = 370;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 120;
+const ADMIN_CSS_V = 121;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1264,6 +1264,16 @@ function mapBookingFromApi(row) {
         // form gained the box; surfaced by the hub's status chips (it was written
         // and shown nowhere).
         smsOptIn: !!Number(row.sms_opt_in),
+        // Per-booking payment plan (migration-103) + the ask/reminder stamps —
+        // the hub's plan panel reads these; NULL/'' means site standard. The
+        // FIGURES are always server-derived (booking_amount_due); these fields
+        // only let the panel describe the plan and its history.
+        depositPctOverride: row.deposit_pct_override != null && row.deposit_pct_override !== '' ? parseFloat(row.deposit_pct_override) : null,
+        depositAmountOverride: row.deposit_amount_override != null && row.deposit_amount_override !== '' ? parseFloat(row.deposit_amount_override) : null,
+        balanceDueDate: row.balance_due_date ? String(row.balance_due_date).slice(0, 10) : '',
+        depositRequestedAt: row.deposit_requested_at || '',
+        balanceRequestedAt: row.balance_requested_at || '',
+        balanceRemindedAt: row.balance_reminded_at || '',
         holdStatus: row.hold_status || 'none',
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
@@ -13865,7 +13875,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hubfeed31jul';
+    const BUILD = 'payplan01aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

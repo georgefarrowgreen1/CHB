@@ -238,7 +238,11 @@ chk('pay.php asks booking_amount_due instead of re-deriving the ask',
     preg_match('/\$amt = booking_amount_due\(\$b, \$kind === .hold. \? .deposit. : \$kind\);/', $payW2) === 1
     && strpos($payW2, "\$amountDue = \$amt['due'];") !== false);
 chk('…keeping the under-lock recompute its own deposit figure (retry safety)',
-    preg_match('/\$depositAmount = round\(\$total \* \(\$depPct \/ 100\), 2\);/', $payW2) === 1
+    // The figure now comes from booking_deposit_amount (the per-booking plan's
+    // one derivation) — reverting to the global-pct round() would let the charge
+    // disagree with the ask whenever a custom deposit is set.
+    preg_match('/\$depositAmount = booking_deposit_amount\(\$b, \$total\);/', $payW2) === 1
+    && preg_match('/\$depositAmount = round\(\$total \* \(\$depPct \/ 100\), 2\);/', $payW2) === 0
     && strpos($payW2, 'round(max(0, $depositAmount - $nowPaid), 2)') !== false);
 // The figure was computed and thrown away — the payload has to carry it or no
 // email can state it.
@@ -618,7 +622,10 @@ chk('the server invoice takes the same branch — one booking, one shape of docu
 // balance, settled at £700 with the £910 snapshot never owed).
 $priS = (string) file_get_contents(__DIR__ . '/pricing.php');
 chk('booking_amount_due asks off the override-resolved total',
-    preg_match('/function booking_amount_due[\s\S]{0,400}price_override[\s\S]{0,600}\$depositAmount = round\(\$total \*/', $priS) === 1);
+    // The deposit maths moved into booking_deposit_amount($b, $total) — the claim
+    // is unchanged (the override resolves into $total BEFORE the deposit share is
+    // taken of it), the shape is now the shared per-booking-plan helper.
+    preg_match('/function booking_amount_due[\s\S]{0,400}price_override[\s\S]{0,600}\$depositAmount = booking_deposit_amount\(\$b, \$total\)/', $priS) === 1);
 $payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
 // Stage-1 overhaul: the override resolution moved INSIDE booking_amount_due
 // (pinned above); pay.php's claim is now that its total IS the helper's.
@@ -677,6 +684,74 @@ chk('a partial deposit return states the retained difference',
 chk('…and a manual return never claims the card rail',
     preg_match("/function send_deposit_return_email[\s\S]{0,900}!empty\(\\\$b\['manual'\]\) \? 'by the method we agreed' : 'to the card you paid with'/", $mailR) === 1
     && strpos($bkW3, "'manual' => \$status === 'MANUAL',") !== false);
+
+echo "\n== The per-booking payment plan (migration-103) ==\n";
+// booking_deposit_amount — the ONE deposit derivation. Pure paths only here (the
+// default path falls to square_deposit_pct(), which needs the DB — its wiring is
+// pinned by scan below and driven for real in test-integration).
+chk('a 30% override on £890 asks £267.00', booking_deposit_amount(['deposit_pct_override' => 30], 890.0) === 267.0);
+chk('a fixed £300 override asks exactly that', booking_deposit_amount(['deposit_amount_override' => 300], 890.0) === 300.0);
+chk('a fixed override larger than the stay is capped at the total (a typo, not a plan)',
+    booking_deposit_amount(['deposit_amount_override' => 1000], 890.0) === 890.0);
+chk('the fixed amount wins when both are somehow stored (set_payment_plan refuses both, reads stay deterministic)',
+    booking_deposit_amount(['deposit_amount_override' => 300, 'deposit_pct_override' => 30], 890.0) === 300.0);
+chk('pence stay exact (12.5% of £333 → £41.63)', booking_deposit_amount(['deposit_pct_override' => 12.5], 333.0) === 41.63);
+$priS3 = (string) file_get_contents(__DIR__ . '/pricing.php');
+chk('an out-of-range pct is "not set", never a 0% ask (source: the (0,100] gate falls through to the site pct)',
+    preg_match('/function booking_deposit_amount[\s\S]{0,700}\$pct > 0 && \$pct <= 100[\s\S]{0,300}square_deposit_pct\(\)/', $priS3) === 1);
+
+// booking_balance_due_date + the window it drives. A CUSTOM date is "due BY that
+// day" (inclusive — the day the owner named is the day the full amount is
+// asked); the STANDARD path keeps its original strict boundary, gated both
+// sides elsewhere in this file.
+$today = date('Y-m-d');
+chk('a custom due date is returned verbatim', booking_balance_due_date(['balance_due_date' => '2027-09-14', 'check_in' => '2027-09-28']) === '2027-09-14');
+chk('no plan → check-in minus the window', booking_balance_due_date(['check_in' => date('Y-m-d', strtotime('+40 days'))]) === date('Y-m-d', strtotime('+10 days')));
+chk('no check-in and no plan → null (nothing to anchor on)', booking_balance_due_date([]) === null);
+$cin = date('Y-m-d', strtotime('+60 days')); // far out, so the standard window never interferes
+chk('custom due YESTERDAY → inside the window (full amount due)',
+    booking_within_balance_window(['check_in' => $cin, 'balance_due_date' => date('Y-m-d', strtotime('-1 day'))]) === true);
+chk('custom due TODAY → inside (due BY today means today)',
+    booking_within_balance_window(['check_in' => $cin, 'balance_due_date' => $today]) === true);
+chk('custom due TOMORROW → outside (the owner said hold off)',
+    booking_within_balance_window(['check_in' => $cin, 'balance_due_date' => date('Y-m-d', strtotime('+1 day'))]) === false);
+chk('…so the pay-in-full upgrade moves with the plan: a deposit link opened on the custom due date charges everything',
+    booking_payment_kind(['check_in' => $cin, 'balance_due_date' => $today], 'deposit') === 'balance');
+chk('…and stays a deposit the day before it', booking_payment_kind(['check_in' => $cin, 'balance_due_date' => date('Y-m-d', strtotime('+1 day'))], 'deposit') === 'deposit');
+
+// WIRING — the chaser follows the booking's own date in SQL (the COALESCE is
+// booking_balance_due_date's SQL form; for a NULL plan it is byte-for-byte the
+// old interval condition), and the two passes stay mutually exclusive: the
+// request fires ON/AFTER the due date, the deposit recovery only BEFORE it.
+$pdS = (string) file_get_contents(__DIR__ . '/payments-due.php');
+chk('the balance request pass waits for the booking\'s own due date',
+    preg_match('/balance_requested_at IS NULL[\s\S]{0,300}COALESCE\(balance_due_date, DATE_SUB\(check_in, INTERVAL \? DAY\)\) <= CURDATE\(\)/', $pdS) === 1);
+chk('the abandoned-deposit recovery stays strictly BEFORE it (mutually exclusive by construction)',
+    preg_match('/deposit_requested_at IS NOT NULL[\s\S]{0,400}COALESCE\(balance_due_date, DATE_SUB\(check_in, INTERVAL \? DAY\)\) > CURDATE\(\)/', $pdS) === 1);
+
+// WIRING — set_payment_plan's refusals, each a different way the plan could lie:
+// both deposit forms at once, a share over 100%, a deposit bigger than the stay,
+// a date already gone, a date after arrival. And the store is parameterised
+// against the three columns in one statement.
+$bkPlan = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('set_payment_plan refuses both deposit forms at once', strpos($bkPlan, 'not both') !== false);
+chk('…a percentage outside (0,100]', strpos($bkPlan, 'must be between 0 and 100') !== false);
+chk('…a deposit larger than the stay', strpos($bkPlan, 'more than the stay costs') !== false);
+chk('…a due date already gone', strpos($bkPlan, 'due date has already passed') !== false);
+chk('…and one after check-in', strpos($bkPlan, 'by check-in') !== false);
+chk('the plan stores all three fields in one parameterised write',
+    strpos($bkPlan, 'SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?') !== false);
+
+// WIRING — the manual reminder: rides request_payment with reminder wording
+// (the same third argument the cron's reminder pass passes), is refused before
+// anything has been asked for, and stamps balance_reminded_at so the cron's own
+// reminders space off it.
+chk('a reminder is refused before any request has gone', strpos($bkPlan, 'Nothing has been asked for yet') !== false);
+chk('the manual reminder sends the reminder composer, not a fresh ask',
+    preg_match('/\$res = request_booking_payment\(\$b, \$kind, \$isReminder\);/', $bkPlan) === 1);
+chk('…and stamps balance_reminded_at', preg_match('/if \(\$isReminder\) \{[\s\S]{0,120}SET balance_reminded_at = NOW\(\)/', $bkPlan) === 1);
+chk('a manual deposit ask arms the recovery stamp without clobbering the first one',
+    strpos($bkPlan, 'SET deposit_requested_at = COALESCE(deposit_requested_at, NOW())') !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -1139,12 +1139,17 @@ if ($action === 'email_guest') {
 // (square_deposit_pct, booking_amount_due live in pricing.php; site_base_url in db.php.)
 
 // Email the guest a secure link to pay the deposit (or balance) on our site.
+// `reminder: true` re-sends as the gentler reminder wording (the same email the
+// nightly chaser's reminder pass sends) — refused when nothing has been asked
+// for yet, because a reminder about a request that never went is a first ask
+// wearing the wrong clothes.
 if ($action === 'request_payment') {
     if (!square_enabled()) {
         json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
     $asked = ($in['kind'] ?? 'deposit') === 'balance' ? 'balance' : 'deposit';
+    $isReminder = !empty($in['reminder']);
     $b = booking_by_id($id);
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
@@ -1152,12 +1157,17 @@ if ($action === 'request_payment') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
+    if ($isReminder && empty($b['balance_requested_at']) && empty($b['deposit_requested_at'])) {
+        json_out(['error' => 'Nothing has been asked for yet — email the deposit or balance link first, then remind.'], 400);
+    }
     // THE WINDOW DECIDES, NOT THE CALLER. `kind` arrived from the client and
     // defaulted to 'deposit', so a booking made inside the balance window was
     // emailed "Pay your deposit — £X" for 25% when the whole amount was already
     // due — while the banner the owner tapped read "Nothing received yet — £Y
     // due" with the full figure. Same rule enquiry-actions.php applies on
     // approval; the amount was always server-derived, and now the KIND is too.
+    // (booking_within_balance_window reads the per-booking due date, so a custom
+    // plan moves this upgrade with it.)
     $kind = booking_payment_kind($b, $asked);
 
     // DON'T ASK THE SAME GUEST TWICE IN THE SAME BREATH. The client disables the button
@@ -1165,24 +1175,99 @@ if ($action === 'request_payment') {
     // second device — those arrive as genuinely new requests. A repeat inside the window
     // is refused IN WORDS AND WITH A STATUS, so the owner knows it went rather than
     // wondering whether to try again. See resend_guard() for why the status matters.
-    resend_guard($id, 'payment.request', (string) ($b['name'] ?? ''), 'payment request');
+    resend_guard($id, 'payment.request', (string) ($b['name'] ?? ''), $isReminder ? 'reminder' : 'payment request');
 
     require_once __DIR__ . '/mailer.php';
-    $res = request_booking_payment($b, $kind);
+    $res = request_booking_payment($b, $kind, $isReminder);
     if (!empty($res['ok'])) {
-        log_activity('payment', 'payment.request', ucfirst($kind) . ' payment request emailed — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
-        // Asked for everything now → record it, so payments-due.php's scheduled
-        // balance chase never asks a second time (the same bookkeeping the
-        // approval path does).
-        if ($kind === 'balance') {
-            try {
+        log_activity('payment', 'payment.request', ($isReminder ? ucfirst($kind) . ' reminder emailed — ' : ucfirst($kind) . ' payment request emailed — ') . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        // Bookkeeping mirrors the nightly chaser's, so the manual and scheduled
+        // paths tell one story: a balance ask stops payments-due.php asking
+        // again, a deposit ask arms its abandoned-deposit recovery, and a
+        // reminder spaces the cron's own reminders off this one.
+        try {
+            if ($isReminder) {
+                db()->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')->execute([$id]);
+            } elseif ($kind === 'balance') {
                 db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')->execute([$id]);
-            } catch (\Throwable $e) {
+            } else {
+                db()->prepare('UPDATE bookings SET deposit_requested_at = COALESCE(deposit_requested_at, NOW()) WHERE id = ?')->execute([$id]);
             }
+        } catch (\Throwable $e) {
         }
-        json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $kind]);
+        json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $kind, 'reminder' => $isReminder]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
+}
+
+// ---- Per-booking payment plan (migration-103) ------------------------------
+// The owner states the PLAN (a custom deposit as % or £, a custom balance due
+// date); every figure is then DERIVED from it server-side — the client never
+// sends an amount to charge. Clearing a field returns that half to the site
+// standard. Bounds, each refused in words: at most one deposit form, pct in
+// (0,100], amount within the rental total, the due date between today and
+// check-in. Changing a plan never unsends anything already gone.
+if ($action === 'set_payment_plan') {
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    $pctIn = trim((string) ($in['deposit_pct'] ?? ''));
+    $amtIn = trim((string) ($in['deposit_amount'] ?? ''));
+    $dateIn = trim((string) ($in['balance_due_date'] ?? ''));
+    if ($pctIn !== '' && $amtIn !== '') {
+        json_out(['error' => 'Give the custom deposit as a percentage OR a £ amount, not both.'], 400);
+    }
+    $pct = null;
+    if ($pctIn !== '') {
+        $pct = (float) $pctIn;
+        if (!($pct > 0 && $pct <= 100)) {
+            json_out(['error' => 'The deposit percentage must be between 0 and 100.'], 400);
+        }
+    }
+    $amt = null;
+    if ($amtIn !== '') {
+        $amt = round((float) $amtIn, 2);
+        $tot = (float) (booking_amount_due($b, 'balance')['total'] ?? 0);
+        if ($amt <= 0) {
+            json_out(['error' => 'The deposit amount must be more than £0.'], 400);
+        }
+        if ($tot > 0 && $amt > $tot + 0.005) {
+            json_out(['error' => 'That deposit is more than the stay costs (£' . number_format($tot, 2) . ').'], 400);
+        }
+    }
+    $due = null;
+    if ($dateIn !== '') {
+        $d = DateTime::createFromFormat('Y-m-d', $dateIn);
+        if (!$d || $d->format('Y-m-d') !== $dateIn) {
+            json_out(['error' => 'The balance due date must be a real date (YYYY-MM-DD).'], 400);
+        }
+        if ($dateIn < date('Y-m-d')) {
+            json_out(['error' => 'That due date has already passed — leave it blank for the standard schedule, or pick a future date.'], 400);
+        }
+        if (!empty($b['check_in']) && $dateIn > substr((string) $b['check_in'], 0, 10)) {
+            json_out(['error' => 'The balance must be due by check-in (' . uk_date($b['check_in']) . ') at the latest.'], 400);
+        }
+        $due = $dateIn;
+    }
+    try {
+        db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?')
+            ->execute([$pct, $amt, $due, $id]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Could not save the plan — has migrate.php been run?'], 500);
+    }
+    $bits = [];
+    if ($amt !== null) {
+        $bits[] = '£' . number_format($amt, 2) . ' deposit';
+    } elseif ($pct !== null) {
+        $bits[] = rtrim(rtrim(number_format($pct, 2), '0'), '.') . '% deposit';
+    }
+    if ($due !== null) {
+        $bits[] = 'balance due ' . uk_date($due);
+    }
+    log_activity('payment', 'payment.plan', ($bits ? 'Payment plan set — ' . implode(', ', $bits) : 'Payment plan cleared — back to the site standard') . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    json_out(['ok' => true, 'deposit_pct' => $pct, 'deposit_amount' => $amt, 'balance_due_date' => $due]);
 }
 
 // Return the secure pay link for a booking (to copy/share by WhatsApp, SMS, etc.)

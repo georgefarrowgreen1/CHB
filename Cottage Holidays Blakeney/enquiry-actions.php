@@ -324,10 +324,11 @@ function enquiry_approve($id, $priceOverride = null)
     } catch (\Throwable $ex) {
     }
 
-    // Auto payment request (Square): on approval ask the guest for the 25% deposit —
-    // or, if check-in is already inside the balance window (default 30 days), ask for
-    // the full amount upfront. The scheduled job (payments-due.php) chases the balance
-    // ~a month before check-in for the staged bookings. Never blocks the approval.
+    // Auto payment request (Square): on approval ask the guest for the deposit
+    // (the site's percentage — a fresh approval has no per-booking plan yet) —
+    // or, if check-in is already inside the balance window (default 30 days), ask
+    // for the full amount upfront. The scheduled job (payments-due.php) chases the
+    // balance when it falls due for the staged bookings. Never blocks the approval.
     $paymentRequest = null;
     if (square_enabled() && !empty($e['email'])) {
         try {
