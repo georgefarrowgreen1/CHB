@@ -228,43 +228,41 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   const pastPay = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
   ok(/still owed from this finished stay/.test(pastPay) && !/All set/.test(pastPay), `finished + unpaid → chases the balance, not "all set" (${pastPay.trim().slice(0, 60)})`);
 
-  // ---------- A2c. the email ask lives IN the Payments row too ----------
-  // The banner asks for the money, but the owner working the Payments block had
-  // to go back up for the one action that asks for it — Record/Copy/Invoice were
-  // there and the email was not. Staged: the deposit ask first, then the
-  // SUBSEQUENT balance ask once something is in. One derivation (askKind) feeds
-  // the banner AND the row, gated here by comparing what each actually carries.
-  console.log('A2c. email ask in the Payments row');
+  // ---------- A2c. ONE staged ask, in the payask — never a second copy ----------
+  // History matters here: the staged email button was ADDED to this row when
+  // the ask lived in a banner a screen above (the owner had to go back up for
+  // it); then the banner moved INTO the Payments block, and the row's copy
+  // became a strict duplicate — measured at 390px, the same requestPayment
+  // three times in one screen-height (payask, row, sticky). The payask IS the
+  // staged ask now (hubAskKind still derives the stage), and this gate asserts
+  // both halves: the stage on the ONE control, and the absence of the twin.
+  console.log('A2c. one staged ask, no duplicate');
   const askShape = async () => page.evaluate(() => {
     const row = document.querySelector('.bhub-headpay .bhub-btn-row [data-act="requestPayment"]');
     const ban = document.querySelector('.bhub-next [data-act="requestPayment"]');
     const kind = (el) => { try { return JSON.parse(el.getAttribute('data-args') || '[]')[1] || ''; } catch (e) { return ''; } };
     return {
-      rowLabel: row ? row.textContent.trim() : '',
-      rowKind: row ? kind(row) : '',
+      rowDup: !!row,
       banKind: ban ? kind(ban) : '',
-      both: !!row && !!ban,
+      asks: document.querySelectorAll('.bhub-head [data-act="requestPayment"]').length,
     };
   });
   // b4 is part-paid (deposit in, balance owed) and Square is on → the SUBSEQUENT ask.
   let ask = await askShape();
-  ok(ask.rowLabel === 'Email balance link' && ask.rowKind === 'balance',
-    `a part-paid booking's row offers the subsequent balance email (${ask.rowLabel} / ${ask.rowKind})`);
-  ok(ask.both && ask.rowKind === ask.banKind,
-    `…and the row and the banner ask for the SAME stage (${ask.rowKind} vs ${ask.banKind})`);
+  ok(ask.banKind === 'balance' && !ask.rowDup,
+    `a part-paid booking's payask carries the subsequent balance stage, once (${ask.banKind}, ${ask.asks} ask control)`);
   // b1 has nothing paid → the deposit ask.
   await page.evaluate(() => showDetails('21a', findBookingById('b1')));
   await page.waitForTimeout(500);
   ask = await askShape();
-  ok(ask.rowLabel === 'Email deposit link' && ask.rowKind === 'deposit',
-    `an unpaid booking's row offers the deposit email (${ask.rowLabel} / ${ask.rowKind})`);
-  ok(ask.both && ask.rowKind === ask.banKind,
-    `…agreeing with the banner again (${ask.rowKind} vs ${ask.banKind})`);
+  ok(ask.banKind === 'deposit' && !ask.rowDup,
+    `an unpaid booking's payask carries the deposit stage, once (${ask.banKind}, ${ask.asks} ask control)`);
+  ok(ask.asks === 1, `the header holds exactly ONE email-ask control (${ask.asks})`);
   // b3 is paid in full → nothing left to ask for.
   await page.evaluate(() => showDetails('21a', findBookingById('b3')));
   await page.waitForTimeout(500);
   ask = await askShape();
-  ok(ask.rowLabel === '' && !ask.both, 'a paid-in-full booking offers no email ask at all');
+  ok(ask.banKind === '' && !ask.rowDup && ask.asks === 0, 'a paid-in-full booking offers no email ask at all');
 
   // ---------- A3. finished stay: Edit is soft-locked ----------
   // A checked-out booking is a record (invoices, guest register, directory) —

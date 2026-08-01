@@ -895,14 +895,26 @@ mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-tes
 INSIDE the Payments header** (`.bhub-payask`, deliberately still carrying
 `.bhub-next` so the gates that read the banner read the same node) and
 `nextHtml()` returns '' for it — the ask is said ONCE, where the money lives;
-non-money banners (arrival prep etc.) keep the top slot. The Payments button row's
-email ask is STAGED: "Email deposit link" until something is in, then the
-SUBSEQUENT "Email balance link"; hidden when paid in full or with no email on
-file. `hubAskKind(gt, past)` is the ONE derivation both the header ask and the row
-read — derived separately they could ask for different stages of the same money,
-and ui-test-hub §A2c compares what each node actually carries. The server still
-derives the SUM (`booking_payment_kind` upgrades a deposit ask to the full amount
-inside the balance window) — the label names the stage, not the figure).
+non-money banners (arrival prep etc.) keep the top slot. **The payask IS the
+staged email ask** (`hubAskKind(gt, past)` — deposit first, then the SUBSEQUENT
+balance once something is in; the server still derives the SUM,
+`booking_payment_kind` upgrading a deposit ask to the full amount inside the
+balance window — the label names the stage, not the figure). The button row's
+own staged copy of that button is REMOVED: it was added when the ask lived in a
+banner a screen above (the owner had to go back up for it) and became a strict
+duplicate the day the banner moved INTO the Payments block — measured at 390px,
+the same `requestPayment` three times in one screen-height (payask, row,
+sticky). ui-test-hub §A2c now asserts BOTH halves: the stage on the one control,
+and the absence of the twin — don't re-add the row button; the history above is
+why it looks plausible. **The row that remains is the QUIET tier**
+(`.bhub-act-links` / `.bhub-actlink` — linklike text actions at the 44px floor):
+Send a reminder / Record payment / Copy pay link / Invoice, because five pills
+shouting as loudly as the ask was the jumble the owner reported. Same pass: the
+Edit menu is a compact right-aligned control at phone width (it rendered as the
+widest pill in the header for the page's rarest action — app.css's
+`width:100%` pair dropped `.bhub-actions`), and `.bhub-plan` is a FILL under a
+hairline, not a third box treatment between the tinted payask and the dashed
+gap chip.
 **THE PAYMENT PLAN IS PER-BOOKING** (migration-103: `deposit_pct_override` /
 `deposit_amount_override` / `balance_due_date`, NULL = site standard; gated by
 test-payrail's plan section + ui-test-hub §C3). The 25% deposit and the 30-day
