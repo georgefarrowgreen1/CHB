@@ -978,6 +978,38 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
     // require — the same fatal, one step earlier.
     const absent = [...required].filter((f) => !fs.existsSync(path.join(__dirname, f)));
     check(`every required file exists in the repo${absent.length ? ' — ' + absent.join(', ') : ''}`, absent.length === 0);
+    // …AND THE PAYLOAD HELPERS THE BOOTSTRAPS CALL MUST BE DECLARED BY THE FILES
+    // THEY REQUIRE. Reported live: bootstrap.php fataled with "Call to undefined
+    // function rates_public_payload()" on a host whose rates.php was stale. The
+    // repo was consistent, so this could not have caught THAT — but it catches
+    // the same shape one step earlier: a helper renamed, moved, or called from a
+    // bootstrap that never requires its home. Each bootstrap now also DEGRADES
+    // rather than 500s, so this pairs a compile-time rule with a runtime one.
+    for (const boot of ['bootstrap.php', 'admin-bootstrap.php']) {
+        const src = fs.readFileSync(path.join(__dirname, boot), 'utf8');
+        const reqs = [...src.matchAll(/require(?:_once)?\s+__DIR__\s*\.\s*'\/([A-Za-z0-9._-]+\.php)'/g)].map((m) => m[1]);
+        // Transitively: a bootstrap's requires may pull in the file that declares it.
+        const seen = new Set();
+        const queue = [...reqs];
+        let decls = '';
+        while (queue.length) {
+            const f = queue.shift();
+            if (seen.has(f) || !fs.existsSync(path.join(__dirname, f))) continue;
+            seen.add(f);
+            const s = fs.readFileSync(path.join(__dirname, f), 'utf8');
+            decls += s;
+            for (const m of s.matchAll(/require(?:_once)?\s+__DIR__\s*\.\s*'\/([A-Za-z0-9._-]+\.php)'/g)) queue.push(m[1]);
+        }
+        // The helpers this bootstrap calls, taken from its own $part('…') list
+        // and any bare foo_payload() calls.
+        const called = new Set();
+        for (const m of src.matchAll(/\$part\('([A-Za-z0-9_]+)'\)/g)) called.add(m[1]);
+        for (const m of src.matchAll(/\b([a-z0-9_]*payload)\s*\(/g)) called.add(m[1]);
+        called.delete('payload');
+        const missing = [...called].filter((fn) => !new RegExp('function\\s+' + fn + '\\s*\\(').test(decls));
+        check(`${boot}: every payload helper it calls is declared by a file it requires (${called.size} helpers)`,
+            called.size >= 4 && missing.length === 0, missing.join(', '));
+    }
 }
 
 // ---- 12. Nothing overrides the double-booking guard on its own ------------

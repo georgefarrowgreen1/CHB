@@ -22,20 +22,50 @@ require_once __DIR__ . '/content.php';
 require_once __DIR__ . '/reviews.php';
 require_once __DIR__ . '/square-config.php';
 
+// ONE BAD PART MUST NOT TAKE THE WHOLE FIRST PAINT WITH IT. Reported live: a
+// host running a STALE rates.php (a mirror that finished with a file
+// un-uploaded — the class deploy.yml's second pass exists for) made
+// rates_public_payload() undefined, and the fatal 500'd the combined boot for
+// every visitor: the site still worked, because each loader falls back to its
+// own endpoint, but every anonymous first paint paid four requests instead of
+// one and the owner's log filled with the same error every hour.
+//
+// A part that cannot be built is now OMITTED — the client's loaders already
+// treat a missing part exactly as they treat no bootstrap at all, so the cost
+// is one extra request for that part instead of four for everyone. It is still
+// REPORTED through the same deduped channel the fatal used, because degrading
+// silently for ever is how a broken deploy goes unnoticed.
+$part = function (string $fn) {
+    try {
+        if (!function_exists($fn)) {
+            chb_log_server_error('Missing payload helper', 'bootstrap: ' . $fn . '() is not defined — is the deploy complete?', __FILE__, 0);
+            return null;
+        }
+        return $fn();
+    } catch (\Throwable $e) {
+        chb_log_server_error('Payload error', 'bootstrap: ' . $fn . '() failed — ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        return null;
+    }
+};
+
 // Each part is byte-shape-identical to its own endpoint's GET response, so the
 // front-end loaders can consume either interchangeably. An empty content map
 // must encode as {} (not []) — same as json_out would produce via the assoc map.
-$content = content_public_payload();
-if ($content['content'] === []) {
+$content = $part('content_public_payload');
+if (is_array($content) && ($content['content'] ?? null) === []) {
     $content['content'] = new stdClass();
 }
-$payload = [
-    'ok' => true,
-    'rates' => rates_public_payload(),
+$payload = ['ok' => true];
+foreach ([
+    'rates' => $part('rates_public_payload'),
     'content' => $content,
-    'reviews' => reviews_public_payload(),
-    'square' => square_config_payload(),
-];
+    'reviews' => $part('reviews_public_payload'),
+    'square' => $part('square_config_payload'),
+] as $key => $val) {
+    if ($val !== null) {
+        $payload[$key] = $val;
+    }
+}
 
 $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 if ($body === false) {
