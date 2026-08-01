@@ -651,6 +651,16 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   });
   ok(/Paid ✓/.test(foldStates.charged), 'rental £110 + charged £50 → the £160 first payment reads Paid ✓');
   ok(!/Paid ✓/.test(foldStates.unchargedDep), 'the same £110 with the £50 uncharged does NOT — the header above would say £110 too');
+  // The chip-row dot vocabulary reaches the plan states: green = settled,
+  // red = still open, words unchanged (colour is never the only signal).
+  const planDots = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bhub-plan .bhub-plan-state')).map((s) => {
+      const d = s.querySelector('.bhub-chip-dot');
+      return d ? (d.classList.contains('is-ok') ? 'ok' : d.classList.contains('is-bad') ? 'bad' : '?') : 'none';
+    }));
+  ok(planDots.length === 2 && planDots.every((v) => v === 'bad'), `nothing settled → both plan rows lead with a red dot (${planDots.join(',')})`);
+  ok(foldStates.charged.includes('bhub-chip-dot is-ok'), 'a settled first payment leads with a green dot');
+  ok(!foldStates.unchargedDep.includes('bhub-chip-dot is-ok'), 'the uncharged one stays red — same judgement as its Paid ✓');
   // The Edit-plan dialog: type 30% + a custom due date, Save → the client posts
   // the PLAN (never an amount to charge) and re-renders from what the server
   // accepted.
