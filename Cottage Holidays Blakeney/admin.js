@@ -20967,6 +20967,51 @@ let __mbxHasMore = false;
 // and COUNTED, never silently swallowed — the list says so in one quiet line.
 let __mbxOwnHidden = 0;
 let __mbxLastOpen = null;
+// ---- ONE ROW PER CONVERSATION ----------------------------------------------
+// Four rows reading "anneolin@btinternet.com · Re: Pay your deposit — Pimpernel"
+// are one conversation wearing four costumes (owner's screenshot). Noise for
+// GROUPING, never for display: stacked reply prefixes (a client writes "Re: Re:",
+// another "RE:"), and our own (#12xabc…) thread token — the tag the
+// reply-by-email route adds so a client that drops In-Reply-To still matches.
+function mbxSubjectKey(subject) {
+    let s = String(subject || '').toLowerCase();
+    s = s.replace(/\(#\d+x[0-9a-f]+\)/g, ' ').replace(/\b\d+x[0-9a-f]{16}\b/g, ' ');
+    // Strip every stacked reply/forward prefix, not just the first.
+    let prev;
+    do {
+        prev = s;
+        s = s.replace(/^\s*(re|aw|fw|fwd)\s*(\[\d+\])?\s*:\s*/i, '');
+    } while (s !== prev);
+    return s.replace(/\s+/g, ' ').trim();
+}
+// Conversations newest-first, each holding its messages newest-first. The SENDER
+// is part of the key — "Re: Pay your deposit — Pimpernel" is the same words for
+// every guest we chase, so subject alone would file one guest's mail under
+// another's name (the false-merge rule the customer directory already follows).
+function mbxThreads(list) {
+    const map = new Map();
+    for (const m of list || []) {
+        const key = (m.from || m.fromRaw || '') + '|' + mbxSubjectKey(m.subject);
+        let t = map.get(key);
+        if (!t) {
+            t = { key, from: m.from, fromRaw: m.fromRaw, subject: m.subject, date: m.date, unread: false, msgs: [] };
+            map.set(key, t);
+        }
+        t.msgs.push(m);
+        if (!m.seen) t.unread = true;
+        // The thread wears its NEWEST message's date and subject — that is the
+        // state of the conversation, and what a reply would be answering.
+        if (String(m.date || '') > String(t.date || '')) {
+            t.date = m.date;
+            t.subject = m.subject;
+            t.fromRaw = m.fromRaw;
+        }
+    }
+    const out = [...map.values()];
+    for (const t of out) t.msgs.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    out.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    return out;
+}
 function mbxEsc(v) {
     return escapeHtml(String(v == null ? '' : v));
 }
@@ -21094,22 +21139,29 @@ function renderMailboxList(keepSearchFocus) {
     // Shared matcher (multi-term + synonyms), so the mailbox search behaves like ⌘K.
     let rows = '';
     if (__mbxTab === 'inbox') {
-        rows = __mbxMessages
-            .filter((m) => CHB_SEARCH.matches((m.fromRaw || '') + ' ' + (m.from || '') + ' ' + (m.subject || ''), q))
-            .map((m) => {
-                const unread = !m.seen;
+        // ONE ROW PER CONVERSATION. Search still matches per MESSAGE, so a
+        // phrase from an older reply surfaces the conversation holding it.
+        rows = mbxThreads(
+            __mbxMessages.filter((m) => CHB_SEARCH.matches((m.fromRaw || '') + ' ' + (m.from || '') + ' ' + (m.subject || ''), q)),
+        )
+            .map((t) => {
+                const m = t.msgs[0]; // the newest — what the row represents
+                const n = t.msgs.length;
                 // Each row carries its own expansion slot: the email opens
                 // INSIDE the tapped card (accordion), not at the page bottom.
+                // A chain opens on its NEWEST message, earlier ones listed
+                // beneath it — one tap to what you actually want.
                 return `
-        <div class="mbx-item" data-uid="${mbxEsc(m.uid)}" data-search="${mbxEsc(((m.fromRaw || m.from || '') + ' ' + (m.subject || '')).toLowerCase())}">
-        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}${__mbxSelUid != null && String(__mbxSelUid) === String(m.uid) ? ' is-open' : ''}" ${chbAttrs('mailboxOpen', m.uid)} aria-expanded="false">
+        <div class="mbx-item" data-uid="${mbxEsc(m.uid)}" data-uids="${mbxEsc('|' + t.msgs.map((x) => x.uid).join('|') + '|')}" data-thread="${mbxEsc(t.key)}" data-search="${mbxEsc(t.msgs.map((x) => (x.fromRaw || x.from || '') + ' ' + (x.subject || '')).join(' ').toLowerCase())}">
+        <button type="button" class="bk-row glass-panel${t.unread ? ' mbx-unread' : ''}${__mbxSelUid != null && t.msgs.some((x) => String(x.uid) === String(__mbxSelUid)) ? ' is-open' : ''}" ${chbAttrs('mailboxOpen', m.uid)} aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top">
-                    ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
-                    <span class="mbx-when">${mbxEsc(mbxWhen(m.date))}</span>
+                    ${t.unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
+                    ${n > 1 ? `<span class="bk-chip"><span class="bk-dot"></span>${n} emails</span>` : ''}
+                    <span class="mbx-when">${mbxEsc(mbxWhen(t.date))}</span>
                 </span>
-                <strong class="bk-row-name" title="${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}">${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}</strong>
-                <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
+                <strong class="bk-row-name" title="${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}">${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}</strong>
+                <span class="bk-row-dates">${mbxEsc(t.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
         </button>
@@ -21198,10 +21250,17 @@ function mbxPaneDock() {
     }
     return dock;
 }
+// A row stands for a CONVERSATION, so "is this the open message?" is a
+// membership test, not an equality one — otherwise opening an earlier email in
+// a chain leaves its own row unmarked.
+function mbxItemHasUid(it, uid) {
+    const v = String(uid);
+    return (it.dataset.uids || '').indexOf('|' + v + '|') > -1 || it.dataset.uid === v;
+}
 function mbxMarkSel() {
     document.querySelectorAll('#mailbox-body .mbx-item').forEach((it) => {
         const on =
-            (__mbxSelUid != null && it.dataset.uid === String(__mbxSelUid)) ||
+            (__mbxSelUid != null && mbxItemHasUid(it, __mbxSelUid)) ||
             (__mbxSelSent != null && it.dataset.sentId === String(__mbxSelSent));
         const row = it.querySelector('.bk-row');
         if (row) row.classList.toggle('is-open', on);
@@ -21216,6 +21275,7 @@ function mailboxCollapse() {
     mbxMarkSel();
     document.querySelectorAll('#mailbox-body .mbx-item').forEach((it) => {
         it.classList.remove('open');
+        delete it.dataset.showing;
         const slot = it.querySelector('.mbx-inline');
         if (slot) slot.innerHTML = '';
         const btn = it.querySelector('.bk-row');
@@ -21225,19 +21285,46 @@ function mailboxCollapse() {
 // The reader expands INSIDE the tapped row (accordion) — tapping the row
 // again, or its Collapse button, folds it back up.
 function mbxSlotFor(attr, value) {
-    const item = [...document.querySelectorAll('#mailbox-body .mbx-item')].find(
-        (x) => x.dataset[attr] === String(value),
-    );
+    const items = [...document.querySelectorAll('#mailbox-body .mbx-item')];
+    const item =
+        attr === 'uid'
+            ? items.find((x) => mbxItemHasUid(x, value))
+            : items.find((x) => x.dataset[attr] === String(value));
     if (!item) return null;
-    if (item.classList.contains('open')) {
+    // Second tap on the message ALREADY SHOWING = collapse. The test is the
+    // message, not the row, because a row is now a conversation: asking for an
+    // earlier email in the open chain must swap the reader, not close it.
+    if (item.classList.contains('open') && String(item.dataset.showing || '') === String(value)) {
         mailboxCollapse();
-        return null; // second tap on the open row = collapse
+        return null;
     }
     mailboxCollapse();
     item.classList.add('open');
+    item.dataset.showing = String(value);
     const btn = item.querySelector('.bk-row');
     if (btn) btn.setAttribute('aria-expanded', 'true');
     return item.querySelector('.mbx-inline');
+}
+// The rest of the conversation, under the message you opened: one quiet row per
+// EARLIER email, newest first, each opening in place through the same
+// mailboxOpen. Renders nothing for a lone message, so a one-email "chain" reads
+// exactly as it always did.
+function mbxEarlierHtml(uid) {
+    const t = mbxThreads(__mbxMessages).find((x) => x.msgs.some((m) => String(m.uid) === String(uid)));
+    if (!t || t.msgs.length < 2) return '';
+    const rest = t.msgs.filter((m) => String(m.uid) !== String(uid));
+    if (!rest.length) return '';
+    return `<div class="mbx-earlier">
+        <span class="booking-detail-label">Earlier in this conversation</span>
+        <div class="bhub-act-links">
+            ${rest
+                .map(
+                    (m) =>
+                        `<button class="bhub-actlink" ${chbAttrs('mailboxOpen', m.uid)}>${mbxEsc(mbxWhen(m.date))}${m.seen ? '' : ' <span class="bhub-mut">new</span>'}</button>`,
+                )
+                .join('')}
+        </div>
+    </div>`;
 }
 async function mailboxOpen(uid) {
     const dock = mbxPaneDock();
@@ -21270,6 +21357,7 @@ async function mailboxOpen(uid) {
             ${mbxContextHtml(m.from)}
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
+            ${mbxEarlierHtml(uid)}
             <div class="bhub-btn-row">
                 <button class="btn-sm btn-edit" style="color:var(--accent-text);border-color:rgba(199,154,100,0.45);" ${chbAttrs('mailboxReply', uid)}>Reply</button>
                 <button class="btn-sm btn-edit" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
