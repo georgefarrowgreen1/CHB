@@ -15005,15 +15005,21 @@ async function editPaymentPlan(bookingId) {
     // A TITLED dialog with one-line context and per-field hints — the old shape
     // was five lines of prose above an unexplained empty date pill (date inputs
     // ignore placeholders) and a button reading "OK".
+    // The date field is NEVER an empty pill: it opens showing the date that
+    // actually applies (custom, else standard) — an empty date input renders
+    // as an unlabelled blank on iOS. Saving it UNCHANGED on the standard date
+    // still means "standard" (sent blank below), so merely opening and saving
+    // can never quietly convert a standard plan into a custom one.
     const vals = await glassForm(
-        'Every email, pay link and the automatic chaser follow this plan. Blank fields keep the site standard.',
+        'Every email, pay link and the automatic chaser follow this plan.',
         [
             { id: 'dep', label: 'Deposit', value: curDep, placeholder: 'e.g. 30% or £300', hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} stay)` },
-            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || '', hint: `Blank = the standard date${stdDue ? ' (' + fmtDate(stdDue) + ')' : ''}` },
+            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
         ],
         { title: `Payment plan — ${b.name || 'this booking'}`, okLabel: 'Save plan' },
     );
     if (!vals) return;
+    if (vals.due === stdDue) vals.due = '';
     const depIn = String(vals.dep || '').trim();
     let pct = '', amt = '';
     if (depIn !== '') {

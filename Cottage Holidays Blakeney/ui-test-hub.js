@@ -610,9 +610,21 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(/Payment plan — Walk-in Guest/.test(dlgShape.title) && dlgShape.titleShown && dlgShape.named === 'glass-dialog-title',
     `the dialog is titled, and the title is its accessible name (${dlgShape.title})`);
-  ok(dlgShape.hints.length === 2 && /site standard \(25%/.test(dlgShape.hints[0]) && /standard date \(\d{2}\/\d{2}\/\d{4}\)/.test(dlgShape.hints[1]),
-    'each field says what BLANK means — the date hint names the standard date the empty pill hid');
+  ok(dlgShape.hints.length === 2 && /site standard \(25%/.test(dlgShape.hints[0]) && /Showing the standard date/.test(dlgShape.hints[1]),
+    'each field explains itself — the date hint says the shown date IS the standard');
   ok(dlgShape.okSays === 'Save plan', `the OK button says what it does (${dlgShape.okSays})`);
+  // THE DATE FIELD IS NEVER AN EMPTY PILL: it opens showing the date that
+  // actually applies (an empty date input renders as an unlabelled blank on
+  // iOS) — and saving it UNCHANGED still means standard, so opening + saving
+  // can never quietly convert a standard plan into a custom one.
+  ok((await page.inputValue('#gdf-due')) !== '', 'the date field opens PREFILLED with the effective date');
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(350);
+  const untouched = posts.filter((p) => p.action === 'set_payment_plan').pop();
+  ok(!!untouched && untouched.balance_due_date === '',
+    'saving the untouched standard date still posts STANDARD (blank), never a stealth custom plan');
+  await page.evaluate(() => { window.editPaymentPlan('b1'); });
+  await page.waitForTimeout(350);
   await page.fill('#gdf-dep', '30%');
   await page.fill('#gdf-due', d(20));
   await page.click('#glass-dialog-ok');
