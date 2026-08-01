@@ -9,6 +9,23 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 - **Always merge.** When a PR is opened for completed, verified work, squash-merge it
   to `main` without asking first (then sync the branch to main). Skip only if CI is
   failing or the work is explicitly a draft/WIP.
+- **NEVER SIT AND WATCH CI.** Measured on three consecutive PRs (#959–#961): the jobs
+  finished in 4–5 minutes and GitHub's PR **check-runs** endpoint went on reporting
+  `in_progress` for up to **two hours** afterwards — the steps frozen mid-list while
+  the run was long over. Polling it costs the session and buys nothing. So:
+  1. **`enable_pr_auto_merge` (SQUASH) the moment the PR is open**, then go and do the
+     next piece of work. GitHub merges it when the checks actually pass, which is the
+     "always merge" rule enforced by the platform instead of by watching. Resync the
+     branch (`git checkout -B <branch> origin/main`) at the START of the next task
+     rather than at the end of the last one.
+  2. If a status is genuinely needed, ask the **JOB** (`actions_get get_workflow_job`)
+     or the run's job list — both were fresher than the PR's check-runs list every
+     time — and never more than once between real pieces of work.
+  3. Job logs are a truth oracle the status field is not: they 404 while a job is
+     running and download once it is done.
+- **Run the local gauntlet CONCURRENTLY**, in the background, not one suite at a time.
+  It is the local run that catches things (CI has never once caught what the full local
+  battery missed), and in parallel it finishes in minutes.
 
 ## Deploy checklist (do this whenever shipping frontend changes)
 - **`node bump.js <new-build-stamp>`** does the WHOLE chain in one go (stamp =
