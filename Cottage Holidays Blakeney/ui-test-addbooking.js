@@ -1,0 +1,188 @@
+// THE ADD/EDIT BOOKING FORM'S REDESIGN, driven in a real browser.
+//
+// The form went from one flat ~2,100px column to four named sections with the
+// availability calendar folded to a summary strip, the rare controls behind a
+// single More-options row, and a sticky footer whose figure MIRRORS the price
+// box. Every check here is about the things that redesign must keep true:
+// the sections stand in order, the strip tells the truth both ways (free and
+// overlapping), the fold opens and resets, the footer's number can never
+// disagree with the box it mirrors, and a fresh open always starts folded.
+const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+let fails = 0;
+const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
+
+(async () => {
+  const { page, base, done } = await boot({ viewport: { width: 390, height: 844 } });
+  const json = (route, o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+  const mk = (id, over = {}) => Object.assign({
+    id, prop_key: '21a', name: 'Booked Guest', email: 'g@gmail.com', phone: '',
+    check_in: d(90), check_out: d(93), check_in_time: '15:00', check_out_time: '10:00',
+    adults: 2, children: 0, notes: '', payment: 'unpaid', deposit_paid: 0,
+    agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390,
+    agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30) + ' 12:00:00',
+    damages_deposit: 50, created_at: d(-30) + ' 12:00:00',
+  }, over);
+  const rows = [mk(1)];
+  await page.route(/\.php/, (route) => {
+    const url = route.request().url();
+    if (route.request().method() === 'POST') return json(route, { ok: true });
+    if (url.includes('auth.php')) return json(route, { admin: true, admin_id: 1 });
+    if (url.includes('bookings.php')) return json(route, { bookings: rows });
+    if (url.includes('rates.php')) return json(route, { properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
+    return json(route, { ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [] });
+  });
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1300);
+  await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+  await page.evaluate(() => window.loadAdminBundle());
+  await page.waitForTimeout(700);
+  await page.evaluate(() => loadData());
+  await page.waitForTimeout(500);
+
+  // ---------- 1. the sectioned form ----------
+  console.log('1. sections');
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(300);
+  const s1 = await page.evaluate(() => ({
+    secs: Array.from(document.querySelectorAll('#edit-modal .modal-sec')).map((s) => s.textContent.trim()),
+    xUp: (() => { const x = document.querySelector('#edit-modal .modal-x'); const r = x ? x.getBoundingClientRect() : { width: 0, height: 0 }; return r.width >= 24 && r.height >= 24; })(),
+    nameLabel: (document.querySelector('label[for="modal-name"]') || {}).textContent || '',
+  }));
+  ok(s1.secs.join('|') === 'Guest|Stay|Money|Notes', `four sections in order (${s1.secs.join('|')})`);
+  ok(s1.xUp, 'the ✕ close is in the header at ≥24px');
+  ok(s1.nameLabel === 'Name', `the name label stopped repeating the section (${s1.nameLabel})`);
+
+  // ---------- 2. the availability strip tells the truth both ways ----------
+  console.log('2. availability strip');
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(30), co: d(33) });
+  await page.waitForTimeout(200);
+  const s2 = await page.evaluate(() => ({
+    txt: (document.querySelector('.mav-strip-txt') || {}).textContent || '',
+    clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
+    dot: !!document.querySelector('.mav-strip-dot'),
+    gridUp: !!document.querySelector('#modal-availability .mav-grid'),
+  }));
+  ok(/^Free /.test(s2.txt) && s2.dot && !s2.clashDot, `free dates → green summary (${s2.txt.slice(0, 40)})`);
+  ok(/next booking starts/.test(s2.txt), 'and it names when the next booking starts');
+  ok(!s2.gridUp, 'the grid stays folded until asked for');
+  await page.click('.mav-toggle');
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !!document.querySelector('#modal-availability .mav-grid')), 'Calendar opens the six-week grid');
+  await page.click('.mav-toggle');
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !document.querySelector('#modal-availability .mav-grid')), 'and closes it again');
+  // Overlapping dates: the strip flips to the clash face and the warning renders.
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(91), co: d(94) });
+  await page.waitForTimeout(200);
+  const s2b = await page.evaluate(() => ({
+    txt: (document.querySelector('.mav-strip-txt') || {}).textContent || '',
+    clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
+    warn: (document.querySelector('.mav-clash') || {}).textContent || '',
+  }));
+  ok(/^Overlaps Booked Guest/.test(s2b.txt) && s2b.clashDot, `overlapping dates → red summary naming the blocker (${s2b.txt.slice(0, 40)})`);
+  ok(/confirm at save/.test(s2b.warn), 'and the confirm-at-save warning renders with it');
+
+  // ---------- 3. the More-options fold ----------
+  console.log('3. the fold');
+  const s3 = await page.evaluate(() => {
+    const more = document.getElementById('modal-more');
+    return {
+      closed: !!more && !more.open,
+      holds: ['modal-checkin-time', 'modal-damages-deposit', 'modal-price-override', 'modal-plan-pct']
+        .every((id) => more.contains(document.getElementById(id))),
+      depLabel: (document.querySelector('label[for="modal-damages-deposit"]') || {}).textContent || '',
+      hints: document.querySelectorAll('#modal-more .modal-hint').length,
+    };
+  });
+  ok(s3.closed, 'the fold opens CLOSED — the common case fits one screen');
+  ok(s3.holds, 'times, deposit, override and plan all live inside it');
+  ok(s3.depLabel === 'Refundable damages deposit (£)' && s3.hints >= 3,
+    `the shouted labels became short label + quiet hint (${s3.hints} hints)`);
+
+  // ---------- 4. the sticky footer mirrors the price box ----------
+  console.log('4. sticky footer');
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(30), co: d(33) });
+  await page.waitForTimeout(200);
+  const s4 = await page.evaluate(() => {
+    const boxAmt = (document.querySelector('#modal-price-box .price-row.total .price-amount') || {}).textContent || '';
+    const footFig = (document.getElementById('modal-foot-fig') || {}).textContent || '';
+    const box = document.querySelector('#edit-modal .modal-box');
+    box.scrollTop = 0; // the top of the form — where the sticky claim matters
+    const foot = document.querySelector('.modal-foot');
+    const fr = foot.getBoundingClientRect();
+    const br = box.getBoundingClientRect();
+    const save = document.getElementById('modal-save-btn').getBoundingClientRect();
+    return { boxAmt, footFig, onScreen: fr.bottom <= br.bottom + 1 && fr.top < window.innerHeight, saveH: save.height };
+  });
+  ok(s4.boxAmt !== '' && s4.footFig === s4.boxAmt, `the footer MIRRORS the box's total (${s4.footFig})`);
+  ok(s4.onScreen, 'the footer is on screen with the form scrolled to the top (sticky)');
+  ok(s4.saveH >= 44, `Save meets the touch floor (${Math.round(s4.saveH)}px)`);
+  // Invalid dates → the mirror goes honest, never stale.
+  await page.evaluate(() => {
+    document.getElementById('modal-checkin').value = '';
+    document.getElementById('modal-checkout').value = '';
+    updateModalPrice();
+  });
+  ok(await page.evaluate(() => (document.getElementById('modal-foot-fig') || {}).textContent === '—'),
+    'no computable total → the footer shows a dash, not the last number');
+
+  // ---------- 5. a fresh open starts folded ----------
+  console.log('5. fresh-open reset');
+  await page.evaluate(() => {
+    mavToggle();
+    document.getElementById('modal-more').open = true;
+    closeModal();
+  });
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(250);
+  const s5 = await page.evaluate(() => ({
+    gridUp: !!document.querySelector('#modal-availability .mav-grid'),
+    moreOpen: document.getElementById('modal-more').open,
+  }));
+  ok(!s5.gridUp && !s5.moreOpen, 'reopening starts with the calendar and the fold both closed');
+  // The ✕ goes through the dispatcher and actually closes.
+  await page.click('#edit-modal .modal-x');
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !document.getElementById('edit-modal').classList.contains('open')),
+    'the header ✕ closes the modal');
+
+  // ---------- 6. desktop uses the width ----------
+  console.log('6. desktop two-column');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(300);
+  const s6 = await page.evaluate(() => {
+    const cols = document.querySelector('#edit-modal .modal-cols');
+    const tracks = getComputedStyle(cols).gridTemplateColumns.split(' ').length;
+    const w = document.querySelector('#edit-modal .modal-box').getBoundingClientRect().width;
+    return { tracks, w };
+  });
+  ok(s6.tracks === 2 && s6.w > 700, `Guest and Stay sit side by side in a wide box (${s6.tracks} tracks, ${Math.round(s6.w)}px)`);
+
+  // ---------- 7. custom-property mode stands the mirror down ----------
+  console.log('7. custom-property mode');
+  await page.evaluate(() => {
+    document.getElementById('modal-property').value = '__new__';
+    applyModalPropertyMode();
+  });
+  const s7 = await page.evaluate(() => ({
+    totalHidden: getComputedStyle(document.getElementById('modal-foot-total')).display === 'none',
+    saveLabel: document.getElementById('modal-save-btn').textContent,
+  }));
+  ok(s7.totalHidden && /Next/.test(s7.saveLabel), `new-property flow hides the total and relabels Save (${s7.saveLabel})`);
+  await page.evaluate(() => closeModal());
+
+  await done(fails);
+})().catch((e) => { console.error(e); process.exit(1); });

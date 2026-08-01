@@ -4251,3 +4251,61 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }
+
+/* ---- Add/Edit Booking: the sectioned form (owner-only, so these live in
+   admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money
+   and Notes beneath; the rare controls fold behind one More-options row; the
+   live total + Save ride a sticky footer so neither ever leaves the screen. */
+#edit-modal .modal-box { position: relative; padding-bottom: 0; }
+.modal-x {
+    position: absolute; top: 16px; right: 16px; width: 36px; height: 36px;
+    border-radius: 50%; border: 1px solid var(--glass-border); background: none;
+    color: var(--text-light); font-family: inherit; font-size: 0.92rem; cursor: pointer; z-index: 3;
+}
+.modal-sec {
+    font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-muted); margin: 2px 0 12px; padding-top: 16px;
+    border-top: 1px solid var(--glass-border);
+}
+.modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
+.modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
+.modal-more { margin: 0 0 4px; }
+.modal-more > summary {
+    list-style: none; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; min-height: 44px; padding: 10px 2px; font-size: 0.85rem;
+    color: var(--accent-text); cursor: pointer; border-top: 1px solid var(--glass-border);
+}
+.modal-more > summary::-webkit-details-marker { display: none; }
+.modal-more > summary::after { content: '›'; color: var(--text-muted); transform: rotate(90deg); }
+.modal-more[open] > summary::after { transform: rotate(-90deg); }
+.modal-foot {
+    position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 14px;
+    margin: 8px -35px 0; padding: 12px 35px calc(14px + var(--safe-b, 0px));
+    border-top: 1px solid var(--glass-border);
+    background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 26%);
+}
+.modal-foot-total { min-width: 0; }
+.modal-foot-cap {
+    display: block; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted); white-space: nowrap;
+}
+.modal-foot-fig { font-family: var(--font-serif); font-size: 1.2rem; color: var(--text-light); white-space: nowrap; }
+.modal-foot .btn-glass { flex: 1; min-height: 46px; margin-left: auto; }
+/* The availability SUMMARY strip — the grid sits behind its Calendar toggle. */
+.mav-strip {
+    display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-light);
+    border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 13px; margin: 0 0 14px;
+}
+.mav-strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ok); }
+.mav-strip-dot.is-clash { background: var(--danger); }
+.mav-strip-txt { min-width: 0; }
+.mav-toggle {
+    margin-left: auto; flex: 0 0 auto; background: none; border: none; padding: 6px;
+    font-family: inherit; font-size: 0.76rem; color: var(--accent-text); cursor: pointer;
+}
+@media (min-width: 901px) {
+    #edit-modal .modal-box { max-width: 860px; }
+    .modal-cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 34px; align-items: start; }
+    .modal-col { min-width: 0; }
+    .modal-cols .modal-col > .modal-sec:first-child { border-top: none; padding-top: 4px; }
+}
