@@ -4256,11 +4256,21 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money
    and Notes beneath; the rare controls fold behind one More-options row; the
    live total + Save ride a sticky footer so neither ever leaves the screen. */
-/* The edit modal OWNS its padding via --mpad so the docked footer bleeds to
-   the true edge at every width (a hardcoded bleed clipped the total live). */
-#edit-modal .modal-box { --mpad: 35px; position: relative; padding: 35px var(--mpad) 0; }
+/* Native-sheet structure: the form scrolls in .modal-scroll, the footer is
+   a flex SIBLING — iOS overscroll can't drag the bar off the box bottom
+   (it did, screenshotted). --mpad is the one padding token. */
+#edit-modal .modal-box {
+    --mpad: 35px; position: relative; padding: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+}
+#edit-modal .modal-scroll {
+    overflow-y: auto; overscroll-behavior: contain;
+    min-height: 0; flex: 1 1 auto;
+    padding: 35px var(--mpad) 0;
+}
 @media (max-width: 639px) {
-    #edit-modal .modal-box { --mpad: 22px; padding: 26px var(--mpad) 0; }
+    #edit-modal .modal-box { --mpad: 22px; }
+    #edit-modal .modal-scroll { padding: 26px var(--mpad) 0; }
 }
 .modal-x {
     position: absolute; top: 16px; right: 16px; width: 36px; height: 36px;
@@ -4275,11 +4285,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
 .modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
 .modal-foot {
-    /* A DOCKED bar: full box width, the box's own bottom corners, the OPAQUE
-       theme surface. Glass + backdrop blur was tried and MEASURED: inside the
-       box's backdrop root the blur never applies — dark mode read through. */
-    position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 14px;
-    margin: 8px calc(-1 * var(--mpad)) 0;
+    /* Docked outside the scroller, on the OPAQUE theme surface. Glass +
+       backdrop blur was tried and MEASURED: inside the box's backdrop root
+       the blur never applies — dark mode read through. */
+    flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
     padding: 12px var(--mpad) 14px;
     border-top: 1px solid var(--glass-border);
     border-radius: 0 0 var(--r-panel) var(--r-panel);
