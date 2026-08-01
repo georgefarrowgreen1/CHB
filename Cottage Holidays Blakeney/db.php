@@ -975,6 +975,26 @@ function msg_reply_address($threadId)
     }
     return '';
 }
+// THE ADDRESS THIS SITE SENDS AS — one definition, because two places have to
+// agree about it: the mailbox shows only CUSTOMER mail, and the reply-ingest
+// must never swallow our own words. The owner reads the same inbox the site
+// sends from, so every alert the site raises ("New enquiry…", "Payment
+// received…") lands there too and read as guest mail: measured on the owner's
+// phone, 4 of the first 7 messages were the site talking to itself.
+function mailbox_own_address()
+{
+    $addr = defined('MAIL_FROM') && MAIL_FROM ? MAIL_FROM : (defined('SMTP_USER') ? SMTP_USER : '');
+    $addr = strtolower(trim((string) $addr));
+    return strpos($addr, '@') !== false ? $addr : '';
+}
+// A message FROM us is one of our own notifications, never a customer email.
+// With no address configured this is always false — a mailbox that cannot
+// identify itself must show everything rather than hide everything.
+function mailbox_is_self_notification($fromAddr)
+{
+    $own = mailbox_own_address();
+    return $own !== '' && strtolower(trim((string) $fromAddr)) === $own;
+}
 // True when replies are matched by header/subject token rather than a plus-
 // address (the zero-setup POP3 route) — the notification then also tags the
 // subject so a client that drops In-Reply-To still matches.

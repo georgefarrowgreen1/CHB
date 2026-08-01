@@ -238,5 +238,28 @@ chk('content_json recovers single-encoded array', $cj($single)['uids'] === ['abc
 chk('content_json recovers LEGACY double-encoded array', $cj(json_encode($single))['uids'] === ['abc', 'def']);
 chk('content_json empty → default []', $cj('') === [] && $cj(null) === []);
 
+// ---- ONLY CUSTOMER MAIL, AND NEVER OUR OWN VOICE ---------------------------
+// The site sends as the same address the owner reads, so every alert it raises
+// ("New enquiry…", "Payment received…") lands in the polled mailbox: measured on
+// the owner's phone, 4 of the first 7 messages were the site talking to itself.
+// mailbox_is_self_notification is the ONE test both the list filter and the
+// reply-ingest use, so the mailbox cannot hide what the ingest would swallow.
+echo "\n== The mailbox is guests only ==\n";
+// MAIL_FROM is defined by config.php on the host; in this sandbox it may not be.
+$own = mailbox_own_address();
+if ($own === '') {
+    // With no address configured the mailbox CANNOT identify itself, and must
+    // show everything rather than hide everything — the failure that matters.
+    chk('no configured address → nothing is treated as our own', !mailbox_is_self_notification('anyone@example.test'));
+} else {
+    chk('a message from our own address is our own notification', mailbox_is_self_notification($own));
+    chk('…case- and space-insensitively', mailbox_is_self_notification('  ' . strtoupper($own) . ' '));
+    chk('a guest is never mistaken for us', !mailbox_is_self_notification('guest@example.test'));
+}
+// The addresses come through mailbox_from_addr, so the pairing must survive the
+// display form the mailbox actually reads ("Name <addr>").
+chk('a display-name From resolves to its address', mailbox_from_addr('Cottage Holidays Blakeney <info@example.test>') === 'info@example.test');
+chk('…and the LAST angle group wins (spoof-safe)', mailbox_from_addr('"a <owner@allowed.test>" <evil@x.test>') === 'evil@x.test');
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);

@@ -309,16 +309,23 @@ function poll_mailbox_replies($force = false, $preview = false)
             $body = $tid > 0 ? strip_quoted_reply($p['body']) : '';
             // Route: the owner/co-host → admin reply; the thread's OWN guest (they
             // were invited to "just reply to this email") → guest message; else drop.
+            // NEVER INGEST OUR OWN VOICE. The site sends as the same address the
+            // owner reads, and that address is on the allow-list — so a
+            // notification carrying a thread token would route as an "admin
+            // reply" and post the site's own alert into the guest's chat. The
+            // sender test comes first, before any routing.
+            $isSelf = mailbox_is_self_notification($fromAddr);
             $route = 'drop';
-            if ($tid > 0 && $body !== '') {
+            if ($tid > 0 && $body !== '' && !$isSelf) {
                 if ($senderOk) {
                     $route = 'admin';
                 } elseif (mailbox_reply_is_guest($tid, $fromAddr)) {
                     $route = 'guest';
                 }
             }
-            $reason =
-                $tid <= 0
+            $reason = $isSelf
+                ? 'self-notification'
+                : ($tid <= 0
                     ? 'no-thread-token'
                     : ($body === ''
                         ? 'empty-after-strip'
@@ -326,7 +333,7 @@ function poll_mailbox_replies($force = false, $preview = false)
                             ? 'delivered'
                             : ($route === 'guest'
                                 ? 'delivered-guest'
-                                : 'sender-not-recognised')));
+                                : 'sender-not-recognised'))));
             $info = [
                 'from' => $fromAddr,
                 'subject' => mb_substr($p['subject'], 0, 120),
