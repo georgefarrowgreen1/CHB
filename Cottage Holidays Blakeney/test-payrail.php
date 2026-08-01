@@ -121,6 +121,36 @@ foreach ([['request', $askT], ['reminder', $chaseT]] as [$which, $m]) {
     chk("the $which states what is ALREADY paid", strpos($m['text'], 'Already paid: £290.00') !== false);
     chk("…and the $which's HTML says it too", strpos($m['html'], '340.00') !== false && strpos($m['html'], '290.00') !== false);
 }
+// THE HEADLINE FIGURE IS WHAT THE GUEST ACTUALLY PAYS. Both emails led with the
+// rental balance while the card takes balance + deposit, so the one number that
+// mattered was the one shown at its own size NOWHERE — only in a sentence below
+// the fold (owner's screenshot: a £290.00 hero over a £340.00 charge). The hero
+// is the real sum now, with the split directly under it.
+foreach ([['request', $askT], ['reminder', $chaseT]] as [$which, $m]) {
+    // email_amount renders label / figure / sub in that order — the figure is
+    // the one in the big serif block, so assert it by POSITION, not presence.
+    $bigPos = strpos($m['html'], '£340.00');
+    $smallPos = strpos($m['html'], '£290.00');
+    chk("the $which's HEADLINE figure is the £340.00 the card takes",
+        $bigPos !== false && $smallPos !== false && $bigPos < $smallPos);
+    // The split names the stage in the sender's own words ("remaining balance"
+    // in the request, "balance" in the chase) — what must hold is the sum.
+    chk("…and the $which splits it right under the figure",
+        preg_match('/£290\.00 (remaining )?balance \+ £50\.00 refundable deposit/', $m['html']) === 1);
+    chk("…so the $which's CTA asks for the same sum, not the rental half",
+        strpos($m['text'], 'pay £340.00') !== false);
+    chk("…and the $which still states the stay total and what is paid",
+        strpos($m['html'], 'Of £630.00 total, £290.00 already paid.') !== false);
+}
+// A REMINDER ON THE TRANSFER RAIL MUST NOT SAY "charged to your card". The
+// request had its own rail-aware copy; the reminder used the shared tail, which
+// hardcoded the card sentence — so a BACS guest was told their card would be
+// charged. One rail-aware composer now serves both.
+$bacsChase = payment_reminder_body(array_merge(bk('Bank transfer', 50.0), ['paid' => 290.0]), $URL, '#C79A64', $BANK);
+chk('bacs reminder: never claims a card will be charged',
+    strpos($bacsChase['text'], 'charged to your card') === false && strpos($bacsChase['html'], 'charged to your card') === false);
+chk('bacs reminder: asks for the full sum to send (£340.00)', strpos($bacsChase['text'], '£340.00') !== false);
+
 // …and with NO deposit outstanding neither invents one, nor claims a payment that
 // has not happened: "£0.00 already paid" on a fresh ask is noise, not information.
 $plain = bk('Square card', 0.0);

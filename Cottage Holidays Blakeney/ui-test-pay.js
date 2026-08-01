@@ -95,7 +95,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // (fixed far-future stub date so the check can't rot with the wall clock);
   // booking 9's PASSED date stays plain "Balance due" — it is due now.
   ok(v.kind === 'Balance due by 15/01/2030' && v.amount === '£340.00', `amount hero says WHEN (${v.kind} ${v.amount})`);
-  ok(/of £440\.00 total · £100\.00 already paid/.test(v.sub), `money-shape sub with already-paid (${v.sub})`);
+  // THE SUB ITEMISES TO ITS OWN HEADLINE. £340 is what the card takes — the
+  // £290 balance plus the £50 refundable deposit — and the guest should never
+  // have to derive that from a sentence further down the page (owner's ask).
+  // All four figures reconcile: 440 − 100 = 340, and 290 + 50 = 340.
+  ok(/£290\.00 balance \+ £50\.00 refundable deposit/.test(v.sub), `the sub itemises the £340 (${v.sub})`);
+  ok(/of £440\.00 total, £100\.00 already paid/.test(v.sub), `…and keeps the stay context (${v.sub})`);
   ok(v.noteShown && /£50\.00 refundable damages deposit — returned after your stay/.test(v.note), 'deposit note is its own quiet line');
   ok(!v.oldBanner, 'the loud green security banner is gone');
   ok(/Secured by Square/.test(v.secure) && /never see or store/.test(v.secure), 'quiet lock line under the button');
