@@ -5833,6 +5833,7 @@ body.admin-screen .site-footer {
 .pipe-step .pipe-dot {
   width: 8px;
   height: 8px;
+  flex: 0 0 auto;
   border-radius: 50%;
   /* One calm colour system across BOTH pill strips (whole-booking status AND the
      payments flow, which reuse this class): done = green, current = amber,
