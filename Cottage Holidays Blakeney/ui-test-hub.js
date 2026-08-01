@@ -738,10 +738,22 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
       hidden: menu && menu.style.display === 'none',
       items: menu ? menu.innerHTML : '',
       headerBtns: document.querySelectorAll('.bhub-actions > .btn-sm').length,
+      // The menu lives at the page FOOT (the iOS home for a record's
+      // management actions — owner's ask), BELOW the cards grid, and its
+      // dropdown opens UPWARD so it can't fall off the document.
+      atFoot: (() => {
+        const foot = document.querySelector('.bhub-foot .bhub-actions');
+        const grid = document.querySelector('.bhub-grid');
+        if (!foot || !grid) return false;
+        return foot.getBoundingClientRect().top >= grid.getBoundingClientRect().bottom - 1;
+      })(),
+      opensUp: menu ? getComputedStyle(menu).bottom !== 'auto' && getComputedStyle(menu).top === 'auto' : false,
     };
   });
   ok(menu1.hidden, 'overflow menu starts closed');
-  ok(menu1.headerBtns === 1, `header shows just the Edit/Move/Cancel button (${menu1.headerBtns})`);
+  ok(menu1.headerBtns === 1, `ONE Edit/Move/Cancel button on the page (${menu1.headerBtns})`);
+  ok(menu1.atFoot, 'the menu lives at the page foot, below the cards');
+  ok(menu1.opensUp, 'its dropdown opens UPWARD — at the foot, downward falls off the document');
   ok(/openEditBooking|bhubEdit/.test(menu1.items) && /cancelBooking|bhubCancel/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
   await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
   await page.waitForTimeout(200);

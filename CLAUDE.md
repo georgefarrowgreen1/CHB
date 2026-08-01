@@ -909,12 +909,16 @@ and the absence of the twin — don't re-add the row button; the history above i
 why it looks plausible. **The row that remains is the QUIET tier**
 (`.bhub-act-links` / `.bhub-actlink` — linklike text actions at the 44px floor):
 Send a reminder / Record payment / Copy pay link / Invoice, because five pills
-shouting as loudly as the ask was the jumble the owner reported. Same pass: the
-Edit menu is a compact right-aligned control at phone width (it rendered as the
-widest pill in the header for the page's rarest action — app.css's
-`width:100%` pair dropped `.bhub-actions`), and `.bhub-plan` is a FILL under a
+shouting as loudly as the ask was the jumble the owner reported. Same pass: `.bhub-plan` is a FILL under a
 hairline, not a third box treatment between the tinted payask and the dashed
-gap chip.
+gap chip. **The Edit/Move/Cancel menu lives at the page FOOT** (`.bhub-foot`,
+below the cards grid — the owner's ask, and the iOS home for a record's
+management actions; it had been the widest pill in the header for the page's
+rarest action). Same node, same data-acts — only the address changed, so
+every gate reading `.bhub-actions` kept firing — and its dropdown opens
+UPWARD there (`.bhub-foot .bhub-menu { top:auto; bottom:… }`) or it falls off
+the document; both the placement and the direction are pinned in ui-test-hub
+§H.
 **THE PAYMENT PLAN IS PER-BOOKING** (migration-103: `deposit_pct_override` /
 `deposit_amount_override` / `balance_due_date`, NULL = site standard; gated by
 test-payrail's plan section + ui-test-hub §C3). The 25% deposit and the 30-day
