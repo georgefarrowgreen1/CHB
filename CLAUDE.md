@@ -955,9 +955,11 @@ bundle, so no fold there. Gated in §C3 both ways (charged → Paid ✓, uncharg
 not).
 booking's own dates. `bookingPlanDeposit` /
 `bookingPlanDueDate` (admin.js) are DISPLAY mirrors only — every asked figure is
-still server-derived. `editPaymentPlan` is a glassForm whose deposit input takes
-"30%" or "£300" (blank = standard = how a plan is cleared), and the client
-adopts the SERVER'S accepted values, not the typed ones. **Send a reminder**
+still server-derived. `editPaymentPlan` is a glassForm whose deposit input is PERCENT ONLY
+(owner's ask — a %-or-£ field invited the wrong grammar; a legacy £ override
+displays as its effective pct and saving converts it; blank = standard = how
+a plan is cleared), and the client adopts the SERVER'S accepted values, not
+the typed ones. The server still accepts/stores both forms for existing data. **Send a reminder**
 rides `request_payment` with `reminder: true` — the cron's own reminder composer
 on demand — refused before anything has been asked for, stamping
 `balance_reminded_at` so the cron's reminders space off it; the button waits for

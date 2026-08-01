@@ -625,7 +625,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     'saving the untouched standard date still posts STANDARD (blank), never a stealth custom plan');
   await page.evaluate(() => { window.editPaymentPlan('b1'); });
   await page.waitForTimeout(350);
-  await page.fill('#gdf-dep', '30%');
+  await page.fill('#gdf-dep', '30');
   await page.fill('#gdf-due', d(20));
   await page.click('#glass-dialog-ok');
   await page.waitForTimeout(400);
