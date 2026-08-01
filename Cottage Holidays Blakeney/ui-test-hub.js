@@ -596,10 +596,43 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // accepted.
   await page.evaluate(() => { window.editPaymentPlan('b1'); });
   await page.waitForTimeout(350);
+  // The dialog is TITLED (and the title is its accessible name), the message
+  // is one line of context, each field says what BLANK means under itself —
+  // the date input's hint is the only way it can (date inputs ignore
+  // placeholders; it rendered as an unexplained empty pill) — and the OK
+  // button says what it does.
+  const dlgShape = await page.evaluate(() => ({
+    title: (document.getElementById('glass-dialog-title') || {}).textContent || '',
+    titleShown: (document.getElementById('glass-dialog-title') || { style: {} }).style.display !== 'none',
+    named: document.getElementById('glass-dialog').getAttribute('aria-labelledby'),
+    hints: [...document.querySelectorAll('#glass-dialog-fields .gdf-hint')].map((h) => h.textContent),
+    okSays: (document.getElementById('glass-dialog-ok') || {}).textContent,
+  }));
+  ok(/Payment plan — Walk-in Guest/.test(dlgShape.title) && dlgShape.titleShown && dlgShape.named === 'glass-dialog-title',
+    `the dialog is titled, and the title is its accessible name (${dlgShape.title})`);
+  ok(dlgShape.hints.length === 2 && /site standard \(25%/.test(dlgShape.hints[0]) && /standard date \(\d{2}\/\d{2}\/\d{4}\)/.test(dlgShape.hints[1]),
+    'each field says what BLANK means — the date hint names the standard date the empty pill hid');
+  ok(dlgShape.okSays === 'Save plan', `the OK button says what it does (${dlgShape.okSays})`);
   await page.fill('#gdf-dep', '30%');
   await page.fill('#gdf-due', d(20));
   await page.click('#glass-dialog-ok');
   await page.waitForTimeout(400);
+  // The shared title node must RESET for the next plain dialog — a leaked
+  // title is the okLabel-leak bug wearing a new hat.
+  // Fire-and-forget: glassAlert RESOLVES only when dismissed, so awaiting its
+  // promise inside evaluate deadlocks against the click below (measured: the
+  // suite hung right here for 10 minutes).
+  await page.evaluate(() => { glassAlert('plain message'); });
+  await page.waitForTimeout(250);
+  const plainDlg = await page.evaluate(() => ({
+    shown: (document.getElementById('glass-dialog-title') || { style: {} }).style.display !== 'none',
+    named: document.getElementById('glass-dialog').getAttribute('aria-labelledby'),
+    ok: (document.getElementById('glass-dialog-ok') || {}).textContent,
+  }));
+  ok(!plainDlg.shown && plainDlg.named === 'glass-dialog-msg' && plainDlg.ok === 'OK',
+    'a plain dialog after it carries NO leaked title, name or label');
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(250);
   const planPost = posts.filter((p) => p.action === 'set_payment_plan').pop();
   ok(!!planPost && planPost.deposit_pct === '30' && planPost.deposit_amount === '' && planPost.balance_due_date === d(20),
     `the dialog states the plan, never a figure to charge (${JSON.stringify(planPost && { pct: planPost.deposit_pct, amt: planPost.deposit_amount, due: planPost.balance_due_date })})`);

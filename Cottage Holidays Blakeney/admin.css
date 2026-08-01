@@ -4135,7 +4135,11 @@ body.cmdk-open {
        stacked lines read; a right column beside a wrapping sentence tangles. */
     .bhub-plan-row { flex-direction: column; gap: 1px; }
 }
-.bhub-plan-why { color: var(--text-muted); font-size: 0.76rem; }
+/* Provenance on its OWN quiet line under the bold fact — inline it wrapped
+   MID-PARENTHETICAL through the figures (owner's screenshot), which is the
+   interleave defect again at the character level. No parentheses needed once
+   it's a line. */
+.bhub-plan-why { display: block; color: var(--text-muted); font-size: 0.76rem; margin-top: 1px; }
 /* The facts at sentence weight (600 — weight, not size), the states in the
    readable ink rather than the mute: the owner reported the whole panel as
    washed-out grey beside the payline. The custom badge is the chip
@@ -4226,3 +4230,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-foot { display: flex; justify-content: center; margin: 20px 0 40px; }
 .bhub-foot .bhub-actions { position: relative; width: auto; justify-content: center; }
 .bhub-foot .bhub-menu { top: auto; bottom: calc(100% + 6px); }
+
+/* Glass-dialog TITLE + per-field HINTS (owner dialogs — the Edit-plan form
+   first): the serif title names the dialog once, the message drops to one
+   line of context, and each field explains what BLANK means right under
+   itself — a date input ignores placeholders, so without the hint it was an
+   unexplained empty pill. Styled here, not app.css, which stays flat. */
+.glass-dialog-title {
+    font-family: var(--font-serif); font-weight: 400; font-size: 1.2rem;
+    margin: 0 0 8px; color: var(--text-light);
+}
+.gdf-hint { font-size: 0.76rem; color: var(--text-muted); margin: 4px 0 10px; }
