@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 378;
+const ADMIN_BUNDLE_V = 379;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 129;
+const ADMIN_CSS_V = 130;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9978,6 +9978,13 @@ function glassDialog(opts) {
                 return;
             }
             msg.innerText = opts.message || '';
+            // Optional TITLE — names the dialog and becomes its accessible name.
+            const ttl = document.getElementById('glass-dialog-title');
+            if (ttl) {
+                ttl.textContent = opts.title || '';
+                ttl.style.display = opts.title ? 'block' : 'none';
+                o.setAttribute('aria-labelledby', opts.title ? 'glass-dialog-title' : 'glass-dialog-msg');
+            }
             inp.style.display = opts.type === 'prompt' ? 'block' : 'none';
             inp.type = opts.password ? 'password' : 'text';
             inp.value = opts.def != null ? String(opts.def) : '';
@@ -10001,7 +10008,9 @@ function glassDialog(opts) {
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
                                 (f.min != null ? ` min="${f.min}"` : '') +
                                 (f.step != null ? ` step="${f.step}"` : '') +
-                                ` placeholder="${escapeHtml(f.placeholder || '')}">`
+                                ` placeholder="${escapeHtml(f.placeholder || '')}">` +
+                                // Per-field HINT (date inputs ignore placeholders).
+                                (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '')
                             );
                         })
                         .join('');
@@ -10062,9 +10071,10 @@ function glassPrompt(message, def, opts) {
     return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) });
 }
 // Several labelled inputs on one dialog. fields: [{id,label,type,value,min,step,
-// placeholder}]. Resolves {id:value,…} on OK, null on Cancel.
-function glassForm(message, fields) {
-    return glassDialog({ type: 'form', message, fields });
+// placeholder,hint}]. Resolves {id:value,…} on OK, null on Cancel. opts may
+// carry {title, okLabel} — a named dialog whose OK says what it does.
+function glassForm(message, fields, opts) {
+    return glassDialog(Object.assign({ type: 'form', message, fields }, opts || {}));
 }
 // ---- Preview-before-send: render the EXACT email the server would send, show
 // it to the owner, and only send once they confirm. Used by the booking hub's
@@ -13879,7 +13889,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'editfoot02aug';
+    const BUILD = 'dialog02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

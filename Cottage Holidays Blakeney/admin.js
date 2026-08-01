@@ -14990,8 +14990,8 @@ function hubPlanHtml(b, ps, gt, past) {
               than two muted words in the caption. Owner's report: the whole
               panel read as washed-out grey beside the payline above it. */ ''}
         <span class="bhub-plan-cap">Payment plan${custom ? ' <span class="bhub-plan-tag">custom</span>' : ''}</span>
-        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong> <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
-        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong> <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
+        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong><span class="bhub-plan-why">${escapeHtml(depFrom)}</span></span><span class="bhub-plan-state">${depState}</span></div>
+        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong><span class="bhub-plan-why">${escapeHtml(dueFrom)}</span></span><span class="bhub-plan-state">${balState}</span></div>
         ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
         ${/* The action-row vocabulary, not a muted linklike — it sat directly
               above the accent action rows as the one grey control in the
@@ -15012,12 +15012,16 @@ async function editPaymentPlan(bookingId) {
     const ps = paymentSummary(loc.propKey, b);
     const stdDue = b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
     const curDep = b.depositAmountOverride > 0 ? '£' + b.depositAmountOverride : b.depositPctOverride > 0 ? b.depositPctOverride + '%' : '';
+    // A TITLED dialog with one-line context and per-field hints — the old shape
+    // was five lines of prose above an unexplained empty date pill (date inputs
+    // ignore placeholders) and a button reading "OK".
     const vals = await glassForm(
-        `Payment plan for ${b.name || 'this booking'} (${gbp(ps.total)} stay). Blank fields keep the site standard — ${paymentTerms.depositPct || 25}% deposit, balance due ${stdDue ? fmtDate(stdDue) : 'before arrival'}. Every email, pay link and the automatic chaser follow this plan.`,
+        'Every email, pay link and the automatic chaser follow this plan. Blank fields keep the site standard.',
         [
-            { id: 'dep', label: 'Deposit for this booking — % or £', value: curDep, placeholder: `e.g. 30% or £300 · blank = ${paymentTerms.depositPct || 25}%` },
-            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || '' },
+            { id: 'dep', label: 'Deposit', value: curDep, placeholder: 'e.g. 30% or £300', hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} stay)` },
+            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || '', hint: `Blank = the standard date${stdDue ? ' (' + fmtDate(stdDue) + ')' : ''}` },
         ],
+        { title: `Payment plan — ${b.name || 'this booking'}`, okLabel: 'Save plan' },
     );
     if (!vals) return;
     const depIn = String(vals.dep || '').trim();
