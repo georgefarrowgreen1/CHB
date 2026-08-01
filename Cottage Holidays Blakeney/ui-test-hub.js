@@ -523,9 +523,15 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
         return { full: Math.abs(b.width - gw) < 3, tall: b.height >= 43, ink: getComputedStyle(r).color === want };
       });
     });
-    return { n: all.length, ok: all.length > 0 && all.every((x) => x.full && x.tall && x.ink) };
+    // The plan panel's Edit control wears the same anatomy — it was the one
+    // muted linklike left beside the accent rows (owner: "needs to be more
+    // visible").
+    const planEdit = document.querySelector('.bhub-plan .bhub-actlink[data-act="editPaymentPlan"]');
+    const pe = planEdit ? { tall: planEdit.getBoundingClientRect().height >= 43, ink: getComputedStyle(planEdit).color === want } : null;
+    return { n: all.length, ok: all.length > 0 && all.every((x) => x.full && x.tall && x.ink), planEdit: !!pe && pe.tall && pe.ink };
   });
   ok(rowsOk.ok, `every secondary action is a full-width 44px accent-ink row (${rowsOk.n} rows across the hub's groups)`);
+  ok(rowsOk.planEdit, 'Edit payment plan wears the same row anatomy — no muted stragglers in the panel');
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
   // Share stay details: for the cleaner's chat — and deliberately NO money.

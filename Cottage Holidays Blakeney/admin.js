@@ -14978,7 +14978,11 @@ function hubPlanHtml(b, ps, gt, past) {
         <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(depAsk)} deposit <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
         <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)} <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
         ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
-        ${!past ? `<button type="button" class="bhub-linklike" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan ›</button>` : ''}
+        ${/* The action-row vocabulary, not a muted linklike — it sat directly
+              above the accent action rows as the one grey control in the
+              panel (owner: "needs to be more visible"). The row's ::after
+              supplies the chevron. */ ''}
+        ${!past ? `<button type="button" class="bhub-actlink" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan</button>` : ''}
     </div>`;
 }
 // One dialog states the whole plan; the server validates and stores it, and
