@@ -35,7 +35,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     mk(8, { name: 'Gap Follower', email: 'gapf@gmail.com', check_in: d(35), check_out: d(38) }),
     mk(4, { name: 'Owes After Leaving', email: 'owes@gmail.com', check_in: d(-25), check_out: d(-22), payment: 'deposit', deposit_paid: 100 })];
   let enqs = [
-    { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00' },
+    { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00', no_dogs_at: '2026-07-01 10:00:00' },
     { id: 7, prop_key: '21a', name: 'Enq Beta', email: 'beta@gmail.com', phone: '', address: '3 Lane', postcode: 'NR25 7AB', check_in: d(80), check_out: d(83), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: '', created_at: d(0) + ' 08:00:00' },
   ];
   const posts = [];
@@ -1002,12 +1002,40 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     paneHub: !!document.querySelector('#inbox-detail-pane #enquiry-hub-content .bhub-head'),
     name: (document.querySelector('#inbox-detail-pane .bhub-name') || {}).textContent || '',
     openRows: document.querySelectorAll('#inbox-list .bk-row.is-open').length,
-    actions: document.querySelectorAll('#inbox-detail-pane .bhub-actions .btn-sm').length,
+    // Booking-hub vocabulary: Approve is the ONE loud control riding the
+    // next-action box; the rest are quiet action rows, Decline last in
+    // danger ink; the contact email is a composer button, never a mailto.
+    approveInNext: !!document.querySelector('#inbox-detail-pane .bhub-next [data-act="approveEnquiry"]'),
+    actions: document.querySelectorAll('#inbox-detail-pane .bhub-act-links .bhub-actlink').length,
+    dangerLast: (() => {
+      const rows = document.querySelectorAll('#inbox-detail-pane .bhub-act-links .bhub-actlink');
+      const last = rows[rows.length - 1];
+      return !!last && last.classList.contains('is-danger') && /decline/i.test(last.textContent);
+    })(),
+    // The danger ink must actually PAINT — class-only would pass with the
+    // CSS rule deleted. Probe var(--danger-text) in the page's own theme.
+    dangerInk: (() => {
+      const el = document.querySelector('#inbox-detail-pane .bhub-actlink.is-danger');
+      if (!el) return false;
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--danger-text)';
+      document.body.appendChild(probe);
+      const want = getComputedStyle(probe).color;
+      probe.remove();
+      return getComputedStyle(el).color === want;
+    })(),
+    mailtos: document.querySelectorAll('#enquiry-hub-content a[href^="mailto:"]').length,
+    emailKvBtn: !!document.querySelector('#inbox-detail-pane .bhub-kv-act[data-act="openEnquiryEmail"]'),
     priceBtn: !!document.querySelector('#inbox-detail-pane [data-act="setEnquiryPrice"]'),
+    // The No-dog row prints the house DD/MM/YYYY form, never the raw SQL stamp.
+    noDog: (document.querySelector('#inbox-detail-pane #enquiry-hub-content') || {}).textContent || '',
   }));
   ok(j1.active === 'view-inbox' && j1.rows === 2 && j1.oldCards === 0, `compact enquiry rows (${j1.rows}), old cards gone`);
   ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
-  ok(j1.actions === 4 && j1.priceBtn, 'approve/edit/email/decline + agreed-price on the hub');
+  ok(j1.approveInNext && j1.actions === 3, `Approve rides the next box; ${j1.actions} quiet action rows`);
+  ok(j1.dangerLast && j1.dangerInk, 'Decline is the last row, painted in danger ink');
+  ok(j1.mailtos === 0 && j1.emailKvBtn && j1.priceBtn, 'contact email routes to the composer (no mailto); agreed-price stays');
+  ok(/Confirmed 01\/07\/2026/.test(j1.noDog) && !j1.noDog.includes('2026-07-01'), 'No-dog row prints the house date form, not the raw stamp');
   // Approve from the hub → lands on the NEW booking's hub.
   const apr = page.evaluate(() => approveEnquiry(document.querySelector('#inbox-list .bk-row[data-enqid]').getAttribute('data-enqid')));
   await page.waitForTimeout(700);

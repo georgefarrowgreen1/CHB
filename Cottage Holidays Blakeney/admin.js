@@ -20003,23 +20003,27 @@ function renderEnquiryHub() {
                     <div class="bhub-sub">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${agePart}</div>
                     <div style="margin-top:8px;">${chips}</div>
                 </div>
-                <div class="bhub-actions">
-                    <button class="btn-sm btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
-                    ${e.email ? `<button class="btn-sm btn-edit" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email guest</button>` : ''}
-                    <button class="btn-sm btn-decline" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
-                </div>
             </div>
-            <div class="bhub-next${next.cls}"><span class="bhub-next-text">${next.text}</span></div>
+            ${/* The booking hub's vocabulary: ONE loud control — Approve, riding
+                  the next-action box that already explains what it does — and
+                  the rest as quiet action rows, Decline in danger ink last
+                  (the iOS red-row-at-the-end shape). The four-pill float this
+                  replaces had no hierarchy at all. */ ''}
+            <div class="bhub-next${next.cls}"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button></div>
+            <div class="bhub-btn-row bhub-act-links bhub-actions">
+                <button class="bhub-actlink btn-sm" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
+                ${e.email ? `<button class="bhub-actlink btn-sm" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email guest</button>` : ''}
+                <button class="bhub-actlink btn-sm is-danger" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
+            </div>
         </div>
         <div class="bhub-grid">
             <section class="bhub-card glass-panel">
                 <h3 class="bhub-card-title">Message &amp; contact</h3>
                 ${e.message ? `<div class="enq-ctx-quote" style="margin:0 0 14px;">“${escapeHtml(e.message)}”</div>` : '<div class="bhub-mut" style="margin:0 0 14px;">No message left.</div>'}
                 <div class="detail-grid" style="margin-top:0;">
-                    ${contact('Email', e.email ? `<a href="mailto:${escapeHtml(e.email)}" style="color:var(--text-light);">${escapeHtml(e.email)}</a>` : '')}
+                    ${contact('Email', e.email ? `<button class="bhub-kv-act" ${chbAttrs('openEnquiryEmail', String(e.id))} title="Email the guest — opens the site's composer">${escapeHtml(e.email)}</button>` : '')}
                     ${contact('Phone', e.phone ? `<a href="tel:${escapeHtml(e.phone)}" style="color:var(--text-light);">${escapeHtml(e.phone)}</a>` : '')}
-                    ${contact('No dog', e.noDogsAt ? 'Confirmed ' + escapeHtml(e.noDogsAt) : '<span class="bhub-mut" style="margin:0;">Not confirmed</span>')}
+                    ${contact('No dog', e.noDogsAt ? 'Confirmed ' + fmtDate(String(e.noDogsAt).slice(0, 10)) : '<span class="bhub-mut" style="margin:0;">Not confirmed</span>')}
                     <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${e.address || e.postcode ? escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>
                 </div>
             </section>
