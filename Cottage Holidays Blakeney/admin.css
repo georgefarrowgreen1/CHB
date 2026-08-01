@@ -4244,8 +4244,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-chip-dot.is-ok { background: var(--ok); }
 .bhub-chip-dot.is-bad { background: var(--danger); }
 
-/* A dot in a kv value breathes before the words. */
-.bhub-kv-val .bhub-chip-dot { margin-right: 7px; }
+/* A dot breathes before its words. */
+.bhub-kv-val .bhub-chip-dot, .bhub-plan-state .bhub-chip-dot { margin-right: 7px; }
 
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }

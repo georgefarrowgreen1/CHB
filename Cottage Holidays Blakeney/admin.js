@@ -14968,19 +14968,22 @@ function hubPlanHtml(b, ps, gt, past) {
     // counts the refundable deposit once it was genuinely taken — a £175 rental
     // payment with the £50 still uncharged is a first payment that hasn't fully
     // landed, and the header above says the same.
+    // The chip-row dot vocabulary: green = done, red = still open. The words
+    // still carry the state (colour is never the only signal).
+    const dot = (okBit) => `<span class="bhub-chip-dot ${okBit ? 'is-ok' : 'is-bad'}" aria-hidden="true"></span>`;
     const depState = gt.paid >= depAsk - 0.005
-        ? '<span class="bhub-plan-ok">Paid ✓</span>'
-        : b.depositRequestedAt
+        ? dot(true) + '<span class="bhub-plan-ok">Paid ✓</span>'
+        : dot(false) + (b.depositRequestedAt
           ? `Link sent ${day(b.depositRequestedAt)}`
-          : 'Not asked yet';
+          : 'Not asked yet');
     const dueFrom = b.balanceDueDate
         ? `custom — standard would be ${fmtDate(stdDue)}`
         : `${paymentTerms.balanceDays || 30} days before arrival`;
     const balState = gt.fullyPaid
-        ? '<span class="bhub-plan-ok">Paid in full ✓</span>'
-        : b.balanceRequestedAt
+        ? dot(true) + '<span class="bhub-plan-ok">Paid in full ✓</span>'
+        : dot(false) + (b.balanceRequestedAt
           ? `Asked ${day(b.balanceRequestedAt)}${b.balanceRemindedAt ? ' · reminded ' + day(b.balanceRemindedAt) : ''}`
-          : 'Not asked yet';
+          : 'Not asked yet');
     return `<div class="bhub-plan">
         ${/* The FACTS carry the weight (600, the hero-figure rule — weight,
               not size) and the provenance stays quiet in the parenthetical;
