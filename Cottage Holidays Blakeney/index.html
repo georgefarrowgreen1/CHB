@@ -1633,7 +1633,9 @@
             </details>
 
             <div class="modal-sec">Notes</div>
-            <label class="modal-label" for="modal-notes">Staff Notes</label>
+            <!-- The section cap carries the visible name; the label stays for
+                 the accessible one (and togglePaymentField's enquiry relabel). -->
+            <label class="modal-label sr-only" for="modal-notes">Staff Notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
             <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
@@ -1774,7 +1776,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=654"></script>
+    <script defer src="app.js?v=655"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

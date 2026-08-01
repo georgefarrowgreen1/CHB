@@ -129,6 +129,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(s4.boxAmt !== '' && s4.footFig === s4.boxAmt, `the footer MIRRORS the box's total (${s4.footFig})`);
   ok(s4.onScreen, 'the footer is on screen with the form scrolled to the top (sticky)');
   ok(s4.saveH >= 44, `Save meets the touch floor (${Math.round(s4.saveH)}px)`);
+  // THE FIGURE NEVER CLIPS (the bhub-sticky rule). Two halves, both from the
+  // owner's live screenshot: the foot must start at the box's CONTENT edge
+  // (the old -35px bleed overhung the phone's 22px padding and cut "£440.00"
+  // to "£6"), and a hostile-length figure squeezes SAVE, never itself.
+  const s4b = await page.evaluate(() => {
+    const box = document.querySelector('#edit-modal .modal-box');
+    const foot = document.querySelector('.modal-foot');
+    const padL = parseFloat(getComputedStyle(box).paddingLeft);
+    const inEdge = foot.getBoundingClientRect().left >= box.getBoundingClientRect().left + padL - 1;
+    const fig = document.getElementById('modal-foot-fig');
+    fig.textContent = '£123,456.00'; // hostile figure (the §14 injection discipline)
+    const fr = fig.getBoundingClientRect();
+    const noClip = Math.ceil(fr.width) >= fig.scrollWidth - 1 && fr.right <= document.getElementById('modal-save-btn').getBoundingClientRect().left + 1;
+    fig.textContent = '£440.00';
+    return { inEdge, noClip };
+  });
+  ok(s4b.inEdge, 'the foot starts at the content edge — no bleed past the phone padding');
+  ok(s4b.noClip, 'a hostile-length figure squeezes Save, never itself');
+  // ONE visible name for the notes field: the section cap carries the words,
+  // the label goes .sr-only (announced, not doubled on screen).
+  const s4c = await page.evaluate(() => {
+    const lbl = document.querySelector('label[for="modal-notes"]');
+    const r = lbl.getBoundingClientRect();
+    return { hidden: r.width <= 1 && r.height <= 1, named: lbl.textContent.trim().length > 0 };
+  });
+  ok(s4c.hidden && s4c.named, 'the notes label is announced but not doubled under the Notes cap');
   // Invalid dates → the mirror goes honest, never stale.
   await page.evaluate(() => {
     document.getElementById('modal-checkin').value = '';
