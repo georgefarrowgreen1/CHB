@@ -4256,7 +4256,12 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money
    and Notes beneath; the rare controls fold behind one More-options row; the
    live total + Save ride a sticky footer so neither ever leaves the screen. */
-#edit-modal .modal-box { position: relative; padding-bottom: 0; }
+/* The edit modal OWNS its padding via --mpad so the docked footer bleeds to
+   the true edge at every width (a hardcoded bleed clipped the total live). */
+#edit-modal .modal-box { --mpad: 35px; position: relative; padding: 35px var(--mpad) 0; }
+@media (max-width: 639px) {
+    #edit-modal .modal-box { --mpad: 22px; padding: 26px var(--mpad) 0; }
+}
 .modal-x {
     position: absolute; top: 16px; right: 16px; width: 36px; height: 36px;
     border-radius: 50%; border: 1px solid var(--glass-border); background: none;
@@ -4270,15 +4275,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
 .modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
 .modal-foot {
-    /* Content-width, not a bleed: -35px margins overhung the phone's 22px
-       box padding and the total clipped to "£6" live. The ground is the
-       OPAQUE theme surface, not the bhub-sticky gradient — over the modal's
-       glass that gradient painted a strange-fading slab (owner's light-mode
-       screenshot), and the overlay already insets the safe area, so no
-       second safe-b term either. */
+    /* A DOCKED bar: full box width, the box's own bottom corners, the OPAQUE
+       theme surface. Glass + backdrop blur was tried and MEASURED: inside the
+       box's backdrop root the blur never applies — dark mode read through. */
     position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 14px;
-    margin: 8px 0 0; padding: 12px 0 14px;
+    margin: 8px calc(-1 * var(--mpad)) 0;
+    padding: 12px var(--mpad) 14px;
     border-top: 1px solid var(--glass-border);
+    border-radius: 0 0 var(--r-panel) var(--r-panel);
     background: var(--cmdk-surface);
 }
 /* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
