@@ -836,6 +836,40 @@ it_check('…and the dates stop being published as blocked', !$has($pub['json'][
 $r = $addBooking($dd(300), $dd(305), 'Rebooked After Cancel');
 it_check('…so the freed dates can be booked again, with no clash', $r['code'] === 200 && !empty($r['json']['id']) && empty($r['json']['clash']), $r['raw']);
 
+// (m) A PAYMENT PLAN SET AT BOOKING TIME rides the same add — validated by the
+// SAME rules as the hub's Edit-plan dialog (payment_plan_parse is one function)
+// and stored in the same INSERT, so a refused plan can never leave a
+// half-created booking behind.
+$stdId = (int) ($r['json']['id'] ?? 0); // the no-plan booking just created
+$r = $addBooking($dd(800), $dd(804), 'Planned At Add', ['deposit_pct' => '30', 'balance_due_date' => $dd(790)]);
+$planId = (int) ($r['json']['id'] ?? 0);
+it_check('a booking is created WITH its plan in one request', $r['code'] === 200 && $planId > 0, $r['raw']);
+$q = $rootDb->prepare('SELECT deposit_pct_override, deposit_amount_override, balance_due_date FROM bookings WHERE id = ?');
+$q->execute([$planId]);
+$planRow = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check(
+    '…and the row stores 30% + the custom due date, nothing else',
+    abs((float) ($planRow['deposit_pct_override'] ?? 0) - 30.0) < 0.005
+        && ($planRow['balance_due_date'] ?? '') === $dd(790)
+        && $planRow['deposit_amount_override'] === null,
+    json_encode($planRow),
+);
+$q->execute([$stdId]);
+$stdRow = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check(
+    'a booking added WITHOUT plan fields stores NULLs (site standard)',
+    $stdRow !== [] && $stdRow['deposit_pct_override'] === null && $stdRow['deposit_amount_override'] === null && $stdRow['balance_due_date'] === null,
+    json_encode($stdRow),
+);
+// A plan refusal is ATOMIC: worded 400, and nothing written.
+$before = $bookingsOn($dd(810), $dd(814));
+$r = $addBooking($dd(810), $dd(814), 'Bad Plan Pct', ['deposit_pct' => '150']);
+it_check('an impossible deposit % is refused in words', $r['code'] === 400 && stripos((string) ($r['json']['error'] ?? ''), 'percentage') !== false, $r['raw']);
+it_check('…and no booking is created for it', $bookingsOn($dd(810), $dd(814)) === $before, 'count moved');
+$r = $addBooking($dd(810), $dd(814), 'Bad Plan Date', ['balance_due_date' => $dd(820)]);
+it_check('a due date after check-in is refused', $r['code'] === 400 && stripos((string) ($r['json']['error'] ?? ''), 'check-in') !== false, $r['raw']);
+it_check('…and writes nothing either', $bookingsOn($dd(810), $dd(814)) === $before, 'count moved');
+
 // ---- 16. The no-dog declaration is required AND recorded -------------------
 // The client blocks the send, so this is the other half: a direct public POST
 // must not be able to create an enquiry that never made the declaration, and

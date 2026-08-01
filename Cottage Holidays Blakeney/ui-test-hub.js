@@ -308,6 +308,57 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     dlg: document.getElementById('glass-dialog').classList.contains('open'),
   }));
   ok(sl4.modal && !sl4.dlg, 'upcoming stay: edit opens instantly, no confirm');
+  // While the EDIT modal is open: the plan fields must NOT render — an
+  // existing booking's plan is edited from its hub, not here.
+  const planInEdit = await page.evaluate(() => {
+    const g = document.getElementById('modal-plan-group');
+    return g ? getComputedStyle(g).display : 'missing';
+  });
+  ok(planInEdit === 'none', `the plan fields hide in EDIT mode (${planInEdit})`);
+  await page.evaluate(() => closeModal());
+
+  // ---------- A4. payment plan at ADD time ----------
+  console.log('A4. payment plan in the Add Booking flow');
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(250);
+  const planInAdd = await page.evaluate(() => ({
+    shown: getComputedStyle(document.getElementById('modal-plan-group')).display !== 'none',
+    pctBlank: (document.getElementById('modal-plan-pct') || {}).value === '',
+    dueBlank: (document.getElementById('modal-plan-due') || {}).value === '',
+  }));
+  ok(planInAdd.shown && planInAdd.pctBlank && planInAdd.dueBlank,
+    'ADD shows the plan fields, blank (blank IS the site standard)');
+  // Fill a full booking + a 30% / dated plan → the add POST carries the plan.
+  await page.evaluate((f) => {
+    document.getElementById('modal-property').value = '21a';
+    document.getElementById('modal-name').value = 'Plan At Add';
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    document.getElementById('modal-plan-pct').value = '30';
+    document.getElementById('modal-plan-due').value = f.due;
+  }, { ci: d(46), co: d(49), due: d(44) });
+  const postsBefore = posts.length;
+  await page.evaluate(() => saveModal());
+  await page.waitForTimeout(600);
+  const addPost = posts.slice(postsBefore).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  ok(!!addPost && addPost.deposit_pct === '30' && addPost.balance_due_date === d(44),
+    `the add payload carries the plan (${addPost ? addPost.deposit_pct + ' / ' + addPost.balance_due_date : 'no add post'})`);
+  // A blank plan sends NOTHING — absent keys, never empty strings the server
+  // could misread as "clear" (there is nothing to clear at add time).
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(250);
+  await page.evaluate((f) => {
+    document.getElementById('modal-property').value = '21a';
+    document.getElementById('modal-name').value = 'Standard At Add';
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+  }, { ci: d(60), co: d(63) });
+  const postsBefore2 = posts.length;
+  await page.evaluate(() => saveModal());
+  await page.waitForTimeout(600);
+  const addPost2 = posts.slice(postsBefore2).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  ok(!!addPost2 && !('deposit_pct' in addPost2) && !('balance_due_date' in addPost2),
+    'blank plan fields stay OUT of the payload');
   await page.evaluate(() => closeModal());
   // Back to the b1 hub for the sections that follow.
   await page.evaluate(() => showDetails('21a', findBookingById('b1')));
