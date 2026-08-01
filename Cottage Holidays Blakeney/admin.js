@@ -10208,7 +10208,9 @@ function renderBookingHub() {
             <h3 class="bhub-card-title">Guest</h3>
             ${noContact}
             <div class="bhub-kvs">
-                ${contact('Email', b.email ? `<a href="mailto:${escapeHtml(b.email)}" style="color:var(--text-light);">${escapeHtml(b.email)}</a>` : '')}
+                ${/* The address opens the SITE'S composer (draft reply, preview,
+                      send log), never a mailto out to the phone's mail app. */ ''}
+                ${contact('Email', b.email ? `<button class="bhub-kv-act" ${chbAttrs('openBookingEmail', String(b.id))} title="Write an email — opens the site's composer">${escapeHtml(b.email)}</button>` : '')}
                 ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
                 ${contact('Address', b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '')}
                 ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + kvWhen(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
@@ -10275,7 +10277,12 @@ function renderBookingHub() {
             __hubNext.money
                 ? `<strong class="bhub-sticky-fig">${gbp(gt.balance)}</strong><span class="bhub-sticky-verb">${__hubNext.btnShort || __hubNext.btn}</span>`
                 : __hubNext.btn
-        }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${b.email ? `<a class="bhub-icbtn" href="mailto:${escapeHtml(String(b.email))}" aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</a>` : ''}</div>`
+        }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${
+            // The SITE'S composer, never mailto: — a mailto bounced the owner
+            // out to the phone's mail app, past the draft-reply, the preview
+            // and the send log. tel: stays a link; the phone IS the client.
+            b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</button>` : ''
+        }</div>`
         : '';
     el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>${sticky}`;
 }

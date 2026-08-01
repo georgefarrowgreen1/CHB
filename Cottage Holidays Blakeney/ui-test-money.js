@@ -1065,7 +1065,20 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     },
   });
   await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; renderSweep(); });
-  await page.waitForTimeout(500);
+  // WAIT FOR STATE, NOT THE CLOCK. The confirm flow above fires a trailing
+  // sweep refresh; on a loaded machine it lands AFTER a fixed wait and
+  // repaints this scene from the previous stub (observed: field ✓ 2530.13,
+  // sentence gone — a 1-in-N battery flake, standalone always green). Poll
+  // for the estimate sentence, and if the stale repaint won the race,
+  // re-render once from the current stub and poll again.
+  const estUp = () => page.waitForFunction(
+    () => /you told me/.test((document.getElementById('asec-sweep') || {}).textContent || ''),
+    { timeout: 4000 },
+  ).then(() => true).catch(() => false);
+  if (!(await estUp())) {
+    await page.evaluate(() => renderSweep());
+    await estUp();
+  }
   const sB = await sweepText();
   const balVal = await page.inputValue('#sweep-balance');
   ok(balVal === '2530.13', `the field starts from the rolled-forward figure (${balVal})`);
