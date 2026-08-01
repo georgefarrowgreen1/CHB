@@ -4145,26 +4145,35 @@ body.cmdk-open {
 }
 .bhub-plan .bhub-linklike { align-self: flex-start; }
 
-/* THE HUB'S ACTION HIERARCHY — one loud control, everything else quiet.
-   The payask band is the single call to action; the complementary actions
-   (record / copy link / reminder / invoice) wear the linklike vocabulary
-   instead of a wall of pills indistinguishable from the ask (measured at
-   390px: seven equal pills in the header card alone, the same requestPayment
-   three times). Still <button>s at the 44px touch floor — quiet is a look,
-   not a smaller target. The :not(.bhub-act-links) exemption keeps the phone
-   two-up grid for the card button rows that ARE homogeneous sets (Emails). */
-.bhub-act-links { display: flex; flex-wrap: wrap; gap: 0 22px; margin-top: 8px; }
+/* THE HUB'S ACTION HIERARCHY — one loud control, then ACTION ROWS.
+   The payask band is the single call to action. The complementary actions
+   first became free-floating text links, and on the dark theme the owner
+   reported them fairly: not visible as buttons, not symmetrical (two per
+   line with ragged column starts), not clearly laid out. This is the iOS
+   answer — the ACTION-ROW LIST (Settings' own shape): one action per row,
+   full width so every label starts on the same rail, a hairline between
+   rows, the label in --accent-text (colour IS the "this is tappable"
+   signal — the words-vs-things rule), a muted chevron on the right. Still
+   <button>s at the 44px floor. The sent-tag rides the same group as a
+   non-interactive row, so a mixed group keeps its rhythm. */
+.bhub-act-links { display: flex; flex-direction: column; margin-top: 8px; }
+.bhub-act-links > * + * { border-top: 1px solid var(--glass-border); }
 .bhub-actlink {
-    display: inline-flex; align-items: center;
-    background: none; border: none; padding: 10px 0; min-height: 44px;
-    font-family: inherit; font-size: 0.84rem; color: var(--text-light);
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; text-align: left; gap: 12px;
+    background: none; border: none; padding: 10px 2px; min-height: 44px;
+    font-family: inherit; font-size: 0.88rem; color: var(--accent-text);
     cursor: pointer;
 }
-.bhub-actlink::before { content: '›'; margin-right: 6px; color: var(--text-muted); }
-.bhub-actlink:hover { color: var(--accent-text); }
+.bhub-actlink::after { content: '›'; color: var(--text-muted); flex: 0 0 auto; }
+.bhub-actlink:hover { text-decoration: underline; text-underline-offset: 3px; }
+.bhub-act-links .bhub-sent-tag {
+    display: flex; align-items: center; min-height: 44px; padding: 10px 2px;
+    background: none; border-radius: 0;
+}
 @media (max-width: 640px) {
-    /* Out-rank the generic .bhub-btn-row grid — the quiet row stays a flowing
-       line of text actions at every width. */
+    /* Out-rank the generic .bhub-btn-row grid — the action list is rows at
+       every width. */
     .bhub-btn-row.bhub-act-links { display: flex; }
 }
 

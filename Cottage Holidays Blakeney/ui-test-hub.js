@@ -502,6 +502,30 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     }).every(Boolean);
   });
   ok(planTangle, 'the plan rows keep sentence and state apart at phone width (no interleave)');
+  // ACTION ROWS, NOT FLOATING TEXT (owner's dark-mode report: the quiet links
+  // were "not visible as buttons, not symmetrical"). The iOS action-list
+  // anatomy, pinned: every action spans its group (all labels on one rail —
+  // symmetry is full width, not luck), sits at the 44px floor, and carries
+  // the accent-text ink — colour is the "this is tappable" signal.
+  const rowsOk = await page.evaluate(() => {
+    // Resolve the token IN THE ROWS' OWN CONTEXT — the theme class on body
+    // retunes --accent-text, so reading :root's value compares dark ink
+    // against a light-mode button and fails a correct page.
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent-text)';
+    document.body.appendChild(probe);
+    const want = getComputedStyle(probe).color; probe.remove();
+    const groups = [...document.querySelectorAll('.bhub-act-links')];
+    const all = groups.flatMap((g) => {
+      const gw = g.getBoundingClientRect().width;
+      return [...g.querySelectorAll('.bhub-actlink')].map((r) => {
+        const b = r.getBoundingClientRect();
+        return { full: Math.abs(b.width - gw) < 3, tall: b.height >= 43, ink: getComputedStyle(r).color === want };
+      });
+    });
+    return { n: all.length, ok: all.length > 0 && all.every((x) => x.full && x.tall && x.ink) };
+  });
+  ok(rowsOk.ok, `every secondary action is a full-width 44px accent-ink row (${rowsOk.n} rows across the hub's groups)`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
   // Share stay details: for the cleaner's chat — and deliberately NO money.
