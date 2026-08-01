@@ -106,12 +106,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return {
       insideRow: !!(open && open.querySelector('.mbx-inline .mbx-text')),
       expanded: !!open && open.querySelector('.bk-row').getAttribute('aria-expanded') === 'true',
-      collapseBtn: !!(open && [...open.querySelectorAll('button')].some((b) => /collapse/i.test(b.textContent))),
+      // Assert the WAY OUT, not the word on it: the label has been both
+      // "Collapse" and "Close" and neither is the thing being checked.
+      collapseBtn: !!(open && open.querySelector('[data-act="mailboxCollapse"]')),
     };
   });
   ok(acc.insideRow, 'reader renders inside the tapped row (not at the page bottom)');
   ok(acc.expanded, 'row marked aria-expanded');
-  ok(acc.collapseBtn, 'Collapse button present');
+  ok(acc.collapseBtn, 'a control that closes the reader is present');
   await page.evaluate(() => document.querySelector('#mailbox-body .mbx-item.open .bk-row').click());
   await page.waitForTimeout(300);
   const collapsed = await page.evaluate(() => ({
@@ -124,7 +126,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   console.log('2b. guest context + attachments');
   const ctx = await page.evaluate(() => ({
-    match: /Guest match/.test((document.querySelector('.mbx-ctx') || {}).textContent || ''),
+    match: /Known guest/.test((document.querySelector('.mbx-ctx') || {}).textContent || ''),
     chip: !!document.querySelector('.mbx-ctx .bhub-stay-row'),
     att: ((document.querySelector('.mbx-att') || {}).textContent || '').trim(),
     attHref: (document.querySelector('.mbx-att') || {}).getAttribute?.('href') || '',
@@ -256,9 +258,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('6. one row per conversation');
   const th = await page.evaluate(() => {
     __mbxMessages = [
-      { uid: 'c1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Pay your deposit — Pimpernel (#12xab12cd34ef5678)', date: '2026-07-20 09:00:00', seen: true },
-      { uid: 'c2', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-21 11:30:00', seen: true },
-      { uid: 'c3', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'RE: Re: Pay your deposit — Pimpernel', date: '2026-07-22 08:05:00', seen: false },
+      { uid: 'c1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Pay your deposit — Pimpernel (#12xab12cd34ef5678)', date: '2026-07-22 08:05:00', seen: true },
+      { uid: 'c2', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-22 11:30:00', seen: true },
+      { uid: 'c3', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'RE: Re: Pay your deposit — Pimpernel', date: '2026-07-22 16:40:00', seen: false },
       { uid: 'd1', from: 'bob@example.com', fromRaw: 'Bob Carter <bob@example.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-19 10:00:00', seen: true },
       { uid: 'e1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Parking at the cottage', date: '2026-07-18 10:00:00', seen: true },
     ];
@@ -299,22 +301,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const it = document.querySelector('#mailbox-body .mbx-item.open');
     return {
       showing: it && it.dataset.showing,
-      earlier: it ? it.querySelectorAll('.mbx-earlier .bhub-actlink').length : -1,
+      earlier: it ? it.querySelectorAll('.mbx-earlier .mbx-chain-row').length : -1,
       label: it ? /Earlier in this conversation/.test(it.textContent) : false,
+      // Three replies on one afternoon used to render three identical dates.
+      times: it ? [...it.querySelectorAll('.mbx-chain-time')].map((x) => x.textContent.trim()) : [],
     };
   });
   ok(chain.showing === 'c3' && chain.earlier === 2 && chain.label,
     `the chain opens on its newest, the other 2 listed beneath (showing ${chain.showing}, ${chain.earlier} earlier)`);
+  // THE WHOLE CHAIN IS ONE AFTERNOON — the fixture is deliberately same-day,
+  // because that is the case the owner reported: three rows reading an
+  // identical "29/07/2026" with nothing to tell them apart. The time is the
+  // distinguishing fact, so it has to be on the row.
+  ok(chain.times.length === 2 && chain.times[0] && chain.times[1] && chain.times[0] !== chain.times[1],
+    `same-day replies are told apart by their time (${chain.times.join(' / ') || 'none shown'})`);
   // Guarded like the Sent-tab click above: a build with no chain should report
   // failed checks, not throw on null.
-  await page.evaluate(() => { const b = document.querySelector('#mailbox-body .mbx-item.open .mbx-earlier .bhub-actlink'); b && b.click(); });
+  await page.evaluate(() => { const b = document.querySelector('#mailbox-body .mbx-item.open .mbx-earlier .mbx-chain-row'); b && b.click(); });
   await page.waitForTimeout(700);
   const swapped = await page.evaluate(() => {
     const it = document.querySelector('#mailbox-body .mbx-item.open');
     return {
       stillOpen: !!it,
       showing: it && it.dataset.showing,
-      earlier: it ? it.querySelectorAll('.mbx-earlier .bhub-actlink').length : -1,
+      earlier: it ? it.querySelectorAll('.mbx-earlier .mbx-chain-row').length : -1,
     };
   });
   ok(swapped.stillOpen && swapped.showing === 'c2' && swapped.earlier === 2,
@@ -331,6 +341,85 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { uid: it && it.dataset.uid, earlier: it ? it.querySelectorAll('.mbx-earlier').length : -1 };
   });
   ok(lone.uid === 'e1' && lone.earlier === 0, 'a one-email conversation reads exactly as it always did');
+
+  // EVERYTHING IN THE KNOWN-GUEST BOX IS INLINE WITH EVERYTHING ELSE. Its
+  // parts — cottage, when, open — are one sentence about one stay, and
+  // `space-between` flung them to the corners of a full-width row. The dates
+  // are one fact and must never fragment: squeezed, "28-31 Aug 2026" broke
+  // over FOUR lines and took the row to 105px.
+  console.log('7. the known-guest box is one inline line');
+  const inlineAt = async (w) => {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(250);
+    await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
+    await page.waitForTimeout(700);
+    return page.evaluate(() => {
+      const ctx = document.querySelector('.mbx-ctx');
+      const row = ctx && ctx.querySelector('.bhub-stay-row');
+      const cap = ctx && ctx.querySelector('.mbx-cap');
+      if (!row || !cap) return null;
+      const rr = row.getBoundingClientRect();
+      const cr = cap.getBoundingClientRect();
+      const kids = [...row.children].map((el) => el.getBoundingClientRect());
+      const mids = kids.map((k) => k.top + k.height / 2);
+      const dates = [...row.querySelectorAll('span')].find((x) => /\d/.test(x.textContent) && !x.classList.contains('prop-tag'));
+      const dr = dates ? dates.getBoundingClientRect() : { height: 0 };
+      // Widest gap between one part and the next — "flung to the corners" is
+      // what this catches; packed inline it is the flex gap.
+      const sorted = kids.slice().sort((a, b) => a.left - b.left);
+      let widestGap = 0;
+      for (let i = 1; i < sorted.length; i++) widestGap = Math.max(widestGap, sorted[i].left - sorted[i - 1].right);
+      return {
+        parts: kids.length,
+        spread: Math.round(Math.max(...mids) - Math.min(...mids)),
+        rowH: Math.round(rr.height),
+        dateH: Math.round(dr.height),
+        lineH: Math.round(parseFloat(getComputedStyle(row).fontSize) * 1.6),
+        widestGap: Math.round(widestGap),
+        capAbove: cr.bottom <= rr.top + 1,
+      };
+    });
+  };
+  // HOSTILE WIDTH: the real cottage names fit, so without an injected long one
+  // the no-wrap rule is never exercised and the check is vacuous (it was —
+  // deleting the rule left it green). A squeezed row must clip the NAME and
+  // keep the dates whole.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(250);
+  await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
+  await page.waitForTimeout(700);
+  const squeezed = await page.evaluate(() => {
+    const row = document.querySelector('.mbx-ctx .bhub-stay-row');
+    if (!row) return null;
+    const tag = row.querySelector('.prop-tag');
+    if (tag) tag.textContent = 'The Old Harbourmasters Cottage House';
+    const card = document.querySelector('.mbx-inline-card');
+    const dates = [...row.querySelectorAll('span')].find((x) => /\d/.test(x.textContent) && !x.classList.contains('prop-tag'));
+    const dr = dates.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    const cr = card.getBoundingClientRect();
+    return {
+      dateH: Math.round(dr.height),
+      lineH: Math.round(parseFloat(getComputedStyle(row).fontSize) * 1.6),
+      overflow: Math.round(rr.right - cr.right),
+      clipped: tag ? tag.scrollWidth > tag.clientWidth + 1 : false,
+    };
+  });
+  ok(!!squeezed && squeezed.dateH <= squeezed.lineH + 4,
+    `SQUEEZED: a 36-char cottage name never breaks the dates (${squeezed ? squeezed.dateH + 'px vs ' + squeezed.lineH : '?'})`);
+  ok(!!squeezed && squeezed.clipped && squeezed.overflow <= 0,
+    `SQUEEZED: the NAME clips instead, and the row stays inside its card (${squeezed ? squeezed.overflow : '?'}px past)`);
+
+  for (const w of [390, 900]) {
+    const m = await inlineAt(w);
+    const tag = w === 390 ? 'PHONE' : 'WIDE';
+    ok(!!m && m.parts >= 3 && m.spread <= 3,
+      `${tag}: all ${m ? m.parts : 0} parts sit on one line together (centres within ${m ? m.spread : '?'}px)`);
+    ok(!!m && m.widestGap <= 24,
+      `${tag}: they are packed inline, not flung to the corners (widest gap ${m ? m.widestGap : '?'}px)`);
+    ok(!!m && m.dateH <= m.lineH + 4, `${tag}: the dates never fragment (${m ? m.dateH + 'px vs ' + m.lineH : '?'})`);
+    ok(!!m && m.capAbove, `${tag}: "Known guest" stays above the box`);
+  }
 
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
