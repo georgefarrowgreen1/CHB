@@ -753,6 +753,12 @@ chk('…and stamps balance_reminded_at', preg_match('/if \(\$isReminder\) \{[\s\
 chk('a manual deposit ask arms the recovery stamp without clobbering the first one',
     strpos($bkPlan, 'SET deposit_requested_at = COALESCE(deposit_requested_at, NOW())') !== false);
 
+// The guest pay screen states WHEN the balance is due, from the booking's own
+// plan — the summary must carry booking_balance_due_date (custom date wins,
+// else standard), or the client line is decoration with no data.
+chk('the pay summary carries the plan-derived due date',
+    strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'balanceDueDate' => booking_balance_due_date(") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

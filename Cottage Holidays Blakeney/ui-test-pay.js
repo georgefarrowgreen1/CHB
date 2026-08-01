@@ -53,13 +53,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
           total: 700, alreadyPaid: 175, balance: 525, depositPct: 25, amountDue: 525,
-          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged',
+          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: '2020-01-01',
         });
         return json({
           ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
           total: 390, alreadyPaid: 100, balance: 290, depositPct: 25, amountDue: 290,
-          damagesDue: 50, holdAmount: 0, holdStatus: 'none',
+          damagesDue: 50, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
         });
       }
       if (b.__url === 'pay.php' && b.action === 'charge') return json({ ok: true, fullyPaid: true, charged: 340 });
@@ -91,7 +91,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(v.bodyShown, 'pay body renders');
   ok(v.chip && /Annex/.test(v.prop) && /3[\s ]nights/.test(v.prop), `header carries the stay — accent chip + nights (${v.prop.trim()})`);
-  ok(v.kind === 'Balance due' && v.amount === '£340.00', `amount hero (${v.kind} ${v.amount})`);
+  // WHEN, from the booking's own plan: a future due date joins the headline
+  // (fixed far-future stub date so the check can't rot with the wall clock);
+  // booking 9's PASSED date stays plain "Balance due" — it is due now.
+  ok(v.kind === 'Balance due by 15/01/2030' && v.amount === '£340.00', `amount hero says WHEN (${v.kind} ${v.amount})`);
   ok(/of £440\.00 total · £100\.00 already paid/.test(v.sub), `money-shape sub with already-paid (${v.sub})`);
   ok(v.noteShown && /£50\.00 refundable damages deposit — returned after your stay/.test(v.note), 'deposit note is its own quiet line');
   ok(!v.oldBanner, 'the loud green security banner is gone');
