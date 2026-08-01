@@ -1488,8 +1488,12 @@
 
     <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="glass-panel modal-box">
-            <h3 id="modal-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 10px;">Edit Booking</h3>
             <button type="button" class="modal-x" data-act="closeModal" aria-label="Close">✕</button>
+            <!-- The native-sheet structure: the form scrolls in its own region
+                 and the footer sits OUTSIDE it, so iOS overscroll can never
+                 drag the bar off the box bottom (owner's screenshot). -->
+            <div class="modal-scroll">
+            <h3 id="modal-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 10px;">Edit Booking</h3>
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
@@ -1641,8 +1645,9 @@
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
             <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
+            </div>
 
-            <!-- Sticky: the live total and Save never leave the screen. The
+            <!-- Docked: the live total and Save never leave the screen. The
                  figure MIRRORS the price box's own total (modalFootSync reads
                  it back), so the two can never quote different numbers. -->
             <div class="modal-foot">
@@ -1778,7 +1783,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=660"></script>
+    <script defer src="app.js?v=661"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -180,16 +180,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const fr0 = foot.getBoundingClientRect();
     const fullBleed = Math.abs(fr0.left - br.left) <= 1.5 && Math.abs(fr0.right - br.right) <= 1.5;
     const radiusMatch = getComputedStyle(foot).borderBottomLeftRadius === getComputedStyle(box).borderBottomLeftRadius;
-    const padL = parseFloat(getComputedStyle(box).paddingLeft);
+    // The content rail is the SCROLLER's padding now — the box pads 0 and
+    // the form scrolls in its own region so iOS overscroll can't move the bar.
+    const scroller = document.querySelector('#edit-modal .modal-scroll');
+    const padL = parseFloat(getComputedStyle(scroller).paddingLeft);
+    const outsideScroller = foot.parentElement === box && !scroller.contains(foot);
     const textOnRail = Math.abs(document.querySelector('.modal-foot-total').getBoundingClientRect().left - (br.left + padL)) <= 1.5;
     const fig = document.getElementById('modal-foot-fig');
     fig.textContent = '£123,456.00'; // hostile figure (the §14 injection discipline)
     const fr = fig.getBoundingClientRect();
     const noClip = Math.ceil(fr.width) >= fig.scrollWidth - 1 && fr.right <= document.getElementById('modal-save-btn').getBoundingClientRect().left + 1;
     fig.textContent = '£440.00';
-    return { fullBleed, radiusMatch, textOnRail, noClip };
+    return { fullBleed, radiusMatch, textOnRail, noClip, outsideScroller };
   });
   ok(s4b.fullBleed && s4b.radiusMatch, 'the foot docks edge to edge with the box\'s own bottom corners');
+  ok(s4b.outsideScroller, 'the foot lives OUTSIDE the scroller — overscroll cannot move it');
   ok(s4b.textOnRail, 'its text stands on the content rail');
   ok(s4b.noClip, 'a hostile-length figure squeezes Save, never itself');
   // The foot's ground is the OPAQUE theme surface — the bhub-sticky gradient
