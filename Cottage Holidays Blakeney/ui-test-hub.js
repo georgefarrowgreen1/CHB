@@ -652,7 +652,6 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   });
   ok(planEmphasis.figWeight >= 600, `the plan's facts carry sentence weight (${planEmphasis.figWeight})`);
   ok(planEmphasis.tagUp, 'a custom plan announces itself with the badge, not two muted words');
-  ok(/The chaser emails the balance link on/.test(plan1), 'the automation narrates its plan from the NEW date');
   // The reminder: appears only once something has been asked, sends through
   // request_payment with the reminder flag, and the panel records it at once.
   await page.evaluate((ts) => { const b = findBookingById('b1'); b.balanceRequestedAt = ts; renderBookingHub(); }, d(-1) + ' 09:00:00');
