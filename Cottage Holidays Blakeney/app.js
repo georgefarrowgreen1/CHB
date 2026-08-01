@@ -12743,6 +12743,11 @@ function applyModalPropertyMode() {
     setDisp('modal-payment-group', !custom);
     setDisp('modal-deposit-group', !custom);
     setDisp('modal-override-group', !custom);
+    // The payment-plan fields are an ADD-time affordance only — an existing
+    // booking's plan is edited from its hub (editPaymentPlan), and the enquiry
+    // editor has no booking to plan for yet.
+    const modeEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-mode'));
+    setDisp('modal-plan-group', !custom && !!modeEl && modeEl.value === 'add');
     const btn = document.getElementById('modal-save-btn');
     if (btn) btn.textContent = custom ? 'Next →' : 'Save';
 }
@@ -13022,6 +13027,12 @@ function setModalFields(f) {
                   : '';
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
+    // Plan fields always open blank — blank IS the site standard, and these
+    // only render in ADD mode (a fresh booking has no plan yet).
+    const ppEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
+    if (ppEl) ppEl.value = '';
+    const pdueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
+    if (pdueEl) pdueEl.value = '';
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
     // Clean slate: release any "move" lock and restore the payment-entry fields
     // left hidden by a previous arrived / fully-paid edit, so Add and normal edits
@@ -13541,6 +13552,16 @@ async function saveModal() {
     if (depositAmount !== null) payload.deposit = depositAmount;
     if (paymentDate !== null) payload.payment_date = paymentDate;
     if (paymentMethod !== null) payload.payment_method = paymentMethod;
+    // Payment plan at booking time — ADD only (the fields only render there).
+    // Blank sends nothing, which IS the site standard.
+    if (mode === 'add') {
+        const planPctEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
+        const planDueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
+        const planPct = planPctEl ? planPctEl.value.trim() : '';
+        const planDue = planDueEl ? planDueEl.value.trim() : '';
+        if (planPct !== '') payload.deposit_pct = planPct;
+        if (planDue !== '') payload.balance_due_date = planDue;
+    }
 
     try {
         let addRes = null;
@@ -13892,7 +13913,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'notick02aug';
+    const BUILD = 'planadd02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

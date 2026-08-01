@@ -557,6 +557,53 @@ if ($action === 'delete') {
     json_out(['ok' => true]);
 }
 
+// ONE validator for a payment plan's fields, wherever they arrive — the Add
+// Booking form and the hub's Edit-plan dialog must refuse the same things in
+// the same words. Reads deposit_pct / deposit_amount / balance_due_date off
+// $in; refusals json_out in words; returns [$pct, $amt, $due] (nulls = the
+// site standard). $total may be 0 when unknown (the cap check then stands down).
+function payment_plan_parse(array $in, string $checkIn, float $total): array
+{
+    $pctIn = trim((string) ($in['deposit_pct'] ?? ''));
+    $amtIn = trim((string) ($in['deposit_amount'] ?? ''));
+    $dateIn = trim((string) ($in['balance_due_date'] ?? ''));
+    if ($pctIn !== '' && $amtIn !== '') {
+        json_out(['error' => 'Give the custom deposit as a percentage OR a £ amount, not both.'], 400);
+    }
+    $pct = null;
+    if ($pctIn !== '') {
+        $pct = (float) $pctIn;
+        if (!($pct > 0 && $pct <= 100)) {
+            json_out(['error' => 'The deposit percentage must be between 0 and 100.'], 400);
+        }
+    }
+    $amt = null;
+    if ($amtIn !== '') {
+        $amt = round((float) $amtIn, 2);
+        if ($amt <= 0) {
+            json_out(['error' => 'The deposit amount must be more than £0.'], 400);
+        }
+        if ($total > 0 && $amt > $total + 0.005) {
+            json_out(['error' => 'That deposit is more than the stay costs (£' . number_format($total, 2) . ').'], 400);
+        }
+    }
+    $due = null;
+    if ($dateIn !== '') {
+        $d = DateTime::createFromFormat('Y-m-d', $dateIn);
+        if (!$d || $d->format('Y-m-d') !== $dateIn) {
+            json_out(['error' => 'The balance due date must be a real date (YYYY-MM-DD).'], 400);
+        }
+        if ($dateIn < date('Y-m-d')) {
+            json_out(['error' => 'That due date has already passed — leave it blank for the standard schedule, or pick a future date.'], 400);
+        }
+        if ($checkIn !== '' && $dateIn > substr($checkIn, 0, 10)) {
+            json_out(['error' => 'The balance must be due by check-in (' . uk_date($checkIn) . ') at the latest.'], 400);
+        }
+        $due = $dateIn;
+    }
+    return [$pct, $amt, $due];
+}
+
 if ($action === 'add') {
     $propKey = clean($in['prop_key'] ?? '');
     $rate = get_rate($propKey);
@@ -648,15 +695,18 @@ if ($action === 'add') {
         $method = clean($in['payment_method'] ?? '');
     }
 
-    db()
-        ->prepare(
-            'INSERT INTO bookings
-        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
+    // A payment plan set AT booking time (the Add form's optional fields) —
+    // validated by the SAME rules as the hub's Edit-plan dialog, refused
+    // BEFORE anything is written, and stored in the same INSERT so a refusal
+    // or failure can never leave a booking half-created. The plan columns
+    // join the statement only when a plan was actually given, so an
+    // un-migrated database keeps adding standard bookings untouched.
+    [$planPct, $planAmt, $planDue] = payment_plan_parse($in, $checkIn, (float) $snap['agreed_total']);
+
+    $cols = 'prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
          deposit_paid,payment_method,payment_date,
-         agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,price_override)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        )
-        ->execute([
+         agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,price_override';
+    $vals = [
             $propKey,
             $name,
             clean($in['email'] ?? ''),
@@ -683,7 +733,14 @@ if ($action === 'add') {
             $snap['agreed_txn_fee'],
             $snap['agreed_on'],
             $priceOverride,
-        ]);
+    ];
+    if ($planPct !== null || $planAmt !== null || $planDue !== null) {
+        $cols .= ',deposit_pct_override,deposit_amount_override,balance_due_date';
+        array_push($vals, $planPct, $planAmt, $planDue);
+    }
+    db()
+        ->prepare('INSERT INTO bookings (' . $cols . ') VALUES (' . implode(',', array_fill(0, count($vals), '?')) . ')')
+        ->execute($vals);
     $newId = (int) db()->lastInsertId();
     book_unlock($propKey); // free the lock before the (slower) email send
     // Auto-send the confirmation email for the newly created booking (if it has
@@ -1213,44 +1270,13 @@ if ($action === 'set_payment_plan') {
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
     }
-    $pctIn = trim((string) ($in['deposit_pct'] ?? ''));
-    $amtIn = trim((string) ($in['deposit_amount'] ?? ''));
-    $dateIn = trim((string) ($in['balance_due_date'] ?? ''));
-    if ($pctIn !== '' && $amtIn !== '') {
-        json_out(['error' => 'Give the custom deposit as a percentage OR a £ amount, not both.'], 400);
-    }
-    $pct = null;
-    if ($pctIn !== '') {
-        $pct = (float) $pctIn;
-        if (!($pct > 0 && $pct <= 100)) {
-            json_out(['error' => 'The deposit percentage must be between 0 and 100.'], 400);
-        }
-    }
-    $amt = null;
-    if ($amtIn !== '') {
-        $amt = round((float) $amtIn, 2);
-        $tot = (float) (booking_amount_due($b, 'balance')['total'] ?? 0);
-        if ($amt <= 0) {
-            json_out(['error' => 'The deposit amount must be more than £0.'], 400);
-        }
-        if ($tot > 0 && $amt > $tot + 0.005) {
-            json_out(['error' => 'That deposit is more than the stay costs (£' . number_format($tot, 2) . ').'], 400);
-        }
-    }
-    $due = null;
-    if ($dateIn !== '') {
-        $d = DateTime::createFromFormat('Y-m-d', $dateIn);
-        if (!$d || $d->format('Y-m-d') !== $dateIn) {
-            json_out(['error' => 'The balance due date must be a real date (YYYY-MM-DD).'], 400);
-        }
-        if ($dateIn < date('Y-m-d')) {
-            json_out(['error' => 'That due date has already passed — leave it blank for the standard schedule, or pick a future date.'], 400);
-        }
-        if (!empty($b['check_in']) && $dateIn > substr((string) $b['check_in'], 0, 10)) {
-            json_out(['error' => 'The balance must be due by check-in (' . uk_date($b['check_in']) . ') at the latest.'], 400);
-        }
-        $due = $dateIn;
-    }
+    // The Add form and this dialog share ONE validator (payment_plan_parse) —
+    // the total is only fetched when a £ amount needs capping, since
+    // booking_amount_due is the costlier derivation.
+    $tot = trim((string) ($in['deposit_amount'] ?? '')) !== ''
+        ? (float) (booking_amount_due($b, 'balance')['total'] ?? 0)
+        : 0.0;
+    [$pct, $amt, $due] = payment_plan_parse($in, (string) ($b['check_in'] ?? ''), $tot);
     try {
         db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?')
             ->execute([$pct, $amt, $due, $id]);
