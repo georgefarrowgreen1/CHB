@@ -1693,6 +1693,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const rows = [...box.querySelectorAll('[role="option"]')].map((e) => ({
       idx: +(e.id || '').replace('cmdk-opt-', ''),
       top: e.getBoundingClientRect().top,
+      dbg: ((e.querySelector('.cmdk-row-label, .cmdk-hero-label, .cmdk-chip-lbl') || e).textContent || '').trim().slice(0, 48),
     }));
     return {
       heads,
@@ -1700,8 +1701,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       monotonic: rows.every((r, i) => i === 0 || r.idx > rows[i - 1].idx),
       visual: rows.every((r, i) => i === 0 || r.top >= rows[i - 1].top),
       n: rows.length,
+      rows,
     };
   });
+  if (landing && !(landing.monotonic && landing.visual)) console.log('  [dbg] landing rows:', JSON.stringify(landing.rows, null, 1));
   const gi = landing ? landing.heads.findIndex((h) => /morning|afternoon|evening|night/i.test(h)) : -1;
   const mi = landing ? landing.heads.indexOf('Most used') : -1;
   ok(!!landing && landing.brief > 0 && landing.freq > 0,
@@ -1710,6 +1713,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `LANDING: the day's greeting leads, above "Most used" (${landing && JSON.stringify(landing.heads)})`);
   ok(!!landing && landing.monotonic && landing.visual,
     `LANDING: …and the row indices still rise down the screen, so arrows follow the eye (${landing && landing.n} rows)`);
+
+  // 20a-ii) …AND THE BRIEF'S ARRAY AGREES WITH THE BOARD ORDER BY CONSTRUCTION.
+  // The check above sees only the rows THIS clock composes — the failing pairing
+  // (a 'waiting' teach row beside a 'month' pulse) only coexists in some clock
+  // windows, which is how the defect passed CI for months and then failed a
+  // midnight run. So drive the REAL composer with the teach row forced present
+  // and assert every returned row's board rank is non-decreasing against
+  // CMDK_BOARDS — the exact invariant cmdkBoardsHtml's slicing depends on.
+  const briefOrder = await page.evaluate(() => {
+    const oldMiss = window.chbMissList;
+    try {
+      window.chbMissList = () => [{ q: 'zz-probe-1', at: todayDashed() }, { q: 'zz-probe-2', at: todayDashed() }];
+      __cmdkBriefCache = null;
+      const rows = cmdkBriefBuild();
+      const rank = (it) => { const i = CMDK_BOARDS.findIndex((b) => b.key === (it.board || 'today')); return i < 0 ? CMDK_BOARDS.length : i; };
+      return {
+        hasTeach: rows.some((r) => r.id === 'brief-teach'),
+        boards: rows.map((r) => r.board || 'today'),
+        monotonic: rows.every((r, i) => i === 0 || rank(r) >= rank(rows[i - 1])),
+      };
+    } finally { window.chbMissList = oldMiss; __cmdkBriefCache = null; }
+  });
+  ok(!!briefOrder && briefOrder.hasTeach,
+    `LANDING: the forced teach row reached the composer (boards: ${briefOrder && briefOrder.boards.join(',')})`);
+  ok(!!briefOrder && briefOrder.monotonic,
+    'LANDING: the brief array rises in board order at ANY hour — the render slices by index, so this is what keeps arrows on the eye’s path');
 
   // 20b) THE DAY'S CARDS EARN THEIR HEIGHT. Measured at 390px, the boards spent
   // 453px on five facts — 91px each — so a morning with four boards scrolled before

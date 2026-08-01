@@ -7499,7 +7499,19 @@ function cmdkBriefBuild() {
             items.push({ type: 'answer', id: 'brief-teach', board: 'waiting', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
         }
     } catch (e) {}
-    return items.slice(0, 7);
+    // WHICH rows surface is severity-driven (the composition order above + this
+    // cap); WHERE they sit is subject-driven — and the ARRAY has to agree with
+    // cmdkBoardsHtml's board order, because the landing renders slices by index
+    // and every row carries its cmdk-opt-<i> id. Composed order alone put the
+    // pulse ('month') at a lower index than the teach row ('waiting') while the
+    // Waiting board renders ABOVE This month — measured, idx 8 painted above
+    // idx 7 and arrow keys walked one order while the eye read another. A
+    // stable sort by board rank fixes every such pairing at once (a 'waiting'
+    // duty vs 'brief-later' had the same collision); rows within one board keep
+    // their severity order. Unrecognised boards rank LAST, matching the orphan
+    // rows cmdkBoardsHtml appends after the board cards.
+    const rank = (it) => { const i = CMDK_BOARDS.findIndex((b) => b.key === (it.board || 'today')); return i < 0 ? CMDK_BOARDS.length : i; };
+    return items.slice(0, 7).sort((a, z) => rank(a) - rank(z));
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;

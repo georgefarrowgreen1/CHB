@@ -748,7 +748,15 @@ would break arrow-key nav in total silence).
   `cmdk-opt-<i>` id, so moving the HTML blocks by themselves leaves arrow-key nav
   walking the old order while the eye jumps between groups (ui-test-searchpage §20
   checks the heading order AND that DOM order and index order rise together; the
-  second one is what catches that mistake). The day's facts group into Today / Money / Waiting on you /
+  second one is what catches that mistake). **`cmdkBriefBuild` therefore ENDS with a
+  stable sort by board rank**: composition order is severity (it decides which rows
+  survive the cap of 7), but the boards render today→money→waiting→month→control,
+  so the composed-order array put the pulse ('month') at a lower index than the
+  teach row ('waiting') and the indices crossed — only in clock windows where both
+  rows coexist, which is how it passed CI for months then failed a midnight run.
+  §20a-ii pins the invariant at ANY hour: it forces the teach row (stubbed
+  `chbMissList`) through the REAL composer and asserts board rank never falls
+  (break-tested by deleting the sort). The day's facts group into Today / Money / Waiting on you /
   This month, each board's first row at figure size, and a board with no rows does
   not render (a quiet day collapses instead of showing four empty cards). A brief
   row **DECLARES its board** (`board:` in `cmdkBriefBuild`) rather than having the
