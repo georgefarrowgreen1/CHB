@@ -610,7 +610,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(/Payment plan — Walk-in Guest/.test(dlgShape.title) && dlgShape.titleShown && dlgShape.named === 'glass-dialog-title',
     `the dialog is titled, and the title is its accessible name (${dlgShape.title})`);
-  ok(dlgShape.hints.length === 2 && /site standard \(25%/.test(dlgShape.hints[0]) && /Showing the standard date/.test(dlgShape.hints[1]),
+  ok(dlgShape.hints.length === 2 && /site standard \(25% of the £440\.00 rental \+ the £50\.00 refundable deposit/.test(dlgShape.hints[0]) && /Showing the standard date/.test(dlgShape.hints[1]),
     'each field explains itself — the date hint says the shown date IS the standard');
   ok(dlgShape.okSays === 'Save plan', `the OK button says what it does (${dlgShape.okSays})`);
   // THE DATE FIELD IS NEVER AN EMPTY PILL: it opens showing the date that
