@@ -4043,3 +4043,48 @@ body.cmdk-open {
     overflow: visible;
   }
 }
+
+/* ---- Booking hub redesign (the all-eight PR) -------------------------------
+   Status chips, the money ask as the Payments block's own header, the gap-offer
+   chip, the Activity feed's email expander, and the phone-only sticky
+   next-action bar. Tokens throughout; the sticky bar reads --safe-b so a notch
+   phone keeps it tappable, and hides at the canonical 900px boundary where the
+   whole hub is on screen anyway. */
+.bhub-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+.bhub-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid var(--glass-border); border-radius: 999px;
+    padding: 3px 10px; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;
+}
+.bhub-chip.is-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.bhub-payask {
+    margin: -2px 0 12px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--glass-border);
+}
+.bhub-gap {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    margin-top: 12px; padding: 10px 12px; font-size: 0.84rem; color: var(--text-light);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: var(--r-md, 12px); cursor: pointer; min-height: 44px;
+}
+.bhub-gap strong { color: var(--accent-text); }
+.bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: 0.78rem; margin-top: 2px; }
+.bhub-feed-mailbody {
+    margin-top: 6px; padding: 8px 10px; font-size: 0.8rem; color: var(--text-muted);
+    border: 1px solid var(--glass-border); border-radius: var(--r-md, 12px);
+    max-height: 40vh; overflow: auto;
+}
+.bhub-sticky {
+    position: sticky; bottom: 0; z-index: 40; display: flex; gap: 8px; align-items: center;
+    padding: 10px 2px calc(10px + var(--safe-b, 0px));
+    background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 30%);
+}
+.bhub-sticky-btn { flex: 1; min-height: 44px; }
+.bhub-icbtn {
+    width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; text-decoration: none;
+    border: 1px solid var(--glass-border); color: var(--text-light);
+    background: var(--glass-bg);
+}
+@media (min-width: 901px) { .bhub-sticky { display: none; } }

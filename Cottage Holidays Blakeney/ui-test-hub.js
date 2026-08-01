@@ -25,13 +25,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     check_out_time: '10:00', adults: 2, children: 0, payment: 'unpaid', deposit_paid: 0,
     payment_method: '', payment_date: '', agreed_total: 440, agreed_per_night: 130, agreed_nights: 3,
     agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(0),
-    hold_status: 'none', notes: 'VIP',
+    hold_status: 'none', notes: 'VIP', sms_opt_in: 1, terms_accepted_at: '2026-07-01 10:00:00', terms_version: 3, no_dogs_at: '2026-07-01 10:00:00',
   }, over);
   // b3 is a FINISHED stay (checked out days ago) for the edit soft-lock checks —
   // its own email so it never pollutes the b1 guest-intel/repeat fixtures.
   let rows = [mk(1), mk(2, { name: 'Return Visit', check_in: d(90), check_out: d(93) }), mk(3, { name: 'Past Guest', email: 'past@gmail.com', check_in: d(-10), check_out: d(-7), payment: 'paid', deposit_paid: 440 }),
     // b4: a FINISHED stay that still owes money — its next-action banner must
     // chase the balance, not say "all set" (hub-unification regression).
+    mk(8, { name: 'Gap Follower', email: 'gapf@gmail.com', check_in: d(35), check_out: d(38) }),
     mk(4, { name: 'Owes After Leaving', email: 'owes@gmail.com', check_in: d(-25), check_out: d(-22), payment: 'deposit', deposit_paid: 100 })];
   let enqs = [
     { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00' },
@@ -52,6 +53,17 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
         ] });
         if (b.action === 'email_logs') return json({ logs: { 1: [{ action: 'email.confirmation', summary: 'Booking confirmation emailed', at: d(-2) + ' 18:31:00' }] } });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
+        if (b.action === 'hub_bundle') return json({ ok: true,
+          payments: [
+            { kind: 'balance', amount: '556.20', status: 'COMPLETED', square_payment_id: 'sq1', note: '', deposit_carried: 75, created_at: '2026-07-20 14:01:00' },
+            { kind: 'damages_return', amount: '75.00', status: 'PENDING', square_payment_id: 'sq2', note: '', created_at: '2026-07-29 09:00:00' },
+          ],
+          events: [
+            { action: 'payment.card', summary: 'Balance paid by card — £556.20 + £75.00 refundable deposit', actor: 'guest', at: '2026-07-20 14:01:00' },
+            { action: 'email.confirmation', summary: 'Booking confirmation emailed', actor: 'system', at: '2026-07-20 14:02:00', subject: 'Your booking is confirmed', body: 'Dear Guest, good news.' },
+            { action: 'booking.edit', summary: 'Booking edited — dates changed', actor: 'you', at: '2026-07-18 10:00:00' },
+            { action: 'booking.add', summary: 'Booking created', actor: 'you', at: '2026-07-15 09:00:00' },
+          ] });
         if (b.action === 'payments') return json({ ok: true, payments: [
           // deposit_carried: the £75 damages deposit rode this charge (the server
           // flags the row hold_payment_id points at) — the card took £631.20, and
@@ -359,16 +371,80 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(em2.inEmails && !em2.inMoney, 'updated-confirmation button lives in the Emails card (not Money)');
 
-  // ---------- C. history card ----------
-  console.log('C. history');
+  // ---------- C+D. the Activity feed — one chronological story ----------
+  // History + the email log + the ledger merged into #hub-history: events
+  // render, the emailed body expands IN the feed, the ledger row keeps its
+  // deposit_carried figure, the activity log's card-payment TWIN of that ledger
+  // row is dropped (two rows for one charge is the duplication disease), and
+  // the order is newest-first across sources.
+  console.log('C+D. activity feed');
   const hist = await page.evaluate(() => (document.getElementById('hub-history') || {}).innerHTML || '');
-  ok(/Booking edited — dates changed/.test(hist) && /Booking created/.test(hist), 'history events rendered');
+  ok(/Booking edited — dates changed/.test(hist) && /Booking created/.test(hist), 'history events rendered in the feed');
+  ok(/Booking confirmation emailed/.test(hist) && /Show email/.test(hist) && /Dear Guest, good news\./.test(hist),
+    'a logged email expands in place in the feed');
+  ok(/£631\.20/.test(hist), 'the ledger row rides the feed with its card-took figure');
+  ok(!/Balance paid by card — £556\.20/.test(hist),
+    "…and the activity log's twin of that charge is dropped — one charge, one row");
+  const order = await page.evaluate(() => {
+    const t = (document.getElementById('hub-history') || {}).textContent || '';
+    return { ret: t.indexOf('Deposit return'), led: t.indexOf('£631.20'), created: t.indexOf('Booking created') };
+  });
+  ok(order.ret > -1 && order.led > order.ret && order.created > order.led,
+    `newest first across sources (return@${order.ret} < charge@${order.led} < created@${order.created})`);
 
-  // ---------- D. emails card ----------
-  const elog = await page.evaluate(() => (document.getElementById('hub-email-log') || {}).textContent || '');
-  ok(/Booking confirmation/.test(elog), 'logged email shown in Emails card');
-  const showBtn = await page.evaluate(() => !!document.querySelector('#hub-email-log .bk-email-log-view'));
-  ok(showBtn, '"Show email" preview button present');
+  // ---------- C2. the redesign's affordances ----------
+  console.log('C2. chips · gap · sticky · share · draft');
+  // Status chips: five facts from five places (incl. sms_opt_in, stored since
+  // the enquiry form gained the box and shown NOWHERE until this row).
+  const chips = await page.evaluate(() => (document.querySelector('.bhub-chips') || {}).textContent || '');
+  ok(/Terms v3/.test(chips) && /No dog/.test(chips) && /Register/.test(chips) && /Card rail/.test(chips) && /Texts OK/.test(chips),
+    `the chips row states all five facts (${chips.replace(/\s+/g, ' ').trim()})`);
+  // The money ask lives in the Payments block's own header — ONE statement of
+  // the balance — and the standalone banner is gone while it does.
+  const merged = await page.evaluate(() => ({
+    inPay: !!document.querySelector('.bhub-headpay .bhub-payask.bhub-next'),
+    banners: document.querySelectorAll('.bhub-next').length,
+  }));
+  ok(merged.inPay && merged.banners === 1, `a money ask renders once, as the Payments header (${merged.banners})`);
+  // The gap after this stay, priced: b5 follows two nights after b1's checkout.
+  const gapChipTx = await page.evaluate(() => (document.querySelector('.bhub-gap') || {}).textContent || '');
+  ok(/2 free nights/.test(gapChipTx) && /\/night/.test(gapChipTx), `the gap chip prices the hole after this stay (${gapChipTx.trim().slice(0, 60)})`);
+  // The sticky bar: hidden on desktop (everything is on screen), under the
+  // thumb on a phone, naming the SAME next action as the header.
+  ok(await page.evaluate(() => getComputedStyle(document.querySelector('.bhub-sticky')).display === 'none'),
+    'the sticky bar stays out of the way at desktop width');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const sticky = await page.evaluate(() => {
+    const el = document.querySelector('.bhub-sticky');
+    return { shown: el && getComputedStyle(el).display !== 'none', text: el ? el.textContent : '' };
+  });
+  ok(sticky.shown && /by card|card link|Record a payment/.test(sticky.text), `on a phone it carries the next action (${sticky.text.trim().slice(0, 50)})`);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(300);
+  // Share stay details: for the cleaner's chat — and deliberately NO money.
+  await page.evaluate(() => { window.__shared = null; navigator.clipboard.writeText = (t) => { window.__shared = t; return Promise.resolve(); }; });
+  await page.click('.bhub-menu-btn');
+  await page.waitForTimeout(200);
+  await page.click('[data-act="shareStayDetails"]');
+  await page.waitForTimeout(400);
+  const shared = await page.evaluate(() => window.__shared || '');
+  ok(/Arrives:/.test(shared) && /Leaves:/.test(shared) && /Walk-in Guest/.test(shared), `the share text carries the stay (${shared.split('\n')[0]})`);
+  ok(!/£/.test(shared), '…and NO money — it goes into a cleaner\'s chat, not the guest\'s inbox');
+  // Draft reply: the enquiry drafter's idea on bookings — filled from THIS
+  // booking's own facts, the balance via bookingDue so it can never disagree
+  // with the hub above it.
+  await page.click('[data-act="openBookingEmail"]');
+  await page.waitForTimeout(400);
+  await page.click('[data-act="draftBookingReply"]');
+  await page.waitForTimeout(200);
+  const draft = await page.evaluate(() => (document.getElementById('enq-email-body') || {}).value || '');
+  // £390: section B part-paid this booking £100 against its £440+£50, and the
+  // draft reads bookingDue live — which is the point.
+  ok(/Hello Walk-in/.test(draft) && /Check-in is from 15:00/.test(draft) && /remaining balance is £390\.00/.test(draft),
+    `the draft speaks this booking's facts (${draft.split('\n')[0]} … balance line present)`);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
 
   // ---------- E. other stays ----------
   console.log('E. guest card');
@@ -580,7 +656,9 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(i1.active === 'view-backoffice', `stays on the merged dashboard (${i1.active})`);
   ok(i1.paneShown && i1.hubInPane, 'hub docked in the right-hand pane');
   ok(i1.name !== '', `a booking auto-selected (${i1.name})`);
-  ok(i1.rows === 4 && i1.openRows === 1, `compact rows with one selected (${i1.rows} rows)`);
+  // 5 upcoming rows since the Gap Follower fixture joined (it exists so the
+  // hub's gap chip has a real 2-night hole to price).
+  ok(i1.rows === 5 && i1.openRows === 1, `compact rows with one selected (${i1.rows} rows)`);
   ok(i1.oldControls === 0, 'per-row buttons + email logs gone from the index');
   // Traffic-light edge: every row carries exactly one payment-state class.
   const lights = await page.evaluate(() => Array.from(document.querySelectorAll('#bookings-list .bk-row[data-bkid]')).map((r) => ['pay-ok', 'pay-warn', 'pay-danger'].filter((c) => r.classList.contains(c)).length));

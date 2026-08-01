@@ -156,13 +156,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     // top, failing the assertion below for a reason that had nothing to do with the
     // rule being checked (measured: 1 run in 5). Waiting on the marker row makes it
     // deterministic: the hub's read has DEFINITELY landed before the seed goes in.
+    // The hub no longer fires this read itself (its Activity feed rides the
+    // hub_bundle instead), so the suite issues the read it is about to
+    // break-test — same determinism, no phantom dependency on the hub's plumbing.
     let drained = true;
     try {
+        await page.evaluate(() => loadBookingEmailLogs());
         await page.waitForFunction(() => typeof bookingEmailLogs === 'object' && bookingEmailLogs && bookingEmailLogs['99'], null, { timeout: 5000 });
     } catch (e) {
         drained = false;
     }
-    ok(drained, "the hub's own email-log read has landed, so the fixture below is not racing it");
+    ok(drained, "the email-log read has landed, so the fixture below is not racing it");
 
     // ── 7. The same rule, everywhere else that caches server data ───────────
     // Found by auditing for the loadData shape. Each of these emptied its own

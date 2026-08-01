@@ -7499,7 +7499,19 @@ function cmdkBriefBuild() {
             items.push({ type: 'answer', id: 'brief-teach', board: 'waiting', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
         }
     } catch (e) {}
-    return items.slice(0, 7);
+    // WHICH rows surface is severity-driven (the composition order above + this
+    // cap); WHERE they sit is subject-driven — and the ARRAY has to agree with
+    // cmdkBoardsHtml's board order, because the landing renders slices by index
+    // and every row carries its cmdk-opt-<i> id. Composed order alone put the
+    // pulse ('month') at a lower index than the teach row ('waiting') while the
+    // Waiting board renders ABOVE This month — measured, idx 8 painted above
+    // idx 7 and arrow keys walked one order while the eye read another. A
+    // stable sort by board rank fixes every such pairing at once (a 'waiting'
+    // duty vs 'brief-later' had the same collision); rows within one board keep
+    // their severity order. Unrecognised boards rank LAST, matching the orphan
+    // rows cmdkBoardsHtml appends after the board cards.
+    const rank = (it) => { const i = CMDK_BOARDS.findIndex((b) => b.key === (it.board || 'today')); return i < 0 ? CMDK_BOARDS.length : i; };
+    return items.slice(0, 7).sort((a, z) => rank(a) - rank(z));
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;
@@ -9599,35 +9611,24 @@ async function openBookingHub(bookingId, quiet) {
     // Async enrichments — each fills its own card when it lands (guarded so a
     // slow response never paints over a different booking's hub).
     const dbId = b.dbId;
-    loadBookingEmailLogs()
-        .then(() => {
-            const elog = document.getElementById('hub-email-log');
-            const fresh = findBookingById(bookingId);
-            if (elog && fresh && __hubBookingId === bookingId) elog.innerHTML = bookingEmailLogHtml(fresh);
-        })
-        .catch(() => {});
-    apiPost('bookings.php', { action: 'history', id: dbId })
-        .then((r) => {
-            const el = document.getElementById('hub-history');
-            if (!el || __hubBookingId !== bookingId) return;
-            const evs = (r && r.events) || [];
-            el.innerHTML = evs.length
-                ? evs
-                      .map(
-                          (e) =>
-                              `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(e.at))}</span><span class="bhub-hist-what">${escapeHtml(e.summary || e.action || '')}</span><span class="bhub-hist-actor">${escapeHtml(e.actor || '')}</span></div>`,
-                      )
-                      .join('')
-                : '<div class="bhub-empty">Nothing recorded yet — edits, payments and emails will appear here.</div>';
-        })
-        .catch(() => {
-            const el = document.getElementById('hub-history');
-            if (el && __hubBookingId === bookingId) el.innerHTML = '<div class="bhub-empty">Couldn’t load the history.</div>';
-        });
-    if (squareAdminEnabled && b.email) {
-        try {
-            loadBookingPayments(b.id);
-        } catch (e) {}
+    // ONE round trip fills the Activity feed — payments, events and logged
+    // email bodies arrive together (bookings.php hub_bundle), so on a weak
+    // signal the page fills in at once instead of card by card. Guarded like
+    // the fetches it replaces: a slow response never paints another booking's
+    // hub. The single-purpose endpoints still exist for their other callers.
+    {
+        const loc0 = findBookingLocation(bookingId);
+        const refundOff = rentalRefundBlocked(loc0 ? loc0.propKey : '', b);
+        apiPost('bookings.php', { action: 'hub_bundle', id: dbId })
+            .then((r) => {
+                const el2 = document.getElementById('hub-history');
+                if (!el2 || __hubBookingId !== bookingId) return;
+                el2.innerHTML = hubActivityHtml(r || {}, bookingId, refundOff);
+            })
+            .catch(() => {
+                const el2 = document.getElementById('hub-history');
+                if (el2 && __hubBookingId === bookingId) el2.innerHTML = '<div class="bhub-empty">Couldn’t load the activity.</div>';
+            });
     }
     // Guest-intel mentions ride the history corpus index: if it isn't built yet,
     // build it in the background (10-min freshness; also warms semantic search)
@@ -9738,12 +9739,14 @@ function hubPipelineHtml(propKey, b, gt, dh) {
                 text: `Nothing received yet — ${gbp(gt.balance)} due.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
+                money: true,
             };
         } else {
             next = {
                 text: `${gbp(gt.balance)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
+                money: true,
             };
         }
     } else if (!gt.fullyPaid && past) {
@@ -9755,6 +9758,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
             text: `${gbp(gt.balance)} still owed from this finished stay.`,
             onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
+            money: true,
         };
     } else if (flow.hasReg && !b.regSubmitted && !past) {
         next = {
@@ -9786,11 +9790,20 @@ function hubPipelineHtml(propKey, b, gt, dh) {
             };
         }
     }
+    // The ONE next action, exported: renderBookingHub reads it for the Payments
+    // header (a money ask renders THERE, so the balance is stated once, not in a
+    // banner above a block repeating it) and for the phone's sticky bar. Stashed
+    // rather than re-derived — two derivations of "what does this booking need"
+    // is the drift class the money maths just spent thirteen PRs killing.
+    __hubNext = next;
     const nextHtml = next
-        ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
+        ? next.money
+            ? '' // the Payments block's own header carries it (bhub-payask)
+            : `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
     return `<div class="bhub-pipe3">${strip}</div><div class="bhub-pipe-full">${fullStrip}</div>${nextHtml}`;
 }
+let __hubNext = null;
 
 // (hubPayFlowHtml — the Payments card's own Deposit → Paid → Damages-refunded
 // mini-pipeline — is REMOVED: the money stages already live in the whole-journey
@@ -10003,10 +10016,10 @@ function renderBookingHub() {
     // deposit info row remains. Only the legacy card-HOLD controls still render
     // here (old bookings on the authorise/capture flow).
     const depositLine = dh.collected > 0 ? '' : holdControls(b);
-    const payHistory =
-        squareAdminEnabled && b.email
-            ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
-            : '';
+    // The per-payment ledger no longer renders inside the payments block — the
+    // Activity feed (one chronological story) owns those rows now, container
+    // class unchanged (sq-pay-history) so every ledger gate reads them there.
+    const payHistory = '';
     // The payments block lives INSIDE the header card — one unified section:
     // journey pipeline → next action → the money itself. The old standalone
     // Payments card (and its duplicate mini-pipeline) is gone. The banner's CTA
@@ -10014,8 +10027,35 @@ function renderBookingHub() {
     // row keeps only the complementary actions (record a manual payment, copy a
     // link to paste into a chat, the invoice) — never the same action twice.
     const askKind = hubAskKind(gt, past);
+    // The pipeline is composed FIRST so its next-action derivation (__hubNext)
+    // is set before the payments block reads it: a MONEY next action renders as
+    // this block's own header, so the balance is stated once with its button —
+    // not in a banner above a block repeating the same figure. The node keeps
+    // class bhub-next: the banner's gates (past-unpaid wording, banner↔row kind
+    // agreement) read that class and must keep working wherever it lives.
+    const pipeHtml = hubPipelineHtml(propKey, b, gt, dh);
+    const payAsk = __hubNext && __hubNext.money
+        ? `<div class="bhub-next bhub-payask"><span class="bhub-next-text">${__hubNext.text}</span><button class="btn-glass bhub-next-btn" ${__hubNext.onclick}>${__hubNext.btn}</button></div>`
+        : '';
+    // THE GAP AFTER THIS STAY, priced. chbGapScan/chbGapPlan are the ONE
+    // decision every gap surface shares (Pricing page, brief, price questions);
+    // this only SURFACES that decision where the owner is already looking. An
+    // offer is one tap (the same undo-able dated override); a live offer
+    // reports itself and routes to Rates rather than re-suggesting.
+    let gapChip = '';
+    try {
+        if (!past) {
+            const g = (chbGapScan() || []).find((x) => x.pk === propKey && x.from === b.checkOut);
+            const plan = g ? chbGapPlan(g) : null;
+            if (plan && plan.kind === 'offer')
+                gapChip = `<button class="bhub-gap" ${chbAttrs('nyGapOffer', g.pk, g.from)}><span aria-hidden="true">◫</span><span><strong>${g.nights} free night${g.nights === 1 ? '' : 's'}</strong> after this stay — offer at <strong>${gbp(plan.offer)}/night</strong> (−${plan.pct}%)?</span></button>`;
+            else if (plan && plan.kind === 'live')
+                gapChip = `<button class="bhub-gap is-live" ${chbAttrs('settingsOpen', 'seasongrid')}><span aria-hidden="true">◫</span><span>Gap offer live after this stay at <strong>${gbp(plan.rate)}/night</strong> — edit in Rates</span></button>`;
+        }
+    } catch (e) {}
     const payBlock = `
         <div class="bhub-headpay">
+            ${payAsk}
             <span class="bhub-headpay-cap">Payments</span>
             ${payline}
             ${discloseBtn}
@@ -10048,6 +10088,7 @@ function renderBookingHub() {
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
                     <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
+                    ${hubChipsHtml(b)}
                     ${changeover}
                 </div>
                 <div class="bhub-actions">
@@ -10058,6 +10099,7 @@ function renderBookingHub() {
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                         <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
                         <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
+                        <button role="menuitem" ${chbAttrs('shareStayDetails', String(b.id))}>Share stay details</button>
                         ${
                             // After the guest arrives the stay is committed — no
                             // Cancel & refund (only the damages deposit can go back,
@@ -10077,8 +10119,9 @@ function renderBookingHub() {
                     </div>
                 </div>
             </div>
-            ${hubPipelineHtml(propKey, b, gt, dh)}
+            ${pipeHtml}
             ${payBlock}
+            ${gapChip}
         </div>`;
 
     // ---- Emails card ----
@@ -10107,7 +10150,6 @@ function renderBookingHub() {
                     </div>`
                     : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
             }
-            <div id="hub-email-log"><div class="bhub-empty">Loading email history…</div></div>
         </section>`;
 
     // ---- Guest card (contact + notes + their other stays) ----
@@ -10158,11 +10200,16 @@ function renderBookingHub() {
             ${staysHtml}
         </section>`;
 
-    // ---- History card ----
+    // ---- Activity card — the story of this booking, one chronological feed.
+    // Ledger rows (live Square status dots + Refund, deposit_carried note) are
+    // interleaved with the activity log's events; the log's own card-payment
+    // twins are dropped (the ledger row is the authoritative money row), and a
+    // comms row whose email body was logged expands in place. The container
+    // keeps class sq-pay-history because it now IS the ledger's home. ----
     const historyCard = `
         <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">History</h3>
-            <div id="hub-history"><div class="bhub-empty">Loading history…</div></div>
+            <h3 class="bhub-card-title">Activity <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· the story of this booking</span></h3>
+            <div id="hub-history" class="sq-pay-history"><div class="bhub-empty">Loading activity…</div></div>
         </section>`;
 
     // ---- Guest register card (UK hotel-records duty) ----
@@ -10187,7 +10234,121 @@ function renderBookingHub() {
         __hubIntelMentions = (intel && intel.mentions) || [];
         intelCard = hubIntelCardHtml(intel);
     } catch (e) { __hubIntelMentions = []; }
-    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
+    // THE STICKY BAR — the one thing this booking needs, under the thumb while
+    // the cards scroll (phone-only; CSS hides it ≥900px where everything is on
+    // screen anyway). Same __hubNext object the banner/payask render, so the
+    // three can never name different next actions. Hidden when all set.
+    const sticky = __hubNext
+        ? `<div class="bhub-sticky"><button class="btn-glass bhub-sticky-btn" ${__hubNext.onclick}>${__hubNext.btn}${__hubNext.money ? ' — ' + gbp(gt.balance) : ''}</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${b.email ? `<a class="bhub-icbtn" href="mailto:${escapeHtml(String(b.email))}" aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</a>` : ''}</div>`
+        : '';
+    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>${sticky}`;
+}
+// The status-chips row: five facts from five places, one glance — the terms
+// acceptance (with version), the no-dog declaration, the guest register, which
+// PAYMENT RAIL this guest is on (the same match payment_rail makes server-side:
+// empty/card-ish stays card, anything else the owner typed means off-card), and
+// whether they asked for texts (sms_opt_in — stored since the enquiry form
+// gained the box, and shown nowhere until this row). Read-only by design.
+function hubChipsHtml(b) {
+    const method = (b.paymentMethod || '').trim();
+    const rail = method === '' || /card|square/i.test(method) ? '💳 Card rail' : '🏦 Bank/cash rail';
+    const chips = [
+        b.termsAcceptedAt
+            ? `<span class="bhub-chip is-ok">✓ Terms${b.termsVersion ? ' v' + escapeHtml(String(b.termsVersion)) : ''}</span>`
+            : '<span class="bhub-chip">Terms · not recorded</span>',
+        b.noDogsAt ? '<span class="bhub-chip is-ok">✓ No dog</span>' : '<span class="bhub-chip">No-dog · not recorded</span>',
+        b.regSubmitted
+            ? `<span class="bhub-chip is-ok">✓ Register · ${b.regCount || 0}</span>`
+            : '<span class="bhub-chip">Register · waiting</span>',
+        `<span class="bhub-chip">${rail}</span>`,
+        b.smsOptIn ? '<span class="bhub-chip is-ok">📱 Texts OK</span>' : '',
+    ].filter(Boolean).join('');
+    return `<div class="bhub-chips">${chips}</div>`;
+}
+// Share the stay with whoever turns the cottage around — dates, party, notes,
+// the changeover warning — and deliberately NO money: this goes into a
+// cleaner's WhatsApp, not the guest's inbox.
+async function shareStayDetails(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b) return;
+    const loc = findBookingLocation(bookingId);
+    const meta = (loc && propertyMeta[loc.propKey]) || {};
+    const turnover = loc && (dbBookings[loc.propKey] || []).some((o) => o.id !== b.id && o.checkIn === b.checkOut);
+    const notes = ((b.message || b.notes || '') + '').trim();
+    const text = [
+        `Stay details — ${meta.name || ''}`.trim(),
+        `Guests: ${b.name || ''}${b.guests ? ' · ' + b.guests : ''}`,
+        `Arrives: ${fmtDate(b.checkIn)} · from ${b.checkInTime || '15:00'}`,
+        `Leaves: ${fmtDate(b.checkOut)} · by ${b.checkOutTime || '10:00'}`,
+        turnover ? 'Changeover: the next guests arrive the same day ⚠' : '',
+        notes ? `Notes: ${notes}` : '',
+    ].filter(Boolean).join('\n');
+    try {
+        if (navigator.share) { await navigator.share({ text }); return; }
+    } catch (e) { return; } // they closed the share sheet — say nothing
+    try {
+        await navigator.clipboard.writeText(text);
+        toast('Stay details copied — no payment details included.');
+    } catch (e) {
+        glassAlert(text);
+    }
+}
+// THE FEED — ledger rows and activity events interleaved newest-first. The
+// activity log's own card-payment entries are DROPPED (the ledger row is the
+// authoritative money row — two rows for one charge is the duplication
+// disease); a comms event whose email body was logged expands in place, so
+// "what did that email say?" is answered without leaving the story. Timestamps
+// are one DB clock in 'YYYY-MM-DD HH:MM:SS', so a string sort is a time sort.
+function hubActivityHtml(bundle, bookingId, refundOff) {
+    const pays = (bundle.payments || []).map((p) => ({
+        at: p.created_at || '',
+        html: hubLedgerRowHtml(p, bookingId, refundOff),
+    }));
+    const evs = (bundle.events || [])
+        .filter((e) => e.action !== 'payment.card')
+        .map((e) => {
+            const exp = (e.body || e.subject)
+                ? `<details class="bhub-feed-mail"><summary>Show email</summary><div class="bhub-feed-mailbody">${e.subject ? `<strong>${escapeHtml(e.subject)}</strong><br>` : ''}${escapeHtml(e.body || '').replace(/\n/g, '<br>')}</div></details>`
+                : '';
+            return {
+                at: e.at || '',
+                html: `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(e.at))}</span><span class="bhub-hist-what">${escapeHtml(e.summary || e.action || '')}${exp}</span><span class="bhub-hist-actor">${escapeHtml(e.actor || '')}</span></div>`,
+            };
+        });
+    const rows = pays.concat(evs).sort((a, z) => (z.at || '').localeCompare(a.at || ''));
+    return rows.length
+        ? rows.map((r) => r.html).join('')
+        : '<div class="bhub-empty">Nothing recorded yet — edits, payments and emails will appear here.</div>';
+}
+// A drafted reply from THIS booking's own facts — the enquiry drafter's idea,
+// extended to bookings: deterministic template (instant, on-brand, the owner
+// edits then sends), never a model call. Money comes from bookingDue, the one
+// owner-facing due figure, so the draft can never quote a different balance
+// than the hub above it.
+function chbDraftBookingReply(b, propKey) {
+    const meta = propertyMeta[propKey] || {};
+    const gt = bookingDue(propKey, b);
+    const first = ((b.name || 'there').trim().split(/\s+/)[0]) || 'there';
+    const lines = [
+        `Hello ${first},`,
+        '',
+        `Thanks for your message about your stay at ${meta.name || 'the cottage'} (${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}).`,
+        `Check-in is from ${b.checkInTime || '15:00'} on arrival day, and checkout by ${b.checkOutTime || '10:00'}.`,
+    ];
+    if (!gt.fullyPaid && gt.balance > 0.005)
+        lines.push(`Your remaining balance is ${gbp(gt.balance)} — we'll email a secure payment link nearer your stay, or just reply if you'd like it sooner.`);
+    lines.push('', 'Any other questions, just ask.', '', String(siteContent['host-name'] || 'Cottage Holidays Blakeney'));
+    return lines.join('\n');
+}
+function draftBookingReply(bookingId) {
+    const b = findBookingById(bookingId);
+    const loc = findBookingLocation(bookingId);
+    if (!b || !loc) return;
+    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (body) {
+        body.value = chbDraftBookingReply(b, loc.propKey);
+        body.focus();
+    }
 }
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
@@ -19970,6 +20131,10 @@ function openBookingEmail(bookingId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
+        // ✨ Draft reply — the enquiry drafter's idea on bookings: fills the body
+        // from this booking's own facts (times, balance via bookingDue) for the
+        // owner to edit, never auto-sends.
+        ctx.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;"><button class="btn-sm btn-edit" ${chbAttrs('draftBookingReply', String(b.id))}>✨ Draft reply</button></div>`);
     }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your booking — ${propName}, ${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}`;
@@ -20946,7 +21111,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[shareStayDetails, draftBookingReply, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
