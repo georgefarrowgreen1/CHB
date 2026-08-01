@@ -997,6 +997,16 @@ sentence (flex-start, and the state stacks under the sentence ≤640px; §C2
 asserts the two boxes never intersect). NB this Chromium reports LAYOUT BOXES
 for closed-`<details>` content while painting nothing — an overlap scanner must
 skip it or it cries wolf on every feed email row.
+**The reference cards are GROUPED ROWS** (`.bhub-kvs`/`.bhub-kv` — label column
++ value + one hairline per row, the iOS inset-list shape): the Guest and
+register cards' stacked caps-label blocks spent ~55px per fact against a row's
+~34 (265px shorter at 390px, measured on the hostile fixture). The Emails and
+register actions wear the same quiet `bhub-actlink` vocabulary as the payments
+row — a card of sends is a list, not a control panel — and the register's
+what-this-is prose renders only while NOT yet submitted (once in, just the
+retention line). The Terms/No-dog rows print `fmtDate` DD/MM/YYYY — they were
+the last two RAW SQL timestamps on an owner-facing screen, and ui-test-nodogs
+now pins the house form (`Confirmed 01/07/2026`), not the raw stamp.
 **Share** (`shareStayDetails`, hub ⋯ menu): navigator.share
 with clipboard fallback, and NO money in the shared text — it goes to cleaners
 and co-hosts, not the guest. **✨ Draft reply** in the booking email composer

@@ -4167,3 +4167,21 @@ body.cmdk-open {
        line of text actions at every width. */
     .bhub-btn-row.bhub-act-links { display: flex; }
 }
+
+/* GROUPED ROWS for the hub's reference cards (Guest, Guest register) — the
+   iOS inset-list shape: a quiet label column, the value beside it, ONE
+   hairline per row. Replaces stacked caps-label-above-value blocks that
+   spent ~55px per fact; a row spends ~34. Values wrap in their own column
+   (overflow-wrap covers a 60-char email), the label never does. */
+.bhub-kvs { display: flex; flex-direction: column; }
+.bhub-kv {
+    display: flex; gap: 12px; align-items: baseline;
+    padding: 8px 0; border-top: 1px solid var(--glass-border);
+    font-size: 0.9rem;
+}
+.bhub-kv:first-child { border-top: none; padding-top: 2px; }
+.bhub-kv-label {
+    flex: 0 0 84px; font-size: 0.68rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-muted);
+}
+.bhub-kv-val { min-width: 0; overflow-wrap: anywhere; color: var(--text-light); }
