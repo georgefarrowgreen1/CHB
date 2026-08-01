@@ -20962,10 +20962,12 @@ let __mbxSent = [];
 let __mbxTab = 'inbox';
 let __mbxQuery = '';
 let __mbxHasMore = false;
-// How many of the fetched messages were the SITE'S OWN notifications (the alerts
-// it sends the owner land in the same inbox it sends from). Filtered server-side
-// and COUNTED, never silently swallowed — the list says so in one quiet line.
-let __mbxOwnHidden = 0;
+// The site's own notifications (the alerts it sends the owner land in the same
+// inbox it sends from) are filtered SERVER-side; mailbox.php still returns the
+// count it set aside, and the client deliberately does not render it. The owner
+// asked for a list of customer mail — a footnote counting what was left out is
+// about the plumbing, and the back office already carries that news as a new
+// enquiry, a payment, a booking.
 let __mbxLastOpen = null;
 // ---- ONE ROW PER CONVERSATION ----------------------------------------------
 // Four rows reading "anneolin@btinternet.com · Re: Pay your deposit — Pimpernel"
@@ -21024,6 +21026,30 @@ function mbxWhen(iso) {
         ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
         : fmtDate(String(iso).slice(0, 10));
 }
+// The LIST can say "14:32" for today and just the date for anything older —
+// a row is one message and the date distinguishes it. Inside a chain it does
+// not: three replies on the same afternoon rendered three identical
+// "29/07/2026" rows (owner's screenshot), so the one thing telling them apart
+// was missing. Date AND time, everywhere a message must be told from its
+// siblings.
+function mbxWhenFull(iso) {
+    if (!iso) return '';
+    const d = new Date(String(iso).replace(' ', 'T'));
+    if (isNaN(d.getTime())) return '';
+    const t = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return { date: sameDay ? 'Today' : fmtDate(String(iso).slice(0, 10)), time: t };
+}
+// "Anne Betts <anneolin@btinternet.com>" is TWO facts, and printed as one
+// string it wrapped to two bold lines in the reader. Split so the name leads
+// and the address sits under it, muted. A bare address has no name to lead
+// with and stays the heading itself.
+function mbxSender(raw, addr) {
+    const s = String(raw || '').trim();
+    const m = /^"?([^"<]*?)"?\s*<([^>]+)>$/.exec(s);
+    if (m && m[1].trim()) return { name: m[1].trim(), addr: m[2].trim() };
+    return { name: '', addr: (m ? m[2].trim() : s) || String(addr || '') };
+}
 function mbxSize(n) {
     if (!n) return '';
     return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -21047,12 +21073,15 @@ function mbxKnownGuests() {
     return map;
 }
 // The context card: who is this sender, and one-tap routes to their hubs.
-function mbxContextHtml(fromEmail) {
+// `shownName` is what the reader's own heading already says. Repeating it in
+// this caption said the guest's name twice in 40px; naming them here is only
+// news when the email carried no display name, or a different one.
+function mbxContextHtml(fromEmail, shownName) {
     const e = (fromEmail || '').toLowerCase();
     if (!e) return '';
     const g = mbxKnownGuests()[e];
     if (!g) {
-        return '<div class="mbx-ctx"><span class="bhub-mut">No bookings or enquiries found for this address.</span></div>';
+        return '<div class="mbx-ctx"><span class="bhub-mut">No bookings or enquiries for this address.</span></div>';
     }
     const today = todayDashed();
     const chips = [];
@@ -21071,8 +21100,10 @@ function mbxContextHtml(fromEmail) {
             `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
         );
     });
+    const name = g.name || g.email;
+    const named = String(shownName || '').trim().toLowerCase() === String(name).trim().toLowerCase();
     return `<div class="mbx-ctx">
-        <div class="booking-detail-label" style="margin-bottom:6px;">Guest match — ${mbxEsc(g.name || g.email)}</div>
+        <span class="mbx-cap">Known guest${named ? '' : ' · ' + mbxEsc(name)}</span>
         ${chips.join('')}
     </div>`;
 }
@@ -21093,7 +21124,6 @@ async function loadMailbox() {
         ]);
         __mbxMessages = inbox.messages || [];
         __mbxHasMore = !!inbox.hasMore;
-        __mbxOwnHidden = Number(inbox.ownHidden || 0);
         __mbxSent = sent.messages || [];
         // NO TAB/QUERY RESET. This is a DATA refresh and its own Refresh button reaches
         // it, so resetting threw the owner from Sent back to Inbox and wiped their search
@@ -21110,7 +21140,6 @@ async function mailboxOlder() {
         const r = await apiPost('mailbox.php', { action: 'list', offset: __mbxMessages.length });
         __mbxMessages = __mbxMessages.concat(r.messages || []);
         __mbxHasMore = !!r.hasMore;
-        __mbxOwnHidden += Number(r.ownHidden || 0);
         renderMailboxList();
     } catch (e) {
         glassAlert("Couldn't load older messages: " + e.message);
@@ -21160,7 +21189,7 @@ function renderMailboxList(keepSearchFocus) {
                     ${n > 1 ? `<span class="bk-chip"><span class="bk-dot"></span>${n} emails</span>` : ''}
                     <span class="mbx-when">${mbxEsc(mbxWhen(t.date))}</span>
                 </span>
-                <strong class="bk-row-name" title="${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}">${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}</strong>
+                <strong class="bk-row-name" title="${mbxEsc(t.fromRaw || t.from || 'Unknown sender')}">${mbxEsc(mbxSender(t.fromRaw, t.from).name || mbxSender(t.fromRaw, t.from).addr || 'Unknown sender')}</strong>
                 <span class="bk-row-dates">${mbxEsc(t.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -21169,13 +21198,6 @@ function renderMailboxList(keepSearchFocus) {
         </div>`;
             })
             .join('');
-        // The inbox shows CUSTOMER mail only. Say what was set aside rather than
-        // quietly showing fewer rows than the mailbox holds — the alerts are
-        // still in the real mailbox, and the back office already carries their
-        // news (a new enquiry, a payment, a booking).
-        if (__mbxOwnHidden > 0 && !q) {
-            rows += `<p class="bhub-mut" style="text-align:center;font-size:0.78rem;margin:10px 0 2px;">${__mbxOwnHidden} automatic site notification${__mbxOwnHidden === 1 ? '' : 's'} hidden — this list is guests only.</p>`;
-        }
         if (__mbxHasMore && !q) {
             rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" data-act="mailboxOlder">Load older messages</button></div>';
         }
@@ -21315,13 +21337,18 @@ function mbxEarlierHtml(uid) {
     const rest = t.msgs.filter((m) => String(m.uid) !== String(uid));
     if (!rest.length) return '';
     return `<div class="mbx-earlier">
-        <span class="booking-detail-label">Earlier in this conversation</span>
-        <div class="bhub-act-links">
+        <span class="mbx-cap">Earlier in this conversation</span>
+        <div class="mbx-chain">
             ${rest
-                .map(
-                    (m) =>
-                        `<button class="bhub-actlink" ${chbAttrs('mailboxOpen', m.uid)}>${mbxEsc(mbxWhen(m.date))}${m.seen ? '' : ' <span class="bhub-mut">new</span>'}</button>`,
-                )
+                .map((m) => {
+                    const w = mbxWhenFull(m.date) || { date: '', time: '' };
+                    return `<button class="mbx-chain-row${m.seen ? '' : ' is-new'}" ${chbAttrs('mailboxOpen', m.uid)}>
+                        <span class="mbx-chain-when">${mbxEsc(w.date)}</span>
+                        <span class="mbx-chain-time">${mbxEsc(w.time)}</span>
+                        ${m.seen ? '' : '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>'}
+                        <span class="mbx-chain-go" aria-hidden="true">›</span>
+                    </button>`;
+                })
                 .join('')}
         </div>
     </div>`;
@@ -21348,21 +21375,29 @@ async function mailboxOpen(uid) {
                     ${mbxEsc(a.name)} <span class="bhub-mut">${mbxEsc(mbxSize(a.size))}</span></a>`,
             )
             .join('');
+        // The sender IS the heading — it was a "From" caps label with the
+        // address beside it and a second "Date" pair next to that, four pieces
+        // of type for two facts. One line, one muted line under it.
+        const when = mbxWhenFull(m.date) || { date: '', time: '' };
+        const who = mbxSender(m.fromRaw, m.from);
         pane.innerHTML = `
         <section class="bhub-card glass-panel mbx-inline-card">
-            <div class="mbx-meta">
-                <div><span class="booking-detail-label">From</span> ${mbxEsc(m.fromRaw || m.from)}</div>
-                <div><span class="booking-detail-label">Date</span> ${mbxEsc(mbxWhen(m.date))}</div>
+            <div class="mbx-head">
+                <strong class="mbx-head-from" title="${mbxEsc(m.fromRaw || m.from)}">${mbxEsc(who.name || who.addr)}</strong>
+                ${who.name ? `<span class="mbx-head-addr">${mbxEsc(who.addr)}</span>` : ''}
+                <span class="mbx-head-when">${mbxEsc(when.date)}${when.time ? ' · ' + mbxEsc(when.time) : ''}</span>
             </div>
-            ${mbxContextHtml(m.from)}
+            ${mbxContextHtml(m.from, who.name)}
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
             ${mbxEarlierHtml(uid)}
-            <div class="bhub-btn-row">
-                <button class="btn-sm btn-edit" style="color:var(--accent-text);border-color:rgba(199,154,100,0.45);" ${chbAttrs('mailboxReply', uid)}>Reply</button>
-                <button class="btn-sm btn-edit" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
-                <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('mailboxDelete', uid)}>Delete</button>
-                <button class="btn-sm btn-edit" data-act="mailboxCollapse">Collapse ▴</button>
+            <div class="mbx-acts">
+                <button class="btn-sm mbx-reply" ${chbAttrs('mailboxReply', uid)}>Reply</button>
+                <div class="bhub-act-links mbx-acts-quiet">
+                    <button class="bhub-actlink" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
+                    <button class="bhub-actlink is-danger" ${chbAttrs('mailboxDelete', uid)}>Delete this email</button>
+                    <button class="bhub-actlink" data-act="mailboxCollapse">Close</button>
+                </div>
             </div>
             <div id="mbx-compose"></div>
         </section>`;

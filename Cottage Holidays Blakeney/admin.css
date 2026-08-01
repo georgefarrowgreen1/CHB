@@ -789,44 +789,160 @@ body.light-mode .ny-act {
   margin-bottom: 0;
 }.mbx-item.open > .bk-row .bk-row-arrow {
   transform: rotate(90deg);
-}.mbx-inline-card {
+}
+/* THE READER IS ONE CARD OF GROUPS, NOT A STACK OF BOXES: it had a bordered
+   guest-match box holding bordered stay rows, a bordered body box and four
+   outlined buttons — four edge treatments in one card. Hairlines now; only the
+   stay rows keep a border, being the one thing here you can open. */
+.mbx-inline-card {
   margin: 6px 0 14px;
-}.mbx-meta {
+}
+/* The sender IS the heading — but NOT a <header>: the page header is styled by
+   the bare element selector (fixed, own z-index), and a <header> here inherited
+   it and painted the address over the guest card beneath. */
+.mbx-head {
   display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+.mbx-head-from {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text-light);
+  overflow-wrap: anywhere;
+}
+.mbx-head-addr {
   font-size: 0.85rem;
-  margin-bottom: 12px;
-}.mbx-text {
+  color: var(--text-light);
+  opacity: 0.85;
+  overflow-wrap: anywhere;
+}
+.mbx-head-when {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+/* One caption style for every group in this card. */
+.mbx-cap {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.mbx-text {
   white-space: pre-wrap;
   word-break: break-word;
-  font: 0.92rem/1.55 var(--font-sans);
+  font: 0.94rem/1.6 var(--font-sans);
   color: var(--text-light);
-  background: rgba(127, 127, 127, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  padding: 14px 16px;
-  margin: 0 0 4px;
+  padding: 12px 0 2px;
+  margin: 0;
+  border-top: 1px solid var(--glass-border);
   max-height: 55vh;
   overflow-y: auto;
-}.mbx-ctx {
-  margin: 0 0 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  background: rgba(127, 127, 127, 0.05);
-}.mbx-ctx .bhub-stay-row {
+}
+.mbx-ctx {
+  margin: 0 0 4px;
+  padding: 0 0 12px;
+}
+/* EVERYTHING IN THE BOX IS INLINE WITH EVERYTHING ELSE. Cottage, when, open are
+   one sentence about one stay; `space-between` flung them to the corners of a
+   full-width row and they read as three unrelated pieces. */
+.mbx-ctx .bhub-stay-row {
   margin-top: 6px;
+  justify-content: flex-start;
+  gap: 9px;
+}
+/* The vertical MARGINS are what actually bit: `.prop-tag` carries a 12px
+   bottom margin for prose, and flex centres an item's MARGIN box — measured,
+   24.6+12 filled a 36.6px line, staggering the three parts over 10px. */
+.mbx-ctx .bhub-stay-row > * {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-block: 0;
+}
+/* OUT OF WIDTH, THE NAME YIELDS AND THE DATES DO NOT — the hub sticky-label
+   judgement: a clipped name still reads, a fragmented date is a different date
+   (one broke over FOUR lines, 105px, when this row was squeezed). The NAME
+   clipping is what holds it; a no-wrap on the dates was tried and removed,
+   because break-testing could not make it matter. */
+.mbx-ctx .prop-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* The rest of a chain, under the message you opened. A quiet list, not a second
-   set of controls — the loud things in this card are Reply/Delete. */
+   set of controls — the loud thing in this card is Reply. */
 .mbx-earlier {
-  margin: 12px 0 2px;
-  padding-top: 10px;
+  margin: 14px 0 2px;
+  padding-top: 12px;
   border-top: 1px solid var(--glass-border);
 }
-.mbx-earlier .bhub-act-links {
-  margin-top: 2px;
+.mbx-chain {
+  display: flex;
+  flex-direction: column;
+}
+.mbx-chain-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 2px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--glass-border);
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text-light);
+  text-align: left;
+  cursor: pointer;
+}
+.mbx-chain-row:first-child {
+  border-top: 0;
+}
+.mbx-chain-when {
+  font-variant-numeric: tabular-nums;
+}
+/* The time tells three replies on one afternoon apart — muted, never hidden. */
+.mbx-chain-time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mbx-chain-go {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+.mbx-chain-row.is-new .mbx-chain-when {
+  font-weight: 700;
+}
+.mbx-chain-row:hover {
+  color: var(--accent-text);
+}
+/* ONE loud control. Mark unread / Delete / Close are the quiet tier — the same
+   vocabulary the booking hub's secondary actions use. */
+.mbx-acts {
+  margin-top: 14px;
+}
+.mbx-reply {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.mbx-reply:hover {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.mbx-acts-quiet {
+  margin-top: 4px;
 }
 .mbx-atts {
   display: flex;
