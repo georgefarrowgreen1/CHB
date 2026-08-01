@@ -4218,3 +4218,11 @@ body.cmdk-open {
 /* The sticky bar's ✉️ is a <button> now (composer, not mailto) — the icon
    circle must not pick up UA button chrome. */
 button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
+
+/* The Edit/Move/Cancel menu lives at the page FOOT (the iOS home for a
+   record's management actions) — centred under the cards, clear of the
+   phone sticky bar. Its dropdown opens UPWARD here, or the menu would fall
+   off the bottom of the document. */
+.bhub-foot { display: flex; justify-content: center; margin: 20px 0 40px; }
+.bhub-foot .bhub-actions { position: relative; width: auto; justify-content: center; }
+.bhub-foot .bhub-menu { top: auto; bottom: calc(100% + 6px); }

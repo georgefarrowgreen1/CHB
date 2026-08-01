@@ -10089,23 +10089,19 @@ function renderBookingHub() {
             ${payHistory}
         </div>`;
 
-    // ---- Header — the ONE unified status + payments section: identity + Edit
-    // menu, then the journey pipeline + next action, then the money block. ----
-    const header = `
-        <div class="bhub-head glass-panel">
-            <div class="bhub-head-top">
-                <div>
-                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
-                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
-                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
-                    ${hubChipsHtml(b)}
-                    ${changeover}
-                </div>
+    // ---- The Edit/Move/Cancel menu — AT THE FOOT of the page (owner's ask,
+    // and the iOS home for a record's management actions: Contacts and
+    // Calendar both end their detail pages this way). The header stays pure
+    // identity; the rare-and-destructive lives past everything you'd normally
+    // want. Same node, same data-acts — only the address changed, so every
+    // gate that reads .bhub-actions keeps reading the same thing. The menu
+    // opens UPWARD here (CSS .bhub-foot .bhub-menu), or it would drop off the
+    // bottom of the document. ----
+    const editMenu = `
                 <div class="bhub-actions">
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
-                         header stays calm and the destructive action becomes a
-                         deliberate two-tap instead of a permanent red button. -->
+                         destructive action stays a deliberate two-tap instead
+                         of a permanent red button. -->
                     <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                         <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
@@ -10128,6 +10124,20 @@ function renderBookingHub() {
                                 : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubDelete" data-arg="${b.id}" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
                         }
                     </div>
+                </div>`;
+
+    // ---- Header — the ONE unified status + payments section: identity, then
+    // the journey pipeline + next action, then the money block. ----
+    const header = `
+        <div class="bhub-head glass-panel">
+            <div class="bhub-head-top">
+                <div>
+                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
+                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
+                    <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
+                    ${hubChipsHtml(b)}
+                    ${changeover}
                 </div>
             </div>
             ${pipeHtml}
@@ -10284,7 +10294,7 @@ function renderBookingHub() {
             b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</button>` : ''
         }</div>`
         : '';
-    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>${sticky}`;
+    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div><div class="bhub-foot">${editMenu}</div>${sticky}`;
 }
 // The status-chips row: five facts from five places, one glance — the terms
 // acceptance (with version), the no-dog declaration, the guest register, which
