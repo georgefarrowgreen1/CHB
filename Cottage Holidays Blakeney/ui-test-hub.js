@@ -448,6 +448,29 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(dots.allRed, `outstanding facts wear red dots — terms/no-dog/register on a blank booking (${dots.redCount})`);
   ok(dots.railBare, 'the rail chip is a category, not a status — no dot');
   ok(dots.pipeRound, 'the journey pipeline\'s dots are circles, not flex-squashed ovals');
+  // THE REGISTER'S STATUS ROW wears the same dots: red while waiting (b1),
+  // green once submitted — flipped in place through the real renderer, then
+  // restored.
+  const regDots = await page.evaluate(() => {
+    const probe = (v) => { const el = document.createElement('i'); el.style.color = `var(${v})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+    const okC = probe('--ok'), badC = probe('--danger');
+    const read = () => {
+      const kv = [...document.querySelectorAll('#booking-hub-content .bhub-card .bhub-kv')].find((r) => /Status/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || ''));
+      const dotEl = kv && kv.querySelector('.bhub-chip-dot');
+      return { text: kv ? kv.textContent.trim() : '', dot: dotEl ? getComputedStyle(dotEl).backgroundColor : 'none' };
+    };
+    const waiting = read();
+    const b = findBookingById('b1');
+    const keep = { s: b.regSubmitted, c: b.regCount };
+    b.regSubmitted = true; b.regCount = 2; renderBookingHub();
+    const submitted = read();
+    b.regSubmitted = keep.s; b.regCount = keep.c; renderBookingHub();
+    return { waiting, submitted, okC, badC };
+  });
+  ok(/Not yet submitted/.test(regDots.waiting.text) && regDots.waiting.dot === regDots.badC,
+    'register waiting → red dot beside "Not yet submitted"');
+  ok(/Submitted · 2 guests recorded/.test(regDots.submitted.text) && regDots.submitted.dot === regDots.okC,
+    'register filled in → green dot beside the count');
   // The money ask lives in the Payments block's own header — ONE statement of
   // the balance — and the standalone banner is gone while it does.
   const merged = await page.evaluate(() => ({

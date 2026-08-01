@@ -10248,9 +10248,12 @@ function renderBookingHub() {
     const regCard = `
         <section class="bhub-card glass-panel">
             <h3 class="bhub-card-title">Guest register <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· legal record</span></h3>
+            ${/* The chips' dot vocabulary (owner's ask): green = filled in,
+                  red = still waiting — the words carry the state either way. */ ''}
             ${b.regSubmitted
-                ? `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val" style="color:var(--ok);font-weight:600;">✓ Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
-                : `<p class="bhub-mut" style="margin:2px 0 10px;">Not yet submitted. The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
+                ? `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val"><span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
+                : `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val"><span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Not yet submitted</span></div></div>
+                   <p class="bhub-mut" style="margin:6px 0 4px;">The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
             <div class="bhub-btn-row bhub-act-links" style="margin-top:4px;">
                 ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
                 ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy request link</button>` : ''}
