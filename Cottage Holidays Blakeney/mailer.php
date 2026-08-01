@@ -1801,20 +1801,12 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     // My Stays all saying £750. The facts fold the charged deposit into BOTH the
     // stay total and the paid figure, so the balance is unmoved and the guest's
     // documents finally agree.
-    $f = payment_money_facts($b);
+    $f = payment_money_facts($b, $what);
     $stayTotalGrand = $f['stayTotal'];
-    // "…charged to your card today" is a CARD sentence. On the bank-transfer rail
-    // nothing is charged to anything — the guest is sending the money themselves,
-    // so the same fact has to be stated as a total to send.
-    $damagesTail =
-        $rail === 'bacs'
-            ? ' (returned after checkout), so please send ' . $money($chargedToday) . ' in total.'
-            : ' (returned after checkout), so ' . $money($chargedToday) . ' will be charged to your card today.';
-    $depositLineText =
-        $damages > 0
-            ? "\n\nThis payment also includes a refundable security deposit of " . $money($damages) . $damagesTail
-            : '';
-    $cta = payment_cta($rail, $payUrl, $bacs, "To secure your stay, please pay your {$what} of " . $money($b['amount']));
+    $depositLineText = $f['depositTail'] !== '' ? "\n\n" . $f['depositTail'] : '';
+    // The CTA quotes the SUM THE GUEST SENDS, not the rental half of it — the
+    // deposit sentence beneath explains the split.
+    $cta = payment_cta($rail, $payUrl, $bacs, 'To secure your stay, please pay ' . $money($f['chargedNow']));
 
     $subject = "Pay your {$what} — {$prop}";
     $text =
@@ -1847,19 +1839,13 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
                 ').',
         ) .
         email_amount(
-            ucfirst($what) . ' due',
-            $money($b['amount']),
-            'of ' . $money($stayTotalGrand) . ' total'
-                . ($f['paid'] > 0.005 ? ' · ' . $money($f['paid']) . ' already paid' : ''),
+            $f['payLabel'],
+            $money($f['chargedNow']),
+            ($f['paySub'] !== '' ? $f['paySub'] . '<br>' : '') . $esc($f['contextLine']),
         ) .
         ($damages > 0
             ? email_p(
-                'This payment also includes a <strong>' .
-                    $money($damages) .
-                    '</strong> refundable security deposit (returned after checkout), so ' .
-                    ($rail === 'bacs'
-                        ? 'please send <strong>' . $money($chargedToday) . '</strong> in total.'
-                        : '<strong>' . $money($chargedToday) . '</strong> will be charged to your card today.'),
+                'The <strong>' . $money($damages) . '</strong> security deposit is refundable — it comes back to you after checkout.',
                 true,
             )
             : '') .
@@ -1959,9 +1945,10 @@ function request_booking_payment($b, $kind, $reminder = false)
 // charged now, what the deposit adds, what has already been paid, and the full
 // stay total. `paid` is optional (0 when the caller has no figure) so the line is
 // only claimed when it is known.
-function payment_money_facts($b)
+function payment_money_facts($b, $whatLabel = 'balance')
 {
     $money = fn($n) => '£' . number_format((float) $n, 2);
+    $rail = payment_rail($b);
     $due = round((float) ($b['amount'] ?? 0), 2);
     $damages = round((float) ($b['damages'] ?? 0), 2);
     // The deposit ALREADY taken — the £50 that rode the first card payment. The
@@ -1985,11 +1972,33 @@ function payment_money_facts($b)
         // either way because the deposit adds equally to total and paid.
         'stayTotal' => round($rentalTotal + $damages + $depCharged, 2),
         'money' => $money,
-        // The deposit sentence, in the same words both emails use.
+        // THE HEADLINE FIGURE IS WHAT THE GUEST ACTUALLY PAYS. Both emails used
+        // to lead with the rental balance while the card takes balance + the
+        // refundable deposit — so the one number that mattered was the one the
+        // email never showed at its own size, only in a sentence below the fold
+        // (owner's screenshot: a £290.00 hero over a £340.00 charge). The
+        // headline is the real sum now and the split rides directly under it,
+        // so the figure is never a mystery and never a surprise at checkout.
+        // (The transaction fee needs no line of its own: it is inside the
+        // rental total, so it is already inside every figure here.)
+        'payLabel' => $damages > 0 ? 'To pay now' : ucfirst($whatLabel) . ' due',
+        'paySub' => $damages > 0
+            ? $money($due) . ' ' . $whatLabel . ' + ' . $money($damages) . ' refundable deposit'
+            : '',
+        // The quiet context under the figure: what the stay costs in total and
+        // what has already been settled.
+        'contextLine' => 'Of ' . $money(round($rentalTotal + $damages + $depCharged, 2)) . ' total'
+            . ($paid > 0.005 ? ', ' . $money($paid) . ' already paid' : '') . '.',
+        // The deposit sentence, in the same words both emails use — and on the
+        // RAIL the guest is actually on: "charged to your card today" is a card
+        // sentence, and the reminder was saying it to bank-transfer guests
+        // (the request had its own rail-aware copy; this one did not).
         'depositTail' => $damages > 0
             ? 'This payment also includes a refundable security deposit of ' . $money($damages)
-                . ' (returned after checkout), so ' . $money(round($due + $damages, 2))
-                . ' will be charged to your card today.'
+                . ' (returned after checkout), '
+                . ($rail === 'bacs'
+                    ? 'so please send ' . $money(round($due + $damages, 2)) . ' in total.'
+                    : 'so ' . $money(round($due + $damages, 2)) . ' will be charged to your card today.')
             : '',
         // Stated only when there IS something already paid — "£0.00 already paid"
         // on a fresh request is noise, not information. When the refundable deposit
@@ -2014,11 +2023,11 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     $days = max(0, (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
     $rail = payment_rail($b);
-    $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay the remaining ' . $money($b['amount']));
-
     // The SAME facts the request stated, so the chase cannot quote a smaller sum
-    // than the one the card will take.
-    $f = payment_money_facts($b);
+    // than the one the card will take — including in the CTA, which used to name
+    // the rental half while the deposit sentence beneath added the rest.
+    $f = payment_money_facts($b, 'balance');
+    $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay ' . $money($f['chargedNow']));
 
     $subject = "Reminder: balance due for {$prop}";
     $text =
@@ -2046,11 +2055,11 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
                 ').',
         ) .
         email_amount(
-            'Balance due',
-            $money($b['amount']),
-            $f['damages'] > 0 ? $f['money']($f['chargedNow']) . ' charged today, incl. deposit' : '',
+            $f['payLabel'],
+            $money($f['chargedNow']),
+            ($f['paySub'] !== '' ? $f['paySub'] . '<br>' : '') . $esc($f['contextLine']),
         ) .
-        ($f['paidLine'] !== '' ? email_p($esc($f['paidLine']), true) : '') .
+        ($f['paidLine'] !== '' && $f['paySub'] === '' ? email_p($esc($f['paidLine']), true) : '') .
         $cta['html'] .
         email_p('Already paid? Thank you — please ignore this.', true) .
         email_p('Cottage Holidays Blakeney', true);

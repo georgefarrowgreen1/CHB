@@ -3927,7 +3927,14 @@ async function openPayView(token, bookingId, kind) {
             s.kind === 'hold'
                 ? 'held, not charged — released after checkout'
                 : s.kind === 'balance'
-                  ? `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`
+                  ? // The BALANCE ask itemises too when the refundable deposit
+                    // rides it — the same rule the deposit ask follows, so the
+                    // headline is never a figure the guest has to derive. The
+                    // four numbers reconcile: total − already paid = the sum
+                    // above, and balance + deposit is the same sum split.
+                    (dep > 0
+                        ? `${gbp(Number(s.amountDue))} balance + ${gbp(dep)} refundable deposit · of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? `, ${gbp(paidSoFar)} already paid` : ''}`
+                        : `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`)
                   : dep > 0
                     ? `${gbp(Number(s.amountDue))} deposit (${s.depositPct}%) + ${gbp(dep)} refundable deposit`
                     : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
@@ -13993,7 +14000,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'refhome02aug';
+    const BUILD = 'paynow02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
