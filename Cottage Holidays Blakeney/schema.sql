@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS enquiries (
     terms_accepted_at DATETIME NULL,
     terms_version     VARCHAR(20) NULL,
     no_dogs_at        DATETIME NULL,           -- guest confirmed they aren't bringing a dog
+    seen_at           DATETIME NULL,           -- when the OWNER opened it (stops the red count nagging)
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

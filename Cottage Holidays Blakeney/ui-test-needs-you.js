@@ -278,6 +278,52 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(!/emailed you/.test(noMail) && !/new emails are waiting/.test(noMail), 'no waiting mail → no row');
 
+  // ---- 8. reading an enquiry turns its notification off --------------------
+  // Reported with a screenshot: the enquiry was open on screen and every red
+  // count still said 1. An enquiry stays PENDING until it is approved or
+  // declined, so "pending" was never the right thing to count.
+  console.log('8. an opened enquiry stops notifying');
+  const seenState = async (seenAt, hoursAgo) => page.evaluate(({ seenAt, hoursAgo }) => {
+    __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
+    window.__newMailPre = null; window.__payoutTroublePre = null;
+    const at = new Date(Date.now() - hoursAgo * 3600e3).toISOString().slice(0, 19).replace('T', ' ');
+    enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: at, seenAt: seenAt }];
+    refreshInboxBadge();
+    renderNeedsYou();
+    return {
+      dock: (document.getElementById('dock-badge-enquiries') || {}).textContent,
+      inboxPip: (document.getElementById('dock-badge-inbox') || {}).textContent,
+      folderChip: (document.getElementById('ifold-count-enq') || {}).textContent,
+      duty: /enquiry/i.test(((document.getElementById('needs-you-list') || {}).textContent || '')),
+    };
+  }, { seenAt, hoursAgo });
+
+  const unread = await seenState('', 3);
+  ok(unread.dock === '1' && unread.inboxPip === '1' && unread.folderChip === '1',
+    `unread: every red count says 1 (dock ${unread.dock}, inbox ${unread.inboxPip}, chip ${unread.folderChip})`);
+  ok(unread.duty, 'unread: and it is a duty');
+
+  const read = await seenState('2026-08-01 10:00:00', 3);
+  ok(read.dock === '0' && read.inboxPip === '0' && read.folderChip === '',
+    `READ: the counts drop — that is the whole ask (dock ${read.dock}, inbox ${read.inboxPip}, chip "${read.folderChip}")`);
+  ok(!read.duty, 'READ: and the duty goes with them, or the Today badge would still say 1');
+
+  // NOT DROPPED FOR GOOD. An enquiry read and then left is exactly how a booking
+  // is lost, so at the same two days that already turns it red it comes back.
+  const stale = await seenState('2026-08-01 10:00:00', 53);
+  ok(stale.duty, 'READ BUT STALE (2 days): it comes back as a duty rather than being lost');
+
+  // Opening one stamps it and answers the tap immediately — before the round trip.
+  const onOpen = await page.evaluate(async () => {
+    enquiries = [{ id: 'e7', dbId: 7, name: 'Jem Beighton', propKey: 'pimpernel', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: new Date().toISOString().slice(0, 19).replace('T', ' '), seenAt: '' }];
+    refreshInboxBadge();
+    const before = (document.getElementById('dock-badge-enquiries') || {}).textContent;
+    enquirySeen(enquiries[0]);
+    return { before, after: (document.getElementById('dock-badge-enquiries') || {}).textContent, stamped: !!enquiries[0].seenAt };
+  });
+  ok(onOpen.before === '1' && onOpen.after === '0' && onOpen.stamped,
+    `opening it clears the count without waiting on the server (${onOpen.before} → ${onOpen.after})`);
+
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

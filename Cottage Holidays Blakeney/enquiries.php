@@ -468,6 +468,30 @@ if ($action === 'submit') {
 // All remaining actions are admin-only
 require_admin();
 
+// THE OWNER HAS READ IT. An enquiry stays pending until it is approved or
+// declined, so every red count went on saying "1" with the thing on screen in
+// front of them (reported). Opening it stamps seen_at and the NOTIFICATION
+// counts drop. COALESCE so the FIRST view is the one recorded — re-opening it a
+// week later must not reset how long it has been sitting there, which is what
+// the duty's escalation reads.
+if ($action === 'seen') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    if ($id <= 0) {
+        json_out(['error' => 'Missing enquiry id'], 400);
+    }
+    try {
+        db()->prepare('UPDATE enquiries SET seen_at = COALESCE(seen_at, NOW()) WHERE id = ?')->execute([$id]);
+        $at = db()->prepare('SELECT seen_at FROM enquiries WHERE id = ?');
+        $at->execute([$id]);
+        json_out(['ok' => true, 'seen_at' => (string) ($at->fetchColumn() ?: '')]);
+    } catch (\Throwable $e) {
+        // An un-migrated column must not break opening an enquiry — the count
+        // simply keeps its old behaviour until migrate.php has run.
+        json_out(['ok' => false, 'skipped' => 'no-column']);
+    }
+}
+
 if ($action === 'decline') {
     $r = enquiry_decline((int) ($in['id'] ?? 0));
     log_activity('enquiry', 'enquiry.decline', 'Enquiry declined', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
