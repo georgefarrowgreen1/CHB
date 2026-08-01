@@ -1091,15 +1091,21 @@ body.light-mode .ny-act {
     padding: 16px;
   }.bhub-name {
     font-size: 1.45rem;
-  }.bhub-actions,
-  .bhub-btn-row {
+  }.bhub-btn-row {
     display: grid;
     /* minmax(0,…) lets a column shrink below a long label's natural width */
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
-  }.bhub-actions .bhub-menu-btn {
-    grid-column: 1 / -1;
+  }.bhub-actions {
+    /* The Edit menu is the RAREST action on the page and used to render as a
+       full-width pill above the pipeline — maximum weight for minimum use
+       (measured: the widest control in the header at 390px). A compact
+       right-aligned button reads as chrome, which is what it is; the menu it
+       opens is its absolute sibling and anchors the same either way. */
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
   }.bhub-pipe3 {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -4095,8 +4101,13 @@ body.cmdk-open {
    automatic chaser will do. A custom plan is named in the caption; the figures
    themselves are server-derived, this panel only describes them. */
 .bhub-plan {
-    margin-top: 12px; padding: 10px 12px;
-    border: 1px solid var(--glass-border); border-radius: var(--r-md, 12px);
+    /* A FILL, not a card (the cmdk-board rule): this panel lives INSIDE the
+       Payments block, and a border here stacked a third box treatment between
+       the tinted payask band and the dashed gap chip — three different edges
+       in one section read as clutter, not structure. A hairline above is the
+       whole separation. */
+    margin-top: 14px; padding: 12px 0 0;
+    border-top: 1px solid var(--glass-border);
     display: flex; flex-direction: column; gap: 6px;
 }
 .bhub-plan-cap {
@@ -4116,3 +4127,26 @@ body.cmdk-open {
     padding: 2px 0 2px 10px;
 }
 .bhub-plan .bhub-linklike { align-self: flex-start; }
+
+/* THE HUB'S ACTION HIERARCHY — one loud control, everything else quiet.
+   The payask band is the single call to action; the complementary actions
+   (record / copy link / reminder / invoice) wear the linklike vocabulary
+   instead of a wall of pills indistinguishable from the ask (measured at
+   390px: seven equal pills in the header card alone, the same requestPayment
+   three times). Still <button>s at the 44px touch floor — quiet is a look,
+   not a smaller target. The :not(.bhub-act-links) exemption keeps the phone
+   two-up grid for the card button rows that ARE homogeneous sets (Emails). */
+.bhub-act-links { display: flex; flex-wrap: wrap; gap: 0 22px; margin-top: 8px; }
+.bhub-actlink {
+    display: inline-flex; align-items: center;
+    background: none; border: none; padding: 10px 0; min-height: 44px;
+    font-family: inherit; font-size: 0.84rem; color: var(--text-light);
+    cursor: pointer;
+}
+.bhub-actlink::before { content: '›'; margin-right: 6px; color: var(--text-muted); }
+.bhub-actlink:hover { color: var(--accent-text); }
+@media (max-width: 640px) {
+    /* Out-rank the generic .bhub-btn-row grid — the quiet row stays a flowing
+       line of text actions at every width. */
+    .bhub-btn-row.bhub-act-links { display: flex; }
+}

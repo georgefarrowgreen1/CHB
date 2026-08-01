@@ -10022,11 +10022,10 @@ function renderBookingHub() {
     const payHistory = '';
     // The payments block lives INSIDE the header card — one unified section:
     // journey pipeline → next action → the money itself. The old standalone
-    // Payments card (and its duplicate mini-pipeline) is gone. The banner's CTA
-    // already carries "Request … by card" when a balance is due, so the button
-    // row keeps only the complementary actions (record a manual payment, copy a
-    // link to paste into a chat, the invoice) — never the same action twice.
-    const askKind = hubAskKind(gt, past);
+    // Payments card (and its duplicate mini-pipeline) is gone. The payask
+    // carries the staged email ask (hubAskKind, derived in hubPipelineHtml), so
+    // the action row below keeps only the COMPLEMENTARY actions — never the
+    // same action twice.
     // The pipeline is composed FIRST so its next-action derivation (__hubNext)
     // is set before the payments block reads it: a MONEY next action renders as
     // this block's own header, so the balance is stated once with its button —
@@ -10064,26 +10063,25 @@ function renderBookingHub() {
             ${discloseBtn}
             ${depositLine}
             ${planPanel}
-            <div class="bhub-btn-row">
-                ${/* The email ask, IN the Payments section — the banner carries it
-                      too, but the owner working this block should not have to go
-                      back up for the one action that asks for the money. Staged by
-                      askKind (shared with the banner, so the two can never ask for
-                      different things): the deposit ask first, then the SUBSEQUENT
-                      balance ask once something is in. Hidden when paid in full or
-                      with no email on file, same as Copy pay link. */ ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email
-                    ? `<button class="btn-sm btn-edit" ${chbAttrs('requestPayment', String(b.id), askKind)}>${askKind === 'deposit' ? 'Email deposit link' : 'Email balance link'}</button>`
-                    : ''}
+            <div class="bhub-btn-row bhub-act-links">
+                ${/* ONE ask, ONE loud control. The staged email button used to
+                      render here TOO — justified when the ask lived in a banner
+                      a screen above, a strict duplicate since the ask moved INTO
+                      this block (measured at 390px: the same requestPayment
+                      three times in one screen-height — payask, this row, the
+                      sticky bar). The payask above IS the staged ask now; what
+                      remains here are the COMPLEMENTARY actions, dressed as the
+                      quiet text row they are (the linklike vocabulary) instead
+                      of four pills shouting as loudly as the ask itself. */ ''}
                 ${/* A reminder only exists once something has been asked for —
                       the server refuses it cold, so the button waits for a
                       request stamp rather than offering a refusal. */ ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
-                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
+                    ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
-                ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
-                <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
+                ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
+                <button class="bhub-actlink" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>
             ${payHistory}
         </div>`;
