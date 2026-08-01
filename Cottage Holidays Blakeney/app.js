@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 390;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 138;
+const ADMIN_CSS_V = 139;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -13030,11 +13030,8 @@ function setModalFields(f) {
                   : '';
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
-    // A fresh open starts with the availability calendar folded to its strip
-    // and the More-options row closed — the common case fits one screen.
+    // A fresh open starts with the availability calendar folded to its strip.
     __mavOpen = false;
-    const moreEl = /** @type {HTMLDetailsElement|null} */ (document.getElementById('modal-more'));
-    if (moreEl) moreEl.open = false;
     // The plan opens on STANDARD with blank fields (blank IS the standard) —
     // it only renders in ADD mode, and the Standard line quotes the LIVE site
     // terms so the words can never drift from what the server derives.
@@ -13996,7 +13993,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'plantgl02aug';
+    const BUILD = 'nofold02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

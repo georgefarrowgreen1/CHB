@@ -277,7 +277,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-search', open: '(async () => { openCmdK(); })()', mustSee: ['#cmdk-input', '#cmdk-results'] },
       { key: 'admin-bookings', open: '(async () => { await openBookings(); })()', mustSee: ['#bookings-list', '#cal-body'] },
       { key: 'admin-booking-hub', open: "(async () => { await openBookingHub('b2'); })()", mustSee: ['#booking-hub-content', '#hub-history'] },
-      { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); mavToggle(); document.getElementById('modal-more').open = true; })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-strip', '#modal-availability .mav-grid', '.modal-foot'] },
+      { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); mavToggle(); })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-strip', '#modal-availability .mav-grid', '.modal-foot'] },
       { key: 'admin-close-modal', open: 'closeModal()', mustSee: ['#bookings-list'] },
       // The glassForm dialogs were never opened by this gate, which is how two
       // native date fields came to overhang the panel's right edge on an iPhone

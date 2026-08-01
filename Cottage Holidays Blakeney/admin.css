@@ -4269,15 +4269,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 }
 .modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
 .modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
-.modal-more { margin: 0 0 4px; }
-.modal-more > summary {
-    list-style: none; display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; min-height: 44px; padding: 10px 2px; font-size: 0.85rem;
-    color: var(--accent-text); cursor: pointer; border-top: 1px solid var(--glass-border);
-}
-.modal-more > summary::-webkit-details-marker { display: none; }
-.modal-more > summary::after { content: '›'; color: var(--text-muted); transform: rotate(90deg); }
-.modal-more[open] > summary::after { transform: rotate(-90deg); }
 .modal-foot {
     /* Content-width, not a bleed: -35px margins overhung the phone's 22px
        box padding and the total clipped to "£6" live. */

@@ -331,8 +331,6 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(planInAdd.shown && planInAdd.stdOn && planInAdd.fieldsHidden && planInAdd.pctBlank && planInAdd.dueBlank,
     'ADD opens on the STANDARD toggle, fields folded and blank');
   // Toggle CUSTOM, fill a 30% / dated plan → the add POST carries the plan.
-  // (The toggle lives inside the More-options fold — open it first.)
-  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
   await page.click('#modal-plan-custom-btn');
   await page.evaluate((f) => {
     document.getElementById('modal-property').value = '21a';
@@ -368,7 +366,6 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // a plan the owner backed out of can never ride the save silently.
   await page.evaluate(() => window.openAddBooking());
   await page.waitForTimeout(250);
-  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
   await page.click('#modal-plan-custom-btn');
   await page.evaluate((f) => {
     document.getElementById('modal-property').value = '21a';

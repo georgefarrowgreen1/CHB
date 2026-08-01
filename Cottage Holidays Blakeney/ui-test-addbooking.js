@@ -90,25 +90,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/^Overlaps Booked Guest/.test(s2b.txt) && s2b.clashDot, `overlapping dates → red summary naming the blocker (${s2b.txt.slice(0, 40)})`);
   ok(/confirm at save/.test(s2b.warn), 'and the confirm-at-save warning renders with it');
 
-  // ---------- 3. the More-options fold ----------
-  console.log('3. the fold');
-  const s3 = await page.evaluate(() => {
-    const more = document.getElementById('modal-more');
-    return {
-      closed: !!more && !more.open,
-      holds: ['modal-checkin-time', 'modal-damages-deposit', 'modal-price-override', 'modal-plan-pct']
-        .every((id) => more.contains(document.getElementById(id))),
-      depLabel: (document.querySelector('label[for="modal-damages-deposit"]') || {}).textContent || '',
-      hints: document.querySelectorAll('#modal-more .modal-hint').length,
-    };
-  });
-  ok(s3.closed, 'the fold opens CLOSED — the common case fits one screen');
-  ok(s3.holds, 'times, deposit, override and plan all live inside it');
+  // ---------- 3. the money controls display all the time ----------
+  // The fold was tried and REMOVED at the owner's ask ("display these items
+  // all the time") — no summary row, nothing behind a disclosure. Times live
+  // in Stay; deposit/override/plan under Money, always painted.
+  console.log('3. always-visible controls');
+  const s3 = await page.evaluate(() => ({
+    fold: !!document.querySelector('#edit-modal details'),
+    visible: ['modal-checkin-time', 'modal-damages-deposit', 'modal-price-override', 'modal-plan-seg']
+      .every((id) => { const el = document.getElementById(id); return !!el && el.getClientRects().length > 0; }),
+    depLabel: (document.querySelector('label[for="modal-damages-deposit"]') || {}).textContent || '',
+    hints: document.querySelectorAll('#modal-deposit-group .modal-hint, #modal-override-group .modal-hint, #modal-plan-group .modal-hint').length,
+  }));
+  ok(!s3.fold, 'no disclosure fold anywhere in the modal');
+  ok(s3.visible, 'times, deposit, override and the plan toggle all paint without a tap');
   ok(s3.depLabel === 'Refundable damages deposit (£)' && s3.hints >= 3,
-    `the shouted labels became short label + quiet hint (${s3.hints} hints)`);
-  // The plan is a Standard | Custom TOGGLE (owner's ask — not a field that
-  // implies typing): Standard states the LIVE site terms in a sentence and
-  // hides the fields; Custom reveals them; flipping back WIPES what was typed.
+    `the shouted labels stay short label + quiet hint (${s3.hints} hints)`);
+  // The plan is a Standard | Custom TOGGLE: Standard states the LIVE site
+  // terms in a sentence and hides the fields; Custom reveals them; flipping
+  // back WIPES what was typed.
   const t1 = await page.evaluate(() => ({
     stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
     pressed: document.getElementById('modal-plan-std-btn').getAttribute('aria-pressed') === 'true',
@@ -117,7 +117,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(t1.stdOn && t1.pressed && t1.fieldsHidden, 'the plan opens on Standard, fields folded');
   ok(/25% deposit/.test(t1.line) && /30 days/.test(t1.line), `the Standard line quotes the live site terms (${t1.line.slice(0, 50)})`);
-  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
   await page.click('#modal-plan-custom-btn');
   const t2 = await page.evaluate(() => ({
     on: document.getElementById('modal-plan-custom-btn').classList.contains('is-on'),
@@ -205,20 +204,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => (document.getElementById('modal-foot-fig') || {}).textContent === '—'),
     'no computable total → the footer shows a dash, not the last number');
 
-  // ---------- 5. a fresh open starts folded ----------
+  // ---------- 5. a fresh open resets ----------
   console.log('5. fresh-open reset');
   await page.evaluate(() => {
     mavToggle();
-    document.getElementById('modal-more').open = true;
     closeModal();
   });
   await page.evaluate(() => window.openAddBooking());
   await page.waitForTimeout(250);
-  const s5 = await page.evaluate(() => ({
-    gridUp: !!document.querySelector('#modal-availability .mav-grid'),
-    moreOpen: document.getElementById('modal-more').open,
-  }));
-  ok(!s5.gridUp && !s5.moreOpen, 'reopening starts with the calendar and the fold both closed');
+  const s5 = await page.evaluate(() => !document.querySelector('#modal-availability .mav-grid'));
+  ok(s5, 'reopening starts with the availability calendar folded to its strip');
   // The ✕ goes through the dispatcher and actually closes.
   await page.click('#edit-modal .modal-x');
   await page.waitForTimeout(250);
