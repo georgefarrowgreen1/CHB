@@ -4279,12 +4279,15 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .modal-more > summary::after { content: '›'; color: var(--text-muted); transform: rotate(90deg); }
 .modal-more[open] > summary::after { transform: rotate(-90deg); }
 .modal-foot {
+    /* Content-width, not a bleed: -35px margins overhung the phone's 22px
+       box padding and the total clipped to "£6" live. */
     position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 14px;
-    margin: 8px -35px 0; padding: 12px 35px calc(14px + var(--safe-b, 0px));
+    margin: 8px 0 0; padding: 12px 0 calc(14px + var(--safe-b, 0px));
     border-top: 1px solid var(--glass-border);
     background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 26%);
 }
-.modal-foot-total { min-width: 0; }
+/* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
+.modal-foot-total { flex: 0 0 auto; }
 .modal-foot-cap {
     display: block; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--text-muted); white-space: nowrap;
