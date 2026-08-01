@@ -15001,7 +15001,14 @@ async function editPaymentPlan(bookingId) {
     if (!b || !loc) return;
     const ps = paymentSummary(loc.propKey, b);
     const stdDue = b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
-    const curDep = b.depositAmountOverride > 0 ? '£' + b.depositAmountOverride : b.depositPctOverride > 0 ? b.depositPctOverride + '%' : '';
+    // PERCENT ONLY (owner's ask — "£25" typed into a %-or-£ field showed why
+    // one input with two grammars invites the wrong one). A legacy £ override
+    // displays as its effective percentage; saving converts it to pct.
+    const curDep = b.depositPctOverride > 0
+        ? String(b.depositPctOverride)
+        : b.depositAmountOverride > 0 && ps.total > 0
+          ? String(Math.round((b.depositAmountOverride / ps.total) * 1000) / 10)
+          : '';
     // A TITLED dialog with one-line context and per-field hints — the old shape
     // was five lines of prose above an unexplained empty date pill (date inputs
     // ignore placeholders) and a button reading "OK".
@@ -15013,7 +15020,7 @@ async function editPaymentPlan(bookingId) {
     const vals = await glassForm(
         'Every email, pay link and the automatic chaser follow this plan.',
         [
-            { id: 'dep', label: 'Deposit', value: curDep, placeholder: 'e.g. 30% or £300', hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} stay)` },
+            { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} stay)` },
             { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
         ],
         { title: `Payment plan — ${b.name || 'this booking'}`, okLabel: 'Save plan' },
@@ -15021,19 +15028,18 @@ async function editPaymentPlan(bookingId) {
     if (!vals) return;
     if (vals.due === stdDue) vals.due = '';
     const depIn = String(vals.dep || '').trim();
-    let pct = '', amt = '';
+    let pct = '';
     if (depIn !== '') {
-        const n = parseFloat(depIn.replace(/[£%\s,]/g, ''));
-        if (!(n > 0)) { glassAlert('The deposit must be a number — like 30% or £300.'); return; }
-        if (/%/.test(depIn)) pct = String(n);
-        else amt = String(n);
+        const n = parseFloat(depIn.replace(/[%\s,]/g, ''));
+        if (!(n > 0 && n <= 100)) { glassAlert('The deposit must be a percentage between 1 and 100.'); return; }
+        pct = String(n);
     }
     try {
         const res = await apiPost('bookings.php', {
             action: 'set_payment_plan',
             id: b.dbId,
             deposit_pct: pct,
-            deposit_amount: amt,
+            deposit_amount: '',
             balance_due_date: String(vals.due || '').trim(),
         });
         // Adopt the SERVER'S accepted values, not the typed ones — validation may
