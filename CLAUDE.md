@@ -13,15 +13,20 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   finished in 4–5 minutes and GitHub's PR **check-runs** endpoint went on reporting
   `in_progress` for up to **two hours** afterwards — the steps frozen mid-list while
   the run was long over. Polling it costs the session and buys nothing. So:
-  1. **`enable_pr_auto_merge` (SQUASH) the moment the PR is open**, then go and do the
-     next piece of work. GitHub merges it when the checks actually pass, which is the
-     "always merge" rule enforced by the platform instead of by watching. Resync the
-     branch (`git checkout -B <branch> origin/main`) at the START of the next task
-     rather than at the end of the last one.
-  2. If a status is genuinely needed, ask the **JOB** (`actions_get get_workflow_job`)
-     or the run's job list — both were fresher than the PR's check-runs list every
-     time — and never more than once between real pieces of work.
-  3. Job logs are a truth oracle the status field is not: they 404 while a job is
+  1. **Open the PR and go straight to the next piece of work.** Merge at the next
+     natural checkpoint — one status check, then merge — and resync the branch
+     (`git checkout -B <branch> origin/main`) at the START of the next task rather
+     than the end of the last one. An open, green PR sitting for twenty minutes
+     costs nothing; twenty minutes of polling costs twenty minutes.
+  2. **`enable_pr_auto_merge` does NOT work here** — tried on #962 and refused with
+     "the pull request is in unstable status", which is what GitHub calls a PR whose
+     checks are merely PENDING. It is only accepted once the checks have passed, i.e.
+     exactly when a plain merge would do. Don't reach for it again expecting to walk
+     away; the walking away is step 1.
+  3. When a status IS wanted, ask the **JOB** (`actions_get get_workflow_job`) or the
+     run's job list — both were fresher than the PR's check-runs list every time —
+     and never more than once between real pieces of work.
+  4. Job LOGS are the honest oracle the status field is not: they 404 while a job is
      running and download once it is done.
 - **Run the local gauntlet CONCURRENTLY**, in the background, not one suite at a time.
   It is the local run that catches things (CI has never once caught what the full local
