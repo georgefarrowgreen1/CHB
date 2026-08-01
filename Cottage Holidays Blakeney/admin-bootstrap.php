@@ -84,6 +84,18 @@ try {
     $payoutTrouble = null;
 }
 
+// Customer emails waiting to be read, folded into the same round trip for the
+// same reason as $feeds: it is a CONTENT READ, not a mailbox fetch — the POP3
+// poll (mailbox-read.php, on the cron) is what notices new mail, and a page must
+// never wait on a mail server.
+$newMail = ['count' => 0, 'items' => []];
+try {
+    require_once __DIR__ . '/mailbox-read.php';
+    $newMail = mailbox_new_pending();
+} catch (\Throwable $e) {
+    $newMail = ['count' => 0, 'items' => []];
+}
+
 // Same rule as the public boot: a part that cannot be built is OMITTED and
 // reported, never a 500 that takes the whole back office's first paint with it
 // — loadData() already keeps its last good copy per store and each loader can
@@ -104,6 +116,7 @@ $out = [
     'ok' => true,
     'feeds' => $feeds,
     'payoutTrouble' => $payoutTrouble,
+    'newMail' => $newMail,
     'blocks' => ['ok' => true, 'blocks' => $blocks],
 ];
 foreach ([

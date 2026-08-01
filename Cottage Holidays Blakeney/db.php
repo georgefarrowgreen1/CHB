@@ -758,6 +758,9 @@ function is_internal_content_key($key)
         // and amounts) between webpush.php's set and the service worker's take.
         'owner-ping',
         'mailbox-seen', // IMAP UID watermark (mailbox.php)
+        // Customer emails the poll has seen but the owner has not opened — the
+        // sender's name and subject line, so never on the anonymous GET.
+        'mailbox-new',
         'testcentre-seeded', // demo-data manifest (testcentre.php)
     ], true);
 }
@@ -990,6 +993,16 @@ function mailbox_own_address()
 // A message FROM us is one of our own notifications, never a customer email.
 // With no address configured this is always false — a mailbox that cannot
 // identify itself must show everything rather than hide everything.
+// Which mailbox UIDLs the owner has already opened. It lived inside mailbox.php,
+// which is a ROUTED endpoint — requiring it to ask the question would run the
+// route — so the one place that knows what "already read" means is here, and
+// mailbox.php delegates. mailbox_new_pending() needs it to clear the new-mail
+// count through the same fact rather than inventing a second one.
+function mailbox_seen_uids()
+{
+    $v = content_json('mailbox-seen', []);
+    return is_array($v['uids'] ?? null) ? $v['uids'] : [];
+}
 function mailbox_is_self_notification($fromAddr)
 {
     $own = mailbox_own_address();

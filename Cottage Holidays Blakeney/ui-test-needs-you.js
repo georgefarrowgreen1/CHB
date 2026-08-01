@@ -235,6 +235,49 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(!/into your bank/i.test(clean) && !/under dispute/i.test(clean), 'a healthy account shows neither');
 
+  // ---- 7. new customer email reaches the strip ---------------------------
+  // Nothing used to tell the owner an email had arrived: the cron's poll read it,
+  // saw it was not a chat reply, marked it seen and dropped it. It rides the same
+  // bootstrap payload as the payout trouble above (window.__newMailPre).
+  console.log('7. a new customer email is a duty');
+  const mail1 = await page.evaluate(() => {
+    enquiries = []; __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
+    window.__payoutTroublePre = null;
+    window.__newMailPre = { count: 1, items: [{ uid: 'u1', from: 'anne@example.test', name: 'Anne Betts', subject: 'Is there parking?' }] };
+    renderNeedsYou();
+    return {
+      txt: ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' '),
+      count: (document.getElementById('needs-you-count') || {}).textContent,
+    };
+  });
+  ok(/Anne Betts emailed you/.test(mail1.txt), `one email names the sender (${mail1.txt.slice(0, 80)})`);
+  ok(/Is there parking\?/.test(mail1.txt), '…and shows the subject, so it can be judged without opening it');
+  ok(mail1.count === '1', `it counts on the badge (${mail1.count})`);
+  const mail3 = await page.evaluate(() => {
+    window.__newMailPre = { count: 3, items: [{ uid: 'u1', name: 'Anne Betts', subject: 'x' }] };
+    renderNeedsYou();
+    return ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' ');
+  });
+  ok(/3 new emails are waiting/.test(mail3), 'several are counted rather than naming one of them');
+  // It ROUTES: the row opens the Inbox on the Email folder, not just the Inbox.
+  const routed = await page.evaluate(async () => {
+    const row = [...document.querySelectorAll('#needs-you-list [data-act]')].find((b) => /openInboxEmail/.test(b.getAttribute('data-act') || ''));
+    if (!row) return { found: false };
+    row.click();
+    await new Promise((r) => setTimeout(r, 900));
+    const fold = document.getElementById('inbox-folder-email');
+    return { found: true, view: (document.querySelector('.page-view.active') || {}).id, email: !!fold && fold.style.display !== 'none' };
+  });
+  ok(routed.found && routed.view === 'view-inbox' && routed.email,
+    `the row opens Inbox → Email (${routed.view}, email folder ${routed.email})`);
+  // An empty mailbox invents nothing.
+  const noMail = await page.evaluate(() => {
+    window.__newMailPre = { count: 0, items: [] };
+    renderNeedsYou();
+    return ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' ');
+  });
+  ok(!/emailed you/.test(noMail) && !/new emails are waiting/.test(noMail), 'no waiting mail → no row');
+
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

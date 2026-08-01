@@ -261,5 +261,66 @@ if ($own === '') {
 chk('a display-name From resolves to its address', mailbox_from_addr('Cottage Holidays Blakeney <info@example.test>') === 'info@example.test');
 chk('…and the LAST angle group wins (spoof-safe)', mailbox_from_addr('"a <owner@allowed.test>" <evil@x.test>') === 'evil@x.test');
 
+// ---- NEW CUSTOMER MAIL IS NOTICED, THE SITE'S OWN IS NOT -------------------
+// Plain new mail from a customer used to be marked seen and dropped: the one
+// thing arriving from outside the system that nobody was told about was an
+// actual email. It is recorded and alerted now — and the recording code is only
+// ever reached for mail that is NOT ours and did NOT become a chat reply, which
+// is what stops the owner being paged about their own "Payment received".
+echo "\n== New customer mail ==\n";
+$fresh = [
+    ['uid' => 'b', 'from' => 'anne@example.test', 'name' => 'Anne Betts', 'subject' => 'Re: Pimpernel', 'at' => 200],
+    ['uid' => 'a', 'from' => 'bob@example.test', 'name' => 'Bob Carter', 'subject' => 'Parking?', 'at' => 100],
+];
+$merged = mailbox_new_merge([], $fresh);
+chk('both arrivals are kept', count($merged) === 2);
+chk('newest first', $merged[0]['uid'] === 'b' && $merged[1]['uid'] === 'a');
+// The poll re-lists the whole INBOX every run, so the same uid WILL come round
+// again — twice in the list would be twice in the count and twice on the badge.
+$again = mailbox_new_merge($merged, [$fresh[0]]);
+chk('the same message is never counted twice', count($again) === 2);
+$older = mailbox_new_merge($merged, [['uid' => 'c', 'from' => 'c@x.test', 'subject' => 'Older', 'at' => 50]]);
+chk('an older arrival sorts below, not on top', $older[0]['uid'] === 'b' && $older[2]['uid'] === 'c');
+chk('a uid-less row is dropped rather than stored blank', count(mailbox_new_merge([], [['from' => 'x@y.test']])) === 0);
+$cap = [];
+for ($i = 0; $i < 60; $i++) {
+    $cap[] = ['uid' => 'u' . $i, 'from' => 'a@b.test', 'subject' => 's', 'at' => $i];
+}
+$capped = mailbox_new_merge([], $cap, 40);
+chk('capped, newest kept', count($capped) === 40 && $capped[0]['uid'] === 'u59');
+chk('a long subject is trimmed, not stored whole', mb_strlen(mailbox_new_merge([], [['uid' => 'z', 'subject' => str_repeat('x', 400), 'at' => 1]])[0]['subject']) === 120);
+
+// What the push SAYS. One sender is named; several are counted — a notification
+// that reads "3 new emails" is useful, "New email from " is not.
+[$t1, $b1] = mailbox_new_alert_text([$fresh[0]]);
+chk('one email names the sender', $t1 === 'New email from Anne Betts' && $b1 === 'Re: Pimpernel');
+[$t2, $b2] = mailbox_new_alert_text($fresh);
+chk('several are counted', $t2 === '2 new emails' && strpos($b2, 'Anne Betts') === 0 && strpos($b2, '1 other') !== false);
+[$t0] = mailbox_new_alert_text([]);
+chk('nothing to say → no alert', $t0 === '');
+// A bare address has no display name; falling through to the address beats
+// printing an empty "New email from ".
+[$t3] = mailbox_new_alert_text([['uid' => 'q', 'from' => 'bare@example.test', 'name' => '', 'subject' => 'Hi', 'at' => 1]]);
+chk('a nameless sender falls back to the address', $t3 === 'New email from bare@example.test');
+chk('a display-name From yields the name', mailbox_sender_name('Anne Betts <anne@x.test>') === 'Anne Betts');
+chk('…quoted too', mailbox_sender_name('"Anne Betts" <anne@x.test>') === 'Anne Betts');
+chk('a bare address yields no name', mailbox_sender_name('anne@x.test') === '');
+
+// THE WIRING, not just the helpers. Testing the composer alone passed with the
+// call site deleted — the trap this codebase keeps walking into.
+$src = file_get_contents(__DIR__ . '/mailbox-read.php');
+chk('the poll records new mail', strpos($src, '$noticed = mailbox_new_record($fresh);') !== false);
+chk('…only for mail that is NOT ours and did NOT become a chat reply',
+    strpos($src, "if (\$deliverOk && !\$isSelf && \$route === 'drop') {") !== false);
+chk('the alert routes to the Email folder', strpos($src, "'url' => './?open=inbox:email'") !== false);
+// The count must clear itself through the SAME fact the reader already writes.
+chk('pending is stored-minus-seen', strpos($src, '$seen = mailbox_seen_uids();') !== false);
+$dbsrc = file_get_contents(__DIR__ . '/db.php');
+chk('seen-uids has ONE definition, in db.php', strpos($dbsrc, 'function mailbox_seen_uids()') !== false);
+chk('…and mailbox.php delegates to it',
+    strpos(file_get_contents(__DIR__ . '/mailbox.php'), 'return mailbox_seen_uids();') !== false);
+chk('the boot payload carries it (no extra request)',
+    strpos(file_get_contents(__DIR__ . '/admin-bootstrap.php'), "'newMail' => \$newMail") !== false);
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);
