@@ -4127,7 +4127,7 @@ body.cmdk-open {
        INTERLEAVED with them ("Asked 31/07 · reminded" tangled mid-sentence,
        measured with a 36-char guest name + custom plan at 390px). */
     display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 10px; font-size: 0.84rem; color: var(--text-light);
+    gap: 10px; font-size: 0.88rem; color: var(--text-light);
 }
 .bhub-plan-what { min-width: 0; }
 @media (max-width: 640px) {
@@ -4136,7 +4136,18 @@ body.cmdk-open {
     .bhub-plan-row { flex-direction: column; gap: 1px; }
 }
 .bhub-plan-why { color: var(--text-muted); font-size: 0.76rem; }
-.bhub-plan-state { flex: 0 0 auto; font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; }
+/* The facts at sentence weight (600 — weight, not size), the states in the
+   readable ink rather than the mute: the owner reported the whole panel as
+   washed-out grey beside the payline. The custom badge is the chip
+   vocabulary the header already uses. */
+.bhub-plan-fig { font-weight: 600; color: var(--text-light); }
+.bhub-plan-tag {
+    display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 8px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-radius: 999px; font-size: 0.62rem; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent-text);
+}
+.bhub-plan-state { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-light); white-space: nowrap; }
 .bhub-plan-ok { color: var(--ok-text); }
 .bhub-plan .bhub-actlink { border-top: 1px solid var(--glass-border); margin-top: 2px; }
 .bhub-plan-auto {

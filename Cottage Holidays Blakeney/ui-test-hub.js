@@ -607,6 +607,18 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(/£182\.00 deposit/.test(plan1) && /30% — custom/.test(plan1),
     `the panel re-renders the custom deposit (£182 = 30% of £440 + the £50 the card carries) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
   ok(/custom — standard would be/.test(plan1), 'and names the custom date against the standard it replaces');
+  // The panel's FACTS carry sentence weight and a custom plan wears the badge —
+  // the owner reported the whole panel as washed-out grey beside the payline.
+  const planEmphasis = await page.evaluate(() => {
+    const fig = document.querySelector('.bhub-plan .bhub-plan-fig');
+    const tag = document.querySelector('.bhub-plan-cap .bhub-plan-tag');
+    return {
+      figWeight: fig ? parseInt(getComputedStyle(fig).fontWeight, 10) : 0,
+      tagUp: !!tag && tag.getBoundingClientRect().height > 0,
+    };
+  });
+  ok(planEmphasis.figWeight >= 600, `the plan's facts carry sentence weight (${planEmphasis.figWeight})`);
+  ok(planEmphasis.tagUp, 'a custom plan announces itself with the badge, not two muted words');
   ok(/The chaser emails the balance link on/.test(plan1), 'the automation narrates its plan from the NEW date');
   // The reminder: appears only once something has been asked, sends through
   // request_payment with the reminder flag, and the panel records it at once.

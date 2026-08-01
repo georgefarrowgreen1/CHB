@@ -14974,9 +14974,14 @@ function hubPlanHtml(b, ps, gt, past) {
         else if (due) auto = 'The balance is due — the chaser emails the link on its next nightly run.';
     }
     return `<div class="bhub-plan">
-        <span class="bhub-plan-cap">Payment plan${custom ? ' · custom' : ''}</span>
-        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(depAsk)} deposit <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
-        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)} <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
+        ${/* The FACTS carry the weight (600, the hero-figure rule — weight,
+              not size) and the provenance stays quiet in the parenthetical;
+              a custom plan announces itself as a small accent badge rather
+              than two muted words in the caption. Owner's report: the whole
+              panel read as washed-out grey beside the payline above it. */ ''}
+        <span class="bhub-plan-cap">Payment plan${custom ? ' <span class="bhub-plan-tag">custom</span>' : ''}</span>
+        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong> <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
+        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong> <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
         ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
         ${/* The action-row vocabulary, not a muted linklike — it sat directly
               above the accent action rows as the one grey control in the
