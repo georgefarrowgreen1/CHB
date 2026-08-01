@@ -10141,23 +10141,25 @@ function renderBookingHub() {
             <h3 class="bhub-card-title">Emails</h3>
             ${
                 b.email
-                    ? `<div class="bhub-btn-row${(b.checkIn || '') > today ? '' : ' bhub-btn-row-center'}" style="margin-top:0;">
+                    ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:0;">
                         ${
                             // Pre-arrival emails (confirmation / arrival info / updated
                             // confirmation) only make sense before the guest checks in.
-                            // Once they've arrived, the card is just "Write an email"
-                            // (centred, since it stands alone).
+                            // Once they've arrived, the card is just "Write an email".
+                            // The QUIET vocabulary (bhub-actlink), same as the payments
+                            // row — a 2×2 grid of pills spent ~100px saying four equal
+                            // things; a card of sends is a list, not a control panel.
                             (b.checkIn || '') > today
-                                ? `<button class="btn-sm btn-edit" ${chbAttrs('sendConfirmationEmail', String(b.id))}>Send confirmation</button>
+                                ? `<button class="bhub-actlink" ${chbAttrs('sendConfirmationEmail', String(b.id))}>Send confirmation</button>
                         ${
                             b.preArrivalSent
                                 ? `<span class="bhub-sent-tag">Arrival info sent ✓ <span class="bhub-mut">${escapeHtml(String(b.preArrivalSent))}</span></span>`
-                                : `<button class="btn-sm btn-edit" ${chbAttrs('sendArrivalInfo', String(b.id))}>Send arrival info</button>`
+                                : `<button class="bhub-actlink" ${chbAttrs('sendArrivalInfo', String(b.id))}>Send arrival info</button>`
                         }
-                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" ${chbAttrs('offerUpdatedConfirmationEmail', String(b.id))}>Email updated confirmation</button>` : ''}`
+                        ${gt.paid > 0 ? `<button class="bhub-actlink" ${chbAttrs('offerUpdatedConfirmationEmail', String(b.id))}>Email updated confirmation</button>` : ''}`
                                 : ''
                         }
-                        <button class="btn-sm btn-edit" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
+                        <button class="bhub-actlink" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
                     </div>`
                     : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
             }
@@ -10186,9 +10188,16 @@ function renderBookingHub() {
         : '';
     // Only fields that HAVE a value render — a card of "—" rows is noise.
     // Terms always shows (it's the acceptance evidence, present or not).
+    // GROUPED ROWS, not stacked blocks (the iOS inset-list shape): label
+    // column + value, one hairline per row — measured ~40% shorter than the
+    // caps-label-above-value blocks this replaces, on a card that is pure
+    // reference material. The acceptance dates print DD/MM/YYYY (fmtDate) —
+    // they were the last two RAW SQL timestamps on an owner-facing screen,
+    // against the house's own everywhere-rule.
+    const kvWhen = (ts) => (ts ? fmtDate(String(ts).slice(0, 10)) : '');
     const contact = (label, val) =>
         val
-            ? `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val}</span></div>`
+            ? `<div class="bhub-kv"><span class="bhub-kv-label">${label}</span><span class="bhub-kv-val">${val}</span></div>`
             : '';
     const noContact =
         !b.email && !b.phone
@@ -10198,12 +10207,12 @@ function renderBookingHub() {
         <section class="bhub-card glass-panel">
             <h3 class="bhub-card-title">Guest</h3>
             ${noContact}
-            <div class="detail-grid" style="margin-top:0;">
+            <div class="bhub-kvs">
                 ${contact('Email', b.email ? `<a href="mailto:${escapeHtml(b.email)}" style="color:var(--text-light);">${escapeHtml(b.email)}</a>` : '')}
                 ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
-                ${b.address || b.postcode ? `<div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${escapeHtml([b.address, b.postcode].filter(Boolean).join(', '))}</span></div>` : ''}
-                ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
-                ${contact('No dog', b.noDogsAt ? 'Confirmed ' + escapeHtml(b.noDogsAt) : '<span class="bhub-mut">Not recorded</span>')}
+                ${contact('Address', b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '')}
+                ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + kvWhen(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
+                ${contact('No dog', b.noDogsAt ? 'Confirmed ' + kvWhen(b.noDogsAt) : '<span class="bhub-mut">Not recorded</span>')}
             </div>
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
@@ -10228,13 +10237,19 @@ function renderBookingHub() {
         <section class="bhub-card glass-panel">
             <h3 class="bhub-card-title">Guest register <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· legal record</span></h3>
             ${b.regSubmitted
-                ? `<div class="detail-grid" style="margin-top:0;"><div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="color:var(--ok);font-weight:600;">✓ Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
+                ? `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val" style="color:var(--ok);font-weight:600;">✓ Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
                 : `<p class="bhub-mut" style="margin:2px 0 10px;">Not yet submitted. The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                ${b.regUrl ? `<button class="btn-sm btn-edit" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
-                ${b.regUrl ? `<button class="btn-sm" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy request link</button>` : ''}
+            <div class="bhub-btn-row bhub-act-links" style="margin-top:4px;">
+                ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
+                ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy request link</button>` : ''}
             </div>
-            <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
+            ${/* The WHAT-THIS-IS prose is guidance for the not-yet-submitted
+                  state; once the register is in, it earned only its retention
+                  half — three lines of explanation under a green tick read as
+                  homework already handed in. */ ''}
+            <p class="bhub-mut" style="margin:8px 0 0;font-size:0.8rem;">${b.regSubmitted
+                ? 'Held securely; deleted 12 months after checkout.'
+                : 'Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.'}</p>
         </section>`;
     // Ambient guest intelligence LEADS the grid — context before actions. It
     // renders only when there is something worth knowing (repeat guest or

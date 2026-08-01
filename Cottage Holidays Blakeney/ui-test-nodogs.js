@@ -169,8 +169,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   };
   const declared = await hubText('b1');
   ok(/no dog/i.test(declared), 'the booking hub has a "No dog" row');
-  ok(/Confirmed 2026-07-01/.test(declared),
-    `…showing WHEN they confirmed it (${(declared.match(/NO DOG\n([^\n]*)/i) || ['', 'nothing'])[1]})`);
+  // DD/MM/YYYY, the house's everywhere-rule — this row printed the raw SQL
+  // timestamp ('Confirmed 2026-07-01 10:00:00') until the hub density pass.
+  ok(/Confirmed 01\/07\/2026/.test(declared),
+    `…showing WHEN they confirmed it, in the house date form (${(declared.match(/NO DOG\n([^\n]*)/i) || ['', 'nothing'])[1]})`);
   // …and it must not claim a declaration for a booking the owner typed in.
   const ownerAdded = await hubText('b2');
   ok(/no dog/i.test(ownerAdded) && /Not recorded/i.test(ownerAdded),
