@@ -106,6 +106,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(s3.holds, 'times, deposit, override and plan all live inside it');
   ok(s3.depLabel === 'Refundable damages deposit (£)' && s3.hints >= 3,
     `the shouted labels became short label + quiet hint (${s3.hints} hints)`);
+  // iOS draws an EMPTY date input SHORTER than its siblings (no text to size
+  // the line box) — owner's screenshot: Balance due by against Deposit %.
+  // Chromium cannot reproduce the collapse, so this asserts the pinning RULE
+  // via CSSOM (the reduced-motion precedent: a computed read passes with the
+  // rule deleted); the WebKit layout leg sees the real paint.
+  const datePin = await page.evaluate(() => {
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (const r of rules) {
+        if (r.selectorText && r.selectorText.includes('input[type="date"].input-glass') && r.style && r.style.minHeight) return r.style.minHeight;
+      }
+    }
+    return '';
+  });
+  ok(/calc\(/.test(datePin), `the empty-date height pin stands in the stylesheet (${datePin})`);
 
   // ---------- 4. the sticky footer mirrors the price box ----------
   console.log('4. sticky footer');
