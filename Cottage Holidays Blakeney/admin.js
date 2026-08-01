@@ -14896,12 +14896,29 @@ function hubPlanHtml(b, ps, gt, past) {
     const due = bookingPlanDueDate(b);
     const stdDue = b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
     const day = (ts) => (ts ? fmtDate(String(ts).slice(0, 10)) : '');
-    const depFrom = b.depositAmountOverride > 0
+    // THE FIRST PAYMENT CARRIES THE REFUNDABLE DEPOSIT — pay.php bundles it
+    // while hold_status runs 'none' → 'charged' — so this line quotes what the
+    // card actually takes/took, itemised like the pay screen's own sub-line.
+    // Reported live: "£175.00 deposit — Paid ✓" directly under a header reading
+    // "Received so far £225.00", the same one-surface-telling-a-different-story
+    // defect payment_money_facts fixed in the emails. depositTakenAmt is the
+    // one era-aware figure (agreed before the charge, hold_amount once
+    // charged); legacy hold/returned/kept eras don't bundle, so no fold there.
+    const depTake = (b.holdStatus === 'none' || b.holdStatus === 'charged') && typeof depositTakenAmt === 'function'
+        ? (Number(depositTakenAmt(b)) || 0)
+        : 0;
+    const depAsk = Math.round((dep + depTake) * 100) / 100;
+    const depFrom = (b.depositAmountOverride > 0
         ? 'fixed — custom'
         : b.depositPctOverride > 0
           ? `${b.depositPctOverride}% — custom`
-          : `${paymentTerms.depositPct || 25}% — site standard`;
-    const depState = ps.deposit >= dep - 0.005
+          : `${paymentTerms.depositPct || 25}% — site standard`)
+        + (depTake > 0 ? ` + ${gbp(depTake)} refundable deposit` : '');
+    // Paid ✓ against the FOLDED figure, read off gt (displayGrand), which only
+    // counts the refundable deposit once it was genuinely taken — a £175 rental
+    // payment with the £50 still uncharged is a first payment that hasn't fully
+    // landed, and the header above says the same.
+    const depState = gt.paid >= depAsk - 0.005
         ? '<span class="bhub-plan-ok">Paid ✓</span>'
         : b.depositRequestedAt
           ? `Link sent ${day(b.depositRequestedAt)}`
@@ -14925,7 +14942,7 @@ function hubPlanHtml(b, ps, gt, past) {
     }
     return `<div class="bhub-plan">
         <span class="bhub-plan-cap">Payment plan${custom ? ' · custom' : ''}</span>
-        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(dep)} deposit <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
+        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(depAsk)} deposit <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
         <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)} <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
         ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
         ${!past ? `<button type="button" class="bhub-linklike" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan ›</button>` : ''}

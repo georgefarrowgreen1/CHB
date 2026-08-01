@@ -924,6 +924,20 @@ stay, a past due date, one after check-in), each in words. The hub's **plan
 panel** (`hubPlanHtml`, inside `.bhub-headpay`) states it as sentences — figure,
 provenance ("30% — custom" / "site standard"), state (paid/link sent/not asked)
 — plus ONE line narrating what the chaser will actually do, recomputed from the
+booking's own dates. **The deposit line quotes what the card TAKES, itemised**
+("£225.00 deposit (25% — site standard + £50.00 refundable deposit)"): pay.php
+bundles the refundable deposit into the first payment while `hold_status` is
+none/charged, so the rental-frame £175 sat directly under a header reading
+"Received so far £225.00" — the same one-surface-different-story defect
+`payment_money_facts` fixed in the emails, reported live within hours of the
+panel shipping. `depositTakenAmt` supplies the era-aware figure, Paid ✓ is
+judged against the FOLDED sum via `gt.paid` (displayGrand — which credits the
+refundable deposit only once genuinely taken, so a £110 rental payment with the
+£50 uncharged is a first payment that hasn't fully landed), and the two plan
+lines now sum to the header's own total. Legacy hold/returned/kept eras don't
+bundle, so no fold there. Gated in §C3 both ways (charged → Paid ✓, uncharged →
+not). The narration deliberately carries no cadence numbers (server config; a
+second definition waiting to drift).
 booking's own dates and deliberately without cadence numbers (server config;
 quoting them is a second definition waiting to drift). `bookingPlanDeposit` /
 `bookingPlanDueDate` (admin.js) are DISPLAY mirrors only — every asked figure is
