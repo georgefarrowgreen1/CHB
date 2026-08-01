@@ -179,6 +179,7 @@ if ($action === 'list') {
     $nos = array_slice($nos, $offset, 30);
     $seen = mbx_seen_uids();
     $out = [];
+    $ownHidden = 0;
     foreach ($nos as $no) {
         fwrite($fp, "TOP {$no} 0\r\n");
         $first = fgets($fp, 1024);
@@ -190,9 +191,21 @@ if ($action === 'list') {
         if (!$clean) {
             break; // stream desynced — return what we have
         }
+        $fromAddr = mailbox_from_addr(mbx_header($head, 'From'));
+        // ONLY CUSTOMER MAIL. The owner reads the same inbox the site sends
+        // from, so every alert the site raises lands here too — the list was
+        // half our own voice ("New confirmed booking", "New enquiry: …",
+        // "Payment received: £612.85"), which is news the back office already
+        // shows. They are counted, not silently swallowed: the client says how
+        // many were set aside, so an owner who wonders where a mail went has an
+        // answer on screen (the no-silent-caps rule).
+        if (mailbox_is_self_notification($fromAddr)) {
+            $ownHidden++;
+            continue;
+        }
         $out[] = [
             'uid' => $uidl[$no],
-            'from' => mailbox_from_addr(mbx_header($head, 'From')),
+            'from' => $fromAddr,
             'fromRaw' => mailbox_decode_subject(mbx_header($head, 'From')),
             'subject' => mailbox_decode_subject(mbx_header($head, 'Subject')) ?: '(no subject)',
             'date' => mbx_date_iso(mbx_header($head, 'Date')),
@@ -200,7 +213,13 @@ if ($action === 'list') {
         ];
     }
     mbx_quit($fp);
-    json_out(['ok' => true, 'messages' => $out, 'total' => count($uidl), 'hasMore' => $hasMore]);
+    json_out([
+        'ok' => true,
+        'messages' => $out,
+        'total' => count($uidl),
+        'hasMore' => $hasMore,
+        'ownHidden' => $ownHidden,
+    ]);
 }
 
 if ($action === 'read') {

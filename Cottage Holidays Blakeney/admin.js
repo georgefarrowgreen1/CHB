@@ -20962,6 +20962,10 @@ let __mbxSent = [];
 let __mbxTab = 'inbox';
 let __mbxQuery = '';
 let __mbxHasMore = false;
+// How many of the fetched messages were the SITE'S OWN notifications (the alerts
+// it sends the owner land in the same inbox it sends from). Filtered server-side
+// and COUNTED, never silently swallowed — the list says so in one quiet line.
+let __mbxOwnHidden = 0;
 let __mbxLastOpen = null;
 function mbxEsc(v) {
     return escapeHtml(String(v == null ? '' : v));
@@ -21044,6 +21048,7 @@ async function loadMailbox() {
         ]);
         __mbxMessages = inbox.messages || [];
         __mbxHasMore = !!inbox.hasMore;
+        __mbxOwnHidden = Number(inbox.ownHidden || 0);
         __mbxSent = sent.messages || [];
         // NO TAB/QUERY RESET. This is a DATA refresh and its own Refresh button reaches
         // it, so resetting threw the owner from Sent back to Inbox and wiped their search
@@ -21060,6 +21065,7 @@ async function mailboxOlder() {
         const r = await apiPost('mailbox.php', { action: 'list', offset: __mbxMessages.length });
         __mbxMessages = __mbxMessages.concat(r.messages || []);
         __mbxHasMore = !!r.hasMore;
+        __mbxOwnHidden += Number(r.ownHidden || 0);
         renderMailboxList();
     } catch (e) {
         glassAlert("Couldn't load older messages: " + e.message);
@@ -21111,6 +21117,13 @@ function renderMailboxList(keepSearchFocus) {
         </div>`;
             })
             .join('');
+        // The inbox shows CUSTOMER mail only. Say what was set aside rather than
+        // quietly showing fewer rows than the mailbox holds — the alerts are
+        // still in the real mailbox, and the back office already carries their
+        // news (a new enquiry, a payment, a booking).
+        if (__mbxOwnHidden > 0 && !q) {
+            rows += `<p class="bhub-mut" style="text-align:center;font-size:0.78rem;margin:10px 0 2px;">${__mbxOwnHidden} automatic site notification${__mbxOwnHidden === 1 ? '' : 's'} hidden — this list is guests only.</p>`;
+        }
         if (__mbxHasMore && !q) {
             rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" data-act="mailboxOlder">Load older messages</button></div>';
         }
