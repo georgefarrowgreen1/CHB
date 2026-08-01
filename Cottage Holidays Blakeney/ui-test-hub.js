@@ -425,6 +425,63 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     return { shown: el && getComputedStyle(el).display !== 'none', text: el ? el.textContent : '' };
   });
   ok(sticky.shown && /by card|card link|Record a payment/.test(sticky.text), `on a phone it carries the next action (${sticky.text.trim().slice(0, 50)})`);
+  // MONEY LEADS AND NEVER CLIPS: the label used to be verb-first with the
+  // figure trailing, and "Request the balance by card — £930.37" measured
+  // 104px wider than the button at 390px — the AMOUNT ran under the call
+  // icon. The figure is a no-shrink leading span; only the verb may
+  // ellipsise; nothing overflows the button's own box.
+  const stickyFit = await page.evaluate(() => {
+    const btn = document.querySelector('.bhub-sticky-btn');
+    const fig = document.querySelector('.bhub-sticky-fig');
+    if (!btn || !fig) return null;
+    const rb = btn.getBoundingClientRect(), rf = fig.getBoundingClientRect();
+    return {
+      figInside: rf.right <= rb.right + 1 && rf.left >= rb.left - 1,
+      figWhole: fig.scrollWidth <= fig.clientWidth + 1,
+      noOverflow: btn.scrollWidth <= btn.clientWidth + 2,
+      fig: fig.textContent,
+    };
+  });
+  ok(!!stickyFit && stickyFit.figInside && stickyFit.figWhole && stickyFit.noOverflow,
+    `the money figure leads and nothing overflows the sticky button (${stickyFit && stickyFit.fig})`);
+  // …AND THE FIT SURVIVES A HOSTILE VERB. The short label fits on its own, so
+  // the check above would pass with the ellipsis machinery deleted — inject a
+  // 60-char verb (the §14 long-chip discipline: without one the check is
+  // vacuous) and the figure must STILL be whole inside a non-overflowing
+  // button; only the verb gives way. renderBookingHub restores the real label.
+  const stickyHostile = await page.evaluate(() => {
+    const btn = document.querySelector('.bhub-sticky-btn');
+    const fig = document.querySelector('.bhub-sticky-fig');
+    const verb = document.querySelector('.bhub-sticky-verb');
+    if (!btn || !fig || !verb) return null;
+    verb.textContent = 'Request the balance by card with a deliberately hostile label';
+    const rb = btn.getBoundingClientRect(), rf = fig.getBoundingClientRect();
+    const out = {
+      figWhole: fig.scrollWidth <= fig.clientWidth + 1,
+      figInside: rf.right <= rb.right + 1 && rf.left >= rb.left - 1,
+      noOverflow: btn.scrollWidth <= btn.clientWidth + 2,
+    };
+    renderBookingHub();
+    return out;
+  });
+  ok(!!stickyHostile && stickyHostile.figWhole && stickyHostile.figInside && stickyHostile.noOverflow,
+    'a hostile-length verb ellipsises — the figure never gives an inch');
+  await page.waitForTimeout(250);
+  // THE PLAN'S STATE NEVER TANGLES WITH ITS SENTENCE: baseline-aligned columns
+  // interleaved when the what-half wrapped (hostile-length names + a custom
+  // plan) — on a phone the state stacks under the sentence, so their boxes
+  // must not intersect.
+  const planTangle = await page.evaluate(() => {
+    return [...document.querySelectorAll('.bhub-plan-row')].map((row) => {
+      const w = row.querySelector('.bhub-plan-what'), s = row.querySelector('.bhub-plan-state');
+      if (!w || !s) return true;
+      const rw = w.getBoundingClientRect(), rs = s.getBoundingClientRect();
+      const ox = Math.min(rw.right, rs.right) - Math.max(rw.left, rs.left);
+      const oy = Math.min(rw.bottom, rs.bottom) - Math.max(rw.top, rs.top);
+      return !(ox > 2 && oy > 2);
+    }).every(Boolean);
+  });
+  ok(planTangle, 'the plan rows keep sentence and state apart at phone width (no interleave)');
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
   // Share stay details: for the cleaner's chat — and deliberately NO money.

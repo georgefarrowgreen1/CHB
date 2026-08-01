@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 372;
+const ADMIN_BUNDLE_V = 373;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 122;
+const ADMIN_CSS_V = 123;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -7409,7 +7409,11 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 const live = p.status === 'COMPLETED' || p.status === 'APPROVED';
                 const refundBtn =
                     isCharge && live && !refundOff
-                        ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount))}>Refund</button>`
+                        ? // flex:none is load-bearing: as an ordinary flex child this
+                          // button SHRANK under a long ledger line (measured 10px
+                          // narrower than its own label at 390px) — the text half
+                          // wraps, the control never squeezes.
+                          `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;flex:0 0 auto;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount))}>Refund</button>`
                         : '';
                 const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
                 const label =
@@ -7435,7 +7439,7 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // along as the hover + screen-reader label so it's never colour-only.
                 const sMeta = paymentStatusMeta(p.kind, p.status);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
-                        <span>${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
+                        <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
 }
@@ -13875,7 +13879,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hubcalm01aug';
+    const BUILD = 'hubsweep01aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
