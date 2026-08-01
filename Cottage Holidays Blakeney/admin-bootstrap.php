@@ -84,13 +84,36 @@ try {
     $payoutTrouble = null;
 }
 
-json_out([
+// Same rule as the public boot: a part that cannot be built is OMITTED and
+// reported, never a 500 that takes the whole back office's first paint with it
+// — loadData() already keeps its last good copy per store and each loader can
+// fetch its own endpoint (see "A POOR SIGNAL MUST NOT MOVE THE OWNER").
+$part = function (string $fn) {
+    try {
+        if (!function_exists($fn)) {
+            chb_log_server_error('Missing payload helper', 'admin-bootstrap: ' . $fn . '() is not defined — is the deploy complete?', __FILE__, 0);
+            return null;
+        }
+        return $fn();
+    } catch (\Throwable $e) {
+        chb_log_server_error('Payload error', 'admin-bootstrap: ' . $fn . '() failed — ' . $e->getMessage(), $e->getFile(), $e->getLine());
+        return null;
+    }
+};
+$out = [
     'ok' => true,
     'feeds' => $feeds,
     'payoutTrouble' => $payoutTrouble,
-    'rates' => rates_public_payload(),
-    'bookings' => bookings_admin_payload(),
-    'enquiries' => enquiries_admin_payload(),
     'blocks' => ['ok' => true, 'blocks' => $blocks],
-    'cron' => cron_status_payload(),
-]);
+];
+foreach ([
+    'rates' => $part('rates_public_payload'),
+    'bookings' => $part('bookings_admin_payload'),
+    'enquiries' => $part('enquiries_admin_payload'),
+    'cron' => $part('cron_status_payload'),
+] as $key => $val) {
+    if ($val !== null) {
+        $out[$key] = $val;
+    }
+}
+json_out($out);
