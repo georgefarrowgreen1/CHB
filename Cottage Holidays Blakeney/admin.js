@@ -10305,16 +10305,20 @@ function renderBookingHub() {
 function hubChipsHtml(b) {
     const method = (b.paymentMethod || '').trim();
     const rail = method === '' || /card|square/i.test(method) ? '💳 Card rail' : '🏦 Bank/cash rail';
+    // Status reads as a DOT — green done, red outstanding (owner's ask) — with
+    // the words still carrying the state, so colour reinforces rather than
+    // being the sole channel. The rail chip is a category, not a status: no dot.
+    const dot = (okBit) => `<span class="bhub-chip-dot ${okBit ? 'is-ok' : 'is-bad'}" aria-hidden="true"></span>`;
     const chips = [
         b.termsAcceptedAt
-            ? `<span class="bhub-chip is-ok">✓ Terms${b.termsVersion ? ' v' + escapeHtml(String(b.termsVersion)) : ''}</span>`
-            : '<span class="bhub-chip">Terms · not recorded</span>',
-        b.noDogsAt ? '<span class="bhub-chip is-ok">✓ No dog</span>' : '<span class="bhub-chip">No-dog · not recorded</span>',
+            ? `<span class="bhub-chip is-ok">${dot(true)}Terms${b.termsVersion ? ' v' + escapeHtml(String(b.termsVersion)) : ''}</span>`
+            : `<span class="bhub-chip">${dot(false)}Terms · not recorded</span>`,
+        b.noDogsAt ? `<span class="bhub-chip is-ok">${dot(true)}No dog</span>` : `<span class="bhub-chip">${dot(false)}No-dog · not recorded</span>`,
         b.regSubmitted
-            ? `<span class="bhub-chip is-ok">✓ Register · ${b.regCount || 0}</span>`
-            : '<span class="bhub-chip">Register · waiting</span>',
+            ? `<span class="bhub-chip is-ok">${dot(true)}Register · ${b.regCount || 0}</span>`
+            : `<span class="bhub-chip">${dot(false)}Register · waiting</span>`,
         `<span class="bhub-chip">${rail}</span>`,
-        b.smsOptIn ? '<span class="bhub-chip is-ok">📱 Texts OK</span>' : '',
+        b.smsOptIn ? `<span class="bhub-chip is-ok">${dot(true)}Texts OK</span>` : '',
     ].filter(Boolean).join('');
     return `<div class="bhub-chips">${chips}</div>`;
 }

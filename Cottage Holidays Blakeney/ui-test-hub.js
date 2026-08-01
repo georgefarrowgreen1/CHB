@@ -411,6 +411,43 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   const chips = await page.evaluate(() => (document.querySelector('.bhub-chips') || {}).textContent || '');
   ok(/Terms v3/.test(chips) && /No dog/.test(chips) && /Register/.test(chips) && /Card rail/.test(chips) && /Texts OK/.test(chips),
     `the chips row states all five facts (${chips.replace(/\s+/g, ' ').trim()})`);
+  // STATUS DOTS: green = done, red = outstanding (words still carry the state
+  // — colour reinforces, never the sole channel) — and every dot is a CIRCLE:
+  // the pipeline's dots rendered as ovals because a flex pill squeezed them,
+  // so roundness is measured, not assumed. The rail chip is a category and
+  // carries no dot.
+  const dots = await page.evaluate(() => {
+    const probe = (v) => { const el = document.createElement('i'); el.style.color = `var(${v})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+    const okC = probe('--ok'), badC = probe('--danger');
+    const round = (el) => { const r = el.getBoundingClientRect(); return Math.abs(r.width - r.height) < 0.6 && r.width > 5; };
+    const chipDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip-dot')];
+    // b1 has terms/no-dog/register all recorded → all green; render a BLANK
+    // booking's chips off-DOM to prove the red state too.
+    const scratch = document.createElement('div');
+    scratch.innerHTML = hubChipsHtml({});
+    document.body.appendChild(scratch);
+    const badDots = [...scratch.querySelectorAll('.bhub-chip-dot.is-bad')];
+    const okDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip.is-ok .bhub-chip-dot')];
+    const outDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip:not(.is-ok) .bhub-chip-dot')];
+    const out = {
+      n: chipDots.length,
+      greens: okDots.length,
+      allGreen: okDots.length >= 3 && okDots.every((d) => getComputedStyle(d).backgroundColor === okC),
+      pageRed: outDots.length === 1 && outDots.every((d) => getComputedStyle(d).backgroundColor === badC),
+      allRound: chipDots.every(round),
+      railBare: ![...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip')].some((ch) => /rail/i.test(ch.textContent) && ch.querySelector('.bhub-chip-dot')),
+      redCount: badDots.length,
+      allRed: badDots.length === 3 && badDots.every((d) => getComputedStyle(d).backgroundColor === badC),
+      pipeRound: [...document.querySelectorAll('.pipe-step .pipe-dot')].filter((d) => d.getBoundingClientRect().width > 0).every(round),
+    };
+    scratch.remove();
+    return out;
+  });
+  ok(dots.allGreen && dots.allRound, `recorded facts wear round green dots (${dots.greens} green of ${dots.n})`);
+  ok(dots.pageRed, 'the one outstanding fact on this booking (register · waiting) wears the red dot');
+  ok(dots.allRed, `outstanding facts wear red dots — terms/no-dog/register on a blank booking (${dots.redCount})`);
+  ok(dots.railBare, 'the rail chip is a category, not a status — no dot');
+  ok(dots.pipeRound, 'the journey pipeline\'s dots are circles, not flex-squashed ovals');
   // The money ask lives in the Payments block's own header — ONE statement of
   // the balance — and the standalone banner is gone while it does.
   const merged = await page.evaluate(() => ({
