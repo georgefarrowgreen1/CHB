@@ -72,6 +72,13 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
           { kind: 'damages_return', amount: '75.00', status: 'PENDING', square_payment_id: 'sq2', note: '' },
         ] });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); } return json({ ok: true }); }
+        // The plan endpoint echoes what the server would ACCEPT — the client
+        // must adopt these, not its typed input (C3 asserts the re-render).
+        if (b.action === 'set_payment_plan') return json({ ok: true,
+          deposit_pct: b.deposit_pct !== '' ? parseFloat(b.deposit_pct) : null,
+          deposit_amount: b.deposit_amount !== '' ? parseFloat(b.deposit_amount) : null,
+          balance_due_date: b.balance_due_date || null });
+        if (b.action === 'request_payment') return json({ ok: true, amount: 330, kind: 'balance', reminder: !!b.reminder });
         if (b.action === 'delete') { rows = rows.filter((x) => x.id !== b.id); return json({ ok: true }); }
         return json({ ok: true });
       }
@@ -445,6 +452,58 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     `the draft speaks this booking's facts (${draft.split('\n')[0]} … balance line present)`);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
+
+  // ---------- C3. the per-booking payment plan ----------
+  console.log('C3. payment plan panel · edit dialog · reminder');
+  // Still on b1's hub: part-paid £100 against £440, no plan set — the panel
+  // states the SITE standard (£110 = 25%) and where each figure comes from.
+  const plan0 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
+  ok(/£110\.00 deposit/.test(plan0) && /site standard/.test(plan0),
+    `the plan states the standard deposit with its provenance (${plan0.replace(/\s+/g, ' ').trim().slice(0, 70)})`);
+  ok(/£330\.00 balance by/.test(plan0), 'and the balance beside its due date');
+  ok(/Not asked yet/.test(plan0), 'nothing sent → the state says so, not a blank');
+  ok(await page.evaluate(() => !document.querySelector('[data-act="sendPaymentReminder"]')),
+    'no reminder button before anything has been asked for (the server would refuse it)');
+  // The Edit-plan dialog: type 30% + a custom due date, Save → the client posts
+  // the PLAN (never an amount to charge) and re-renders from what the server
+  // accepted.
+  await page.evaluate(() => { window.editPaymentPlan('b1'); });
+  await page.waitForTimeout(350);
+  await page.fill('#gdf-dep', '30%');
+  await page.fill('#gdf-due', d(20));
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(400);
+  const planPost = posts.filter((p) => p.action === 'set_payment_plan').pop();
+  ok(!!planPost && planPost.deposit_pct === '30' && planPost.deposit_amount === '' && planPost.balance_due_date === d(20),
+    `the dialog states the plan, never a figure to charge (${JSON.stringify(planPost && { pct: planPost.deposit_pct, amt: planPost.deposit_amount, due: planPost.balance_due_date })})`);
+  const plan1 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
+  ok(/£132\.00 deposit/.test(plan1) && /30% — custom/.test(plan1),
+    `the panel re-renders the custom deposit (£132 = 30% of £440) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
+  ok(/custom — standard would be/.test(plan1), 'and names the custom date against the standard it replaces');
+  ok(/The chaser emails the balance link on/.test(plan1), 'the automation narrates its plan from the NEW date');
+  // The reminder: appears only once something has been asked, sends through
+  // request_payment with the reminder flag, and the panel records it at once.
+  await page.evaluate((ts) => { const b = findBookingById('b1'); b.balanceRequestedAt = ts; renderBookingHub(); }, d(-1) + ' 09:00:00');
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !!document.querySelector('[data-act="sendPaymentReminder"]')),
+    'the reminder button appears once the balance has been asked');
+  await page.click('[data-act="sendPaymentReminder"]');
+  await page.waitForTimeout(300);
+  await page.click('#glass-dialog-ok'); // the confirm names the guest + figure
+  await page.waitForTimeout(400);
+  const remPost = posts.filter((p) => p.action === 'request_payment' && p.reminder).pop();
+  ok(!!remPost, 'the reminder rides request_payment with the reminder flag — one send path, two wordings');
+  ok(/reminded/.test(await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '')),
+    'and the panel records the reminder at once');
+  // Clear the plan again so later sections see b1 exactly as before.
+  await page.evaluate(() => { window.editPaymentPlan('b1'); });
+  await page.waitForTimeout(350);
+  await page.fill('#gdf-dep', '');
+  await page.fill('#gdf-due', '');
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(300);
+  ok(/site standard/.test(await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '')),
+    'clearing both fields returns the plan to the site standard');
 
   // ---------- E. other stays ----------
   console.log('E. guest card');

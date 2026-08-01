@@ -903,6 +903,39 @@ read — derived separately they could ask for different stages of the same mone
 and ui-test-hub §A2c compares what each node actually carries. The server still
 derives the SUM (`booking_payment_kind` upgrades a deposit ask to the full amount
 inside the balance window) — the label names the stage, not the figure).
+**THE PAYMENT PLAN IS PER-BOOKING** (migration-103: `deposit_pct_override` /
+`deposit_amount_override` / `balance_due_date`, NULL = site standard; gated by
+test-payrail's plan section + ui-test-hub §C3). The 25% deposit and the 30-day
+balance window stopped being site-wide constants: `booking_deposit_amount($b,
+$total)` (pricing.php — fixed £ wins, capped at the total; then pct in (0,100];
+then `square_deposit_pct()`) and `booking_balance_due_date($b)` are the ONE
+derivation each, read by `booking_amount_due`, pay.php's under-lock recompute
+(reading the global pct there would let the charge disagree with the ask), and
+`booking_within_balance_window` — where a CUSTOM date is inclusive ("due BY that
+day" — the day named is the day the full amount is asked) while the STANDARD
+path keeps its original strict boundary, deliberately two comparisons, both
+gated. payments-due.php follows the booking's date in SQL —
+`COALESCE(balance_due_date, DATE_SUB(check_in, INTERVAL ? DAY))` in the request
+pass (`<=`) AND the abandoned-deposit recovery (`>`), byte-identical to the old
+interval conditions for a NULL plan and mutually exclusive by construction.
+`set_payment_plan` (bookings.php) stores the PLAN, never an amount to charge —
+five refusals (both deposit forms at once, pct outside (0,100], deposit over the
+stay, a past due date, one after check-in), each in words. The hub's **plan
+panel** (`hubPlanHtml`, inside `.bhub-headpay`) states it as sentences — figure,
+provenance ("30% — custom" / "site standard"), state (paid/link sent/not asked)
+— plus ONE line narrating what the chaser will actually do, recomputed from the
+booking's own dates and deliberately without cadence numbers (server config;
+quoting them is a second definition waiting to drift). `bookingPlanDeposit` /
+`bookingPlanDueDate` (admin.js) are DISPLAY mirrors only — every asked figure is
+still server-derived. `editPaymentPlan` is a glassForm whose deposit input takes
+"30%" or "£300" (blank = standard = how a plan is cleared), and the client
+adopts the SERVER'S accepted values, not the typed ones. **Send a reminder**
+rides `request_payment` with `reminder: true` — the cron's own reminder composer
+on demand — refused before anything has been asked for, stamping
+`balance_reminded_at` so the cron's reminders space off it; the button waits for
+a request stamp rather than offering a refusal. A manual deposit ask now stamps
+`deposit_requested_at` (COALESCE — never clobbering the first), arming the
+recovery pass the way approval always did.
 **The hub fills from ONE round trip**: `bookings.php` `hub_bundle` returns the
 payment ledger (`booking_payments_rows()`, the helper the `payments` action shares)
 plus the booking's activity-log events together, so a weak signal paints the page

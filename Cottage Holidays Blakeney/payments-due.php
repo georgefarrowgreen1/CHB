@@ -32,7 +32,12 @@ if (!square_enabled()) {
 $days = payment_balance_days();
 
 // Upcoming, not-fully-paid bookings with a guest email that we haven't already
-// chased, whose check-in falls inside the window. (Past stays are ignored.)
+// chased, whose balance is now due. (Past stays are ignored.) The due date is
+// the BOOKING'S OWN (per-booking plan, migration-103), else the standard
+// check-in − window — the COALESCE is the SQL form of booking_balance_due_date,
+// and for a NULL plan it is byte-for-byte the old check_in <= CURDATE() + ? DAY
+// condition. A custom date means "hold off until then": a long-planned stay is
+// not chased at 30 days out when the owner agreed payment for later.
 try {
     $stmt = db()->prepare(
         "SELECT * FROM bookings
@@ -40,7 +45,7 @@ try {
            AND payment <> 'paid'
            AND email IS NOT NULL AND email <> ''
            AND check_in >= CURDATE()
-           AND check_in <= (CURDATE() + INTERVAL ? DAY)",
+           AND COALESCE(balance_due_date, DATE_SUB(check_in, INTERVAL ? DAY)) <= CURDATE()",
     );
     $stmt->execute([$days]);
     $due = $stmt->fetchAll();
@@ -189,6 +194,10 @@ $recoverDays = defined('PAYMENT_RECOVERY_DAYS') && (int) PAYMENT_RECOVERY_DAYS >
 $recovered = 0;
 $recReport = [];
 try {
+    // The "outside the balance window" guard mirrors the request pass's COALESCE
+    // (the booking's own due date, else the standard one) so the two passes stay
+    // mutually exclusive by construction — a custom-dated booking whose due date
+    // has arrived belongs to the balance request, not a deposit nudge.
     $rc = db()->prepare(
         "SELECT * FROM bookings
          WHERE payment = 'unpaid'
@@ -196,7 +205,7 @@ try {
            AND deposit_requested_at IS NOT NULL
            AND deposit_reminded_at IS NULL
            AND deposit_requested_at <= (NOW() - INTERVAL ? DAY)
-           AND check_in > (CURDATE() + INTERVAL ? DAY)",
+           AND COALESCE(balance_due_date, DATE_SUB(check_in, INTERVAL ? DAY)) > CURDATE()",
     );
     $rc->execute([$recoverDays, $days]);
     $toRecover = $rc->fetchAll();

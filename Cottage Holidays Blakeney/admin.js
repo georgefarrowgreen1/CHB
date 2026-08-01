@@ -10053,6 +10053,9 @@ function renderBookingHub() {
                 gapChip = `<button class="bhub-gap is-live" ${chbAttrs('settingsOpen', 'seasongrid')}><span aria-hidden="true">◫</span><span>Gap offer live after this stay at <strong>${gbp(plan.rate)}/night</strong> — edit in Rates</span></button>`;
         }
     } catch (e) {}
+    // The per-booking payment plan, stated where the money lives — what will be
+    // asked, when, and what the chaser will do about it (hubPlanHtml).
+    const planPanel = hubPlanHtml(b, ps, gt, past);
     const payBlock = `
         <div class="bhub-headpay">
             ${payAsk}
@@ -10060,6 +10063,7 @@ function renderBookingHub() {
             ${payline}
             ${discloseBtn}
             ${depositLine}
+            ${planPanel}
             <div class="bhub-btn-row">
                 ${/* The email ask, IN the Payments section — the banner carries it
                       too, but the owner working this block should not have to go
@@ -10070,6 +10074,12 @@ function renderBookingHub() {
                       with no email on file, same as Copy pay link. */ ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email
                     ? `<button class="btn-sm btn-edit" ${chbAttrs('requestPayment', String(b.id), askKind)}>${askKind === 'deposit' ? 'Email deposit link' : 'Email balance link'}</button>`
+                    : ''}
+                ${/* A reminder only exists once something has been asked for —
+                      the server refuses it cold, so the button waits for a
+                      request stamp rather than offering a refusal. */ ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email && (b.balanceRequestedAt || b.depositRequestedAt)
+                    ? `<button class="btn-sm btn-edit" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
@@ -14858,6 +14868,141 @@ async function requestPayment(bookingId, kind) {
             }
         },
     });
+}
+// ---- Per-booking payment plan (the hub's plan panel) -----------------------
+// DISPLAY mirrors of pricing.php's booking_deposit_amount / booking_balance_due_date
+// — the panel describes the plan; every figure a guest is ever ASKED for is still
+// derived server-side from the same stored fields, so the two can only disagree
+// if one of these drifts from its PHP twin (kept adjacent-by-name on purpose).
+// `total` is the RENTAL total (paymentSummary().total), the frame the schedule
+// is defined in — the damages deposit rides the first charge separately.
+function bookingPlanDeposit(b, total) {
+    if (b.depositAmountOverride > 0) return Math.round(Math.min(b.depositAmountOverride, total) * 100) / 100;
+    if (b.depositPctOverride > 0 && b.depositPctOverride <= 100) return Math.round(total * b.depositPctOverride) / 100;
+    return Math.round(total * (paymentTerms.depositPct || 25)) / 100;
+}
+function bookingPlanDueDate(b) {
+    if (b.balanceDueDate) return b.balanceDueDate;
+    return b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
+}
+// The plan, stated as sentences inside the Payments header. Hidden once a
+// standard-plan booking is settled (nothing left to schedule); a CUSTOM plan
+// stays visible as the record of what was agreed. Dates lead each line's
+// provenance so "why this figure?" is answered where the figure is.
+function hubPlanHtml(b, ps, gt, past) {
+    const custom = b.depositPctOverride > 0 || b.depositAmountOverride > 0 || !!b.balanceDueDate;
+    if (gt.fullyPaid && !custom) return '';
+    const dep = bookingPlanDeposit(b, ps.total);
+    const due = bookingPlanDueDate(b);
+    const stdDue = b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
+    const day = (ts) => (ts ? fmtDate(String(ts).slice(0, 10)) : '');
+    const depFrom = b.depositAmountOverride > 0
+        ? 'fixed — custom'
+        : b.depositPctOverride > 0
+          ? `${b.depositPctOverride}% — custom`
+          : `${paymentTerms.depositPct || 25}% — site standard`;
+    const depState = ps.deposit >= dep - 0.005
+        ? '<span class="bhub-plan-ok">Paid ✓</span>'
+        : b.depositRequestedAt
+          ? `Link sent ${day(b.depositRequestedAt)}`
+          : 'Not asked yet';
+    const dueFrom = b.balanceDueDate
+        ? `custom — standard would be ${fmtDate(stdDue)}`
+        : `${paymentTerms.balanceDays || 30} days before arrival`;
+    const balState = gt.fullyPaid
+        ? '<span class="bhub-plan-ok">Paid in full ✓</span>'
+        : b.balanceRequestedAt
+          ? `Asked ${day(b.balanceRequestedAt)}${b.balanceRemindedAt ? ' · reminded ' + day(b.balanceRemindedAt) : ''}`
+          : 'Not asked yet';
+    // What the automation will actually do, recomputed from this booking's own
+    // dates — deliberately no cadence numbers (they are server config; quoting
+    // them here is a second definition waiting to drift).
+    let auto = '';
+    if (!gt.fullyPaid && !past) {
+        if (b.balanceRequestedAt) auto = 'The chaser sends gentle reminders until it’s paid, stopping just before arrival.';
+        else if (due && due > todayDashed()) auto = `The chaser emails the balance link on ${fmtDate(due)}, then gentle reminders as the stay approaches.`;
+        else if (due) auto = 'The balance is due — the chaser emails the link on its next nightly run.';
+    }
+    return `<div class="bhub-plan">
+        <span class="bhub-plan-cap">Payment plan${custom ? ' · custom' : ''}</span>
+        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(dep)} deposit <span class="bhub-plan-why">(${escapeHtml(depFrom)})</span></span><span class="bhub-plan-state">${depState}</span></div>
+        <div class="bhub-plan-row"><span class="bhub-plan-what">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)} <span class="bhub-plan-why">(${escapeHtml(dueFrom)})</span></span><span class="bhub-plan-state">${balState}</span></div>
+        ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
+        ${!past ? `<button type="button" class="bhub-linklike" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan ›</button>` : ''}
+    </div>`;
+}
+// One dialog states the whole plan; the server validates and stores it, and
+// every figure is re-derived from it — the client never sends an amount to
+// charge. Blank fields mean "site standard", which is also how a plan is
+// cleared. The deposit input takes either form: "30%" is a percentage,
+// "£300" (or a bare number) is a fixed amount.
+async function editPaymentPlan(bookingId) {
+    const b = findBookingById(bookingId);
+    const loc = findBookingLocation(bookingId);
+    if (!b || !loc) return;
+    const ps = paymentSummary(loc.propKey, b);
+    const stdDue = b.checkIn ? ukShiftDays(b.checkIn, -(paymentTerms.balanceDays || 30)) : '';
+    const curDep = b.depositAmountOverride > 0 ? '£' + b.depositAmountOverride : b.depositPctOverride > 0 ? b.depositPctOverride + '%' : '';
+    const vals = await glassForm(
+        `Payment plan for ${b.name || 'this booking'} (${gbp(ps.total)} stay). Blank fields keep the site standard — ${paymentTerms.depositPct || 25}% deposit, balance due ${stdDue ? fmtDate(stdDue) : 'before arrival'}. Every email, pay link and the automatic chaser follow this plan.`,
+        [
+            { id: 'dep', label: 'Deposit for this booking — % or £', value: curDep, placeholder: `e.g. 30% or £300 · blank = ${paymentTerms.depositPct || 25}%` },
+            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || '' },
+        ],
+    );
+    if (!vals) return;
+    const depIn = String(vals.dep || '').trim();
+    let pct = '', amt = '';
+    if (depIn !== '') {
+        const n = parseFloat(depIn.replace(/[£%\s,]/g, ''));
+        if (!(n > 0)) { glassAlert('The deposit must be a number — like 30% or £300.'); return; }
+        if (/%/.test(depIn)) pct = String(n);
+        else amt = String(n);
+    }
+    try {
+        const res = await apiPost('bookings.php', {
+            action: 'set_payment_plan',
+            id: b.dbId,
+            deposit_pct: pct,
+            deposit_amount: amt,
+            balance_due_date: String(vals.due || '').trim(),
+        });
+        // Adopt the SERVER'S accepted values, not the typed ones — validation may
+        // have normalised them, and the panel re-renders from the booking.
+        b.depositPctOverride = res.deposit_pct != null ? parseFloat(res.deposit_pct) : null;
+        b.depositAmountOverride = res.deposit_amount != null ? parseFloat(res.deposit_amount) : null;
+        b.balanceDueDate = res.balance_due_date || '';
+        renderBookingHub();
+        toast(b.depositPctOverride || b.depositAmountOverride || b.balanceDueDate ? 'Payment plan saved.' : 'Back to the site standard.');
+    } catch (e) {
+        glassAlert("Couldn't save the plan: " + e.message);
+    }
+}
+// A nudge about money already asked for — the same reminder wording the nightly
+// chaser sends, on demand. Refused server-side before anything has been asked
+// (a reminder about a request that never went is a first ask in the wrong
+// clothes), and the 3-minute resend window applies like every send.
+async function sendPaymentReminder(bookingId) {
+    const b = findBookingById(bookingId);
+    const loc = findBookingLocation(bookingId);
+    if (!b || !loc) return;
+    const gt = bookingDue(loc.propKey, b);
+    const okGo = await glassConfirm(
+        `Nudge ${b.name || 'the guest'} about the ${gbp(gt.balance)} still to pay? This re-sends their payment link with reminder wording.`,
+        'Send reminder',
+    );
+    if (!okGo) return;
+    try {
+        const res = await apiPost('bookings.php', { action: 'request_payment', id: b.dbId, kind: 'balance', reminder: true });
+        // UK-day stamp for the panel's "reminded <date>" until the next data load
+        // brings the server's own (toISOString is a day behind 00:00–01:00 BST).
+        b.balanceRemindedAt = todayDashed() + ' 00:00:00';
+        renderBookingHub();
+        toast(`Reminder sent — ${gbp(res.amount)}.`);
+    } catch (e) {
+        if (e && e.code === 'already_sent') toast(e.message);
+        else glassAlert("Couldn't send the reminder: " + e.message);
+    }
 }
 // Copy a secure pay link to the clipboard, to share by WhatsApp/SMS/etc.
 async function copyPayLink(bookingId, kind) {
@@ -21111,7 +21256,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[shareStayDetails, draftBookingReply, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
