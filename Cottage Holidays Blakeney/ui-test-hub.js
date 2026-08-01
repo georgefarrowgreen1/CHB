@@ -219,14 +219,40 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     `the charge row shows the card's own figure, not the rental-only ledger amount (${led && led.text.replace(/\s+/g, ' ').slice(0, 90)})`);
   ok(!!led && /incl\. £75\.00 damages deposit/.test(led.text),
     '…and names the deposit inside it');
-  // The REFUND cap deliberately stays the RENTAL portion — the damages half goes
-  // back through Return deposit so its hold state is tracked; a £631.20 cap here
-  // would let one refund orphan the deposit accounting.
-  const refundCap = await page.evaluate(() => {
-    const btn = document.querySelector('.sq-pay-history [data-act="refundPayment"]');
-    try { return JSON.parse(btn.getAttribute('data-args') || '[]')[2]; } catch (e) { return null; }
+  // REFUNDS LEFT THE STORY (owner's ask): the Activity card is the record of
+  // what happened, so it carries no destructive money control — the capability
+  // lives on the money surface. What must SURVIVE the move is the cap: the
+  // RENTAL portion, never the deposit-inclusive figure, because the damages
+  // half goes back through Return deposit where its hold state is tracked.
+  ok(await page.evaluate(() => !document.querySelector('.sq-pay-history [data-act="refundPayment"]')),
+    'no Refund control inside the Activity story');
+  // Money taken + still refundable → the offer stands on the Payments block.
+  const refundHome = await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.payment = 'deposit';
+    b.depositPaid = 110; // something has actually been taken
+    renderBookingHub();
+    return !!document.querySelector('.bhub-headpay [data-act="hubRefundPicker"]');
   });
-  ok(refundCap === 556.2, `…while the refund cap stays the rental portion (${refundCap})`);
+  ok(refundHome, 'the Payments block offers "Refund a card payment" instead');
+  // Drive it: ONE settled charge in the fixture → straight to the amount
+  // prompt, whose ceiling is the rental portion.
+  const capMsg = await page.evaluate(async () => {
+    const orig = window.glassPrompt;
+    let msg = '';
+    window.glassPrompt = (m) => { msg = m; return Promise.resolve(null); };
+    await hubRefundPicker('b1');
+    window.glassPrompt = orig;
+    return msg;
+  });
+  ok(/£556\.20/.test(capMsg) && !/£631\.20/.test(capMsg), `…and the refund cap stays the rental portion (${capMsg})`);
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.payment = 'unpaid';
+    b.depositPaid = 0;
+    renderBookingHub();
+  });
+  await page.waitForTimeout(300);
 
   // ---------- A2b. a finished stay that still owes money chases the balance ----------
   console.log('A2b. past-but-unpaid banner');
@@ -399,6 +425,30 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.evaluate(() => { document.getElementById('gdf-amount').value = '100'; });
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(700);
+  // THE SEND BUTTON FITS ITS SHEET. Its label is set at send time ("Send
+  // updated confirmation" — 24 uppercase, letter-spaced characters) and a flex
+  // child will not shrink below its own content, so on a phone it ran straight
+  // out of the box (owner's screenshot). Measured at 390 with the real long
+  // label injected, since the short ones fit on their own.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  const sendFit = await page.evaluate(() => {
+    const ov = document.getElementById('send-confirm-overlay');
+    if (!ov || !ov.classList.contains('open')) return null;
+    const btn = document.getElementById('send-confirm-send');
+    btn.textContent = 'Send updated confirmation';
+    const box = ov.querySelector('.modal-box');
+    const br = box.getBoundingClientRect();
+    const r = btn.getBoundingClientRect();
+    return {
+      inside: r.right <= br.right + 0.5 && r.left >= br.left - 0.5,
+      noOverflow: btn.scrollWidth <= Math.ceil(r.width) + 1,
+    };
+  });
+  ok(sendFit && sendFit.inside && sendFit.noOverflow,
+    `the send button stays inside its sheet at 390px (${sendFit ? JSON.stringify(sendFit) : 'no preview'})`);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(200);
   // The updated-confirmation offer now PREVIEWS the email first — cancel that
   // send-confirm modal (or the plain confirm if no preview was produced).
   await page.evaluate(() => {

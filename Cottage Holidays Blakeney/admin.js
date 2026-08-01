@@ -9617,13 +9617,11 @@ async function openBookingHub(bookingId, quiet) {
     // the fetches it replaces: a slow response never paints another booking's
     // hub. The single-purpose endpoints still exist for their other callers.
     {
-        const loc0 = findBookingLocation(bookingId);
-        const refundOff = rentalRefundBlocked(loc0 ? loc0.propKey : '', b);
         apiPost('bookings.php', { action: 'hub_bundle', id: dbId })
             .then((r) => {
                 const el2 = document.getElementById('hub-history');
                 if (!el2 || __hubBookingId !== bookingId) return;
-                el2.innerHTML = hubActivityHtml(r || {}, bookingId, refundOff);
+                el2.innerHTML = hubActivityHtml(r || {}, bookingId);
             })
             .catch(() => {
                 const el2 = document.getElementById('hub-history');
@@ -9932,6 +9930,10 @@ function renderBookingHub() {
     const ps = paymentSummary(propKey, b);
     const gt = displayGrand(p, ps, b.holdStatus || 'none', b);
     const dh = damageHeld(propKey, b);
+    // Once the guest has arrived (or the cancellation window has shut) the
+    // rental can't go back — only the damages deposit can, through its own
+    // control. The server enforces it; this hides the offer.
+    const refundBlocked = rentalRefundBlocked(propKey, b);
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
     // Once the guest has arrived (checked in) the booking is committed: you can
@@ -10084,6 +10086,12 @@ function renderBookingHub() {
                     : ''}
                 ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
+                ${/* Refunds belong on the MONEY surface, not in the Activity
+                      story where they used to sit as a red button per ledger
+                      row. Shown only once money has actually been taken and
+                      while the rental is still refundable — the picker names
+                      the charge when there is more than one. */ ''}
+                ${squareAdminEnabled && !refundBlocked && gt.paid > 0 ? `<button class="bhub-actlink" ${chbAttrs('hubRefundPicker', String(b.id))}>Refund a card payment</button>` : ''}
                 <button class="bhub-actlink" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>
             ${payHistory}
@@ -10359,10 +10367,15 @@ async function shareStayDetails(bookingId) {
 // disease); a comms event whose email body was logged expands in place, so
 // "what did that email say?" is answered without leaving the story. Timestamps
 // are one DB clock in 'YYYY-MM-DD HH:MM:SS', so a string sort is a time sort.
-function hubActivityHtml(bundle, bookingId, refundOff) {
+function hubActivityHtml(bundle, bookingId) {
     const pays = (bundle.payments || []).map((p) => ({
         at: p.created_at || '',
-        html: hubLedgerRowHtml(p, bookingId, refundOff),
+        // NO refund control in the STORY (owner's ask). This card is the record
+        // of what happened; a destructive money action does not belong in a
+        // history list beside "Booking created from enquiry". The capability
+        // moved to the money surface — "Refund a card payment" in the Payments
+        // block's action row (hubRefundPicker).
+        html: hubLedgerRowHtml(p, bookingId, true),
     }));
     const evs = (bundle.events || [])
         .filter((e) => e.action !== 'payment.card')
@@ -10380,6 +10393,51 @@ function hubActivityHtml(bundle, bookingId, refundOff) {
         ? rows.map((r) => r.html).join('')
         : '<div class="bhub-empty">Nothing recorded yet — edits, payments and emails will appear here.</div>';
 }
+// THE ONE WAY IN TO A PER-CHARGE REFUND, now that the Activity story carries
+// none. Asks WHICH charge only when there is a choice, then hands off to
+// refundPayment (app.js) — so the amount prompt, the rental-portion CAP and
+// the confirm are byte-identical to the control this replaces. The cap stays
+// payments.amount deliberately: the damages half goes back through Return
+// deposit, where its hold state is tracked.
+async function hubRefundPicker(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b) return;
+    let list = [];
+    try {
+        const res = await apiPost('bookings.php', { action: 'payments', id: b.dbId });
+        list = (res.payments || []).filter(
+            (p) => (p.kind === 'deposit' || p.kind === 'balance') && (p.status === 'COMPLETED' || p.status === 'APPROVED'),
+        );
+    } catch (e) {
+        glassAlert('Couldn’t load this booking’s card payments just now — try again in a moment.');
+        return;
+    }
+    if (!list.length) {
+        glassAlert('There are no settled card payments on this booking to refund.');
+        return;
+    }
+    if (list.length === 1) {
+        refundPayment(bookingId, list[0].square_payment_id, parseFloat(list[0].amount));
+        return;
+    }
+    const vals = await glassForm(
+        'Which card payment are you refunding?',
+        [{
+            id: 'which',
+            label: 'Payment',
+            type: 'select',
+            options: list.map((p, i) => ({
+                value: String(i),
+                label: `${p.kind === 'deposit' ? 'Deposit' : 'Balance'} · ${gbp(parseFloat(p.amount) || 0)} · ${fmtDate(String(p.created_at || '').slice(0, 10))}`,
+            })),
+        }],
+        { title: 'Refund a card payment', okLabel: 'Continue' },
+    );
+    if (!vals) return;
+    const pick = list[parseInt(vals.which, 10)];
+    if (pick) refundPayment(bookingId, pick.square_payment_id, parseFloat(pick.amount));
+}
+
 // A drafted reply from THIS booking's own facts — the enquiry drafter's idea,
 // extended to bookings: deterministic template (instant, on-brand, the owner
 // edits then sends), never a model call. Money comes from bookingDue, the one

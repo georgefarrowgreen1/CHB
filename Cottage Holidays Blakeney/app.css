@@ -4549,6 +4549,25 @@ body.owner-mode .chat-widget {
 .email-modal-actions .email-modal-send {
   flex: 1 1 auto; /* the primary action is the widest, most tappable target */
   justify-content: center;
+  /* The label is SET AT SEND TIME ("Send updated confirmation" is 24 uppercase
+     letter-spaced characters), and a flex child will not shrink below its own
+     content — so it ran straight out of the sheet on a phone. min-width lets it
+     fit, and the words wrap inside the pill instead of overflowing it. */
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  /* Stacked, primary on top: the long label gets the sheet's full width. */
+  .email-modal-actions {
+    flex-direction: column-reverse;
+  }
+  .email-modal-actions .email-modal-cancel,
+  .email-modal-actions .email-modal-send {
+    width: 100%;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
 }
 
 
