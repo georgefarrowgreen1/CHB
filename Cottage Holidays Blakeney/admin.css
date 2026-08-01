@@ -817,7 +817,18 @@ body.light-mode .ny-act {
   background: rgba(127, 127, 127, 0.05);
 }.mbx-ctx .bhub-stay-row {
   margin-top: 6px;
-}.mbx-atts {
+}
+/* The rest of a chain, under the message you opened. A quiet list, not a second
+   set of controls — the loud things in this card are Reply/Delete. */
+.mbx-earlier {
+  margin: 12px 0 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+}
+.mbx-earlier .bhub-act-links {
+  margin-top: 2px;
+}
+.mbx-atts {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;

@@ -247,6 +247,91 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(posts.some((p) => p.action === 'delete' && p.uid === 'u1') && delState.rows === 1, `delete confirmed, posted, row removed (${delState.rows} left)`);
 
+  // ONE ROW PER CONVERSATION. Four rows reading "anneolin@btinternet.com · Re:
+  // Pay your deposit — Pimpernel" are one chain wearing four costumes (owner's
+  // screenshot). Driven through the REAL renderer with a hostile fixture: the
+  // same subject from a DIFFERENT sender must stay its own row, because that
+  // subject is the same words for every guest we chase — merging on subject
+  // alone would file one guest's mail under another's name.
+  console.log('6. one row per conversation');
+  const th = await page.evaluate(() => {
+    __mbxMessages = [
+      { uid: 'c1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Pay your deposit — Pimpernel (#12xab12cd34ef5678)', date: '2026-07-20 09:00:00', seen: true },
+      { uid: 'c2', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-21 11:30:00', seen: true },
+      { uid: 'c3', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'RE: Re: Pay your deposit — Pimpernel', date: '2026-07-22 08:05:00', seen: false },
+      { uid: 'd1', from: 'bob@example.com', fromRaw: 'Bob Carter <bob@example.com>', subject: 'Re: Pay your deposit — Pimpernel', date: '2026-07-19 10:00:00', seen: true },
+      { uid: 'e1', from: 'anneolin@btinternet.com', fromRaw: 'Anne Olin <anneolin@btinternet.com>', subject: 'Parking at the cottage', date: '2026-07-18 10:00:00', seen: true },
+    ];
+    __mbxTab = 'inbox';
+    __mbxQuery = '';
+    renderMailboxList();
+    const rows = [...document.querySelectorAll('#mailbox-body .mbx-item')];
+    return {
+      n: rows.length,
+      uids: rows.map((r) => r.dataset.uid),
+      names: rows.map((r) => (r.querySelector('.bk-row-name') || {}).textContent || ''),
+      subjects: rows.map((r) => (r.querySelector('.bk-row-dates') || {}).textContent || ''),
+      counts: rows.map((r) => {
+        const m = /(\d+) emails/.exec((r.querySelector('.bk-row-top') || {}).textContent || '');
+        return m ? Number(m[1]) : 0;
+      }),
+      unread: rows.map((r) => r.querySelector('.bk-row').classList.contains('mbx-unread')),
+    };
+  });
+  ok(th.n === 3, `5 emails collapse to 3 conversations (${th.n})`);
+  ok(th.counts[0] === 3 && th.counts[1] === 0 && th.counts[2] === 0,
+    `only a real chain wears a count chip (${th.counts.join('/')})`);
+  ok(th.uids.join(',') === 'c3,d1,e1',
+    `each row stands for its NEWEST message, newest chain first (${th.uids.join(',')})`);
+  ok(/Bob Carter/.test(th.names[1]) && /Anne Olin/.test(th.names[0]),
+    `the same subject from another sender stays its own row (${th.names[1].trim()})`);
+  ok(th.unread[0] === true && th.unread[1] === false,
+    'a chain reads unread when ANY message in it is unread');
+  ok(/Parking at the cottage/.test(th.subjects[2]),
+    `the same sender's other conversation is not swept in (${th.subjects[2]})`);
+
+  // The chain OPENS on its newest message with the rest listed beneath, and an
+  // earlier one swaps the reader in place — it must not fold the row up, which
+  // is what a uid-equality "second tap = collapse" rule would have done.
+  await page.evaluate(() => document.querySelector('#mailbox-body .mbx-item .bk-row').click());
+  await page.waitForTimeout(700);
+  const chain = await page.evaluate(() => {
+    const it = document.querySelector('#mailbox-body .mbx-item.open');
+    return {
+      showing: it && it.dataset.showing,
+      earlier: it ? it.querySelectorAll('.mbx-earlier .bhub-actlink').length : -1,
+      label: it ? /Earlier in this conversation/.test(it.textContent) : false,
+    };
+  });
+  ok(chain.showing === 'c3' && chain.earlier === 2 && chain.label,
+    `the chain opens on its newest, the other 2 listed beneath (showing ${chain.showing}, ${chain.earlier} earlier)`);
+  // Guarded like the Sent-tab click above: a build with no chain should report
+  // failed checks, not throw on null.
+  await page.evaluate(() => { const b = document.querySelector('#mailbox-body .mbx-item.open .mbx-earlier .bhub-actlink'); b && b.click(); });
+  await page.waitForTimeout(700);
+  const swapped = await page.evaluate(() => {
+    const it = document.querySelector('#mailbox-body .mbx-item.open');
+    return {
+      stillOpen: !!it,
+      showing: it && it.dataset.showing,
+      earlier: it ? it.querySelectorAll('.mbx-earlier .bhub-actlink').length : -1,
+    };
+  });
+  ok(swapped.stillOpen && swapped.showing === 'c2' && swapped.earlier === 2,
+    `tapping an earlier email swaps the reader without closing the row (showing ${swapped.showing})`);
+  // A lone email is untouched by any of this — no chip, no "Earlier" block.
+  await page.evaluate(() => {
+    mailboxCollapse();
+    const it = [...document.querySelectorAll('#mailbox-body .mbx-item')].find((x) => x.dataset.uid === 'e1');
+    it && it.querySelector('.bk-row').click();
+  });
+  await page.waitForTimeout(700);
+  const lone = await page.evaluate(() => {
+    const it = document.querySelector('#mailbox-body .mbx-item.open');
+    return { uid: it && it.dataset.uid, earlier: it ? it.querySelectorAll('.mbx-earlier').length : -1 };
+  });
+  ok(lone.uid === 'e1' && lone.earlier === 0, 'a one-email conversation reads exactly as it always did');
+
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
