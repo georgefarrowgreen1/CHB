@@ -14958,10 +14958,12 @@ function hubPlanHtml(b, ps, gt, past) {
         ? (Number(depositTakenAmt(b)) || 0)
         : 0;
     const depAsk = Math.round((dep + depTake) * 100) / 100;
+    // The caption's badge already says "custom" — the rows never repeat it
+    // (owner's ask); a custom row just states its own figure's provenance.
     const depFrom = (b.depositAmountOverride > 0
-        ? 'fixed — custom'
+        ? 'fixed amount'
         : b.depositPctOverride > 0
-          ? `${b.depositPctOverride}% — custom`
+          ? `${b.depositPctOverride}%`
           : `${paymentTerms.depositPct || 25}% — site standard`)
         + (depTake > 0 ? ` + ${gbp(depTake)} refundable deposit` : '');
     // Paid ✓ against the FOLDED figure, read off gt (displayGrand), which only
@@ -14977,7 +14979,7 @@ function hubPlanHtml(b, ps, gt, past) {
           ? `Link sent ${day(b.depositRequestedAt)}`
           : 'Not asked yet');
     const dueFrom = b.balanceDueDate
-        ? `custom — standard would be ${fmtDate(stdDue)}`
+        ? `standard would be ${fmtDate(stdDue)}`
         : `${paymentTerms.balanceDays || 30} days before arrival`;
     const balState = gt.fullyPaid
         ? dot(true) + '<span class="bhub-plan-ok">Paid in full ✓</span>'
@@ -14990,7 +14992,7 @@ function hubPlanHtml(b, ps, gt, past) {
               a custom plan announces itself as a small accent badge rather
               than two muted words in the caption. Owner's report: the whole
               panel read as washed-out grey beside the payline above it. */ ''}
-        <span class="bhub-plan-cap">Payment plan${custom ? ' <span class="bhub-plan-tag">custom</span>' : ''}</span>
+        <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag${custom ? '' : ' is-std'}">${custom ? 'custom' : 'default'}</span></span>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong><span class="bhub-plan-why">${escapeHtml(depFrom)}</span></span><span class="bhub-plan-state">${depState}</span></div>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong><span class="bhub-plan-why">${escapeHtml(dueFrom)}</span></span><span class="bhub-plan-state">${balState}</span></div>
         ${/* The action-row vocabulary, not a muted linklike — it sat directly
