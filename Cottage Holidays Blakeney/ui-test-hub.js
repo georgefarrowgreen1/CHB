@@ -662,8 +662,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
       unchargedDep: render(mk2({ depositPaid: 110, holdStatus: 'none', payment: 'deposit' })),
     };
   });
-  ok(/Paid ✓/.test(foldStates.charged), 'rental £110 + charged £50 → the £160 first payment reads Paid ✓');
-  ok(!/Paid ✓/.test(foldStates.unchargedDep), 'the same £110 with the £50 uncharged does NOT — the header above would say £110 too');
+  ok(/>Paid</.test(foldStates.charged), 'rental £110 + charged £50 → the £160 first payment reads Paid');
+  ok(!/>Paid</.test(foldStates.unchargedDep), 'the same £110 with the £50 uncharged does NOT — the header above would say £110 too');
+  // No ✓ in the plan states (owner's ask) — the green dot already says done.
+  ok(!foldStates.charged.includes('✓'), 'the settled state carries no tick — the dot is the mark');
   // The chip-row dot vocabulary reaches the plan states: green = settled,
   // red = still open, words unchanged (colour is never the only signal).
   const planDots = await page.evaluate(() =>
