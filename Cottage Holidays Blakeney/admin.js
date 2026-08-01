@@ -15009,6 +15009,14 @@ async function editPaymentPlan(bookingId) {
         : b.depositAmountOverride > 0 && ps.total > 0
           ? String(Math.round((b.depositAmountOverride / ps.total) * 1000) / 10)
           : '';
+    // The stay is the rental PLUS the refundable damages deposit, and the
+    // guest's first payment takes both — but the percentage applies to the
+    // RENTAL (25% of £750 would never reconcile with the £175 asked, the
+    // never-adds-up trap the pay screen fixed). So the hint ITEMISES: the %
+    // of the rental, plus the deposit riding the first payment while it is
+    // still to be taken.
+    const depRide = b.holdStatus === 'none' && typeof depositTakenAmt === 'function' ? (Number(depositTakenAmt(b)) || 0) : 0;
+    const depHint = `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} rental${depRide > 0 ? ` + the ${gbp(depRide)} refundable deposit on the first payment` : ''})`;
     // A TITLED dialog with one-line context and per-field hints — the old shape
     // was five lines of prose above an unexplained empty date pill (date inputs
     // ignore placeholders) and a button reading "OK".
@@ -15020,7 +15028,7 @@ async function editPaymentPlan(bookingId) {
     const vals = await glassForm(
         'Every email, pay link and the automatic chaser follow this plan.',
         [
-            { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} stay)` },
+            { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: depHint },
             { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
         ],
         { title: `Payment plan — ${b.name || 'this booking'}`, okLabel: 'Save plan' },
