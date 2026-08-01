@@ -981,8 +981,23 @@ hasn't paid yet), and Texts OK only when opted in (`smsOptIn`, newly mapped in
 checkout rides `chbGapScan`/`chbGapPlan` — the SAME plan the Pricing page and
 brief use, one-tap `nyGapOffer` or "offer live" → seasongrid. **Phone sticky
 action bar** (`.bhub-sticky`, hidden ≥901px, inset by the `--safe-b` token): the
-next action plus tel:/mailto: icon buttons at the 44px floor; a money label
-carries the figure. **Share** (`shareStayDetails`, hub ⋯ menu): navigator.share
+next action plus tel:/mailto: icon buttons at the 44px floor. **A money label is
+FIGURE-FIRST and the figure never clips** (`.bhub-sticky-fig` no-shrink +
+`.bhub-sticky-verb` ellipsis, verbs shortened via `btnShort`): verb-first with
+the amount trailing measured 104px wider than the button at 390px — the AMOUNT
+ran under the call icon, and a clipped verb still reads while a clipped amount
+is a different number. Gated in ui-test-hub §C2 with an INJECTED 60-char verb
+(the §14 long-chip discipline — the real short labels fit on their own, so
+without the injection the check is vacuous; break-tested by deleting the
+ellipsis rule). The same hostile-fixture sweep fixed two more: the ledger row's
+Refund button SHRANK as a flex child under a long line (flex:none — the text
+half wraps, the control never squeezes), and `.bhub-plan-row`'s
+baseline-aligned state span rendered INTERLEAVED with a three-line wrapping
+sentence (flex-start, and the state stacks under the sentence ≤640px; §C2
+asserts the two boxes never intersect). NB this Chromium reports LAYOUT BOXES
+for closed-`<details>` content while painting nothing — an overlap scanner must
+skip it or it cries wolf on every feed email row.
+**Share** (`shareStayDetails`, hub ⋯ menu): navigator.share
 with clipboard fallback, and NO money in the shared text — it goes to cleaners
 and co-hosts, not the guest. **✨ Draft reply** in the booking email composer
 (`chbDraftBookingReply` + `draftBookingReply` — deterministic template like the

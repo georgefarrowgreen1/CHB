@@ -9739,6 +9739,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
                 text: `Nothing received yet — ${gbp(gt.balance)} due.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
+                btnShort: canCard ? 'Email a card link' : 'Record a payment',
                 money: true,
             };
         } else {
@@ -9746,6 +9747,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
                 text: `${gbp(gt.balance)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
+                btnShort: canCard ? 'Request by card' : 'Record a payment',
                 money: true,
             };
         }
@@ -9758,6 +9760,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
             text: `${gbp(gt.balance)} still owed from this finished stay.`,
             onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
+            btnShort: canCard ? 'Request by card' : 'Record a payment',
             money: true,
         };
     } else if (flow.hasReg && !b.regSubmitted && !past) {
@@ -10247,7 +10250,17 @@ function renderBookingHub() {
     // screen anyway). Same __hubNext object the banner/payask render, so the
     // three can never name different next actions. Hidden when all set.
     const sticky = __hubNext
-        ? `<div class="bhub-sticky"><button class="btn-glass bhub-sticky-btn" ${__hubNext.onclick}>${__hubNext.btn}${__hubNext.money ? ' — ' + gbp(gt.balance) : ''}</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${b.email ? `<a class="bhub-icbtn" href="mailto:${escapeHtml(String(b.email))}" aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</a>` : ''}</div>`
+        ? `<div class="bhub-sticky"><button class="btn-glass bhub-sticky-btn" ${__hubNext.onclick}>${
+            // MONEY LEADS AND NEVER CLIPS. "Request the balance by card —
+            // £930.37" measured 104px wider than the button at 390px, so the
+            // FIGURE ran under the call icon. The figure is now first (the
+            // money-row rule) in a no-shrink span; the verb is the half that
+            // may ellipsise — a clipped verb is still readable, a clipped
+            // amount is a different number.
+            __hubNext.money
+                ? `<strong class="bhub-sticky-fig">${gbp(gt.balance)}</strong><span class="bhub-sticky-verb">${__hubNext.btnShort || __hubNext.btn}</span>`
+                : __hubNext.btn
+        }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${b.email ? `<a class="bhub-icbtn" href="mailto:${escapeHtml(String(b.email))}" aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</a>` : ''}</div>`
         : '';
     el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>${sticky}`;
 }

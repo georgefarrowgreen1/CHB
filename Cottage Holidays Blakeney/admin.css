@@ -4086,7 +4086,14 @@ body.cmdk-open {
     padding: 10px 2px calc(10px + var(--safe-b, 0px));
     background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 30%);
 }
-.bhub-sticky-btn { flex: 1; min-height: 44px; }
+.bhub-sticky-btn {
+    flex: 1; min-height: 44px; min-width: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+/* Money leads and never clips; the verb is the half that may ellipsise —
+   a clipped verb still reads, a clipped amount is a different number. */
+.bhub-sticky-fig { flex: 0 0 auto; }
+.bhub-sticky-verb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bhub-icbtn {
     width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
     display: flex; align-items: center; justify-content: center; text-decoration: none;
@@ -4115,8 +4122,18 @@ body.cmdk-open {
     color: var(--text-muted);
 }
 .bhub-plan-row {
-    display: flex; justify-content: space-between; align-items: baseline;
+    /* flex-START, not baseline: with a hostile-length sentence the what-half
+       wraps to three lines and a baseline-aligned state span rendered
+       INTERLEAVED with them ("Asked 31/07 · reminded" tangled mid-sentence,
+       measured with a 36-char guest name + custom plan at 390px). */
+    display: flex; justify-content: space-between; align-items: flex-start;
     gap: 10px; font-size: 0.84rem; color: var(--text-light);
+}
+.bhub-plan-what { min-width: 0; }
+@media (max-width: 640px) {
+    /* On a phone the state takes its own line under the sentence — two short
+       stacked lines read; a right column beside a wrapping sentence tangles. */
+    .bhub-plan-row { flex-direction: column; gap: 1px; }
 }
 .bhub-plan-why { color: var(--text-muted); font-size: 0.76rem; }
 .bhub-plan-state { flex: 0 0 auto; font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; }
