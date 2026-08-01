@@ -323,12 +323,17 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.waitForTimeout(250);
   const planInAdd = await page.evaluate(() => ({
     shown: getComputedStyle(document.getElementById('modal-plan-group')).display !== 'none',
+    stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
+    fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
     pctBlank: (document.getElementById('modal-plan-pct') || {}).value === '',
     dueBlank: (document.getElementById('modal-plan-due') || {}).value === '',
   }));
-  ok(planInAdd.shown && planInAdd.pctBlank && planInAdd.dueBlank,
-    'ADD shows the plan fields, blank (blank IS the site standard)');
-  // Fill a full booking + a 30% / dated plan → the add POST carries the plan.
+  ok(planInAdd.shown && planInAdd.stdOn && planInAdd.fieldsHidden && planInAdd.pctBlank && planInAdd.dueBlank,
+    'ADD opens on the STANDARD toggle, fields folded and blank');
+  // Toggle CUSTOM, fill a 30% / dated plan → the add POST carries the plan.
+  // (The toggle lives inside the More-options fold — open it first.)
+  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
+  await page.click('#modal-plan-custom-btn');
   await page.evaluate((f) => {
     document.getElementById('modal-property').value = '21a';
     document.getElementById('modal-name').value = 'Plan At Add';
@@ -359,6 +364,27 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   const addPost2 = posts.slice(postsBefore2).find((p) => p.__url === 'bookings.php' && p.action === 'add');
   ok(!!addPost2 && !('deposit_pct' in addPost2) && !('balance_due_date' in addPost2),
     'blank plan fields stay OUT of the payload');
+  // TYPED THEN REVERTED: values entered under Custom must die with the toggle —
+  // a plan the owner backed out of can never ride the save silently.
+  await page.evaluate(() => window.openAddBooking());
+  await page.waitForTimeout(250);
+  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
+  await page.click('#modal-plan-custom-btn');
+  await page.evaluate((f) => {
+    document.getElementById('modal-property').value = '21a';
+    document.getElementById('modal-name').value = 'Reverted Plan';
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    document.getElementById('modal-plan-pct').value = '40';
+    document.getElementById('modal-plan-due').value = f.due;
+  }, { ci: d(66), co: d(69), due: d(64) });
+  await page.click('#modal-plan-std-btn');
+  const postsBefore3 = posts.length;
+  await page.evaluate(() => saveModal());
+  await page.waitForTimeout(600);
+  const addPost3 = posts.slice(postsBefore3).find((p) => p.__url === 'bookings.php' && p.action === 'add');
+  ok(!!addPost3 && !('deposit_pct' in addPost3) && !('balance_due_date' in addPost3),
+    'a plan typed then toggled back to Standard sends NOTHING');
   await page.evaluate(() => closeModal());
   // Back to the b1 hub for the sections that follow.
   await page.evaluate(() => showDetails('21a', findBookingById('b1')));

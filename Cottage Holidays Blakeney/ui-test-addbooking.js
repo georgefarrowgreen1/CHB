@@ -106,6 +106,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(s3.holds, 'times, deposit, override and plan all live inside it');
   ok(s3.depLabel === 'Refundable damages deposit (£)' && s3.hints >= 3,
     `the shouted labels became short label + quiet hint (${s3.hints} hints)`);
+  // The plan is a Standard | Custom TOGGLE (owner's ask — not a field that
+  // implies typing): Standard states the LIVE site terms in a sentence and
+  // hides the fields; Custom reveals them; flipping back WIPES what was typed.
+  const t1 = await page.evaluate(() => ({
+    stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
+    pressed: document.getElementById('modal-plan-std-btn').getAttribute('aria-pressed') === 'true',
+    fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
+    line: (document.getElementById('modal-plan-std-line') || {}).textContent || '',
+  }));
+  ok(t1.stdOn && t1.pressed && t1.fieldsHidden, 'the plan opens on Standard, fields folded');
+  ok(/25% deposit/.test(t1.line) && /30 days/.test(t1.line), `the Standard line quotes the live site terms (${t1.line.slice(0, 50)})`);
+  await page.evaluate(() => { document.getElementById('modal-more').open = true; });
+  await page.click('#modal-plan-custom-btn');
+  const t2 = await page.evaluate(() => ({
+    on: document.getElementById('modal-plan-custom-btn').classList.contains('is-on'),
+    fieldsUp: document.getElementById('modal-plan-custom').style.display !== 'none',
+  }));
+  ok(t2.on && t2.fieldsUp, 'Custom reveals the fields');
+  await page.evaluate(() => { document.getElementById('modal-plan-pct').value = '40'; });
+  await page.click('#modal-plan-std-btn');
+  const t3 = await page.evaluate(() => ({
+    hidden: document.getElementById('modal-plan-custom').style.display === 'none',
+    wiped: document.getElementById('modal-plan-pct').value === '',
+  }));
+  ok(t3.hidden && t3.wiped, 'flipping back to Standard WIPES the typed plan — it can never ship silently');
   // iOS draws an EMPTY date input SHORTER than its siblings (no text to size
   // the line box) — owner's screenshot: Balance due by against Deposit %.
   // Chromium cannot reproduce the collapse, so this asserts the pinning RULE
