@@ -4185,3 +4185,16 @@ body.cmdk-open {
     text-transform: uppercase; color: var(--text-muted);
 }
 .bhub-kv-val { min-width: 0; overflow-wrap: anywhere; color: var(--text-light); }
+
+/* A kv value that ACTS (the guest's email opens the site's composer): text
+   styled as the link it is, wrapping like any value, still a real button. */
+.bhub-kv-act {
+    background: none; border: none; padding: 0; font-family: inherit;
+    font-size: inherit; color: var(--text-light); text-decoration: underline;
+    text-underline-offset: 2px; cursor: pointer; text-align: left;
+    min-width: 0; overflow-wrap: anywhere;
+}
+.bhub-kv-act:hover { color: var(--accent-text); }
+/* The sticky bar's ✉️ is a <button> now (composer, not mailto) — the icon
+   circle must not pick up UA button chrome. */
+button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }

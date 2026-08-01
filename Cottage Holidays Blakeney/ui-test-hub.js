@@ -176,10 +176,17 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // Email actions live in ONE place: the Emails card.
   const em1 = await page.evaluate(() => ({
     headerEmail: !!document.querySelector('.bhub-actions [data-act="openBookingEmail"]'),
-    writeBtns: document.querySelectorAll('#booking-hub-content [data-act="openBookingEmail"]').length,
+    // ONE LABELLED action; the guest-card address and the sticky ✉️ are
+    // CONTACT AFFORDANCES that route into the SAME composer — they replaced
+    // mailto: links that bounced the owner out to the phone's mail app, so
+    // their existence is the fix, not a duplicate.
+    labelled: [...document.querySelectorAll('#booking-hub-content [data-act="openBookingEmail"]')].filter((x) => /write an email/i.test(x.textContent || '')).length,
+    addrAff: !!document.querySelector('#booking-hub-content .bhub-kv-act[data-act="openBookingEmail"]'),
+    stickyAff: !!document.querySelector('#booking-hub-content .bhub-sticky [data-act="openBookingEmail"]'),
     updConf: document.querySelectorAll('#booking-hub-content [data-act="offerUpdatedConfirmationEmail"]').length,
   }));
-  ok(!em1.headerEmail && em1.writeBtns === 1, 'ONE email entry point (Emails card), none in the header');
+  ok(!em1.headerEmail && em1.labelled === 1 && em1.addrAff && em1.stickyAff,
+    'ONE labelled email action (Emails card); address + sticky route to the SAME composer, none in the header');
   ok(em1.updConf === 0, 'no updated-confirmation button while nothing is paid');
 
   // ---------- A2. payment ledger: traffic-light dots ----------
@@ -467,6 +474,19 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(!!stickyHostile && stickyHostile.figWhole && stickyHostile.figInside && stickyHostile.noOverflow,
     'a hostile-length verb ellipsises — the figure never gives an inch');
   await page.waitForTimeout(250);
+  // EMAIL STAYS IN THE SITE. The sticky ✉️ and the Guest card's address were
+  // mailto: links — out to the phone's mail app, past the draft reply, the
+  // preview and the send log. Both open the site's composer now, and NO
+  // guest-facing mailto may return to this page (tel: stays — the phone IS
+  // the call client).
+  ok(await page.evaluate(() => !document.querySelector('#booking-hub-content a[href^="mailto:"]')),
+    'no mailto anywhere on the hub — email goes through the site\'s composer');
+  await page.click('.bhub-sticky button[data-act="openBookingEmail"]');
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open')),
+    'the sticky ✉️ opens the composer in place');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
   // THE PLAN'S STATE NEVER TANGLES WITH ITS SENTENCE: baseline-aligned columns
   // interleaved when the what-half wrapped (hostile-length names + a custom
   // plan) — on a phone the state stacks under the sentence, so their boxes
