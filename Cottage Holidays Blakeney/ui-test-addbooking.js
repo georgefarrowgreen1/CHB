@@ -187,6 +187,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(s4b.inEdge, 'the foot starts at the content edge — no bleed past the phone padding');
   ok(s4b.noClip, 'a hostile-length figure squeezes Save, never itself');
+  // The foot's ground is the OPAQUE theme surface — the bhub-sticky gradient
+  // painted a strange-fading slab over the modal's glass (owner's light-mode
+  // screenshot). No gradient, no alpha, in EITHER theme.
+  const footGround = await page.evaluate(() => {
+    const read = () => {
+      const cs = getComputedStyle(document.querySelector('.modal-foot'));
+      const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/);
+      const alpha = m && m[1].split(',').length === 4 ? parseFloat(m[1].split(',')[3]) : 1;
+      return { noGrad: cs.backgroundImage === 'none', opaque: alpha >= 0.999 };
+    };
+    const dark = read();
+    document.body.classList.add('light-mode');
+    const light = read();
+    document.body.classList.remove('light-mode');
+    return { dark, light };
+  });
+  ok(footGround.dark.noGrad && footGround.dark.opaque && footGround.light.noGrad && footGround.light.opaque,
+    'the foot is a solid theme surface in both themes — no gradient fade');
   // ONE visible name for the notes field: the section cap carries the words,
   // the label goes .sr-only (announced, not doubled on screen).
   const s4c = await page.evaluate(() => {

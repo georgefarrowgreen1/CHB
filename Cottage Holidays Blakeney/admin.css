@@ -4271,11 +4271,15 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
 .modal-foot {
     /* Content-width, not a bleed: -35px margins overhung the phone's 22px
-       box padding and the total clipped to "£6" live. */
+       box padding and the total clipped to "£6" live. The ground is the
+       OPAQUE theme surface, not the bhub-sticky gradient — over the modal's
+       glass that gradient painted a strange-fading slab (owner's light-mode
+       screenshot), and the overlay already insets the safe area, so no
+       second safe-b term either. */
     position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; gap: 14px;
-    margin: 8px 0 0; padding: 12px 0 calc(14px + var(--safe-b, 0px));
+    margin: 8px 0 0; padding: 12px 0 14px;
     border-top: 1px solid var(--glass-border);
-    background: linear-gradient(180deg, transparent 0%, var(--dark-grey) 26%);
+    background: var(--cmdk-surface);
 }
 /* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
 .modal-foot-total { flex: 0 0 auto; }
