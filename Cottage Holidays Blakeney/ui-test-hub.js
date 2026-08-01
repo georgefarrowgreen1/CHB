@@ -458,12 +458,34 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // Still on b1's hub: part-paid £100 against £440, no plan set — the panel
   // states the SITE standard (£110 = 25%) and where each figure comes from.
   const plan0 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
-  ok(/£110\.00 deposit/.test(plan0) && /site standard/.test(plan0),
-    `the plan states the standard deposit with its provenance (${plan0.replace(/\s+/g, ' ').trim().slice(0, 70)})`);
-  ok(/£330\.00 balance by/.test(plan0), 'and the balance beside its due date');
+  // £160 = £110 rental deposit + the £50 refundable deposit the FIRST payment
+  // carries (pay.php bundles it while hold_status is none/charged) — the line
+  // quotes what the card takes, itemised, or it contradicts the "Received so
+  // far" header directly above it (reported live as £175 under a £225 header).
+  ok(/£160\.00 deposit/.test(plan0) && /site standard \+ £50\.00 refundable deposit/.test(plan0),
+    `the deposit line quotes what the card takes, itemised (${plan0.replace(/\s+/g, ' ').trim().slice(0, 80)})`);
+  ok(/£330\.00 balance by/.test(plan0), 'and the balance beside its due date — the two lines sum to the header\'s £490');
   ok(/Not asked yet/.test(plan0), 'nothing sent → the state says so, not a blank');
   ok(await page.evaluate(() => !document.querySelector('[data-act="sendPaymentReminder"]')),
     'no reminder button before anything has been asked for (the server would refuse it)');
+  // Paid ✓ follows the FOLDED figure via gt (displayGrand): a charged deposit
+  // completes the £160 first payment; the same £110 rental with the £50 still
+  // uncharged is a first payment that hasn't fully landed.
+  const foldStates = await page.evaluate(() => {
+    const loc = findBookingLocation('b1');
+    const mk2 = (over) => Object.assign({}, findBookingById('b1'), over);
+    const render = (b) => {
+      const ps = paymentSummary(loc.propKey, b);
+      const gt = displayGrand(b.agreedPrice || null, ps, b.holdStatus, b);
+      return hubPlanHtml(b, ps, gt, false);
+    };
+    return {
+      charged: render(mk2({ depositPaid: 110, holdStatus: 'charged', holdAmount: 50, payment: 'deposit' })),
+      unchargedDep: render(mk2({ depositPaid: 110, holdStatus: 'none', payment: 'deposit' })),
+    };
+  });
+  ok(/Paid ✓/.test(foldStates.charged), 'rental £110 + charged £50 → the £160 first payment reads Paid ✓');
+  ok(!/Paid ✓/.test(foldStates.unchargedDep), 'the same £110 with the £50 uncharged does NOT — the header above would say £110 too');
   // The Edit-plan dialog: type 30% + a custom due date, Save → the client posts
   // the PLAN (never an amount to charge) and re-renders from what the server
   // accepted.
@@ -477,8 +499,8 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(!!planPost && planPost.deposit_pct === '30' && planPost.deposit_amount === '' && planPost.balance_due_date === d(20),
     `the dialog states the plan, never a figure to charge (${JSON.stringify(planPost && { pct: planPost.deposit_pct, amt: planPost.deposit_amount, due: planPost.balance_due_date })})`);
   const plan1 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
-  ok(/£132\.00 deposit/.test(plan1) && /30% — custom/.test(plan1),
-    `the panel re-renders the custom deposit (£132 = 30% of £440) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
+  ok(/£182\.00 deposit/.test(plan1) && /30% — custom/.test(plan1),
+    `the panel re-renders the custom deposit (£182 = 30% of £440 + the £50 the card carries) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
   ok(/custom — standard would be/.test(plan1), 'and names the custom date against the standard it replaces');
   ok(/The chaser emails the balance link on/.test(plan1), 'the automation narrates its plan from the NEW date');
   // The reminder: appears only once something has been asked, sends through
