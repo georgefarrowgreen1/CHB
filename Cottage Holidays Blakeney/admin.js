@@ -10233,7 +10233,23 @@ function renderBookingHub() {
                 ${contact('Address', b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '')}
                 ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + kvWhen(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
                 ${contact('No dog', b.noDogsAt ? 'Confirmed ' + kvWhen(b.noDogsAt) : '<span class="bhub-mut">Not recorded</span>')}
+                ${/* THE GUEST REGISTER IS A ROW HERE, not a card of its own
+                      (owner's ask). It is one fact about this guest — is the
+                      legal record in? — and it now sits with the rest of them,
+                      stated as the dot the chips use: green in, red waiting.
+                      The card it replaces carried three lines of explanation
+                      the owner already knows; the register page itself states
+                      the rule and the retention. */ ''}
+                ${contact('Register', b.regSubmitted
+                    ? `<span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded`
+                    : '<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Not yet submitted')}
             </div>
+            ${b.regUrl
+                ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:4px;">
+                <button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit guest register' : 'Fill in the guest register'}</button>
+                <button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy register link</button>
+            </div>`
+                : ''}
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>
@@ -10252,28 +10268,9 @@ function renderBookingHub() {
             <div id="hub-history" class="sq-pay-history"><div class="bhub-empty">Loading activity…</div></div>
         </section>`;
 
-    // ---- Guest register card (UK hotel-records duty) ----
-    const regCard = `
-        <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">Guest register <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· legal record</span></h3>
-            ${/* The chips' dot vocabulary (owner's ask): green = filled in,
-                  red = still waiting — the words carry the state either way. */ ''}
-            ${b.regSubmitted
-                ? `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val"><span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
-                : `<div class="bhub-kvs"><div class="bhub-kv"><span class="bhub-kv-label">Status</span><span class="bhub-kv-val"><span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Not yet submitted</span></div></div>
-                   <p class="bhub-mut" style="margin:6px 0 4px;">The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
-            <div class="bhub-btn-row bhub-act-links" style="margin-top:4px;">
-                ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
-                ${b.regUrl ? `<button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy request link</button>` : ''}
-            </div>
-            ${/* The WHAT-THIS-IS prose is guidance for the not-yet-submitted
-                  state; once the register is in, it earned only its retention
-                  half — three lines of explanation under a green tick read as
-                  homework already handed in. */ ''}
-            <p class="bhub-mut" style="margin:8px 0 0;font-size:0.8rem;">${b.regSubmitted
-                ? 'Held securely; deleted 12 months after checkout.'
-                : 'Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.'}</p>
-        </section>`;
+    // The Guest register has NO card of its own — it is a row inside the Guest
+    // card (see 'Register' above), because it is one fact about this guest
+    // rather than a subject in its own right.
     // Ambient guest intelligence LEADS the grid — context before actions. It
     // renders only when there is something worth knowing (repeat guest or
     // real history mentions), so most first-time bookings see no extra card.
@@ -10305,7 +10302,7 @@ function renderBookingHub() {
             b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</button>` : ''
         }</div>`
         : '';
-    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div><div class="bhub-foot">${editMenu}</div>${sticky}`;
+    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${historyCard}</div><div class="bhub-foot">${editMenu}</div>${sticky}`;
 }
 // The status-chips row: five facts from five places, one glance — the terms
 // acceptance (with version), the no-dog declaration, the guest register, which

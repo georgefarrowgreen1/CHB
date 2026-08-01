@@ -128,7 +128,9 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     nowPill: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
     donePill: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
     cards: document.querySelectorAll('.bhub-card').length,
-    hasGuestReg: Array.from(document.querySelectorAll('.bhub-card-title')).some((t) => /Guest register/.test(t.textContent || '')),
+    // The register is a ROW in the Guest card now, not a card of its own.
+    regRow: [...document.querySelectorAll('.bhub-kv')].some((r) => /Register/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || '')),
+    regCard: Array.from(document.querySelectorAll('.bhub-card-title')).some((t) => /Guest register/.test(t.textContent || '')),
     notes: (document.querySelector('[id^="bk-notes-"]') || {}).value || '',
   }));
   ok(a.active === 'view-booking-hub', `hub view active (${a.active})`);
@@ -141,7 +143,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // Five cards: the fixture guest is a REPEAT (two stays on guest@gmail.com),
   // so the ambient "Knows your guest" intel card leads the grid. (Payments is
   // no longer a card — it's unified into the header section.)
-  ok(a.cards === 5, `five cards rendered — incl. Guest register + guest intel (${a.cards})`);
+  ok(a.cards === 4, `four cards rendered — the register folded into Guest (${a.cards})`);
   // The unified header section: journey pipeline + next action + the money
   // block all in ONE .bhub-head — and the old duplicate money mini-pipeline
   // (.bhub-paypipe) is gone for good.
@@ -169,7 +171,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // and the figure can never wrap into a broken multi-line mess.
   ok(uni.foldRows === 1 && /^Total/.test(uni.foldLine.trim()) && /£490\.00/.test(uni.foldLine) && uni.disclose, `unpaid money folds to one Total payline + disclose (${uni.foldLine.trim()})`);
   ok(uni.figWraps === 'nowrap', 'the payline figure never wraps');
-  ok(a.hasGuestReg, 'Guest register card present (UK hotel-records duty)');
+  ok(a.regRow && !a.regCard, 'the guest register is a ROW in the Guest card, not a card of its own');
   const intel = await page.evaluate(() => { const c = document.getElementById('hub-intel-card'); return c ? c.textContent : ''; });
   ok(/1st stay/.test(intel), `guest intel leads with the visit ordinal (${intel.slice(0, 50).trim()})`);
   ok(a.notes === 'VIP', 'staff note prefilled');
@@ -579,7 +581,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     const probe = (v) => { const el = document.createElement('i'); el.style.color = `var(${v})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
     const okC = probe('--ok'), badC = probe('--danger');
     const read = () => {
-      const kv = [...document.querySelectorAll('#booking-hub-content .bhub-card .bhub-kv')].find((r) => /Status/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || ''));
+      const kv = [...document.querySelectorAll('#booking-hub-content .bhub-card .bhub-kv')].find((r) => /Register/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || ''));
       const dotEl = kv && kv.querySelector('.bhub-chip-dot');
       return { text: kv ? kv.textContent.trim() : '', dot: dotEl ? getComputedStyle(dotEl).backgroundColor : 'none' };
     };
