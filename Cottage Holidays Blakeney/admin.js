@@ -10056,7 +10056,7 @@ function renderBookingHub() {
         }
     } catch (e) {}
     // The per-booking payment plan, stated where the money lives — what will be
-    // asked, when, and what the chaser will do about it (hubPlanHtml).
+    // asked and when (hubPlanHtml).
     const planPanel = hubPlanHtml(b, ps, gt, past);
     const payBlock = `
         <div class="bhub-headpay">
@@ -14974,15 +14974,6 @@ function hubPlanHtml(b, ps, gt, past) {
         : b.balanceRequestedAt
           ? `Asked ${day(b.balanceRequestedAt)}${b.balanceRemindedAt ? ' · reminded ' + day(b.balanceRemindedAt) : ''}`
           : 'Not asked yet';
-    // What the automation will actually do, recomputed from this booking's own
-    // dates — deliberately no cadence numbers (they are server config; quoting
-    // them here is a second definition waiting to drift).
-    let auto = '';
-    if (!gt.fullyPaid && !past) {
-        if (b.balanceRequestedAt) auto = 'The chaser sends gentle reminders until it’s paid, stopping just before arrival.';
-        else if (due && due > todayDashed()) auto = `The chaser emails the balance link on ${fmtDate(due)}, then gentle reminders as the stay approaches.`;
-        else if (due) auto = 'The balance is due — the chaser emails the link on its next nightly run.';
-    }
     return `<div class="bhub-plan">
         ${/* The FACTS carry the weight (600, the hero-figure rule — weight,
               not size) and the provenance stays quiet in the parenthetical;
@@ -14992,7 +14983,6 @@ function hubPlanHtml(b, ps, gt, past) {
         <span class="bhub-plan-cap">Payment plan${custom ? ' <span class="bhub-plan-tag">custom</span>' : ''}</span>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong><span class="bhub-plan-why">${escapeHtml(depFrom)}</span></span><span class="bhub-plan-state">${depState}</span></div>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong><span class="bhub-plan-why">${escapeHtml(dueFrom)}</span></span><span class="bhub-plan-state">${balState}</span></div>
-        ${auto ? `<div class="bhub-plan-auto">${escapeHtml(auto)}</div>` : ''}
         ${/* The action-row vocabulary, not a muted linklike — it sat directly
               above the accent action rows as the one grey control in the
               panel (owner: "needs to be more visible"). The row's ::after
