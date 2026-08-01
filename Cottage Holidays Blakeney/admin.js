@@ -15872,6 +15872,28 @@ function chbDuties() {
             run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); },
         });
     }
+    // 5b) Customer emails waiting to be read. The cron's mailbox poll notices
+    // them (mailbox-read.php); the site's OWN notifications never get this far,
+    // which is the point — the owner reads the same inbox the site sends from,
+    // and a duty saying "3 new emails" that turns out to be our own "Payment
+    // received" alerts is a duty they learn to ignore. Off the bootstrap payload
+    // like the feeds and payout trouble, so it costs no request.
+    const nm = /** @type {any} */ (window).__newMailPre;
+    const nmN = (nm && Number(nm.count)) || 0;
+    if (nmN > 0) {
+        const who = ((nm.items || [])[0] || {});
+        const whoName = String(who.name || who.from || '').trim();
+        out.push({
+            kind: 'email', sev: 'warn', ic: 'chat',
+            label: nmN === 1
+                ? (whoName ? `${whoName} emailed you` : 'A new email is waiting')
+                : `${nmN} new emails are waiting`,
+            sub: nmN === 1 && who.subject ? String(who.subject) : 'Inbox → Email',
+            act: 'Read', go: 'data-act="openInboxEmail"',
+            board: 'waiting', scope: 'inbox',
+            run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); },
+        });
+    }
     // 6) Guest content waiting for approval.
     [
         ['rev', 'review', 'reviews'],

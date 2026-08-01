@@ -272,6 +272,7 @@ function poll_mailbox_replies($force = false, $preview = false)
     $seen = 0;
     $trace = [];
     $last = null;
+    $fresh = []; // new CUSTOMER mail that did not become a chat reply
     try {
         fwrite($fp, "UIDL\r\n");
         $u = fgets($fp, 8192); // +OK / -ERR
@@ -367,6 +368,18 @@ function poll_mailbox_replies($force = false, $preview = false)
                     $deliverOk = false;
                 }
             }
+            // NEW CUSTOMER MAIL. Not our own voice, and not something that just
+            // became a chat message (chat-lib alerts about those — telling the
+            // owner twice about one email is worse than the silence this fixes).
+            if ($deliverOk && !$isSelf && $route === 'drop') {
+                $fresh[] = [
+                    'uid' => $uid,
+                    'from' => $fromAddr,
+                    'name' => mailbox_sender_name($p['from']),
+                    'subject' => $p['subject'],
+                    'at' => time(),
+                ];
+            }
             if ($deliverOk) {
                 $processed[] = $uid;
             } // mark seen only once safely handled
@@ -389,8 +402,9 @@ function poll_mailbox_replies($force = false, $preview = false)
         return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
     }
     mailbox_poll_save($processed, '', $last);
+    $noticed = mailbox_new_record($fresh);
     poll_unlock($lock);
-    return ['ok' => true, 'handled' => $handled, 'last' => $last];
+    return ['ok' => true, 'handled' => $handled, 'last' => $last, 'noticed' => $noticed];
 }
 function poll_unlock($lock)
 {
@@ -402,6 +416,131 @@ function poll_unlock($lock)
     } catch (\Throwable $e) {
     }
 }
+// ---- NEW CUSTOMER MAIL ------------------------------------------------------
+// The poll already reads every new message and decides what to do with it. A
+// message that is a REPLY becomes a chat message, and chat-lib alerts the owner
+// about that — but plain new mail from a customer was simply marked seen and
+// dropped, so the one thing arriving from outside the system that nobody had
+// been told about was an actual email. It is recorded here and surfaced as a
+// duty; the site's OWN notifications never reach this code (the caller tests
+// mailbox_is_self_notification first), which is the whole point: the owner
+// reads the same inbox the site sends from, and being paged about your own
+// "Payment received" email is worse than not being paged at all.
+//
+// PURE, so test-reply.php can drive it: merge fresh arrivals into the stored
+// list, newest first, deduped by uid, capped.
+function mailbox_new_merge($stored, $fresh, $cap = 40)
+{
+    $out = [];
+    $byUid = [];
+    foreach (array_merge(is_array($fresh) ? $fresh : [], is_array($stored) ? $stored : []) as $m) {
+        if (!is_array($m)) {
+            continue;
+        }
+        $uid = (string) ($m['uid'] ?? '');
+        if ($uid === '' || isset($byUid[$uid])) {
+            continue;
+        }
+        $byUid[$uid] = true;
+        $out[] = [
+            'uid' => $uid,
+            'from' => (string) ($m['from'] ?? ''),
+            'name' => (string) ($m['name'] ?? ''),
+            'subject' => mb_substr((string) ($m['subject'] ?? ''), 0, 120),
+            'at' => (int) ($m['at'] ?? 0),
+        ];
+    }
+    usort($out, function ($a, $z) {
+        return $z['at'] <=> $a['at'];
+    });
+    return array_slice($out, 0, max(1, (int) $cap));
+}
+
+// "Anne Betts <anne@x>" → "Anne Betts"; a bare address has no name to give and
+// says so with '', so the caller can fall back to the address rather than
+// printing a half-parsed header at the owner.
+function mailbox_sender_name($from)
+{
+    $s = trim((string) $from);
+    if (preg_match('/^"?([^"<]*?)"?\s*<[^>]+>$/', $s, $m)) {
+        return trim($m[1]);
+    }
+    return '';
+}
+
+// How the alert reads. One sentence, naming who it is from when there is one
+// sender, counting when there are several — the chbSay discipline applied to a
+// push notification.
+function mailbox_new_alert_text($fresh)
+{
+    $n = count($fresh);
+    if ($n < 1) {
+        return ['', ''];
+    }
+    $who = trim((string) ($fresh[0]['name'] ?? '')) ?: (string) ($fresh[0]['from'] ?? 'someone');
+    $title = $n === 1 ? 'New email from ' . $who : $n . ' new emails';
+    $body = $n === 1
+        ? (string) ($fresh[0]['subject'] ?? '')
+        : $who . ' and ' . ($n - 1 === 1 ? '1 other' : ($n - 1) . ' others');
+    return [$title, $body];
+}
+
+// Store the arrivals and wake the owner once for the batch. Wrapped whole: a
+// mail-read problem must never break the cron or the page that nudged the poll,
+// which is this file's standing rule.
+function mailbox_new_record($fresh)
+{
+    if (empty($fresh)) {
+        return 0;
+    }
+    try {
+        $stored = content_json('mailbox-new', []);
+        content_set_scalar('mailbox-new', mailbox_new_merge($stored, $fresh));
+    } catch (\Throwable $e) {
+        return 0; // nothing recorded → say nothing, rather than alert about a list we lost
+    }
+    try {
+        [$title, $body] = mailbox_new_alert_text($fresh);
+        if ($title !== '' && function_exists('alert_owner')) {
+            alert_owner($title, $body, [
+                'category' => 'messages',
+                // Per BATCH, not per record: several emails in one poll are one
+                // piece of news ("3 new emails"), and a later batch should stack
+                // rather than replace it.
+                'tag' => 'new-mail-' . (int) (($fresh[0]['at'] ?? 0)),
+                'url' => './?open=inbox:email',
+            ]);
+        }
+    } catch (\Throwable $e) {
+    }
+    return count($fresh);
+}
+
+// What is still WAITING: the stored arrivals minus anything the owner has since
+// opened. mailbox.php marks a message seen when it is read, so the count clears
+// itself through machinery that already exists — no "mark all read" button to
+// forget to press, and no second definition of what counts as read.
+function mailbox_new_pending()
+{
+    try {
+        $stored = content_json('mailbox-new', []);
+        if (empty($stored)) {
+            return ['count' => 0, 'items' => []];
+        }
+        $seen = mailbox_seen_uids();
+        $seenMap = array_fill_keys(is_array($seen) ? $seen : [], true);
+        $out = [];
+        foreach ($stored as $m) {
+            if (is_array($m) && !isset($seenMap[(string) ($m['uid'] ?? '')])) {
+                $out[] = $m;
+            }
+        }
+        return ['count' => count($out), 'items' => array_slice($out, 0, 5)];
+    } catch (\Throwable $e) {
+        return ['count' => 0, 'items' => []];
+    }
+}
+
 function mailbox_poll_save($processed, $error, $last)
 {
     // Keep a large watermark so a busy mailbox can't evict an already-handled

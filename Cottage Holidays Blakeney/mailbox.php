@@ -34,10 +34,11 @@ $action = $in['action'] ?? '';
 
 // ---- helpers ---------------------------------------------------------------
 
+// One definition, in db.php — mailbox_new_pending() asks the same question and
+// cannot require this routed file to do it.
 function mbx_seen_uids()
 {
-    $v = content_json('mailbox-seen', []);
-    return is_array($v['uids'] ?? null) ? $v['uids'] : [];
+    return mailbox_seen_uids();
 }
 function mbx_seen_save($uids)
 {
