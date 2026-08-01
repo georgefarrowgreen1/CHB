@@ -13035,12 +13035,12 @@ function setModalFields(f) {
     __mavOpen = false;
     const moreEl = /** @type {HTMLDetailsElement|null} */ (document.getElementById('modal-more'));
     if (moreEl) moreEl.open = false;
-    // Plan fields always open blank — blank IS the site standard, and these
-    // only render in ADD mode (a fresh booking has no plan yet).
-    const ppEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
-    if (ppEl) ppEl.value = '';
-    const pdueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
-    if (pdueEl) pdueEl.value = '';
+    // The plan opens on STANDARD with blank fields (blank IS the standard) —
+    // it only renders in ADD mode, and the Standard line quotes the LIVE site
+    // terms so the words can never drift from what the server derives.
+    const stdLine = document.getElementById('modal-plan-std-line');
+    if (stdLine) stdLine.textContent = `The site standard — ${paymentTerms.depositPct || 25}% deposit now, the balance due ${paymentTerms.balanceDays || 30} days before arrival.`;
+    try { modalPlanMode('standard'); } catch (e) {}
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
     // Clean slate: release any "move" lock and restore the payment-entry fields
     // left hidden by a previous arrived / fully-paid edit, so Add and normal edits
@@ -13159,6 +13159,26 @@ function updateModalAvailability() {
     }
     el.innerHTML = html;
     el.style.display = 'block';
+}
+
+// The plan's Standard | Custom toggle (hs-mode vocabulary). Flipping BACK to
+// Standard wipes the fields — a reverted plan must never ride the save.
+function modalPlanMode(mode) {
+    const custom = mode === 'custom';
+    const wrap = document.getElementById('modal-plan-custom');
+    if (wrap) wrap.style.display = custom ? '' : 'none';
+    const stdLine = document.getElementById('modal-plan-std-line');
+    if (stdLine) stdLine.style.display = custom ? 'none' : '';
+    const sb = document.getElementById('modal-plan-std-btn');
+    const cb = document.getElementById('modal-plan-custom-btn');
+    if (sb) { sb.classList.toggle('is-on', !custom); sb.setAttribute('aria-pressed', String(!custom)); }
+    if (cb) { cb.classList.toggle('is-on', custom); cb.setAttribute('aria-pressed', String(custom)); }
+    if (!custom) {
+        const p = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
+        if (p) p.value = '';
+        const d0 = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
+        if (d0) d0.value = '';
+    }
 }
 
 // The sticky footer's figure MIRRORS the price box's own rendered total —
@@ -13614,9 +13634,10 @@ async function saveModal() {
     if (depositAmount !== null) payload.deposit = depositAmount;
     if (paymentDate !== null) payload.payment_date = paymentDate;
     if (paymentMethod !== null) payload.payment_method = paymentMethod;
-    // Payment plan at booking time — ADD only (the fields only render there).
-    // Blank sends nothing, which IS the site standard.
-    if (mode === 'add') {
+    // Payment plan at booking time — ADD only, and only while the toggle says
+    // CUSTOM (belt and braces with modalPlanMode's wipe: the payload can never
+    // carry values the owner reverted away from). Blank sends nothing.
+    if (mode === 'add' && document.querySelector('#modal-plan-custom-btn.is-on')) {
         const planPctEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
         const planDueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
         const planPct = planPctEl ? planPctEl.value.trim() : '';
@@ -13975,7 +13996,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dateh02aug';
+    const BUILD = 'plantgl02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

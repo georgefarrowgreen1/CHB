@@ -1618,17 +1618,25 @@
                 </div>
 
                 <div id="modal-plan-group">
-                    <div class="modal-2col">
-                        <div>
-                            <label class="modal-label" for="modal-plan-pct">Deposit %</label>
-                            <input type="number" class="input-glass" id="modal-plan-pct" min="1" max="100" step="any" placeholder="Standard">
-                        </div>
-                        <div>
-                            <label class="modal-label" for="modal-plan-due">Balance due by</label>
-                            <input type="date" class="input-glass" id="modal-plan-due">
-                        </div>
+                    <label class="modal-label" id="modal-plan-label">Payment plan</label>
+                    <div class="hs-mode" id="modal-plan-seg" role="group" aria-labelledby="modal-plan-label" style="margin-bottom:10px;">
+                        <button type="button" class="hs-mode-btn is-on" id="modal-plan-std-btn" data-act="modalPlanMode" data-arg="standard" aria-pressed="true">Standard</button>
+                        <button type="button" class="hs-mode-btn" id="modal-plan-custom-btn" data-act="modalPlanMode" data-arg="custom" aria-pressed="false">Custom</button>
                     </div>
-                    <p class="modal-hint">Blank = the site standard payment plan. You can change it later from the booking&rsquo;s page.</p>
+                    <p class="modal-hint" id="modal-plan-std-line" style="margin:0 0 18px;"></p>
+                    <div id="modal-plan-custom" style="display:none;">
+                        <div class="modal-2col">
+                            <div>
+                                <label class="modal-label" for="modal-plan-pct">Deposit %</label>
+                                <input type="number" class="input-glass" id="modal-plan-pct" min="1" max="100" step="any" placeholder="e.g. 30">
+                            </div>
+                            <div>
+                                <label class="modal-label" for="modal-plan-due">Balance due by</label>
+                                <input type="date" class="input-glass" id="modal-plan-due">
+                            </div>
+                        </div>
+                        <p class="modal-hint">Leave a field blank to keep that half standard. You can change the plan later from the booking&rsquo;s page.</p>
+                    </div>
                 </div>
             </details>
 
@@ -1776,7 +1784,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=656"></script>
+    <script defer src="app.js?v=657"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
