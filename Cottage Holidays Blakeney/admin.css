@@ -4151,6 +4151,8 @@ body.cmdk-open {
     border-radius: 999px; font-size: 0.62rem; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--accent-text);
 }
+/* The standard badge is QUIET — custom stays the one that draws the eye. */
+.bhub-plan-tag.is-std { border-color: var(--glass-border); color: var(--text-muted); }
 .bhub-plan-state { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-light); white-space: nowrap; }
 .bhub-plan-ok { color: var(--ok-text); }
 .bhub-plan .bhub-actlink { border-top: 1px solid var(--glass-border); margin-top: 2px; }

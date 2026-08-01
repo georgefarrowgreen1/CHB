@@ -631,6 +631,19 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     `the deposit line quotes what the card takes, itemised (${plan0.replace(/\s+/g, ' ').trim().slice(0, 80)})`);
   ok(/£330\.00 balance by/.test(plan0), 'and the balance beside its due date — the two lines sum to the header\'s £490');
   ok(/Not asked yet/.test(plan0), 'nothing sent → the state says so, not a blank');
+  // BOTH plan species wear a badge (owner's ask): the standard plan says
+  // "default" in QUIET ink, so custom stays the one that draws the eye.
+  const stdBadge = await page.evaluate(() => {
+    const tag = document.querySelector('.bhub-plan-cap .bhub-plan-tag');
+    if (!tag) return { up: false };
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--text-muted)';
+    document.body.appendChild(probe);
+    const muted = getComputedStyle(probe).color;
+    probe.remove();
+    return { up: tag.getBoundingClientRect().height > 0, text: tag.textContent.trim(), quiet: getComputedStyle(tag).color === muted };
+  });
+  ok(stdBadge.up && stdBadge.text === 'default' && stdBadge.quiet, `a standard plan wears the quiet "default" badge (${stdBadge.text})`);
   ok(await page.evaluate(() => !document.querySelector('[data-act="sendPaymentReminder"]')),
     'no reminder button before anything has been asked for (the server would refuse it)');
   // Paid ✓ follows the FOLDED figure via gt (displayGrand): a charged deposit
@@ -730,13 +743,21 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   const planEmphasis = await page.evaluate(() => {
     const fig = document.querySelector('.bhub-plan .bhub-plan-fig');
     const tag = document.querySelector('.bhub-plan-cap .bhub-plan-tag');
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent-text)';
+    document.body.appendChild(probe);
+    const accent = getComputedStyle(probe).color;
+    probe.remove();
     return {
       figWeight: fig ? parseInt(getComputedStyle(fig).fontWeight, 10) : 0,
       tagUp: !!tag && tag.getBoundingClientRect().height > 0,
+      tagText: tag ? tag.textContent.trim() : '',
+      tagLoud: !!tag && getComputedStyle(tag).color === accent,
     };
   });
   ok(planEmphasis.figWeight >= 600, `the plan's facts carry sentence weight (${planEmphasis.figWeight})`);
-  ok(planEmphasis.tagUp, 'a custom plan announces itself with the badge, not two muted words');
+  ok(planEmphasis.tagUp && planEmphasis.tagText === 'custom' && planEmphasis.tagLoud,
+    'a custom plan announces itself with the accent badge, not two muted words');
   // The reminder: appears only once something has been asked, sends through
   // request_payment with the reminder flag, and the panel records it at once.
   await page.evaluate((ts) => { const b = findBookingById('b1'); b.balanceRequestedAt = ts; renderBookingHub(); }, d(-1) + ' 09:00:00');
