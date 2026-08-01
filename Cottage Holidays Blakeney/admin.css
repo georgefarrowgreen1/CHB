@@ -4138,12 +4138,12 @@ body.cmdk-open {
 .bhub-plan-why { color: var(--text-muted); font-size: 0.76rem; }
 .bhub-plan-state { flex: 0 0 auto; font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; }
 .bhub-plan-ok { color: var(--ok-text); }
+.bhub-plan .bhub-actlink { border-top: 1px solid var(--glass-border); margin-top: 2px; }
 .bhub-plan-auto {
     font-size: 0.78rem; color: var(--info-text);
     border-left: 3px solid color-mix(in srgb, var(--info) 55%, transparent);
     padding: 2px 0 2px 10px;
 }
-.bhub-plan .bhub-linklike { align-self: flex-start; }
 
 /* THE HUB'S ACTION HIERARCHY — one loud control, then ACTION ROWS.
    The payask band is the single call to action. The complementary actions
