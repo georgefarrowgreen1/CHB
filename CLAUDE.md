@@ -28,6 +28,17 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
      and never more than once between real pieces of work.
   4. Job LOGS are the honest oracle the status field is not: they 404 while a job is
      running and download once it is done.
+- **`test-integration.php` CAN be run locally — do it, it is the gate that bites.**
+  This container HAS MariaDB (`sudo service mariadb start`; root/root on 127.0.0.1
+  already works), so the "needs MySQL, CI runs it" line is wrong and was believed
+  for a whole PR: #963 shipped a migration that passed every other gate and failed
+  §2 in CI. Migrations in particular are ONLY exercised here.
+- **A guarded migration is a plain `ALTER TABLE ... ADD COLUMN`.** migrate.php
+  treats a duplicate-column error as already-applied. Do NOT reach for the
+  information_schema + `PREPARE`/`EXECUTE` guard: the no-op branch (`SELECT 1`)
+  leaves a result set nobody reads, and the open cursor kills the NEXT migration
+  with PDO error 2014 ("cannot execute queries while other unbuffered queries are
+  active"). Measured, and break-tested against the real database.
 - **Run the local gauntlet CONCURRENTLY**, in the background, not one suite at a time.
   It is the local run that catches things (CI has never once caught what the full local
   battery missed), and in parallel it finishes in minutes.

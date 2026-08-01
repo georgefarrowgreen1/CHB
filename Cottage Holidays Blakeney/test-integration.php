@@ -917,6 +917,44 @@ $ownId = (int) ($r['json']['id'] ?? 0);
 $own = $rootDb->query("SELECT no_dogs_at FROM bookings WHERE id = $ownId")->fetch(PDO::FETCH_ASSOC);
 it_check('an owner-added booking claims no declaration', $own && $own['no_dogs_at'] === null, json_encode($own));
 
+// ---- 17. Reading an enquiry stops it notifying ----------------------------
+// An enquiry stays PENDING until it is approved or declined, so every red count
+// went on saying "1" with the thing open on screen (reported with a
+// screenshot). Opening it stamps seen_at; the counts read that.
+echo "\n== 17. An opened enquiry stops notifying ==\n";
+$cols = $rootDb->query("SHOW COLUMNS FROM enquiries LIKE 'seen_at'")->fetchAll();
+it_check('the seen_at column exists after schema + migrations on a fresh DB', count($cols) === 1);
+$seenBody = [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Read Me',
+    'check_in' => $dd(620), 'check_out' => $dd(624), 'adults' => 2, 'children' => 0,
+    'email' => 'readme@example.com', 'phone' => '07700900127', 'message' => 'Hello?',
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1, 'no_dogs' => 1,
+];
+$r = http($guest, 'POST', '/enquiries.php', $seenBody);
+it_check('an enquiry arrives', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$r = http($admin, 'GET', '/enquiries.php');
+$mine = array_values(array_filter($r['json']['enquiries'] ?? [], fn($e) => ($e['name'] ?? '') === 'Read Me'));
+$seenId = (int) ($mine[0]['id'] ?? 0);
+it_check('…and reaches the owner UNREAD', $seenId > 0 && empty($mine[0]['seen_at']), json_encode($mine[0]['seen_at'] ?? null));
+// A guest must never be able to silence the owner's own inbox.
+$r = http($guest, 'POST', '/enquiries.php', ['action' => 'seen', 'id' => $seenId]);
+it_check('a GUEST cannot mark it read', $r['code'] === 401 || $r['code'] === 403, $r['code'] . ' ' . substr($r['raw'], 0, 120));
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'seen', 'id' => $seenId]);
+it_check('the owner opening it stamps seen_at', $r['code'] === 200 && !empty($r['json']['seen_at']), $r['raw']);
+$first = (string) ($r['json']['seen_at'] ?? '');
+it_check('…as a real timestamp', preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $first) === 1, $first);
+// THE FIRST VIEW IS THE ONE RECORDED. Re-opening it next week must not reset how
+// long it has been sitting there — that age is what the duty escalates on.
+$rootDb->exec("UPDATE enquiries SET seen_at = '2020-01-01 09:00:00' WHERE id = $seenId");
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'seen', 'id' => $seenId]);
+it_check('re-opening it does NOT reset the stamp', ($r['json']['seen_at'] ?? '') === '2020-01-01 09:00:00', $r['raw']);
+// The owner's list has to carry it, or the client cannot count on it.
+$r = http($admin, 'GET', '/enquiries.php');
+$mine = array_values(array_filter($r['json']['enquiries'] ?? [], fn($e) => ($e['name'] ?? '') === 'Read Me'));
+it_check('the owner\'s list carries seen_at', ($mine[0]['seen_at'] ?? '') === '2020-01-01 09:00:00', json_encode($mine[0]['seen_at'] ?? null));
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'seen', 'id' => 0]);
+it_check('a missing id is refused, not silently accepted', $r['code'] === 400, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

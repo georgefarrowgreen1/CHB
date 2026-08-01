@@ -9114,7 +9114,7 @@ function inboxSubline() {
     const el = document.getElementById('inbox-subline');
     if (!el) return;
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
-    const enq = typeof enquiries !== 'undefined' ? enquiries.length : chip('ifold-count-enq');
+    const enq = typeof unseenEnquiries === 'function' ? unseenEnquiries() : chip('ifold-count-enq');
     const msg = chip('ifold-count-msg');
     const mbx = chip('ifold-count-mbx');
     const parts = [];
@@ -15790,6 +15790,12 @@ function chbDuties() {
                 ? Math.max(0, Math.floor((Date.now() - new Date(q.receivedAt.replace(' ', 'T')).getTime()) / dayMs))
                 : 0;
             const age = ageDays <= 0 ? 'new today' : ageDays === 1 ? 'waiting a day' : `waiting ${ageDays} days`;
+            // READ AND NOT YET STALE → NOT A DUTY. The duty is where the red
+            // count comes from once the back office has loaded, so it has to
+            // agree with the pips. NOT dropped for good: an enquiry read and
+            // left is how a booking is lost, so at the SAME two days that
+            // already turns it red it comes back, read or not.
+            if (q.seenAt && ageDays < 2) return;
             out.push({
                 kind: 'enquiry', sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
                 label: `${q.name || 'A guest'}’s enquiry — ${age}`,
@@ -20017,6 +20023,7 @@ async function openEnquiryHub(enqId) {
     }
     __enqHubId = enqId;
     try { chbStampRecent('enquiry', enqId, e && e.name); } catch (er) {} // cross-page memory
+    enquirySeen(e);
     const content = document.getElementById('enquiry-hub-content');
     const prev = document.querySelector('.page-view.active');
     if (inboxSplitWide()) {
@@ -20037,6 +20044,19 @@ async function openEnquiryHub(enqId) {
         window.scrollTo({ top: 0 });
     }
     renderEnquiryHub();
+}
+// OPENING IT IS READING IT. The local flag is set BEFORE the request so the badge
+// answers the TAP, not the round trip; the server stamp (COALESCE, first view
+// wins) is what holds it across a reload and on the other device. A failed stamp
+// stays silent — the worst case is the count coming back, where it already was.
+function enquirySeen(e) {
+    if (!e || e.seenAt || !e.dbId) return;
+    e.seenAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    try { refreshInboxBadge(); } catch (er) {}
+    try { inboxSubline(); } catch (er) {}
+    apiPost('enquiries.php', { action: 'seen', id: e.dbId })
+        .then((r) => { if (r && r.seen_at) e.seenAt = r.seen_at; })
+        .catch(() => {});
 }
 function enquiryHubBack() {
     openInbox();

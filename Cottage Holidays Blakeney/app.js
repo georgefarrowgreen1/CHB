@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 396;
+const ADMIN_BUNDLE_V = 397;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1338,6 +1338,7 @@ function mapEnquiryFromApi(row) {
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
         noDogsAt: row.no_dogs_at || '',
+        seenAt: row.seen_at || '',
         received: (row.created_at || '').split(' ')[0] || '',
         receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
@@ -2433,11 +2434,19 @@ async function maybeAccountPreview() {
     try { await renderGuestBookings(); } catch (e) {}
 }
 
+// HOW MANY ENQUIRIES ARE STILL NEW — the one definition every red count reads.
+// One stays PENDING until approved or declined, so counting pending ones left the
+// pips saying "1" with the enquiry open on screen (reported). Opening it stamps
+// seen_at server-side; from then on it is a to-do, not news.
+function unseenEnquiries() {
+    if (!Array.isArray(enquiries)) return 0;
+    return enquiries.filter(function (e) { return !(e && e.seenAt); }).length;
+}
 // Keep the dock's pending-enquiries count badge live.
 async function refreshOwnerHomeBadges() {
     try {
         await loadData();
-        const pending = Array.isArray(enquiries) ? enquiries.length : 0;
+        const pending = unseenEnquiries();
         const dockBadge = document.getElementById('dock-badge-enquiries');
         if (dockBadge) {
             dockBadge.textContent = pending;
@@ -12638,7 +12647,7 @@ function enquireSkipAccount() {
 //  INBOX
 // ===================================================================
 function refreshInboxBadge() {
-    const n = enquiries.length;
+    const n = unseenEnquiries();
     const badge = document.getElementById('inbox-badge');
     if (badge) {
         badge.innerText = n;
@@ -14007,7 +14016,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'newmail1';
+    const BUILD = 'enqseen1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
