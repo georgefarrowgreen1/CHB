@@ -1488,20 +1488,18 @@
 
     <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="glass-panel modal-box">
-            <h3 id="modal-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 20px;">Edit Booking</h3>
+            <h3 id="modal-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 10px;">Edit Booking</h3>
+            <button type="button" class="modal-x" data-act="closeModal" aria-label="Close">✕</button>
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
-            <label class="modal-label" for="modal-property">Property</label>
-            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
-                <option value="21a">21A Westgate</option>
-                <option value="jollyboat">Jollyboat</option>
-                <option value="pimpernel">Pimpernel</option>
-                <option value="__new__">➕ New property…</option>
-            </select>
-            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
-
-            <label class="modal-label" for="modal-name">Guest Name</label>
+            <!-- Sectioned form: Guest | Stay side by side ≥901px, Money + Notes
+                 full-width beneath. Every field id and handler is unchanged —
+                 only the grouping is new. -->
+            <div class="modal-cols">
+            <div class="modal-col">
+            <div class="modal-sec">Guest</div>
+            <label class="modal-label" for="modal-name">Name</label>
             <div class="modal-name-wrap">
                 <input type="text" class="input-glass" id="modal-name" autocomplete="off" data-act-input="modalNameSuggest" data-pass="value">
                 <!-- Typeahead: past guests matching what you're typing (repeat guests are one tap). -->
@@ -1523,6 +1521,18 @@
             <textarea class="input-glass" id="modal-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
+            </div>
+
+            <div class="modal-col">
+            <div class="modal-sec">Stay</div>
+            <label class="modal-label" for="modal-property">Property</label>
+            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
+                <option value="21a">21A Westgate</option>
+                <option value="jollyboat">Jollyboat</option>
+                <option value="pimpernel">Pimpernel</option>
+                <option value="__new__">➕ New property…</option>
+            </select>
+            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
 
             <!-- Same clickable glass calendar the customer site uses (admin mode:
                  taken nights shaded from loaded data, everything still pickable —
@@ -1533,18 +1543,9 @@
                 <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
             </button>
             <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
-            <div class="modal-2col">
-                <div>
-                    <label class="modal-label" for="modal-checkin-time">In Time</label>
-                    <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
-                </div>
-                <div>
-                    <label class="modal-label" for="modal-checkout-time">Out Time</label>
-                    <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
-                </div>
-            </div>
-            <!-- Live availability for the chosen cottage: booked/blocked days are
-                 visible BEFORE saving, so doomed dates never get typed in. -->
+            <!-- Live availability for the chosen cottage: ONE summary line
+                 (free / overlaps, next booking) with the six-week grid behind
+                 its Calendar toggle — visible BEFORE saving either way. -->
             <div id="modal-availability" style="display:none;"></div>
 
             <div class="modal-2col">
@@ -1557,7 +1558,10 @@
                     <input type="number" class="input-glass" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
                 </div>
             </div>
+            </div>
+            </div>
 
+            <div class="modal-sec" id="modal-sec-money">Money</div>
             <div class="price-box" id="modal-price-box" style="margin-top: 5px;">
                 <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Enter dates to see the total.</p>
             </div>
@@ -1586,39 +1590,63 @@
                 </div>
             </div>
 
-            <div id="modal-deposit-group">
-                <label class="modal-label" for="modal-damages-deposit">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
-                <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" data-act-input="updateModalPrice">
-            </div>
-
-            <div id="modal-override-group">
-                <label class="modal-label" for="modal-price-override">Override total price (£) — optional</label>
-                <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" data-act-input="updateModalPrice">
-                <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the standard prices from Manage &rarr; Preferences.</p>
-            </div>
-
-            <div id="modal-plan-group">
-                <div class="modal-2col">
+            <!-- The rarely-touched controls fold behind ONE row: times, deposit,
+                 override, plan — short labels, quiet hints (the gdf-hint rule). -->
+            <details class="modal-more" id="modal-more">
+                <summary>More options — times, deposit, price override, payment plan</summary>
+                <div class="modal-2col" style="margin-top:12px;">
                     <div>
-                        <label class="modal-label" for="modal-plan-pct">Deposit % — optional</label>
-                        <input type="number" class="input-glass" id="modal-plan-pct" min="1" max="100" step="any" placeholder="Standard">
+                        <label class="modal-label" for="modal-checkin-time">Check-in time</label>
+                        <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
                     </div>
                     <div>
-                        <label class="modal-label" for="modal-plan-due">Balance due by — optional</label>
-                        <input type="date" class="input-glass" id="modal-plan-due">
+                        <label class="modal-label" for="modal-checkout-time">Check-out time</label>
+                        <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
                     </div>
                 </div>
-                <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Blank = the site standard payment plan. You can change it later from the booking&rsquo;s page.</p>
-            </div>
 
+                <div id="modal-deposit-group">
+                    <label class="modal-label" for="modal-damages-deposit">Refundable damages deposit (£)</label>
+                    <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" data-act-input="updateModalPrice">
+                    <p class="modal-hint">Charged with the first payment, refunded after the stay &mdash; not income.</p>
+                </div>
+
+                <div id="modal-override-group">
+                    <label class="modal-label" for="modal-price-override">Override total price (£)</label>
+                    <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" data-act-input="updateModalPrice">
+                    <p class="modal-hint">A custom total for this booking only &mdash; the public site keeps the standard prices.</p>
+                </div>
+
+                <div id="modal-plan-group">
+                    <div class="modal-2col">
+                        <div>
+                            <label class="modal-label" for="modal-plan-pct">Deposit %</label>
+                            <input type="number" class="input-glass" id="modal-plan-pct" min="1" max="100" step="any" placeholder="Standard">
+                        </div>
+                        <div>
+                            <label class="modal-label" for="modal-plan-due">Balance due by</label>
+                            <input type="date" class="input-glass" id="modal-plan-due">
+                        </div>
+                    </div>
+                    <p class="modal-hint">Blank = the site standard payment plan. You can change it later from the booking&rsquo;s page.</p>
+                </div>
+            </details>
+
+            <div class="modal-sec">Notes</div>
             <label class="modal-label" for="modal-notes">Staff Notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
             <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
 
-            <div style="display: flex; gap: 12px; margin-top: 10px;">
-                <button class="btn-glass" style="flex: 1;" id="modal-save-btn" data-act="saveModal">Save</button>
-                <button class="toggle-btn" style="flex: 1;" data-act="closeModal">Cancel</button>
+            <!-- Sticky: the live total and Save never leave the screen. The
+                 figure MIRRORS the price box's own total (modalFootSync reads
+                 it back), so the two can never quote different numbers. -->
+            <div class="modal-foot">
+                <div class="modal-foot-total" id="modal-foot-total">
+                    <span class="modal-foot-cap" id="modal-foot-cap">Total</span>
+                    <span class="modal-foot-fig" id="modal-foot-fig">&mdash;</span>
+                </div>
+                <button class="btn-glass" id="modal-save-btn" data-act="saveModal">Save</button>
             </div>
         </div>
     </div>
@@ -1746,7 +1774,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=653"></script>
+    <script defer src="app.js?v=654"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

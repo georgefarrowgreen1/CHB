@@ -884,15 +884,22 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.waitForTimeout(300);
   const g1 = await page.evaluate(() => ({
     shown: (document.getElementById('modal-availability') || {}).style.display !== 'none',
-    booked: document.querySelectorAll('#modal-availability .mav-day.is-booked').length,
-    external: document.querySelectorAll('#modal-availability .mav-day.is-external').length,
+    strip: (document.querySelector('#modal-availability .mav-strip-txt') || {}).textContent || '',
+    clashDot: !!document.querySelector('#modal-availability .mav-strip-dot.is-clash'),
     clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
   }));
-  // ≥2 not ≥3: the strip starts on the MONDAY of check-in week (by design), so
+  // The everyday face is the SUMMARY STRIP now — the grid folds behind its
+  // Calendar toggle (ui-test-addbooking owns the strip's own contract).
+  ok(g1.shown && /^Overlaps/.test(g1.strip) && g1.clashDot, `strip leads with the overlap (${g1.strip.slice(0, 40)})`);
+  ok(/overlap/.test(g1.clash) && /Walk-in Guest/.test(g1.clash), `clash note names the conflict (${g1.clash.trim().slice(0, 60)})`);
+  await page.evaluate(() => mavToggle());
+  await page.waitForTimeout(200);
+  // ≥2 not ≥3: the grid starts on the MONDAY of check-in week (by design), so
   // when d(31) falls on a Monday the booking's first night d(30) sits outside
   // the window — only the two overlapped nights are guaranteed visible.
-  ok(g1.shown && g1.booked >= 2, `strip visible with booked days shaded (${g1.booked})`);
-  ok(/overlap/.test(g1.clash) && /Walk-in Guest/.test(g1.clash), `clash note names the conflict (${g1.clash.trim().slice(0, 60)})`);
+  const g1b = await page.evaluate(() => document.querySelectorAll('#modal-availability .mav-day.is-booked').length);
+  ok(g1b >= 2, `the Calendar toggle opens the grid with booked days shaded (${g1b})`);
+  await page.evaluate(() => mavToggle());
   await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(60)); // free dates
   await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(63));
   await page.waitForTimeout(300);
@@ -902,11 +909,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(49));
   await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(51));
   await page.waitForTimeout(300);
+  await page.evaluate(() => mavToggle()); // the grid folds by default now
+  await page.waitForTimeout(200);
   const g3 = await page.evaluate(() => ({
     external: document.querySelectorAll('#modal-availability .mav-day.is-external').length,
     clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
   }));
   ok(g3.external >= 3 && /airbnb import/.test(g3.clash), `imported block shaded + named (${g3.external} days)`);
+  await page.evaluate(() => mavToggle());
   await page.evaluate(() => closeModal());
   // Editing booking 1: its own dates must NOT self-clash.
   await page.evaluate(() => window.openEditBooking('b1'));

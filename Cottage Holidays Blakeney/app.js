@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 390;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 136;
+const ADMIN_CSS_V = 137;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -12748,6 +12748,9 @@ function applyModalPropertyMode() {
     // editor has no booking to plan for yet.
     const modeEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-mode'));
     setDisp('modal-plan-group', !custom && !!modeEl && modeEl.value === 'add');
+    // Custom-property mode hides the price box, so the footer's mirror of it
+    // must stand down too (Save relabels to Next — the button itself stays).
+    setDisp('modal-foot-total', !custom);
     const btn = document.getElementById('modal-save-btn');
     if (btn) btn.textContent = custom ? 'Next →' : 'Save';
 }
@@ -13027,6 +13030,11 @@ function setModalFields(f) {
                   : '';
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
+    // A fresh open starts with the availability calendar folded to its strip
+    // and the More-options row closed — the common case fits one screen.
+    __mavOpen = false;
+    const moreEl = /** @type {HTMLDetailsElement|null} */ (document.getElementById('modal-more'));
+    if (moreEl) moreEl.open = false;
     // Plan fields always open blank — blank IS the site standard, and these
     // only render in ADD mode (a fresh booking has no plan yet).
     const ppEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
@@ -13073,6 +13081,14 @@ function modalDayState(c, d) {
 // bookings) and imported platform blocks (Airbnb/Vrbo) marked, so a clash is
 // visible BEFORE saving instead of only as the server's warning afterwards.
 // Display-only, from data already loaded — the server stays the authority.
+// The everyday face is ONE summary line (free / overlaps, next booking) —
+// the grid answered a question already settled once dates were chosen, and
+// cost ~350px of every open. It stays one tap away behind the Calendar toggle.
+let __mavOpen = false;
+function mavToggle() {
+    __mavOpen = !__mavOpen;
+    updateModalAvailability();
+}
 function updateModalAvailability() {
     const el = document.getElementById('modal-availability');
     if (!el) return;
@@ -13087,39 +13103,85 @@ function updateModalAvailability() {
     const ci = document.getElementById('modal-checkin').value;
     const co = document.getElementById('modal-checkout').value;
     const dayState = (d) => modalDayState(conflicts, d);
-    // Grid: 6 weeks starting on the Monday of the week holding check-in (or today).
-    const anchorIso = /^\d{4}-\d{2}-\d{2}$/.test(ci) ? ci : todayDashed();
-    const anchor = new Date(anchorIso + 'T00:00:00Z');
-    const start = new Date(anchor.getTime() - ((anchor.getUTCDay() + 6) % 7) * 86400000);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    let cells = '';
+    const hasDates = /^\d{4}-\d{2}-\d{2}$/.test(ci) && /^\d{4}-\d{2}-\d{2}$/.test(co) && co > ci;
+    // Clash detection walks the WHOLE chosen stay, not just the grid's six-week
+    // window — a long booking's far end must not slip past the summary line.
     let clashWith = null;
-    for (let i = 0; i < 42; i++) {
-        const dt = new Date(start.getTime() + i * 86400000);
-        const iso = dt.toISOString().slice(0, 10);
-        const st = dayState(iso);
-        const inRange = ci && co && iso >= ci && iso < co;
-        if (inRange && st && !clashWith) clashWith = st.who;
-        const cls = ['mav-day'];
-        if (st) cls.push(st.kind === 'booked' ? 'is-booked' : 'is-external');
-        if (inRange) cls.push('is-sel');
-        // Show the month on the 1st (and the first cell) so the strip stays readable.
-        const label = dt.getUTCDate() === 1 || i === 0 ? `${dt.getUTCDate()} ${months[dt.getUTCMonth()]}` : String(dt.getUTCDate());
-        cells += `<span class="${cls.join(' ')}" title="${iso}${st ? ' — ' + escapeHtml(st.who) : ' — free'}">${label}</span>`;
+    if (hasDates) {
+        for (let d0 = ci, n = 0; d0 < co && n < 400; d0 = ukShiftDays(d0, 1), n++) {
+            const st = dayState(d0);
+            if (st) { clashWith = st.who; break; }
+        }
     }
-    const dows = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => `<span class="mav-dow">${d}</span>`).join('');
-    el.innerHTML = `
+    // The soonest booking/import starting on or after checkout — the fact that
+    // tells the owner how much room this stay leaves.
+    const nextStart = conflicts.bookings.map((b) => b.checkIn)
+        .concat(conflicts.blocks.map((b) => b.checkIn))
+        .filter((d0) => d0 && d0 >= (hasDates ? co : todayDashed()))
+        .sort()[0] || null;
+    const stripTxt = !hasDates
+        ? 'Pick the dates to check availability'
+        : (clashWith ? `Overlaps ${clashWith}` : `Free ${fmtStayRange(ci, co)}`)
+          + (nextStart ? ` · next booking starts ${fmtDate(nextStart)}` : '');
+    let html = `
+        <div class="mav-strip">
+            ${hasDates ? `<span class="mav-strip-dot${clashWith ? ' is-clash' : ''}" aria-hidden="true"></span>` : ''}
+            <span class="mav-strip-txt">${escapeHtml(stripTxt)}</span>
+            <button type="button" class="mav-toggle" data-act="mavToggle">${__mavOpen ? 'Hide calendar' : 'Calendar'}</button>
+        </div>
+        ${clashWith ? `<div class="mav-clash">These dates overlap ${escapeHtml(clashWith)} — you'll be asked to confirm at save.</div>` : ''}`;
+    if (__mavOpen) {
+        // Grid: 6 weeks starting on the Monday of the week holding check-in (or today).
+        const anchorIso = hasDates ? ci : todayDashed();
+        const anchor = new Date(anchorIso + 'T00:00:00Z');
+        const start = new Date(anchor.getTime() - ((anchor.getUTCDay() + 6) % 7) * 86400000);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        let cells = '';
+        for (let i = 0; i < 42; i++) {
+            const dt = new Date(start.getTime() + i * 86400000);
+            const iso = dt.toISOString().slice(0, 10);
+            const st = dayState(iso);
+            const inRange = ci && co && iso >= ci && iso < co;
+            const cls = ['mav-day'];
+            if (st) cls.push(st.kind === 'booked' ? 'is-booked' : 'is-external');
+            if (inRange) cls.push('is-sel');
+            // Show the month on the 1st (and the first cell) so the strip stays readable.
+            const label = dt.getUTCDate() === 1 || i === 0 ? `${dt.getUTCDate()} ${months[dt.getUTCMonth()]}` : String(dt.getUTCDate());
+            cells += `<span class="${cls.join(' ')}" title="${iso}${st ? ' — ' + escapeHtml(st.who) : ' — free'}">${label}</span>`;
+        }
+        const dows = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => `<span class="mav-dow">${d}</span>`).join('');
+        html += `
         <div class="mav-head">
             <span class="modal-label" style="margin:0;">Availability — ${escapeHtml(propertyMeta[propKey].name || propKey)}</span>
             <span class="mav-legend"><span class="mav-key is-booked"></span>booked<span class="mav-key is-external"></span>imported<span class="mav-key is-sel"></span>this stay</span>
         </div>
-        <div class="mav-grid">${dows}${cells}</div>
-        ${clashWith ? `<div class="mav-clash">These dates overlap ${escapeHtml(clashWith)} — you'll be asked to confirm at save.</div>` : ''}`;
+        <div class="mav-grid">${dows}${cells}</div>`;
+    }
+    el.innerHTML = html;
     el.style.display = 'block';
+}
+
+// The sticky footer's figure MIRRORS the price box's own rendered total —
+// read back, never recomputed, so the two surfaces can't quote different
+// numbers (the §C3 discipline). No total row → an honest dash.
+function modalFootSync() {
+    const fig = document.getElementById('modal-foot-fig');
+    if (!fig) return;
+    const amt = document.querySelector('#modal-price-box .price-row.total .price-amount');
+    fig.textContent = amt ? amt.textContent : '—';
+    const cap = document.getElementById('modal-foot-cap');
+    const lbl = document.querySelector('#modal-price-box .price-row.total span:first-child');
+    if (cap) cap.textContent = lbl ? lbl.textContent : 'Total';
 }
 
 // Live total inside the Add/Edit modal
 function updateModalPrice() {
+    updateModalPriceCore();
+    try {
+        modalFootSync();
+    } catch (e) {}
+}
+function updateModalPriceCore() {
     try {
         updateModalAvailability();
     } catch (e) {}
@@ -13913,7 +13975,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'planadd02aug';
+    const BUILD = 'addform02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
