@@ -117,6 +117,10 @@ if ($action === 'summary') {
         'total' => $total,
         'alreadyPaid' => $alreadyPaid,
         'balance' => round(max(0, $total - $alreadyPaid), 2),
+        // WHEN it falls due, from the booking's own plan (custom date wins,
+        // else check-in minus the window) — the screen said how much and
+        // never when.
+        'balanceDueDate' => booking_balance_due_date($b),
         // The EFFECTIVE share, derived from the booking's own deposit figure —
         // under a per-booking plan the global pct is not what this screen is
         // charging, and the itemised sub-line ("£267.00 deposit (30%)") must

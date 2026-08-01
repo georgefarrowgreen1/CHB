@@ -3899,11 +3899,14 @@ async function openPayView(token, bookingId, kind) {
                 : escapeHtml(s.propName || '') + ' · ';
             propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)} · ${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
         }
+        // The headline says WHEN, from the booking's own payment plan — once
+        // the date has passed it stays plain "Balance due" (it is due now).
+        const dueBy = s.kind === 'balance' && s.balanceDueDate && String(s.balanceDueDate) >= todayDashed() ? ` by ${fmtDate(s.balanceDueDate)}` : '';
         document.getElementById('pay-kind-label').textContent =
             s.kind === 'hold'
                 ? 'Refundable security hold'
                 : s.kind === 'balance'
-                  ? 'Balance due'
+                  ? `Balance due${dueBy}`
                   : 'Deposit due';
         document.getElementById('pay-amount').textContent = gbp(payTotal);
         // The deposit ALREADY charged folds into BOTH the total and the paid
@@ -13889,7 +13892,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dateprefill2aug';
+    const BUILD = 'duewhen02aug';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
