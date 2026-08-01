@@ -1,10 +1,17 @@
--- When the owner OPENED this enquiry. An enquiry stays pending until it is
--- approved or declined, so the red count went on nagging about one that had been
--- read — reported: the pips still said 1 with the enquiry on screen. Opening it
--- stamps this, and the NOTIFICATION counts (dock pips, folder chip, app badge)
--- drop; the duty survives, because reading an enquiry is not answering it.
--- Guarded like every other migration: safe to run twice.
-SET @c := (SELECT COUNT(*) FROM information_schema.COLUMNS
-           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'enquiries' AND COLUMN_NAME = 'seen_at');
-SET @s := IF(@c = 0, 'ALTER TABLE enquiries ADD COLUMN seen_at DATETIME NULL', 'SELECT 1');
-PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- migration-104-enquiry-seen.sql — when the OWNER opened this enquiry.
+--
+-- An enquiry stays pending until it is approved or declined, so every red count
+-- went on saying "1" with the thing open on screen (reported with a screenshot).
+-- Opening it stamps this, and the NOTIFICATION counts — the dock pips, the
+-- folder chip, the app badge — read UNSEEN instead of pending. The duty is a
+-- separate judgement: reading an enquiry is not answering it, so it comes back
+-- at the two-day mark whether it was read or not.
+--
+-- Idempotent the way the others are: plain ADD COLUMN, with migrate.php treating
+-- a duplicate-column error as already-applied (MySQL 8 has no ADD COLUMN IF NOT
+-- EXISTS). Do NOT reach for the information_schema + PREPARE/EXECUTE guard —
+-- tried here first and it broke the NEXT migration with PDO error 2014, "cannot
+-- execute queries while other unbuffered queries are active": EXECUTE of the
+-- no-op branch (`SELECT 1`) leaves a result set nobody reads, and the cursor is
+-- still open when the following file runs. Caught by test-integration §2.
+ALTER TABLE enquiries ADD COLUMN seen_at DATETIME NULL;
