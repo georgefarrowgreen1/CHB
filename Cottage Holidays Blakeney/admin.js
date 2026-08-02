@@ -3938,12 +3938,22 @@ function cmdkIntent(q) {
         return bits.join(' · ');
     };
     // A one-line money + deposit summary for a booking, used by the named-guest hit.
+    // STILL TO COLLECT IS `bookingDue`, NOT `ps.balance` — see bookingDue(). These
+    // four answers were the last on the rental frame, so searching a name read
+    // "£700.00 still due" while the hub, Today and the owed answer in the SAME
+    // window all said £750.00 (measured; search-test §42). `ps` stays for the
+    // RENTAL questions ("who's put a deposit down"). Settled is tested as chbDuties
+    // tests it, so this can't newly claim pence due on a booking Today calls done.
     const moneyState = (pk, b) => {
         const ps = paymentSummary(pk, b);
+        let gt = null;
+        try { gt = bookingDue(pk, b); } catch (e) { chbSwallow(e, 'moneyState-due'); }
+        const due = gt || ps;
         const st = b.holdStatus || 'none';
-        const money = ps.fullyPaid ? 'paid in full' : ps.balance > 0.5 ? `${gbp(ps.balance)} still due` : ps.deposit > 0.5 ? `${gbp(ps.deposit)} paid` : 'nothing paid yet';
+        const settled = due.fullyPaid || due.balance <= 0.5;
+        const money = settled ? (due.total > 0.5 ? 'paid in full' : 'nothing to pay') : `${gbp(due.balance)} still due`;
         const dep = st === 'returned' ? 'deposit refunded' : st === 'kept' ? 'deposit kept for damage' : st === 'charged' ? 'deposit not yet refunded' : '';
-        return { ps, st, money, dep };
+        return { ps, gt: due, st, money, dep };
     };
 
     // 0a) Entity context — the record you're LOOKING AT (an open hub) or the one
@@ -3981,10 +3991,13 @@ function cmdkIntent(q) {
                     return [ans(`${ent.name} ${b.checkIn > today ? 'arrives' : 'arrived'} ${fmtDate(b.checkIn)}`, `${b.checkInTime ? 'Checks in ' + b.checkInTime + ' · ' : ''}${pk ? propName(pk) : 'This booking'}`, go, [calChip(b.checkIn)])];
                 }
                 if (/\bowe|balance|how much|paid\b/.test(q)) {
-                    const ps = paymentSummary(pk, b);
+                    // The record's OWN answer, asked while standing on its hub —
+                    // so the worst of the four to quote a different figure from.
+                    const m = moneyState(pk, b);
+                    const settled = m.gt.fullyPaid || m.gt.balance <= 0.5;
                     return [ans(
-                        ps.fullyPaid ? `${ent.name} is paid in full — ${gbp(ps.total)}` : `${ent.name} owes ${gbp(ps.balance)} of ${gbp(ps.total)}`,
-                        ps.fullyPaid ? 'Nothing outstanding' : `${gbp(ps.deposit)} paid so far`,
+                        settled ? `${ent.name} is paid in full — ${gbp(m.gt.total)}` : `${ent.name} owes ${gbp(m.gt.balance)} of ${gbp(m.gt.total)}`,
+                        settled ? 'Nothing outstanding' : `${gbp(m.gt.paid)} paid so far`,
                         go,
                     )];
                 }
@@ -4086,10 +4099,10 @@ function cmdkIntent(q) {
             // stay), not the arrival date alone.
             if (/\bpay|paid|owe|balance|deposit|refund/.test(q)) {
                 const m = moneyState(target.pk, target.b);
-                const head = m.ps.fullyPaid
+                const head = (m.gt.fullyPaid || m.gt.balance <= 0.5)
                     ? ans(`${nm} is paid in full — nothing left to collect`, `${m.dep ? m.dep + ' · ' : ''}${propName(target.pk)}`, () => { closeCmdK(); openBookingHub(b.id); })
                     : ans(
-                          `${nm} owes ${gbp(m.ps.balance)} — due before the stay`,
+                          `${nm} owes ${gbp(m.gt.balance)} — due before the stay`,
                           `${b.checkIn ? (b.checkIn < today ? 'Stay already started' : `Arrives ${nice(b.checkIn)} (${rel(b.checkIn)})`) + ' · ' : ''}${propName(target.pk)}`,
                           () => { closeCmdK(); openBookingHub(b.id); },
                           b.checkIn ? [calChip(b.checkIn)] : [],
@@ -4897,7 +4910,13 @@ function cmdkIntent(q) {
             const dHead = !n ? nlgPick('dep0' + q, ['No deposits down yet.', 'Nobody’s put a deposit down so far.'])
                 : nlgPick('depN' + q, [`${n} guest${n === 1 ? ' has' : 's have'} a deposit down.`, `${n} guest${n === 1 ? '' : 's'} paid a deposit so far.`]);
             const head = ans(dHead, n ? 'Deposits received — tap to see them' : 'Nothing taken', () => { closeCmdK(); openBookings(); });
-            return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.deposit)} paid${x.ps.fullyPaid ? ' · in full' : ' · ' + gbp(x.ps.balance) + ' due'} · ${propName(x.pk)}`)));
+            // The QUESTION is rental, so the leading figure stays ps.deposit — but
+            // the trailing "£X due" answers a different one and takes the due frame.
+            return [head].concat(rows.map((x) => {
+                const d = moneyState(x.pk, x.b);
+                const done = d.gt.fullyPaid || d.gt.balance <= 0.5;
+                return bk(x.pk, x.b, `${gbp(x.ps.deposit)} paid${done ? ' · in full' : ' · ' + gbp(d.gt.balance) + ' due'} · ${propName(x.pk)}`);
+            }));
         }
         // "who's paid / paid in full / settled" — fully-paid bookings.
         if ((/\bpaid\b|paid in full|fully paid|settled|paid up/.test(q)) && !negative) {
