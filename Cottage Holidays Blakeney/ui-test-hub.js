@@ -945,8 +945,12 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(/Payment plan — Walk-in Guest/.test(dlgShape.title) && dlgShape.titleShown && dlgShape.named === 'glass-dialog-title',
     `the dialog is titled, and the title is its accessible name (${dlgShape.title})`);
-  ok(dlgShape.hints.length === 2 && /site standard \(25% of the £440\.00 rental \+ the £50\.00 refundable deposit/.test(dlgShape.hints[0]) && /Showing the standard date/.test(dlgShape.hints[1]),
+  ok(dlgShape.hints.length === 3 && /site standard \(25% of the £440\.00 rental \+ the £50\.00 refundable deposit/.test(dlgShape.hints[0]) && /Showing the standard date/.test(dlgShape.hints[1]),
     'each field explains itself — the date hint says the shown date IS the standard');
+  // The third field is the optional preset name. Blank by default, because a
+  // plan is usually for ONE booking and naming it is the exception.
+  ok(/reuse it on other bookings/i.test(dlgShape.hints[2] || ''),
+    `…including the optional save-as field (${dlgShape.hints[2]})`);
   ok(dlgShape.okSays === 'Save plan', `the OK button says what it does (${dlgShape.okSays})`);
   // THE DATE FIELD IS NEVER AN EMPTY PILL: it opens showing the date that
   // actually applies (an empty date input renders as an unlabelled blank on
@@ -987,6 +991,39 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(/£182\.00 deposit/.test(plan1) && /30%/.test(plan1),
     `the panel re-renders the custom deposit (£182 = 30% of £440 + the £50 the card carries) (${plan1.replace(/\s+/g, ' ').trim().slice(0, 60)})`);
   ok(/standard would be/.test(plan1), 'and names the standard date the custom one replaces');
+
+  // ---- C3b. SAVED PLANS. Every custom plan was retyped from scratch. A preset
+  // stores the PERCENTAGE and a DAYS-BEFORE-ARRIVAL offset, never the absolute
+  // date — the date is a fact about one booking, the interval is the policy.
+  const savedName = 'Peak season';
+  await page.evaluate(() => document.querySelector('.bhub-plan [data-act="editPaymentPlan"]').click());
+  await page.waitForTimeout(300);
+  await page.evaluate((nm) => {
+    document.querySelector('#glass-dialog-fields [name="dep"], #gdf-dep').value = '40';
+    const s = document.querySelector('#glass-dialog-fields [name="save"], #gdf-save');
+    if (s) s.value = nm;
+  }, savedName);
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(300);
+  const savedList = await page.evaluate(() => (typeof chbPlanPresets === 'function' ? chbPlanPresets() : []));
+  ok(savedList.length === 1 && savedList[0].name === savedName && savedList[0].pct === 40,
+    `naming a plan keeps it for reuse (${JSON.stringify(savedList)})`);
+  // …and the OFFSET is stored, not the date it was derived from.
+  ok(typeof savedList[0].days === 'number' && savedList[0].days >= 0,
+    `…as an interval before arrival, not a calendar date (${savedList[0] && savedList[0].days} days)`);
+  // The entry point only appears once something HAS been saved.
+  const useLink = await page.evaluate(() => !!document.querySelector('.bhub-plan [data-act="usePlanPreset"]'));
+  ok(useLink, '…and the panel then offers "Use a saved plan"');
+  // Applying it goes through the SAME validated endpoint, with the offset turned
+  // into THIS booking's own date — a preset is a shortcut to the dialog's
+  // inputs, never a second way to write a plan.
+  await page.evaluate(() => document.querySelector('.bhub-plan [data-act="usePlanPreset"]').click());
+  await page.waitForTimeout(300);
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(300);
+  const usedPost = posts.filter((p) => p.action === 'set_payment_plan').pop();
+  ok(!!usedPost && usedPost.deposit_pct === '40',
+    `applying a saved plan writes through set_payment_plan (${JSON.stringify(usedPost && { pct: usedPost.deposit_pct, due: usedPost.balance_due_date })})`);
   // The badge says "custom" ONCE — the rows never repeat it (owner's ask:
   // "Remove custom, it already says that above").
   ok((plan1.match(/custom/gi) || []).length === 1, 'the word "custom" appears exactly once — the badge');

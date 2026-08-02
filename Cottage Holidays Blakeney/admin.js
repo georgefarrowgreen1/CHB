@@ -15072,6 +15072,8 @@ function hubPlanHtml(b, ps, gt, past) {
               panel (owner: "needs to be more visible"). The row's ::after
               supplies the chevron. */ ''}
         ${!past ? `<button type="button" class="bhub-actlink" ${chbAttrs('editPaymentPlan', String(b.id))}>Edit payment plan</button>` : ''}
+        ${/* Only once something HAS been saved — an empty picker disappoints. */ ''}
+        ${!past && chbPlanPresets().length ? `<button type="button" class="bhub-actlink" ${chbAttrs('usePlanPreset', String(b.id))}>Use a saved plan</button>` : ''}
     </div>`;
 }
 // One dialog states the whole plan; the server validates and stores it, and
@@ -15079,6 +15081,69 @@ function hubPlanHtml(b, ps, gt, past) {
 // charge. Blank fields mean "site standard", which is also how a plan is
 // cleared. The deposit input takes either form: "30%" is a percentage,
 // "£300" (or a bare number) is a fixed amount.
+// SAVED PLANS. A preset stores the PERCENTAGE and a DAYS-BEFORE-ARRIVAL offset,
+// never an absolute date — the date is a fact about one booking, the interval is
+// the policy. Internal content key `plan-presets` (classified in db.php, so
+// test-content-keys enforces it) via the ordinary save, so no new endpoint.
+// Mirror-first like chbPinStore: the dialog re-reads on its next open.
+const CHB_PLAN_PRESET_KEY = 'plan-presets';
+const CHB_PLAN_PRESET_MAX = 8;
+let __chbPresetSaveQ = Promise.resolve();
+function chbPlanPresets() {
+    const raw = (typeof siteContent === 'object' && siteContent && siteContent[CHB_PLAN_PRESET_KEY]) || [];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((x) => x && typeof x.name === 'string' && x.name.trim() && x.pct > 0 && x.pct <= 100);
+}
+function chbPlanPresetWords(p) {
+    return `${p.pct}% deposit` + (p.days > 0 ? `, balance ${p.days} days before arrival` : ', balance on the standard date');
+}
+function chbPlanPresetStore(list) {
+    if (typeof siteContent === 'object' && siteContent) siteContent[CHB_PLAN_PRESET_KEY] = list;
+    __chbPresetSaveQ = __chbPresetSaveQ.then(async () => {
+        try { await saveContent(CHB_PLAN_PRESET_KEY, chbPlanPresets()); } catch (e) { chbSwallow(e, 'plan-preset'); }
+    });
+    return __chbPresetSaveQ;
+}
+function chbPlanPresetAdd(name, pct, days) {
+    const t = String(name || '').trim();
+    if (!t || !(pct > 0 && pct <= 100)) return;
+    const key = t.toLowerCase();
+    const rest = chbPlanPresets().filter((x) => x.name.trim().toLowerCase() !== key);
+    chbPlanPresetStore([{ name: t, pct: pct, days: Math.max(0, Math.round(days || 0)) }].concat(rest).slice(0, CHB_PLAN_PRESET_MAX));
+}
+// Apply to THIS booking: the stored percentage, and the offset turned into this
+// booking's own date. Through the same validated set_payment_plan every other
+// path uses — a preset is a shortcut to the dialog's inputs, never a second way
+// to write a plan.
+async function usePlanPreset(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b) return;
+    const list = chbPlanPresets();
+    if (!list.length) { glassAlert('No saved plans yet — save one from the Edit payment plan dialog.'); return; }
+    const vals = await glassForm(
+        'Applied to this booking, then saved like any other plan.',
+        [{ id: 'which', label: 'Saved plan', type: 'select',
+           options: list.map((p, i) => ({ value: String(i), label: `${p.name} — ${chbPlanPresetWords(p)}` })) }],
+        { title: `Use a saved plan — ${b.name || 'this booking'}`, okLabel: 'Apply' },
+    );
+    if (!vals) return;
+    const pick = list[parseInt(vals.which, 10)];
+    if (!pick) return;
+    const due = pick.days > 0 && b.checkIn ? ukShiftDays(b.checkIn, -pick.days) : '';
+    try {
+        const res = await apiPost('bookings.php', {
+            action: 'set_payment_plan', id: b.dbId,
+            deposit_pct: String(pick.pct), deposit_amount: '', balance_due_date: due,
+        });
+        b.depositPctOverride = res.deposit_pct != null ? parseFloat(res.deposit_pct) : null;
+        b.depositAmountOverride = res.deposit_amount != null ? parseFloat(res.deposit_amount) : null;
+        b.balanceDueDate = res.balance_due_date || null;
+        renderBookingHub();
+        toast(`${pick.name} applied — ${chbPlanPresetWords(pick)}.`);
+    } catch (e) {
+        glassAlert('Couldn’t apply that plan: ' + e.message);
+    }
+}
 async function editPaymentPlan(bookingId) {
     const b = findBookingById(bookingId);
     const loc = findBookingLocation(bookingId);
@@ -15114,11 +15179,23 @@ async function editPaymentPlan(bookingId) {
         [
             { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: depHint },
             { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
+            // Blank by default: a plan is usually for ONE booking, so naming it
+            // is the exception. Named, it becomes reusable.
+            { id: 'save', label: 'Save as (optional)', value: '', placeholder: 'e.g. Peak season', hint: 'Name it to reuse it on other bookings' },
         ],
         { title: `Payment plan — ${b.name || 'this booking'}`, okLabel: 'Save plan' },
     );
     if (!vals) return;
     if (vals.due === stdDue) vals.due = '';
+    // The offset, not the date. "60 days before arrival" is the policy; the
+    // 21st of August is a fact about one booking and reusing it would be wrong.
+    const presetName = String(vals.save || '').trim();
+    // getTime(), not Date arithmetic: subtracting two Dates is a type error, and
+    // the UTC-noon anchor is the ukShiftDays rule — a local midnight round trip
+    // lands a day out for the BST hour.
+    const presetDays = presetName && vals.due && b.checkIn
+        ? Math.round((new Date(b.checkIn + 'T12:00:00Z').getTime() - new Date(String(vals.due) + 'T12:00:00Z').getTime()) / 86400000)
+        : 0;
     const depIn = String(vals.dep || '').trim();
     let pct = '';
     if (depIn !== '') {
@@ -15139,8 +15216,17 @@ async function editPaymentPlan(bookingId) {
         b.depositPctOverride = res.deposit_pct != null ? parseFloat(res.deposit_pct) : null;
         b.depositAmountOverride = res.deposit_amount != null ? parseFloat(res.deposit_amount) : null;
         b.balanceDueDate = res.balance_due_date || '';
+        // Remember it only once the SERVER accepted it — a preset built from a
+        // refused plan would hand the same refusal to every future booking.
+        if (presetName && Number(b.depositPctOverride) > 0) chbPlanPresetAdd(presetName, Number(b.depositPctOverride), presetDays);
         renderBookingHub();
-        toast(b.depositPctOverride || b.depositAmountOverride || b.balanceDueDate ? 'Payment plan saved.' : 'Back to the site standard.');
+        toast(
+            presetName && Number(b.depositPctOverride) > 0
+                ? `Payment plan saved, and kept as “${presetName}”.`
+                : b.depositPctOverride || b.depositAmountOverride || b.balanceDueDate
+                  ? 'Payment plan saved.'
+                  : 'Back to the site standard.',
+        );
     } catch (e) {
         glassAlert("Couldn't save the plan: " + e.message);
     }
