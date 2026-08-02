@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 400;
+const ADMIN_BUNDLE_V = 401;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -7447,13 +7447,16 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
         {
                 const isCharge = p.kind === 'deposit' || p.kind === 'balance';
                 const live = p.status === 'COMPLETED' || p.status === 'APPROVED';
+                // Declared BEFORE refundBtn, which reads it — a const used above
+                // its declaration is a throw, not a warning. Typecheck caught it.
+                const carried = Math.max(0, Number(p.deposit_carried) || 0);
                 const refundBtn =
                     isCharge && live && !refundOff
                         ? // flex:none is load-bearing: as an ordinary flex child this
                           // button SHRANK under a long ledger line (measured 10px
                           // narrower than its own label at 390px) — the text half
                           // wraps, the control never squeezes.
-                          `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;flex:0 0 auto;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount))}>Refund</button>`
+                          `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;flex:0 0 auto;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount), carried)}>Refund</button>`
                         : '';
                 const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
                 const label =
@@ -7470,7 +7473,6 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // carried deposit is shown inside the figure and named, and the
                 // REFUND cap deliberately stays the rental portion: the damages
                 // half goes back through Return deposit, so its state is tracked.
-                const carried = Math.max(0, Number(p.deposit_carried) || 0);
                 const shown = Math.round(((parseFloat(p.amount) || 0) + carried) * 100) / 100;
                 const carriedNote = carried > 0 ? ` <span style="opacity:.7;">— incl. ${gbp(carried)} damages deposit</span>` : '';
                 const note = (p.note || '').trim();
@@ -7486,19 +7488,31 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
         }
     }
 }
-async function refundPayment(bookingId, squareId, maxAmount) {
+// `carried` = the refundable deposit that rode this same charge. The cap stays
+// the RENTAL portion — the damages half goes back through Return deposit, which
+// stamps hold_status, so refunding it here would leave it returnable twice. The
+// dialog said only "Up to £175.00" against a row and a card statement both
+// saying £225.00 (owner's screenshot), so a correct cap read as a wrong figure.
+async function refundPayment(bookingId, squareId, maxAmount, carried) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
     const loc = findBookingLocation(bookingId);
     const propKey = loc ? loc.propKey : '21a';
+    const dep = Math.round((Number(carried) || 0) * 100) / 100;
     const entered = await glassPrompt(
-        `Refund amount (£). Up to ${gbp(maxAmount)}:`,
+        dep > 0
+            ? `This charge took ${gbp(maxAmount + dep)} — ${gbp(maxAmount)} of the stay plus a ${gbp(dep)} refundable deposit.\nRefund up to ${gbp(maxAmount)} here. The ${gbp(dep)} goes back through “Return deposit”, which records that it has.`
+            : `Refund amount (£). Up to ${gbp(maxAmount)}:`,
         String(maxAmount),
     );
     if (entered === null) return;
     const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
     if (!(amount > 0 && amount <= maxAmount + 0.001)) {
-        glassAlert(`Enter an amount between £0 and ${gbp(maxAmount)}.`);
+        glassAlert(
+            dep > 0
+                ? `Enter an amount between £0 and ${gbp(maxAmount)} — the ${gbp(dep)} refundable deposit is returned separately.`
+                : `Enter an amount between £0 and ${gbp(maxAmount)}.`,
+        );
         return;
     }
     if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`))) return;
@@ -14033,7 +14047,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'enqplan';
+    const BUILD = 'refundfig';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -10420,8 +10420,12 @@ async function hubRefundPicker(bookingId) {
         glassAlert('There are no settled card payments on this booking to refund.');
         return;
     }
+    // The carried refundable deposit travels with the cap so refundPayment can
+    // state what the charge actually took — the labels here showed the
+    // rental-only figure beside a ledger row saying the card took more.
+    const carriedOf = (p) => Math.max(0, Number(p.deposit_carried) || 0);
     if (list.length === 1) {
-        refundPayment(bookingId, list[0].square_payment_id, parseFloat(list[0].amount));
+        refundPayment(bookingId, list[0].square_payment_id, parseFloat(list[0].amount), carriedOf(list[0]));
         return;
     }
     const vals = await glassForm(
@@ -10432,14 +10436,14 @@ async function hubRefundPicker(bookingId) {
             type: 'select',
             options: list.map((p, i) => ({
                 value: String(i),
-                label: `${p.kind === 'deposit' ? 'Deposit' : 'Balance'} · ${gbp(parseFloat(p.amount) || 0)} · ${fmtDate(String(p.created_at || '').slice(0, 10))}`,
+                label: `${p.kind === 'deposit' ? 'Deposit' : 'Balance'} · ${gbp((parseFloat(p.amount) || 0) + carriedOf(p))}${carriedOf(p) > 0 ? ' (incl. deposit)' : ''} · ${fmtDate(String(p.created_at || '').slice(0, 10))}`,
             })),
         }],
         { title: 'Refund a card payment', okLabel: 'Continue' },
     );
     if (!vals) return;
     const pick = list[parseInt(vals.which, 10)];
-    if (pick) refundPayment(bookingId, pick.square_payment_id, parseFloat(pick.amount));
+    if (pick) refundPayment(bookingId, pick.square_payment_id, parseFloat(pick.amount), carriedOf(pick));
 }
 
 // A drafted reply from THIS booking's own facts — the enquiry drafter's idea,
