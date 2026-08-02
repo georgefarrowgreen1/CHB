@@ -1091,8 +1091,10 @@ body.light-mode .ny-act {
   color: var(--text-muted);
   white-space: nowrap;
 }.bhub-hist-actor {
+  /* No size of its own — it takes the row's, like every other strand of the
+     story. It was 0.72rem (11.52px), the smallest text on the card, for a
+     caption whose muted colour already says it is secondary. */
   color: var(--text-muted);
-  font-size: 0.72rem;
 }.bhub-stay-row {
   display: flex;
   align-items: center;
@@ -4107,9 +4109,19 @@ body.cmdk-open {
     border-radius: var(--r-md, 12px); cursor: pointer; min-height: 44px;
 }
 .bhub-gap strong { color: var(--accent-text); }
-.bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: 0.78rem; margin-top: 2px; }
+/* ONE TYPE SIZE IN THE ACTIVITY STORY. The card had FIVE: 16px ledger rows
+   towering over 13.12px event rows, plus 12.8 / 12.48 / 11.52 for the email
+   body, its disclosure and the actor — three of them within 0.7px of each
+   other, distinctions no reader can use (the search window's type-scale
+   collapse, same shape). It is one list of things that happened, so it reads at
+   one size and hierarchy is carried by COLOUR, which the muted tokens already
+   do. The ledger row is scoped to #hub-history because hubLedgerRowHtml is
+   SHARED with the Payments screen, where the ledger is the content rather than
+   one strand of a story. */
+#hub-history .bhub-ledger-row { font-size: 0.82rem; }
+.bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: 0.82rem; margin-top: 2px; }
 .bhub-feed-mailbody {
-    margin-top: 6px; padding: 8px 10px; font-size: 0.8rem; color: var(--text-muted);
+    margin-top: 6px; padding: 8px 10px; font-size: 0.82rem; color: var(--text-muted);
     border: 1px solid var(--glass-border); border-radius: var(--r-md, 12px);
     max-height: 40vh; overflow: auto;
 }
