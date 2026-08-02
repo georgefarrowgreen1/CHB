@@ -9613,18 +9613,60 @@ function bookingHubBack() {
     window.openBookings();
 }
 
+// JS mirror of pricing.php's booking_within_balance_window: a CUSTOM due date is
+// INCLUSIVE (the day named is the day the full amount is asked), the STANDARD
+// path strict. Deliberately two comparisons — the client must make the same two
+// or the figure it SHOWS disagrees with the figure the link CHARGES.
+function bookingInBalanceWindow(b) {
+    const due = bookingPlanDueDate(b);
+    if (!due) return false;
+    const today = todayDashed();
+    return b.balanceDueDate ? today >= due : today > due;
+}
 // The stage strip + the single next action for a booking's current state.
 // THE EMAIL ASK A BOOKING IS UP TO — deposit first, then the balance once
 // something is in; a finished stay only ever chases the balance. ONE definition,
 // because the banner's CTA (hubPipelineHtml) and the Payments row's email button
 // (renderBookingHub) both read it and the two are on screen together — derived
-// separately they could ask for different stages of the same money. The server
-// still derives the SUM (booking_payment_kind upgrades a deposit ask to the full
-// amount inside the balance window); this names the stage, not the figure.
-function hubAskKind(gt, past) {
+// separately they could ask for different stages of the same money. It mirrors
+// booking_payment_kind's window clause too, because the SUM is derived from the
+// stage: get it wrong and the banner over-asks outside the window and under-asks
+// inside it.
+function hubAskKind(gt, past, b) {
+    if (b && bookingInBalanceWindow(b)) return 'balance';
     return gt.paid > 0 || past ? 'balance' : 'deposit';
 }
-function hubPipelineHtml(propKey, b, gt, dh) {
+// WHAT THE CARD ACTUALLY TAKES for the refundable deposit — era-aware: the agreed
+// figure before the charge, hold_amount once charged (`update` re-snapshots
+// agreed_booking_fee while hold_amount stays put — Gap 3).
+// depositTakenAmt(p, b) reads the agreed figure off its FIRST argument and the
+// hold off its SECOND, and a mapped booking carries both, so it is passed TWICE.
+// Both admin call sites passed ONE — booking in the `p` slot, `b` undefined,
+// `held` always 0 — so the era-aware half could never fire. Measured.
+function hubDepositTake(b) {
+    if (!b || typeof depositTakenAmt !== 'function') return 0;
+    return Math.max(0, Number(depositTakenAmt(b, b)) || 0);
+}
+// Does the refundable deposit RIDE the first payment? Only in the current era —
+// pay.php bundles it while hold_status is none/charged; the legacy card-HOLD
+// eras took it on their own authorisation. Named, because two surfaces ask.
+function hubDepositRides(b) {
+    return !!b && (b.holdStatus === 'none' || b.holdStatus === 'charged');
+}
+// THE FIRST PAYMENT'S FIGURE — the plan's deposit plus whatever rides with it.
+// ONE definition: the plan panel STATES it, the payask/sticky ASK for it.
+// `ps.total` is the RENTAL total, the frame the schedule is defined in.
+function hubDepositAsk(b, ps) {
+    const rides = hubDepositRides(b) ? hubDepositTake(b) : 0;
+    return Math.round((bookingPlanDeposit(b, (ps && ps.total) || 0) + rides) * 100) / 100;
+}
+// The client mirror of booking_amount_due. The balance stage is everything still
+// outstanding, which is what gt.balance already is.
+function hubAskAmount(b, ps, gt, kind) {
+    if (kind !== 'deposit') return gt.balance;
+    return Math.max(0, Math.round((hubDepositAsk(b, ps) - gt.paid) * 100) / 100);
+}
+function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
     const inStay = !past && (b.checkIn || '') <= today;
@@ -9672,7 +9714,13 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         .map((s, i) => pill(s, s.now || i === curIdx ? nowCls(s) : s.done ? 'is-done' : ''))
         .join(arrow);
 
-    const askKind = hubAskKind(gt, past);
+    const askKind = hubAskKind(gt, past, b);
+    // THE FIGURE THIS ACTION IS WORTH, derived once and carried on `next`, so the
+    // banner and the sticky bar cannot quote two numbers for one tap. Both read
+    // gt.balance — the whole outstanding — beside a button sending the DEPOSIT:
+    // measured, a £440 stay three months out read "£440.00 due" over a plan
+    // panel saying £147.50 and a link that would charge £147.50.
+    const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
     let next = null; // { text, onclick, btn }
@@ -9680,18 +9728,24 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         const canCard = squareAdminEnabled && b.email;
         if (!(gt.paid > 0)) {
             next = {
-                text: `Nothing received yet — ${gbp(gt.balance)} due.`,
+                // Named as the STAGE it is — the whole stay is stated by the
+                // Payments total directly below.
+                text: askKind === 'deposit'
+                    ? `Nothing received yet — ${gbp(askAmt)} deposit due.`
+                    : `Nothing received yet — ${gbp(askAmt)} due.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
                 btnShort: canCard ? 'Email a card link' : 'Record a payment',
+                fig: askAmt,
                 money: true,
             };
         } else {
             next = {
-                text: `${gbp(gt.balance)} balance remaining.`,
+                text: `${gbp(askAmt)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
                 btnShort: canCard ? 'Request by card' : 'Record a payment',
+                fig: askAmt,
                 money: true,
             };
         }
@@ -9701,10 +9755,13 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         // !past, so this used to fall through to "All set". Chase the balance.
         const canCard = squareAdminEnabled && b.email;
         next = {
-            text: `${gbp(gt.balance)} still owed from this finished stay.`,
+            // Always the balance stage here, so askAmt is gt.balance — carried
+            // anyway, because the sticky reads `fig` on every money branch.
+            text: `${gbp(askAmt)} still owed from this finished stay.`,
             onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
             btn: canCard ? 'Request the balance by card' : 'Record a payment',
             btnShort: canCard ? 'Request by card' : 'Record a payment',
+            fig: askAmt,
             money: true,
         };
     } else if (flow.hasReg && !b.regSubmitted && !past) {
@@ -9983,7 +10040,9 @@ function renderBookingHub() {
     // not in a banner above a block repeating the same figure. The node keeps
     // class bhub-next: the banner's gates (past-unpaid wording, banner↔row kind
     // agreement) read that class and must keep working wherever it lives.
-    const pipeHtml = hubPipelineHtml(propKey, b, gt, dh);
+    // ps (the RENTAL summary) goes in because the next action's FIGURE is the
+    // plan's deposit, defined in the rental frame.
+    const pipeHtml = hubPipelineHtml(propKey, b, gt, dh, ps);
     const payAsk = __hubNext && __hubNext.money
         ? `<div class="bhub-next bhub-payask"><span class="bhub-next-text">${__hubNext.text}</span><button class="btn-glass bhub-next-btn" ${__hubNext.onclick}>${__hubNext.btn}</button></div>`
         : '';
@@ -10238,8 +10297,10 @@ function renderBookingHub() {
             // money-row rule) in a no-shrink span; the verb is the half that
             // may ellipsise — a clipped verb is still readable, a clipped
             // amount is a different number.
+            // The figure comes off __hubNext, not gt.balance: same tap as the
+            // banner, and reading it independently is how they came to disagree.
             __hubNext.money
-                ? `<strong class="bhub-sticky-fig">${gbp(gt.balance)}</strong><span class="bhub-sticky-verb">${__hubNext.btnShort || __hubNext.btn}</span>`
+                ? `<strong class="bhub-sticky-fig">${gbp(__hubNext.fig != null ? __hubNext.fig : gt.balance)}</strong><span class="bhub-sticky-verb">${__hubNext.btnShort || __hubNext.btn}</span>`
                 : __hubNext.btn
         }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${
             // The SITE'S composer, never mailto: — a mailto bounced the owner
@@ -14955,10 +15016,10 @@ function hubPlanHtml(b, ps, gt, past) {
     // defect payment_money_facts fixed in the emails. depositTakenAmt is the
     // one era-aware figure (agreed before the charge, hold_amount once
     // charged); legacy hold/returned/kept eras don't bundle, so no fold there.
-    const depTake = (b.holdStatus === 'none' || b.holdStatus === 'charged') && typeof depositTakenAmt === 'function'
-        ? (Number(depositTakenAmt(b)) || 0)
-        : 0;
-    const depAsk = Math.round((dep + depTake) * 100) / 100;
+    const depTake = hubDepositRides(b) ? hubDepositTake(b) : 0;
+    // The SAME figure the payask asks for, so stating the plan and acting on
+    // it cannot drift apart.
+    const depAsk = hubDepositAsk(b, ps);
     // The caption's badge already says "custom" — the rows never repeat it
     // (owner's ask); a custom row just states its own figure's provenance.
     const depFrom = (b.depositAmountOverride > 0
@@ -15029,7 +15090,7 @@ async function editPaymentPlan(bookingId) {
     // never-adds-up trap the pay screen fixed). So the hint ITEMISES: the %
     // of the rental, plus the deposit riding the first payment while it is
     // still to be taken.
-    const depRide = b.holdStatus === 'none' && typeof depositTakenAmt === 'function' ? (Number(depositTakenAmt(b)) || 0) : 0;
+    const depRide = b.holdStatus === 'none' ? hubDepositTake(b) : 0;
     const depHint = `Blank = the site standard (${paymentTerms.depositPct || 25}% of the ${gbp(ps.total)} rental${depRide > 0 ? ` + the ${gbp(depRide)} refundable deposit on the first payment` : ''})`;
     // A TITLED dialog with one-line context and per-field hints — the old shape
     // was five lines of prose above an unexplained empty date pill (date inputs

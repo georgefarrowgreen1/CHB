@@ -307,6 +307,73 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(ask.banKind === 'deposit' && !ask.rowDup,
     `an unpaid booking's payask carries the deposit stage, once (${ask.banKind}, ${ask.asks} ask control)`);
   ok(ask.asks === 1, `the header holds exactly ONE email-ask control (${ask.asks})`);
+
+  // ---------- A2d. …AND THE FIGURE BESIDE IT IS THAT STAGE'S ----------
+  // Reported from the owner's phone: a £440 booking three months out read
+  // "Nothing received yet — £440.00 due" over a sticky bar saying £440.00,
+  // directly above a plan panel reading "£147.50 deposit · Not asked yet".
+  // The stage was right and the CHARGE was right (the server derives it, and
+  // would have taken £147.50) — the two sentences the owner reads were quoting
+  // different stages of the same money. A2c gated the STAGE and nothing gated
+  // the FIGURE, which is exactly how it survived. b1 is the reported booking:
+  // £390 rental + £50 refundable, 25% site standard, arriving in 30 days.
+  // Asserted as an INVARIANT against the plan panel's own figure rather than
+  // hardcoded pounds: the fixture's rental is not the owner's, and a gate that
+  // writes the number down measures the fixture instead of the rule.
+  const askFig = async () => page.evaluate(() => ({
+    ban: ((document.querySelector('.bhub-payask .bhub-next-text') || {}).textContent || '').trim(),
+    sticky: ((document.querySelector('.bhub-sticky-fig') || {}).textContent || '').trim(),
+    plan: ((document.querySelector('.bhub-plan .bhub-plan-fig') || {}).textContent || '').trim(),
+    total: ((document.querySelector('.bhub-payline-fig') || {}).textContent || '').trim(),
+  }));
+  const money = (s) => (String(s).match(/£[\d,]+\.\d{2}/) || [''])[0];
+  let fig = await askFig();
+  const planDep = money(fig.plan);
+  // Without this the other three could all pass by quoting the whole stay.
+  ok(planDep && planDep !== money(fig.total),
+    `the deposit stage is a SMALLER figure than the whole stay (${planDep} of ${money(fig.total)})`);
+  ok(money(fig.ban) === planDep, `the payask quotes the DEPOSIT it will actually send (${fig.ban})`);
+  ok(money(fig.sticky) === planDep, `…and the sticky bar names that same figure (${fig.sticky})`);
+
+  // THE REFUNDABLE DEPOSIT IN THAT FIGURE IS THE ONE ACTUALLY TAKEN, not the
+  // agreed one. The `update` action re-snapshots agreed_booking_fee while
+  // hold_amount stays put, so after a deposit edit the two diverge — Gap 3,
+  // which invoice.php already had fixed and this panel had reproduced:
+  // depositTakenAmt(p, b) reads the agreed figure off its FIRST argument and
+  // the hold off its SECOND, and both admin call sites passed it ONE, so `held`
+  // was always 0 and it could only ever return the agreed figure.
+  // Here the card took £30 against a £50 agreed deposit; quoting £50 would
+  // promise back money that was never collected.
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.holdStatus = 'charged'; b.holdAmount = 30;
+    showDetails('21a', b);
+  });
+  await page.waitForTimeout(400);
+  const era = await page.evaluate(() => ((document.querySelector('.bhub-plan') || {}).textContent || ''));
+  ok(/£30\.00 refundable deposit/.test(era) && !/£50\.00 refundable deposit/.test(era),
+    `the plan quotes the deposit the card TOOK, not the agreed one (${(era.match(/\+ £[\d.]+ refundable deposit/) || ['none'])[0]})`);
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.holdStatus = 'none'; b.holdAmount = 0;
+    showDetails('21a', b);
+  });
+  await page.waitForTimeout(400);
+
+  // The one case where the WHOLE stay is the right figure: inside the balance
+  // window booking_payment_kind upgrades a deposit ask to 'balance', so the
+  // banner must upgrade with it — quoting the deposit there would be the same
+  // defect pointing the other way, under-asking instead of over-asking.
+  // Mutated in place and restored, so no fixture row is added for the later
+  // sections to trip over.
+  await page.evaluate((iso) => { const b = findBookingById('b1'); b.checkIn = iso; showDetails('21a', b); }, d(5));
+  await page.waitForTimeout(400);
+  fig = await askFig();
+  ok(money(fig.ban) === money(fig.total), `inside the balance window the ask IS the whole stay (${fig.ban})`);
+  ok(money(fig.sticky) === money(fig.total), `…and the sticky bar follows it (${fig.sticky})`);
+  await page.evaluate((iso) => { const b = findBookingById('b1'); b.checkIn = iso; showDetails('21a', b); }, d(30));
+  await page.waitForTimeout(400);
+
   // b3 is paid in full → nothing left to ask for.
   await page.evaluate(() => showDetails('21a', findBookingById('b3')));
   await page.waitForTimeout(500);
@@ -432,9 +499,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // ---------- B. next action follows state ----------
   console.log('B. next action');
   const next1 = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
-  // £490 = £440 rental + £50 refundable damages deposit (charged with the
-  // guest's first payment) — same figure the Money area shows as due.
-  ok(/Nothing received yet/.test(next1) && /£490\.00 due/.test(next1), `unpaid → deposit ask (${next1.trim().slice(0, 60)}…)`);
+  // £160 = 25% of the £440 rental + the £50 refundable damages deposit that
+  // rides the guest's first payment. It USED to assert £490 here — the whole
+  // stay — with a comment calling it "the same figure the Money area shows as
+  // due", which is the conflation itself: the Money area answers "what do they
+  // still owe", this banner answers "what will this button send", and outside
+  // the balance window those are different stages of the same money. A2d owns
+  // the general invariant; this keeps the arithmetic written down once.
+  ok(/Nothing received yet/.test(next1) && /£160\.00 deposit due/.test(next1), `unpaid → deposit ask (${next1.trim().slice(0, 60)}…)`);
   // Record £100 through the unified flow, hub should re-render with balance ask.
   const rp = page.evaluate(() => window.recordPayment('b1'));
   await page.waitForTimeout(700);

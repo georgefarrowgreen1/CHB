@@ -929,10 +929,33 @@ INSIDE the Payments header** (`.bhub-payask`, deliberately still carrying
 `.bhub-next` so the gates that read the banner read the same node) and
 `nextHtml()` returns '' for it — the ask is said ONCE, where the money lives;
 non-money banners (arrival prep etc.) keep the top slot. **The payask IS the
-staged email ask** (`hubAskKind(gt, past)` — deposit first, then the SUBSEQUENT
-balance once something is in; the server still derives the SUM,
-`booking_payment_kind` upgrading a deposit ask to the full amount inside the
-balance window — the label names the stage, not the figure). The button row's
+staged email ask** (`hubAskKind(gt, past, b)` — deposit first, then the
+SUBSEQUENT balance once something is in), **and the FIGURE follows the stage**.
+This line used to end "the label names the stage, not the figure", which was
+true of the code and wrong as a design: the banner and the sticky bar each read
+`gt.balance` — the whole outstanding — beside a button sending the DEPOSIT, so a
+£440 booking three months out read "Nothing received yet — £440.00 due" over a
+plan panel saying £147.50 and a link that would have charged £147.50 (owner's
+screenshot). Two fixes, one shape. `hubAskKind` now mirrors
+`booking_payment_kind`'s window clause (`bookingInBalanceWindow`, the JS twin of
+`booking_within_balance_window` — CUSTOM due date inclusive, standard strict, the
+same two comparisons), because the SUM is derived from the stage and getting the
+stage wrong over-asks outside the window and under-asks inside it. And
+**`hubDepositAsk(b, ps)` is the one definition of what the first payment is
+worth** — the plan's deposit plus the refundable deposit pay.php bundles with it
+— read by the plan panel that STATES it and by `hubAskAmount` for the payask and
+sticky that ASK for it, with the figure carried on `__hubNext.fig` so one tap
+cannot carry two numbers. Fixing it surfaced Gap 3 reproduced here:
+`depositTakenAmt(p, b)` reads the agreed figure off its FIRST argument and the
+hold off its SECOND, and BOTH admin call sites passed it ONE — so `held` was
+always 0 and the era-aware half could never fire, quoting the re-snapshotted
+agreed deposit after a charge instead of what the card took. `hubDepositTake`
+is that call stated once. Gated by ui-test-hub §A2d (the invariant read off the
+plan panel's own figure rather than hardcoded pounds, the window case both ways,
+and the era case), each break-tested. NB §B had ENCODED the bug — it asserted
+the deposit ask quoted the whole stay, calling it "the same figure the Money area
+shows as due", which is the conflation itself: the Money area answers "what do
+they still owe", the payask answers "what will this button send". The button row's
 own staged copy of that button is REMOVED: it was added when the ask lived in a
 banner a screen above (the owner had to go back up for it) and became a strict
 duplicate the day the banner moved INTO the Payments block — measured at 390px,
