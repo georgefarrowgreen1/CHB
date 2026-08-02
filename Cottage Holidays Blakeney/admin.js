@@ -9225,6 +9225,11 @@ function renderBookings() {
         // Deposit-aware, so this list holds exactly the bookings the header's
         // "£X to collect" button just counted — it links straight here.
         if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && (b.checkOut || '') >= today;
+        // WHICH BOOKINGS ARE NOT ON THE STANDARD SCHEDULE? The override columns
+        // were read only inside the hub's own plan panel, so a mistyped plan was
+        // invisible until the money came out wrong. Same test the panel uses to
+        // decide its "custom" badge — one definition of what custom means.
+        if (f === 'customplan') return b.depositPctOverride > 0 || b.depositAmountOverride > 0 || !!b.balanceDueDate;
         return true; // 'all'
     });
     rows.sort((a, b) =>

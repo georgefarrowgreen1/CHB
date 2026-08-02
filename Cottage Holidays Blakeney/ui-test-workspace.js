@@ -25,7 +25,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0,
     agreed_txn_fee: 0, agreed_on: d(0), hold_status: 'none', notes: '',
   });
-  const rows = [mk(1, d(5), d(8), 'First Guest'), mk(2, d(20), d(23), 'Second Guest')];
+  // Second Guest is on a CUSTOM plan (50% deposit) — the filter below exists to
+  // find exactly this row among the standard ones.
+  const rows = [mk(1, d(5), d(8), 'First Guest'),
+    Object.assign(mk(2, d(20), d(23), 'Second Guest'), { deposit_pct_override: 50 })];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -56,6 +59,28 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(w1.tlDays > 20 && w1.rows === 2, `timeline (${w1.tlDays} days) + ${w1.rows} booking rows on ONE screen`);
   ok(w1.docked && w1.hubName === 'First Guest', `first booking auto-docked in the pane (${w1.hubName})`);
   ok(w1.scrollY === 0, `auto-select did NOT scroll the page (scrollY ${w1.scrollY})`);
+
+  // 1c. WHICH BOOKINGS ARE NOT ON THE STANDARD SCHEDULE? The override columns
+  // were read only inside the hub's own plan panel, so a mistyped plan stayed
+  // invisible until the money came out wrong. Driven by CLICKING the chip — a
+  // filter reachable only by calling the function is a filter nobody has.
+  const plan = await page.evaluate(async () => {
+    const chip = document.querySelector('#bookings-filters [data-bfilter="customplan"]');
+    if (!chip) return { missing: true };
+    chip.click();
+    await new Promise((r) => setTimeout(r, 250));
+    return {
+      on: chip.classList.contains('is-on'),
+      names: [...document.querySelectorAll('#bookings-list .bk-row strong')].map((e) => e.textContent.trim()),
+    };
+  });
+  ok(!plan.missing && plan.on, 'the bookings list offers a Custom plan filter');
+  ok(plan.names.length === 1 && plan.names[0] === 'Second Guest',
+    `…and it finds the one booking off the standard schedule (${JSON.stringify(plan.names)})`);
+  await page.evaluate(async () => {
+    document.querySelector('#bookings-filters [data-bfilter="upcoming"]').click();
+    await new Promise((r) => setTimeout(r, 250));
+  });
 
   // ---- The lane's own cells must agree with the bars on it ----------------
   // Bars are inset half a day at each end so a changeover reads as shared, which
