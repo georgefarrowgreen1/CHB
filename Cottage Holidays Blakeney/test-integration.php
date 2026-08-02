@@ -870,6 +870,38 @@ $r = $addBooking($dd(810), $dd(814), 'Bad Plan Date', ['balance_due_date' => $dd
 it_check('a due date after check-in is refused', $r['code'] === 400 && stripos((string) ($r['json']['error'] ?? ''), 'check-in') !== false, $r['raw']);
 it_check('…and writes nothing either', $bookingsOn($dd(810), $dd(814)) === $before, 'count moved');
 
+// (n) …AND THE PLAN TRAVELS WHEN THE STAY IS MOVED. The refusal above is only
+// half a guarantee: `update` writes check_in, and used to leave the custom date
+// exactly where it was — so a booking could be MOVED INTO the very state the
+// add/edit validator refuses. Driven through the real endpoint because that is
+// where it bites; the arithmetic itself is gated in test-payrail.
+$r = http($admin, 'POST', '/bookings.php', [
+    'action' => 'update', 'id' => $planId,
+    'check_in' => $dd(700), 'check_out' => $dd(704),   // pulled 100 days earlier
+]);
+it_check('a booking with a custom plan can be moved', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$q->execute([$planId]);
+$movedRow = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check(
+    '…and its balance due date moved with it, by the same 100 days',
+    ($movedRow['balance_due_date'] ?? '') === $dd(690),
+    json_encode($movedRow) . ' expected ' . $dd(690),
+);
+it_check('…so it is still on or before the new check-in — the invariant the validator enforces',
+    ($movedRow['balance_due_date'] ?? '') <= $dd(700), json_encode($movedRow));
+it_check('…and the deposit override is untouched (a % does not depend on dates)',
+    abs((float) ($movedRow['deposit_pct_override'] ?? 0) - 30.0) < 0.005, json_encode($movedRow));
+// Moved so far forward that the agreed date would now be behind us: the plan
+// drops to the site standard rather than being kept in an impossible state.
+$r = http($admin, 'POST', '/bookings.php', [
+    'action' => 'update', 'id' => $planId,
+    'check_in' => $dd(3), 'check_out' => $dd(6),
+]);
+$q->execute([$planId]);
+$pastRow = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+it_check('a stay moved to next week drops a due date that would now be in the past',
+    $r['code'] === 200 && ($pastRow['balance_due_date'] ?? null) === null, $r['raw'] . json_encode($pastRow));
+
 // ---- 16. The no-dog declaration is required AND recorded -------------------
 // The client blocks the send, so this is the other half: a direct public POST
 // must not be able to create an enquiry that never made the declaration, and

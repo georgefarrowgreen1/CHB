@@ -191,6 +191,48 @@ function booking_balance_due_date($b)
     return date('Y-m-d', strtotime($b['check_in'] . ' -' . payment_balance_days() . ' days'));
 }
 
+// A MOVED BOOKING TAKES ITS PLAN WITH IT.
+//
+// set_payment_plan refuses a due date that is in the past or after check-in —
+// but `update` writes check_in and never revisited the plan, so a booking could
+// be MOVED INTO the state the validator exists to prevent. Reproduced against
+// these functions: a guest arriving five days ago with a due date three weeks
+// out reads within_balance_window false, so the app asks a guest standing in
+// the cottage for a 25% deposit, and payments-due.php will not chase the
+// balance until a fortnight after they have gone home.
+//
+// The owner's intent when they set "30 September" for an arrival on 1 November
+// was the INTERVAL — a month before you come — not that square on the calendar.
+// So the date travels with the stay by the same number of days. Shifting
+// preserves "due on or before check-in" by construction (old due <= old
+// check-in, so old due + delta <= new check-in), and the clamp is defensive
+// cover for legacy rows that were already out of shape.
+//
+// Returns ['due' => 'Y-m-d'|null, 'changed' => bool, 'reason' => string]:
+//   'none'    nothing to do — no custom date, or the stay did not move
+//   'shifted' the date travelled with the stay
+//   'past'    it would now be behind us, so the plan drops to the site standard
+//             rather than being silently kept in an impossible state
+function booking_replan_on_move($oldCheckIn, $newCheckIn, $customDue, $today = null)
+{
+    $old = substr((string) $oldCheckIn, 0, 10);
+    $new = substr((string) $newCheckIn, 0, 10);
+    $due = $customDue === null || $customDue === '' ? null : substr((string) $customDue, 0, 10);
+    if ($due === null || $old === '' || $new === '' || $old === $new) {
+        return ['due' => $due, 'changed' => false, 'reason' => 'none'];
+    }
+    $delta = (int) round((strtotime($new) - strtotime($old)) / 86400);
+    $moved = date('Y-m-d', strtotime($due . ' ' . ($delta >= 0 ? '+' : '-') . abs($delta) . ' days'));
+    if ($moved > $new) {
+        $moved = $new; // legacy row that was already past check-in
+    }
+    $todayStr = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    if ($moved < $todayStr) {
+        return ['due' => null, 'changed' => true, 'reason' => 'past'];
+    }
+    return ['due' => $moved, 'changed' => $moved !== $due, 'reason' => $moved !== $due ? 'shifted' : 'none'];
+}
+
 // Is this booking INSIDE the balance window (check-in closer than the window, or
 // already begun)? Inside it the FULL amount is due, so a deposit makes no sense:
 // the balance would fall due immediately after, and the guest would be asked to
