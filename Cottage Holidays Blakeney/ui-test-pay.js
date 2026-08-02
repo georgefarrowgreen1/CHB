@@ -135,6 +135,26 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the deposit screen states the balance and WHEN (${dv.note})`);
   ok(/refundable damages deposit/i.test(dv.note),
     '…without displacing the refundable-deposit sentence that shared the line');
+  // SETTLE IT ALL NOW. booking_payment_kind already passed a requested
+  // 'balance' through, so the whole amount was always chargeable — there was
+  // simply no way to ask for it. £225 due now + £525 left = the £750 stay.
+  const full = await page.evaluate(() => {
+    const b = document.getElementById('pay-full');
+    return { txt: (b || {}).textContent || '', shown: !!b && b.style.display !== 'none' };
+  });
+  ok(full.shown && /£750\.00/.test(full.txt), `the deposit screen offers to settle the whole stay (${full.txt})`);
+  // …and it re-opens the SAME booking asking for everything, which the server
+  // then re-derives — the client decides nothing about the charge.
+  const reopened = await page.evaluate(async () => {
+    const calls = [];
+    const orig = window.openPayView;
+    window.openPayView = (t, id, k) => { calls.push([t, id, k]); return Promise.resolve(); };
+    payInFull();
+    window.openPayView = orig;
+    return calls;
+  });
+  ok(reopened.length === 1 && reopened[0][2] === 'balance' && String(reopened[0][1]) === '7',
+    `…by re-opening this booking as a balance ask (${JSON.stringify(reopened)})`);
   // THE BALANCE ASK AFTER THE DEPOSIT WAS CHARGED — the screenshotted state.
   // "of £700.00 total · £175.00 already paid" under the £525 hero was the rental
   // rail talking to a guest whose card took £225 of a £750 stay; the charged

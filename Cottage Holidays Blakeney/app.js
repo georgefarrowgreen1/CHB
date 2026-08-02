@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 401;
+const ADMIN_BUNDLE_V = 402;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3970,6 +3970,16 @@ async function openPayView(token, bookingId, kind) {
             noteEl.textContent = bits.join(' ');
             noteEl.style.display = bits.length ? '' : 'none';
         }
+        // SETTLE IT ALL NOW. booking_payment_kind already passes a requested
+        // 'balance' through, so the whole amount was always chargeable — there
+        // was simply no way to ask for it.
+        const fullEl = document.getElementById('pay-full');
+        if (fullEl) {
+            const restNow = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
+            const show = s.kind === 'deposit' && restNow > 0.005;
+            fullEl.textContent = show ? `Rather settle the whole stay now — ${gbp(payTotal + restNow)}` : '';
+            fullEl.style.display = show ? '' : 'none';
+        }
         try {
             const pb = document.getElementById('pay-btn');
             if (pb) pb.textContent = s.kind === 'hold' ? `Place ${gbp(payTotal)} hold` : `Pay ${gbp(payTotal)}`;
@@ -7493,6 +7503,13 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
 // stamps hold_status, so refunding it here would leave it returnable twice. The
 // dialog said only "Up to £175.00" against a row and a card statement both
 // saying £225.00 (owner's screenshot), so a correct cap read as a wrong figure.
+// Re-open THIS booking's pay screen asking for everything. The token and id are
+// already in payState, and the server re-derives the kind, so nothing about the
+// charge is decided here.
+function payInFull() {
+    if (!payState.token || !payState.bookingId) return;
+    openPayView(payState.token, payState.bookingId, 'balance');
+}
 async function refundPayment(bookingId, squareId, maxAmount, carried) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
@@ -14047,7 +14064,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'refundfig';
+    const BUILD = 'payfull';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

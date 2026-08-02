@@ -2771,6 +2771,27 @@ a.card {
   padding-top: 8px;
   border-top: 1px solid var(--glass-border);
 }
+/* Settle the whole stay rather than the deposit — a quiet text action, because
+   it is an alternative to the primary button and must not compete with it.
+   44px floor: it is a real control on a payment screen. */
+.pay-full-link {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 8px 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  cursor: pointer;
+  text-align: center;
+}
+.pay-full-link:hover {
+  text-decoration: underline;
+}
 .sq-card {
   min-height: 56px;
   padding: 4px 0;
