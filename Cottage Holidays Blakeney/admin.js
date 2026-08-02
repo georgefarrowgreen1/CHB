@@ -98,6 +98,7 @@ async function clearGeo(k) {
 
 // Open the Settings & Fees page (admin only)
 let adminPrivateContent = {}; // includes arrival-* keys (admin-only)
+let __adminPrivateLoaded = false; // has content.php get_all ever answered this session?
 async function openSettings(section) {
     // The health / cron pills live on this page now — refresh them on open
     // (both are cached + best-effort, so this is cheap and never blocks).
@@ -122,11 +123,21 @@ async function openSettings(section) {
     else settingsShowIndex();
     // Load admin-only content (arrival-*, geo-*) so the per-cottage editors and
     // the host fields have their data ready when a row is opened.
+    // KEEP THE LAST GOOD COPY on a failed fetch — the loadContent/loadData rule,
+    // with the sharpest edge of any of them. These editors read adminPrivateContent
+    // FIRST because an INTERNAL key is absent from the anonymous boot content GET,
+    // so emptying it here rendered bank details, notify prefs, the tides key and
+    // every cottage's arrival + welcome text BLANK over real saved data — and the
+    // arrival textarea saves on CHANGE, so one typed word overwrote the lot. The
+    // failure is SAID now too: a blank box the owner believes is one they fill in.
     try {
         const r = await apiPost('content.php', { action: 'get_all' });
         adminPrivateContent = r.content || {};
+        __adminPrivateLoaded = true;
     } catch (e) {
-        adminPrivateContent = {};
+        // openSettings, not openArea — openArea takes NO arguments and would
+        // drop the section the owner is standing in (the trap noted in CLAUDE.md).
+        if (!__adminPrivateLoaded) adminNetFail(() => openSettings(section));
     }
     // Load bookings/enquiries so the Enquiries + Guest-messages badges (and the
     // Preferences occupancy donuts) are accurate even if the back office wasn't opened.
@@ -3394,6 +3405,13 @@ function chbWatchBalanceAction(b, pk, ps) {
             };
         },
     };
+}
+// The first of NEXT month, the one the pulse row offers to watch — stated once so
+// the row and the watcher cannot disagree about which month is meant.
+function chbNextMonthIso() {
+    const t = todayDashed();
+    const y = +t.slice(0, 4), m = +t.slice(5, 7);
+    return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 }
 // "Tell me if next month falls behind last year." The third kind. It watches a
 // MONTH rather than a record, so `ref` is the month key and from/to are its bounds
@@ -7510,7 +7528,13 @@ function cmdkBriefBuild() {
     // Proactive monthly pulse — how the month's shaping up vs last, unasked.
     try {
         const pulse = chbBusinessPulse();
-        if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', board: 'month', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
+        // …and the third watcher kind hangs off it. `month-behind` was built end to
+        // end (builder, storage, cron re-check, its own notification title) with NO
+        // affordance anywhere — search-test called the builder DIRECTLY, so the gate
+        // stayed green while no owner could set one: the mailboxTab shape. It sits
+        // beside the pulse for the reason chbWatchGapAction sits on the gap row —
+        // this row raises the question it answers — and watches NEXT month.
+        if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', board: 'month', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, actions: [chbWatchMonthAction(chbNextMonthIso())].filter(Boolean), run: () => { closeCmdK(); openAccounts(); } });
     } catch (e) {}
     // One opportunity, unasked: the soonest bookable gap, carrying chbGapPlan's
     // decision — the ready-made offer, or the live status of one already set.

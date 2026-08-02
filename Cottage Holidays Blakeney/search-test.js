@@ -2133,9 +2133,35 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('setting one is undoable', typeof outB.undo === 'function');
 
         // B) MONTH WATCHER — bounds the month it watches and speaks on a future day.
-        const wm = ctx.chbWatchMonthAction(fut(40));
+        //    REACHED THE WAY AN OWNER REACHES IT, off the brief's own pulse row.
+        //    Calling chbWatchMonthAction directly (as this did) is the mailboxTab
+        //    trap: the whole kind was built end to end and had NO affordance
+        //    anywhere, and this check was green throughout. A builder with no
+        //    caller is a feature nobody can use, so the gate must start from the row.
+        // The pulse only renders when there is a month to compare, so seed one
+        // (this month vs last, §27's shape) and drop the 8s brief memo first —
+        // without both, the row is absent and the check would pass by finding
+        // nothing to fail on.
+        {
+            const tdy = ctx.todayDashed();
+            const mmm = tdy.slice(0, 8);
+            const Yp = +tdy.slice(0, 4), Mp = +tdy.slice(5, 7);
+            const lmm = Mp === 1 ? `${Yp - 1}-12-` : `${Yp}-${String(Mp - 1).padStart(2, '0')}-`;
+            vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=${JSON.stringify([
+                { id: 91, name: 'Pulse A', checkIn: mmm + '05', checkOut: mmm + '10', agreedPrice: { total: 650 } },
+                { id: 92, name: 'Pulse B', checkIn: lmm + '04', checkOut: lmm + '06', agreedPrice: { total: 260 } },
+            ])};__cmdkBriefCache=null;__cmdkCustomers=null;`, ctx);
+        }
+        const briefRows = ctx.cmdkBrief ? ctx.cmdkBrief() : [];
+        const pulseRow = (briefRows || []).filter((r) => r && r.id === 'brief-pulse')[0] || null;
+        check('the brief HAS a pulse row to hang it on (vacuity guard)', !!pulseRow, 'ids: ' + (briefRows || []).map((r) => r && r.id).join(','));
+        check('the month watcher is REACHABLE — the pulse row carries it', !!(pulseRow && (pulseRow.actions || []).filter((a) => a && a.key === 'watch-month').length === 1),
+            pulseRow ? 'actions: ' + (pulseRow.actions || []).map((a) => a && a.key).join(',') : 'no pulse row');
+        const wm = (pulseRow && (pulseRow.actions || []).filter((a) => a && a.key === 'watch-month')[0]) || null;
+        if (!wm) fail('no month watcher to drive — the rest of B cannot run');
         posted = null;
-        const outM = await wm.inline();
+        const outM = wm ? await wm.inline() : { say: '' };
+        check('…and it watches NEXT month, the one still worth acting on', posted.watcher.from === ctx.chbNextMonthIso(), `${posted.watcher.from} vs ${ctx.chbNextMonthIso()}`);
         check('a MONTH can be watched too', posted.watcher.kind === 'month-behind', posted.watcher.kind);
         check('bounded to that month, start inclusive and end exclusive', /^\d{4}-\d{2}-01$/.test(posted.watcher.from) && /^\d{4}-\d{2}-01$/.test(posted.watcher.to) && posted.watcher.to > posted.watcher.from, `${posted.watcher.from} → ${posted.watcher.to}`);
         check('and it only PROMISES to speak if it is actually behind', /only if it's actually behind/.test(outM.say), outM.say);
