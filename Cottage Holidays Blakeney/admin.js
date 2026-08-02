@@ -20247,7 +20247,9 @@ function renderEnquiryHub() {
                 <div style="font-size:0.95rem;">${priceLine}</div>
                 <div class="bhub-btn-row" style="margin-top:10px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPlan', String(e.id))}>${enquiryHasPlan(e) ? 'Change payment plan' : 'Set a payment plan'}</button>
                 </div>
+                ${enquiryHasPlan(e) ? `<div class="bhub-mut" style="margin:8px 0 0;">Approving will use ${escapeHtml(enquiryPlanWords(e))}.</div>` : ''}
                 <div style="margin-top:16px;">${repeatGuestBadge(e) || '<span class="bhub-mut" style="margin:0;">First-time guest (no completed stays on this email).</span>'}</div>
             </section>
         </div>`;
@@ -20688,6 +20690,48 @@ async function setEnquiryPrice(enqId) {
     );
 }
 
+// THE PLAN AGREED WITH AN ENQUIRER, held until approval — which creates the
+// booking AND emails the request in one step, so a plan set afterwards always
+// arrives second, with the guest already holding the site-standard figure. Same
+// fields the Add form sends, validated by the same payment_plan_parse.
+function enquiryHasPlan(e) {
+    return !!(e && (e.planPct > 0 || e.planDue));
+}
+function enquiryPlanWords(e) {
+    const bits = [];
+    if (e.planPct > 0) bits.push(`a ${e.planPct}% deposit`);
+    if (e.planDue) bits.push(`the balance by ${fmtDate(e.planDue)}`);
+    return bits.join(', ') || 'the site standard';
+}
+async function setEnquiryPlan(enqId) {
+    const enq = enquiries.find((x) => x.id === enqId);
+    if (!enq) return;
+    const stdDue = enq.checkIn ? ukShiftDays(enq.checkIn, -(paymentTerms.balanceDays || 30)) : '';
+    const vals = await glassForm(
+        'Approving will use this plan for the confirmation and the payment request that follows. Blank = the site standard.',
+        [
+            { id: 'dep', label: 'Deposit %', type: 'number', min: 1, step: 'any',
+              value: enq.planPct > 0 ? enq.planPct : '',
+              placeholder: `e.g. 50`,
+              hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the rental)` },
+            { id: 'due', label: 'Balance due by', type: 'date',
+              value: enq.planDue || stdDue || '',
+              hint: enq.planDue ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
+        ],
+        { title: `Payment plan — ${enq.name || 'this enquiry'}`, okLabel: 'Save plan' },
+    );
+    if (vals === null) return;
+    const pct = Math.round((parseFloat(String(vals.dep || '').trim()) || 0) * 100) / 100;
+    const due = String(vals.due || '').trim();
+    enq.planPct = pct > 0 && pct <= 100 ? pct : null;
+    // Saving the STANDARD date unchanged still means "standard" — the same rule
+    // the booking hub's dialog follows, so merely opening this cannot quietly
+    // convert a standard plan into a custom one.
+    enq.planDue = due && due !== stdDue ? due : null;
+    renderInbox();
+    if (__enqHubId === enqId) { try { renderEnquiryHub(); } catch (e) {} }
+    toast(enquiryHasPlan(enq) ? `Plan set — approving will use ${enquiryPlanWords(enq)}.` : 'The site standard will be used.');
+}
 async function approveEnquiry(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
@@ -20728,6 +20772,8 @@ async function approveEnquiry(enqId) {
     try {
         const req = { action: 'approve', id: enq.dbId };
         if (enq.priceOverride != null) req.price_override = enq.priceOverride;
+        if (enq.planPct > 0) req.deposit_pct = enq.planPct;
+        if (enq.planDue) req.balance_due_date = enq.planDue;
         const res = await apiPost('enquiries.php', req);
         await loadData();
         renderInbox();

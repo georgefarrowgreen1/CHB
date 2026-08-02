@@ -136,7 +136,14 @@ function enquiry_confirmation_preview($id, $priceOverride = null)
 
 // $priceOverride: optional agreed total (£) negotiated with the guest — parity
 // with the manual Add Booking's "Override total price". Null/blank/≤0 = standard.
-function enquiry_approve($id, $priceOverride = null)
+// $plan carries the SAME three fields the Add-Booking form and the hub's
+// Edit-plan dialog send (deposit_pct | deposit_amount, balance_due_date), and is
+// validated by the SAME payment_plan_parse. Approval used to create the booking
+// with no plan at all and then immediately email a request derived from the site
+// standard — so agreeing 50% with an enquirer meant they received an email for
+// 25% before the plan could be set, and the hub then said one thing while the
+// guest held an email saying another. The plan is now part of the approval.
+function enquiry_approve($id, $priceOverride = null, $plan = [])
 {
     $id = (int) $id;
     $priceOverride =
@@ -165,6 +172,21 @@ function enquiry_approve($id, $priceOverride = null)
     if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
         return ['error' => 'That cottage has been removed from the site — restore it (Manage → Preferences) before approving.', 'code' => 400];
     }
+    // THE PLAN IS PARSED BEFORE THE LOCK. payment_plan_parse answers a bad plan
+    // with json_out(), which EXITS — so parsing it after book_lock() would leave
+    // the cottage locked behind a refusal. Same reason bookings.php only fetches
+    // a total when a £ amount actually needs capping.
+    $planPct = $planAmt = $planDue = null;
+    if (is_array($plan) && (trim((string) ($plan['deposit_pct'] ?? '')) !== ''
+        || trim((string) ($plan['deposit_amount'] ?? '')) !== ''
+        || trim((string) ($plan['balance_due_date'] ?? '')) !== '')) {
+        $planTotal = 0.0;
+        if (trim((string) ($plan['deposit_amount'] ?? '')) !== '') {
+            $pForCap = price_breakdown($rate, $e['adults'], $e['children'], $e['check_in'], $e['check_out']);
+            $planTotal = $priceOverride !== null ? $priceOverride : (float) $pForCap['total'];
+        }
+        [$planPct, $planAmt, $planDue] = payment_plan_parse($plan, (string) $e['check_in'], $planTotal);
+    }
     if (!book_lock($e['prop_key'])) {
         // Genuine lock timeout — proceeding would skip the concurrent-approval
         // protection, so refuse rather than risk a double booking.
@@ -192,8 +214,9 @@ function enquiry_approve($id, $priceOverride = null)
             'INSERT INTO bookings
         (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
          agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,
-         terms_accepted_at,terms_version,sms_opt_in,price_override,no_dogs_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+         terms_accepted_at,terms_version,sms_opt_in,price_override,no_dogs_at,
+         deposit_pct_override,deposit_amount_override,balance_due_date)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $e['prop_key'],
@@ -226,6 +249,12 @@ function enquiry_approve($id, $priceOverride = null)
             // declaration — by arrival, when it matters, there would be nowhere left
             // to look it up.
             $e['no_dogs_at'] ?? null,
+            // The plan agreed with the enquirer, so the payment request that
+            // goes out moments later is derived from IT and not the site
+            // standard. Nulls = standard, exactly as the Add form stores it.
+            $planPct,
+            $planAmt,
+            $planDue,
         ]);
     $bookingId = db()->lastInsertId();
     db()

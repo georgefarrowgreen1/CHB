@@ -537,7 +537,14 @@ if ($action === 'approve_preview') {
 
 if ($action === 'approve') {
     // Optional agreed price (parity with the manual add's price override).
-    $r = enquiry_approve((int) ($in['id'] ?? 0), $in['price_override'] ?? null);
+    // The plan agreed with the enquirer travels with the approval, so the
+    // payment request that follows moments later is derived from it rather than
+    // the site standard. Same field names the Add form and Edit-plan send.
+    $r = enquiry_approve((int) ($in['id'] ?? 0), $in['price_override'] ?? null, [
+        'deposit_pct' => $in['deposit_pct'] ?? '',
+        'deposit_amount' => $in['deposit_amount'] ?? '',
+        'balance_due_date' => $in['balance_due_date'] ?? '',
+    ]);
     if (!empty($r['error'])) {
         json_out(['error' => $r['error']], (int) ($r['code'] ?? 400));
     }
