@@ -2358,6 +2358,68 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext(`siteContent['search-pins']=[];Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);`, ctx);
     } else fail('chbPinAdd / chbPinAnswer missing from the bundle');
 
+    // ---- 42. Every money answer speaks the SAME frame as the booking hub. --------
+    //
+    //  `paymentSummary().balance` is the RENTAL balance; the refundable damages
+    //  deposit rides the guest's FIRST payment, so until it lands it is money
+    //  still to collect. bookingDue() folds it in and every owner surface reads
+    //  that — the booking row, Today's day line, chbDuties, the brief, the owed
+    //  answer. FOUR search composers were still on the rental frame, so searching
+    //  a guest's name (the commonest owner search there is) read "£700.00 still
+    //  due" while the hub it links to, and the owed answer in the SAME window,
+    //  both said £750.00. This asserts the property rather than the pounds:
+    //  whatever a money answer quotes, it must be the due frame's figure.
+    if (typeof ctx.bookingDue === 'function') {
+        const iso = (n) => { const dt = new Date(ctx.todayDashed() + 'T12:00:00Z'); dt.setUTCDate(dt.getUTCDate() + n); return dt.toISOString().slice(0, 10); };
+        // Cash rail (holdStatus 'none'), nothing paid, a £50 refundable deposit
+        // NOT yet collected — the one state where the two frames diverge.
+        const row = { id: 1, dbId: 1, name: 'Sarah Pemberton', email: 's@example.com', phone: '07700 900999',
+            checkIn: iso(20), checkOut: iso(27), adults: 2, children: 0, depositPaid: 0, holdStatus: 'none',
+            paymentMethod: 'Bank transfer', agreedPrice: { total: 700, perNight: 100, nights: 7, txFee: 0, damagesDeposit: 50 } };
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=[${JSON.stringify(row)}];__cmdkCustomers=null;`, ctx);
+        const rental = vm.runInContext('paymentSummary("jollyboat", dbBookings.jollyboat[0])', ctx);
+        const due = vm.runInContext('bookingDue("jollyboat", dbBookings.jollyboat[0])', ctx);
+        // Vacuity guard: if the fixture stops making the two frames differ, every
+        // check below passes by saying nothing.
+        check('42 fixture actually separates the two frames (rental vs due)', due.balance > rental.balance + 0.5, `rental ${rental.balance} vs due ${due.balance}`);
+        const dueTxt = ctx.gbp(due.balance), rentalTxt = ctx.gbp(rental.balance);
+        const said = (q) => {
+            let r;
+            try { r = vm.runInContext('cmdkIntent(' + JSON.stringify(q) + ')', ctx); } catch (e) { return '<<threw ' + e.message + '>>'; }
+            return (r || []).slice(0, 3).map((it) => (it.label || '') + ' ' + (it.sub || '')).join(' | ');
+        };
+        [
+            ['a plain name search', 'sarah'],
+            ['"has X paid"', 'has sarah paid'],
+            ['"when does X pay"', 'when does sarah pay'],
+        ].forEach(([what, q]) => {
+            const t = said(q);
+            check(`${what} quotes the due frame (${dueTxt})`, t.indexOf(dueTxt) !== -1, t.slice(0, 120));
+            check(`${what} never quotes the rental balance (${rentalTxt})`, t.indexOf(rentalTxt) === -1, t.slice(0, 120));
+        });
+        // The DEPOSIT question is deliberately still rental-framed on its leading
+        // figure — what it must not do is quote the rental balance as "due".
+        vm.runInContext(`dbBookings.jollyboat[0].depositPaid = 175;__cmdkCustomers=null;`, ctx);
+        const due2 = vm.runInContext('bookingDue("jollyboat", dbBookings.jollyboat[0])', ctx);
+        const dep = said("who's paid a deposit");
+        check('"who\'s paid a deposit" leads with the deposit actually paid (£175.00)', dep.indexOf('£175.00') !== -1, dep.slice(0, 140));
+        check('…and its trailing "due" is the due frame too', dep.indexOf(ctx.gbp(due2.balance) + ' due') !== -1, dep.slice(0, 140));
+        // 0a) The record's OWN answer, asked while standing on its hub — the one
+        // that quoted a different figure from the hub two lines beneath it.
+        vm.runInContext(`__cmdkEntity = { type: 'booking', id: 1, name: 'Sarah Pemberton', b: dbBookings.jollyboat[0] };`, ctx);
+        const ent = said('their balance');
+        check('the on-hub "their balance" answer quotes the due frame', ent.indexOf(ctx.gbp(due2.balance)) !== -1, ent.slice(0, 140));
+        check('…and its total is the due frame total, not the rental one', ent.indexOf(ctx.gbp(due2.total)) !== -1 && ent.indexOf(ctx.gbp(rental.total) + ' ') === -1, ent.slice(0, 140));
+        vm.runInContext('__cmdkEntity = null;', ctx);
+        // A booking with no refundable deposit must read EXACTLY as before — the
+        // two frames coincide there, which is why the golden corpus never moved.
+        vm.runInContext(`dbBookings.jollyboat[0].agreedPrice = { total: 700, perNight: 100, nights: 7, txFee: 0 };dbBookings.jollyboat[0].depositPaid = 0;__cmdkCustomers=null;`, ctx);
+        const plainDue = vm.runInContext('bookingDue("jollyboat", dbBookings.jollyboat[0])', ctx);
+        check('with no damages deposit the two frames agree (nothing else moved)', Math.abs(plainDue.balance - 700) < 0.01, String(plainDue.balance));
+        check('and the name search still states it', said('sarah').indexOf('£700.00') !== -1, said('sarah').slice(0, 120));
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;`, ctx);
+    } else fail('bookingDue missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
