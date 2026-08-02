@@ -41,10 +41,21 @@ const RANGES = [
 ];
 const BOOKED = [1, 2, 3, 7, 8, 9, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30];
 const TOO_SHORT = [6, 11, 18, 27];
+// THE FIXTURE MONTH HAS TO STAY IN THE FUTURE, so the clock is pinned to a July
+// morning before it. Every date above is a hardcoded August 2026 — fine while it
+// was a year out, and wrong the day the wall clock reached it: `isPast` forces
+// `booked` false and paints a past night `dp-disabled` instead, so on 02 Aug 2026
+// this suite reported four failures for a picker doing exactly the right thing
+// (the 1st was past, therefore not "booked"). That is CLAUDE.md's own rule — a
+// test that reads the clock is only verified on the day it runs — so pin it
+// rather than roll the fixture forward, which would only move the expiry date.
+// setFixedTime, NOT clock.install(): the app's own setTimeouts must still fire.
+const PINNED = new Date('2026-07-15T09:00:00Z');
 
 (async () => {
   const { browser, base, done } = await bootBrowser();
   const page = await browser.newPage({ viewport: { width: 900, height: 1100 } });
+  await page.clock.setFixedTime(PINNED);
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
   await page.route(/\.php/, (route) => {
@@ -182,7 +193,12 @@ const TOO_SHORT = [6, 11, 18, 27];
       const cs = getComputedStyle(el);
       o[n] = {
         clickable: el.getAttribute('data-act') === 'dpPick',
-        marked: el.classList.contains('dp-booked') || el.classList.contains('dp-out'),
+        // dp-disabled belongs here as much as the other two — it is the PAST mark
+        // (opacity 0.3, not-allowed, line-through), and a sweep that asserts a
+        // general property must count every way the picker says no. It was left
+        // out because no fixture had ever put a past day on this grid.
+        marked: el.classList.contains('dp-booked') || el.classList.contains('dp-out')
+          || el.classList.contains('dp-disabled'),
         opacity: parseFloat(cs.opacity),
         cursor: cs.cursor,
         struck: cs.textDecorationLine.includes('line-through'),
@@ -214,6 +230,30 @@ const TOO_SHORT = [6, 11, 18, 27];
   });
   ok(sept.total > 0 && sept.bare === 0,
     `turning to the next month never shows a page of dead-but-normal dates (${sept.bare} of ${sept.total})`);
+
+  // The same question turned BACKWARDS, which is the only state that exercises
+  // dp-disabled — and the state the pinned clock would otherwise put out of reach.
+  // June is entirely in the past from the pinned July: every cell is refused, so
+  // every cell must say so. Deliberately asserts the count is non-zero as well,
+  // or a month that rendered nothing would pass by having nothing to fail.
+  await page.evaluate(() => { dpChangeMonth(-1); dpChangeMonth(-1); dpChangeMonth(-1); });
+  await page.waitForTimeout(150);
+  const june = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('#dp-grid .dp-day')].filter((e) => parseInt(e.textContent.trim(), 10));
+    return {
+      total: cells.length,
+      bare: cells.filter((e) => e.getAttribute('data-act') !== 'dpPick'
+        && !e.classList.contains('dp-booked') && !e.classList.contains('dp-out')
+        && !e.classList.contains('dp-disabled')).length,
+      dimmed: cells.filter((e) => parseFloat(getComputedStyle(e).opacity) < 0.6).length,
+    };
+  });
+  ok(june.total === 30 && june.bare === 0 && june.dimmed === 30,
+    `a month wholly in the past reads as past, every cell (${june.dimmed}/${june.total} dimmed, ${june.bare} bare)`);
+  // Back to September, where this block found it — the next check turns one page
+  // BACK to reach August and would otherwise land somewhere else entirely.
+  await page.evaluate(() => { dpChangeMonth(1); dpChangeMonth(1); dpChangeMonth(1); });
+  await page.waitForTimeout(150);
 
   // …and it must not ANSWER the pointer either. A shared hover rule lifts and
   // shadows every .dp-day, so a dead cell rose like a live control before doing
