@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 399;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 145;
+const ADMIN_CSS_V = 146;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -7464,7 +7464,10 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                 // red problem) — same system as the Payments screen; the word rides
                 // along as the hover + screen-reader label so it's never colour-only.
                 const sMeta = paymentStatusMeta(p.kind, p.status);
-                return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
+                // Classed so the Activity feed can hold it to the story's own
+                // type size — it carries no font-size of its own and inherited
+                // the card base, rendering 16px among 13.12px event rows.
+                return `<div class="bhub-ledger-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
                         <span style="min-width:0;">${label} · ${sign}${gbp(shown)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${carriedNote}${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
         }
     }
@@ -14016,7 +14019,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'askfig02';
+    const BUILD = 'feedsize';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

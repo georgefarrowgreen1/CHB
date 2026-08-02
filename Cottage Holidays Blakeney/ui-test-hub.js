@@ -616,6 +616,34 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(order.ret > -1 && order.led > order.ret && order.created > order.led,
     `newest first across sources (return@${order.ret} < charge@${order.led} < created@${order.created})`);
 
+  // ONE TYPE SIZE ACROSS THE WHOLE STORY (owner's screenshot). It had FIVE:
+  // 16px ledger rows (no font-size of their own, inheriting the card base)
+  // towering over 13.12px event rows, plus 12.8 / 12.48 / 11.52 for the email
+  // body, its disclosure and the actor — three of those within 0.7px, which is
+  // a distinction no reader can use. Asserted by SWEEPING every text-bearing
+  // leaf rather than listing selectors, so a new strand of the feed is covered
+  // the day it is written; the email is expanded first because its body only
+  // renders inside an open <details>.
+  const sizes = await page.evaluate(() => {
+    const d = document.querySelector('#hub-history details.bhub-feed-mail');
+    if (d) d.open = true;
+    const seen = {};
+    const walk = (el) => {
+      for (const n of el.childNodes) {
+        if (n.nodeType === 3 && n.textContent.trim()) {
+          const px = getComputedStyle(n.parentElement).fontSize;
+          (seen[px] = seen[px] || []).push(n.textContent.trim().slice(0, 24));
+        } else if (n.nodeType === 1) walk(n);
+      }
+    };
+    walk(document.getElementById('hub-history'));
+    return seen;
+  });
+  const keys = Object.keys(sizes);
+  // Vacuity guard: a card that rendered nothing would trivially have one size.
+  ok(keys.length === 1 && sizes[keys[0]].length >= 6,
+    `the activity story reads at ONE size (${keys.join(', ')} over ${keys.reduce((n, k) => n + sizes[k].length, 0)} runs of text)`);
+
   // ---------- C2. the redesign's affordances ----------
   console.log('C2. chips · gap · sticky · share · draft');
   // Status chips: five facts from five places (incl. sms_opt_in, stored since
