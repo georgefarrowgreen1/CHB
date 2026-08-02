@@ -38,6 +38,9 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00', no_dogs_at: '2026-07-01 10:00:00' },
     { id: 7, prop_key: '21a', name: 'Enq Beta', email: 'beta@gmail.com', phone: '', address: '3 Lane', postcode: 'NR25 7AB', check_in: d(80), check_out: d(83), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: '', created_at: d(0) + ' 08:00:00' },
   ];
+  // Enquiries the owner has turned down — soft-deleted server-side, which is
+  // what makes the drawer possible.
+  let declined = [];
   const posts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
@@ -90,7 +93,18 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
           enqs = enqs.filter((x) => x.id !== b.id);
           return json({ ok: true, booking_id: 70, email: { guest: { ok: true } }, payment_request: null, email_check: null });
         }
-        if (b.action === 'decline') { enqs = enqs.filter((x) => x.id !== b.id); return json({ ok: true }); }
+        if (b.action === 'decline') {
+          const gone = enqs.find((x) => x.id === b.id);
+          if (gone) declined.push(gone);
+          enqs = enqs.filter((x) => x.id !== b.id);
+          return json({ ok: true });
+        }
+        if (b.action === 'declined') return json({ ok: true, enquiries: declined });
+        if (b.action === 'restore') {
+          const back = declined.find((x) => x.id === b.id);
+          if (back) { enqs.push(back); declined = declined.filter((x) => x.id !== b.id); }
+          return json({ ok: true });
+        }
         return json({ ok: true });
       }
       if (b.__url === 'ical-import.php' && b.action === 'blocks') {
@@ -1253,6 +1267,36 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     zeroNote: /Inbox zero/.test((document.getElementById('inbox-list') || {}).textContent || ''),
   }));
   ok(k.zeroNote && k.emptyShown && k.hubEmpty, `empty inbox restores the pane placeholder (no stale enquiry hub) ${JSON.stringify(k)}`);
+
+  // ---------- K2. the declined drawer ----------
+  // enquiry_decline is a SOFT delete precisely so a mistake can be undone, but
+  // the only way back was the Undo on a toast — gone in seconds. Decline the
+  // wrong one, look away, and a recoverable row was unreachable.
+  console.log('K2. declined enquiries can be found and restored');
+  const k2switch = await page.evaluate(() => ({
+    hasSwitch: !!document.querySelector('#inbox-list .inbox-sort.seg'),
+    labels: [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].map((b) => b.textContent.trim()),
+  }));
+  ok(k2switch.hasSwitch && /Declined/.test(k2switch.labels.join(' ')),
+    `the switch is there even on inbox zero — which is exactly when you go looking (${k2switch.labels.join(' | ')})`);
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => /Declined/.test(x.textContent)); b && b.click(); });
+  await page.waitForTimeout(700);
+  const k2 = await page.evaluate(() => ({
+    txt: ((document.getElementById('inbox-list') || {}).textContent || '').replace(/\s+/g, ' '),
+    rows: document.querySelectorAll('#inbox-list .enq-declined-row').length,
+    restores: document.querySelectorAll('#inbox-list .enq-declined-row button').length,
+  }));
+  ok(k2.rows >= 1 && /Declined/.test(k2.txt), `the one declined in J is listed (${k2.rows} row/s)`);
+  ok(k2.restores === k2.rows, 'every row offers Restore — the whole point of the drawer');
+  // RESTORING puts it back in the inbox and takes it out of the drawer.
+  await page.evaluate(() => { const b = document.querySelector('#inbox-list .enq-declined-row button'); b && b.click(); });
+  await page.waitForTimeout(1200);
+  const k3 = await page.evaluate(() => ({
+    backOnWaiting: !!document.querySelector('#inbox-list .bk-row[data-enqid]'),
+    stillDeclined: document.querySelectorAll('#inbox-list .enq-declined-row').length,
+  }));
+  ok(k3.backOnWaiting && k3.stillDeclined === 0,
+    `restoring returns it to Waiting and drops it from the drawer (waiting ${k3.backOnWaiting}, drawer ${k3.stillDeclined})`);
 
   // ---------- L. Money workspace: find-rows → booking hub → back to Money ----------
   console.log('L. money workspace');

@@ -324,6 +324,46 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(onOpen.before === '1' && onOpen.after === '0' && onOpen.stamped,
     `opening it clears the count without waiting on the server (${onOpen.before} → ${onOpen.after})`);
 
+  // ---- 9. a stalled calendar sync is a DUTY, not a footnote ----------------
+  // It was only ever a line in the assistant's foot — you had to open search AND
+  // read the bottom of it. While an Airbnb feed is stale its stays are not
+  // blocking the calendar, and every clash guard faithfully finds nothing,
+  // because there is nothing left to find. It rides the bootstrap payload
+  // (window.__feedStatusPre) like the payout trouble above.
+  console.log('9. a stalled calendar sync is a duty');
+  const feedState = (feeds) => page.evaluate((feeds) => {
+    enquiries = []; __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
+    window.__payoutTroublePre = null; window.__newMailPre = null;
+    window.__feedStatusPre = feeds;
+    renderNeedsYou();
+    return {
+      txt: ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' '),
+      count: (document.getElementById('needs-you-count') || {}).textContent,
+      sys: (() => { try { const st = chbSystemState(); return st && st.say; } catch (e) { return ''; } })(),
+    };
+  }, feeds);
+
+  const stuck = await feedState([{ pk: 'jollyboat', name: 'Jollyboat', ageHours: 50, failing: 0 }]);
+  ok(/Jollyboat.{0,3}s calendar sync looks stuck/.test(stuck.txt), `a stale feed is a duty (${stuck.txt.slice(0, 80)})`);
+  ok(/2 days/.test(stuck.txt), `…saying how long it has been silent (${stuck.txt.slice(0, 90)})`);
+  ok(stuck.count === '1', `and it counts on the badge (${stuck.count})`);
+  // ONE definition: the status line and the duty must not disagree about it.
+  ok(/Jollyboat/.test(stuck.sys || ''), `the search status line says the same thing (${stuck.sys})`);
+
+  // FRESH but failing: it imported an hour ago and the source is erroring. Only
+  // the failing clause can surface this — with a stale age too, the check would
+  // pass on either clause and prove nothing.
+  const failing = await feedState([{ pk: '21a', name: '21A', ageHours: 2, failing: 1 }]);
+  ok(/21A.{0,3}s calendar sync is failing/.test(failing.txt), `an outright failing source says so (${failing.txt.slice(0, 80)})`);
+  ok(/not be blocking these dates/.test(failing.txt), '…and names the consequence, which is what makes it urgent');
+
+  // A feed that has never imported is omitted server-side; a healthy one invents
+  // nothing, and neither does an empty payload.
+  const healthy = await feedState([{ pk: 'pimpernel', name: 'Pimpernel', ageHours: 2, failing: 0 }]);
+  ok(!/calendar sync/.test(healthy.txt), 'a healthy feed is not a duty');
+  const none = await feedState(null);
+  ok(!/calendar sync/.test(none.txt), 'no feed data at all invents nothing');
+
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

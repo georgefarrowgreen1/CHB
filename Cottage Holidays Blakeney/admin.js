@@ -3471,28 +3471,43 @@ function chbSystemState() {
     } catch (e) {}
     try {
         // SECOND signal, and the one this line was missing: a per-cottage iCal feed
-        // that has stopped importing. It is free now because admin-bootstrap carries
-        // the health in the payload loadData already fetches — the no-request rule
-        // is intact, which is why this was left out the first time rather than
-        // forgotten. A feed that has NEVER imported is not stalled, so the server
-        // omits it; only staleness and outright failures reach here.
-        const feeds = /** @type {any} */ (window).__feedStatusPre;
-        if (Array.isArray(feeds) && feeds.length) {
-            const failing = feeds.filter((f) => f && f.failing > 0);
-            const stale = feeds.filter((f) => f && f.ageHours >= 36);
-            const worst = failing[0] || stale.sort((a, b) => b.ageHours - a.ageHours)[0];
-            if (worst) {
-                const ago = worst.ageHours >= 48 ? Math.round(worst.ageHours / 24) + ' days' : Math.round(worst.ageHours) + ' hours';
-                checks.push({
-                    level: 'warn',
-                    say: `${worst.name} calendar sync looks stuck — last imported ${ago} ago`,
-                    go: () => cmdkOpenSection('calendar'),
-                });
-            }
+        // that has stopped importing. It is free because admin-bootstrap carries the
+        // health in the payload loadData already fetches — the no-request rule is
+        // intact. ONE definition of "in trouble" (chbFeedTrouble), shared with the
+        // DUTY on Today, so the status line and the to-do list cannot disagree
+        // about whether a sync has stopped.
+        const worst = chbFeedTrouble()[0];
+        if (worst) {
+            checks.push({
+                level: 'warn',
+                say: `${worst.name} calendar sync looks stuck — ${worst.ago}`,
+                go: () => cmdkOpenSection('calendar'),
+            });
         }
     } catch (e) {}
     if (checks.length) return checks[0]; // the most important thing, not a panel
     return { level: 'ok', say: 'All systems normal' };
+}
+// WHICH CALENDAR FEEDS ARE IN TROUBLE — worst first. A feed that has NEVER
+// imported is not stalled, so the server omits it; only staleness and outright
+// failures reach here. Read off the bootstrap payload, so asking costs nothing.
+function chbFeedTrouble() {
+    const feeds = /** @type {any} */ (window).__feedStatusPre;
+    if (!Array.isArray(feeds) || !feeds.length) return [];
+    return feeds
+        .filter((f) => f && (f.failing > 0 || f.ageHours >= 36))
+        .map((f) => ({
+            pk: f.pk,
+            name: f.name || f.pk,
+            failing: f.failing > 0,
+            ageHours: f.ageHours,
+            ago: f.ageHours >= 48
+                ? 'last imported ' + Math.round(f.ageHours / 24) + ' days ago'
+                : 'last imported ' + Math.round(f.ageHours) + ' hours ago',
+        }))
+        // An outright FAILING source outranks mere staleness — it is the one that
+        // will not fix itself — then the longest silence.
+        .sort((a, z) => (z.failing ? 1 : 0) - (a.failing ? 1 : 0) || z.ageHours - a.ageHours);
 }
 function chbSysLine() {
     const el = /** @type {HTMLButtonElement|null} */ (document.getElementById('cmdk-sys'));
@@ -9162,20 +9177,6 @@ async function openBookings() {
     const ws = document.getElementById('bookings-workspace');
     if (ws) ws.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-// Friendly label for a logged email action.
-function emailLogLabel(action) {
-    return (
-        {
-            'email.confirmation': 'Booking confirmation',
-            'email.receipt': 'Payment receipt',
-            'email.arrival': 'Arrival info',
-            'booking.email': 'Message',
-            'payment.request': 'Payment request',
-            'email.review': 'Review request',
-            'email.anniversary': 'Return invite',
-        }[action] || 'Email'
-    );
-}
 // 'YYYY-MM-DD HH:MM:SS' → 'D Mon YYYY · HH:MM'.
 function fmtLogWhen(at) {
     if (!at) return '';
@@ -9370,30 +9371,6 @@ function markBookingsSelection() {
     }
     if (empty && pane) empty.style.display = __hubBookingId && content && content.parentElement === pane ? 'none' : '';
 }
-// The "Emails sent" history block shown under a booking on the Bookings page.
-// Templated emails whose content can be regenerated for preview (server
-// email_preview action). Free-text "Message" logs already show inline.
-const EMAIL_PREVIEWABLE = ['email.confirmation', 'email.arrival', 'payment.request'];
-// Fetch a faithful regeneration of a templated email and show it.
-async function openEmailPreview(bookingDbId, kind, btn) {
-    const original = btn ? btn.textContent : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Loading…';
-    }
-    try {
-        const r = await apiPost('bookings.php', { action: 'email_render', id: bookingDbId, kind });
-        if (!r || !r.ok) throw new Error((r && r.error) || 'No preview available.');
-        showEmailPreview(r.subject || '(no subject)', r.html || '', r.text || '');
-    } catch (e) {
-        glassAlert("Couldn't load the email: " + e.message);
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = original;
-        }
-    }
-}
 // Render an email's HTML inside a sandboxed iframe (isolates its styles from the
 // app and blocks any script), with the subject shown above it.
 function showEmailPreview(subject, html, text) {
@@ -9435,37 +9412,6 @@ function closeEmailPreview() {
     const ov = document.getElementById('email-preview-overlay');
     if (ov) ov.classList.remove('open');
     document.removeEventListener('keydown', emailPreviewEsc);
-}
-
-function bookingEmailLogHtml(b) {
-    const logs = (bookingEmailLogs && bookingEmailLogs[b.dbId]) || [];
-    if (!logs.length) {
-        return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent</span><span class="bk-email-log-empty">None yet</span></div>`;
-    }
-    const icon =
-        '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
-    const rows = logs
-        .map((l) => {
-            const what = `<span class="bk-email-log-what">${icon}${escapeHtml(emailLogLabel(l.action))}</span>`;
-            const ago = relTime(l.at);
-            const when = `<span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}${ago ? `<i class="bk-when-ago"> · ${escapeHtml(ago)}</i>` : ''}</span>`;
-            // A free-text message carries a body → make it expandable to read it.
-            if (l.body) {
-                const subj = l.subject
-                    ? `<div class="bk-email-log-subj">${escapeHtml(l.subject)}</div>`
-                    : '';
-                const body = `<div class="bk-email-log-msg">${escapeHtml(l.body).replace(/\n/g, '<br>')}</div>`;
-                return `<details class="bk-email-log-item"><summary class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<span class="bk-email-log-toggle"></span></span></summary>${subj}${body}</details>`;
-            }
-            // Templated emails store no body, but we can regenerate them on demand
-            // — offer a "Show email" button that opens a faithful preview.
-            if (EMAIL_PREVIEWABLE.includes(l.action)) {
-                return `<div class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<button type="button" class="bk-email-log-view" ${chbAttrs('openEmailPreview', b.dbId, String(l.action), CHB_SELF)}>Show email</button></span></div>`;
-            }
-            return `<div class="bk-email-log-row">${what}${when}</div>`;
-        })
-        .join('');
-    return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent (${logs.length})</span>${rows}</div>`;
 }
 
 // ==================================================================
@@ -15757,6 +15703,28 @@ function chbDuties() {
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
+    // 1a) A CALENDAR SYNC THAT HAS STOPPED. This was only ever a line in the
+    // assistant's foot — you had to open search AND read the bottom of it — and
+    // it is the failure that costs the most: while an Airbnb feed is stale its
+    // stays are not blocking the calendar, and every clash guard faithfully finds
+    // nothing, because there is nothing left to find. A duty is the right home.
+    // Same chbFeedTrouble the status line uses, so the two cannot disagree.
+    try {
+        chbFeedTrouble().forEach((f) => {
+            out.push({
+                kind: 'feed', sev: f.failing ? 'danger' : 'warn', ic: 'alert',
+                label: f.failing
+                    ? `${f.name}’s calendar sync is failing`
+                    : `${f.name}’s calendar sync looks stuck`,
+                sub: f.failing
+                    ? 'Platform stays may not be blocking these dates'
+                    : `${f.ago} — platform stays may be missing`,
+                act: 'Check', go: chbAttrs('navSettingsSection', 'calendar'),
+                board: 'today', scope: 'bookings',
+                run: () => { closeCmdK(); nav('view-settings'); settingsOpen('calendar'); },
+            });
+        });
+    } catch (e) {}
     // 1b) A FAILED payout or a disputed payment. Move-money-out refuses to count
     // either as movable, but silently — and bad bank details stop every later
     // transfer. Off the bootstrap payload, so no request of its own ($feeds).
@@ -19885,13 +19853,95 @@ function sortedEnquiries() {
     );
     return list;
 }
+// ---- THE DECLINED DRAWER ---------------------------------------------------
+// enquiry_decline is a SOFT delete precisely so a mistake can be undone — but the
+// only way back was the Undo on a toast, gone in seconds. Decline the wrong one,
+// look away, and a perfectly recoverable row was unreachable. Fetched on demand
+// (it is a recovery drawer, not a list anyone browses), so the ordinary inbox
+// costs exactly what it did.
+let __inboxTab = 'waiting';
+let __declinedEnq = null; // null = not fetched yet
+async function inboxTab(which) {
+    __inboxTab = which === 'declined' ? 'declined' : 'waiting';
+    if (__inboxTab === 'declined' && __declinedEnq === null) {
+        renderInbox(); // paint the switch + a loading line before the round trip
+        try {
+            const r = await apiPost('enquiries.php', { action: 'declined' });
+            __declinedEnq = ((r && r.enquiries) || []).map(mapEnquiryFromApi);
+        } catch (e) {
+            __declinedEnq = null;
+            glassAlert("Couldn't load declined enquiries: " + e.message);
+            __inboxTab = 'waiting';
+        }
+    }
+    renderInbox();
+}
+function declinedInboxHtml() {
+    if (__declinedEnq === null) {
+        return '<div class="inbox-empty-inline">Looking for declined enquiries…</div>';
+    }
+    if (!__declinedEnq.length) {
+        return '<div class="inbox-empty-inline">Nothing declined — anything you turn down shows up here.</div>';
+    }
+    return __declinedEnq
+        .map((e) => {
+            const meta = propertyMeta[e.propKey];
+            const propName = meta ? meta.name : e.propKey;
+            return `
+            <div class="bk-row glass-panel enq-declined-row">
+                <span class="bk-row-body">
+                    <span class="bk-row-top">
+                        <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
+                        <span class="bk-chip"><span class="bk-dot"></span>Declined</span>
+                    </span>
+                    <strong class="bk-row-name">${escapeHtml(e.name || 'Guest')}</strong>
+                    <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests || '')}</span>
+                </span>
+                <button type="button" class="btn-sm btn-edit" ${chbAttrs('restoreDeclinedEnquiry', String(e.dbId), e.name || '')}>Restore</button>
+            </div>`;
+        })
+        .join('');
+}
+// Put it back in the inbox, and take it out of the drawer in the same breath so
+// the two lists cannot both claim it.
+async function restoreDeclinedEnquiry(dbId, name) {
+    try {
+        const r = await apiPost('enquiries.php', { action: 'restore', id: Number(dbId) });
+        if (r && r.error) {
+            glassAlert(r.error);
+            return;
+        }
+        if (Array.isArray(__declinedEnq)) __declinedEnq = __declinedEnq.filter((x) => String(x.dbId) !== String(dbId));
+        await loadData();
+        __inboxTab = 'waiting';
+        renderInbox();
+        toast(`Enquiry from ${name || 'guest'} restored to the inbox.`);
+    } catch (e) {
+        glassAlert("Couldn't restore: " + e.message);
+    }
+}
 function renderInbox() {
     refreshInboxBadge();
     inboxSubline();
     const list = document.getElementById('inbox-list');
+    // The switch is ALWAYS rendered — including on inbox zero, which is exactly
+    // when someone goes looking for the one they just turned down.
+    const tabBar = `<div class="inbox-sort seg" role="group" aria-label="Which enquiries">${[
+        ['waiting', 'Waiting'],
+        ['declined', 'Declined'],
+    ]
+        .map(
+            ([k, lbl]) =>
+                `<button type="button" class="inbox-sort-btn${__inboxTab === k ? ' is-on' : ''}" role="tab" aria-selected="${__inboxTab === k}" ${chbAttrs('inboxTab', String(k))}>${lbl}</button>`,
+        )
+        .join('')}</div>`;
+    if (__inboxTab === 'declined') {
+        list.innerHTML = tabBar + declinedInboxHtml();
+        return;
+    }
 
     if (enquiries.length === 0) {
-        list.innerHTML = `<div class="inbox-empty-inline"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Inbox zero — no pending enquiries right now.</div>`;
+        list.innerHTML = tabBar + `<div class="inbox-empty-inline"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Inbox zero — no pending enquiries right now.</div>`;
         // The docked pane must not keep showing the last (now handled) enquiry.
         __enqHubId = null;
         const ehc = document.getElementById('enquiry-hub-content');
@@ -19918,6 +19968,7 @@ function renderInbox() {
     // Compact index rows (same anatomy as the Bookings dashboard) — the whole
     // row opens the enquiry HUB, which owns the detail + every action.
     list.innerHTML =
+        tabBar +
         sortBar +
         sortedEnquiries()
             .map((e) => {

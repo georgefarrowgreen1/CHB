@@ -468,6 +468,25 @@ if ($action === 'submit') {
 // All remaining actions are admin-only
 require_admin();
 
+// THE DECLINED ONES. enquiry_decline is a SOFT delete precisely so a mistake can
+// be undone — but the only way back was the Undo button on a toast, which is gone
+// in seconds. Decline the wrong enquiry, look away, and a recoverable row was
+// unreachable. Newest first, capped: this is a recovery drawer, not an archive to
+// browse.
+if ($action === 'declined') {
+    require_admin();
+    try {
+        $rows = db()
+            ->query('SELECT * FROM enquiries WHERE declined_at IS NOT NULL ORDER BY declined_at DESC LIMIT 50')
+            ->fetchAll();
+    } catch (\Throwable $e) {
+        // Pre-migration databases hard-delete instead, so there is nothing to
+        // show and saying so beats an error the owner cannot act on.
+        $rows = [];
+    }
+    json_out(['ok' => true, 'enquiries' => $rows]);
+}
+
 // THE OWNER HAS READ IT. An enquiry stays pending until it is approved or
 // declined, so every red count went on saying "1" with the thing on screen in
 // front of them (reported). Opening it stamps seen_at and the NOTIFICATION
