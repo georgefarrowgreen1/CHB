@@ -448,6 +448,10 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             // when something has been paid; a fresh unpaid booking omits it).
             'paid_so_far' => $paidSoFar,
             'balance_due' => $balanceDue,
+            // WHEN the rest falls due, from this booking's own plan. The
+            // confirmation stated how much was outstanding and never by when,
+            // so the schedule the owner agreed existed only in the back office.
+            'balance_due_date' => booking_balance_due_date($b),
             'grand_total' => $grand,
             // Suppress the owner copy on a re-send after a payment.
             'skip_owner' => $guestOnly,

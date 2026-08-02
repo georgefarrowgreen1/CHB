@@ -223,6 +223,22 @@ $bkW = (string) file_get_contents(__DIR__ . '/bookings.php');
 chk('the confirmation credits a cash-collected deposit as paid',
     preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $bkW) === 1);
 
+// THE CONFIRMATION SAYS WHEN, NOT JUST HOW MUCH. It stated the outstanding sum
+// and never the date, so a plan the owner had agreed with a guest lived only in
+// the back office. send_booking_emails SENDS rather than returning a body, so
+// this is a wiring scan like the one above — but of BOTH halves, because either
+// alone is decoration: the payload must carry the booking's own derived date,
+// and the composer must render it against a positive balance.
+$mlW = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('the confirmation payload carries the booking-derived due date',
+    preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $bkW) === 1);
+chk('…and the composer renders it only when something is actually outstanding',
+    preg_match('/\$balNow > 0\.001 && !empty\(\$b\[.balance_due_date.\]\)/', $mlW) === 1);
+chk('…in the house date form, never a raw SQL stamp',
+    preg_match("/due by ' \. uk_date\(\(string\) \\\$b\['balance_due_date'\]\)/", $mlW) === 1);
+chk('…and an unpaid booking still gets the date (this email lands before any ask)',
+    preg_match('/elseif \(\$balNow > 0\.001 && \$dueByLine !== ..\)/', $mlW) === 1);
+
 // ---- THE CASH DEPOSIT CAN BE RECORDED AT ALL -------------------------------
 // Every display of a cash-collected deposit was made consistent (paid-above-
 // rental = the deposit) and then the audit found the state was UNREACHABLE:

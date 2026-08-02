@@ -1501,9 +1501,22 @@ function send_booking_emails($b)
         // confirmation reflects a recorded deposit/payment.
         $paidNow = round((float) ($b['paid_so_far'] ?? 0), 2);
         $balNow = round((float) ($b['balance_due'] ?? 0), 2);
+        // THE SCHEDULE, NOT JUST THE SUM. The guest was told what was outstanding
+        // and never by when — so a plan the owner had agreed with them lived only
+        // in the back office. The date is the booking's own (custom date, else
+        // check-in minus the window), so this can never quote a different day
+        // from the chaser that follows it.
+        $dueByLine = '';
+        if ($balNow > 0.001 && !empty($b['balance_due_date'])) {
+            $dueByLine = ' — due by ' . uk_date((string) $b['balance_due_date']);
+        }
         if ($paidNow > 0) {
             $body .= "\nPaid so far: " . $money($paidNow) . "\n";
-            $body .= ($balNow > 0.001 ? 'Balance remaining: ' . $money($balNow) : 'Paid in full — thank you!') . "\n";
+            $body .= ($balNow > 0.001 ? 'Balance remaining: ' . $money($balNow) . $dueByLine : 'Paid in full — thank you!') . "\n";
+        } elseif ($balNow > 0.001 && $dueByLine !== '') {
+            // Nothing paid yet: still say when the money is wanted, because this
+            // is the email that lands before any of it has been asked for.
+            $body .= "\nBalance of " . $money($balNow) . $dueByLine . ".\n";
         }
         if (!empty($b['invoice_url'])) {
             $body .= "\nView or download your invoice: " . $b['invoice_url'] . "\n";
