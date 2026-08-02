@@ -147,76 +147,22 @@ body.light-mode {
 }
 @media (prefers-reduced-motion: reduce) {
   .bk-chip.stay .bk-dot { animation: none; }
-}.bk-email-log {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--glass-border);
-  font-size: 0.82rem;
-}.bk-email-log-title {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 6px;
-}.bk-email-log-empty {
-  color: var(--text-muted);
-}.bk-email-log-row {
+}/* The declined drawer's rows: the same index-row anatomy, but they are not
+   buttons — the whole row does nothing, only Restore does. */
+.enq-declined-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 4px 0;
-  /* WRAP, because neither side of this row can shrink: the label is a flex item at
-     its default min-width:auto, and both the timestamp and the "Show email" button
-     are white-space:nowrap. So the row's intrinsic width is fixed, and on a phone the
-     right-hand group simply hung past the edge — measured on the owner's device at
-     right=439 in a 420px viewport, taking the whole page 19px wider. Wrapping costs
-     nothing when it fits (identical layout) and is the only fix that holds at ANY
-     width rather than at the ones we happened to test. */
-  flex-wrap: wrap;
-}.bk-email-log-what {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-light);
-  /* Lets the label give way first, so the row wraps only when it genuinely must. */
+  cursor: default;
+}
+.enq-declined-row .bk-row-body {
   min-width: 0;
-}.bk-email-log-when {
-  color: var(--text-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}.bk-email-log-item > summary {
-  list-style: none;
-  cursor: pointer;
-}.bk-email-log-item > summary::-webkit-details-marker {
-  display: none;
-}.bk-email-log-right {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  /* Stays hard right whether it shares the line or wraps onto its own — with
-     space-between a lone wrapped item would otherwise jump to the left. */
-  margin-left: auto;
-}.bk-email-log-toggle {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  color: var(--text-light);
-  font-size: 0.72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
-}.bk-email-log-item > summary:hover .bk-email-log-toggle {
-  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
-  border-color: var(--text-muted);
-}.bk-email-log-toggle::after {
-  content: 'Show email';
-}.bk-email-log-item[open] > summary .bk-email-log-toggle::after {
-  content: 'Hide email';
-}.compose-attach-chip {
+  flex: 1 1 auto;
+}
+.enq-declined-row .btn-sm {
+  flex: 0 0 auto;
+}
+.compose-attach-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -236,38 +182,6 @@ body.light-mode {
   padding: 0 4px;
 }.compose-attach-chip button:hover {
   color: var(--danger-text);
-}.bk-email-log-view {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  background: transparent;
-  color: var(--text-light);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
-}.bk-email-log-view:hover:not(:disabled) {
-  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
-  border-color: var(--text-muted);
-}.bk-email-log-view:disabled {
-  opacity: 0.6;
-  cursor: default;
-}.bk-email-log-subj {
-  font-weight: 600;
-  color: var(--text-light);
-  font-size: 0.82rem;
-  margin: 4px 0 2px;
-}.bk-email-log-msg {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  padding: 2px 0 8px;
-  white-space: normal;
-  word-break: break-word;
 }.enq-ctx-who {
   display: flex;
   align-items: center;
@@ -1078,11 +992,6 @@ body.light-mode .ny-act {
 .pipe-step[data-act],
 .mo-kpi[data-act] {
   cursor: pointer;
-}/* Quiet relative-time suffix on the hub's email log ("· 2h"). */
-.bk-when-ago {
-  font-style: normal;
-  color: var(--text-muted);
-  opacity: 0.85;
 }/* The header's tappable "£X to collect" — inherits the ops line's look, just
    underlined enough to read as a link. */
 .ops-owed {
@@ -1203,10 +1112,6 @@ body.light-mode .ny-act {
   text-align: left;
 }.bhub-stay-row:hover {
   background: var(--glass-hover);
-}#hub-email-log .bk-email-log {
-  margin-top: 14px;
-  border-top: 0;
-  padding-top: 0;
 }@media (max-width: 899px) {.bhub-grid {
     grid-template-columns: 1fr;
   }.bhub-hist-row {

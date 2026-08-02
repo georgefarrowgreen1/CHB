@@ -4421,12 +4421,7 @@ body.owner-mode .chat-widget {
 
 
 
-.bk-email-log-what .ic {
-  width: 15px;
-  height: 15px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
+
 
 /* Expandable free-text message: reveals the subject + body that was sent. */
 
