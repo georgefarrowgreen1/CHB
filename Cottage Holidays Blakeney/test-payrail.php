@@ -807,12 +807,28 @@ chk('the abandoned-deposit recovery stays strictly BEFORE it (mutually exclusive
 // both deposit forms at once, a share over 100%, a deposit bigger than the stay,
 // a date already gone, a date after arrival. And the store is parameterised
 // against the three columns in one statement.
+// payment_plan_parse now lives in pricing.php — bookings.php is a ROUTED
+// endpoint, so enquiry approval could not have reached the validator there
+// without running its routing. The refusals are scanned where they live; the
+// CALL SITES are asserted separately below, which is what stops the move from
+// quietly orphaning one of them.
+$plPlan = (string) file_get_contents(__DIR__ . '/pricing.php');
 $bkPlan = (string) file_get_contents(__DIR__ . '/bookings.php');
-chk('set_payment_plan refuses both deposit forms at once', strpos($bkPlan, 'not both') !== false);
-chk('…a percentage outside (0,100]', strpos($bkPlan, 'must be between 0 and 100') !== false);
-chk('…a deposit larger than the stay', strpos($bkPlan, 'more than the stay costs') !== false);
-chk('…a due date already gone', strpos($bkPlan, 'due date has already passed') !== false);
-chk('…and one after check-in', strpos($bkPlan, 'by check-in') !== false);
+$eaPlan = (string) file_get_contents(__DIR__ . '/enquiry-actions.php');
+chk('set_payment_plan refuses both deposit forms at once', strpos($plPlan, 'not both') !== false);
+chk('…a percentage outside (0,100]', strpos($plPlan, 'must be between 0 and 100') !== false);
+chk('…a deposit larger than the stay', strpos($plPlan, 'more than the stay costs') !== false);
+chk('…a due date already gone', strpos($plPlan, 'due date has already passed') !== false);
+chk('…and one after check-in', strpos($plPlan, 'by check-in') !== false);
+// THREE call sites, ONE validator: the Add form, the hub's Edit-plan dialog and
+// now enquiry approval must all refuse the same things in the same words.
+chk('bookings.php still routes its two plan writes through it', substr_count($bkPlan, 'payment_plan_parse(') === 2);
+chk('…and enquiry approval uses the SAME validator, not a second one',
+    strpos($eaPlan, 'payment_plan_parse(') !== false);
+chk('…parsing BEFORE the lock, so a refusal (which json_out-EXITS) cannot strand the calendar',
+    strpos($eaPlan, 'payment_plan_parse(') < strpos($eaPlan, "if (!book_lock(\$e['prop_key']))"));
+chk('…and the approval INSERT carries the three plan columns',
+    strpos($eaPlan, 'deposit_pct_override,deposit_amount_override,balance_due_date') !== false);
 chk('the plan stores all three fields in one parameterised write',
     strpos($bkPlan, 'SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?') !== false);
 

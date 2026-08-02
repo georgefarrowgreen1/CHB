@@ -191,6 +191,53 @@ function booking_balance_due_date($b)
     return date('Y-m-d', strtotime($b['check_in'] . ' -' . payment_balance_days() . ' days'));
 }
 
+// ONE validator for a payment plan's fields, wherever they arrive — the Add
+// Booking form and the hub's Edit-plan dialog must refuse the same things in
+// the same words. Reads deposit_pct / deposit_amount / balance_due_date off
+// $in; refusals json_out in words; returns [$pct, $amt, $due] (nulls = the
+// site standard). $total may be 0 when unknown (the cap check then stands down).
+function payment_plan_parse(array $in, string $checkIn, float $total): array
+{
+    $pctIn = trim((string) ($in['deposit_pct'] ?? ''));
+    $amtIn = trim((string) ($in['deposit_amount'] ?? ''));
+    $dateIn = trim((string) ($in['balance_due_date'] ?? ''));
+    if ($pctIn !== '' && $amtIn !== '') {
+        json_out(['error' => 'Give the custom deposit as a percentage OR a £ amount, not both.'], 400);
+    }
+    $pct = null;
+    if ($pctIn !== '') {
+        $pct = (float) $pctIn;
+        if (!($pct > 0 && $pct <= 100)) {
+            json_out(['error' => 'The deposit percentage must be between 0 and 100.'], 400);
+        }
+    }
+    $amt = null;
+    if ($amtIn !== '') {
+        $amt = round((float) $amtIn, 2);
+        if ($amt <= 0) {
+            json_out(['error' => 'The deposit amount must be more than £0.'], 400);
+        }
+        if ($total > 0 && $amt > $total + 0.005) {
+            json_out(['error' => 'That deposit is more than the stay costs (£' . number_format($total, 2) . ').'], 400);
+        }
+    }
+    $due = null;
+    if ($dateIn !== '') {
+        $d = DateTime::createFromFormat('Y-m-d', $dateIn);
+        if (!$d || $d->format('Y-m-d') !== $dateIn) {
+            json_out(['error' => 'The balance due date must be a real date (YYYY-MM-DD).'], 400);
+        }
+        if ($dateIn < date('Y-m-d')) {
+            json_out(['error' => 'That due date has already passed — leave it blank for the standard schedule, or pick a future date.'], 400);
+        }
+        if ($checkIn !== '' && $dateIn > substr($checkIn, 0, 10)) {
+            json_out(['error' => 'The balance must be due by check-in (' . uk_date($checkIn) . ') at the latest.'], 400);
+        }
+        $due = $dateIn;
+    }
+    return [$pct, $amt, $due];
+}
+
 // A MOVED BOOKING TAKES ITS PLAN WITH IT.
 //
 // set_payment_plan refuses a due date that is in the past or after check-in —

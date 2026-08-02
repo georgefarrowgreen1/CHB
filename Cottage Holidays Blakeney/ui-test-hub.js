@@ -253,15 +253,25 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(refundHome, 'the Payments block offers "Refund a card payment" instead');
   // Drive it: ONE settled charge in the fixture → straight to the amount
   // prompt, whose ceiling is the rental portion.
-  const capMsg = await page.evaluate(async () => {
+  const cap = await page.evaluate(async () => {
     const orig = window.glassPrompt;
-    let msg = '';
-    window.glassPrompt = (m) => { msg = m; return Promise.resolve(null); };
+    let msg = '', def = '';
+    window.glassPrompt = (m, d) => { msg = m; def = d; return Promise.resolve(null); };
     await hubRefundPicker('b1');
     window.glassPrompt = orig;
-    return msg;
+    return { msg: msg, def: def };
   });
-  ok(/£556\.20/.test(capMsg) && !/£631\.20/.test(capMsg), `…and the refund cap stays the rental portion (${capMsg})`);
+  // The ENFORCED ceiling is the rental portion — the damages half goes back
+  // through Return deposit, which stamps hold_status, so refunding it here would
+  // leave it looking still held and returnable twice.
+  ok(cap.def === '556.2', `the refund cap stays the rental portion (prefilled ${cap.def})`);
+  // …AND THE DIALOG SAYS WHY. Reported from the owner's phone: a charge the hub
+  // and the card statement both say took £631.20, offering "Up to £556.20" with
+  // no explanation — a correct cap reading as a wrong figure. It now names what
+  // the charge took and where the rest goes.
+  ok(/£631\.20/.test(cap.msg), `…and the dialog states what the charge actually took (${cap.msg})`);
+  ok(/£75\.00/.test(cap.msg) && /Return deposit/i.test(cap.msg),
+    '…naming the refundable deposit and the control that returns it');
   await page.evaluate(() => {
     const b = findBookingById('b1');
     b.payment = 'unpaid';

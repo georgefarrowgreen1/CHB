@@ -272,6 +272,49 @@ $snap = $rootDb->query("SELECT agreed_total, agreed_per_night, agreed_nights FRO
 it_check('approval snapshotted the agreed price (3 × £100 + 3% = £309)', $snap && abs((float) $snap['agreed_total'] - 309.0) < 0.005, 'stored: ' . json_encode($snap));
 it_check('snapshot nights/per-night are right (3 @ £100 ex-fee)', $snap && (int) $snap['agreed_nights'] === 3 && abs((float) $snap['agreed_per_night'] - 100.0) < 0.005, 'stored: ' . json_encode($snap));
 
+// ---- 6b. A PLAN AGREED WITH THE ENQUIRER SURVIVES APPROVAL ----------------
+// Approval creates the booking and then immediately emails a payment request.
+// With no plan on the row that request was derived from the SITE STANDARD — so
+// agreeing 50% with an enquirer meant they received an email for 25% before the
+// plan could be set, and the hub then said one thing while the guest held an
+// email saying another. The plan now rides the approval itself.
+//
+// The enquiry rows are seeded DIRECTLY rather than posted: the public submit is
+// rate-limited (correctly), and two more guest posts here tipped every later
+// section of this suite over the limit. What is under test is the APPROVAL.
+$seedEnq = function (string $name, string $email, string $in, string $out) use ($rootDb, $propKey): int {
+    $rootDb->prepare(
+        'INSERT INTO enquiries (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version,no_dogs_at,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),1,NOW(),NOW())',
+    )->execute([$propKey, $name, $email, '07700900166', '2 Test Lane', 'NR25 7NQ', $in, $out, '15:00', '10:00', 2, 0, 'Seeded for the approval test.']);
+    return (int) $rootDb->lastInsertId();
+};
+$peId = $seedEnq('Planned Enquirer', 'planned.enquirer@gmail.com', date('Y-m-d', strtotime('+120 days')), date('Y-m-d', strtotime('+124 days')));
+$dueAgreed = date('Y-m-d', strtotime('+80 days'));
+$r = http($admin, 'POST', '/enquiries.php', [
+    'action' => 'approve', 'id' => $peId,
+    'deposit_pct' => '50', 'balance_due_date' => $dueAgreed,
+]);
+$pbId = (int) ($r['json']['booking_id'] ?? 0);
+it_check('approval accepts a plan agreed with the enquirer', $r['code'] === 200 && $pbId > 0, $r['raw']);
+$planned = $rootDb->query("SELECT deposit_pct_override, balance_due_date FROM bookings WHERE id = $pbId")->fetch(PDO::FETCH_ASSOC);
+it_check(
+    '…and the booking is created WITH it, so the request that follows is derived from 50% not the site standard',
+    $planned && abs((float) $planned['deposit_pct_override'] - 50.0) < 0.005 && ($planned['balance_due_date'] ?? '') === $dueAgreed,
+    json_encode($planned),
+);
+// A refused plan must not create the booking — the parse happens BEFORE the
+// book_lock, so a refusal can neither strand the lock nor half-approve.
+$bpId = $seedEnq('Bad Plan Enquirer', 'badplan@gmail.com', date('Y-m-d', strtotime('+140 days')), date('Y-m-d', strtotime('+143 days')));
+$bkBefore = (int) $rootDb->query('SELECT COUNT(*) FROM bookings')->fetchColumn();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => $bpId, 'deposit_pct' => '150']);
+it_check('an impossible plan is refused in words at approval', $r['code'] === 400 && stripos((string) ($r['json']['error'] ?? ''), 'percentage') !== false, $r['raw']);
+it_check('…and no booking was created for it', (int) $rootDb->query('SELECT COUNT(*) FROM bookings')->fetchColumn() === $bkBefore);
+// …and the cottage is NOT left locked — the same enquiry approves plainly after.
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => $bpId]);
+it_check('…and the refusal did not strand the calendar lock (a plain approval still succeeds)',
+    $r['code'] === 200 && (int) ($r['json']['booking_id'] ?? 0) > 0, $r['raw']);
+
 // ---- 7. Money: record a part payment, then read it back -------------------
 echo "\n== 6. Payment recording ==\n";
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $bookingId, 'payment' => 'deposit', 'deposit' => 100, 'payment_date' => date('Y-m-d'), 'payment_method' => 'bank']);
