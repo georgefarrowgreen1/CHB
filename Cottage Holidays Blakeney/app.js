@@ -3953,8 +3953,22 @@ async function openPayView(token, bookingId, kind) {
                     : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
         const noteEl = document.getElementById('pay-amount-note');
         if (noteEl) {
-            noteEl.textContent = dep > 0 ? `Includes a ${gbp(dep)} refundable damages deposit — returned after your stay.` : '';
-            noteEl.style.display = dep > 0 ? '' : 'none';
+            const bits = [];
+            if (dep > 0) bits.push(`Includes a ${gbp(dep)} refundable damages deposit — returned after your stay.`);
+            // WHAT FOLLOWS, AND WHEN. balanceDueDate was already in this payload
+            // and rendered only for `kind === 'balance'` — so the guest learned
+            // the date on the screen where they were already paying it. Both
+            // figures derive from what is already sent, so nothing can disagree.
+            const rest = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
+            if (s.kind === 'deposit' && rest > 0.005) {
+                bits.push(
+                    s.balanceDueDate
+                        ? `The balance of ${gbp(rest)} is due by ${fmtDate(s.balanceDueDate)}.`
+                        : `The balance of ${gbp(rest)} follows before you arrive.`,
+                );
+            }
+            noteEl.textContent = bits.join(' ');
+            noteEl.style.display = bits.length ? '' : 'none';
         }
         try {
             const pb = document.getElementById('pay-btn');
@@ -14019,7 +14033,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'feedsize';
+    const BUILD = 'paysched';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

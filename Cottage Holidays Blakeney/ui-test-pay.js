@@ -43,7 +43,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
           total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
-          damagesDue: 50, holdAmount: 50, holdStatus: 'none',
+          damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
         });
         // Booking 9: the SAME booking after that first payment — deposit CHARGED,
         // balance link opened. The screenshotted state: the card took £225, so
@@ -117,6 +117,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
   const dv = await page.evaluate(() => ({
+    note: (document.getElementById('pay-amount-note') || {}).textContent || '',
     kind: (document.getElementById('pay-kind-label') || {}).textContent || '',
     amount: (document.getElementById('pay-amount') || {}).textContent || '',
     sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
@@ -125,6 +126,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/£175\.00 deposit \(25%\) \+ £50\.00 refundable deposit/.test(dv.sub),
     `…and the sub ITEMISES to that headline (${dv.sub})`);
   ok(!/£750\.00 total/.test(dv.sub), '…naming no total its own percentage cannot reach');
+  // …AND THE SCREEN SAYS WHAT FOLLOWS. balanceDueDate has always been in this
+  // payload and was rendered only when kind === 'balance', so the guest learned
+  // the date on the screen where they were already paying it. £700 − £175 = the
+  // £525 left; the date is the booking's own, so the chaser that follows cannot
+  // quote a different day.
+  ok(/balance of £525\.00 is due by 28\/07\/2026/i.test(dv.note),
+    `the deposit screen states the balance and WHEN (${dv.note})`);
+  ok(/refundable damages deposit/i.test(dv.note),
+    '…without displacing the refundable-deposit sentence that shared the line');
   // THE BALANCE ASK AFTER THE DEPOSIT WAS CHARGED — the screenshotted state.
   // "of £700.00 total · £175.00 already paid" under the £525 hero was the rental
   // rail talking to a guest whose card took £225 of a £750 stay; the charged

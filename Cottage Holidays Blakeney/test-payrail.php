@@ -223,6 +223,22 @@ $bkW = (string) file_get_contents(__DIR__ . '/bookings.php');
 chk('the confirmation credits a cash-collected deposit as paid',
     preg_match('/\$cashDep = \$holdStatus === .none.[\s\S]{0,220}\$paidSoFar = round\(\$rentalPaid \+ \$chargedDep \+ \$cashDep, 2\);/', $bkW) === 1);
 
+// THE CONFIRMATION SAYS WHEN, NOT JUST HOW MUCH. It stated the outstanding sum
+// and never the date, so a plan the owner had agreed with a guest lived only in
+// the back office. send_booking_emails SENDS rather than returning a body, so
+// this is a wiring scan like the one above — but of BOTH halves, because either
+// alone is decoration: the payload must carry the booking's own derived date,
+// and the composer must render it against a positive balance.
+$mlW = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('the confirmation payload carries the booking-derived due date',
+    preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $bkW) === 1);
+chk('…and the composer renders it only when something is actually outstanding',
+    preg_match('/\$balNow > 0\.001 && !empty\(\$b\[.balance_due_date.\]\)/', $mlW) === 1);
+chk('…in the house date form, never a raw SQL stamp',
+    preg_match("/due by ' \. uk_date\(\(string\) \\\$b\['balance_due_date'\]\)/", $mlW) === 1);
+chk('…and an unpaid booking still gets the date (this email lands before any ask)',
+    preg_match('/elseif \(\$balNow > 0\.001 && \$dueByLine !== ..\)/', $mlW) === 1);
+
 // ---- THE CASH DEPOSIT CAN BE RECORDED AT ALL -------------------------------
 // Every display of a cash-collected deposit was made consistent (paid-above-
 // rental = the deposit) and then the audit found the state was UNREACHABLE:
@@ -748,6 +764,34 @@ chk('custom due TOMORROW → outside (the owner said hold off)',
 chk('…so the pay-in-full upgrade moves with the plan: a deposit link opened on the custom due date charges everything',
     booking_payment_kind(['check_in' => $cin, 'balance_due_date' => $today], 'deposit') === 'balance');
 chk('…and stays a deposit the day before it', booking_payment_kind(['check_in' => $cin, 'balance_due_date' => date('Y-m-d', strtotime('+1 day'))], 'deposit') === 'deposit');
+
+// A MOVED BOOKING TAKES ITS PLAN WITH IT (booking_replan_on_move).
+// The defect this exists for, stated as its own case: `update` writes check_in
+// and used to leave the custom date behind, so a booking could be MOVED INTO the
+// state set_payment_plan refuses. Reproduced before the fix: a guest who arrived
+// five days ago, with a due date three weeks out, read within_window FALSE — so
+// the app asked a guest standing in the cottage for a deposit, and the chaser
+// would not have chased the balance until after they had gone home.
+$mvIn = date('Y-m-d', strtotime('+92 days'));
+$mvDue = date('Y-m-d', strtotime('+62 days'));   // 30 days before arrival, as agreed
+$mvNew = date('Y-m-d', strtotime('+32 days'));   // the stay is pulled 60 days earlier
+$mv = booking_replan_on_move($mvIn, $mvNew, $mvDue);
+chk('a moved stay takes its due date with it — the INTERVAL was the agreement',
+    $mv['due'] === date('Y-m-d', strtotime('+2 days')) && $mv['changed'] === true && $mv['reason'] === 'shifted');
+chk('…so the re-anchored date is still on or before the new check-in', $mv['due'] <= $mvNew);
+chk('…and the invariant holds for a stay pushed LATER too',
+    booking_replan_on_move($mvIn, date('Y-m-d', strtotime('+150 days')), $mvDue)['due'] === date('Y-m-d', strtotime('+120 days')));
+chk('a stay moved so far forward the date would be behind us drops to the site standard, not an impossible plan',
+    booking_replan_on_move($mvIn, date('Y-m-d', strtotime('+5 days')), $mvDue) === ['due' => null, 'changed' => true, 'reason' => 'past']);
+chk('no custom date → nothing to re-anchor', booking_replan_on_move($mvIn, $mvNew, null)['changed'] === false);
+chk('dates unchanged → nothing to re-anchor', booking_replan_on_move($mvIn, $mvIn, $mvDue)['changed'] === false);
+// Defensive: a legacy row already out of shape is clamped rather than carried further out.
+chk('a due date already past check-in is clamped to check-in, never left beyond it',
+    booking_replan_on_move($mvIn, date('Y-m-d', strtotime('+95 days')), date('Y-m-d', strtotime('+99 days')))['due'] === date('Y-m-d', strtotime('+95 days')));
+// WIRING — the update action must actually call it, or the helper is decoration.
+$upSrc = file_get_contents(__DIR__ . '/bookings.php');
+chk('bookings.php update calls booking_replan_on_move', strpos($upSrc, 'booking_replan_on_move(') !== false);
+chk('…and persists the result to balance_due_date', strpos($upSrc, ",balance_due_date=?';") !== false);
 
 // WIRING — the chaser follows the booking's own date in SQL (the COALESCE is
 // booking_balance_due_date's SQL form; for a NULL plan it is byte-for-byte the

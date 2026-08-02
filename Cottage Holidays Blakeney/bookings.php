@@ -448,6 +448,10 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             // when something has been paid; a fresh unpaid booking omits it).
             'paid_so_far' => $paidSoFar,
             'balance_due' => $balanceDue,
+            // WHEN the rest falls due, from this booking's own plan. The
+            // confirmation stated how much was outstanding and never by when,
+            // so the schedule the owner agreed existed only in the back office.
+            'balance_due_date' => booking_balance_due_date($b),
             'grand_total' => $grand,
             // Suppress the owner copy on a re-send after a payment.
             'skip_owner' => $guestOnly,
@@ -907,6 +911,13 @@ if ($action === 'update') {
         $date = null;
     }
 
+    // THE PLAN TRAVELS WITH THE STAY. This action writes check_in, and used to
+    // leave a custom balance_due_date exactly where it was — which could move a
+    // booking INTO the state set_payment_plan refuses (due after check-in), and
+    // then every downstream reader under-asks. booking_replan_on_move is the one
+    // decision; here we only persist what it returns.
+    $replan = booking_replan_on_move($b['check_in'] ?? '', $checkIn, $b['balance_due_date'] ?? null);
+
     $sql = 'UPDATE bookings SET prop_key=?,name=?,email=?,phone=?,address=?,postcode=?,check_in=?,check_out=?,check_in_time=?,check_out_time=?,
             adults=?,children=?,notes=?,payment=?,deposit_paid=?,payment_method=?,payment_date=?,price_override=?';
     $args = [
@@ -944,6 +955,10 @@ if ($action === 'update') {
             $snap['agreed_on'],
         );
     }
+    if ($replan['changed']) {
+        $sql .= ',balance_due_date=?';
+        $args[] = $replan['due'];
+    }
     $sql .= ' WHERE id = ?';
     $args[] = $id;
     db()->prepare($sql)->execute($args);
@@ -956,6 +971,13 @@ if ($action === 'update') {
     }
     if ($propKey !== $b['prop_key']) {
         $changes[] = 'moved ' . $b['prop_key'] . ' ⇒ ' . $propKey;
+    }
+    // A plan that re-anchored itself must SAY so — it is the owner's agreement
+    // with a guest, and a silent change to it is the thing to be afraid of here.
+    if ($replan['changed']) {
+        $changes[] = $replan['reason'] === 'past'
+            ? 'balance due date dropped to the site standard (it would now be in the past)'
+            : 'balance due date moved with the stay ⇒ ' . uk_date($replan['due']);
     }
     if ($adults != $b['adults'] || $children != $b['children']) {
         $changes[] = 'party now ' . $adults . ' adult' . ($adults == 1 ? '' : 's') . ($children ? ' + ' . $children : '');
