@@ -79,25 +79,15 @@ $alreadyPaid = $amt['alreadyPaid'];
 // deposit is set — the exact drift the delegation above exists to prevent.
 $depositAmount = booking_deposit_amount($b, $total);
 
-// Refundable damages deposit (bundled into the first payment). Use the frozen
-// snapshot; fall back to a live calc ONLY for legacy rows that have no snapshot at
-// all (agreed_total === null). A MODERN row that carries a snapshot but a
-// deliberately-waived (£0) deposit must be honoured as £0 — the old `<= 0` gate
-// second-guessed it into the property standard, charging (and then stranding) a
-// deposit the owner had waived.
-$holdAmount = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-if ($b['agreed_total'] === null && $rate) {
-    $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-    $holdAmount = round((float) $pp['damagesDeposit'], 2);
-}
+// Refundable damages deposit — CHARGED upfront, bundled into the guest's first
+// rental payment and refunded after checkout once the owner approves. Taken ONCE:
+// only for a booking that hasn't gone down the legacy card-hold route
+// (hold_status 'none'), tracked on the reused hold_* columns. Both figures come
+// from booking_damages_due (pricing.php), which was this block — moved so the
+// guest's ACCOUNT can name the same charge this screen is about to make.
 $holdStatus = $b['hold_status'] ?? 'none';
-
-// Refundable damage deposit is now CHARGED upfront (bundled into the guest's first
-// rental payment) and refunded after checkout once the owner approves. It's taken
-// once — only for a fresh booking that hasn't gone down the legacy card-hold route
-// (hold_status 'none'). Tracked on the booking via the reused hold_* columns
-// (hold_status becomes 'charged' → 'returned'/'kept').
-$damagesDue = $holdStatus === 'none' ? $holdAmount : 0.0;
+$holdAmount = booking_damages_amount($b, $rate ?: null); // the deposit itself
+$damagesDue = booking_damages_due($b, $rate ?: null);     // …and how much rides THIS charge
 
 // Amount due for this request, derived from kind (never trusted from the client).
 // The rental asks are booking_amount_due's own figure ($amt); only the legacy

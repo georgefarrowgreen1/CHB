@@ -100,6 +100,45 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(h && h.sub.indexOf(ukD(d(9))) !== -1, `…in the house DD/MM/YYYY form (${ukD(d(9))})`);
   await page.close();
 
+  // 2c) THE BUTTON FOLLOWS THE PLAN. It used to read "Pay balance <everything
+  //     outstanding>" and post kind:'balance', so a guest on a deposit plan
+  //     standing 60 days out was offered the whole stay — the emailed link asked
+  //     for the deposit and the button in their own account did not. Both the
+  //     LABEL and the charge now come from booking_next_payment, and the button
+  //     names no stage at all (the server derives it, exactly like the link).
+  const payBtnOf = (pg) => pg.evaluate(() => {
+    const el = document.querySelector('.my-stay-hub-soon .hub-cta-btn');
+    return { txt: (el ? el.textContent : '').replace(/\s+/g, ' ').trim(), args: el ? el.getAttribute('data-args') || '' : '' };
+  });
+  page = await openPage({ name: 'Plan Guest', email: 'plan@x.co' },
+    [mk('jollyboat', d(60), d(63), Object.assign({ payment: 'unpaid', pay_token: 'tokp', balance_due_by: d(30),
+      next_payment: { kind: 'deposit', due: 100, damages: 50, charge: 150 } }, priced))]);
+  h = await hub(page);
+  let pb = await payBtnOf(page);
+  ok(/Pay deposit £150\.00/.test(pb.txt), `the button asks for the PLAN's next payment (${pb.txt})`);
+  ok(!/£400\.00/.test(pb.txt), '…not the whole outstanding balance');
+  ok(!/balance/i.test(pb.args), `…and it names no stage — the server derives it (${pb.args})`);
+  ok(h && /deposit £150\.00 due/.test(h.sub) && !/due by/.test(h.sub),
+    `the line above it says the same thing, with no date on a deposit (${h.sub.trim().slice(-40)})`);
+  await page.close();
+
+  // …and once the deposit is in, the SAME card moves to the balance, dated.
+  page = await openPage({ name: 'Stage Two', email: 'two@x.co' },
+    [mk('jollyboat', d(60), d(63), Object.assign({ payment: 'deposit', pay_token: 'tokq', balance_due_by: d(30),
+      next_payment: { kind: 'balance', due: 300, damages: 0, charge: 300 } }, priced))]);
+  h = await hub(page);
+  pb = await payBtnOf(page);
+  ok(/Pay balance £300\.00/.test(pb.txt), `the next stage reads as the balance (${pb.txt})`);
+  ok(h && /balance £300\.00 due by /.test(h.sub), `…and the balance carries its date again (${h.sub.trim().slice(-42)})`);
+  await page.close();
+
+  // An older server sends no next_payment: the card reads exactly as it did.
+  page = await openPage({ name: 'Old Payload', email: 'oldp@x.co' },
+    [mk('jollyboat', d(60), d(63), Object.assign({ payment: 'unpaid', pay_token: 'tokr' }, priced))]);
+  pb = await payBtnOf(page);
+  ok(/Pay balance £400\.00/.test(pb.txt), `no next_payment falls back to the balance (${pb.txt})`);
+  await page.close();
+
   // A date already PAST reads plain "due" — it is due NOW, and a past deadline is
   // a reprimand rather than a fact. Same rule as the pay screen's headline, from
   // the same helper, which is the point of there being one.

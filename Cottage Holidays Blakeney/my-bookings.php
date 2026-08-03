@@ -64,6 +64,14 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // form's "pick a different day to make it custom" hint). Writing a derived
         // date into it would make every booking look like it carries a custom plan.
         $bk['balance_due_by'] = booking_balance_due_date($bk);
+        // WHAT THE CARD WOULD TAKE NEXT, and what to call it — the SAME derivation
+        // pay.php makes when the guest arrives there. The account's Pay buttons
+        // used to hardcode 'balance' and label themselves with the whole
+        // outstanding sum, so a guest on a 25% plan standing 60 days out was
+        // offered the entire stay: the emailed link followed the plan and the
+        // button in their account did not. Sent per booking so the label and the
+        // charge come from one place; the button still states no stage of its own.
+        $bk['next_payment'] = booking_next_payment($bk);
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether
         // it's been submitted.

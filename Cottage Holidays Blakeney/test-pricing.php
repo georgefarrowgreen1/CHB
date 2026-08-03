@@ -159,9 +159,11 @@ chk('booking_price: no snapshot and no rate → null', booking_price(null, $bLiv
 // and update the expected count here in the same PR.
 $allowedDirectCalls = [
     'bookings.php' => 3, // snapshot_fields() + confirmation-email fallback + hold-request deposit fallback
-    'pay.php' => 1, // damages-deposit legacy fallback only — the TOTAL's fallback
-    // moved inside booking_amount_due when pay.php's inline ask derivation was
-    // deleted (the stage-1 overhaul: one ask derivation, not two copies)
+    'pay.php' => 0, // NONE left. The TOTAL's fallback moved inside
+    // booking_amount_due (stage-1: one ask derivation, not two copies), and the
+    // damages-deposit fallback moved inside booking_damages_amount so the guest's
+    // ACCOUNT can name the same charge this screen makes. The ratchet only ever
+    // falls — a NEW direct call here still fails, which is its whole job.
     'mailer.php' => 1, // payment-request damages-deposit legacy fallback
     'invoice.php' => 1, // legacy pre-snapshot fallback
     'square-webhook.php' => 1, // legacy pre-snapshot fallback

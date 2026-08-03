@@ -397,6 +397,51 @@ function booking_deposit_amount($b, $total)
     return round((float) $total * (square_deposit_pct() / 100), 2);
 }
 
+// The booking's refundable damages deposit, WHATEVER its state — the frozen
+// snapshot, falling back to a live calc ONLY for a legacy row with no snapshot at
+// all. A modern row carrying a deliberately-waived £0 deposit must be honoured as
+// £0, not second-guessed into the property standard.
+function booking_damages_amount($b, $rate = null)
+{
+    if (($b['agreed_total'] ?? null) === null) {
+        $r = $rate !== null ? $rate : get_rate($b['prop_key']);
+        if ($r) {
+            $pp = price_breakdown($r, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
+            return round((float) $pp['damagesDeposit'], 2);
+        }
+    }
+    return round((float) ($b['agreed_booking_fee'] ?? 0), 2);
+}
+
+// …and how much of it rides the NEXT payment: all of it, or nothing once it has
+// been taken. Charged ONCE, with the guest's first rental payment, so there is
+// nothing left to take the moment hold_status leaves 'none'. Both of these were
+// inline in pay.php and moved here so the screen that CHARGES the deposit and the
+// account that ANNOUNCES the charge cannot disagree about what the card will take.
+function booking_damages_due($b, $rate = null)
+{
+    return ($b['hold_status'] ?? 'none') === 'none' ? booking_damages_amount($b, $rate) : 0.0;
+}
+
+// WHAT THE CARD WILL TAKE NEXT, and what to call it — one derivation for every
+// surface that offers to take a payment. The stage comes from
+// booking_payment_kind with NO hint, so the plan decides; `due` is the rental
+// portion for that stage and `damages` the refundable deposit riding it, which
+// pay.php bundles into the same charge. `charge` is what actually leaves the
+// card, and is therefore the only honest figure for a button's label.
+function booking_next_payment($b, $rate = null)
+{
+    $kind = booking_payment_kind($b);
+    $amt = booking_amount_due($b, $kind);
+    $dam = booking_damages_due($b, $rate);
+    return [
+        'kind' => $kind,
+        'due' => $amt['due'],
+        'damages' => $dam,
+        'charge' => round($amt['due'] + $dam, 2),
+    ];
+}
+
 // Effective total + amount due for a kind ('deposit'|'balance'), server-authoritative.
 // 'balance' = everything still outstanding; 'deposit' = the deposit % minus anything paid.
 function booking_amount_due($b, $kind)
