@@ -2764,6 +2764,38 @@ a.card {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+/* WHAT THE CARD TAKES, ITEMISED — the sub was one centred run-on carrying four
+   figures. Left/right like every other money list here (.bhub-kv), so the
+   amounts share a rail instead of being read out of a sentence. */
+.pay-amount-sub.is-lines {
+  text-align: left;
+  margin-top: 10px;
+}
+.pay-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 7px 0;
+  border-top: 1px solid var(--glass-border);
+}
+.pay-line-lbl {
+  min-width: 0;
+}
+/* The deposit's one explanation, on its own line so a long label can never
+   push the figure off the edge. */
+.pay-line-lbl small {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+/* Never shrinks, never wraps: a clipped amount is a different number. */
+.pay-line-amt {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-light);
+}
 .pay-amount-note {
   font-size: 0.76rem;
   color: var(--text-muted);

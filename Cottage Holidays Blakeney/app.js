@@ -4028,12 +4028,21 @@ async function openPayView(token, bookingId, kind) {
         // The headline says WHEN, from the booking's own payment plan — once
         // the date has passed it stays plain "Balance due" (it is due now).
         const dueBy = s.kind === 'balance' ? balanceDueBySuffix(s.balanceDueDate) : '';
+        // THE LABEL NAMES WHAT THE FIGURE IS. With the refundable deposit riding
+        // this payment the hero is a SUM, so "Balance due" names one half and
+        // shows both — reported: "BALANCE DUE BY 14/08/2026" over £340.00 when
+        // the balance was £290.00, the payask defect again. With nothing riding
+        // it the figure IS the balance, so the precise label stays.
         document.getElementById('pay-kind-label').textContent =
             s.kind === 'hold'
                 ? 'Refundable security hold'
-                : s.kind === 'balance'
-                  ? `Balance due${dueBy}`
-                  : 'Deposit due';
+                : dep > 0
+                  ? s.kind === 'balance' && dueBy
+                    ? `To pay${dueBy}`
+                    : 'To pay now'
+                  : s.kind === 'balance'
+                    ? `Balance due${dueBy}`
+                    : 'Deposit due';
         document.getElementById('pay-amount').textContent = gbp(payTotal);
         // The deposit ALREADY charged folds into BOTH the total and the paid
         // figure (the balance is unmoved) — otherwise a guest whose first card
@@ -4049,25 +4058,50 @@ async function openPayView(token, bookingId, kind) {
         // 25% × 750 = £187.50 — the percentage was against the rental while the
         // total beside it was the grand, so the line never reconciled with the
         // figure above it. Stated as its own sum now, it always does.
-        document.getElementById('pay-amount-sub').textContent =
-            s.kind === 'hold'
-                ? 'held, not charged — released after checkout'
-                : s.kind === 'balance'
-                  ? // The BALANCE ask itemises too when the refundable deposit
-                    // rides it — the same rule the deposit ask follows, so the
-                    // headline is never a figure the guest has to derive. The
-                    // four numbers reconcile: total − already paid = the sum
-                    // above, and balance + deposit is the same sum split.
-                    (dep > 0
-                        ? `${gbp(Number(s.amountDue))} balance + ${gbp(dep)} refundable deposit · of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? `, ${gbp(paidSoFar)} already paid` : ''}`
-                        : `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`)
-                  : dep > 0
-                    ? `${gbp(Number(s.amountDue))} deposit (${s.depositPct}%) + ${gbp(dep)} refundable deposit`
-                    : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
+        // ITEMISED AS A LIST, NOT A SENTENCE. One run-on carried four figures
+        // and answered two questions at once — what am I paying now, and where
+        // does that sit in the whole stay. Split, each row states one thing and
+        // they visibly sum to the hero. Only with more than one component: a
+        // one-row list is worse than a sentence.
+        const subEl = document.getElementById('pay-amount-sub');
+        const payLine = (label, amount, aside) =>
+            `<div class="pay-line"><span class="pay-line-lbl">${escapeHtml(label)}${aside ? `<small>${escapeHtml(aside)}</small>` : ''}</span><span class="pay-line-amt">${escapeHtml(amount)}</span></div>`;
+        if (s.kind !== 'hold' && dep > 0) {
+            subEl.classList.add('is-lines');
+            subEl.innerHTML =
+                payLine(
+                    s.kind === 'balance' ? 'Balance of your stay' : `Deposit (${s.depositPct}%)`,
+                    gbp(Number(s.amountDue)),
+                ) +
+                // The deposit's explanation lives HERE and nowhere else. It was
+                // repeated in the note directly beneath — the same £50 twice in
+                // adjacent lines, which reads as two deposits until you check.
+                payLine('Refundable deposit', gbp(dep), 'returned after your stay');
+        } else {
+            subEl.classList.remove('is-lines');
+            subEl.textContent =
+                s.kind === 'hold'
+                    ? 'held, not charged — released after checkout'
+                    : s.kind === 'balance'
+                      ? `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`
+                      : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
+        }
         const noteEl = document.getElementById('pay-amount-note');
         if (noteEl) {
             const bits = [];
-            if (dep > 0) bits.push(`Includes a ${gbp(dep)} refundable damages deposit — returned after your stay.`);
+            // WHERE THIS SITS IN THE WHOLE STAY — the second question the old
+            // run-on answered in the same breath as the first. Its own line,
+            // below the hairline, because it is context and not part of the sum
+            // above. The deposit's explanation is NOT repeated here.
+            if (s.kind !== 'hold' && dep > 0 && grandTotalRef > 0.005) {
+                bits.push(
+                    paidSoFar > 0.005
+                        ? // NBSP so the wrap can't orphan "paid." on a line of its own,
+                          // which it did at 390px — measured on the rendered box.
+                          `${gbp(grandTotalRef)} for the whole stay · ${gbp(paidSoFar)} already\u00a0paid.`
+                        : `${gbp(grandTotalRef)} for the whole stay.`,
+                );
+            }
             // WHAT FOLLOWS, AND WHEN. balanceDueDate was already in this payload
             // and rendered only for `kind === 'balance'` — so the guest learned
             // the date on the screen where they were already paying it. Both
@@ -14212,7 +14246,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payfix9';
+    const BUILD = 'payclr1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

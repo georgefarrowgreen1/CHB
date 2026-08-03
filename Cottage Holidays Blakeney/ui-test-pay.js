@@ -81,6 +81,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     kind: (document.getElementById('pay-kind-label') || {}).textContent || '',
     amount: (document.getElementById('pay-amount') || {}).textContent || '',
     sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
+    lines: [...document.querySelectorAll('#pay-amount-sub .pay-line')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
+    // Summed from the RENDERED figures, so the check is that what is on screen
+    // adds up — not that the composer can add.
+    lineSum:
+      '£' +
+      [...document.querySelectorAll('#pay-amount-sub .pay-line-amt')]
+        .reduce((a, e) => a + Number(String(e.textContent).replace(/[^0-9.]/g, '') || 0), 0)
+        .toFixed(2),
+    explains: (((document.querySelector('.pay-amount-box') || {}).textContent || '').match(/returned after your stay|refundable damages deposit/gi) || []).length,
     note: (document.getElementById('pay-amount-note') || {}).textContent || '',
     noteShown: (document.getElementById('pay-amount-note') || { style: {} }).style.display !== 'none',
     oldBanner: !!document.querySelector('#view-pay .enq-cancel-note'),
@@ -94,14 +103,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // WHEN, from the booking's own plan: a future due date joins the headline
   // (fixed far-future stub date so the check can't rot with the wall clock);
   // booking 9's PASSED date stays plain "Balance due" — it is due now.
-  ok(v.kind === 'Balance due by 15/01/2030' && v.amount === '£340.00', `amount hero says WHEN (${v.kind} ${v.amount})`);
-  // THE SUB ITEMISES TO ITS OWN HEADLINE. £340 is what the card takes — the
-  // £290 balance plus the £50 refundable deposit — and the guest should never
-  // have to derive that from a sentence further down the page (owner's ask).
-  // All four figures reconcile: 440 − 100 = 340, and 290 + 50 = 340.
-  ok(/£290\.00 balance \+ £50\.00 refundable deposit/.test(v.sub), `the sub itemises the £340 (${v.sub})`);
-  ok(/of £440\.00 total, £100\.00 already paid/.test(v.sub), `…and keeps the stay context (${v.sub})`);
-  ok(v.noteShown && /£50\.00 refundable damages deposit — returned after your stay/.test(v.note), 'deposit note is its own quiet line');
+  // THE LABEL NAMES WHAT THE FIGURE IS. It said "Balance due by …" over £340
+  // while the balance was £290 — the refundable deposit rides this payment, so
+  // the hero is a SUM and naming it after one half is the payask defect again
+  // (owner's screenshot). With something riding it, the label is neutral.
+  ok(v.kind === 'To pay by 15/01/2030' && v.amount === '£340.00', `the hero is named for what it IS, and says when (${v.kind} ${v.amount})`);
+  ok(!/balance/i.test(v.kind), '…and never calls a sum of two things the balance');
+  // ITEMISED AS ROWS, NOT A SENTENCE. One run-on carried four figures and
+  // answered two different questions at once — what am I paying now, and where
+  // does that sit in the whole stay. Each row now states one thing.
+  ok(v.lines.length === 2, `the sub is a list, not a sentence (${v.lines.length} rows)`);
+  ok(/Balance of your stay/.test(v.lines[0] || '') && /£290\.00/.test(v.lines[0] || ''), `row 1 is the balance (${v.lines[0]})`);
+  ok(/Refundable deposit/.test(v.lines[1] || '') && /£50\.00/.test(v.lines[1] || ''), `row 2 is the deposit (${v.lines[1]})`);
+  // …AND THEY ADD UP TO THE HERO. The whole point of itemising: the guest can
+  // check the figure they are about to pay without deriving it.
+  ok(v.lineSum === '£340.00', `the rows sum to the hero (${v.lineSum} vs ${v.amount})`);
+  // THE DEPOSIT IS EXPLAINED ONCE. It used to be on the sub AND repeated in the
+  // note directly beneath — the same £50 twice in adjacent lines, which reads
+  // as two deposits until you check.
+  ok(/returned after your stay/.test(v.lines[1] || ''), 'the deposit carries its own explanation');
+  ok(!/refundable/i.test(v.note), `…and the note does not repeat it (${v.note})`);
+  // The stay context survives, on its own line, as context rather than as part
+  // of the sum above it. 440 − 100 = 340, so it still reconciles.
+  // \s so the NBSP that stops "paid." orphaning onto its own line at 390px
+  // still matches — it is a space to a reader and not to a regex.
+  ok(v.noteShown && /£440\.00 for the whole stay · £100\.00 already\spaid/.test(v.note), `the note carries the stay context (${v.note})`);
   ok(!v.oldBanner, 'the loud green security banner is gone');
   ok(/Secured by Square/.test(v.secure) && /never see or store/.test(v.secure), 'quiet lock line under the button');
   ok(/email receipt/.test(v.receipt), 'receipt reassurance line present');
@@ -121,10 +147,19 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     kind: (document.getElementById('pay-kind-label') || {}).textContent || '',
     amount: (document.getElementById('pay-amount') || {}).textContent || '',
     sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
+    lines: [...document.querySelectorAll('#pay-amount-sub .pay-line')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
+    lineSum:
+      '£' +
+      [...document.querySelectorAll('#pay-amount-sub .pay-line-amt')]
+        .reduce((a, e) => a + Number(String(e.textContent).replace(/[^0-9.]/g, '') || 0), 0)
+        .toFixed(2),
+    explains: (((document.querySelector('.pay-amount-box') || {}).textContent || '').match(/returned after your stay|refundable damages deposit/gi) || []).length,
   }));
-  ok(dv.kind === 'Deposit due' && dv.amount === '£225.00', `deposit hero = 25% of £700 + £50 deposit (${dv.kind} ${dv.amount})`);
-  ok(/£175\.00 deposit \(25%\) \+ £50\.00 refundable deposit/.test(dv.sub),
-    `…and the sub ITEMISES to that headline (${dv.sub})`);
+  ok(dv.kind === 'To pay now' && dv.amount === '£225.00', `deposit hero = 25% of £700 + £50 deposit (${dv.kind} ${dv.amount})`);
+  ok(!/deposit due/i.test(dv.kind), '…not called "Deposit due" when the refundable deposit rides it too');
+  ok(/Deposit \(25%\)/.test(dv.lines[0] || '') && /£175\.00/.test(dv.lines[0] || ''), `row 1 is the deposit and its share (${dv.lines[0]})`);
+  ok(/Refundable deposit/.test(dv.lines[1] || '') && /£50\.00/.test(dv.lines[1] || ''), `row 2 is the refundable one (${dv.lines[1]})`);
+  ok(dv.lineSum === '£225.00', `…and the rows sum to the headline (${dv.lineSum})`);
   ok(!/£750\.00 total/.test(dv.sub), '…naming no total its own percentage cannot reach');
   // …AND THE SCREEN SAYS WHAT FOLLOWS. balanceDueDate has always been in this
   // payload and was rendered only when kind === 'balance', so the guest learned
@@ -133,8 +168,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // quote a different day.
   ok(/balance of £525\.00 is due by 28\/07\/2026/i.test(dv.note),
     `the deposit screen states the balance and WHEN (${dv.note})`);
-  ok(/refundable damages deposit/i.test(dv.note),
-    '…without displacing the refundable-deposit sentence that shared the line');
+  // …AND THE REFUNDABLE DEPOSIT IS EXPLAINED EXACTLY ONCE ON THE SCREEN. This
+  // check used to require that sentence in the NOTE, which is where the
+  // duplicate lived — it was pinning the defect. Counted across the whole box
+  // instead, so neither a repeat nor a disappearance can pass.
+  ok(dv.explains === 1, `the deposit is explained once, not twice or never (${dv.explains})`);
   // SETTLE IT ALL NOW. booking_payment_kind already passed a requested
   // 'balance' through, so the whole amount was always chargeable — there was
   // simply no way to ask for it. £225 due now + £525 left = the £750 stay.
