@@ -420,6 +420,11 @@ function booking_deposit_amount($b, $total)
 //    settled  agreed, but there is nothing left to collect
 //    armed    agreed, current, matching, with a card and a sum — the ONLY state
 //             in which a charge may be made
+// How many goes the collector gets before it stops and hands back to the ordinary
+// chase. Three: enough to ride out a temporary failure, few enough that a card
+// which is genuinely refusing is not presented over and over.
+const AUTOPAY_MAX_TRIES = 3;
+
 function booking_autopay_state($b, $today = null)
 {
     $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
@@ -431,6 +436,19 @@ function booking_autopay_state($b, $today = null)
     }
     if (empty($b['autopay_card_id'])) {
         return ['nocard', 'No saved card to charge — ask for the balance as usual.'];
+    }
+    // GIVEN UP. A card that has been tried AUTOPAY_MAX_TRIES times and not paid
+    // is not going to pay on the next tick either, and the only retry policy
+    // available without a counter is "for ever" — which on a declined card is
+    // how a guest collects bank fees. Consent is deliberately NOT cleared: they
+    // did agree, and 'revoked' has to keep meaning "they changed their mind".
+    if ((int) ($b['autopay_attempts'] ?? 0) >= AUTOPAY_MAX_TRIES) {
+        return [
+            'failed',
+            'Automatic payment didn\'t go through' .
+                (!empty($b['autopay_last_error']) ? ' — ' . $b['autopay_last_error'] : '') .
+                ' Ask for the balance as usual.',
+        ];
     }
     // WHAT IS OWED NOW. The stage is derived with no hint, exactly as a pay link
     // is, so this asks the same question the guest's own link would ask today.

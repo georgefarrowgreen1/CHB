@@ -1283,6 +1283,10 @@ function mapBookingFromApi(row) {
         // booking_next_payment; my-bookings.php only, so null on the owner path
         // and on an older server (callers fall back to the balance).
         nextPayment: row.next_payment && typeof row.next_payment === 'object' ? row.next_payment : null,
+        // booking_autopay_state — my-bookings.php only, so '' on the owner path
+        // and on an older server; '' reads as "no arrangement" everywhere.
+        autopayState: row.autopay_state || '',
+        autopaySays: row.autopay_says || '',
         depositRequestedAt: row.deposit_requested_at || '',
         balanceRequestedAt: row.balance_requested_at || '',
         balanceRemindedAt: row.balance_reminded_at || '',
@@ -3728,8 +3732,17 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         // carries the plan's. "balance £750 due by 15/08" over a button taking a
         // £225 deposit is two answers to one question.
         const nx = guestPayCta(b, gt);
-        ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
-        if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
+        // AN ARRANGED BALANCE IS NOT AN OUTSTANDING TASK. "£750 due by 15/08" in
+        // warning ink asks them to do what they have already done. Still figure-
+        // first, but it reads as settled, with the way to stop it beside it.
+        if (b.autopayState === 'armed') {
+            ready = `<span class="hub-ok">${gbp(nx.amount)} on the way${balanceDueBySuffix(b.balanceDueBy)}</span>`;
+        } else {
+            ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
+        }
+        if (payToken && b.autopayState === 'armed')
+            cta = `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment</button>`;
+        else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
     } else if (b.regUrl && !b.regSubmitted) {
         ready = `<span class="hub-warn">add your guest details</span>`;
         cta = `<a class="btn-glass btn-sm hub-cta-btn" href="${escapeHtml(b.regUrl)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Add your details</a>`;
@@ -3900,6 +3913,26 @@ function showPayError(text) {
     if (msg) msg.textContent = text || 'Something went wrong.';
 }
 // Opened from a secure pay link (?pay=<token>&b=<id>) parsed at boot.
+// TURNING OFF THE ARRANGEMENT, from the guest's own screen. Confirmed in terms
+// of the consequence rather than "are you sure" — the balance goes back to being
+// theirs to remember. Rides the pay token they hold, so there is no new way in.
+async function guestAutopayOff(token, bookingId) {
+    const ok = await glassConfirm(
+        "We'll stop collecting your balance automatically. You'll need to pay it yourself before your stay — we'll email you a link nearer the time.",
+        'Turn it off',
+    );
+    if (!ok) return;
+    try {
+        await apiPost('pay.php', { action: 'autopay_off', booking_id: bookingId, token: token });
+        toast('Automatic payment turned off.');
+        // Repaint from the SERVER: the state is derived there, and a mirror here
+        // is one more thing that can disagree with it.
+        await renderGuestBookings();
+    } catch (e) {
+        glassAlert(e.message || "Couldn't turn it off — please message us and we'll do it.");
+    }
+}
+
 async function openPayView(token, bookingId, kind) {
     try {
         trackEvent('pay_start', '');
@@ -3949,6 +3982,24 @@ async function openPayView(token, bookingId, kind) {
         // with the charge so it can stop if the sum has moved. payment_quote_sign
         // says why. Cleared, never stale-kept, if a summary arrives without one.
         payState.quote = typeof s.quote === 'string' ? s.quote : '';
+        // OFFERED ONLY WHEN THERE IS SOMETHING TO SCHEDULE — booking_autopay_terms
+        // returns null otherwise, and a checkbox that quietly does nothing is a
+        // promise nobody kept. Already arranged stays hidden: this is the ASK.
+        const apWrap = document.getElementById('pay-autopay');
+        const apBox = /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box'));
+        const apLbl = document.getElementById('pay-autopay-label');
+        const terms = s.autopayTerms;
+        const canOffer = terms && terms.amount > 0 && terms.due && s.autopayState === 'off';
+        if (apWrap && apBox && apLbl) {
+            apBox.checked = false;
+            apWrap.style.display = canOffer ? '' : 'none';
+            if (canOffer) {
+                // The sum and the day are IN the label: permission to charge a
+                // card, agreed against "automatic payments" and a link, is not
+                // permission anyone gave knowingly.
+                apLbl.textContent = `Save this card and collect my remaining ${gbp(terms.amount)} automatically on ${fmtDate(terms.due)}. I can turn this off any time from My Stays.`;
+            }
+        }
         payState.guestName = s.guestName || '';
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
@@ -4090,6 +4141,11 @@ async function payWithToken(sourceId) {
             kind: payState.kind,
             source_id: sourceId,
             quote: payState.quote,
+            // Read at the moment of paying: they can untick it after the render.
+            autopay: !!(
+                document.getElementById('pay-autopay-box') &&
+                /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked
+            ),
         });
     } catch (e) {
         // THE AMOUNT MOVED WHILE THEY READ IT. Nothing was charged, and a bare
@@ -14142,7 +14198,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payq801';
+    const BUILD = 'autopay9';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

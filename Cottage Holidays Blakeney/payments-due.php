@@ -57,6 +57,16 @@ $sent = 0;
 $skipped = 0;
 $report = [];
 foreach ($due as $b) {
+    // AN ARRANGED BALANCE IS NOT CHASED. The guest agreed we may take it on a
+    // named day; emailing "please pay your balance" over the top of that asks
+    // for money they have already arranged to pay, which is the one thing the
+    // arrangement was for. Only 'armed' suppresses — a revoked, stale or failed
+    // one has to be chased exactly as before, which is what makes the fallback
+    // real rather than a hole.
+    if (booking_autopay_state($b)[0] === 'armed') {
+        $skipped++;
+        continue;
+    }
     // Claim the send BEFORE emailing: for a money-chaser a duplicate email is
     // worse than a day's delay, and stamping first means a crash mid-send can
     // never re-ask tomorrow. A CLEAN send failure un-stamps below so it IS
@@ -145,6 +155,15 @@ try {
 }
 
 foreach ($toRemind as $b) {
+    // AN ARRANGED BALANCE IS NOT CHASED. The guest agreed we may take it on a
+    // named day; emailing "please pay your balance" over the top of that asks
+    // for money they have already arranged to pay, which is the one thing the
+    // arrangement was for. Only 'armed' suppresses — a revoked, stale or failed
+    // one has to be chased exactly as before, which is what makes the fallback
+    // real rather than a hole.
+    if (booking_autopay_state($b)[0] === 'armed') {
+        continue;
+    }
     // Stamp-before-send, same reasoning as the request pass above: a duplicate
     // reminder is worse than one skipped 3-day cycle. Clean failures un-stamp.
     try {

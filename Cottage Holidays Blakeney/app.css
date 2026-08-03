@@ -2833,6 +2833,44 @@ a.card {
   cursor: pointer;
   border: none;
 }
+/* The automatic-payment consent. A ROW, not a note: it is a decision, so it
+   takes the 44px floor. Above the Pay button, because permission agreed after
+   the money has gone was never offered. */
+.pay-autopay {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text);
+  cursor: pointer;
+  min-height: 44px;
+}
+.pay-autopay input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  accent-color: var(--accent);
+}
+/* The off switch for an arranged payment. Quiet — an arrangement working as
+   agreed should not shout — but at the 44px floor: it is the only way out. */
+.hub-autopay-off {
+  background: none;
+  border: none;
+  padding: 12px 4px;
+  min-height: 44px;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
 /* Quiet trust lines under the Pay button — a small lock, not a loud banner. */
 .pay-secure {
   display: flex;

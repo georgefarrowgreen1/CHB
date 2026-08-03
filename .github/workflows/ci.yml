@@ -140,6 +140,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-payouts.php
 
+      - name: Automatic balance collection (consent, retries, silences)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-autopay.php
+
       - name: Orphan sweep — money taken at Square with no record here
         working-directory: "Cottage Holidays Blakeney"
         run: php test-orphans.php
