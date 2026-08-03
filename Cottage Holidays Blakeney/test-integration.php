@@ -1121,6 +1121,27 @@ $row = $acct();
 it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
 it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
 
+// ---- 17. THE SERVER STAMPS ITS OWN CLOCK ON EVERY REPLY --------------------
+// A browser's Date is whatever the device says, and a device clock can be wrong
+// by accident or on purpose — reported with a photograph of the back office
+// reading "Monday 20 July · £865 to collect" on 3 August, because the Mac was
+// two weeks behind and the app believed it. db.php's json_out carries `srv` so
+// the client corrects itself. Asserted against the REAL endpoints, because the
+// browser gate stubs its own responses and therefore never exercises this half
+// (measured: deleting the stamp left that suite entirely green).
+echo "\n== 17. Server clock on every reply ==\n";
+$rc = http($guest, 'GET', '/rates.php');
+it_check('a public GET carries the server time', isset($rc['json']['srv']), $rc['raw']);
+it_check('...as a sane UTC epoch, not a string or a guess',
+    is_int($rc['json']['srv'] ?? null) && abs(($rc['json']['srv'] ?? 0) - time()) < 300,
+    'srv=' . var_export($rc['json']['srv'] ?? null, true));
+$rp = http($admin, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('a POST carries it too, so ANY request re-syncs', isset($rp['json']['srv']), $rp['raw']);
+// A plain LIST is left alone — adding a string key would turn a JSON array into
+// an object under a consumer expecting a list.
+it_check('json_out leaves a bare list a list',
+    strpos((string) file_get_contents(__DIR__ . '/db.php'), 'array_keys($data) !== range(0, count($data) - 1)') !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

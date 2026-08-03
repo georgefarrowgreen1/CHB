@@ -176,9 +176,23 @@ function book_unlock($propKey)
 }
 
 // ---- JSON helpers ----
+// THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
+// says, and a device clock can be wrong by accident or on purpose — reported
+// with a screenshot of the back office reading "Monday 20 July · £865 to
+// collect" on 3 August, because the Mac was two weeks behind and the app
+// believed it. Every money DECISION was already server-side and therefore safe;
+// what was wrong was everything the owner and guest were being SHOWN.
+//
+// Stamped here rather than in a boot payload because this is the one place every
+// JSON response is built, so any request re-syncs and nothing has to be first.
+// A plain LIST is left alone — adding a string key would turn a JSON array into
+// an object under a consumer expecting a list.
 function json_out($data, $code = 200)
 {
     http_response_code($code);
+    if (is_array($data) && $data !== [] && array_keys($data) !== range(0, count($data) - 1) && !isset($data['srv'])) {
+        $data['srv'] = time();
+    }
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json === false) {
         // Encoding failed (e.g. invalid UTF-8) — return a safe error instead of an empty body

@@ -1774,7 +1774,7 @@ function chbEntities(raw) {
     const q = String(raw || '').toLowerCase();
     const out = { dateRange: null, prop: null, amount: null };
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const today = chbNow(); today.setHours(0, 0, 0, 0);
     const range = (from, to, label) => ({ from: iso(from), to: iso(to), label });
 
     // Cottage: any propertyMeta key or display name appearing in the query.
@@ -3183,7 +3183,7 @@ function chbNlgSocial(q) {
     const s = String(q || '').toLowerCase().replace(/[^a-z\s'?]/g, '').replace(/\s+/g, ' ').trim();
     if (!s) return null;
     if (/^(hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening|day)|(good )?(morning|afternoon|evening)|howdy|greetings|hows it going|how are you|you (there|about|around)|are you (there|awake|listening))\??$/.test(s)) {
-        const hr = new Date().getHours();
+        const hr = chbNow().getHours();
         const tod = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
         const brief = chbNlgBrief();
         const briefCap = brief ? ' ' + brief.charAt(0).toUpperCase() + brief.slice(1) + '.' : '';
@@ -3278,7 +3278,7 @@ function chbComputeDate(str) {
     // Seed "now" from the UK-canonical day so "days until christmas" / next-
     // occurrence rollovers match every calendar answer on screen (a device on
     // US time near midnight would otherwise disagree by a day / pick the wrong year).
-    const now = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : new Date();
+    const now = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : chbNow();
     const named = { christmas: [12, 25], 'christmas day': [12, 25], 'christmas eve': [12, 24], 'boxing day': [12, 26], 'new years eve': [12, 31], "new year's eve": [12, 31], 'new year': [1, 1], "new year's day": [1, 1], 'new years day': [1, 1], halloween: [10, 31], 'bonfire night': [11, 5], 'valentines day': [2, 14], "valentine's day": [2, 14], valentines: [2, 14] };
     let m = null, d = null, y = null;
     if (named[s]) { [m, d] = named[s]; }
@@ -3691,7 +3691,7 @@ function chbCompute(q0) {
     if (m) {
         const target = chbComputeDate(m[2]);
         if (target) {
-            const today = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : (() => { const x = new Date(); x.setHours(0, 0, 0, 0); return x; })();
+            const today = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : (() => { const x = chbNow(); x.setHours(0, 0, 0, 0); return x; })();
             const days = Math.round((target - today) / 864e5);
             const pretty = target.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: target.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
             const wk = days >= 21 ? ` — about ${Math.round(days / 7)} weeks` : days >= 14 ? ' — about a fortnight' : '';
@@ -3708,8 +3708,8 @@ function chbCompute(q0) {
         const tz = CHB_CITY_TZ[m[1].trim()];
         if (tz) {
             try {
-                const t = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
-                const day = new Date().toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long' });
+                const t = chbNow().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+                const day = chbNow().toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long' });
                 return row(`It's ${t} on ${day} in ${m[1].trim().replace(/\b[a-z]/g, (c) => c.toUpperCase())}.`, 'Live local time');
             } catch (e) {}
         }
@@ -8205,7 +8205,7 @@ function cmdkDeepReset() {
 }
 function cmdkDeepSince() {
     if (__cmdkDeepPeriod === 'all') return '';
-    const d = new Date();
+    const d = chbNow();
     d.setDate(d.getDate() - (__cmdkDeepPeriod === '90d' ? 90 : 365));
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -8420,7 +8420,7 @@ function cmdkClear() {
 // Time-aware greeting for the brief header — makes the empty palette read like a
 // briefing rather than a blank box.
 function cmdkGreeting() {
-    const h = new Date().getHours();
+    const h = chbNow().getHours();
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Late tonight';
 }
 // Run a quick-action (chip) on a result row without dismissing via the row.
@@ -9016,7 +9016,7 @@ function renderCottagesOverview() {
     try {
         occ = cottageMonthOccupancy();
     } catch (e) {}
-    const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
+    const monthName = chbNow().toLocaleDateString('en-GB', { month: 'long' });
     const card = (k) => {
         const meta = propertyMeta[k] || {};
         const r = propertyRates[k] || defaultRates[k] || {};
@@ -13543,7 +13543,7 @@ function renderMoneyOverview() {
     const el = document.getElementById('money-overview');
     if (!el) return;
     const today = todayDashed();
-    const now = new Date();
+    const now = chbNow();
     const curTY = taxYearStartOf(today);
 
     // Trailing 12 calendar months (oldest → newest) for the received-cash trend.
@@ -13885,7 +13885,7 @@ async function renderMoneyFeed() {
 function renderMoneyForecast() {
     const el = document.getElementById('money-forecast');
     if (!el) return;
-    const now = new Date();
+    const now = chbNow();
     const months = [];
     for (let i = 0; i < 6; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
@@ -16182,7 +16182,7 @@ function renderNeedsYou() {
 function todayOpsLine() {
     const el = document.getElementById('today-date');
     if (!el) return;
-    const date = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     const today = todayDashed();
     let arrivals = 0,
         staying = 0,
@@ -16227,7 +16227,7 @@ async function initBackOffice() {
     // The page header carries the living date ("Friday 10 July") instantly;
     // once the data lands, todayOpsLine() enriches it with the day's ops.
     const td = document.getElementById('today-date');
-    if (td) td.textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (td) td.textContent = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     await loadData();
     try {
         todayOpsLine();
@@ -16388,7 +16388,7 @@ function renderCalUpdated() {
 function relTime(at) {
     const d = msgDate(at);
     if (!d) return '';
-    const now = new Date();
+    const now = chbNow();
     const secs = (now - d) / 1000;
     if (secs < 60) return 'now';
     if (secs < 3600) return Math.floor(secs / 60) + 'm';
@@ -17102,7 +17102,7 @@ function exportAnalyticsCsv() {
     const rows = [
         ['Cottage Holidays Blakeney — analytics'],
         ['Window (days)', d.days || ''],
-        ['Generated', new Date().toISOString()],
+        ['Generated', chbNow().toISOString()],
         [],
         ['Metric', 'Value'],
         ['Page views', d.totalViews || 0],
@@ -17733,7 +17733,7 @@ async function loadDiagnostics() {
           ? "Nothing's broken, but these could use a moment."
           : "Everything's running as it should.";
     const mark = tone === 'ok' ? '✓' : tone === 'warn' ? '!' : '✕';
-    const now = new Date();
+    const now = chbNow();
     const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const chip = (n, cls, label) => (n > 0 ? `<span class="status-count ${cls}">${n} ${label}</span>` : '');
     let html = `
@@ -19686,7 +19686,7 @@ function osHBars(items) {
 }
 // Booked cottage-nights this calendar month, per cottage (direct + iCal blocks).
 function cottageMonthOccupancy() {
-    const now = new Date();
+    const now = chbNow();
     const mStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
     const mEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -19788,7 +19788,7 @@ function tlPlaceNowLine() {
     let line = inner.querySelector('.tl-nowline');
     if (!cell) { if (line) line.remove(); return; } // today outside the window
     if (!line) { line = document.createElement('div'); line.className = 'tl-nowline'; inner.appendChild(line); }
-    const now = new Date();
+    const now = chbNow();
     const frac = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
     const cr = cell.getBoundingClientRect();
     const ir = inner.getBoundingClientRect();
@@ -20306,7 +20306,7 @@ async function openEnquiryHub(enqId) {
 // stays silent — the worst case is the count coming back, where it already was.
 function enquirySeen(e) {
     if (!e || e.seenAt || !e.dbId) return;
-    e.seenAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    e.seenAt = chbNow().toISOString().replace('T', ' ').slice(0, 19);
     try { refreshInboxBadge(); } catch (er) {}
     try { inboxSubline(); } catch (er) {}
     apiPost('enquiries.php', { action: 'seen', id: e.dbId })
@@ -21364,7 +21364,7 @@ function mbxWhen(iso) {
     if (!iso) return '';
     const d = new Date(String(iso).replace(' ', 'T'));
     if (isNaN(d.getTime())) return '';
-    const sameDay = d.toDateString() === new Date().toDateString();
+    const sameDay = d.toDateString() === chbNow().toDateString();
     return sameDay
         ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
         : fmtDate(String(iso).slice(0, 10));
@@ -21380,7 +21380,7 @@ function mbxWhenFull(iso) {
     const d = new Date(String(iso).replace(' ', 'T'));
     if (isNaN(d.getTime())) return '';
     const t = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-    const sameDay = d.toDateString() === new Date().toDateString();
+    const sameDay = d.toDateString() === chbNow().toDateString();
     return { date: sameDay ? 'Today' : fmtDate(String(iso).slice(0, 10)), time: t };
 }
 // "Anne Betts <anneolin@btinternet.com>" is TWO facts, and printed as one
