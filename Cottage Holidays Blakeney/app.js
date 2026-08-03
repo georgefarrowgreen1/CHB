@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 406;
+const ADMIN_BUNDLE_V = 408;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -981,6 +981,7 @@ async function apiPost(endpoint, payload) {
         // both arrive as "not done": `already_sent` means the guest HAS the email.
         throw apiErr(data.error || 'Request failed (' + res.status + ')', res.status, data.code);
     }
+    chbClockSync(data.srv);
     return data;
 }
 async function apiGet(endpoint) {
@@ -1009,6 +1010,7 @@ async function apiGet(endpoint) {
         if (res.status === 401) maybeHandleStaleAdmin();
         throw new Error(data.error || 'Request failed (' + res.status + ')');
     }
+    chbClockSync(data.srv);
     return data;
 }
 
@@ -1543,7 +1545,7 @@ else document.addEventListener('DOMContentLoaded', initHeroParallax);
 // to small details via a CSS var — the rose-gold brand accent is untouched. ----
 (function applySeasonalAccent() {
     try {
-        const m = new Date().getMonth(); // 0=Jan (northern hemisphere)
+        const m = chbNow().getMonth(); // 0=Jan (northern hemisphere)
         const seasonAccent =
             m >= 2 && m <= 4
                 ? '#7FB069' // spring — fresh green
@@ -1829,7 +1831,7 @@ function addBookingToCalendar(bookingId) {
     // YYYY-MM-DD -> YYYYMMDD for all-day (DATE) values
     const dt = (s) => String(s || '').replace(/-/g, '');
     // DTEND on an all-day event is exclusive, so checkout date is correct as-is
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+    const stamp = chbNow().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
     const uid = 'chb-' + (b.id || Math.random().toString(36).slice(2)) + '@cottageholidaysblakeney';
     const summary = `Stay at ${meta.name} — Cottage Holidays Blakeney`;
     const descParts = [
@@ -7060,7 +7062,7 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
     // Anchor "today" in UK time like the rest of the site — the UTC date lags UK
     // by a day between 23:00-00:00 UTC during BST, which made the JS quote and
     // pricing.php (Europe/London) disagree at the lead-time boundary.
-    const lmToday = today || (typeof todayDashed === 'function' ? todayDashed() : new Date().toISOString().slice(0, 10));
+    const lmToday = today || (typeof todayDashed === 'function' ? todayDashed() : chbNow().toISOString().slice(0, 10));
     nightly = Math.round(nightly * lastMinuteFactor(checkIn, lmToday, r.lastminPct, r.lastminDays) * 100) / 100;
     const perNight =
         nights > 0 ? Math.round((nightly / nights) * 100) / 100 : r.coupleRate + extrasPerNight;
@@ -7220,7 +7222,7 @@ function hasCheckedIn(b) {
     // the visitor's device) to the check-in time.
     const parts = String(b.checkInTime || '15:00').split(':');
     const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
-    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : new Date().getHours() * 60 + new Date().getMinutes();
+    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : chbNow().getHours() * 60 + chbNow().getMinutes();
     return nowMins >= mins;
 }
 // Departure counterpart of hasCheckedIn: has the guest actually LEFT? Checkout
@@ -7232,7 +7234,7 @@ function hasCheckedOut(b) {
     if (b.checkOut > today) return false;
     const parts = String(b.checkOutTime || '10:00').split(':');
     const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
-    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : new Date().getHours() * 60 + new Date().getMinutes();
+    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : chbNow().getHours() * 60 + chbNow().getMinutes();
     return nowMins >= mins;
 }
 // In residence RIGHT NOW = arrived (past check-in time) and not yet departed.
@@ -7861,7 +7863,7 @@ function msgDayKey(at) {
 function dayLabel(at) {
     const d = msgDate(at);
     if (!d) return '';
-    const now = new Date();
+    const now = chbNow();
     if (d.toDateString() === now.toDateString()) return 'Today';
     const y = new Date(now);
     y.setDate(now.getDate() - 1);
@@ -10180,6 +10182,32 @@ function formatDashed(dateObj) {
 // "Today" in UK time (the business operates in the UK), so availability and
 // stay logic don't drift by a day for guests in other timezones. Mirrors the
 // server, which is pinned to Europe/London.
+// ---- THE CLOCK IS THE SERVER'S, NOT THE DEVICE'S --------------------------
+// Reported: the back office reading "Monday 20 July · £865 to collect" on
+// 3 August, because the Mac was two weeks behind and the app believed it.
+// Nothing was mis-CHARGED — money decisions are server-side and a device clock
+// cannot reach them — but the owner was shown a fortnight-old picture as fact.
+// json_out stamps `srv` (UTC epoch) on EVERY reply, so any request re-syncs and
+// no endpoint has to be first. We keep the SKEW, not the instant, so the clock
+// runs on instead of freezing at the last reply — and a wrong device TIME ZONE
+// is corrected too, since ukNowParts formats Europe/London from an instant.
+const CHB_CLOCK = { skew: 0, synced: false };
+// Falling back to the device is a degraded answer; adopting rubbish is a wrong
+// one. A garbled or absent `srv` leaves the device clock alone.
+function chbClockSync(srv) {
+    const t = Number(srv);
+    if (!isFinite(t) || t < 1600000000 || t > 4000000000) {
+        return;
+    }
+    CHB_CLOCK.skew = t * 1000 - Date.now();
+    CHB_CLOCK.synced = true;
+}
+// The authoritative instant — everything asking "what day is it" comes here.
+// Date.now() stays right for ELAPSED time (timers, TTLs), which skew cannot
+// affect.
+function chbNow() {
+    return new Date(Date.now() + CHB_CLOCK.skew);
+}
 function ukNowParts() {
     const parts = {};
     new Intl.DateTimeFormat('en-GB', {
@@ -10191,7 +10219,7 @@ function ukNowParts() {
         minute: '2-digit',
         hourCycle: 'h23',
     })
-        .formatToParts(new Date())
+        .formatToParts(chbNow())
         .forEach((p) => {
             if (p.type !== 'literal') parts[p.type] = p.value;
         });
@@ -10752,7 +10780,7 @@ async function loadAvailabilityAll(keys) {
 // ---- Read-only availability calendar (cottage page) ----
 let availCalMonth = null; // Date set to the 1st of the displayed month
 function availCalMove(delta) {
-    if (!availCalMonth) availCalMonth = new Date();
+    if (!availCalMonth) availCalMonth = chbNow();
     availCalMonth = new Date(availCalMonth.getFullYear(), availCalMonth.getMonth() + delta, 1);
     renderAvailCal();
 }
@@ -10761,7 +10789,7 @@ function renderAvailCal() {
     const title = document.getElementById('avail-cal-title');
     if (!grid || !title) return;
     if (!availCalMonth)
-        availCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        availCalMonth = new Date(chbNow().getFullYear(), chbNow().getMonth(), 1);
     const year = availCalMonth.getFullYear(),
         month = availCalMonth.getMonth();
     title.innerText = availCalMonth.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -12263,7 +12291,7 @@ function openProperty(propKey) {
     }
     activeFrontProperty = propKey;
     loadAvailability(propKey); // prefetch booked dates for the date picker
-    availCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    availCalMonth = new Date(chbNow().getFullYear(), chbNow().getMonth(), 1);
     renderAvailCal();
     loadPropContentOverrides();
     try {
@@ -14252,10 +14280,10 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paycard3';
+    const BUILD = 'clocksrv2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
     const yr = document.getElementById('footer-year');
-    if (yr) yr.textContent = new Date().getFullYear();
+    if (yr) yr.textContent = chbNow().getFullYear();
 })();
