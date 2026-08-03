@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 405;
+const ADMIN_BUNDLE_V = 406;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3878,16 +3878,20 @@ function showPayError(text) {
     if (err) err.style.display = '';
     if (msg) msg.textContent = text || 'Something went wrong.';
 }
-// Opened from a secure pay link (?pay=<token>&b=<id>&k=<kind>) parsed at boot.
+// Opened from a secure pay link (?pay=<token>&b=<id>) parsed at boot.
 async function openPayView(token, bookingId, kind) {
     try {
         trackEvent('pay_start', '');
     } catch (e) {}
     payState.token = token;
     payState.bookingId = bookingId;
-    // 'hold' MUST survive: a legacy ?hold= link promises an authorise-only
-    // refundable hold — coercing it to 'deposit' would CHARGE the guest.
-    payState.kind = kind === 'balance' || kind === 'hold' ? kind : 'deposit';
+    // A stage if the caller has one, NULL if not — and null means "no
+    // preference", which the server resolves off the booking. It used to
+    // default to 'deposit': a preference invented for a caller that had none,
+    // and why a link whose deposit was settled still offered to take it again.
+    // 'hold' MUST survive — a legacy ?hold= link promises an authorise-only
+    // refundable hold, and coercing it would CHARGE the guest.
+    payState.kind = kind === 'balance' || kind === 'hold' || kind === 'deposit' ? kind : null;
     squareCard = null;
     ['pay-body', 'pay-done', 'pay-error'].forEach((id) => {
         const e = document.getElementById(id);
@@ -3916,6 +3920,10 @@ async function openPayView(token, bookingId, kind) {
         const dep = s.kind === 'hold' ? 0 : Math.round(Number(s.damagesDue || 0) * 100) / 100;
         const payTotal = Math.round((Number(s.amountDue) + dep) * 100) / 100;
         payState.amountDue = payTotal;
+        // PIN the stage just resolved, so the CHARGE asks for what this screen
+        // quotes. Charging with no preference would let a payment landing in
+        // between move the stage, taking a balance off a deposit screen.
+        if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;
         payState.guestName = s.guestName || '';
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
@@ -4195,7 +4203,10 @@ function maybeOpenPayLink() {
         }
         const t = usp.get('pay');
         const b = parseInt(usp.get('b'), 10);
-        const k = usp.get('k') === 'balance' ? 'balance' : 'deposit';
+        // A pay link names no stage — the server reads it off the booking. An old
+        // `k=balance` is still honoured (it can only UPGRADE, so no link asks for
+        // less than it did); a stale `k=deposit` is ignored, which is the fix.
+        const k = usp.get('k') === 'balance' ? 'balance' : null;
         if (t && b) {
             openPayView(t, b, k);
             return true;
@@ -14079,7 +14090,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'audit2a';
+    const BUILD = 'paylink1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

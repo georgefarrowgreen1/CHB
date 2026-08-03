@@ -155,6 +155,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(reopened.length === 1 && reopened[0][2] === 'balance' && String(reopened[0][1]) === '7',
     `…by re-opening this booking as a balance ask (${JSON.stringify(reopened)})`);
+
+  // ONE PAY LINK — deliberately AFTER the payInFull check above, which asserts
+  // WHICH booking is reopened: this re-points payState at another one.
+  // Opened from a URL, the client states NO stage — the server
+  // reads it off the booking, so the same link follows the plan instead of
+  // promising a stage that was true when the email was sent. The old URL ended
+  // &k=deposit, and a guest reopening it after paying got a £0 screen.
+  await page.evaluate(() => openPayView('paytok', '9', null));
+  await page.waitForTimeout(700);
+  const linkPost = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').pop();
+  ok(!!linkPost && (linkPost.kind === null || linkPost.kind === undefined),
+    `a link-opened pay screen names no stage (${JSON.stringify(linkPost && linkPost.kind)})`);
+  // …and it PINS what came back, so the charge asks for the stage this screen
+  // quoted rather than re-deriving against money that landed in between.
+  const pinned = await page.evaluate(() => payState.kind);
+  ok(pinned === 'balance', `…then pins the stage the server resolved (${pinned})`);
   // THE BALANCE ASK AFTER THE DEPOSIT WAS CHARGED — the screenshotted state.
   // "of £700.00 total · £175.00 already paid" under the £525 hero was the rental
   // rail talking to a guest whose card took £225 of a £750 stay; the charged

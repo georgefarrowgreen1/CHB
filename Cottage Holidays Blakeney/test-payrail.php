@@ -354,7 +354,9 @@ chk('…and no longer takes the request kind as final',
     strpos($bk, "\$kind = (\$in['kind'] ?? 'deposit') === 'balance'") === false);
 $pay = (string) file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php upgrades the kind before pricing the charge',
-    strpos($pay, 'booking_payment_kind($b, $kind)') !== false);
+    // $reqKind since the link stopped naming a stage — the request's kind is a
+    // hint the derivation may override, never the answer.
+    strpos($pay, 'booking_payment_kind($b, $reqKind)') !== false);
 $enq = (string) file_get_contents(__DIR__ . '/enquiry-actions.php');
 chk('enquiry-actions.php uses the shared rule (one definition, not two)',
     strpos($enq, 'booking_payment_kind($bk)') !== false
@@ -848,6 +850,82 @@ chk('a manual deposit ask arms the recovery stamp without clobbering the first o
 // else standard), or the client line is decoration with no data.
 chk('the pay summary carries the plan-derived due date',
     strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'balanceDueDate' => booking_balance_due_date(") !== false);
+
+// ---- ONE pay link: no stage in the URL, the stage read off the booking -------
+//
+//  A pay URL used to end &k=deposit or &k=balance — a claim about the booking
+//  made when the email was SENT, and stale the moment anything was paid. The
+//  link now names no stage and booking_payment_kind reads it off the booking on
+//  open, so ONE link asks for whatever the plan wants next and keeps up as the
+//  plan moves on. Measured before the change: a 60-day-out booking whose £200
+//  deposit was already settled resolved to 'deposit', due £0.00 — the guest
+//  reopening their own link got a £0 payment screen instead of their balance.
+echo "\n== One pay link (stage derived, never in the URL) ==\n";
+$payB = function ($daysOut, $paid, $due = null) {
+    return [
+        // NO id: booking_paid_so_far consults the card LEDGER for a real one, and
+        // db() exits rather than throwing, so an id would take this suite to a
+        // database it deliberately does not have. Without one it reads
+        // deposit_paid, which is exactly the figure these cases are about.
+        'prop_key' => 'jollyboat', 'adults' => 2, 'children' => 0,
+        'check_in' => date('Y-m-d', strtotime("+$daysOut days")),
+        'check_out' => date('Y-m-d', strtotime('+' . ($daysOut + 3) . ' days')),
+        // A per-booking 25% plan rather than the site default: identical
+        // arithmetic (£200 of £800), and it keeps this suite off the database —
+        // square_deposit_pct() reads the content table, and db() EXITS rather
+        // than throwing, so there would be nothing to catch.
+        'balance_due_date' => $due, 'deposit_pct_override' => 25.0, 'deposit_amount_override' => null,
+        'agreed_total' => 800.0, 'price_override' => null, 'deposit_paid' => $paid,
+    ];
+};
+// The stage moves with the money, with NO hint at all — this is the link.
+chk('nothing paid, well outside the window -> deposit', booking_payment_kind($payB(60, 0)) === 'deposit');
+chk('deposit settled, still outside the window -> balance (the link keeps up)', booking_payment_kind($payB(60, 200)) === 'balance');
+chk('inside the balance window -> balance whatever is paid', booking_payment_kind($payB(10, 0)) === 'balance');
+// …and the FIGURE follows the stage, which is the whole point.
+$k = booking_payment_kind($payB(60, 200));
+chk('…and that link asks for the remaining £600, not a settled £0',
+    abs(booking_amount_due($payB(60, 200), $k)['due'] - 600.0) < 0.005);
+chk('the old behaviour is what it replaces (a bare deposit hint still reads £0)',
+    abs(booking_amount_due($payB(60, 200), 'deposit')['due'] - 0.0) < 0.005);
+// MONOTONIC: no route makes a link ask for LESS than it did.
+chk('a fresh booking is unchanged — deposit, £200', booking_payment_kind($payB(60, 0)) === 'deposit'
+    && abs(booking_amount_due($payB(60, 0), 'deposit')['due'] - 200.0) < 0.005);
+chk('an explicit balance ask (Pay in full) is honoured outside the window', booking_payment_kind($payB(60, 0), 'balance') === 'balance');
+chk('the legacy hold flow passes through untouched', booking_payment_kind($payB(60, 0), 'hold') === 'hold');
+// The QUOTE and the CHARGE must agree: the pay screen posts back the stage it
+// showed, and an explicit 'deposit' suppresses the settled-deposit upgrade so a
+// payment landing mid-flow cannot take the balance off a deposit screen.
+chk('an explicit deposit (what the screen quoted) is honoured, so quote == charge',
+    booking_payment_kind($payB(60, 200), 'deposit') === 'deposit');
+chk('…but the WINDOW still overrides even an explicit deposit',
+    booking_payment_kind($payB(10, 200), 'deposit') === 'balance');
+// NB booking_deposit_settled's "a booking with no price is not settled" guard is
+// NOT driven here and deliberately so: reaching it needs booking_amount_due's
+// total<=0 branch, which calls get_rate(), and db() EXITS rather than throwing —
+// this suite is database-free by design. It is belt-and-braces anyway: pay.php
+// 404s a row with no snapshot AND no property rate before the stage is asked for.
+// WIRING — the helpers being right proved nothing while a builder still baked a
+// stage into the URL. Every builder is scanned, and pay.php must derive.
+// NB the URL is BUILT BY CONCATENATION, so a naive /index\.html\?pay=[^']*&k=/
+// cannot span it — it stops at the closing quote after `pay=`. The first version
+// of this check did exactly that and passed with `&k=` put straight back into
+// mailer.php. Take the whole STATEMENT (to its semicolon) and look in that.
+foreach (['mailer.php' => 'the emailed link', 'bookings.php' => 'the owner\'s copied link', 'email-samples.php' => 'the email preview'] as $f => $what) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    $found = preg_match_all('/index\.html\?pay=.*?;/s', $src, $m);
+    chk("$what builds a pay URL at all (vacuity guard)", $found >= 1);
+    $withStage = array_filter($m[0], fn($stmt) => strpos($stmt, '&k=') !== false);
+    chk("$what carries no stage in the URL", count($withStage) === 0);
+}
+chk('pay.php derives the stage from the booking, not from the request',
+    strpos((string) file_get_contents(__DIR__ . '/pay.php'), 'booking_payment_kind($b, $reqKind)') !== false);
+chk('…and an absent/unknown kind becomes null, not a silent "deposit" preference',
+    strpos((string) file_get_contents(__DIR__ . '/pay.php'), "in_array(\$reqKind, ['deposit', 'balance', 'hold'], true) ? \$reqKind : null") !== false);
+chk('the client stops reading a stale k=deposit off the URL',
+    strpos((string) file_get_contents(__DIR__ . '/app.js'), "usp.get('k') === 'balance' ? 'balance' : null") !== false);
+chk('…and pins the resolved stage so the charge asks for what was quoted',
+    strpos((string) file_get_contents(__DIR__ . '/app.js'), "if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;") !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {
