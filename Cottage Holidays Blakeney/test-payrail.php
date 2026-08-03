@@ -927,6 +927,84 @@ chk('the client stops reading a stale k=deposit off the URL',
 chk('…and pins the resolved stage so the charge asks for what was quoted',
     strpos((string) file_get_contents(__DIR__ . '/app.js'), "if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;") !== false);
 
+// ---- AUTOPAY: never take money without a recorded, current agreement -------
+//
+//  The rule the whole feature exists to obey. A stored card is not permission,
+//  and permission is for A SUM ON A DATE — not a standing licence. Every state
+//  except 'armed' must behave exactly as the app did before autopay existed,
+//  which is what makes this safe to ship: no consent, no change.
+echo "\n== Autopay — permission, and the eight ways it is refused ==\n";
+$ap = function ($over = []) {
+    return array_merge([
+        'prop_key' => 'jollyboat', 'adults' => 2, 'children' => 0,
+        'check_in' => date('Y-m-d', strtotime('+60 days')),
+        'check_out' => date('Y-m-d', strtotime('+63 days')),
+        'balance_due_date' => null, 'deposit_pct_override' => 25.0, 'deposit_amount_override' => null,
+        'agreed_total' => 800.0, 'price_override' => null, 'deposit_paid' => 200.0,
+        'agreed_booking_fee' => 0.0, 'hold_status' => 'charged',
+        'autopay_consent_at' => null, 'autopay_card_id' => null,
+        'autopay_amount' => null, 'autopay_due' => null,
+        'autopay_revoked_at' => null,
+    ], $over);
+};
+$dueDay = date('Y-m-d', strtotime(date('Y-m-d', strtotime('+60 days')) . ' -' . payment_balance_days() . ' days'));
+// The consenting booking: deposit paid, £600 balance, agreed to both.
+$agreed = ['autopay_consent_at' => '2026-04-24 10:00:00', 'autopay_card_id' => 'ccof:abc123',
+           'autopay_amount' => 600.0, 'autopay_due' => $dueDay];
+
+// THE DEFAULT IS OFF, for every booking that has ever existed.
+$st = booking_autopay_state($ap());
+chk('a booking nobody agreed to is OFF', $st[0] === 'off');
+chk('…and may never be charged', booking_autopay_may_charge($ap()) === false);
+// A CARD ON FILE IS NOT PERMISSION — the trap this whole design exists to avoid.
+$st = booking_autopay_state($ap(['autopay_card_id' => 'ccof:abc123']));
+chk('a saved card WITHOUT consent is still OFF — a card is not permission', $st[0] === 'off');
+chk('…and still may not be charged', booking_autopay_may_charge($ap(['autopay_card_id' => 'ccof:abc123'])) === false);
+
+// AGREED, MATCHING, WITH A CARD → the only state that may charge.
+$st = booking_autopay_state($ap($agreed));
+chk('agreed, current and matching → ARMED', $st[0] === 'armed', );
+chk('…and the reason names the sum and the day', strpos($st[1], '£600.00') !== false && strpos($st[1], uk_date($dueDay)) !== false);
+chk('…but NOT before the agreed day', booking_autopay_may_charge($ap($agreed), date('Y-m-d')) === false);
+chk('…and yes on the day itself', booking_autopay_may_charge($ap($agreed), $dueDay) === true);
+chk('…and still yes the day after — a failed run must not skip the payment',
+    booking_autopay_may_charge($ap($agreed), date('Y-m-d', strtotime($dueDay . ' +1 day'))) === true);
+
+// WITHDRAWN.
+chk('switched off → REVOKED, never charges',
+    booking_autopay_state($ap($agreed + ['autopay_revoked_at' => '2026-05-01 09:00:00']))[0] === 'revoked'
+    && booking_autopay_may_charge($ap(array_merge($agreed, ['autopay_revoked_at' => '2026-05-01 09:00:00'])), $dueDay) === false);
+
+// THE TERMS MOVED — consent does not stretch. Both halves, because a plan edit
+// can change either the figure or the day.
+$moreMoney = $ap(array_merge($agreed, ['agreed_total' => 900.0]));
+chk('the owner raised the price → STALE, ask again',
+    booking_autopay_state($moreMoney)[0] === 'stale' && booking_autopay_may_charge($moreMoney, $dueDay) === false);
+$newDate = $ap(array_merge($agreed, ['balance_due_date' => date('Y-m-d', strtotime($dueDay . ' +7 days'))]));
+chk('the owner moved the due date → STALE, ask again',
+    booking_autopay_state($newDate)[0] === 'stale' && booking_autopay_may_charge($newDate, $dueDay) === false);
+chk('…and a LOWER price is stale too — consent is for a sum, not a ceiling',
+    booking_autopay_state($ap(array_merge($agreed, ['agreed_total' => 700.0])))[0] === 'stale');
+
+// NOTHING LEFT / NO CARD.
+chk('already settled → SETTLED, nothing to take',
+    booking_autopay_state($ap(array_merge($agreed, ['deposit_paid' => 800.0])))[0] === 'settled');
+chk('consent but no card on file → NOCARD, ask as usual',
+    booking_autopay_state($ap(array_merge($agreed, ['autopay_card_id' => null])))[0] === 'nocard');
+
+// WHAT THEY ARE AGREEING TO, at the moment of asking.
+$terms = booking_autopay_terms($ap(['deposit_paid' => 0.0, 'hold_status' => 'none']));
+chk('the terms offered are the BALANCE and its date', $terms && abs($terms['amount'] - 600.0) < 0.005 && $terms['due'] === $dueDay);
+chk('…nothing to schedule once it is all paid', booking_autopay_terms($ap(['deposit_paid' => 800.0])) === null);
+chk('…and the legacy hold flow is never scheduled',
+    booking_autopay_terms($ap(['check_in' => date('Y-m-d', strtotime('+2 days')), 'deposit_paid' => 0.0])) === null);
+
+// WIRING — the collector is deliberately NOT built yet, and that is asserted so
+// nobody wires a charger to these helpers without the rest of the safeguards.
+$paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('nothing charges on a schedule yet — the state machine lands first',
+    strpos($paySrc, 'booking_autopay_may_charge') === false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

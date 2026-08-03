@@ -397,6 +397,106 @@ function booking_deposit_amount($b, $total)
     return round((float) $total * (square_deposit_pct() / 100), 2);
 }
 
+// ============================================================
+//  AUTOPAY — governed by one rule: THE APP NEVER TAKES MONEY IT WAS NOT GIVEN
+//  PERMISSION TO TAKE.
+//
+//  A stored card is NOT permission. Square can keep the card the guest paid
+//  their deposit with; that records that they paid once, not that they agreed
+//  to be charged again. Permission is a separate recorded fact — and it is
+//  permission for A SUM ON A DATE, never a standing licence.
+//
+//  booking_autopay_state() is the ONE place that decides, written so that every
+//  answer except 'armed' behaves exactly as the app did before autopay existed.
+//  That is the safety property: absent an explicit, current, matching agreement,
+//  nothing is taken and the owner asks as they always did.
+//
+//  Returns [state, why] where `why` is a sentence fit to show a person:
+//    off      never agreed — the default for every booking that already exists
+//    revoked  agreed, then switched it off
+//    stale    agreed, but the SUM or the DATE has moved since; the agreement
+//             does not cover what would now be charged, so it must be re-asked
+//    nocard   agreed, but no saved card to charge
+//    settled  agreed, but there is nothing left to collect
+//    armed    agreed, current, matching, with a card and a sum — the ONLY state
+//             in which a charge may be made
+function booking_autopay_state($b, $today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    if (empty($b['autopay_consent_at'])) {
+        return ['off', 'Not set up — the balance is collected the usual way.'];
+    }
+    if (!empty($b['autopay_revoked_at'])) {
+        return ['revoked', 'Automatic payment was switched off.'];
+    }
+    if (empty($b['autopay_card_id'])) {
+        return ['nocard', 'No saved card to charge — ask for the balance as usual.'];
+    }
+    // WHAT IS OWED NOW. The stage is derived with no hint, exactly as a pay link
+    // is, so this asks the same question the guest's own link would ask today.
+    $kind = booking_payment_kind($b);
+    $amt = booking_amount_due($b, $kind === 'hold' ? 'deposit' : $kind);
+    $charge = round($amt['due'] + booking_damages_due($b), 2);
+    if ($charge <= 0.005) {
+        return ['settled', 'Nothing left to collect.'];
+    }
+    // THE TERMS MUST STILL MATCH. A plan the owner edited, or a price that
+    // moved, means the figure or the day is no longer the one the guest saw when
+    // they agreed — and consent does not stretch to cover it.
+    $agreedAmt = round((float) ($b['autopay_amount'] ?? 0), 2);
+    $agreedDue = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    $dueNow = (string) booking_balance_due_date($b);
+    if (abs($charge - $agreedAmt) > 0.005) {
+        return ['stale', 'The amount has changed since they agreed — ask them again.'];
+    }
+    if ($agreedDue === '' || $dueNow === '' || $agreedDue !== $dueNow) {
+        return ['stale', 'The due date has changed since they agreed — ask them again.'];
+    }
+    return ['armed', 'Scheduled — £' . number_format($charge, 2) . ' on ' . uk_date($agreedDue) . '.'];
+}
+
+// May a charge be taken RIGHT NOW, with nobody pressing anything? Only when
+// armed AND the agreed day has arrived. Split from the state so a screen can say
+// "scheduled" long before this is true, and so the collector has exactly one
+// question to ask. Deliberately `>=`: a pass that fails on the due date must
+// still collect the next day rather than skip the payment altogether — the same
+// reasoning watchers_due uses.
+function booking_autopay_may_charge($b, $today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    $state = booking_autopay_state($b, $today);
+    if ($state[0] !== 'armed') {
+        return false;
+    }
+    return $today >= substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+}
+
+// What the guest would be agreeing TO, at the moment they are asked. Recorded
+// verbatim on consent so booking_autopay_state can later tell whether the terms
+// still hold. Derived the same way the pay screen quotes them, so the checkbox
+// can never promise a different figure from the one printed above it.
+// Returns null when there is nothing to schedule — and the checkbox must not be
+// offered at all then, rather than offered and quietly doing nothing.
+function booking_autopay_terms($b)
+{
+    $kind = booking_payment_kind($b);
+    // Only a BALANCE is ever scheduled. The legacy authorise-only hold is not a
+    // schedule, and asking someone to agree to be charged the deposit they are
+    // in the middle of paying is nonsense.
+    if ($kind !== 'deposit') {
+        return null;
+    }
+    $due = booking_balance_due_date($b);
+    if ($due === null) {
+        return null;
+    }
+    $amt = booking_amount_due($b, 'deposit');
+    // What is left AFTER the payment being made right now — plus nothing else:
+    // the refundable deposit rides this first payment, so it is not owed later.
+    $rest = round(max(0, $amt['total'] - $amt['alreadyPaid'] - $amt['due']), 2);
+    return $rest > 0.005 ? ['amount' => $rest, 'due' => $due] : null;
+}
+
 // The booking's refundable damages deposit, WHATEVER its state — the frozen
 // snapshot, falling back to a live calc ONLY for a legacy row with no snapshot at
 // all. A modern row carrying a deliberately-waived £0 deposit must be honoured as
