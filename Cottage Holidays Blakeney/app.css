@@ -2824,21 +2824,17 @@ a.card {
 .pay-full-link:hover {
   text-decoration: underline;
 }
-/* THE CARD FIELD IS A FIELD, not a bare div holding an iframe. Square's frame
-   reserves room below its inputs for an inline error, and unframed that room
-   reads as a void between the form and the button. */
+/* DO NOT FRAME THIS. Square's card element draws its OWN bordered field inside
+   the iframe, and the iframe is TALLER than what it paints — it reserves room
+   below for an inline error. Wrapping it therefore does two visible things,
+   both measured on the owner's screenshot of the live SDK: a second edge around
+   Square's own field, and that reserved room turned into a large empty box.
+   A local stub cannot show either, because the stub renders only what it paints.
+   The space is Square's and stays; unboxed it is invisible whitespace before the
+   button rather than an empty container. */
 .sq-card {
   min-height: 56px;
-  padding: 10px 12px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  background: var(--glass-bg);
-  transition: border-color 0.18s var(--fluid-bezier), box-shadow 0.18s var(--fluid-bezier);
-}
-/* :focus-within is the only hook we have — the interior belongs to Square. */
-.sq-card:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  padding: 4px 0;
 }
 .sq-wallets {
   display: flex;
