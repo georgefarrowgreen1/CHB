@@ -498,6 +498,12 @@ function mailbox_new_record($fresh)
     }
     try {
         $stored = content_json('mailbox-new', []);
+        // Drop any robot already in the store while we are here, so the list
+        // cleans itself on the next poll rather than only being filtered at
+        // every read for ever.
+        $stored = array_values(array_filter(is_array($stored) ? $stored : [], function ($m) {
+            return is_array($m) && !mailbox_is_report_robot((string) ($m['from'] ?? ''));
+        }));
         content_set_scalar('mailbox-new', mailbox_new_merge($stored, $fresh));
     } catch (\Throwable $e) {
         return 0; // nothing recorded → say nothing, rather than alert about a list we lost
@@ -523,6 +529,32 @@ function mailbox_new_record($fresh)
 // opened. mailbox.php marks a message seen when it is read, so the count clears
 // itself through machinery that already exists — no "mark all read" button to
 // forget to press, and no second definition of what counts as read.
+// WHICH STORED EMAILS ARE STILL NEWS. Pure — no DB, no clock — so the rule can
+// be driven directly, which is what the write-side-only version could not be.
+//
+// It filters report robots as well as seen UIDs, and that second half is the fix
+// for a live report: the poll already refuses to RECORD a DMARC robot, but that
+// only governs what is written from the moment it shipped. Anything stored
+// BEFORE it sat in the list and went on being a duty for ever, since the only
+// other thing that clears one is the owner opening the folder. Making the rule
+// true of the DATA rather than of one writer also means a second writer can
+// never reintroduce it.
+function mailbox_new_unread($stored, $seenUids)
+{
+    $seenMap = array_fill_keys(array_map('strval', $seenUids), true);
+    $out = [];
+    foreach (is_array($stored) ? $stored : [] as $m) {
+        if (!is_array($m) || isset($seenMap[(string) ($m['uid'] ?? '')])) {
+            continue;
+        }
+        if (mailbox_is_report_robot((string) ($m['from'] ?? ''))) {
+            continue;
+        }
+        $out[] = $m;
+    }
+    return $out;
+}
+
 function mailbox_new_pending()
 {
     try {
@@ -531,13 +563,7 @@ function mailbox_new_pending()
             return ['count' => 0, 'items' => []];
         }
         $seen = mailbox_seen_uids();
-        $seenMap = array_fill_keys(is_array($seen) ? $seen : [], true);
-        $out = [];
-        foreach ($stored as $m) {
-            if (is_array($m) && !isset($seenMap[(string) ($m['uid'] ?? '')])) {
-                $out[] = $m;
-            }
-        }
+        $out = mailbox_new_unread($stored, is_array($seen) ? $seen : []);
         return ['count' => count($out), 'items' => array_slice($out, 0, 5)];
     } catch (\Throwable $e) {
         return ['count' => 0, 'items' => []];
