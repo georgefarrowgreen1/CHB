@@ -20,7 +20,14 @@ if (!square_enabled()) {
 
 $bookingId = (int) ($in['booking_id'] ?? 0);
 $token = clean($in['token'] ?? '');
-$kind = in_array($in['kind'] ?? 'deposit', ['deposit', 'balance', 'hold'], true) ? $in['kind'] : 'deposit';
+// A HINT, never the answer — booking_payment_kind derives the stage below.
+// Anything unrecognised (and, crucially, an ABSENT one: a pay link no longer
+// names a stage) becomes null = "no preference". NB the old form read
+// `in_array($in['kind'] ?? 'deposit', …) ? $in['kind'] : 'deposit'`, which
+// tested the DEFAULT and then returned the RAW value — so a posted null passed
+// the test and came straight back out as null.
+$reqKind = $in['kind'] ?? null;
+$reqKind = in_array($reqKind, ['deposit', 'balance', 'hold'], true) ? $reqKind : null;
 
 // Validate the pay token before touching anything.
 if ($bookingId <= 0 || !hash_equals(pay_token($bookingId), $token)) {
@@ -41,12 +48,11 @@ $b = (function ($id) {
 if (!$b) {
     json_out(['error' => 'Booking not found.'], 404);
 }
-// The amount was already server-derived; the KIND now is too. Inside the balance
-// window the full amount is due, so a 'deposit' request — from an older emailed
-// link, or a hand-edited one — is upgraded rather than honoured. Only ever
-// UPWARDS, and never for the legacy 'hold' flow. Without this, a link sent while
-// check-in was still far off would still take 25% if opened days before arrival.
-$kind = booking_payment_kind($b, $kind);
+// The amount was already server-derived; the KIND is too. A pay link names no
+// stage at all now — booking_payment_kind reads it off the booking, so ONE link
+// asks for whatever the plan wants next and keeps doing so as the plan moves on.
+// Only ever UPWARDS, and never for the legacy 'hold' flow.
+$kind = booking_payment_kind($b, $reqKind);
 
 // ONE ask derivation. This block used to re-derive total/deposit/already-paid
 // inline — a second copy of booking_amount_due's arithmetic (pricing.php), the

@@ -10138,7 +10138,7 @@ function renderBookingHub() {
                     ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(b.id))}>Send a reminder</button>`
                     : ''}
                 ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
                       story where they used to sit as a red button per ledger
                       row. Shown only once money has actually been taken and
@@ -15301,11 +15301,14 @@ async function sendPaymentReminder(bookingId) {
     }
 }
 // Copy a secure pay link to the clipboard, to share by WhatsApp/SMS/etc.
-async function copyPayLink(bookingId, kind) {
+// ONE pay link — it names no stage, so this takes none. The hardcoded 'balance'
+// it used to pass became `&k=` in the URL: a claim made at COPY time, stale by
+// the time the guest used it.
+async function copyPayLink(bookingId) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
     try {
-        const res = await apiPost('bookings.php', { action: 'pay_link', id: booking.dbId, kind });
+        const res = await apiPost('bookings.php', { action: 'pay_link', id: booking.dbId });
         const url = res.url || '';
         if (!url) throw new Error('No link returned.');
         let copied = false;
@@ -18357,8 +18360,7 @@ async function tcRenderBooking() {
                     <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, 'deposit', CHB_SELF)}>Pay deposit ↗</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, 'balance', CHB_SELF)}>Pay balance ↗</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, CHB_SELF)}>Open pay page ↗</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_confirmation', CHB_SELF)}>Email confirmation</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
@@ -18499,7 +18501,9 @@ async function tcAutomation(id, which, btn) {
         btn.textContent = old;
     }
 }
-async function tcPay(id, kind, btn) {
+// ONE button, because there is now one link: two here would open the same page
+// under labels guessing which stage it lands on.
+async function tcPay(id, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
@@ -18517,10 +18521,11 @@ async function tcPay(id, kind, btn) {
         return;
     if (btn) btn.disabled = true;
     try {
-        const r = await apiPost('bookings.php', { action: 'pay_link', id, kind });
+        const r = await apiPost('bookings.php', { action: 'pay_link', id });
         if (r && r.url) {
             window.open(r.url, '_blank', 'noopener');
-            show('Opened the ' + kind + ' pay page ↗', true);
+            // The stage the LINK resolves to, not one this button asked for.
+            show('Opened the ' + (r.kind || 'pay') + ' page ↗', true);
         } else show((r && r.error) || "Couldn't get the pay link.", false);
     } catch (e) {
         show(e.message || 'Square is not available.', false);

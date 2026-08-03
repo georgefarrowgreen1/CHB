@@ -311,15 +311,47 @@ function booking_within_balance_window($b)
     return date('Y-m-d') > $due;
 }
 
-// What a booking should ACTUALLY be asked for, whatever was requested. Inside the
-// balance window this is always 'balance' (pay in full). 'hold' is the legacy
-// card-authorisation flow and is passed through untouched.
-function booking_payment_kind($b, $requested = 'deposit')
+// Has the plan's DEPOSIT stage been settled? Read off the same helper that
+// quotes it, so "what is the deposit" is asked once. A booking with no price at
+// all is NOT settled — its deposit is 0 and so is what's been paid, which would
+// otherwise read as done (pay.php 404s that row anyway, but the arithmetic
+// should not be the thing standing between a guest and a wrong screen).
+function booking_deposit_settled($b)
+{
+    $amt = booking_amount_due($b, 'deposit');
+    return $amt['total'] > 0 && $amt['due'] <= 0.005;
+}
+
+// What a booking should ACTUALLY be asked for. Three routes to 'balance':
+//   · inside the balance window, the whole amount is due whatever was asked;
+//   · NOBODY STATED A STAGE and the deposit is settled, so what is left to pay
+//     IS the balance — this is what lets ONE pay link follow the plan, instead
+//     of the link having to name a stage that was true when the email was sent;
+//   · 'balance' was asked for explicitly (the Pay-balance buttons, Pay in full).
+// 'hold' is the legacy card-authorisation flow and passes through untouched.
+//
+// $requested === null means "no preference", which a pay LINK now always is.
+// An explicit 'deposit' is honoured, and that is deliberate rather than
+// leftover: it is what the pay SCREEN posts back at charge time, carrying the
+// stage the guest was actually quoted. Deriving freely on both requests would
+// let a payment landing between the two (a second device, the owner recording
+// cash) silently move the stage, so the card takes the balance off a screen
+// that quoted the deposit. The window rule still overrides even that, because
+// it cannot fire without the calendar itself having moved.
+//
+// MONOTONIC BY CONSTRUCTION: every route only ever turns 'deposit' into
+// 'balance', and balance-due (total − paid) is always ≥ deposit-due
+// (deposit − paid) because the deposit cannot exceed the total. So no link can
+// start asking for LESS than it did, at any stage, however old it is.
+function booking_payment_kind($b, $requested = null)
 {
     if ($requested === 'hold') {
         return 'hold';
     }
     if (booking_within_balance_window($b)) {
+        return 'balance';
+    }
+    if ($requested === null && booking_deposit_settled($b)) {
         return 'balance';
     }
     return $requested === 'balance' ? 'balance' : 'deposit';

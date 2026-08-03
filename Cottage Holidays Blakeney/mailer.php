@@ -1897,7 +1897,11 @@ function request_booking_payment($b, $kind, $reminder = false)
     if ($amt['due'] <= 0) {
         return ['ok' => false, 'error' => 'Nothing left to pay.', 'amount' => 0];
     }
-    $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int) $b['id'] . '&k=' . $kind;
+    // No stage in the link — pay.php derives it from the booking on open, so an
+    // email sent weeks ago asks for whatever the plan wants NOW. The composed
+    // email still quotes $kind's figures, which are right at the moment of
+    // sending; the link simply stops promising they still will be.
+    $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int) $b['id'];
     $rate = get_rate($b['prop_key']);
     // The refundable damage deposit is CHARGED with the guest's first rental payment
     // (only while hold_status is 'none') and returned after checkout. Mirror pay.php's

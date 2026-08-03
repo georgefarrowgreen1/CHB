@@ -1284,13 +1284,19 @@ if ($action === 'pay_link') {
         json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
-    $kind = ($in['kind'] ?? 'balance') === 'deposit' ? 'deposit' : 'balance';
     $b = booking_by_id($id);
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
     }
-    $url = site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id . '&k=' . $kind;
-    json_out(['ok' => true, 'url' => $url, 'kind' => $kind]);
+    // The caller's `kind` is GONE, not ignored-with-a-shrug: the link no longer
+    // carries a stage, so a caller cannot choose one, and reporting back what
+    // was ASKED for would let the owner's toast name a stage the link will not
+    // use. What comes back is what the link RESOLVES to, derived the same way
+    // pay.php will derive it when the guest opens it.
+    // ONE link, no stage in it — a link copied today and used after the deposit
+    // lands asks for the balance instead of a settled £0.
+    $url = site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id;
+    json_out(['ok' => true, 'url' => $url, 'kind' => booking_payment_kind($b)]);
 }
 
 // ---- Refundable damage deposit as a Square card HOLD (authorise/capture/release) ----

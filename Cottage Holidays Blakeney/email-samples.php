@@ -79,7 +79,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'googleUrl' => '',
     ];
     $g = ['id' => 0, 'name' => 'Test Guest', 'email' => $owner];
-    $payUrl = $base . 'index.html?pay=SAMPLE&b=0&k=deposit';
+    $payUrl = $base . 'index.html?pay=SAMPLE&b=0';
     $magicUrl = $base . 'index.html?magic=SAMPLE';
 
     // which => [human label, sender closure]
