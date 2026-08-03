@@ -125,6 +125,12 @@ if ($action === 'summary') {
         'amountDue' => $amountDue,
         // The refundable damage deposit bundled into (and charged with) this payment.
         'damagesDue' => $damagesDue,
+        // WHAT THE GUEST IS ABOUT TO AGREE TO, signed. The charge re-derives its
+        // own figure under the booking lock and takes THAT — this only lets it
+        // notice that the sum has moved since this screen was drawn (an edited
+        // plan, a changed price, another payment landing) and stop instead of
+        // charging a number the guest never read. See payment_quote_sign.
+        'quote' => payment_quote_sign($bookingId, $kind, round($amountDue + $damagesDue, 2)),
         // …and the one ALREADY taken (charged with the first payment, or a
         // captured/kept legacy hold), so the pay screen's "of £X total · £Y
         // already paid" can fold it into both sides — the guest whose card took
@@ -262,6 +268,28 @@ if ($action === 'charge') {
     if ($chargeTotal <= 0) {
         book_unlock($b['prop_key']);
         json_out(['error' => 'This booking is already paid in full.'], 409);
+    }
+
+    // THE FIGURE THE GUEST READ MUST BE THE FIGURE THAT LEAVES THEIR CARD. The
+    // summary above signed what it displayed; if the amount has moved since, stop
+    // — nothing is charged, and the client refetches so they can agree to the new
+    // total. An absent quote proceeds exactly as this endpoint did before quotes
+    // existed (a client too old to send one must still be able to pay), which
+    // costs no guarantee: a quote can only ever refuse.
+    if (payment_quote_check($in['quote'] ?? '', $bookingId, $kind, $chargeTotal) === false) {
+        book_unlock($b['prop_key']);
+        $shown = payment_quote_amount($in['quote'] ?? '', $bookingId, $kind);
+        json_out(
+            [
+                'error' =>
+                    'The amount has changed since this page loaded' .
+                    ($shown !== null ? ' — it was £' . number_format($shown, 2) . ' and is now £' . number_format($chargeTotal, 2) : '') .
+                    '. Nothing has been charged. Please check the new total and try again.',
+                'code' => 'amount_changed',
+                'chargeTotal' => $chargeTotal,
+            ],
+            409,
+        );
     }
 
     $pence = (int) round($chargeTotal * 100);

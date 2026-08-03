@@ -1468,6 +1468,59 @@ function pay_token($bookingId)
 {
     return substr(hash_hmac('sha256', 'pay:' . (int) $bookingId, APP_SECRET), 0, 32);
 }
+// ---- THE PAYMENT QUOTE: what the guest agreed to pay ------------------------
+// pay.php derives the amount twice — once for the SUMMARY the guest reads, and
+// again under the booking lock when they tap Pay. Server-derived both times, so
+// neither can be tampered with; but they can legitimately DISAGREE, because
+// between the two the owner can edit the payment plan, change the price or the
+// refundable deposit, or another payment can land. The guest then reads one
+// figure, consents to it, and a different sum leaves their card — the one thing
+// a payment screen must never do.
+//
+// So the summary SIGNS the figure it showed, and the charge checks the sum it is
+// about to take against it. The quote is NOT an instruction: the server's own
+// arithmetic stays authoritative, and a mismatch only ever REFUSES — it can turn
+// a charge into a stop, never into a different amount. That is what makes it safe
+// to hand to the client at all; a quote that could authorise a figure would be a
+// way to underpay.
+//
+// Deliberately NO expiry. The obvious next thought is to time-bound it, but the
+// check is amount equality and the server figure is the one that charges — so a
+// quote that still matches is still true however old it is, and refusing one that
+// matches would tell the guest "the amount has changed" when it has not. A guest
+// who leaves the pay screen open over lunch is not a threat model.
+function payment_quote_sign($bookingId, $kind, $chargeTotal)
+{
+    $body = (int) $bookingId . ':' . (string) $kind . ':' . number_format((float) $chargeTotal, 2, '.', '');
+    return $body . ':' . substr(hash_hmac('sha256', 'payquote|' . $body, APP_SECRET), 0, 32);
+}
+// TRUE  — the quote is ours and names this exact charge.
+// FALSE — it is ours (or forged) but does not name this charge: REFUSE.
+// NULL  — there is no quote. The caller proceeds as it did before quotes existed:
+//         a client too old to send one must still be able to pay, and since a
+//         quote can only ever refuse, its absence costs no guarantee that the
+//         pre-quote code had.
+function payment_quote_check($quote, $bookingId, $kind, $chargeTotal)
+{
+    $q = trim((string) $quote);
+    if ($q === '') {
+        return null;
+    }
+    return hash_equals(payment_quote_sign($bookingId, $kind, $chargeTotal), $q);
+}
+// What the quote SAYS it is worth, for the refusal's wording ("you were shown
+// £225.00"). Returns null unless the string is one of ours — an unsigned figure
+// is a claim, and a claim is not something to quote back at a guest as fact.
+function payment_quote_amount($quote, $bookingId, $kind)
+{
+    $parts = explode(':', trim((string) $quote));
+    if (count($parts) !== 4) {
+        return null;
+    }
+    $amt = (float) $parts[2];
+    return payment_quote_check($quote, $bookingId, $kind, $amt) === true ? round($amt, 2) : null;
+}
+
 // Unguessable, login-free token for a booking's guest invoice page (invoice.php).
 // Same one-way HMAC as pay_token but a distinct purpose so the two links can't be
 // swapped; leaks nothing if seen.

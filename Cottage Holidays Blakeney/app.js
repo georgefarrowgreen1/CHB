@@ -3856,7 +3856,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '' };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '' };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -3945,6 +3945,10 @@ async function openPayView(token, bookingId, kind) {
         // quotes. Charging with no preference would let a payment landing in
         // between move the stage, taking a balance off a deposit screen.
         if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;
+        // The server's signed statement of the figure this screen shows; sent back
+        // with the charge so it can stop if the sum has moved. payment_quote_sign
+        // says why. Cleared, never stale-kept, if a summary arrives without one.
+        payState.quote = typeof s.quote === 'string' ? s.quote : '';
         payState.guestName = s.guestName || '';
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
@@ -4034,6 +4038,15 @@ async function openPayView(token, bookingId, kind) {
         }
         await loadSquareSdk(cfg.environment);
         squarePayments = window.Square.payments(cfg.applicationId, cfg.locationId);
+        // RE-ENTRANT: attaching a second card over a live one leaves the SDK with
+        // two, and this screen is legitimately drawn twice — by the amount-changed
+        // recovery below, and by tapping "Pay balance" again on My Stays.
+        // Cast: squareCard is declared null, so the guard narrows it to never.
+        const liveCard = /** @type {any} */ (squareCard);
+        try {
+            if (liveCard) await liveCard.destroy();
+        } catch (e) {}
+        squareCard = null;
         squareCard = await squarePayments.card();
         await squareCard.attach('#sq-card');
         try {
@@ -4068,13 +4081,28 @@ async function payWithToken(sourceId) {
         } catch (e) {}
         return;
     }
-    const res = await apiPost('pay.php', {
-        action: 'charge',
-        booking_id: payState.bookingId,
-        token: payState.token,
-        kind: payState.kind,
-        source_id: sourceId,
-    });
+    let res;
+    try {
+        res = await apiPost('pay.php', {
+            action: 'charge',
+            booking_id: payState.bookingId,
+            token: payState.token,
+            kind: payState.kind,
+            source_id: sourceId,
+            quote: payState.quote,
+        });
+    } catch (e) {
+        // THE AMOUNT MOVED WHILE THEY READ IT. Nothing was charged, and a bare
+        // error would leave them looking at a figure the server has just refused;
+        // redraw at the new total so the next tap is one they agreed to.
+        if (e && e.code === 'amount_changed') {
+            try {
+                await openPayView(payState.token, payState.bookingId, payState.kind);
+            } catch (e2) {}
+            throw e;
+        }
+        throw e;
+    }
     document.getElementById('pay-body').style.display = 'none';
     // Show what the card was CHARGED (incl. the bundled refundable deposit) —
     // quoting only the rental portion after a "Pay £450" button read like a
@@ -4190,7 +4218,10 @@ async function submitPayment() {
         if (btn) {
             btn.disabled = false;
             btn.classList.remove('is-busy');
-            btn.textContent = orig;
+            // Only if nothing redrew the screen underneath us: on the
+            // amount-changed path openPayView has already written the NEW figure
+            // here, and the old sum is the number the server just refused.
+            if (btn.textContent === 'Processing…') btn.textContent = orig;
         }
     }
 }
@@ -14111,7 +14142,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paylink2';
+    const BUILD = 'payq801';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
