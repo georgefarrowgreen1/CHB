@@ -134,6 +134,74 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(v.btn === 'Pay £340.00', `Pay button names the amount (${v.btn})`);
   ok(!v.orShown, 'wallet divider hidden when no wallet mounted');
 
+  // ---- THE PRIMARY ACTION LOOKS LIKE ONE -----------------------------------
+  // It was .btn-glass — a translucent outline — while the two wallet buttons
+  // above it are Square-rendered solid black and heavy-bordered white. The
+  // action most guests actually take was the faintest thing on the screen.
+  const cta = await page.evaluate(() => {
+    const b = document.getElementById('pay-btn');
+    const c = getComputedStyle(b);
+    const card = document.getElementById('sq-card');
+    const lum = (str) => {
+      const n = (String(str).match(/[\d.]+/g) || []).map(Number);
+      if (n.length < 3) return null;
+      // getComputedStyle can hand back 0–1 floats where rgb() is 0–255 — the
+      // fourth false contrast failure this codebase has produced.
+      const sc = n[0] <= 1 && n[1] <= 1 && n[2] <= 1 ? 255 : 1;
+      const [r, g, bl] = n.slice(0, 3).map((x) => {
+        const v = (x * sc) / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+    };
+    const L1 = lum(c.backgroundColor);
+    const L2 = lum(c.color);
+    return {
+      bg: c.backgroundColor,
+      // rgb() carries no alpha, so the trailing number is the BLUE channel —
+      // reading it as alpha called a fully opaque button translucent.
+      alpha: /^rgba\(/.test(c.backgroundColor)
+        ? Number((c.backgroundColor.match(/[\d.]+\s*\)$/) || ['1)'])[0].replace(/[\s)]/g, ''))
+        : 1,
+      shadow: c.boxShadow,
+      // Compared against a BARE .btn-glass in the same document: that class
+      // already carries a shadow, so "has one" passed with the accent glow
+      // deleted. What must be true is that this button is lifted DIFFERENTLY
+      // from an ordinary one.
+      plainShadow: (() => {
+        const probe = document.createElement('button');
+        probe.className = 'btn-glass';
+        probe.style.cssText = 'position:absolute;left:-9999px';
+        document.body.appendChild(probe);
+        const sh = getComputedStyle(probe).boxShadow;
+        probe.remove();
+        return sh;
+      })(),
+      weight: c.fontWeight,
+      ratio: L1 === null || L2 === null ? 0 : (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05),
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      cardBorder: getComputedStyle(card).borderTopWidth,
+      // Exactly one of the two names the card field — never both, never neither.
+      names:
+        (document.getElementById('sq-or').style.display !== 'none' ? 1 : 0) +
+        (document.getElementById('sq-card-label').style.display !== 'none' ? 1 : 0),
+    };
+  });
+  ok(cta.alpha === 1, `the Pay button is FILLED, not translucent glass (${cta.bg})`);
+  ok(/^rgb/.test(cta.bg) && cta.bg !== 'rgba(0, 0, 0, 0)', 'it has a real background');
+  ok(cta.shadow && cta.shadow !== 'none' && cta.shadow !== cta.plainShadow,
+    'it is lifted differently from an ordinary glass button, so it sits above the form');
+  ok(Number(cta.weight) >= 600, `its label is weighted (${cta.weight})`);
+  // --accent-ink, not white: the rose-gold is mid-light and white fails AA on
+  // it. This is the words-vs-things rule, on the one control that must be read.
+  ok(cta.ratio >= 4.5, `its label clears AA on the accent (${cta.ratio.toFixed(2)}:1)`);
+  ok(parseFloat(cta.cardBorder) > 0, `the card field is framed, so Square's reserved space reads as a control (${cta.cardBorder})`);
+  // ONE LABEL, NOT TWO. With a wallet up, "or pay by card" and "Card details"
+  // are the same statement in adjacent lines.
+  ok(cta.names === 1, `exactly one thing names the card field (${cta.names})`);
+  const appSrcCta = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
+  ok(/lblEl\.style\.display = any \? 'none' : ''/.test(appSrcCta), '…driven off the same flag as the divider, so they cannot both show');
+
   // THE DEPOSIT ASK'S SUB-LINE ITEMISES TO ITS OWN HEADLINE. It used to read
   // "25% deposit · £750.00 total" under a £225.00 hero — the percentage was
   // against the rental while the total beside it was the grand, so checking
