@@ -242,6 +242,28 @@ chk('content_json empty → default []', $cj('') === [] && $cj(null) === []);
 // The site sends as the same address the owner reads, so every alert it raises
 // ("New enquiry…", "Payment received…") lands in the polled mailbox: measured on
 // the owner's phone, 4 of the first 7 messages were the site talking to itself.
+// ---- Automated report robots are not people -------------------------------
+//  Reported live: "noreply-dmarc-support@google.com emailed you" as a duty in
+//  the owner's Today strip, with the report itself sitting in Inbox → Email.
+//  Any domain publishing a DMARC record gets these daily from every large
+//  provider. mailbox_is_report_robot is the sibling of the self-notification
+//  rule — the other kind of mail that is not a person writing to the business.
+echo "\n== Automated report robots (DMARC and friends) ==\n";
+chk('the address the owner reported is a robot', mailbox_is_report_robot('noreply-dmarc-support@google.com'));
+chk('…however it is cased or padded', mailbox_is_report_robot('  NoReply-DMARC-Support@Google.com  '));
+chk('other providers report too (a class, not one address)', mailbox_is_report_robot('dmarcreply@microsoft.com'));
+chk('…including the ones that put it in the DOMAIN', mailbox_is_report_robot('report@dmarc.yahoo.com'));
+// The negatives are the point: this must never eat a booking.
+chk('a guest is not a robot', !mailbox_is_report_robot('sarah.pemberton@gmail.com'));
+chk('a platform noreply is NOT blocked — it can carry a real enquiry',
+    !mailbox_is_report_robot('noreply@airbnb.com') && !mailbox_is_report_robot('no-reply@booking.com'));
+// A BARE substring test matched this and would have eaten the enquiry. The
+// first draft of this check hid that behind a double negative — it asserted the
+// false positive while its label claimed the opposite.
+chk('a guest whose name merely contains the letters is safe', !mailbox_is_report_robot('e.dmarcus@gmail.com'));
+chk('…and one whose name ends with it', !mailbox_is_report_robot('adamdmarc@gmail.com'));
+chk('rubbish in, false out — never a crash', !mailbox_is_report_robot('') && !mailbox_is_report_robot('not-an-address'));
+
 // mailbox_is_self_notification is the ONE test both the list filter and the
 // reply-ingest use, so the mailbox cannot hide what the ingest would swallow.
 echo "\n== The mailbox is guests only ==\n";
@@ -310,8 +332,13 @@ chk('a bare address yields no name', mailbox_sender_name('anne@x.test') === '');
 // call site deleted — the trap this codebase keeps walking into.
 $src = file_get_contents(__DIR__ . '/mailbox-read.php');
 chk('the poll records new mail', strpos($src, '$noticed = mailbox_new_record($fresh);') !== false);
-chk('…only for mail that is NOT ours and did NOT become a chat reply',
-    strpos($src, "if (\$deliverOk && !\$isSelf && \$route === 'drop') {") !== false);
+chk('…only for mail that is NOT ours, NOT a robot, and did NOT become a chat reply',
+    strpos($src, "if (\$deliverOk && !\$isSelf && !mailbox_is_report_robot(\$fromAddr) && \$route === 'drop') {") !== false);
+// The LIST hides them too — the owner asked not to SEE them, not merely to stop
+// being nudged. Two surfaces, one rule.
+$mbx = file_get_contents(__DIR__ . '/mailbox.php');
+chk('the mailbox list hides report robots as well', strpos($mbx, 'if (mailbox_is_report_robot($fromAddr)) {') !== false);
+chk('…on their own tally, not folded into "our own voice"', strpos($mbx, "'robotHidden' => \$robotHidden,") !== false);
 chk('the alert routes to the Email folder', strpos($src, "'url' => './?open=inbox:email'") !== false);
 // The count must clear itself through the SAME fact the reader already writes.
 chk('pending is stored-minus-seen', strpos($src, '$seen = mailbox_seen_uids();') !== false);

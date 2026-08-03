@@ -181,6 +181,7 @@ if ($action === 'list') {
     $seen = mbx_seen_uids();
     $out = [];
     $ownHidden = 0;
+    $robotHidden = 0;
     foreach ($nos as $no) {
         fwrite($fp, "TOP {$no} 0\r\n");
         $first = fgets($fp, 1024);
@@ -204,6 +205,14 @@ if ($action === 'list') {
             $ownHidden++;
             continue;
         }
+        // …and the same for automated authentication reports (DMARC and friends
+        // — mailbox_is_report_robot). Counted on their OWN tally, not folded into
+        // $ownHidden: that one means "our own voice", and a report from Google is
+        // not our voice. Two facts, two numbers.
+        if (mailbox_is_report_robot($fromAddr)) {
+            $robotHidden++;
+            continue;
+        }
         $out[] = [
             'uid' => $uidl[$no],
             'from' => $fromAddr,
@@ -220,6 +229,7 @@ if ($action === 'list') {
         'total' => count($uidl),
         'hasMore' => $hasMore,
         'ownHidden' => $ownHidden,
+        'robotHidden' => $robotHidden,
     ]);
 }
 

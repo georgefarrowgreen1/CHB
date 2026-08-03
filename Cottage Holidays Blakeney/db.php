@@ -1012,6 +1012,38 @@ function mailbox_is_self_notification($fromAddr)
     $own = mailbox_own_address();
     return $own !== '' && strtolower(trim((string) $fromAddr)) === $own;
 }
+// …and the OTHER kind of mail that is not a person: automated authentication
+// reports. Any domain publishing a DMARC record gets these daily from every
+// large mailbox provider — noreply-dmarc-support@google.com and its Yahoo /
+// Microsoft / Enterprise equivalents — and they arrived in the owner's Inbox and
+// raised a "someone emailed you" duty, which is the same defect the self-
+// notification rule fixes: a duty about machine mail is a duty they learn to
+// ignore, and the next real guest email is behind it.
+//
+// Matched as a CLASS, not one address. Reported live as
+// noreply-dmarc-support@google.com, but the reporter differs per provider and a
+// single hardcoded address would need a code change per robot. `dmarc` in the
+// local part is what every one of them has in common, and no human writing to a
+// holiday let has it. Deliberately NOT a blanket noreply/no-reply test: a real
+// booking platform's noreply@ can carry an enquiry the owner must see.
+//
+// NB this HIDES rather than deletes — the report is still in the real mailbox
+// for anyone who wants it. The site simply stops claiming a person wrote.
+function mailbox_is_report_robot($fromAddr)
+{
+    $a = strtolower(trim((string) $fromAddr));
+    if ($a === '' || strpos($a, '@') === false) {
+        return false;
+    }
+    [$local, $domain] = explode('@', $a, 2);
+    // 'dmarc' at a BOUNDARY, not anywhere in the string: a bare substring test
+    // matches a guest called e.dmarcus@… and silently eats their booking enquiry.
+    // Either the local part starts with it (dmarcreply@, dmarcreport@) or it
+    // stands alone between separators (noreply-dmarc-support@, dmarc_agg@).
+    return strpos($local, 'dmarc') === 0
+        || preg_match('/[^a-z0-9]dmarc([^a-z0-9]|$)/', $local) === 1
+        || $domain === 'dmarc.yahoo.com';
+}
 // True when replies are matched by header/subject token rather than a plus-
 // address (the zero-setup POP3 route) — the notification then also tags the
 // subject so a client that drops In-Reply-To still matches.
