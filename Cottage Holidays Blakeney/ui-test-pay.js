@@ -181,6 +181,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ratio: L1 === null || L2 === null ? 0 : (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05),
       accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
       cardBorder: getComputedStyle(card).borderTopWidth,
+      cardBg: getComputedStyle(card).backgroundColor,
       // Exactly one of the two names the card field — never both, never neither.
       names:
         (document.getElementById('sq-or').style.display !== 'none' ? 1 : 0) +
@@ -195,7 +196,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // --accent-ink, not white: the rose-gold is mid-light and white fails AA on
   // it. This is the words-vs-things rule, on the one control that must be read.
   ok(cta.ratio >= 4.5, `its label clears AA on the accent (${cta.ratio.toFixed(2)}:1)`);
-  ok(parseFloat(cta.cardBorder) > 0, `the card field is framed, so Square's reserved space reads as a control (${cta.cardBorder})`);
+  // WE DO NOT DRAW THIS FIELD. Square's card element renders its own bordered
+  // box inside an iframe that is TALLER than what it paints (it reserves room
+  // for an inline error). A wrapper therefore double-borders their field AND
+  // turns that reserved room into a visible empty box — both measured on the
+  // live SDK after a frame was added here, and invisible to a local stub, which
+  // renders only what it paints.
+  ok(parseFloat(cta.cardBorder) === 0, `the card container adds no second edge around Square's own field (${cta.cardBorder})`);
+  ok(/rgba\(0, 0, 0, 0\)|transparent/.test(cta.cardBg), `…and no fill that would box its reserved space (${cta.cardBg})`);
   // ONE LABEL, NOT TWO. With a wallet up, "or pay by card" and "Card details"
   // are the same statement in adjacent lines.
   ok(cta.names === 1, `exactly one thing names the card field (${cta.names})`);
