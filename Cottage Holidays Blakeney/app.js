@@ -1275,6 +1275,10 @@ function mapBookingFromApi(row) {
         depositPctOverride: row.deposit_pct_override != null && row.deposit_pct_override !== '' ? parseFloat(row.deposit_pct_override) : null,
         depositAmountOverride: row.deposit_amount_override != null && row.deposit_amount_override !== '' ? parseFloat(row.deposit_amount_override) : null,
         balanceDueDate: row.balance_due_date ? String(row.balance_due_date).slice(0, 10) : '',
+        // The DERIVED due date (custom plan, else site standard), from
+        // my-bookings.php only — kept apart from balanceDueDate above, which is
+        // the OVERRIDE and whose NULL means "site standard" to the owner side.
+        balanceDueBy: row.balance_due_by ? String(row.balance_due_by).slice(0, 10) : '',
         depositRequestedAt: row.deposit_requested_at || '',
         balanceRequestedAt: row.balance_requested_at || '',
         balanceRemindedAt: row.balance_reminded_at || '',
@@ -3684,6 +3688,14 @@ async function renderGuestBookings() {
 // with a countdown, flags the one thing left to sort (balance / guest details),
 // and offers the same planning tiles. All tiles reuse existing functions — no
 // new endpoints. Shown once, above the booking cards, under "Your stay". ----
+// " by 15/08/2026", or '' once that day has passed (it is simply due NOW then).
+// ONE definition — the pay screen's headline and the pre-arrival hub's
+// outstanding line say the same thing about the same date. Blank in, blank out,
+// so an older server sending no date reads as it did rather than printing "by ".
+function balanceDueBySuffix(iso) {
+    const d = String(iso || '').slice(0, 10);
+    return d && d >= todayDashed() ? ` by ${fmtDate(d)}` : '';
+}
 function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const days = nightsBetween(todayDashed(), b.checkIn);
     const big = days <= 0 ? '!' : String(days);
@@ -3692,7 +3704,10 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     // The one outstanding thing before arrival (balance beats details), else all set.
     let ready, cta = '';
     if (gt && !gt.fullyPaid && gt.balance > 0) {
-        ready = `<span class="hub-warn">balance ${gbp(gt.balance)} due</span>`;
+        // …and WHEN: a deadline is the actionable half of "the one outstanding
+        // thing before you arrive", and the pay screen this button leads to has
+        // named the date since #969.
+        ready = `<span class="hub-warn">balance ${gbp(gt.balance)} due${balanceDueBySuffix(b.balanceDueBy)}</span>`;
         if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId, 'balance')}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>`;
     } else if (b.regUrl && !b.regSubmitted) {
         ready = `<span class="hub-warn">add your guest details</span>`;
@@ -3914,7 +3929,7 @@ async function openPayView(token, bookingId, kind) {
         }
         // The headline says WHEN, from the booking's own payment plan — once
         // the date has passed it stays plain "Balance due" (it is due now).
-        const dueBy = s.kind === 'balance' && s.balanceDueDate && String(s.balanceDueDate) >= todayDashed() ? ` by ${fmtDate(s.balanceDueDate)}` : '';
+        const dueBy = s.kind === 'balance' ? balanceDueBySuffix(s.balanceDueDate) : '';
         document.getElementById('pay-kind-label').textContent =
             s.kind === 'hold'
                 ? 'Refundable security hold'
@@ -14064,7 +14079,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'audit1b';
+    const BUILD = 'audit2a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

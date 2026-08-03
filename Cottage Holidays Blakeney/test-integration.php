@@ -1030,6 +1030,51 @@ it_check('the owner\'s list carries seen_at', ($mine[0]['seen_at'] ?? '') === '2
 $r = http($admin, 'POST', '/enquiries.php', ['action' => 'seen', 'id' => 0]);
 it_check('a missing id is refused, not silently accepted', $r['code'] === 400, $r['raw']);
 
+// ---- 18. The guest's own account states WHEN the balance is due -----------
+//
+//  my-bookings.php had NO server-side coverage at all, and the pre-arrival
+//  countdown card could not name a due date because the payload never carried
+//  one — while the pay screen its own button leads to has said it since #969.
+//  Driven through ?acctpreview, which runs the SAME my_bookings_payload under
+//  admin auth, so this exercises the real endpoint rather than the helper.
+echo "\n== 18. My Stays carries the balance due date ==\n";
+$ddIn = date('Y-m-d', strtotime('+260 days'));
+$r = http($admin, 'POST', '/bookings.php', [
+    'action' => 'add', 'prop_key' => $propKey, 'name' => 'Due Date Guest',
+    'email' => 'duedate@example.com', 'phone' => '', 'check_in' => $ddIn,
+    'check_out' => date('Y-m-d', strtotime('+263 days')),
+    'adults' => 2, 'children' => 0, 'payment' => 'unpaid',
+]);
+$dueBookingId = (int) ($r['json']['id'] ?? 0);
+it_check('a booking to read the account back for', $dueBookingId > 0, $r['raw']);
+$r = http($admin, 'GET', '/my-bookings.php?acctpreview=' . $dueBookingId);
+$row = null;
+foreach (($r['json']['bookings'] ?? []) as $b) {
+    if ((int) ($b['id'] ?? 0) === $dueBookingId) { $row = $b; }
+}
+it_check('the account payload returns that booking', is_array($row), $r['raw']);
+// STANDARD plan: no override stored, so the derived date is check-in minus the
+// site's balance window — and the raw column stays NULL, because the owner side
+// reads NULL as "site standard" and a derived value there would make every
+// booking look custom.
+$expectStd = date('Y-m-d', strtotime($ddIn . ' -' . payment_balance_days() . ' days'));
+it_check('a standard plan still derives a due date', ($row['balance_due_by'] ?? null) === $expectStd, json_encode($row['balance_due_by'] ?? null) . ' vs ' . $expectStd);
+it_check('…while the override column stays NULL (NULL still MEANS standard)', is_array($row) && !array_key_exists('balance_due_date', $row) === false && $row['balance_due_date'] === null, json_encode(is_array($row) ? ($row['balance_due_date'] ?? '<<absent>>') : null));
+// CUSTOM plan: the guest's account follows the booking's own date.
+// Deliberately NOT +230, which is exactly check-in minus the standard window —
+// the first draft picked it and 'follows the plan' passed against a date that
+// was the standard one anyway.
+$customDue = date('Y-m-d', strtotime('+200 days'));
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment_plan', 'id' => $dueBookingId, 'deposit_pct' => '', 'deposit_amount' => '', 'balance_due_date' => $customDue]);
+it_check('a custom balance due date saves', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$r = http($admin, 'GET', '/my-bookings.php?acctpreview=' . $dueBookingId);
+$row = null;
+foreach (($r['json']['bookings'] ?? []) as $b) {
+    if ((int) ($b['id'] ?? 0) === $dueBookingId) { $row = $b; }
+}
+it_check('the account follows the booking\'s own plan', ($row['balance_due_by'] ?? null) === $customDue, json_encode($row['balance_due_by'] ?? null) . ' vs ' . $customDue);
+it_check('…and it is not the standard date any more', is_array($row) && ($row['balance_due_by'] ?? null) !== $expectStd, json_encode(is_array($row) ? ($row['balance_due_by'] ?? null) : null));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

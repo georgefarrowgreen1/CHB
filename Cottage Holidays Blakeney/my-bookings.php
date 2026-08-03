@@ -10,6 +10,9 @@
 //         a preview can look but never act.
 // ============================================================
 require_once __DIR__ . '/db.php';
+// booking_balance_due_date — the guest's account states WHEN the balance is due,
+// the same derivation the pay screen and the owner's plan panel use.
+require_once __DIR__ . '/pricing.php';
 
 // Build the account payload for a given email. `$preview` strips the login-free
 // action tokens so an admin preview is look-only. Keyed on the email so it serves
@@ -54,6 +57,13 @@ function my_bookings_payload(string $email, bool $preview = false): array
     foreach ($bookings as &$bk) {
         $bk['pay_token'] = ($preview || !$sqOn) ? null : pay_token((int) $bk['id']);
         $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
+        // WHEN the balance is due, DERIVED — deliberately its own field, not the
+        // raw `balance_due_date` column beside it. That column is the per-booking
+        // OVERRIDE and NULL means "site standard", which is exactly what the owner
+        // side reads it for (bookingPlanDueDate, the custom-plan filter, the edit
+        // form's "pick a different day to make it custom" hint). Writing a derived
+        // date into it would make every booking look like it carries a custom plan.
+        $bk['balance_due_by'] = booking_balance_due_date($bk);
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether
         // it's been submitted.

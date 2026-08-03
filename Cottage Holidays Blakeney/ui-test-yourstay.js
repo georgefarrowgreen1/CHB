@@ -16,6 +16,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 (async () => {
   const { browser, base, done } = await bootBrowser();
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  // The house DD/MM/YYYY form, for asserting a rendered date without
+  // re-implementing fmtDate in the assertion.
+  const ukD = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
   const mk = (pk, inD, outD, extra) => Object.assign({ prop_key: pk, check_in: inD, check_out: outD, adults: 2, children: 0, id: Math.floor(Math.random() * 1e6) }, extra || {});
 
   // London wall-clock time TODAY, as a Date — for pinning the page's clock. The
@@ -81,6 +84,37 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(h && /Jollyboat/.test(h.title) && /10 days/.test(h.title), `hub names the cottage + countdown (${h && h.title.trim()})`);
   ok(h && h.tiles === 5, `hub carries the planning tiles (${h && h.tiles})`);
   ok(h && /balance/i.test(h.sub) && h.pay, 'balance-due stay shows the balance note + Pay CTA');
+  await page.close();
+
+  // 2b) …AND WHEN IT IS DUE. The card's job is "the one outstanding thing before
+  //     you arrive", and a deadline is the actionable half of that. The pay screen
+  //     its own button leads to has said the date since #969; this card knew least,
+  //     because my-bookings.php never sent one. `balance_due_by` is the DERIVED
+  //     date (custom plan, else the site standard) — deliberately its own field,
+  //     since the raw `balance_due_date` column means "custom override, NULL =
+  //     standard" and the owner side reads it for exactly that.
+  page = await openPage({ name: 'Due Guest', email: 'due@x.co' },
+    [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok3', balance_due_by: d(9) }, priced))]);
+  h = await hub(page);
+  ok(h && /balance .* due by /i.test(h.sub), `the outstanding line names the due date (${h && h.sub.trim().slice(-52)})`);
+  ok(h && h.sub.indexOf(ukD(d(9))) !== -1, `…in the house DD/MM/YYYY form (${ukD(d(9))})`);
+  await page.close();
+
+  // A date already PAST reads plain "due" — it is due NOW, and a past deadline is
+  // a reprimand rather than a fact. Same rule as the pay screen's headline, from
+  // the same helper, which is the point of there being one.
+  page = await openPage({ name: 'Late Guest', email: 'late@x.co' },
+    [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok4', balance_due_by: d(-3) }, priced))]);
+  h = await hub(page);
+  ok(h && /balance/i.test(h.sub) && !/due by/i.test(h.sub), `a passed due date reads plain "due" (${h && h.sub.trim().slice(-40)})`);
+  await page.close();
+
+  // An older server sends no date at all — the card reads exactly as it did.
+  page = await openPage({ name: 'Old Server', email: 'old@x.co' },
+    [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'unpaid', pay_token: 'tok5' }, priced))]);
+  h = await hub(page);
+  ok(h && /balance/i.test(h.sub) && !/due by/i.test(h.sub) && !/by\s*$/.test(h.sub.trim()),
+    `no date sent → no dangling "by" (${h && h.sub.trim().slice(-40)})`);
   await page.close();
 
   // 3) Fully paid + details submitted → "all set", no CTA.
