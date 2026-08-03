@@ -1007,6 +1007,52 @@ function mailbox_seen_uids()
     $v = content_json('mailbox-seen', []);
     return is_array($v['uids'] ?? null) ? $v['uids'] : [];
 }
+// WHAT A DECLINED GUEST SHOULD DO NEXT — the one failure a customer ever sees.
+// Both refusal sites in pay.php printed Square's own `detail` verbatim, which is
+// written for a developer reading an API response: it is semi-human at best and
+// at worst leaks the code itself ("CARD_DECLINED_VERIFICATION_REQUIRED" was seen
+// live on this site during the 3-D Secure work). A person whose payment has just
+// failed needs to know WHAT TO DO, not what the gateway called it.
+//
+// Keyed on Square's stable error CODE, never the prose, which is theirs to
+// reword. An unrecognised code keeps a plain, honest fallback rather than
+// guessing — the same rule chbActErrSay follows on the owner's side, applied to
+// the screen the guest is standing on.
+//
+// Deliberately says nothing the bank has not said. "Insufficient funds" is
+// between the guest and their bank; the app only reports that the card was
+// declined and offers the next move.
+function payment_decline_message($code, $fallback = '')
+{
+    $map = [
+        // The bank said no, for a reason it will not share with us.
+        'CARD_DECLINED' => 'Your bank declined the payment. It is worth trying another card, or calling them — they can usually tell you why.',
+        'GENERIC_DECLINE' => 'Your bank declined the payment. It is worth trying another card, or calling them — they can usually tell you why.',
+        'INSUFFICIENT_FUNDS' => 'Your bank declined the payment. You could try another card, or the same one again later.',
+        // The bank wants to check it is really them — a prompt they can complete.
+        'CARD_DECLINED_VERIFICATION_REQUIRED' => 'Your bank wants to check it is really you. Try again and complete the check it shows you — or use another card.',
+        'VERIFY_CVV_FAILURE' => 'That security code did not match. Check the three digits on the back of the card and try again.',
+        'VERIFY_AVS_FAILURE' => 'That billing address did not match the one your bank has. Check it and try again.',
+        // Something about the card itself.
+        'INVALID_CARD' => 'Those card details were not accepted. Check the number and try again.',
+        'INVALID_EXPIRATION' => 'That expiry date was not accepted. Check it and try again.',
+        'CARD_EXPIRED' => 'That card has expired. Please use another one.',
+        'CARD_NOT_SUPPORTED' => 'We cannot take that kind of card. Please try another.',
+        'CVV_FAILURE' => 'That security code did not match. Check the three digits on the back of the card and try again.',
+        'EXPIRATION_FAILURE' => 'That expiry date did not match the card. Check it and try again.',
+        // Ours, not theirs — say so, and do not send them round again.
+        'PAYMENT_LIMIT_EXCEEDED' => 'That is more than we can take in one payment. Please get in touch and we will sort it out.',
+        'TEMPORARY_ERROR' => 'The payment system had a moment. Nothing was charged — please try again.',
+        'GATEWAY_TIMEOUT' => 'The payment system did not answer in time. Nothing was charged — please try again.',
+    ];
+    $c = strtoupper(trim((string) $code));
+    if ($c !== '' && isset($map[$c])) {
+        return $map[$c];
+    }
+    $f = trim((string) $fallback);
+    return $f !== '' ? $f : 'The payment was declined. Please check the card and try again, or use another one.';
+}
+
 function mailbox_is_self_notification($fromAddr)
 {
     $own = mailbox_own_address();

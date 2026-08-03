@@ -963,7 +963,7 @@ chk('…and still may not be charged', booking_autopay_may_charge($ap(['autopay_
 
 // AGREED, MATCHING, WITH A CARD → the only state that may charge.
 $st = booking_autopay_state($ap($agreed));
-chk('agreed, current and matching → ARMED', $st[0] === 'armed', );
+chk('agreed, current and matching → ARMED', $st[0] === 'armed');
 chk('…and the reason names the sum and the day', strpos($st[1], '£600.00') !== false && strpos($st[1], uk_date($dueDay)) !== false);
 chk('…but NOT before the agreed day', booking_autopay_may_charge($ap($agreed), date('Y-m-d')) === false);
 chk('…and yes on the day itself', booking_autopay_may_charge($ap($agreed), $dueDay) === true);
@@ -1004,6 +1004,46 @@ chk('…and the legacy hold flow is never scheduled',
 $paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
 chk('nothing charges on a schedule yet — the state machine lands first',
     strpos($paySrc, 'booking_autopay_may_charge') === false);
+
+// ---- A declined guest is told what to DO -----------------------------------
+//  Both refusal sites printed Square's own `detail`, which is written for a
+//  developer reading an API response — and at worst leaks the code itself
+//  ("CARD_DECLINED_VERIFICATION_REQUIRED" was seen live here during the 3-D
+//  Secure work). This is the one failure a customer ever sees.
+echo "\n== Declines speak to the guest, not the developer ==\n";
+$dm = 'payment_decline_message';
+chk('a plain decline says try another card or ring the bank',
+    stripos($dm('CARD_DECLINED'), 'another card') !== false && stripos($dm('CARD_DECLINED'), 'bank') !== false);
+chk('the 3-D Secure case explains the CHECK rather than naming the code',
+    stripos($dm('CARD_DECLINED_VERIFICATION_REQUIRED'), 'really you') !== false);
+chk('a wrong CVV points at the three digits on the back',
+    stripos($dm('VERIFY_CVV_FAILURE'), 'three digits') !== false);
+chk('an expired card says to use another, not to retry',
+    stripos($dm('CARD_EXPIRED'), 'expired') !== false && stripos($dm('CARD_EXPIRED'), 'try again') === false);
+chk('a temporary fault says nothing was charged', stripos($dm('TEMPORARY_ERROR'), 'nothing was charged') !== false);
+chk('lower-case and padded codes still map', $dm('  card_expired  ') === $dm('CARD_EXPIRED'));
+// NEVER leak the machinery, whatever the code.
+$codes = ['CARD_DECLINED','GENERIC_DECLINE','INSUFFICIENT_FUNDS','CARD_DECLINED_VERIFICATION_REQUIRED',
+          'VERIFY_CVV_FAILURE','VERIFY_AVS_FAILURE','INVALID_CARD','INVALID_EXPIRATION','CARD_EXPIRED',
+          'CARD_NOT_SUPPORTED','CVV_FAILURE','EXPIRATION_FAILURE','PAYMENT_LIMIT_EXCEEDED',
+          'TEMPORARY_ERROR','GATEWAY_TIMEOUT','SOMETHING_WE_HAVE_NEVER_SEEN',''];
+$leak = array_filter($codes, function ($c) use ($dm) {
+    $m = $dm($c);
+    return preg_match('/[A-Z_]{6,}|\bhttps?:|\{|\}|SQLSTATE/', $m) === 1;
+});
+chk('no message anywhere leaks a code, a URL or markup (' . implode(',', $leak) . ')', count($leak) === 0);
+$short = array_filter($codes, function ($c) use ($dm) { return strlen($dm($c)) < 25 || strlen($dm($c)) > 190; });
+chk('every message is a readable sentence, not a fragment or an essay', count($short) === 0);
+// An UNKNOWN code must not guess — it falls back, and the caller's fallback wins
+// over the generic one so each site keeps its own wording.
+chk('an unknown code uses the caller\'s fallback', $dm('WHO_KNOWS', 'Site-specific words.') === 'Site-specific words.');
+chk('…and with no fallback, an honest generic line', stripos($dm('WHO_KNOWS'), 'declined') !== false);
+// WIRING — the mapper being right proves nothing while a site still prints prose.
+$paySrc2 = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('both pay.php refusal sites go through the mapper',
+    substr_count($paySrc2, 'payment_decline_message(') === 2);
+chk('…and neither prints Square\'s raw detail at the guest any more',
+    strpos($paySrc2, "errors'][0]['detail']") === false);
 
 echo "\n== Summary ==\n";
 if ($fail) {
