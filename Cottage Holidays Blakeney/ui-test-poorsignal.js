@@ -219,6 +219,39 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     });
     ok(st === true, 'saveContent REPORTS a failed write to its caller, not just to the screen');
 
+    // ── 10. The private-content cache had the same shape as loadData's stores,
+    //      and the sharpest edge of any of them. openSettings() refreshes
+    //      adminPrivateContent on every open and used to EMPTY it in the catch —
+    //      but these editors read it FIRST precisely because an INTERNAL key is
+    //      absent from the anonymous boot content GET, so the fallback to
+    //      siteContent is a blank. Bank details, notification preferences, the
+    //      tides key and every cottage's arrival + welcome text therefore rendered
+    //      EMPTY over real saved data, one Save (or, for the arrival textarea,
+    //      one typed word — it saves on CHANGE) from overwriting the lot.
+    await page.evaluate(() => {
+        adminPrivateContent['bacs-details'] = 'Barclays · 20-00-00 · 12345678';
+        adminPrivateContent['arrival-21a'] = 'Key safe code is 1234, round the back.';
+        window.__netFailSaid = '';
+        const t = window.toast;
+        window.toast = (m, kind, act) => { window.__netFailSaid = String(m || '') + (act && act.label ? ' [' + act.label + ']' : ''); return t ? t(m, kind, act) : undefined; };
+    });
+    const kept = await page.evaluate(async () => {
+        await window.openSettings('payments'); // content.php is stalled + dropped
+        return { bacs: adminPrivateContent['bacs-details'], arr: adminPrivateContent['arrival-21a'], said: window.__netFailSaid };
+    });
+    ok(kept.bacs === 'Barclays · 20-00-00 · 12345678', `a dropped content.php keeps the bank details (${JSON.stringify(kept.bacs)})`);
+    ok(kept.arr === 'Key safe code is 1234, round the back.', `…and every cottage's arrival text (${JSON.stringify(kept.arr)})`);
+    // Nothing has ever loaded in this session, so the blank the owner IS looking
+    // at gets explained rather than believed — with a way to try again.
+    ok(/connection|couldn/i.test(kept.said) && /Retry/.test(kept.said),
+        `…and a never-loaded cache says so, with a retry ("${kept.said}")`);
+    // And the field itself: it must show what was kept, not an empty box.
+    const shown = await page.evaluate(() => {
+        const el = document.getElementById('bacs-details');
+        return el ? String(el.value || '') : '<<no field>>';
+    });
+    ok(shown === 'Barclays · 20-00-00 · 12345678', `the bank-details field shows the kept value, not a blank (${JSON.stringify(shown)})`);
+
     console.log('');
     console.log(fails ? `  ${fails} POOR-SIGNAL CHECK(S) FAILED ❌` : '  POOR-SIGNAL SUITE PASSED ✅');
     await done(fails);
