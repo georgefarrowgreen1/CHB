@@ -1075,6 +1075,52 @@ foreach (($r['json']['bookings'] ?? []) as $b) {
 it_check('the account follows the booking\'s own plan', ($row['balance_due_by'] ?? null) === $customDue, json_encode($row['balance_due_by'] ?? null) . ' vs ' . $customDue);
 it_check('…and it is not the standard date any more', is_array($row) && ($row['balance_due_by'] ?? null) !== $expectStd, json_encode(is_array($row) ? ($row['balance_due_by'] ?? null) : null));
 
+// ---- 19. The guest's account offers the PLAN's next payment, not the lot ----
+//
+//  The Pay button in My Stays hardcoded 'balance' and labelled itself with the
+//  whole outstanding sum, so a guest on a deposit plan was offered the entire
+//  stay while their emailed link correctly asked for the deposit. The payload now
+//  carries booking_next_payment — the SAME derivation pay.php makes on open.
+echo "\n== 19. The account names the plan's next payment ==\n";
+// +1500, well clear of every other fixture's window. +300 collided with §15's
+// rebooked-after-cancel stay and +700 with an owner-added one — the ADD is a
+// real clash-checked write, so the section fails at the first line if it lands
+// on anything. Keep new fixtures out here.
+$npIn = date('Y-m-d', strtotime('+1500 days'));
+$r = http($admin, 'POST', '/bookings.php', [
+    'action' => 'add', 'prop_key' => $propKey, 'name' => 'Next Payment Guest',
+    'email' => 'nextpay@example.com', 'phone' => '', 'check_in' => $npIn,
+    'check_out' => date('Y-m-d', strtotime('+1503 days')),
+    'adults' => 2, 'children' => 0, 'payment' => 'unpaid',
+]);
+$npId = (int) ($r['json']['id'] ?? 0);
+it_check('a booking to read the account back for', $npId > 0, $r['raw']);
+$acct = function () use (&$admin, $npId) {
+    $res = http($admin, 'GET', '/my-bookings.php?acctpreview=' . $npId);
+    foreach (($res['json']['bookings'] ?? []) as $b) {
+        if ((int) ($b['id'] ?? 0) === $npId) { return $b; }
+    }
+    return null;
+};
+$row = $acct();
+it_check('the account payload carries next_payment', is_array($row) && isset($row['next_payment']['kind']), json_encode(is_array($row) ? ($row['next_payment'] ?? null) : null));
+// NOTHING PAID, 300 days out — the plan wants the DEPOSIT, so that is what the
+// button offers. Before this it offered the whole stay.
+it_check('nothing paid, far out → the account offers the DEPOSIT', ($row['next_payment']['kind'] ?? '') === 'deposit', json_encode($row['next_payment'] ?? null));
+$dep = (float) ($row['next_payment']['due'] ?? 0);
+$grand = (float) ($row['agreed_total'] ?? 0);
+it_check('…and its figure is the deposit, not the stay', $dep > 0 && $dep < $grand - 0.005, "due $dep of $grand");
+// `charge` is what the CARD takes — the stage's rental portion plus any
+// refundable deposit riding it, exactly as pay.php bundles them.
+$expectCharge = round($dep + (float) ($row['next_payment']['damages'] ?? 0), 2);
+it_check('charge = the stage plus the refundable deposit riding it', abs((float) ($row['next_payment']['charge'] ?? -1) - $expectCharge) < 0.005, json_encode($row['next_payment'] ?? null));
+// Once the deposit is IN, the same account moves to the balance — one payload,
+// following the plan, exactly like the link.
+$rootDb->exec('UPDATE bookings SET deposit_paid = ' . $dep . ' WHERE id = ' . $npId);
+$row = $acct();
+it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
+it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

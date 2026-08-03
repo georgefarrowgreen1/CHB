@@ -69,6 +69,12 @@ async function bootBrowser() {
         await new Promise((r) => setTimeout(r, 250));
     }
     const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+    // EVERY page this browser makes navigates app-ready — see appReadyGoto. Done
+    // at newPage rather than in boot() because 11 suites take the browser from
+    // bootBrowser and open their own pages (ui-test-pay and ui-test-yourstay
+    // among them), and a guarantee that only half the suites get is not one.
+    const rawNewPage = browser.newPage.bind(browser);
+    browser.newPage = async (...a) => appReadyGoto(await rawNewPage(...a));
     const base = `http://127.0.0.1:${port}`;
     const done = async (failures = 0) => {
         try {
@@ -94,7 +100,47 @@ async function boot(opts = {}) {
     await page.addInitScript(() => {
         if (window.top === window && navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
     });
-    return { page, ...t };
+    return { page, ...t }; // already app-ready-wrapped by bootBrowser's newPage
 }
 
-module.exports = { d, ok, boot, bootBrowser, freePort };
+// A NAVIGATION THAT RETURNS WHEN THE APP IS READY, not when the network went
+// quiet. Every suite reaches for `waitUntil` to mean "the scripts have run", and
+// neither value actually says that: 'domcontentloaded' fires before deferred
+// scripts execute, and 'networkidle' resolves after 500ms with no requests —
+// which on a loaded CI runner happens in the GAP between index.html arriving and
+// the parser getting to app.js. Measured: ui-test-bookcmd died in CI on
+// `window.loadAdminBundle is not a function` (app.js:91, i.e. app.js had barely
+// started) while passing 3/3 locally, and 20 suites call loadAdminBundle with no
+// guard at all — it was the one that lost the race, not the only one at risk.
+//
+// `window.__BUILD` is the honest signal: app.js's LAST statement sets it (line
+// ~14115 of 14120), so its presence proves the whole file evaluated rather than
+// some prefix of it — `loadAdminBundle` sits at line 91 and would have said
+// almost nothing. Safe to lean on: it is production load-bearing, read by the
+// version watcher and the client error reporter, not a hook added for tests.
+// Wrapped here rather than fixed in one suite because a
+// wait-for-the-real-condition belongs in the harness — that is what the harness
+// is for, and 27 of the 28 navigations in the suite set are this same page.
+//
+// It THROWS on timeout rather than pressing on: if the app never loaded, every
+// assertion after it is meaningless, and "the app never finished loading" is a
+// far better failure than whichever global happens to be touched first.
+function appReadyGoto(page) {
+    const raw = page.goto.bind(page);
+    page.goto = async (url, opts) => {
+        const res = await raw(url, opts);
+        if (!/index\.html/.test(String(url))) return res; // not the app — nothing to wait for
+        try {
+            await page.waitForFunction(() => typeof window.__BUILD === 'string', null, { timeout: 20000 });
+        } catch (e) {
+            throw new Error(
+                'the app never finished loading (window.__BUILD undefined 20s after ' + url + ') — ' +
+                    'app.js threw, or never arrived',
+            );
+        }
+        return res;
+    };
+    return page;
+}
+
+module.exports = { d, ok, boot, bootBrowser, freePort, appReadyGoto };

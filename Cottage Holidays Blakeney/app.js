@@ -1279,6 +1279,10 @@ function mapBookingFromApi(row) {
         // my-bookings.php only — kept apart from balanceDueDate above, which is
         // the OVERRIDE and whose NULL means "site standard" to the owner side.
         balanceDueBy: row.balance_due_by ? String(row.balance_due_by).slice(0, 10) : '',
+        // The next payment the PLAN wants — {kind, due, damages, charge} from
+        // booking_next_payment; my-bookings.php only, so null on the owner path
+        // and on an older server (callers fall back to the balance).
+        nextPayment: row.next_payment && typeof row.next_payment === 'object' ? row.next_payment : null,
         depositRequestedAt: row.deposit_requested_at || '',
         balanceRequestedAt: row.balance_requested_at || '',
         balanceRemindedAt: row.balance_reminded_at || '',
@@ -3606,7 +3610,7 @@ async function renderGuestBookings() {
                             </div>
                             ${upcoming ? guestFlowHtml(propKey, b, payToken) : ''}
                             <div class="card-actions">
-                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId, 'balance')}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
+                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button>` : ''}
                                 <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
                                 <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
                                 <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -3696,6 +3700,19 @@ function balanceDueBySuffix(iso) {
     const d = String(iso || '').slice(0, 10);
     return d && d >= todayDashed() ? ` by ${fmtDate(d)}` : '';
 }
+// THE PAY BUTTON FOLLOWS THE PLAN. It read "Pay balance <everything outstanding>"
+// and posted kind:'balance', so a guest on a deposit plan was offered the whole
+// stay — the emailed link asked for the deposit and their own account did not.
+// `nextPayment` is booking_next_payment, the derivation pay.php makes on open;
+// `charge` is what the card takes (the stage plus any refundable deposit riding
+// it). The button names NO stage, like the link. No nextPayment (older server)
+// falls back to the balance, which is what it always did.
+function guestPayCta(b, gt) {
+    const np = b && b.nextPayment;
+    const charge = np ? Math.round(Number(np.charge || 0) * 100) / 100 : 0;
+    if (np && charge > 0) return { word: np.kind === 'deposit' ? 'deposit' : 'balance', amount: charge };
+    return { word: 'balance', amount: gt.balance };
+}
 function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const days = nightsBetween(todayDashed(), b.checkIn);
     const big = days <= 0 ? '!' : String(days);
@@ -3706,9 +3723,13 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     if (gt && !gt.fullyPaid && gt.balance > 0) {
         // …and WHEN: a deadline is the actionable half of "the one outstanding
         // thing before you arrive", and the pay screen this button leads to has
-        // named the date since #969.
-        ready = `<span class="hub-warn">balance ${gbp(gt.balance)} due${balanceDueBySuffix(b.balanceDueBy)}</span>`;
-        if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId, 'balance')}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>`;
+        // named the date since #969. The LINE names the same stage as the button
+        // beneath it: a deposit is due now so carries no date, the balance
+        // carries the plan's. "balance £750 due by 15/08" over a button taking a
+        // £225 deposit is two answers to one question.
+        const nx = guestPayCta(b, gt);
+        ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
+        if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
     } else if (b.regUrl && !b.regSubmitted) {
         ready = `<span class="hub-warn">add your guest details</span>`;
         cta = `<a class="btn-glass btn-sm hub-cta-btn" href="${escapeHtml(b.regUrl)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Add your details</a>`;
@@ -14090,7 +14111,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paylink1';
+    const BUILD = 'paylink2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
