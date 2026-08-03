@@ -4289,6 +4289,12 @@ async function mountWallets(amountDue) {
     }
     const orEl = document.getElementById('sq-or');
     if (orEl) orEl.style.display = any ? '' : 'none';
+    // ONE LABEL, NOT TWO. With a wallet mounted the divider already reads "or
+    // pay by card" and the heading directly beneath it said "Card details" —
+    // the same statement twice in adjacent lines. With no wallet there is no
+    // divider, and the heading is then the only thing naming the field.
+    const lblEl = document.getElementById('sq-card-label');
+    if (lblEl) lblEl.style.display = any ? 'none' : '';
 }
 async function submitPayment() {
     if (!squareCard) return;
@@ -14246,7 +14252,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payclr1';
+    const BUILD = 'paycta2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
