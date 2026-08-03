@@ -1045,6 +1045,99 @@ chk('both pay.php refusal sites go through the mapper',
 chk('…and neither prints Square\'s raw detail at the guest any more',
     strpos($paySrc2, "errors'][0]['detail']") === false);
 
+// ============================================================
+//  THE PAYMENT QUOTE — the figure the guest read is the figure that leaves.
+//  pay.php derives the amount twice, and between the two the owner can edit the
+//  plan, change the price or the deposit, or another payment can land. The
+//  summary signs what it displayed; the charge checks its own under-lock figure
+//  against that and stops rather than taking a sum nobody agreed to.
+// ============================================================
+echo "\n-- payment quote --\n";
+$Q = payment_quote_sign(42, 'balance', 225.0);
+chk('a quote of ours verifies against the charge it names', payment_quote_check($Q, 42, 'balance', 225.0) === true);
+chk('trailing pence are normalised, so 225 and 225.00 are one figure', payment_quote_check(payment_quote_sign(42, 'balance', 225), 42, 'balance', 225.0) === true);
+// EACH FIELD IS BOUND. A quote that verified against a different sum, booking or
+// stage would be a quote that authorised nothing in particular.
+chk('a different AMOUNT is refused', payment_quote_check($Q, 42, 'balance', 300.0) === false);
+chk('a penny more is refused — this is money, not a tolerance', payment_quote_check($Q, 42, 'balance', 225.01) === false);
+chk('a different BOOKING is refused', payment_quote_check($Q, 43, 'balance', 225.0) === false);
+chk('a different STAGE is refused', payment_quote_check($Q, 42, 'deposit', 225.0) === false);
+chk('a tampered signature is refused', payment_quote_check(substr($Q, 0, -1) . 'x', 42, 'balance', 225.0) === false);
+chk('a quote with the amount edited in place is refused', payment_quote_check('42:balance:100.00:' . substr($Q, strrpos($Q, ':') + 1), 42, 'balance', 100.0) === false);
+chk('rubbish is refused, not waved through', payment_quote_check('nonsense', 42, 'balance', 225.0) === false);
+// The three fields must be inside the HMAC, not merely alongside it. Comparing
+// whole strings would still catch an edited body, so this reads the SIGNATURE
+// alone — if the amount were outside it, one tag would serve every figure and a
+// forged quote would only need arithmetic.
+$tag = function ($q) {
+    return substr($q, strrpos($q, ':') + 1);
+};
+chk('the AMOUNT is signed, not just carried', $tag(payment_quote_sign(42, 'balance', 225.0)) !== $tag(payment_quote_sign(42, 'balance', 300.0)));
+chk('the BOOKING is signed', $tag(payment_quote_sign(42, 'balance', 225.0)) !== $tag(payment_quote_sign(43, 'balance', 225.0)));
+chk('the STAGE is signed', $tag(payment_quote_sign(42, 'balance', 225.0)) !== $tag(payment_quote_sign(42, 'deposit', 225.0)));
+// And the tag must be a SECRET. Without APP_SECRET in it, anyone could compute a
+// valid quote for any figure — the string comparison would happily accept it,
+// so no round-trip check can see this. Read the source instead.
+$sigSrc = (function () {
+    $r = new ReflectionFunction('payment_quote_sign');
+    return implode('', array_slice(file($r->getFileName()), $r->getStartLine() - 1, $r->getEndLine() - $r->getStartLine() + 1));
+})();
+chk('...and only this site can compute it', strpos($sigSrc, 'hash_hmac') !== false && strpos($sigSrc, 'APP_SECRET') !== false);
+chk('the quote is compared in constant time', strpos(file_get_contents(__DIR__ . '/db.php'), 'hash_equals(payment_quote_sign(') !== false);
+// ABSENT is the one case that PROCEEDS: a client too old to send a quote must
+// still be able to pay, and since a quote can only ever refuse, its absence
+// costs no guarantee the pre-quote endpoint had.
+chk('no quote at all means "carry on as before"', payment_quote_check('', 42, 'balance', 225.0) === null);
+chk('...and a missing key reads the same way', payment_quote_check(null, 42, 'balance', 225.0) === null);
+// What the refusal may quote back at the guest. An unsigned figure is a CLAIM,
+// and a claim is not something to state to someone as a fact about their money.
+chk('the signed figure can be read back for the refusal wording', payment_quote_amount($Q, 42, 'balance') === 225.0);
+chk('an unsigned figure is not readable', payment_quote_amount('42:balance:225.00:deadbeef', 42, 'balance') === null);
+chk('a figure signed for another booking is not readable', payment_quote_amount($Q, 43, 'balance') === null);
+chk('a malformed string is not readable', payment_quote_amount('42:balance', 42, 'balance') === null);
+
+// WIRING. Testing the helper alone passes with pay.php reverted — the trap this
+// codebase keeps walking into — so both call sites are asserted.
+$paySrcQ = file_get_contents(__DIR__ . '/pay.php');
+chk('the summary signs the total it displays (rental + bundled deposit)',
+    preg_match("/'quote'\s*=>\s*payment_quote_sign\(\\\$bookingId,\s*\\\$kind,\s*round\(\\\$amountDue \+ \\\$damagesDue, 2\)\)/", $paySrcQ) === 1);
+// Checked against the UNDER-LOCK $chargeTotal, not the pre-lock figure: the
+// pre-lock one is what the summary already saw, so comparing it to itself would
+// pass while the sum that actually charges had moved.
+chk('the charge checks the under-lock figure it is about to take',
+    preg_match('/payment_quote_check\(\$in\[.quote.\] \?\? .., \$bookingId, \$kind, \$chargeTotal\) === false/', $paySrcQ) === 1);
+// Scoped to the CHARGE branch: /v2/payments appears earlier in the legacy
+// authorize branch too, and measuring against that one passes whatever the
+// charge branch does.
+chk('...and that check sits BEFORE the Square call', (function () use ($paySrcQ) {
+    $branch = strpos($paySrcQ, "if (\$action === 'charge')");
+    if ($branch === false) {
+        return false; // vacuity: the branch must exist for this to mean anything
+    }
+    $chk = strpos($paySrcQ, 'payment_quote_check(', $branch);
+    $sq = strpos($paySrcQ, "square_api('POST', '/v2/payments'", $branch);
+    return $chk !== false && $sq !== false && $chk < $sq;
+})());
+chk('...releasing the booking lock on the way out', preg_match('/payment_quote_check.*?\n\s*book_unlock/s', $paySrcQ) === 1);
+chk('...and telling the client WHY, so it can redraw rather than dead-end', strpos($paySrcQ, "'code' => 'amount_changed'") !== false);
+chk('...as a 409, the shape apiPost carries a code on', preg_match("/'code' => 'amount_changed',.*?\n.*?\n\s*\],\n\s*409,/s", $paySrcQ) === 1);
+// THE MONOTONIC GUARANTEE, which is what makes it safe to hand a signed figure
+// to a client at all: the quote may stop a charge, never set one. If a quoted
+// amount could reach $chargeTotal or $pence, a stale quote would be a way to
+// underpay.
+chk('a quoted amount never becomes the sum charged',
+    preg_match('/\$(chargeTotal|amountDue|damagesDue|pence)\s*=[^;]*payment_quote/', $paySrcQ) !== 1);
+$appSrcQ = file_get_contents(__DIR__ . '/app.js');
+chk('the pay screen keeps the quote it was given', strpos($appSrcQ, 'payState.quote = typeof s.quote') !== false);
+chk('...and sends it back with the charge', preg_match("/action: 'charge',(.|\n)*?quote: payState\.quote,/", $appSrcQ) === 1);
+chk('...and a refused amount REDRAWS the screen rather than just erroring',
+    preg_match("/code === 'amount_changed'(.|\n){0,200}openPayView/", $appSrcQ) === 1);
+// The label the guest taps is part of the figure. Restoring a remembered
+// "Pay £225" after the screen has been redrawn at £300 re-states the number the
+// server has just refused.
+chk('...without putting the stale figure back on the button',
+    strpos($appSrcQ, "if (btn.textContent === 'Processing…') btn.textContent = orig;") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
