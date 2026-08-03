@@ -255,6 +255,31 @@ chk('other providers report too (a class, not one address)', mailbox_is_report_r
 chk('…including the ones that put it in the DOMAIN', mailbox_is_report_robot('report@dmarc.yahoo.com'));
 // The negatives are the point: this must never eat a booking.
 chk('a guest is not a robot', !mailbox_is_report_robot('sarah.pemberton@gmail.com'));
+// ---- AND THE RULE MUST BE TRUE OF WHAT IS ALREADY STORED -------------------
+// Reported live a SECOND time, after the write-side fix had shipped and
+// deployed: the same DMARC robot still on Today. The filter governed what the
+// poll RECORDS, so anything stored before it went on being a duty for ever —
+// the only other thing that clears one is the owner opening the folder. The
+// decision now runs on the way out too, and is pure so it can be driven.
+$stored = [
+    ['uid' => 'u1', 'from' => 'noreply-dmarc-support@google.com', 'subject' => 'Report domain: cottageholidaysblakeney.co.uk'],
+    ['uid' => 'u2', 'from' => 'sarah.pemberton@gmail.com', 'subject' => 'Question about parking'],
+    ['uid' => 'u3', 'from' => 'report@dmarc.yahoo.com', 'subject' => 'Report'],
+];
+$unread = mailbox_new_unread($stored, []);
+chk('a robot already in the store is no longer news', count($unread) === 1);
+chk('…and the guest beside it still is', $unread[0]['uid'] === 'u2');
+chk('a seen email is still filtered, as it always was', mailbox_new_unread($stored, ['u2']) === []);
+chk('an empty store is not a crash', mailbox_new_unread([], []) === [] && mailbox_new_unread(null, []) === []);
+chk('a malformed row is skipped, not counted', count(mailbox_new_unread(['rubbish', ['uid' => 'u9', 'from' => 'a@b.com']], [])) === 1);
+chk('a row with no from at all is kept — unknown is not a robot',
+    count(mailbox_new_unread([['uid' => 'u4', 'subject' => 'hello']], [])) === 1);
+// WIRING, both halves: the pending list must USE it, and the poll must still
+// refuse to record one in the first place.
+$mbSrc = file_get_contents(__DIR__ . '/mailbox-read.php');
+chk('the pending list is built from it', strpos($mbSrc, '$out = mailbox_new_unread($stored, is_array($seen) ? $seen : []);') !== false);
+chk('the poll still refuses to record one', strpos($mbSrc, '!mailbox_is_report_robot($fromAddr) && $route === ') !== false);
+chk('and the store cleans itself on the next poll', preg_match('/function mailbox_new_record[\s\S]{0,600}mailbox_is_report_robot/', $mbSrc) === 1);
 chk('a platform noreply is NOT blocked — it can carry a real enquiry',
     !mailbox_is_report_robot('noreply@airbnb.com') && !mailbox_is_report_robot('no-reply@booking.com'));
 // A BARE substring test matched this and would have eaten the enquiry. The
