@@ -315,5 +315,65 @@ chk('...against the booking, so the log row can route to it', strpos($sr, "'enti
 chk('a payment already reported is remembered', strpos($sr, "orphan_square") !== false && strpos($sr, 'in_array($row[\'id\'], $seen, true)') !== false);
 chk('...and the remembered list is capped', preg_match('/array_slice\(\$seen, -\d+\)/', $sr) === 1);
 
+echo "\n=== 15. The fee backfill rides the SAME list ===\n";
+// reconcile_missing_fees made up to fifteen single-payment requests on a page
+// the owner opens daily — for fees this list response already carries. The two
+// were written at different times and never introduced.
+$SQ_REPLY = ['status' => 200, 'body' => ['payments' => [
+    sqp('sq_a', 'CHB-000042', 45000) + ['processing_fee' => [['amount_money' => ['amount' => 806]]]],
+    sqp('sq_b', 'CHB-000043', 20000), // settled charge, fee not yet posted
+]]];
+$SQ_CALLS = [];
+$m = orphan_fee_map(true);
+chk('one call answers for the whole window', count($SQ_CALLS) === 1 && strpos($SQ_CALLS[0], 'GET /v2/payments?') === 0);
+chk('a settled fee comes back in pounds', abs($m['sq_a'] - 8.06) < 0.005);
+// The distinction the caller depends on: a key present with NULL means "the
+// list covered this and it has no fee yet", which is a different fact from "the
+// list never mentioned it" — only the second is worth a lookup of its own.
+chk('a charge with no fee yet is present, and null', array_key_exists('sq_b', $m) && $m['sq_b'] === null);
+chk("...which isset() cannot tell from absent — hence array_key_exists", !isset($m['sq_b']));
+chk('a charge outside the window is simply absent', !array_key_exists('sq_zz', $m));
+// A FAILED list must leave every row to the per-row lookup it had before, never
+// mark them all as covered-with-no-fee — that would silently stop the backfill.
+$SQ_REPLY = ['status' => 500, 'body' => []];
+chk('a failed list is empty, not "all covered"', orphan_fee_map(true) === []);
+$SQ_ENABLED = false;
+chk('Square switched off asks nothing and claims nothing', orphan_fee_map(true) === []);
+$SQ_ENABLED = true;
+// WIRING — the map alone passes with reconcile_missing_fees untouched.
+$recSrc = file_get_contents(__DIR__ . '/payments-reconcile.php');
+chk('the fee backfill actually consults it', preg_match('/function reconcile_missing_fees[\s\S]{0,3000}\$fees = orphan_fee_map\(\);/', $recSrc) === 1);
+chk('...before falling back to a per-row lookup', (function () use ($recSrc) {
+    $body = substr($recSrc, strpos($recSrc, 'function reconcile_missing_fees'));
+    $map = strpos($body, '$fees = orphan_fee_map();');
+    $one = strpos($body, "square_api('GET', '/v2/payments/'");
+    return $map !== false && $one !== false && $map < $one;
+})());
+chk('...and skips the lookup entirely for a charge the list covered', strpos($recSrc, 'if (array_key_exists($sqId, $fees)) {') !== false);
+
+echo "\n=== 16. Recording one is the OWNER's decision, re-checked ===\n";
+// The sweep flags; this is the one tap that acts. What makes it safe is that it
+// trusts nothing it is sent: the id is re-fetched from Square and must still be
+// a COMPLETED payment whose own reference names THIS booking.
+$bkSrc = file_get_contents(__DIR__ . '/bookings.php');
+$act = substr($bkSrc, strpos($bkSrc, "if (\$action === 'record_square_payment')"));
+$act = substr($act, 0, strpos($act, "if (\$action === 'confirm_return_settled')"));
+chk('it is admin-only', strpos($act, 'require_admin();') !== false);
+chk('the client supplies an IDENTIFIER, never a sum', !preg_match('/\$in\[.(amount|total|fee).\]/', $act));
+chk('the payment is re-fetched from Square', strpos($act, "square_api('GET', '/v2/payments/'") !== false);
+chk('...and must be COMPLETED there', strpos($act, "!== 'COMPLETED'") !== false);
+chk('...and its own reference must name THIS booking', strpos($act, 'orphan_reference_booking($payment[\'reference_id\'] ?? \'\') !== $id') !== false);
+chk('a fully refunded payment is refused', strpos($act, 'fully refunded') !== false);
+chk('a non-GBP payment is refused rather than converted', strpos($act, "!== 'GBP'") !== false);
+// Idempotent twice over: an existing row is a no-op with a sentence, and the
+// unique square_payment_id makes INSERT IGNORE the backstop.
+chk('already having it is not an error', strpos($act, 'already on the ledger') !== false);
+chk('...and the insert cannot double-write', strpos($act, 'INSERT IGNORE INTO payments') !== false);
+chk('it holds the booking lock', strpos($act, 'book_lock(') !== false && strpos($act, 'book_unlock(') !== false);
+// The headline is re-derived through the shared helper, never added to — the
+// one-definition rule that keeps this from drifting off every other screen.
+chk('the paid figure is re-derived, not incremented', strpos($act, 'booking_paid_so_far(') !== false && !preg_match('/deposit_paid.{0,20}\+\s*\$amount/', $act));
+chk('the decision is logged with the Square id', strpos($act, 'payment.recorded_from_square') !== false && strpos($act, "'square_payment_id' => \$sqId") !== false);
+
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);

@@ -3989,15 +3989,29 @@ async function openPayView(token, bookingId, kind) {
         const apBox = /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box'));
         const apLbl = document.getElementById('pay-autopay-label');
         const terms = s.autopayTerms;
-        const canOffer = terms && terms.amount > 0 && terms.due && s.autopayState === 'off';
+        // OFFERED WHEN THERE IS SOMETHING TO SCHEDULE AND NO LIVE ARRANGEMENT —
+        // booking_autopay_terms returns null otherwise, and a checkbox that
+        // quietly does nothing is a promise nobody kept. Three of these states
+        // are REPAIRS, and leaving them out was a real gap: a card that expired
+        // ('failed'), one that never saved ('nocard') or terms the owner has
+        // since changed ('stale') left an arrangement that could never be fixed,
+        // because the only screen that can save a card would not offer to.
+        // 'revoked' is deliberately absent — they turned it off on purpose, and
+        // re-asking every time they pay is nagging. 'armed' is already arranged.
+        const REPAIR = ['failed', 'nocard', 'stale'];
+        const isRepair = REPAIR.indexOf(s.autopayState) !== -1;
+        const canOffer = terms && terms.amount > 0 && terms.due && (s.autopayState === 'off' || isRepair);
         if (apWrap && apBox && apLbl) {
             apBox.checked = false;
             apWrap.style.display = canOffer ? '' : 'none';
             if (canOffer) {
                 // The sum and the day are IN the label: permission to charge a
                 // card, agreed against "automatic payments" and a link, is not
-                // permission anyone gave knowingly.
-                apLbl.textContent = `Save this card and collect my remaining ${gbp(terms.amount)} automatically on ${fmtDate(terms.due)}. I can turn this off any time from My Stays.`;
+                // permission anyone gave knowingly. A repair says WHY it is
+                // asking again, or it reads as the same question twice.
+                apLbl.textContent =
+                    (isRepair ? "We couldn't use the card you saved before. " : '') +
+                    `Save this card and collect my remaining ${gbp(terms.amount)} automatically on ${fmtDate(terms.due)}. I can turn this off any time from My Stays.`;
             }
         }
         payState.guestName = s.guestName || '';
@@ -14198,7 +14212,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'autopay9';
+    const BUILD = 'payfix9';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -2341,11 +2341,81 @@ function send_cancellation_email($b)
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// ---- "WE'LL TAKE IT ON FRIDAY" ---------------------------------------------
+// The notice that goes out AUTOPAY_NOTICE_DAYS before an automatic collection.
+// Not a request — there is nothing for the guest to do — so it must not read
+// like one: no pay button, no balance chase, no urgency. Its whole job is that
+// the charge is recognised when it lands, and that anyone who has changed their
+// mind has an unhurried way to say so before the money moves.
+//
+// Takes the booking row and the pay token separately for the same reason the
+// two body builders do: it is pure, so the gate can drive the real composer.
+function send_autopay_notice($b, $payUrl = null)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $m = autopay_notice_body($b, $payUrl);
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
+}
+
+// The PURE composer, split out for the reason payment_request_body is: a gate
+// that can only read the source proves the words exist, not that they are ever
+// reached — measured, a check written that way passed with the branch that
+// selects them forced dead.
+function autopay_notice_body($b, $payUrl = null)
+{
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $name = first_name($b['name'], 'Guest');
+    $prop = !empty($b['prop_name']) ? $b['prop_name'] : (function_exists('prop_display') ? prop_display((string) ($b['prop_key'] ?? ''))['name'] : 'your cottage');
+    $amt = round((float) ($b['autopay_amount'] ?? 0), 2);
+    $when = uk_date((string) ($b['autopay_due'] ?? ''));
+    if ($payUrl === null) {
+        $payUrl = site_base_url() . 'index.html?pay=' . pay_token((int) $b['id']) . '&b=' . (int) $b['id'];
+    }
+    $subject = "Coming up: we'll collect {$money($amt)} on {$when}";
+    $body =
+        "we're getting your stay at {$prop} ready. As you arranged when you paid your deposit, we'll collect the remaining " .
+        $money($amt) .
+        " from the card you saved on {$when}.";
+    $off = "There's nothing to do — this is just so it isn't a surprise. If you'd rather pay another way, or you'd like to stop the automatic payment, you can turn it off from your booking page any time before then.";
+    $text =
+        "Hello {$name},\n\n" .
+        ucfirst($body) .
+        "\n\n" .
+        $off .
+        "\n\n" .
+        "Your booking: {$payUrl}\n\n" .
+        'Cottage Holidays Blakeney';
+    $inner =
+        email_h('A quick heads-up') .
+        email_p('Hello ' . $esc($name) . ', ' . $esc($body)) .
+        email_rows([
+            ['Amount', $money($amt)],
+            ['Date', $esc($when)],
+            ['Cottage', $esc($prop)],
+        ]) .
+        email_p($esc($off), true) .
+        email_btn($payUrl, 'View your booking') .
+        email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell($subject, $inner);
+
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+
 function send_payment_receipt($b)
 {
     if (empty($b['email'])) {
         return ['ok' => false, 'error' => 'No guest email on file'];
     }
+    $m = payment_receipt_body($b);
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
+}
+
+// Pure, same reason as autopay_notice_body above.
+function payment_receipt_body($b)
+{
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
@@ -2362,15 +2432,19 @@ function send_payment_receipt($b)
                 ", which we'll refund after your stay."
             : '';
 
-    $subject = "Payment received — {$prop}";
+    // The AUTOMATIC path is named in the subject as well as the body: this lands
+    // in an inbox beside nothing the guest did, so the line that identifies it
+    // has to work before it is opened.
+    $auto = !empty($b['automatic']);
+    $subject = $auto ? "Balance collected — {$prop}" : "Payment received — {$prop}";
     $statusLine = !empty($b['fully_paid'])
         ? "Your booking is now paid in full. We can't wait to welcome you."
         : 'Remaining balance: ' . $money($b['balance']) . ". We'll be in touch about settling it before your stay.";
     $text =
         "Hello {$name},\n\n" .
-        "Thank you — we've received your {$what} payment of " .
-        $money($paidNow) .
-        " for {$prop}.\n" .
+        ($auto
+            ? "As arranged, we've now collected your {$what} of " . $money($paidNow) . " for {$prop}. Nothing was needed from you.\n"
+            : "Thank you — we've received your {$what} payment of " . $money($paidNow) . " for {$prop}.\n") .
         ($depLine !== '' ? $depLine . "\n" : '') .
         "Reference: {$b['ref']}\n" .
         'Rental paid so far: ' .
@@ -2384,17 +2458,19 @@ function send_payment_receipt($b)
         "\n" .
         'Cottage Holidays Blakeney';
     $inner =
-        email_h('Payment received') .
+        email_h($auto ? 'Balance collected' : 'Payment received') .
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you — we\'ve received your ' .
-                $what .
-                ' payment of <strong style="color:#2A2622;">' .
-                $money($paidNow) .
-                '</strong> for <strong style="color:#2A2622;">' .
-                $esc($prop) .
-                '</strong>.',
+                ', ' .
+                // A charge nobody typed anything for must SAY so. "Thank you —
+                // we've received your payment" reads as an acknowledgement of
+                // something they just did; on the automatic path they did it
+                // months ago, and an unrecognised charge is what a chargeback is
+                // made of.
+                (!empty($b['automatic'])
+                    ? 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
+                    : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.'),
         ) .
         ($depLine !== '' ? email_p($esc($depLine), true) : '') .
         email_rows(
@@ -2409,9 +2485,9 @@ function send_payment_receipt($b)
         // receipt too, not only the original confirmation.
         (!empty($b['invoice_url']) ? email_btn($b['invoice_url'], 'View your invoice') : '') .
         email_p('Cottage Holidays Blakeney', true);
-    $html = email_shell('Payment received — ' . $prop, $inner);
+    $html = email_shell(($auto ? 'Balance collected — ' : 'Payment received — ') . $prop, $inner);
 
-    return smtp_send($b['email'], $name, $subject, $text, $html);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
 }
 
 // Build + send the arrival email for a saved booking row, then mark it sent.

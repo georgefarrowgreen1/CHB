@@ -143,6 +143,45 @@ function payment_status_norm($s)
 {
     return strtoupper(trim((string) $s));
 }
+// The mail seam. Captured rather than sent, so the RECEIPT and the NOTICE can be
+// asserted on their real payloads without an SMTP server — the two things this
+// feature was missing entirely, and both are now checked for what they SAY.
+$MAIL = [];
+$MAIL_OK = true;
+function send_payment_receipt($b)
+{
+    global $MAIL, $MAIL_OK;
+    $MAIL[] = ['receipt', $b];
+    return ['ok' => $MAIL_OK];
+}
+function send_autopay_notice($b, $payUrl = null)
+{
+    global $MAIL, $MAIL_OK;
+    $MAIL[] = ['notice', $b];
+    return ['ok' => $MAIL_OK];
+}
+function prop_display($k)
+{
+    return ['name' => 'Jollyboat'];
+}
+function site_base_url()
+{
+    return 'https://example.test/';
+}
+function invoice_token($id)
+{
+    return 'tok' . (int) $id;
+}
+function mailed($kind)
+{
+    global $MAIL;
+    foreach ($MAIL as $m) {
+        if ($m[0] === $kind) {
+            return $m[1];
+        }
+    }
+    return null;
+}
 
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/autopay-lib.php';
@@ -431,6 +470,117 @@ chk('...read at the moment of paying, not from the render', preg_match('/autopay
 chk('My Stays shows an arranged balance as arranged, not as owing', strpos($appSrc, "b.autopayState === 'armed'") !== false);
 chk('...with the off switch beside it', strpos($appSrc, 'guestAutopayOff') !== false);
 chk('turning it off asks first, in terms of the consequence', preg_match("/glassConfirm\(\s*\"We'll stop collecting/", $appSrc) === 1);
+
+// ============================================================
+//  THE THREE THINGS AUTOMATIC COLLECTION DID NOT SAY
+// ============================================================
+
+echo "\n-- a collection tells the guest --\n";
+// This was the ONE charge in the app that sent nothing. Every other payment ends
+// in send_payment_receipt, and the path where the guest was not at the keyboard
+// is exactly the one where silence is worst: the first they would know is their
+// statement, and an unrecognised charge is what a chargeback is made of.
+$MAIL = [];
+$DB_WRITES = [];
+$SQ_CALLS = [];
+$SQ_REPLY = ['/v2/payments' => ['status' => 200, 'body' => ['payment' => ['id' => 'sq_auto1', 'status' => 'COMPLETED', 'processing_fee' => [['amount_money' => ['amount' => 512]]]]]]];
+$b = apbk();
+$DB_ROW = $b;
+autopay_collect_one($b, $TODAY);
+$rc = mailed('receipt');
+chk('a successful collection emails the guest a receipt', is_array($rc));
+chk('...for the sum actually taken', $rc && abs((float) $rc['amount'] - 300.0) < 0.005);
+chk('...to their address, naming the cottage', $rc && $rc['email'] === 's@example.com' && $rc['prop_name'] === 'Jollyboat');
+chk('...carrying the invoice link, like every other receipt', $rc && strpos((string) $rc['invoice_url'], 'invoice.php?b=42') !== false);
+// The flag that makes the wording honest. Without it the guest is thanked for a
+// payment they did not make, which reads as an acknowledgement of something they
+// just did — see the composer.
+chk('...and MARKED automatic, so it cannot be worded as a thank-you', $rc && !empty($rc['automatic']));
+// A mail failure must never propagate: the money is taken and the ledger is
+// written by the time this runs.
+$MAIL_OK = false;
+$MAIL = [];
+$DB_WRITES = [];
+$ok = true;
+try {
+    autopay_collect_one(apbk(), $TODAY);
+} catch (\Throwable $e) {
+    $ok = false;
+}
+chk('a failing mail server never breaks a collection that already happened', $ok);
+$MAIL_OK = true;
+
+echo "\n-- they are warned before the money moves --\n";
+// They consented to a sum on a date, possibly months earlier. A dispute on a
+// card-on-file charge costs the fee AND gets the money ring-fenced, so the
+// notice is the cheap insurance as well as the decent thing.
+$due = '2026-08-20';
+$armed = apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_amount' => 300.0]);
+chk('no notice while the charge is still far off', !autopay_notice_due($armed, '2026-08-01'));
+chk('a notice falls due three days before', autopay_notice_due($armed, '2026-08-17'));
+chk('...and on the two days after that', autopay_notice_due($armed, '2026-08-18') && autopay_notice_due($armed, '2026-08-19'));
+// On the day itself the charge speaks for itself; a "heads-up" arriving with the
+// money is not a warning.
+chk('no notice on the day the money is taken', !autopay_notice_due($armed, $due));
+chk('and none after it', !autopay_notice_due($armed, '2026-08-21'));
+chk('never twice for the same date', !autopay_notice_due(apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_notified_at' => $due]), '2026-08-18'));
+// Keyed on the DATE, not a flag: an owner moving the balance date makes the
+// notice already sent describe a day that is no longer the day.
+chk('but a MOVED due date earns a fresh one', autopay_notice_due(apbk(['autopay_due' => '2026-08-19', 'balance_due_date' => '2026-08-19', 'autopay_notified_at' => $due]), '2026-08-17'));
+// Warning about a payment that is not going to happen is worse than not warning.
+chk('no notice for an arrangement that has gone stale', !autopay_notice_due(apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_amount' => 999.0]), '2026-08-18'));
+chk('no notice once it has been switched off', !autopay_notice_due(apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_revoked_at' => '2026-08-01 10:00:00']), '2026-08-18'));
+chk('no notice with no card to charge', !autopay_notice_due(apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_card_id' => '']), '2026-08-18'));
+
+$MAIL = [];
+$DB_WRITES = [];
+$DB_LIST = [apbk(['autopay_due' => $due, 'balance_due_date' => $due, 'autopay_amount' => 300.0])];
+$n = autopay_notice_run('2026-08-18');
+chk('the pass sends one', $n['sent'] === 1 && is_array(mailed('notice')));
+$stamp = wrote('autopay_notified_at');
+chk('...and stamps the DUE DATE it warned about', $stamp && in_array($due, (array) $stamp[1], true));
+// A failed email that stamped anyway would take the money three days later
+// having told nobody — the exact failure this exists to prevent, reached by
+// bookkeeping.
+$MAIL_OK = false;
+$MAIL = [];
+$DB_WRITES = [];
+$n = autopay_notice_run('2026-08-18');
+chk('a notice that did not send is not stamped as sent', $n['sent'] === 0 && wrote('autopay_notified_at') === null);
+$MAIL_OK = true;
+$DB_LIST = [];
+
+echo "\n-- an unknown decline is recorded as unknown --\n";
+$DB_WRITES = [];
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'CARD_EXPIRED', 'detail' => 'expired']]]]];
+autopay_collect_one(apbk(), $TODAY);
+$w = wrote('autopay_last_code');
+chk('the raw Square code is stored beside the prose', $w && in_array('CARD_EXPIRED', (array) $w[1], true));
+$DB_WRITES = [];
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'SOME_NEW_CODE_2027']]]]];
+autopay_collect_one(apbk(), $TODAY);
+$w = wrote('autopay_last_code');
+chk('an unrecognised code is stored too', $w && in_array('SOME_NEW_CODE_2027', (array) $w[1], true));
+// Fatal-by-default is RIGHT — re-presenting a card damages a merchant account —
+// so what was missing is not a behaviour change but the ability to see it.
+chk('...and is still fatal, as it must be', autopay_decline_kind('SOME_NEW_CODE_2027') === 'hard');
+chk('a code we have a name for is fatal in the same way', autopay_decline_kind('CARD_DECLINED') === 'hard');
+chk('but only the unnamed one is FLAGGED as new', !in_array('SOME_NEW_CODE_2027', AUTOPAY_KNOWN_HARD, true) && in_array('CARD_DECLINED', AUTOPAY_KNOWN_HARD, true));
+$apSrc = file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('the log line says which it was', strpos($apSrc, "', not seen before'") !== false);
+chk('a soft failure still only costs one attempt', autopay_decline_kind('TEMPORARY_ERROR') === 'soft');
+
+echo "\n-- a dead card can be replaced --\n";
+// The offer used to be gated on state 'off' alone, so a card that expired, one
+// that never saved, or terms the owner had since changed left an arrangement
+// that could never be repaired — the only screen that can save a card would not
+// offer to.
+chk('the pay screen offers again after a failure', preg_match("/REPAIR = \['failed', 'nocard', 'stale'\]/", $appSrc) === 1);
+chk('...and says why it is asking twice', strpos($appSrc, "We couldn't use the card you saved before.") !== false);
+// Deliberately NOT re-offered: they turned it off on purpose, and asking every
+// time they pay is nagging.
+chk("a guest who switched it off is not asked again", strpos($appSrc, "'revoked'") === false || !preg_match("/REPAIR = \[[^\]]*revoked/", $appSrc));
+chk('saving a new card clears the old failure', preg_match('/autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL/', $apSrc) === 1);
 
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);

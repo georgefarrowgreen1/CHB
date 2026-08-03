@@ -1,0 +1,26 @@
+-- migration-107-autopay-repair.sql — the two facts automatic collection needed
+-- to be honest about itself.
+--
+--   autopay_notified_at  the due date a pre-debit notice has been sent FOR.
+--                        Deliberately the DATE and not a boolean: if the owner
+--                        edits the plan and the due date moves, the notice
+--                        already sent describes a day that is no longer the day,
+--                        so a new one is owed. Comparing it to autopay_due says
+--                        that by construction, where a flag would have to be
+--                        remembered-to-be-cleared at every site that can move
+--                        the date.
+--
+--   autopay_last_code    the RAW Square decline code beside the prose we already
+--                        stored. autopay_decline_kind() treats anything it does
+--                        not recognise as fatal — the right default, since
+--                        re-presenting a card damages a merchant account — but
+--                        with only the sentence kept, a code Square introduces
+--                        later would stop collection for every booking it
+--                        touched and appear in the log as N unrelated
+--                        sentences. The code is what makes it one pattern.
+--
+-- Guarded ADD COLUMNs: migrate.php treats a duplicate-column error as
+-- already-applied (do NOT wrap these in information_schema + PREPARE — the
+-- no-op branch leaves an open cursor that kills the next migration).
+ALTER TABLE bookings ADD COLUMN autopay_notified_at DATE NULL;
+ALTER TABLE bookings ADD COLUMN autopay_last_code VARCHAR(64) NULL;

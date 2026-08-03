@@ -718,11 +718,25 @@ chk('…while a deposit-folded legacy override still collects £0 (no over-retur
 // "Rental" beside its own rental total (coherent because labelled — the frame
 // is fine exactly as long as it says which frame it is).
 $mailR = (string) file_get_contents(__DIR__ . '/mailer.php');
+// DRIVEN, not read. These two were source scans against send_payment_receipt,
+// and splitting the pure composer out from the sender moved the lines they
+// pointed at — which is the weakness of the shape, not an accident of this
+// edit: a scan proves an ingredient is present, never that it is used. A £300
+// rental beside a £50 refundable deposit is the £175-shown-for-a-£225-charge
+// case, and it must read £350.
+$rHead = payment_receipt_body([
+    'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'ref' => 'CHB-000042', 'kind' => 'deposit', 'amount' => 300.0, 'total' => 700.0,
+    'paid_so_far' => 300.0, 'balance' => 400.0, 'fully_paid' => false, 'deposit_charged' => 50.0,
+]);
 chk("the receipt's headline is what the card took, not the rental portion",
-    preg_match("/function send_payment_receipt[\s\S]{0,700}\\\$paidNow = round\(\(float\) \\\$b\['amount'\] \+ \\\$dep, 2\);/", $mailR) === 1);
+    strpos($rHead['text'], '£350.00') !== false && strpos($rHead['html'], '£350.00') !== false);
+chk('…and the refundable deposit is named as the difference', strpos($rHead['text'], 'refundable damage deposit of £50.00') !== false);
+// Coherent because LABELLED: the paid-so-far line is the rental rail beside its
+// own rental total, and saying which frame it is, is what makes that fine.
 chk('…and its paid-so-far line is labelled as the RENTAL rail',
-    preg_match("/function send_payment_receipt[\s\S]{0,2400}'Rental paid so far: '/", $mailR) === 1
-    && preg_match("/function send_payment_receipt[\s\S]{0,4200}\['Rental paid so far', /", $mailR) === 1);
+    strpos($rHead['text'], 'Rental paid so far: £300.00 of £700.00') !== false
+    && strpos($rHead['html'], 'Rental paid so far') !== false);
 // The deposit-return email: a PARTIAL return must state what was retained (the
 // difference against what was held, with the reason), and a hand-recorded
 // return must not say "to the card you paid with" — the manual flag carries
@@ -1137,6 +1151,65 @@ chk('...and a refused amount REDRAWS the screen rather than just erroring',
 // server has just refused.
 chk('...without putting the stale figure back on the button',
     strpos($appSrcQ, "if (btn.textContent === 'Processing…') btn.textContent = orig;") !== false);
+
+// ============================================================
+//  THE TWO EMAILS AUTOMATIC COLLECTION OWES THE GUEST — driven through the REAL
+//  composers. Both were first gated by reading mailer.php's source, which
+//  proved the words EXIST and not that they are ever reached: break-testing
+//  showed the check passing with the branch that selects them forced dead. The
+//  bodies were split into pure *_body() builders (the payment_request_body
+//  pattern) precisely so this can drive them.
+// ============================================================
+echo "\n-- the receipt for a charge nobody typed anything for --\n";
+$rcpt = [
+    'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'ref' => 'CHB-000042', 'kind' => 'balance', 'amount' => 300.0, 'total' => 400.0,
+    'paid_so_far' => 400.0, 'balance' => 0.0, 'fully_paid' => true, 'deposit_charged' => 0.0,
+    'invoice_url' => 'https://example.test/invoice.php?b=42&token=t',
+];
+$manual = payment_receipt_body($rcpt);
+$auto = payment_receipt_body($rcpt + ['automatic' => true]);
+// A guest who was not at the keyboard must not be thanked for something they
+// just did. That reads as an acknowledgement of an action they will not
+// remember taking — which is how an authorised charge becomes a disputed one.
+chk('a payment they made is a thank-you', strpos($manual['text'], "Thank you — we've received your") !== false);
+chk('a collection is not', strpos($auto['text'], "Thank you — we've received your") === false);
+chk('...it says the charge was arranged', strpos($auto['text'], "As arranged, we've now collected your") !== false);
+chk('...and that nothing was needed from them', strpos($auto['text'], 'Nothing was needed from you.') !== false);
+chk('the HTML half agrees with the text half', strpos($auto['html'], 'as arranged, we&#039;ve now collected your') !== false || strpos($auto['html'], "as arranged, we've now collected your") !== false);
+chk('the HTML half of a manual payment still thanks them', strpos($auto['html'], "thank you — we've received your") === false && strpos($manual['html'], "thank you — we've received your") !== false);
+// The subject is read before the mail is opened, so it carries the distinction too.
+chk('the subject names a collection', $auto['subject'] === 'Balance collected — Jollyboat');
+chk('...and a payment is still "Payment received"', $manual['subject'] === 'Payment received — Jollyboat');
+// Everything else about the two must be identical — this is a wording branch,
+// not a second receipt.
+chk('both quote the same figure', strpos($auto['text'], '£300.00') !== false && strpos($manual['text'], '£300.00') !== false);
+chk('both carry the invoice link', strpos($auto['text'], 'invoice.php?b=42') !== false && strpos($manual['text'], 'invoice.php?b=42') !== false);
+chk('both carry the reference', strpos($auto['text'], 'CHB-000042') !== false && strpos($manual['text'], 'CHB-000042') !== false);
+
+echo "\n-- the notice that goes out before the money moves --\n";
+$nb = ['id' => 42, 'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'autopay_amount' => 300.0, 'autopay_due' => '2026-08-20'];
+$nt = autopay_notice_body($nb, 'https://example.test/index.html?pay=t&b=42');
+chk('it states the sum', strpos($nt['text'], '£300.00') !== false && strpos($nt['html'], '£300.00') !== false);
+chk('...and the day, in the house date form', strpos($nt['text'], '20/08/2026') !== false);
+chk('...both of them in the subject, which may be all they read', strpos($nt['subject'], '£300.00') !== false && strpos($nt['subject'], '20/08/2026') !== false);
+chk('...and the cottage', strpos($nt['html'], 'Jollyboat') !== false);
+// NOT A PAYMENT REQUEST. There is nothing for the guest to do, so it must not
+// read like a chase — no balance owing, no urgency, no "pay now".
+chk('there is nothing to do, and it says so', strpos($nt['text'], "There's nothing to do") !== false);
+chk('it does not chase', stripos($nt['text'], 'pay now') === false && stripos($nt['text'], 'outstanding') === false && stripos($nt['text'], 'overdue') === false);
+chk('it is not headed as a request', stripos($nt['subject'], 'payment request') === false && stripos($nt['subject'], 'balance due') === false);
+// The way out has to be IN the notice. A warning with no off switch is a
+// warning you can only act on by finding the site yourself.
+chk('it says how to stop it', strpos($nt['text'], 'turn it off') !== false);
+chk('...and links the booking page where that lives', strpos($nt['text'], 'index.html?pay=') !== false && strpos($nt['html'], 'index.html?pay=') !== false);
+chk('a guest with no email is refused rather than sent nowhere', ($r = send_autopay_notice(['name' => 'x', 'email' => '']))['ok'] === false);
+
+// WIRING — the composers alone pass with the call sites removed.
+$apSrcR = file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('a collection actually sends the receipt', strpos($apSrcR, 'autopay_send_receipt($b, $sqId, $rental, $damages);') !== false);
+chk('...marked automatic', strpos($apSrcR, "'automatic' => true,") !== false);
+chk('the daily run actually sends the notices', strpos(file_get_contents(__DIR__ . '/autopay-run.php'), 'autopay_notice_run($today)') !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {
