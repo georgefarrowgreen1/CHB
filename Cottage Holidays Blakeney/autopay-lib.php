@@ -32,6 +32,10 @@ const AUTOPAY_RETRY_DAYS = 1;
 // invite a rate limit, and a stampede makes a partial failure impossible to
 // attribute.
 const AUTOPAY_RUN_MAX = 20;
+// How many days before the charge the guest is told it is coming. Three, so an
+// unwanted one can be stopped on a working day without the notice arriving so
+// early it is forgotten by the time the money moves.
+const AUTOPAY_NOTICE_DAYS = 3;
 
 // ---- IS THIS FAILURE WORTH TRYING AGAIN? ------------------------------------
 // 'hard'  — the card said no, and it will say no tomorrow. Stop, tell everyone,
@@ -42,6 +46,28 @@ const AUTOPAY_RUN_MAX = 20;
 // is three presentations of a card that may be refusing for a reason the guest
 // would rather we noticed the first time; an unrecognised blip treated as final
 // merely falls back to the chase that would have happened anyway.
+// The hard declines we have a name for. Nothing branches on this list — a code
+// in it and a code missing from it are both fatal — it exists so the log can say
+// which failures are routine and which are new. Without that distinction the
+// default-to-fatal rule hides the one case worth looking at.
+const AUTOPAY_KNOWN_HARD = [
+    'CARD_DECLINED',
+    'CARD_DECLINED_VERIFICATION_REQUIRED',
+    'CARD_EXPIRED',
+    'INSUFFICIENT_FUNDS',
+    'CVV_FAILURE',
+    'ADDRESS_VERIFICATION_FAILURE',
+    'INVALID_CARD',
+    'INVALID_CARD_DATA',
+    'GENERIC_DECLINE',
+    'CARD_NOT_SUPPORTED',
+    'ALLOWABLE_PIN_TRIES_EXCEEDED',
+    'CARD_TOKEN_EXPIRED',
+    'CARD_TOKEN_USED',
+    'VOICE_FAILURE',
+    'PAN_FAILURE',
+];
+
 function autopay_decline_kind($code)
 {
     $soft = [
@@ -148,12 +174,25 @@ function autopay_vault($b, $squarePaymentId, $terms)
             ->prepare(
                 'UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_amount = ?, autopay_due = ?,
                     autopay_consent_at = COALESCE(autopay_consent_at, NOW()), autopay_revoked_at = NULL,
-                    autopay_attempts = 0, autopay_last_error = NULL
+                    autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL
                  WHERE id = ?',
             )
             ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $bookingId]);
     } catch (\Throwable $e) {
-        return $bad('Could not record the arrangement');
+        // migration-107 not applied on this install — record the arrangement
+        // without the code column rather than refusing to save a card at all.
+        try {
+            db()
+                ->prepare(
+                    'UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_amount = ?, autopay_due = ?,
+                        autopay_consent_at = COALESCE(autopay_consent_at, NOW()), autopay_revoked_at = NULL,
+                        autopay_attempts = 0, autopay_last_error = NULL
+                     WHERE id = ?',
+                )
+                ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $bookingId]);
+        } catch (\Throwable $e2) {
+            return $bad('Could not record the arrangement');
+        }
     }
     return ['ok' => true, 'reason' => '', 'card_id' => $cardId, 'customer_id' => $cust];
 }
@@ -249,7 +288,7 @@ function autopay_collect_one($b, $today = null)
         if (!$payment || $st < 200 || $st >= 300) {
             $code = (string) ($res['body']['errors'][0]['code'] ?? '');
             $why = autopay_square_why($res, 'The payment did not go through');
-            autopay_record_failure($bookingId, $today, $why, autopay_decline_kind($code));
+            autopay_record_failure($bookingId, $today, $why, autopay_decline_kind($code), $code);
             book_unlock($b['prop_key']);
             return ['fail', $why];
         }
@@ -268,23 +307,45 @@ function autopay_collect_one($b, $today = null)
 // A decline that will not change stops NOW: the attempt counter is taken
 // straight to the cap so booking_autopay_state reports 'failed' and the ordinary
 // chase takes over. A soft one costs a single attempt.
-function autopay_record_failure($bookingId, $today, $why, $kind)
+function autopay_record_failure($bookingId, $today, $why, $kind, $code = '')
 {
+    $code = mb_substr(strtoupper(trim((string) $code)), 0, 64);
     try {
+        // The CODE is stored beside the prose. Only the sentence used to be kept,
+        // and because an unrecognised code is fatal by default, one code Square
+        // introduced later would stop collection for every booking it touched
+        // and read in the log as N unrelated sentences instead of one pattern.
         $sql =
             $kind === 'hard'
-                ? 'UPDATE bookings SET autopay_attempts = ?, autopay_last_try = ?, autopay_last_error = ? WHERE id = ?'
-                : 'UPDATE bookings SET autopay_attempts = autopay_attempts + 1, autopay_last_try = ?, autopay_last_error = ? WHERE id = ?';
-        $args = $kind === 'hard' ? [AUTOPAY_MAX_TRIES, $today, mb_substr($why, 0, 255), (int) $bookingId] : [$today, mb_substr($why, 0, 255), (int) $bookingId];
+                ? 'UPDATE bookings SET autopay_attempts = ?, autopay_last_try = ?, autopay_last_error = ?, autopay_last_code = ? WHERE id = ?'
+                : 'UPDATE bookings SET autopay_attempts = autopay_attempts + 1, autopay_last_try = ?, autopay_last_error = ?, autopay_last_code = ? WHERE id = ?';
+        $args = $kind === 'hard'
+            ? [AUTOPAY_MAX_TRIES, $today, mb_substr($why, 0, 255), $code, (int) $bookingId]
+            : [$today, mb_substr($why, 0, 255), $code, (int) $bookingId];
         db()->prepare($sql)->execute($args);
     } catch (\Throwable $e) {
+        // Column not migrated on this install — record what we can rather than
+        // losing the failure entirely.
+        try {
+            $sql =
+                $kind === 'hard'
+                    ? 'UPDATE bookings SET autopay_attempts = ?, autopay_last_try = ?, autopay_last_error = ? WHERE id = ?'
+                    : 'UPDATE bookings SET autopay_attempts = autopay_attempts + 1, autopay_last_try = ?, autopay_last_error = ? WHERE id = ?';
+            $args = $kind === 'hard' ? [AUTOPAY_MAX_TRIES, $today, mb_substr($why, 0, 255), (int) $bookingId] : [$today, mb_substr($why, 0, 255), (int) $bookingId];
+            db()->prepare($sql)->execute($args);
+        } catch (\Throwable $e2) {
+        }
     }
     try {
-        log_activity('payment', 'autopay.failed', 'Automatic balance payment failed — ' . $why, [
-            'severity' => 'warn',
-            'entity' => 'booking',
-            'entity_id' => (string) (int) $bookingId,
-        ]);
+        // An UNRECOGNISED code says so in the log line. A decline we have a name
+        // for is routine; one we do not is the thing worth spotting twice.
+        $known = $kind === 'soft' || in_array($code, AUTOPAY_KNOWN_HARD, true);
+        log_activity(
+            'payment',
+            'autopay.failed',
+            'Automatic balance payment failed — ' . $why . ($code !== '' ? ' [' . $code . ($known ? '' : ', not seen before') . ']' : ''),
+            ['severity' => 'warn', 'entity' => 'booking', 'entity_id' => (string) (int) $bookingId, 'meta' => ['code' => $code, 'kind' => $kind]],
+        );
     } catch (\Throwable $e) {
     }
 }
@@ -342,6 +403,60 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
         ]);
     } catch (\Throwable $e) {
     }
+    autopay_send_receipt($b, $sqId, $rental, $damages);
+}
+
+// THE GUEST IS TOLD. This was the one charge in the app that sent nothing: every
+// other payment ends in send_payment_receipt, and the path where the guest was
+// NOT at the keyboard is exactly the one where silence is worst — the first they
+// would know is their statement.
+//
+// It reuses the same composer pay.php does, so the receipt for a collection and
+// the receipt for a payment they made themselves cannot say different things
+// about the same money. Best-effort and wrapped: the money is already taken and
+// the ledger already written, so a mail failure must never propagate.
+function autopay_send_receipt($b, $sqId, $rental, $damages)
+{
+    $bookingId = (int) ($b['id'] ?? 0);
+    try {
+        if (empty($b['email']) || !function_exists('send_payment_receipt')) {
+            return;
+        }
+        // Read back through the shared helper rather than adding to a figure
+        // carried in from before the lock — the one-definition rule.
+        $paid = round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]) + $rental, 2);
+        $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+        $paid = $total > 0 ? min($total, $paid) : $paid;
+        $prop = function_exists('prop_display') ? (prop_display((string) $b['prop_key'])['name'] ?? '') : '';
+        $receipt = send_payment_receipt([
+            'name' => $b['name'],
+            'email' => $b['email'],
+            'prop_key' => $b['prop_key'],
+            'prop_name' => $prop !== '' ? $prop : (string) $b['prop_key'],
+            'ref' => 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT),
+            'kind' => 'balance',
+            'amount' => $rental,
+            'total' => $total,
+            'paid_so_far' => $paid,
+            'balance' => round(max(0, $total - $paid), 2),
+            'fully_paid' => $total > 0 && $paid >= $total - 0.001,
+            'deposit_charged' => $damages,
+            'invoice_url' => site_base_url() . 'invoice.php?b=' . $bookingId . '&token=' . invoice_token($bookingId),
+            // The one thing this receipt says that pay.php's does not: nobody
+            // typed anything. A charge the guest does not remember making is
+            // what a chargeback is made of.
+            'automatic' => true,
+        ]);
+        if (is_array($receipt) && !empty($receipt['ok'])) {
+            log_activity('comms', 'email.receipt', 'Payment receipt emailed — £' . number_format($rental + $damages, 2) . ' · collected automatically', [
+                'actor' => 'cron',
+                'prop_key' => $b['prop_key'],
+                'entity' => 'booking',
+                'entity_id' => (string) $bookingId,
+            ]);
+        }
+    } catch (\Throwable $e) {
+    }
 }
 
 // ---- THE DAILY PASS --------------------------------------------------------
@@ -387,6 +502,97 @@ function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
         } else {
             $out['skipped']++;
         }
+    }
+    return $out;
+}
+
+
+// ---- TELLING THEM BEFORE, NOT ONLY AFTER -----------------------------------
+// They agreed to a sum on a date, and that agreement could be months old. Taking
+// money with no warning is how a perfectly authorised charge becomes a disputed
+// one — and a dispute here costs the fee AND gets the money ring-fenced by
+// payouts-lib until it resolves, so the cheap notice is also the cheap insurance.
+//
+// PURE, so the gate can drive every boundary without a clock or a database.
+// Returns true when this booking is owed a notice today.
+function autopay_notice_due($b, $today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    // Only an arrangement that would actually charge. 'stale' and 'failed' are
+    // deliberately excluded: warning someone about a payment that is not going
+    // to be taken is worse than not warning them at all.
+    if (booking_autopay_state($b, $today)[0] !== 'armed') {
+        return false;
+    }
+    $due = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    if ($due === '') {
+        return false;
+    }
+    // ALREADY SENT FOR THIS DATE. Keyed on the due date rather than a flag, so
+    // an owner moving the balance date makes a fresh notice due by construction
+    // — the notice already sent describes a day that is no longer the day.
+    if (substr((string) ($b['autopay_notified_at'] ?? ''), 0, 10) === $due) {
+        return false;
+    }
+    // Inside the window, and not already past it. A notice on or after the day
+    // itself is not a warning, and the charge is about to speak for itself.
+    return $today >= ukShiftDaysPhp($due, -AUTOPAY_NOTICE_DAYS) && $today < $due;
+}
+
+// The pass. Runs from autopay-run.php beside the collection, because the two
+// share every judgement and splitting them would let one drift.
+function autopay_notice_run($today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    $out = ['ok' => true, 'sent' => 0, 'skipped' => 0];
+    try {
+        $q = db()->prepare(
+            "SELECT * FROM bookings
+             WHERE autopay_consent_at IS NOT NULL AND autopay_revoked_at IS NULL
+               AND autopay_card_id IS NOT NULL AND autopay_card_id <> ''
+               AND autopay_due IS NOT NULL
+               AND autopay_due >= ? AND autopay_due <= ?
+             ORDER BY autopay_due ASC LIMIT " . (int) AUTOPAY_RUN_MAX,
+        );
+        $q->execute([$today, ukShiftDaysPhp($today, AUTOPAY_NOTICE_DAYS)]);
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'sent' => 0, 'skipped' => 0];
+    }
+    foreach ($rows as $b) {
+        // The SQL is a cheap pre-filter; autopay_notice_due is the decision, so
+        // the gate and the cron cannot disagree about who gets a notice.
+        if (!autopay_notice_due($b, $today)) {
+            $out['skipped']++;
+            continue;
+        }
+        $sent = false;
+        try {
+            $sent = function_exists('send_autopay_notice') && !empty(send_autopay_notice($b)['ok']);
+        } catch (\Throwable $e) {
+        }
+        // STAMPED ONLY ON A SEND. A failed email that stamped anyway would take
+        // the money three days later having told nobody — the exact failure this
+        // whole function exists to prevent, arrived at by bookkeeping.
+        if (!$sent) {
+            $out['skipped']++;
+            continue;
+        }
+        try {
+            db()
+                ->prepare('UPDATE bookings SET autopay_notified_at = ? WHERE id = ?')
+                ->execute([substr((string) $b['autopay_due'], 0, 10), (int) $b['id']]);
+        } catch (\Throwable $e) {
+        }
+        try {
+            log_activity('comms', 'autopay.notice', 'Told ' . (string) ($b['name'] ?? 'the guest') . " we'll take £" . number_format((float) $b['autopay_amount'], 2) . ' on ' . uk_date((string) $b['autopay_due']), [
+                'actor' => 'cron',
+                'entity' => 'booking',
+                'entity_id' => (string) (int) $b['id'],
+            ]);
+        } catch (\Throwable $e) {
+        }
+        $out['sent']++;
     }
     return $out;
 }

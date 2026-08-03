@@ -1590,6 +1590,114 @@ if ($action === 'refund') {
 // Deliberately narrow: it only ever moves a NON-TERMINAL damages_return to MANUAL. It
 // cannot resurrect a FAILED refund (that money genuinely did not go), cannot touch a
 // rental charge, and cannot invent a return that was never issued.
+// ---- RECORD A PAYMENT SQUARE HAS BUT WE DO NOT ------------------------------
+// The orphan sweep (payments-reconcile.php) finds money taken at Square with no
+// row here and FLAGS it — deliberately, because recording money is a decision
+// with the owner's name on it. This is the one tap that acts on the flag, and
+// what makes it safe is that it does not trust a word of what it is sent: the
+// id is re-fetched from Square and must still be a COMPLETED payment whose own
+// reference names THIS booking. The client supplies an identifier, never a sum.
+if ($action === 'record_square_payment') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $sqId = trim((string) ($in['square_payment_id'] ?? ''));
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    if ($sqId === '') {
+        json_out(['error' => 'No payment to record.'], 400);
+    }
+    if (!square_enabled()) {
+        json_out(['error' => 'Square payments are not switched on.'], 409);
+    }
+    // ALREADY HAVE IT is not an error — the sweep may have been flagged twice, or
+    // the webhook may have arrived between the flag and the tap. Say so.
+    try {
+        $seen = db()->prepare('SELECT id FROM payments WHERE square_payment_id = ?');
+        $seen->execute([$sqId]);
+        if ($seen->fetchColumn()) {
+            json_out(['ok' => true, 'recorded' => 0, 'note' => 'That payment is already on the ledger.']);
+        }
+    } catch (\Throwable $e) {
+        json_out(['error' => "Couldn't read the payment ledger."], 500);
+    }
+    $res = square_api('GET', '/v2/payments/' . rawurlencode($sqId));
+    $payment = $res['body']['payment'] ?? null;
+    if (!$payment || (int) ($res['status'] ?? 0) < 200 || (int) ($res['status'] ?? 0) >= 300) {
+        json_out(['error' => "Square doesn't have a payment with that id."], 404);
+    }
+    if (strtoupper((string) ($payment['status'] ?? '')) !== 'COMPLETED') {
+        // The same judgement the sweep makes: an APPROVED payment is an
+        // uncaptured hold and a FAILED one took nothing. Neither is money to record.
+        json_out(['error' => 'That payment has not completed at Square, so there is nothing to record.'], 409);
+    }
+    // THE REFERENCE MUST NAME THIS BOOKING. Without it the action would record
+    // any Square payment against any booking on the owner's say-so, and a
+    // mistyped id would land another guest's money on this guest's ledger.
+    require_once __DIR__ . '/payments-reconcile.php';
+    if (orphan_reference_booking($payment['reference_id'] ?? '') !== $id) {
+        json_out(['error' => "That payment is not for this booking — its own reference names a different one."], 409);
+    }
+    $gross = (int) ($payment['amount_money']['amount'] ?? 0) - (int) ($payment['refunded_money']['amount'] ?? 0);
+    $cur = strtoupper((string) ($payment['amount_money']['currency'] ?? 'GBP'));
+    if ($gross <= 0) {
+        json_out(['error' => 'That payment has been fully refunded, so there is nothing to record.'], 409);
+    }
+    if ($cur !== 'GBP') {
+        // The payouts_money rule: carried, never converted. A foreign charge
+        // cannot be added to a sterling ledger by guessing a rate.
+        json_out(['error' => 'That payment is in ' . $cur . ', so it cannot be added to this booking automatically.'], 409);
+    }
+    $amount = round($gross / 100, 2);
+    $fee = null;
+    if (!empty($payment['processing_fee']) && is_array($payment['processing_fee'])) {
+        $cents = 0;
+        foreach ($payment['processing_fee'] as $pf) {
+            $cents += (int) ($pf['amount_money']['amount'] ?? 0);
+        }
+        $fee = round($cents / 100, 2);
+    }
+    // Under the booking lock, and INSERT IGNORE on the unique square_payment_id,
+    // so two taps in the same breath cannot write the money twice.
+    if (!book_lock($b['prop_key'])) {
+        json_out(['error' => 'This booking is being processed — please try again in a moment.'], 409);
+    }
+    // json_out() exits, so the catch below never falls through — but a static
+    // reader cannot know that, and 0 is the right answer if it ever did.
+    $paid = 0.0;
+    try {
+        db()
+            ->prepare(
+                'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, fee, guest_name, prop_key, created_at)
+                 VALUES (?,?,?,?,?,?,?,?,NOW())',
+            )
+            ->execute([$id, $sqId, booking_payment_kind($b), $amount, 'COMPLETED', $fee, $b['name'], $b['prop_key']]);
+        // The headline figure is re-derived from the ledger through the shared
+        // helper rather than added to — the one-definition rule, and the reason
+        // this cannot drift from what every other screen reports.
+        $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+        $paid = round(booking_paid_so_far(['id' => $id, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
+        $paid = $total > 0 ? min($total, $paid) : $paid;
+        db()
+            ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ? WHERE id = ?')
+            ->execute([$paid, $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid'), $id]);
+    } catch (\Throwable $e) {
+        book_unlock($b['prop_key']);
+        json_out(['error' => "Couldn't record that just now."], 500);
+    }
+    book_unlock($b['prop_key']);
+    // Logged as the owner's decision, with the Square id, so the trail back to
+    // what was recorded and why starts here.
+    log_activity('payment', 'payment.recorded_from_square', 'Recorded a Square payment that had no record here — £' . number_format($amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), [
+        'prop_key' => $b['prop_key'] ?? '',
+        'entity' => 'booking',
+        'entity_id' => (string) $id,
+        'meta' => ['square_payment_id' => $sqId, 'amount' => $amount],
+    ]);
+    json_out(['ok' => true, 'recorded' => 1, 'amount' => $amount, 'paid' => $paid]);
+}
+
 if ($action === 'confirm_return_settled') {
     require_admin();
     $id = (int) ($in['id'] ?? 0);

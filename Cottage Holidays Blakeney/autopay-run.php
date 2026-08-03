@@ -32,6 +32,11 @@ if (!$isCron) {
 $today = date('Y-m-d');
 $res = autopay_run($today);
 
+// THEN warn whoever is next. After the collection, not before, so a booking
+// whose money was taken today is never also told it is coming — autopay_run
+// settles it, and autopay_notice_due then reads 'settled' rather than 'armed'.
+$notice = autopay_notice_run($today);
+
 // TELL THE OWNER, both ways round. A collection is money in and worth knowing
 // about; a failure is money NOT in, and the ordinary chase has just become their
 // job again. Silence on a quiet day, so the notification keeps meaning something.
@@ -69,6 +74,7 @@ if ($res['truncated']) {
 
 json_out([
     'ok' => $res['ok'],
+    'notices' => $notice['sent'],
     'collected' => $res['collected'],
     'failed' => $res['failed'],
     'skipped' => $res['skipped'],

@@ -89,9 +89,31 @@ function reconcile_missing_fees($limit = 15)
     } catch (\Throwable $e) {
         return; // fee column not migrated / table missing
     }
+    // ONE CALL FIRST. Square's ListPayments returns whole Payment objects — the
+    // same shape, carrying the same processing_fee — for the same window and the
+    // same location the orphan sweep below already asks about. Fifteen serial
+    // round trips on a page the owner opens daily, for data one request already
+    // holds, is a cost nobody chose; it was simply that the two were written at
+    // different times and never introduced. The per-row lookup stays as the
+    // FALLBACK for anything the list does not cover (an older charge that has
+    // fallen off the window, or a list call that failed outright).
+    $fees = orphan_fee_map();
     foreach ($rows as $r) {
+        $sqId = (string) $r['square_payment_id'];
         try {
-            $res = square_api('GET', '/v2/payments/' . rawurlencode((string) $r['square_payment_id']));
+            if (isset($fees[$sqId])) {
+                db()->prepare('UPDATE payments SET fee = ? WHERE id = ?')->execute([$fees[$sqId], (int) $r['id']]);
+                continue;
+            }
+            // A row the list DID cover but with no fee on it is not settled yet —
+            // asking again one at a time would get the same answer. Only rows the
+            // list never mentioned are worth a lookup of their own. (isset() is
+            // false for the null value, which is why this needs array_key_exists
+            // and not a second isset.)
+            if (array_key_exists($sqId, $fees)) {
+                continue;
+            }
+            $res = square_api('GET', '/v2/payments/' . rawurlencode($sqId));
             $payment = $res['body']['payment'] ?? null;
             if (!$payment || empty($payment['processing_fee']) || !is_array($payment['processing_fee'])) {
                 continue; // not settled yet (or a non-Square/manual row) — leave null
@@ -105,6 +127,60 @@ function reconcile_missing_fees($limit = 15)
             // best-effort per row
         }
     }
+}
+
+// Square id => settled fee in pounds, for the window the sweep already reads.
+// A key present with a NULL value means "the list covered this charge and it has
+// no fee yet" — which is a different fact from "the list never mentioned it",
+// and the only reason the caller can tell a not-yet-settled charge from one it
+// still has to ask about individually. Memoised per request, since the fee
+// backfill and the orphan sweep both run on the same page load.
+function orphan_fee_map($force = false)
+{
+    static $cache = null;
+    if ($cache !== null && !$force) {
+        return $cache;
+    }
+    if (!function_exists('square_enabled') || !square_enabled()) {
+        return [];
+    }
+    $loc = function_exists('square_location_id') ? square_location_id() : '';
+    try {
+        $res = square_api(
+            'GET',
+            '/v2/payments?limit=' . ORPHAN_LIST_MAX .
+                '&sort_order=DESC&begin_time=' . rawurlencode(gmdate('Y-m-d\TH:i:s\Z', time() - ORPHAN_LOOKBACK_DAYS * 86400)) .
+                ($loc !== '' ? '&location_id=' . rawurlencode($loc) : ''),
+        );
+    } catch (\Throwable $e) {
+        return [];
+    }
+    $st = (int) ($res['status'] ?? 0);
+    if ($st < 200 || $st >= 300 || !is_array($res['body']['payments'] ?? null)) {
+        // EMPTY, not null: a failed list must leave every row to the per-row
+        // lookup it had before, never mark them all as "covered, no fee yet".
+        return [];
+    }
+    $map = [];
+    foreach ($res['body']['payments'] as $p) {
+        if (!is_array($p)) {
+            continue;
+        }
+        $id = trim((string) ($p['id'] ?? ''));
+        if ($id === '') {
+            continue;
+        }
+        $cents = 0;
+        $has = !empty($p['processing_fee']) && is_array($p['processing_fee']);
+        if ($has) {
+            foreach ($p['processing_fee'] as $pf) {
+                $cents += (int) ($pf['amount_money']['amount'] ?? 0);
+            }
+        }
+        $map[$id] = $has ? round($cents / 100, 2) : null;
+    }
+    $cache = $map;
+    return $map;
 }
 
 // ============================================================
