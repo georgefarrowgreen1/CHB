@@ -368,10 +368,13 @@ function poll_mailbox_replies($force = false, $preview = false)
                     $deliverOk = false;
                 }
             }
-            // NEW CUSTOMER MAIL. Not our own voice, and not something that just
-            // became a chat message (chat-lib alerts about those — telling the
-            // owner twice about one email is worse than the silence this fixes).
-            if ($deliverOk && !$isSelf && $route === 'drop') {
+            // NEW CUSTOMER MAIL. Not our own voice, not an automated report
+            // robot (DMARC and friends — see mailbox_is_report_robot; a duty
+            // saying "google.com emailed you" is one the owner learns to ignore),
+            // and not something that just became a chat message (chat-lib alerts
+            // about those — telling the owner twice about one email is worse than
+            // the silence this fixes).
+            if ($deliverOk && !$isSelf && !mailbox_is_report_robot($fromAddr) && $route === 'drop') {
                 $fresh[] = [
                     'uid' => $uid,
                     'from' => $fromAddr,

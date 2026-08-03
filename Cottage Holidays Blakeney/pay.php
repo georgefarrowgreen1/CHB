@@ -187,7 +187,11 @@ if ($action === 'authorize') {
         in_array($payment['status'] ?? '', ['APPROVED', 'AUTHORIZED'], true);
     if (!$ok) {
         book_unlock($b['prop_key']);
-        $detail = $res['body']['errors'][0]['detail'] ?? 'Your card couldn\'t be authorised. Please try another card.';
+        // What to DO, keyed on Square's error code — never their raw prose.
+        $detail = payment_decline_message(
+            $res['body']['errors'][0]['code'] ?? '',
+            'Your card could not be authorised. Please try another card.',
+        );
         json_out(['error' => $detail], 402);
     }
     $sqId = (string) $payment['id'];
@@ -282,9 +286,12 @@ if ($action === 'charge') {
         in_array($payment['status'] ?? '', ['COMPLETED', 'APPROVED'], true);
     if (!$ok) {
         book_unlock($b['prop_key']);
-        $detail =
-            $res['body']['errors'][0]['detail'] ??
-            ($res['body']['error'] ?? 'Payment was declined. Please check your card and try again.');
+        // Same rule as the authorise branch above: the guest is told what to do
+        // next, from the CODE. Square's `detail` is written for a developer.
+        $detail = payment_decline_message(
+            $res['body']['errors'][0]['code'] ?? '',
+            'The payment was declined. Please check the card and try again.',
+        );
         // Best-effort: alert the owner (push) so they can follow up on a failed card payment.
         try {
             require_once __DIR__ . '/webpush.php';

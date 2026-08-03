@@ -927,6 +927,124 @@ chk('the client stops reading a stale k=deposit off the URL',
 chk('…and pins the resolved stage so the charge asks for what was quoted',
     strpos((string) file_get_contents(__DIR__ . '/app.js'), "if (s.kind === 'deposit' || s.kind === 'balance' || s.kind === 'hold') payState.kind = s.kind;") !== false);
 
+// ---- AUTOPAY: never take money without a recorded, current agreement -------
+//
+//  The rule the whole feature exists to obey. A stored card is not permission,
+//  and permission is for A SUM ON A DATE — not a standing licence. Every state
+//  except 'armed' must behave exactly as the app did before autopay existed,
+//  which is what makes this safe to ship: no consent, no change.
+echo "\n== Autopay — permission, and the eight ways it is refused ==\n";
+$ap = function ($over = []) {
+    return array_merge([
+        'prop_key' => 'jollyboat', 'adults' => 2, 'children' => 0,
+        'check_in' => date('Y-m-d', strtotime('+60 days')),
+        'check_out' => date('Y-m-d', strtotime('+63 days')),
+        'balance_due_date' => null, 'deposit_pct_override' => 25.0, 'deposit_amount_override' => null,
+        'agreed_total' => 800.0, 'price_override' => null, 'deposit_paid' => 200.0,
+        'agreed_booking_fee' => 0.0, 'hold_status' => 'charged',
+        'autopay_consent_at' => null, 'autopay_card_id' => null,
+        'autopay_amount' => null, 'autopay_due' => null,
+        'autopay_revoked_at' => null,
+    ], $over);
+};
+$dueDay = date('Y-m-d', strtotime(date('Y-m-d', strtotime('+60 days')) . ' -' . payment_balance_days() . ' days'));
+// The consenting booking: deposit paid, £600 balance, agreed to both.
+$agreed = ['autopay_consent_at' => '2026-04-24 10:00:00', 'autopay_card_id' => 'ccof:abc123',
+           'autopay_amount' => 600.0, 'autopay_due' => $dueDay];
+
+// THE DEFAULT IS OFF, for every booking that has ever existed.
+$st = booking_autopay_state($ap());
+chk('a booking nobody agreed to is OFF', $st[0] === 'off');
+chk('…and may never be charged', booking_autopay_may_charge($ap()) === false);
+// A CARD ON FILE IS NOT PERMISSION — the trap this whole design exists to avoid.
+$st = booking_autopay_state($ap(['autopay_card_id' => 'ccof:abc123']));
+chk('a saved card WITHOUT consent is still OFF — a card is not permission', $st[0] === 'off');
+chk('…and still may not be charged', booking_autopay_may_charge($ap(['autopay_card_id' => 'ccof:abc123'])) === false);
+
+// AGREED, MATCHING, WITH A CARD → the only state that may charge.
+$st = booking_autopay_state($ap($agreed));
+chk('agreed, current and matching → ARMED', $st[0] === 'armed');
+chk('…and the reason names the sum and the day', strpos($st[1], '£600.00') !== false && strpos($st[1], uk_date($dueDay)) !== false);
+chk('…but NOT before the agreed day', booking_autopay_may_charge($ap($agreed), date('Y-m-d')) === false);
+chk('…and yes on the day itself', booking_autopay_may_charge($ap($agreed), $dueDay) === true);
+chk('…and still yes the day after — a failed run must not skip the payment',
+    booking_autopay_may_charge($ap($agreed), date('Y-m-d', strtotime($dueDay . ' +1 day'))) === true);
+
+// WITHDRAWN.
+chk('switched off → REVOKED, never charges',
+    booking_autopay_state($ap($agreed + ['autopay_revoked_at' => '2026-05-01 09:00:00']))[0] === 'revoked'
+    && booking_autopay_may_charge($ap(array_merge($agreed, ['autopay_revoked_at' => '2026-05-01 09:00:00'])), $dueDay) === false);
+
+// THE TERMS MOVED — consent does not stretch. Both halves, because a plan edit
+// can change either the figure or the day.
+$moreMoney = $ap(array_merge($agreed, ['agreed_total' => 900.0]));
+chk('the owner raised the price → STALE, ask again',
+    booking_autopay_state($moreMoney)[0] === 'stale' && booking_autopay_may_charge($moreMoney, $dueDay) === false);
+$newDate = $ap(array_merge($agreed, ['balance_due_date' => date('Y-m-d', strtotime($dueDay . ' +7 days'))]));
+chk('the owner moved the due date → STALE, ask again',
+    booking_autopay_state($newDate)[0] === 'stale' && booking_autopay_may_charge($newDate, $dueDay) === false);
+chk('…and a LOWER price is stale too — consent is for a sum, not a ceiling',
+    booking_autopay_state($ap(array_merge($agreed, ['agreed_total' => 700.0])))[0] === 'stale');
+
+// NOTHING LEFT / NO CARD.
+chk('already settled → SETTLED, nothing to take',
+    booking_autopay_state($ap(array_merge($agreed, ['deposit_paid' => 800.0])))[0] === 'settled');
+chk('consent but no card on file → NOCARD, ask as usual',
+    booking_autopay_state($ap(array_merge($agreed, ['autopay_card_id' => null])))[0] === 'nocard');
+
+// WHAT THEY ARE AGREEING TO, at the moment of asking.
+$terms = booking_autopay_terms($ap(['deposit_paid' => 0.0, 'hold_status' => 'none']));
+chk('the terms offered are the BALANCE and its date', $terms && abs($terms['amount'] - 600.0) < 0.005 && $terms['due'] === $dueDay);
+chk('…nothing to schedule once it is all paid', booking_autopay_terms($ap(['deposit_paid' => 800.0])) === null);
+chk('…and the legacy hold flow is never scheduled',
+    booking_autopay_terms($ap(['check_in' => date('Y-m-d', strtotime('+2 days')), 'deposit_paid' => 0.0])) === null);
+
+// WIRING — the collector is deliberately NOT built yet, and that is asserted so
+// nobody wires a charger to these helpers without the rest of the safeguards.
+$paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('nothing charges on a schedule yet — the state machine lands first',
+    strpos($paySrc, 'booking_autopay_may_charge') === false);
+
+// ---- A declined guest is told what to DO -----------------------------------
+//  Both refusal sites printed Square's own `detail`, which is written for a
+//  developer reading an API response — and at worst leaks the code itself
+//  ("CARD_DECLINED_VERIFICATION_REQUIRED" was seen live here during the 3-D
+//  Secure work). This is the one failure a customer ever sees.
+echo "\n== Declines speak to the guest, not the developer ==\n";
+$dm = 'payment_decline_message';
+chk('a plain decline says try another card or ring the bank',
+    stripos($dm('CARD_DECLINED'), 'another card') !== false && stripos($dm('CARD_DECLINED'), 'bank') !== false);
+chk('the 3-D Secure case explains the CHECK rather than naming the code',
+    stripos($dm('CARD_DECLINED_VERIFICATION_REQUIRED'), 'really you') !== false);
+chk('a wrong CVV points at the three digits on the back',
+    stripos($dm('VERIFY_CVV_FAILURE'), 'three digits') !== false);
+chk('an expired card says to use another, not to retry',
+    stripos($dm('CARD_EXPIRED'), 'expired') !== false && stripos($dm('CARD_EXPIRED'), 'try again') === false);
+chk('a temporary fault says nothing was charged', stripos($dm('TEMPORARY_ERROR'), 'nothing was charged') !== false);
+chk('lower-case and padded codes still map', $dm('  card_expired  ') === $dm('CARD_EXPIRED'));
+// NEVER leak the machinery, whatever the code.
+$codes = ['CARD_DECLINED','GENERIC_DECLINE','INSUFFICIENT_FUNDS','CARD_DECLINED_VERIFICATION_REQUIRED',
+          'VERIFY_CVV_FAILURE','VERIFY_AVS_FAILURE','INVALID_CARD','INVALID_EXPIRATION','CARD_EXPIRED',
+          'CARD_NOT_SUPPORTED','CVV_FAILURE','EXPIRATION_FAILURE','PAYMENT_LIMIT_EXCEEDED',
+          'TEMPORARY_ERROR','GATEWAY_TIMEOUT','SOMETHING_WE_HAVE_NEVER_SEEN',''];
+$leak = array_filter($codes, function ($c) use ($dm) {
+    $m = $dm($c);
+    return preg_match('/[A-Z_]{6,}|\bhttps?:|\{|\}|SQLSTATE/', $m) === 1;
+});
+chk('no message anywhere leaks a code, a URL or markup (' . implode(',', $leak) . ')', count($leak) === 0);
+$short = array_filter($codes, function ($c) use ($dm) { return strlen($dm($c)) < 25 || strlen($dm($c)) > 190; });
+chk('every message is a readable sentence, not a fragment or an essay', count($short) === 0);
+// An UNKNOWN code must not guess — it falls back, and the caller's fallback wins
+// over the generic one so each site keeps its own wording.
+chk('an unknown code uses the caller\'s fallback', $dm('WHO_KNOWS', 'Site-specific words.') === 'Site-specific words.');
+chk('…and with no fallback, an honest generic line', stripos($dm('WHO_KNOWS'), 'declined') !== false);
+// WIRING — the mapper being right proves nothing while a site still prints prose.
+$paySrc2 = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('both pay.php refusal sites go through the mapper',
+    substr_count($paySrc2, 'payment_decline_message(') === 2);
+chk('…and neither prints Square\'s raw detail at the guest any more',
+    strpos($paySrc2, "errors'][0]['detail']") === false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
