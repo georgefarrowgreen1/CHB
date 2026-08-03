@@ -140,6 +140,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-payouts.php
 
+      - name: Orphan sweep — money taken at Square with no record here
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-orphans.php
+
       - name: Bank accounts — is there anywhere for the money to go
         working-directory: "Cottage Holidays Blakeney"
         run: php test-bank.php

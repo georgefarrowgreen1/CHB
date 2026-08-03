@@ -344,6 +344,60 @@ try {
     }
     $state['orphan_payments'] = $orphans;
 
+    // ---- 5b. Money taken at Square with no row here (flag only) -------------
+    // The mirror image of the check above: that one finds a payment row whose
+    // booking is gone, this one finds a PAYMENT that never reached us at all.
+    // It is the more expensive way round — the guest has been charged and every
+    // screen here says they still owe it, so they get chased for money they
+    // have already paid. Never written automatically; recording money is the
+    // owner's decision, and the sweep hands them the facts to make it.
+    try {
+        require_once __DIR__ . '/payments-reconcile.php';
+        $sweep = reconcile_orphan_payments();
+        // Remember which ids have been reported, so a standing orphan is raised
+        // ONCE rather than every night. A count comparison would not do here: a
+        // count that falls and rises again hides a DIFFERENT payment behind the
+        // same number, and each of these is a specific sum on a specific card.
+        $seen = is_array($state['orphan_square'] ?? null) ? $state['orphan_square'] : [];
+        if ($sweep['ok']) {
+            $fresh = [];
+            foreach ($sweep['rows'] as $row) {
+                if (!in_array($row['id'], $seen, true)) {
+                    $fresh[] = $row;
+                }
+            }
+            foreach ($fresh as $row) {
+                $money = ($row['currency'] === 'GBP' ? '£' : $row['currency'] . ' ') . number_format($row['amount'], 2);
+                $when = $row['created_at'] !== '' ? uk_date(substr($row['created_at'], 0, 10)) : 'recently';
+                log_activity(
+                    'payment',
+                    'selfrepair.square_orphan',
+                    'Self-repair: ' . $money . ' was taken at Square on ' . $when . ' (' . $row['ref'] .
+                        ') and has no payment record here — check the booking and record it if the guest really has paid',
+                    [
+                        'actor' => $actor,
+                        'severity' => 'warn',
+                        'entity' => 'booking',
+                        'entity_id' => (string) $row['booking_id'],
+                        'meta' => ['square_payment_id' => $row['id'], 'amount' => $row['amount'], 'currency' => $row['currency']],
+                    ],
+                );
+                $seen[] = $row['id'];
+            }
+            if ($fresh) {
+                $flagged[] = count($fresh) . ' Square payment(s) with no record here';
+            }
+            // The cap is stated rather than swallowed — "5 named" over a total of
+            // 9 is a different fact from "there were 5".
+            if ($sweep['total'] > count($sweep['rows'])) {
+                $flagged[] = ($sweep['total'] - count($sweep['rows'])) . ' more unrecorded Square payment(s) not listed this run';
+            }
+            $state['orphan_square'] = array_slice($seen, -100);
+        }
+    } catch (\Throwable $e) {
+        // Square being unreachable is not a finding — say nothing and try tomorrow.
+    }
+
     // Monthly rollup: fixes are counted in this state as they happen (immune to
     // the activity log's 5000-row trim), and when the month rolls over the
     // finished month gets ONE summary line in the log — so the quiet
