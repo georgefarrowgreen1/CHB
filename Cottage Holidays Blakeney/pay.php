@@ -131,6 +131,12 @@ if ($action === 'summary') {
         // plan, a changed price, another payment landing) and stop instead of
         // charging a number the guest never read. See payment_quote_sign.
         'quote' => payment_quote_sign($bookingId, $kind, round($amountDue + $damagesDue, 2)),
+        // WHAT THE CHECKBOX WOULD PROMISE, or null when there is nothing to
+        // schedule — in which case it must not be OFFERED, rather than offered
+        // and quietly doing nothing. booking_autopay_terms derives it the same
+        // way this screen quotes the money, so the two can never disagree.
+        'autopayTerms' => booking_autopay_terms($b),
+        'autopayState' => booking_autopay_state($b)[0],
         // …and the one ALREADY taken (charged with the first payment, or a
         // captured/kept legacy hold), so the pay screen's "of £X total · £Y
         // already paid" can fold it into both sides — the guest whose card took
@@ -140,6 +146,21 @@ if ($action === 'summary') {
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
     ]);
+}
+
+// TURNING IT OFF. Rides the pay token the guest already holds, so there is no new
+// endpoint and no new way in — and it is deliberately available on the same screen
+// that offered it. A standing permission you can only cancel by emailing someone
+// is not one most people would give.
+if ($action === 'autopay_off') {
+    require_once __DIR__ . '/autopay-lib.php';
+    autopay_revoke($bookingId);
+    log_activity('payment', 'autopay.revoked', 'Automatic payment switched off by the guest', [
+        'actor' => 'guest',
+        'entity' => 'booking',
+        'entity_id' => (string) $bookingId,
+    ]);
+    json_out(['ok' => true, 'autopayState' => 'revoked']);
 }
 
 // Place a refundable card HOLD for the damages deposit (authorise, do NOT capture).
@@ -392,6 +413,26 @@ if ($action === 'charge') {
                     'UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ?, hold_authorized_at = NOW() WHERE id = ?',
                 )
                 ->execute([$sqId, 'charged', $damagesDue, $bookingId]);
+        } catch (\Throwable $e) {
+        }
+    }
+
+    // THE CARD, IF THEY ASKED US TO KEEP IT. Deliberately after the money is
+    // taken and the ledger is written, and wrapped so hard it cannot reach the
+    // response: a convenience that turned a successful payment into an error
+    // page would invite the guest to pay a second time. A failure here leaves
+    // them exactly where they were — no consent, no card, chased as usual.
+    if (!empty($in['autopay'])) {
+        try {
+            require_once __DIR__ . '/autopay-lib.php';
+            $vault = autopay_vault($b, $sqId, booking_autopay_terms($b));
+            if (!$vault['ok']) {
+                log_activity('payment', 'autopay.vault_failed', "Couldn't save the card for automatic payment — " . $vault['reason'], [
+                    'severity' => 'info',
+                    'entity' => 'booking',
+                    'entity_id' => (string) $bookingId,
+                ]);
+            }
         } catch (\Throwable $e) {
         }
     }

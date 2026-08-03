@@ -72,6 +72,13 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // button in their account did not. Sent per booking so the label and the
         // charge come from one place; the button still states no stage of its own.
         $bk['next_payment'] = booking_next_payment($bk);
+        // WHETHER ANYTHING IS GOING TO HAPPEN BY ITSELF. A standing permission
+        // to charge a card must be visible to the person who gave it, on their
+        // own screen — and it is the state, not the raw columns, because the
+        // state is the only thing that knows whether it still holds.
+        $ap = booking_autopay_state($bk);
+        $bk['autopay_state'] = $ap[0];
+        $bk['autopay_says'] = $ap[1];
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether
         // it's been submitted.

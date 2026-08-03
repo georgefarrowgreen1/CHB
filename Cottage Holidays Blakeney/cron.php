@@ -49,6 +49,9 @@ $jobs = [
     'self-repair.php?cron=' => 'Self-repair (state checks & safe fixes)',
     'watchers-run.php?cron=' => 'Standing queries the owner set (watchers)',
     'pre-arrival.php?cron=' => 'Pre-arrival & review emails',
+    // Collect BEFORE chasing: the other order emails a guest asking for money
+    // that is taken ten seconds later.
+    'autopay-run.php?cron=' => 'Automatic balance collections (where the guest agreed)',
     'payments-due.php?cron=' => 'Balance requests, chasers & deposit recovery',
     'enquiry-nudge.php?cron=' => 'Enquiry follow-ups',
     'anniversary-nudge.php?cron=' => 'Anniversary re-invites (past guests)',
