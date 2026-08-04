@@ -896,7 +896,7 @@
                             <button type="button" class="pay-full-link" id="pay-part-toggle" data-act="payPartToggle" aria-expanded="false" aria-controls="pay-part-row"></button>
                             <div class="pay-part-row" id="pay-part-row" style="display:none;">
                                 <label class="pay-part-lbl" for="pay-part-amt" id="pay-part-lbl">How much would you like to pay now, in pounds?</label>
-                                <input class="input-glass" type="number" id="pay-part-amt" inputmode="decimal" step="0.01" min="0" autocomplete="off" data-act-input="payPartSync" />
+                                <input class="input-glass" type="number" id="pay-part-amt" inputmode="decimal" step="0.01" min="0" autocomplete="off" data-act-input="payPartSync" data-act-change="payPartClamp" />
                                 <p class="pay-part-hint" id="pay-part-hint"></p>
                             </div>
                         </div>
@@ -1822,7 +1822,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=703"></script>
+    <script defer src="app.js?v=704"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
