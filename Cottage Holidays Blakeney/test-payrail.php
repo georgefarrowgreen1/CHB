@@ -1028,6 +1028,35 @@ chk('…nothing to schedule once it is all paid', booking_autopay_terms($ap(['de
 chk('…and the legacy hold flow is never scheduled',
     booking_autopay_terms($ap(['check_in' => date('Y-m-d', strtotime('+2 days')), 'deposit_paid' => 0.0])) === null);
 
+// THE NOTICE KNOWS WHICH PAYMENT IT IS. A monthly plan's 3-day warning names
+// its position, the next date, and what follows — an automatic charge the
+// guest can place in their own schedule is one they expected; an unplaced one
+// is a dispute. Driven through the REAL composer both ways.
+$apMonthlyRow = $ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
+    'autopay_instalments' => 3, 'autopay_next_at' => '2026-08-28',
+]);
+$nMail = autopay_notice_body($apMonthlyRow, 'https://example.test/pay');
+chk('a monthly notice names its position', strpos($nMail['subject'], 'payment 1 of 3') !== false);
+chk('…and warns about the NEXT collection, not the final date', strpos($nMail['subject'], '28/08/2026') !== false);
+chk('…names the position in the body too', strpos($nMail['text'], 'payment 1 of 3') !== false);
+chk('…and says what follows', strpos($nMail['text'], '2 more monthly payments follow, the last on 28/10/2026') !== false);
+$nFinal = autopay_notice_body($ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
+    'autopay_instalments' => 3, 'autopay_next_at' => '2026-10-28',
+]), 'https://example.test/pay');
+chk('the final instalment says so', strpos($nFinal['text'], 'This is the final payment') !== false && strpos($nFinal['subject'], 'payment 3 of 3') !== false);
+$nSingle = autopay_notice_body($ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 600.0, 'autopay_due' => '2026-10-28',
+]), 'https://example.test/pay');
+chk('a single collection keeps its original wording', strpos($nSingle['text'], "we'll collect the remaining £600.00") !== false && strpos($nSingle['subject'], 'payment') === false);
+// The summary sends the offer the consent card renders from.
+chk('the pay summary sends the monthly offer',
+    strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);
+
 // WIRING — the collector is deliberately NOT built yet, and that is asserted so
 // nobody wires a charger to these helpers without the rest of the safeguards.
 $paySrc = (string) file_get_contents(__DIR__ . '/pay.php');

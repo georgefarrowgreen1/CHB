@@ -283,6 +283,50 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `…so the lines now SUM to the total shown (${custom.slice(-60)})`);
   await page.close();
 
+  // 13) AN ARMED MONTHLY PLAN SHOWS ITS SCHEDULE. The hub's "one outstanding
+  // thing" line reads on-track (a plan running means nothing IS outstanding),
+  // the plan block carries the progress bar + the state-dot rail whose rows
+  // sum to what is left, and the off-switch is one tap away — all from the
+  // my-bookings payload, so the card can never promise money the server's own
+  // derivation disagrees with.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+    autopay_state: 'armed', autopay_says: 'Scheduled — £175.00 monthly, next on 28/08/2026.',
+    autopay_plan: {
+      n: 3, per: 175, toGo: 350, next: d(20),
+      dates: [
+        { date: d(-10), state: 'done', fig: 175 },
+        { date: d(20), state: 'next', fig: 175 },
+        { date: d(50), state: 'todo', fig: 175 },
+      ],
+    },
+  })]);
+  const plan = await page.evaluate(() => {
+    const hub = document.querySelector('.my-stay-hub-soon');
+    const block = hub && hub.querySelector('.hub-plan');
+    return {
+      ready: hub ? (hub.querySelector('.hub-ok') || {}).textContent || '' : '',
+      block: !!block,
+      sum: block ? (block.querySelector('.hub-plan-sum') || {}).textContent || '' : '',
+      rows: block ? block.querySelectorAll('.ap-row').length : 0,
+      dots: block ? [...block.querySelectorAll('.ap-dot')].map((e) => e.className.replace('ap-dot ', '')).join('|') : '',
+      barW: block ? (block.querySelector('.ap-bar > span') || { style: {} }).style.width || '' : '',
+      figs: block ? [...block.querySelectorAll('.ap-figc')].map((e) => e.textContent).join('|') : '',
+      off: hub ? (hub.querySelector('.hub-autopay-off') || {}).textContent || '' : '',
+    };
+  });
+  ok(/payments on track — nothing needed from you/.test(plan.ready),
+    `an armed plan reads on-track, not outstanding (${plan.ready})`);
+  ok(plan.block && plan.rows === 3, `the plan block shows one row per collection (${plan.rows})`);
+  ok(plan.dots === 'is-done|is-next|is-todo', `…in the live-plan vocabulary (${plan.dots})`);
+  ok(plan.sum === '1 of 3 done · £350.00 to go', `…with the summary line (${plan.sum})`);
+  ok(plan.barW === '33%', `…and the progress bar a third full (${plan.barW})`);
+  ok(plan.figs === '£175.00|£175.00|£175.00', `…rows carrying the payload's own figures (${plan.figs})`);
+  ok(/Turn off automatic payments/.test(plan.off), `the off-switch is one tap away (${plan.off})`);
+  await page.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

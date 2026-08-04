@@ -1289,6 +1289,9 @@ function mapBookingFromApi(row) {
         // and on an older server; '' reads as "no arrangement" everywhere.
         autopayState: row.autopay_state || '',
         autopaySays: row.autopay_says || '',
+        // The monthly schedule (my-bookings.php only) — null everywhere else,
+        // and every renderer must treat null as "no plan".
+        autopayPlan: row.autopay_plan && typeof row.autopay_plan === 'object' ? row.autopay_plan : null,
         depositRequestedAt: row.deposit_requested_at || '',
         balanceRequestedAt: row.balance_requested_at || '',
         balanceRemindedAt: row.balance_reminded_at || '',
@@ -3724,6 +3727,26 @@ function guestPayCta(b, gt) {
     if (np && charge > 0) return { word: np.kind === 'deposit' ? 'deposit' : 'balance', amount: charge };
     return { word: 'balance', amount: gt.balance };
 }
+// THE MONTHLY-PLAN BLOCK on My Stays: progress bar (a third-full bar reads
+// faster than any sentence — the words beneath still carry the exact figures),
+// then the dated rail in the live-plan vocabulary: green done, accent next,
+// hollow still-to-come. Figures come from the server payload, whose rows SUM
+// to what is actually left.
+function guestPlanBlockHtml(p) {
+    const done = p.dates.filter((d) => d.state === 'done').length;
+    const rows = p.dates
+        .map((d, i) => {
+            const note = d.state === 'done' ? 'paid' : d.state === 'next' ? 'next' : i === p.dates.length - 1 ? 'final' : '';
+            return `<span class="ap-row"><span class="ap-dot is-${escapeHtml(d.state)}" aria-hidden="true"></span><span class="ap-date">${fmtDate(d.date)}</span><span class="ap-figc">${gbp(d.fig)}</span>${note ? `<span class="ap-note">${note}</span>` : ''}</span>`;
+        })
+        .join('');
+    return `
+        <div class="hub-plan">
+            <div class="hub-plan-head"><span class="pay-sec-cap">Monthly payments</span><span class="hub-plan-sum">${done} of ${p.n} done · ${gbp(p.toGo)} to go</span></div>
+            <span class="ap-bar" aria-hidden="true"><span style="width:${Math.round((done / p.n) * 100)}%"></span></span>
+            <span class="ap-rail">${rows}</span>
+        </div>`;
+}
 function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const days = nightsBetween(todayDashed(), b.checkIn);
     const big = days <= 0 ? '!' : String(days);
@@ -3743,12 +3766,18 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         // warning ink asks them to do what they have already done. Still figure-
         // first, but it reads as settled, with the way to stop it beside it.
         if (b.autopayState === 'armed') {
-            ready = `<span class="hub-ok">${gbp(nx.amount)} on the way${balanceDueBySuffix(b.balanceDueBy)}</span>`;
+            // A monthly plan on track means NOTHING is outstanding — the plan
+            // block below carries the detail; a single collection keeps its
+            // figure-first line.
+            ready = b.autopayPlan
+                ? `<span class="hub-ok">payments on track — nothing needed from you</span>`
+                : `<span class="hub-ok">${gbp(nx.amount)} on the way${balanceDueBySuffix(b.balanceDueBy)}</span>`;
         } else {
             ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
         }
         if (payToken && b.autopayState === 'armed')
-            cta = `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment</button>`;
+            cta = (b.autopayPlan ? guestPlanBlockHtml(b.autopayPlan) : '') +
+                `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment${b.autopayPlan ? 's' : ''}</button>`;
         else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
     } else if (b.regUrl && !bookingRegComplete(b)) {
         // Short of the party as well as absent: the form prefills what is already
@@ -3878,7 +3907,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '' };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, autopayChoice: 'self' };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -3991,40 +4020,28 @@ async function openPayView(token, bookingId, kind) {
         // with the charge so it can stop if the sum has moved. payment_quote_sign
         // says why. Cleared, never stale-kept, if a summary arrives without one.
         payState.quote = typeof s.quote === 'string' ? s.quote : '';
-        // OFFERED ONLY WHEN THERE IS SOMETHING TO SCHEDULE — booking_autopay_terms
-        // returns null otherwise, and a checkbox that quietly does nothing is a
-        // promise nobody kept. Already arranged stays hidden: this is the ASK.
-        const apWrap = document.getElementById('pay-autopay');
-        const apBox = /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box'));
-        const apLbl = document.getElementById('pay-autopay-label');
+        // THE ARRANGEMENT IS ONE THREE-WAY DECISION — "I'll pay it myself"
+        // (the DEFAULT: automatic collection is opted INTO, never out of), one
+        // payment on the due date, or monthly when the server offers it.
+        // Offered only when there is something to schedule and no live
+        // arrangement; three states are REPAIRS (a card that expired, one that
+        // never saved, terms the owner has since changed) — 'revoked' is
+        // deliberately absent (they turned it off on purpose, and re-asking on
+        // every payment is nagging) and 'armed' is already arranged. The sum
+        // and the day are IN the words (the caption, the lead, the one-payment
+        // option): permission to charge a card is not permission anyone gave
+        // against "automatic payments" and a link.
         const terms = s.autopayTerms;
-        // OFFERED WHEN THERE IS SOMETHING TO SCHEDULE AND NO LIVE ARRANGEMENT —
-        // booking_autopay_terms returns null otherwise, and a checkbox that
-        // quietly does nothing is a promise nobody kept. Three of these states
-        // are REPAIRS, and leaving them out was a real gap: a card that expired
-        // ('failed'), one that never saved ('nocard') or terms the owner has
-        // since changed ('stale') left an arrangement that could never be fixed,
-        // because the only screen that can save a card would not offer to.
-        // 'revoked' is deliberately absent — they turned it off on purpose, and
-        // re-asking every time they pay is nagging. 'armed' is already arranged.
         const REPAIR = ['failed', 'nocard', 'stale'];
         const isRepair = REPAIR.indexOf(s.autopayState) !== -1;
         const canOffer = terms && terms.amount > 0 && terms.due && (s.autopayState === 'off' || isRepair);
         // Remembered so payAutopaySync can bring a slice-hidden offer back.
         payState.autopayOffer = !!canOffer;
-        if (apWrap && apBox && apLbl) {
-            apBox.checked = false;
-            apWrap.style.display = canOffer ? '' : 'none';
-            if (canOffer) {
-                // The sum and the day are IN the label: permission to charge a
-                // card, agreed against "automatic payments" and a link, is not
-                // permission anyone gave knowingly. A repair says WHY it is
-                // asking again, or it reads as the same question twice.
-                apLbl.textContent =
-                    (isRepair ? "We couldn't use the card you saved before. " : '') +
-                    `Save this card and collect my remaining ${gbp(terms.amount)} automatically on ${fmtDate(terms.due)}. I can turn this off any time from My Stays.`;
-            }
-        }
+        payState.apTerms = canOffer ? terms : null;
+        payState.apMonthly = canOffer && s.instalmentOffer && Number(s.instalmentOffer.n) > 1 ? s.instalmentOffer : null;
+        payState.apRepair = !!isRepair;
+        payState.autopayChoice = 'self';
+        payAutopayRender();
         payState.guestName = s.guestName || '';
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
@@ -4250,11 +4267,12 @@ async function payWithToken(sourceId, partOverride) {
             // and ignores it outright when there are none. A wallet tap pins the
             // sheet's figure (partOverride); the card path uses the live field.
             part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,
-            // Read at the moment of paying: they can untick it after the render.
-            autopay: !!(
-                document.getElementById('pay-autopay-box') &&
-                /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked
-            ),
+            // Read at the moment of paying — the choice can change after any
+            // render, and 'self' (the default) sends no consent at all. The
+            // monthly COUNT is only ever the one the server offered; pay.php
+            // re-validates it against its own derivation.
+            autopay: payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly',
+            autopay_instalments: payState.autopayChoice === 'monthly' && payState.apMonthly ? Number(payState.apMonthly.n) : 0,
         });
     } catch (e) {
         // THE AMOUNT MOVED WHILE THEY READ IT. Nothing was charged, and a bare
@@ -4447,14 +4465,84 @@ function payPartRender() {
 function payAutopaySync() {
     const wrap = document.getElementById('pay-autopay');
     if (!wrap) return;
+    // Standing down RESETS the decision to the default, so a consent chosen
+    // for the full payment can never ride a slice invisibly. VISIBILITY is
+    // decided inside the renderer — one place — or a sync-then-render pair
+    // can undo each other (measured: the render un-hid what sync had just
+    // stood down).
     const row = document.getElementById('pay-part-row');
     const open = !!(row && row.style.display !== 'none' && payState.part);
-    const show = payState.autopayOffer && !open;
-    wrap.style.display = show ? '' : 'none';
-    if (!show) {
-        const box = /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box'));
-        if (box) box.checked = false;
+    if ((!payState.autopayOffer || open) && payState.autopayChoice !== 'self') {
+        payState.autopayChoice = 'self';
     }
+    payAutopayRender();
+}
+// THE THREE-WAY CARD. Rebuilt per state change (the monthly option opens to
+// its dated schedule only while chosen); the schedule's sum CLOSES on screen
+// (n × per = rest, or its unequal-final form) — the reader can check the
+// maths without deriving anything. Escaping: every figure/date here is
+// gbp()/fmtDate() output, never user text.
+function payAutopayRender() {
+    const wrap = document.getElementById('pay-autopay');
+    if (!wrap) return;
+    const t = payState.apTerms;
+    const row = document.getElementById('pay-part-row');
+    const open = !!(row && row.style.display !== 'none' && payState.part);
+    if (!payState.autopayOffer || !t || open) {
+        wrap.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+    }
+    const mo = payState.apMonthly;
+    const sel = payState.autopayChoice;
+    const opt = (val, title, right, sub, body) => `
+        <label class="pay-ap-opt${sel === val ? ' is-sel' : ''}">
+            <span class="pay-ap-optrow">
+                <input type="radio" name="pay-ap-choice" value="${val}" ${sel === val ? 'checked' : ''} data-act-change="payAutopayChoice">
+                <span class="pay-ap-opttxt">
+                    <span class="pay-ap-title">${title}</span>
+                    ${sub ? `<span class="pay-ap-sub">${sub}</span>` : ''}
+                </span>
+                ${right ? `<span class="pay-ap-fig">${right}</span>` : ''}
+            </span>
+            ${body ? `<span class="pay-ap-body">${body}</span>` : ''}
+        </label>`;
+    let monthly = '';
+    if (mo) {
+        const rest = Math.round((mo.per * (mo.n - 1) + mo.last) * 100) / 100;
+        const rows = mo.dates
+            .map((d, i) => {
+                const last = i === mo.dates.length - 1;
+                return `<span class="ap-row"><span class="ap-step">${i + 1}</span><span class="ap-date">${fmtDate(d)}</span><span class="ap-figc">${gbp(last ? mo.last : mo.per)}</span>${last ? '<span class="ap-note">final</span>' : ''}</span>`;
+            })
+            .join('');
+        const sum =
+            Math.abs(mo.per - mo.last) < 0.005
+                ? `${mo.n} × ${gbp(mo.per)} = ${gbp(rest)}`
+                : `${mo.n - 1} × ${gbp(mo.per)} + ${gbp(mo.last)} = ${gbp(rest)}`;
+        monthly = opt(
+            'monthly',
+            'Monthly',
+            `${mo.n} × ${gbp(mo.per)}`,
+            'from the card you pay with today',
+            sel === 'monthly' ? `<span class="ap-rail">${rows}<span class="ap-sum">${sum}</span></span>` : '',
+        );
+    }
+    wrap.style.display = '';
+    wrap.innerHTML = `
+        <div class="pay-sec-cap" id="pay-ap-cap">${payState.apRepair ? "We couldn't use the card you saved before" : `The ${gbp(t.amount)} that's left`}</div>
+        <p class="pay-ap-lead">Due by ${fmtDate(t.due)} — how would you like to handle it?</p>
+        <div class="pay-ap-opts">
+            ${opt('self', "I'll pay it myself", '', "we'll email you when it's due", '')}
+            ${opt('one', 'One payment', gbp(t.amount), `taken automatically on ${fmtDate(t.due)}`, '')}
+            ${monthly}
+        </div>
+        <p class="pay-ap-fine">We'll email you 3 days before each payment, and you can turn this off any time from My Stays.</p>`;
+}
+function payAutopayChoice() {
+    const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
+    payState.autopayChoice = r && (r.value === 'one' || r.value === 'monthly') ? r.value : 'self';
+    payAutopayRender();
 }
 // Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
 // is independent + best-effort: an unsupported wallet is simply hidden and the
@@ -14623,7 +14711,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payios26a';
+    const BUILD = 'instalb1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -79,6 +79,34 @@ function my_bookings_payload(string $email, bool $preview = false): array
         $ap = booking_autopay_state($bk);
         $bk['autopay_state'] = $ap[0];
         $bk['autopay_says'] = $ap[1];
+        // A MONTHLY plan is shown as the schedule the guest agreed to, with live
+        // states — done / next / still to come — and figures that SUM to what is
+        // actually left (the final row absorbs any manual payments), so the card
+        // can never promise money the ledger disagrees with.
+        $apN = (int) ($bk['autopay_instalments'] ?? 0);
+        if ($ap[0] === 'armed' && $apN > 1 && !empty($bk['autopay_due'])) {
+            $apDue = substr((string) $bk['autopay_due'], 0, 10);
+            $apNext = substr((string) ($bk['autopay_next_at'] ?? ''), 0, 10);
+            $apKind = booking_payment_kind($bk);
+            $apAmt = booking_amount_due($bk, $apKind === 'hold' ? 'deposit' : $apKind);
+            $apRest = round(max(0, (float) $apAmt['due']), 2);
+            $apPer = round((float) ($bk['autopay_amount'] ?? 0), 2);
+            $apDates = [];
+            $apLeft = 0;
+            foreach (booking_instalment_schedule($apDue, $apN) as $d) {
+                $st = $apNext === '' ? 'done' : ($d < $apNext ? 'done' : ($d === $apNext ? 'next' : 'todo'));
+                if ($st !== 'done') {
+                    $apLeft++;
+                }
+                $apDates[] = ['date' => $d, 'state' => $st, 'fig' => $apPer];
+            }
+            // The FINAL not-done row carries the live remainder net of the
+            // middle collections, so the visible rows always sum to $apRest.
+            if ($apLeft > 0) {
+                $apDates[count($apDates) - 1]['fig'] = round(max(0, $apRest - $apPer * ($apLeft - 1)), 2);
+            }
+            $bk['autopay_plan'] = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
+        }
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether
         // it's been submitted.
