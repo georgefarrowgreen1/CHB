@@ -877,6 +877,25 @@ if ($action === 'update') {
     // decision; here we only persist what it returns.
     $replan = booking_replan_on_move($b['check_in'] ?? '', $checkIn, $b['balance_due_date'] ?? null);
 
+    // THE ARRIVAL EMAIL DESCRIBES A STAY — "your stay at {cottage} begins on
+    // {date}, check-in from {time}" — and this action can change the stay out
+    // from under it. pre_arrival_sent is exactly the flag migration-107's note
+    // warns against ("a flag would have to be remembered-to-be-cleared at every
+    // site that can move the date"), and no site cleared it: move the dates or
+    // the cottage after the email went and the guest holds arrival info naming
+    // a stay that no longer exists, the cron's IS NULL guard never re-fires,
+    // the pipeline reads "Arrival info ✓", and the hub's own send-arrival next
+    // action stays suppressed by the stamp. Autopay solved the same problem by
+    // COMPARING (booking_autopay_state re-derives and reads a moved date as
+    // stale); this stamp has nothing to compare against, so it is cleared and
+    // the cron re-sends for the stay as it now is. Only for a FUTURE stay:
+    // editing a finished booking is a record correction, and un-stamping
+    // history would flip a past stay's pipeline. empty() also stands the whole
+    // thing down on a pre-migration DB, where $b carries no such key.
+    $reArrival = !empty($b['pre_arrival_sent'])
+        && ($checkIn !== ($b['check_in'] ?? '') || $propKey !== ($b['prop_key'] ?? ''))
+        && $checkIn >= date('Y-m-d');
+
     $sql = 'UPDATE bookings SET prop_key=?,name=?,email=?,phone=?,address=?,postcode=?,check_in=?,check_out=?,check_in_time=?,check_out_time=?,
             adults=?,children=?,notes=?,payment=?,deposit_paid=?,payment_method=?,payment_date=?,price_override=?';
     $args = [
@@ -918,6 +937,9 @@ if ($action === 'update') {
         $sql .= ',balance_due_date=?';
         $args[] = $replan['due'];
     }
+    if ($reArrival) {
+        $sql .= ',pre_arrival_sent=NULL';
+    }
     $sql .= ' WHERE id = ?';
     $args[] = $id;
     db()->prepare($sql)->execute($args);
@@ -937,6 +959,11 @@ if ($action === 'update') {
         $changes[] = $replan['reason'] === 'past'
             ? 'balance due date dropped to the site standard (it would now be in the past)'
             : 'balance due date moved with the stay ⇒ ' . uk_date($replan['due']);
+    }
+    // Says so in the history, because the guest is about to receive a second
+    // arrival email and the owner should not have to wonder why.
+    if ($reArrival) {
+        $changes[] = 'arrival info will be re-sent — the email already sent names the old stay';
     }
     if ($adults != $b['adults'] || $children != $b['children']) {
         $changes[] = 'party now ' . $adults . ' adult' . ($adults == 1 ? '' : 's') . ($children ? ' + ' . $children : '');
