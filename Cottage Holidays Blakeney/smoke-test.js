@@ -362,6 +362,26 @@ else {
     const due = evalIn(`bookingDue('jollyboat', mapBookingFromApi(${JSON.stringify(row({}))}))`);
     check('the owner-facing due figure = agreed £700 + the £50 deposit',
         due.total === 750 && due.balance === 750);
+
+    // A COMPED STAY IS NOT AN UNPRICED ONE — the JS half of the audit finding
+    // that booking_amount_due had. There, the rate-card fallback fired on
+    // `$total <= 0` and quoted £910 for a stay the owner had set to £0. The JS
+    // keys on whether a price is RECORDED (`row.agreed_total != null`, and
+    // `p = b.agreedPrice || priceBreakdown(...)` falls back on the object being
+    // absent) rather than on the figure being positive — so it was already
+    // right. Pinned, because "already right" is one edit from "was right".
+    const comp = ps({ agreed_total: 0, price_override: 0, agreed_nightly: 0, agreed_per_night: 0 });
+    check('a comped stay owes nothing, not the rate card',
+        comp.total === 0 && comp.balance === 0);
+    check('...and reads as settled rather than as a debt', comp.fullyPaid === true);
+    const compDue = evalIn(`bookingDue('jollyboat', mapBookingFromApi(${JSON.stringify(row({ agreed_total: 0, price_override: 0, agreed_nightly: 0, agreed_per_night: 0 }))}))`);
+    // The refundable deposit still rides it: free to stay is not free to damage.
+    check('the owner-facing figure is the refundable deposit alone',
+        compDue.total === 50 && compDue.balance === 50);
+    // The case the fallback genuinely exists for must still work: a legacy row
+    // with NO price recorded at all still prices from the live rate card.
+    const legacy = ps({ agreed_total: null, price_override: null });
+    check('a legacy row with no price still prices from the rate card', legacy.total > 0);
 }
 
 // THE REVIEW FORM PROMISES ONLY WHAT reviews.php DELIVERS. `submit` writes
