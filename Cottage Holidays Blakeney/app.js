@@ -3878,7 +3878,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0 };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4195,6 +4195,7 @@ async function openPayView(token, bookingId, kind) {
         squareCard = await squarePayments.card();
         await squareCard.attach('#sq-card');
         try {
+            payState.walletAmount = payTotal; // the amount the initial mount prices to
             await mountWallets(payTotal);
         } catch (e) {} // Apple/Google Pay (best-effort)
         if (ld) ld.style.display = 'none';
@@ -4205,7 +4206,11 @@ async function openPayView(token, bookingId, kind) {
 }
 // Charge a Square token (from the card field OR an Apple/Google Pay wallet)
 // through the same server endpoint, then show the receipt state.
-async function payWithToken(sourceId) {
+// partOverride: when a WALLET is tapped, the charge must match the figure the
+// wallet SHEET showed — which is what the wallet was mounted for, not the
+// (possibly un-settled) value in the part field. undefined = the card path,
+// which charges payState.partAmount (the "Pay £X" button's own figure).
+async function payWithToken(sourceId, partOverride) {
     // A damages deposit is an AUTHORISATION (hold), not a charge.
     if (payState.kind === 'hold') {
         await apiPost('pay.php', {
@@ -4236,8 +4241,9 @@ async function payWithToken(sourceId) {
             source_id: sourceId,
             quote: payState.quote,
             // REQUESTED, not decided: pay.php clamps this into its own bounds
-            // and ignores it outright when there are none.
-            part_amount: payState.partAmount || 0,
+            // and ignores it outright when there are none. A wallet tap pins the
+            // sheet's figure (partOverride); the card path uses the live field.
+            part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,
             // Read at the moment of paying: they can untick it after the render.
             autopay: !!(
                 document.getElementById('pay-autopay-box') &&
@@ -4281,19 +4287,10 @@ function payPartToggle() {
     const open = row.style.display === 'none';
     row.style.display = open ? '' : 'none';
     tog.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // THE WALLETS STAND DOWN WHILE THE ROW IS OPEN: they are mounted for the full
-    // amount and cannot be re-priced, so a wallet button beside a part field is
-    // one tap carrying two numbers.
-    ['sq-wallets', 'sq-or'].forEach((id) => {
-        const e = document.getElementById(id);
-        if (!e) return;
-        if (open) {
-            if (v[id] === undefined) v[id] = e.style.display;
-            e.style.display = 'none';
-        } else if (v[id] !== undefined) {
-            e.style.display = v[id];
-        }
-    });
+    // THE WALLETS FOLLOW THE FIGURE. Opening the row re-prices them to the slice
+    // (or takes them down until a valid amount is typed); closing re-prices them
+    // to the full ask. Immediate here — there is no typing race on a toggle.
+    payWalletsReprice();
     if (open) {
         const amt = document.getElementById('pay-part-amt');
         if (amt) {
@@ -4319,6 +4316,7 @@ function payPartSync() {
     const v = Math.round(parseFloat(amt.value) * 100) / 100;
     payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
     payPartRender();
+    payWalletsSchedule(); // re-price Apple/Google Pay to the slice once typing settles
 }
 function payPartRender() {
     const p = payState.part,
@@ -4379,6 +4377,12 @@ function payPartRender() {
 async function mountWallets(amountDue) {
     const wrap = document.getElementById('sq-wallets');
     if (!wrap || !squarePayments) return;
+    // SUPERSEDE. The part flow re-prices the wallets as the guest types, so two
+    // mounts can be in flight at once; a later one bumps this stamp and any
+    // earlier mount that finishes afterwards bails before it appends a button
+    // for a stale amount. Same pattern the search fetches use.
+    const stamp = ++payState.walletStamp;
+    const live = () => payState.walletStamp === stamp;
     wrap.innerHTML = '';
     let any = false;
     let req;
@@ -4400,13 +4404,20 @@ async function mountWallets(amountDue) {
                     (result.errors && result.errors[0] && result.errors[0].message) ||
                         'Payment was cancelled.',
                 );
-            await payWithToken(result.token);
+            // A slice ONLY when the part row is open — then this wallet was
+            // mounted for payState.walletAmount and that is what its sheet
+            // showed. Closed = full payment, so no part_amount (0), or the
+            // server would clamp the refundable deposit off a full charge.
+            const partRow = document.getElementById('pay-part-row');
+            const sliceMode = !!(partRow && partRow.style.display !== 'none' && payState.part);
+            await payWithToken(result.token, sliceMode ? payState.walletAmount : 0);
         } catch (e) {
             setPayMsg(e.message || 'Payment failed. Please try again.');
         }
     };
     try {
         const gp = await squarePayments.googlePay(req);
+        if (!live()) return;
         const el = document.createElement('div');
         el.id = 'sq-gpay';
         wrap.appendChild(el);
@@ -4426,6 +4437,7 @@ async function mountWallets(amountDue) {
     }
     try {
         const ap = await squarePayments.applePay(req);
+        if (!live()) return;
         const btn = document.createElement('button');
         btn.id = 'sq-apay';
         btn.type = 'button';
@@ -4440,6 +4452,7 @@ async function mountWallets(amountDue) {
         const x = document.getElementById('sq-apay');
         if (x) x.remove();
     }
+    if (!live()) return;
     const orEl = document.getElementById('sq-or');
     if (orEl) orEl.style.display = any ? '' : 'none';
     // ONE LABEL, NOT TWO. With a wallet mounted the divider already reads "or
@@ -4448,6 +4461,51 @@ async function mountWallets(amountDue) {
     // divider, and the heading is then the only thing naming the field.
     const lblEl = document.getElementById('sq-card-label');
     if (lblEl) lblEl.style.display = any ? 'none' : '';
+}
+// WHAT THE WALLET MUST CHARGE, RIGHT NOW: the slice when one is validly armed,
+// the full amount when the part row is closed, and NOTHING while the row is
+// open with no valid amount yet (there is nothing to charge, and the "Pay"
+// button says as much). Re-mounts only when the target actually moves, so a
+// wallet button never shows a figure the guest didn't choose — the owner's
+// point: part-paying must still offer Apple/Google Pay, priced to the part.
+function payWalletsTarget() {
+    const v = payState.partView;
+    const row = document.getElementById('pay-part-row');
+    const open = !!(row && row.style.display !== 'none');
+    if (!payState.part) return payState.amountDue; // no part feature → full
+    if (open) return payState.partAmount > 0 ? payState.partAmount : 0;
+    return v ? v.due : payState.amountDue; // closed → the full ask
+}
+function payWalletsReprice() {
+    const wrap = document.getElementById('sq-wallets');
+    const orEl = document.getElementById('sq-or');
+    const lblEl = document.getElementById('sq-card-label');
+    const target = Math.round(payWalletsTarget() * 100) / 100;
+    if (!(target > 0)) {
+        // Nothing to charge yet — take the wallets down and cancel any in-flight
+        // mount so a late one can't paint a stale button.
+        ++payState.walletStamp;
+        if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
+        if (orEl) orEl.style.display = 'none';
+        if (lblEl) lblEl.style.display = '';
+        payState.walletAmount = 0;
+        return;
+    }
+    // Already priced right and on screen → leave it (avoids a needless re-mount
+    // flicker when the render fires but the amount hasn't moved).
+    if (Math.abs(target - payState.walletAmount) < 0.005 && wrap && wrap.style.display !== 'none') return;
+    if (wrap) wrap.style.display = '';
+    payState.walletAmount = target;
+    mountWallets(target).catch(() => {});
+}
+// Debounced: typing "120" should re-price ONCE when they stop, not thrice as
+// the digits arrive (each re-mount re-renders the Apple Pay button).
+function payWalletsSchedule() {
+    if (payState.walletT) clearTimeout(payState.walletT);
+    payState.walletT = setTimeout(() => {
+        payState.walletT = null;
+        try { payWalletsReprice(); } catch (e) {}
+    }, 350);
 }
 async function submitPayment() {
     if (!squareCard) return;
@@ -14469,7 +14527,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sqfix502';
+    const BUILD = 'walletpart';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
