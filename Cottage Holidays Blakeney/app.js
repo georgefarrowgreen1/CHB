@@ -4149,6 +4149,10 @@ async function openPayView(token, bookingId, kind) {
         payState.part =
             s.part && Number(s.part.max) > 0 ? { min: Number(s.part.min), max: Number(s.part.max) } : null;
         payState.partAmount = 0;
+        // Fresh screen, fresh hero — a re-open must not tick the figure over
+        // on top of the body's own entrance.
+        const bigSeed = document.getElementById('pay-amount');
+        if (bigSeed) delete bigSeed.dataset.fig;
         const partRow = document.getElementById('pay-part-row');
         const partAmt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
         const partTog = document.getElementById('pay-part-toggle');
@@ -4423,6 +4427,17 @@ function payPartRender() {
     // An open row with nothing valid in it is not a payment yet, so the button
     // says so rather than quietly charging the full amount they just declined.
     if (btn) btn.disabled = open && !armed;
+    // The hero TICKS OVER on a real figure change only — dataset.fig is
+    // cleared by openPayView so the first paint rides the body's entrance.
+    if (big) {
+        const prev = big.dataset.fig;
+        if (prev !== undefined && prev !== big.textContent) {
+            big.classList.remove('pay-amt-swap');
+            void big.offsetWidth; // restart the animation
+            big.classList.add('pay-amt-swap');
+        }
+        big.dataset.fig = big.textContent;
+    }
     payAutopaySync();
 }
 // THE ARRANGEMENT STANDS DOWN WHILE THE PART ROW IS OPEN: its sentence quotes
@@ -14608,7 +14623,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'partsnap1';
+    const BUILD = 'payanim1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

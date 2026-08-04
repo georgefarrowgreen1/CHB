@@ -481,6 +481,43 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(snapEmpty.val === '' && snapEmpty.btnOff, 'an empty commit stays empty — blank is not a choice');
 
+  // ============================================================
+  //  MOTION — the journey eases instead of cutting. Entrances are CSS
+  //  animations that replay whenever a panel goes display:none → shown, and
+  //  the hero ticks over on a real figure change (the .pay-amt-swap kick in
+  //  payPartRender — several figures have changed by this point in the suite,
+  //  so the class must be on). Reduced motion is asserted as the RULE via
+  //  CSSOM: Chromium's reduce emulation forces every duration to ~0
+  //  regardless of author CSS, so a computed read cannot tell our off-switch
+  //  from the browser's own (the coach-marks lesson).
+  // ============================================================
+  const motion = await page.evaluate(() => {
+    const an = (el) => (el ? getComputedStyle(el).animationName : '');
+    let rmRule = false;
+    for (const ss of document.styleSheets) {
+      let rules;
+      try { rules = ss.cssRules; } catch (e) { continue; }
+      for (const r of rules) {
+        // NB Chromium serializes `animation: none` long-hand ("animation:
+        // auto ease 0s 1 normal none running none"), so match the reset
+        // loosely — the break-test (deleting the block) still fails this.
+        if (r.media && /prefers-reduced-motion/.test(r.media.mediaText) && /#pay-body/.test(r.cssText) && /animation:[^;]*none/.test(r.cssText)) rmRule = true;
+      }
+    }
+    return {
+      body: an(document.getElementById('pay-body')),
+      row: an(document.getElementById('pay-part-row')),
+      express: an(document.getElementById('pay-express')),
+      amt: an(document.getElementById('pay-amount')),
+      swapClass: document.getElementById('pay-amount').classList.contains('pay-amt-swap'),
+      rmRule,
+    };
+  });
+  ok(motion.body === 'payRise', `the form eases in rather than cutting (${motion.body})`);
+  ok(motion.row === 'payRise' && motion.express === 'payRise', `the part row and express panel ease in when they appear (${motion.row}/${motion.express})`);
+  ok(motion.amt === 'payAmtSwap' && motion.swapClass, `the hero ticks over when its figure changes (${motion.amt})`);
+  ok(motion.rmRule, 'reduced motion stands ALL of it down — asserted as the rule, not a computed read');
+
   // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
   // the sub's itemised lines and the settle-it-all link return as they were.
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());
@@ -763,6 +800,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     done: document.getElementById('pay-done').style.display !== 'none',
     sub: (document.getElementById('pay-done-sub') || {}).textContent || '',
     restShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
+    panelAnim: getComputedStyle(document.getElementById('pay-done')).animationName,
+    tickAnim: getComputedStyle(document.querySelector('.pay-done-tick .ic')).animationName,
   }));
   const charge = posts.find((p) => p.__url === 'pay.php' && p.action === 'charge');
   ok(!!charge && charge.source_id === 'tok_test_1' && charge.kind === 'balance', `charge posted with the tokenized card (${charge && charge.source_id})`);
@@ -770,6 +809,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // The pay-the-rest button belongs to a slice's done screen alone — a full
   // payment must not carry a stale one over from the earlier part charge.
   ok(!done.restShown, 'a full payment offers no "pay the rest"');
+  ok(done.panelAnim === 'payRise' && done.tickAnim === 'payPop',
+    `the done panel eases in and the tick pops on the spring (${done.panelAnim}/${done.tickAnim})`);
 
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);
