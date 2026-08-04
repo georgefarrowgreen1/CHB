@@ -2796,12 +2796,42 @@ a.card {
   font-variant-numeric: tabular-nums;
   color: var(--text-light);
 }
-/* PAY PART OF IT — a quiet alternative beneath the primary action, never a
-   competitor to it. Its toggle wears .pay-full-link and its field .input-glass:
-   both looks already exist on this screen, and a second one would say the same
-   thing in a different accent. */
+/* PAY PART OF IT — now the FIRST decision on the form (decide the amount, then
+   choose how to pay it), so its toggle stopped being a buried text link and
+   became a visible choice control: a full-width bordered pill at the house
+   44px floor. The open row is a soft panel, so "I'm paying part" reads as a
+   mode you are in, not a field floating in space. */
 .pay-part {
-  margin-top: 12px;
+  margin: 2px 0 14px;
+}
+#pay-part-toggle {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.16s var(--fluid-bezier), border-color 0.16s var(--fluid-bezier);
+}
+@media (hover: hover) {
+  #pay-part-toggle:hover {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+.pay-part-row {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 .pay-part-lbl {
   display: block;
@@ -2861,6 +2891,34 @@ a.card {
 .sq-card {
   min-height: 56px;
   padding: 4px 0;
+}
+/* EXPRESS CHECKOUT — the wallets in a captioned panel whose caption names the
+   LIVE figure they are priced to (mountWallets writes it). This is what makes a
+   re-priced part payment legible: "Express checkout · £120.00" in words,
+   directly above the buttons that will take it. Boxing is safe here — these are
+   OUR buttons; the card iframe below stays unboxed (see .sq-card's note). */
+.pay-express {
+  padding: 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+}
+.pay-sec-cap {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.pay-sec-amt {
+  color: var(--accent-text);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.pay-sec-amt:not(:empty)::before {
+  content: ' · ';
+  color: var(--text-muted);
+  font-weight: 400;
 }
 .sq-wallets {
   display: flex;

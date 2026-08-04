@@ -470,20 +470,45 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
-  const wFull = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none', apay: !!document.getElementById('sq-apay') }));
+  const wFull = await page.evaluate(() => ({
+    req: window.__wreq,
+    shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none',
+    apay: !!document.getElementById('sq-apay'),
+    panel: (document.getElementById('pay-express') || { style: {} }).style.display !== 'none',
+    cap: (document.getElementById('pay-express-cap') || {}).textContent || '',
+    // THE ORDER IS THE FIX (owner's screenshot): the amount choice must come
+    // BEFORE the express panel, so a re-priced wallet lands directly beneath
+    // the field the guest is typing in — not two sections above it.
+    partFirst: !!(document.getElementById('pay-part') && document.getElementById('pay-express') &&
+      (document.getElementById('pay-part').compareDocumentPosition(document.getElementById('pay-express')) & Node.DOCUMENT_POSITION_FOLLOWING)),
+  }));
   ok(wFull.req === '340.00' && wFull.shown && wFull.apay, `the balance ask mounts wallets for the FULL amount (${wFull.req})`);
+  ok(wFull.panel && /Express checkout/.test(wFull.cap) && /£340\.00/.test(wFull.cap),
+    `the express panel captions the FULL figure in words (${wFull.cap.trim()})`);
+  ok(wFull.partFirst, 'the amount choice sits ABOVE the express panel — decide the amount, then how to pay it');
 
   // Open the part row with nothing typed → wallets come down (nothing to charge).
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());
   await page.waitForTimeout(150);
-  const wOpen = await page.evaluate(() => ((document.getElementById('sq-wallets') || { style: {} }).style.display));
-  ok(wOpen === 'none', `opening with no amount takes the wallets down (${wOpen})`);
+  const wOpen = await page.evaluate(() => ({
+    w: (document.getElementById('sq-wallets') || { style: {} }).style.display,
+    panel: (document.getElementById('pay-express') || { style: {} }).style.display,
+  }));
+  ok(wOpen.w === 'none', `opening with no amount takes the wallets down (${wOpen.w})`);
+  ok(wOpen.panel === 'none', '…and the captioned panel goes with them — no empty box claiming a checkout');
 
   // Type a slice → after the debounce the wallets RE-MOUNT, priced to the slice.
   await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '120'; a.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.waitForTimeout(600);
-  const wSlice = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none', apay: !!document.getElementById('sq-apay') }));
+  const wSlice = await page.evaluate(() => ({
+    req: window.__wreq,
+    shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none',
+    apay: !!document.getElementById('sq-apay'),
+    cap: (document.getElementById('pay-express-cap') || {}).textContent || '',
+  }));
   ok(wSlice.req === '120.00' && wSlice.shown && wSlice.apay, `a valid slice re-prices Apple/Google Pay to the slice (${wSlice.req})`);
+  ok(/£120\.00/.test(wSlice.cap) && !/£340\.00/.test(wSlice.cap),
+    `…and the caption states the slice in words above the buttons (${wSlice.cap.trim()})`);
 
   // TAP the wallet: it must charge the £120 its sheet showed, as a part_amount —
   // never the full amount, and never a value the field moved to after the mount.
