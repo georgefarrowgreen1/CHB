@@ -524,6 +524,14 @@
             <p style="font-size:1.15rem;font-weight:600;margin:0 0 6px;">Experiences coming soon</p>
             <p style="font-size:0.9rem;color:var(--text-muted);margin:0;">We're putting together our favourite local spots. Know a great one? Suggest it below.</p>
         </div>
+        <!-- COULDN'T LOAD is not the same as THERE ARE NONE. Its own panel, because
+             #exp-empty above makes a claim about the business ("we're still putting
+             them together") that a dropped request has no standing to make. -->
+        <div id="exp-error" class="glass-panel" style="display:none;padding:32px;text-align:center;">
+            <p style="font-size:1.15rem;font-weight:600;margin:0 0 6px;">Couldn&rsquo;t load our local favourites</p>
+            <p style="font-size:0.9rem;color:var(--text-muted);margin:0 0 14px;">The connection dropped on the way. They&rsquo;re still here &mdash; have another go.</p>
+            <button type="button" class="btn-glass" data-act="renderExperiencesView">Try again</button>
+        </div>
 
         <!-- Area info (moved here from the cottage pages): a dark-skies note plus
              the live Blakeney tide times. Tide card stays hidden until tides.php
@@ -1806,7 +1814,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=695"></script>
+    <script defer src="app.js?v=696"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

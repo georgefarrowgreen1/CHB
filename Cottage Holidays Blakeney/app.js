@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 410;
+const ADMIN_BUNDLE_V = 411;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -2679,7 +2679,12 @@ async function loadWelcomeBack() {
                 checkOut: r.check_out,
             }));
         } catch (e) {
-            __wbStays = [];
+            // Left NULL, not emptied: `[]` is the answer "you have never stayed
+            // with us", and the guard above caches it for the session, so a
+            // dropped request permanently turned a returning guest into a
+            // first-timer — no rebook nudge, no "you've stayed here before".
+            // Null shows the same nothing and lets the next call try again.
+            return;
         }
     }
     renderWelcomeBack();
@@ -14215,14 +14220,33 @@ let __expFilter = 'all';
 async function renderExperiencesView() {
     const grid = document.getElementById('exp-grid');
     const empty = document.getElementById('exp-empty');
+    const errEl = document.getElementById('exp-error');
     const filters = document.getElementById('exp-filters');
     if (!grid) return;
+    // A DROPPED REQUEST IS NOT AN EMPTY LIST — the loadContent/loadData rule, on
+    // the one guest page where breaking it DELETED what was already on screen.
+    // The catch used to write `[]`, and the branch below then blanked #exp-grid
+    // and showed "Experiences coming soon · We're putting together our favourite
+    // local spots": a claim about the BUSINESS, made because a fetch failed, with
+    // no way back but leaving the page. Worse on /experiences, which
+    // experiences-page.php renders server-side INTO that same grid for crawlers —
+    // so a poor connection wiped real content the guest was already reading.
+    let failed = false;
     try {
         const res = await apiGet('experiences.php');
         __experiences = (res && res.experiences) || [];
     } catch (e) {
-        __experiences = [];
+        failed = true;
     }
+    if (failed && !__experiences.length) {
+        // Nothing is emptied. If the server already rendered the list into the
+        // grid it stays; only a genuinely blank page earns the panel, and the
+        // panel says what happened and offers to try again.
+        if (errEl && !grid.querySelector('*')) errEl.style.display = 'block';
+        if (empty) empty.style.display = 'none';
+        return;
+    }
+    if (errEl) errEl.style.display = 'none';
     if (!__experiences.length) {
         grid.innerHTML = '';
         if (filters) filters.innerHTML = '';
@@ -14424,7 +14448,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'waitwatch';
+    const BUILD = 'expfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
