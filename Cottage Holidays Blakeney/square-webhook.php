@@ -187,7 +187,9 @@ $total =
             ? (float) $b['price_override']
             : (float) $b['agreed_total'])
         : 0.0;
-if ($total <= 0) {
+// Only when there is NO recorded price — a zero is a comped stay, not a missing
+// one. See booking_has_price in pricing.php.
+if ($total <= 0 && !booking_has_price($b)) {
     $rate = get_rate($b['prop_key']);
     if ($rate) {
         $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);

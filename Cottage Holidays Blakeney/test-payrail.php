@@ -669,11 +669,26 @@ chk('the server invoice takes the same branch — one booking, one shape of docu
 // paymentSummary/bookingDue: £700 override → £175-shaped deposit staging, £525
 // balance, settled at £700 with the £910 snapshot never owed).
 $priS = (string) file_get_contents(__DIR__ . '/pricing.php');
-chk('booking_amount_due asks off the override-resolved total',
-    // The deposit maths moved into booking_deposit_amount($b, $total) — the claim
-    // is unchanged (the override resolves into $total BEFORE the deposit share is
-    // taken of it), the shape is now the shared per-booking-plan helper.
-    preg_match('/function booking_amount_due[\s\S]{0,400}price_override[\s\S]{0,600}\$depositAmount = booking_deposit_amount\(\$b, \$total\)/', $priS) === 1);
+// DRIVEN, not scanned. This was a source regex measuring CHARACTER DISTANCE
+// between `price_override` and the deposit line, so an unrelated edit inside the
+// function broke it while the claim stayed true — the shape this file has been
+// replacing all along. The claim is that the override resolves into $total
+// BEFORE the deposit share is taken of it: 25% of a £700 override is £175, not
+// £227.50 (25% of the £910 snapshot it replaced).
+$ovr = [
+    'id' => 0, 'prop_key' => 'jollyboat', 'check_in' => date('Y-m-d', strtotime('+200 days')),
+    'check_out' => date('Y-m-d', strtotime('+207 days')), 'adults' => 2, 'children' => 0,
+    'agreed_total' => 910.0, 'price_override' => 700.0, 'deposit_paid' => 0.0,
+    'deposit_pct_override' => 25.0, 'deposit_amount_override' => null, 'balance_due_date' => null,
+    'damages_deposit' => 0.0, 'hold_status' => 'none', 'hold_amount' => 0.0,
+];
+$ovrDue = booking_amount_due($ovr, 'deposit');
+chk('booking_amount_due asks off the override-resolved total (£' . number_format((float) ($ovrDue['due'] ?? 0), 2) . ')',
+    abs((float) $ovrDue['due'] - 175.0) < 0.005);
+chk('...and never off the snapshot the override replaced',
+    abs((float) $ovrDue['due'] - 227.5) > 0.005);
+chk('...with the balance the whole overridden stay',
+    abs((float) booking_amount_due($ovr, 'balance')['due'] - 700.0) < 0.005);
 $payS2 = (string) file_get_contents(__DIR__ . '/pay.php');
 // Stage-1 overhaul: the override resolution moved INSIDE booking_amount_due
 // (pinned above); pay.php's claim is now that its total IS the helper's.
@@ -1210,6 +1225,43 @@ $apSrcR = file_get_contents(__DIR__ . '/autopay-lib.php');
 chk('a collection actually sends the receipt', strpos($apSrcR, 'autopay_send_receipt($b, $sqId, $rental, $damages);') !== false);
 chk('...marked automatic', strpos($apSrcR, "'automatic' => true,") !== false);
 chk('the daily run actually sends the notices', strpos(file_get_contents(__DIR__ . '/autopay-run.php'), 'autopay_notice_run($today)') !== false);
+
+// ============================================================
+//  A COMPED STAY IS NOT AN UNPRICED ONE
+//
+//  Found by driving booking_amount_due with hostile inputs: a booking whose
+//  price_override the owner had set to 0 — the natural way to give a stay away
+//  — was quoted the FULL RATE CARD, because the rate-card fallback fires on
+//  `$total <= 0` and cannot tell "no price recorded" from "priced at nothing".
+//  Measured: booking_rental_price said £0.00 and booking_amount_due said
+//  £910.00 for the same booking. pay.php derives its charge from the second, so
+//  the guest would have been asked for and charged the whole price of a free
+//  stay. Two definitions, disagreeing by the entire value of the stay.
+//
+//  bookings.php already made the distinction and documented WHY the fallback
+//  exists — legacy pre-snapshot rows, where agreed_total is NULL. It was the
+//  outlier that revealed pricing.php and square-webhook.php were missing it.
+// ============================================================
+echo "\n-- a recorded price of zero IS a price --\n";
+chk('a comped stay carries a price', booking_has_price(['price_override' => 0.0, 'agreed_total' => 0.0]));
+chk('...however the zero is typed', booking_has_price(['price_override' => '0', 'agreed_total' => null]));
+chk('an ordinary priced stay carries one', booking_has_price(['price_override' => null, 'agreed_total' => 910.0]));
+chk('an override alone is enough', booking_has_price(['price_override' => 750.0, 'agreed_total' => null]));
+// The case the fallback genuinely exists for, and which must keep working: a
+// legacy pre-snapshot row with no price at all.
+chk('a legacy row with NO price does not', !booking_has_price(['price_override' => null, 'agreed_total' => null]));
+chk('...nor an empty string, which is how a cleared field arrives', !booking_has_price(['price_override' => '', 'agreed_total' => '']));
+chk('...nor a row missing the columns entirely', !booking_has_price([]));
+// WIRING — the predicate alone passes with every call site reverted, which is
+// exactly how two of the three sites came to be missing this in the first place.
+$prcSrc = (string) file_get_contents(__DIR__ . '/pricing.php');
+$whSrc = (string) file_get_contents(__DIR__ . '/square-webhook.php');
+$bkSrc2 = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('booking_amount_due asks the predicate, not the figure', strpos($prcSrc, '$total <= 0 && !booking_has_price($b)') !== false);
+chk('the Square webhook asks it too', strpos($whSrc, '$total <= 0 && !booking_has_price($b)') !== false);
+chk('...and the bookings write path', strpos($bkSrc2, '$total <= 0 && !booking_has_price($b)') !== false);
+chk('no bare `$total <= 0` fallback is left anywhere',
+    preg_match('/\$total <= 0\)\s*\{\s*\n\s*\$rate = get_rate/', $prcSrc . $whSrc . $bkSrc2) !== 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {

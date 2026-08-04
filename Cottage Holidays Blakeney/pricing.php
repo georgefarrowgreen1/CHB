@@ -562,6 +562,30 @@ function booking_next_payment($b, $rate = null)
 
 // Effective total + amount due for a kind ('deposit'|'balance'), server-authoritative.
 // 'balance' = everything still outstanding; 'deposit' = the deposit % minus anything paid.
+// DOES THIS BOOKING CARRY A PRICE OF ITS OWN?
+//
+// The rate-card fallback below exists for LEGACY PRE-SNAPSHOT rows, where
+// agreed_total is NULL and there is genuinely no price to read — bookings.php
+// says so in its own copy of this guard. What it must never do is treat a
+// recorded price of ZERO as "no price yet", because zero IS a price: it is how
+// an owner comps a stay.
+//
+// Measured before the fix: a booking with price_override = 0 was quoted £910 by
+// booking_amount_due — the full rate card — while booking_rental_price said
+// £0.00 for the same stay. pay.php derives its charge from the first, so the
+// guest would have been asked for, and charged, the whole price of a stay the
+// owner had given away. Two definitions, disagreeing by the entire value.
+//
+// One predicate now, used by all three sites that fall back (this one,
+// square-webhook.php, and bookings.php — which already had the distinction and
+// was the outlier that revealed the other two were missing it).
+function booking_has_price($b)
+{
+    $o = $b['price_override'] ?? null;
+    $a = $b['agreed_total'] ?? null;
+    return ($o !== null && $o !== '') || ($a !== null && $a !== '');
+}
+
 function booking_amount_due($b, $kind)
 {
     $total =
@@ -570,7 +594,9 @@ function booking_amount_due($b, $kind)
                 ? (float) $b['price_override']
                 : (float) $b['agreed_total'])
             : 0.0;
-    if ($total <= 0) {
+    // A price_override of 0 leaves agreed_total 0 too (the add/update paths copy
+    // it across), so the guard has to ask the PREDICATE rather than the figure.
+    if ($total <= 0 && !booking_has_price($b)) {
         $rate = get_rate($b['prop_key']);
         if ($rate) {
             $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
