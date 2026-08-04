@@ -2744,7 +2744,7 @@ a.card {
   text-align: center;
   padding: 22px 18px;
   margin-bottom: 20px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg); /* the iOS-sheet curve — matches .pay-express */
   background: var(--glass-bg);
 }
 .pay-amount-label {
@@ -2900,7 +2900,7 @@ a.card {
 .pay-express {
   padding: 14px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
 }
 .pay-sec-cap {
@@ -3140,6 +3140,73 @@ a.card {
 #pay-amount.pay-amt-swap {
   animation: payAmtSwap 0.3s var(--fluid-bezier);
 }
+/* THE APPLE PAY VOCABULARY. Sheet cascade (backwards fill holds each block
+   until its turn); the confirm DRAWS — ring then check (dash lengths cover the
+   real geometry: circle r=9 → 2πr≈57, check ≈15); a spinner rides the button
+   while money moves; the pill controls compress under the finger. */
+.pay-summary > *,
+.pay-form > * {
+  animation: payRise 0.42s var(--fluid-bezier) backwards;
+}
+.pay-form > :nth-child(2) {
+  animation-delay: 0.05s;
+}
+.pay-form > :nth-child(3) {
+  animation-delay: 0.1s;
+}
+.pay-form > :nth-child(n + 4) {
+  animation-delay: 0.16s;
+}
+.pay-done-tick circle {
+  stroke-dasharray: 57;
+  stroke-dashoffset: 57;
+  animation: payDraw 0.5s var(--fluid-bezier) 0.15s forwards;
+}
+.pay-done-tick path {
+  stroke-dasharray: 15;
+  stroke-dashoffset: 15;
+  animation: payDraw 0.35s var(--fluid-bezier) 0.55s forwards;
+}
+@keyframes payDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+/* …and the done words follow the mark. */
+#pay-done h2 {
+  animation: payRise 0.4s var(--fluid-bezier) 0.3s backwards;
+}
+#pay-done p {
+  animation: payRise 0.4s var(--fluid-bezier) 0.42s backwards;
+}
+#pay-done button {
+  animation: payRise 0.4s var(--fluid-bezier) 0.54s backwards;
+}
+#pay-btn.is-busy::after {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: 9px;
+  vertical-align: -2px;
+  border: 2px solid var(--accent-ink);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: paySpin 0.7s linear infinite;
+}
+@keyframes paySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+#view-pay .pay-full-link,
+#pay-done button {
+  transition: transform 0.18s var(--fluid-bezier);
+}
+#view-pay .pay-full-link:active,
+#pay-done button:active {
+  transform: scale(0.965);
+}
 @media (prefers-reduced-motion: reduce) {
   #pay-body,
   .pay-done,
@@ -3149,8 +3216,26 @@ a.card {
   .pay-autopay,
   .pay-msg.show,
   .pay-error,
-  #pay-amount.pay-amt-swap {
+  #pay-amount.pay-amt-swap,
+  .pay-summary > *,
+  .pay-form > *,
+  #pay-done h2,
+  #pay-done p,
+  #pay-done button,
+  #pay-btn.is-busy::after {
     animation: none;
+  }
+  /* The DRAW starts invisible: with its animation gone the strokes must be
+     restored, or reduced motion deletes the tick itself. */
+  .pay-done-tick circle,
+  .pay-done-tick path {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  #view-pay .pay-full-link:active,
+  #pay-done button:active {
+    transform: none;
   }
 }
 /* Desktop: make use of the wider screen — order summary beside the card form
