@@ -337,9 +337,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(rest0.offered && !rest0.rowOpen, 'the offer is there, folded away');
   ok(/pay part of it/i.test(rest0.tog), `…and names itself in plain words (${rest0.tog})`);
 
-  // OPEN IT. The wallets stand down — Apple/Google Pay are mounted for the full
-  // amount and cannot be re-priced, so a wallet button beside a part field is
-  // one tap carrying two numbers. Nothing is armed yet, so the button waits.
+  // OPEN IT. With no valid amount typed there is nothing to charge, so the
+  // wallets come down (and the "Pay" button waits) — they return, priced to the
+  // slice, the moment a valid amount is entered. The dedicated wallet section
+  // below drives that with a working wallet stub.
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());
   await page.waitForTimeout(200);
   const opened = await page.evaluate(() => ({
@@ -359,7 +360,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // payment that completes the stage, and the hint has to say where it went or
   // "up to £290" under a £340 headline reads as an error.
   ok(/refundable £50\.00 deposit follows/.test(opened.hint), '…and where the refundable deposit went');
-  ok(opened.wallets === 'none' && opened.or === 'none', `the wallets stand down (${opened.wallets}/${opened.or})`);
+  ok(opened.wallets === 'none' && opened.or === 'none', `no valid amount yet → nothing to charge, wallets down (${opened.wallets}/${opened.or})`);
   ok(opened.btnOff, 'nothing typed yet → the button waits rather than charging the full amount');
   ok(opened.hero === '£340.00', `…and the hero has not moved yet (${opened.hero})`);
 
@@ -447,6 +448,106 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     btn: (document.getElementById('pay-btn') || {}).textContent || '',
   }));
   ok(!reset.open && reset.btn === 'Pay £340.00', `re-opening the screen resets the offer (${reset.btn})`);
+
+  // ============================================================
+  //  WALLETS FOLLOW THE SLICE (owner's report: part-paying must still show
+  //  Apple / Google Pay). The wallet is priced at MOUNT time, so the fix is to
+  //  re-mount it to the slice as the guest types — never hide it — and to pin a
+  //  wallet tap to the figure its sheet actually showed, not the live field.
+  // ============================================================
+  await page.evaluate(() => {
+    // A wallet-capable stub: paymentRequest records the total it was priced to,
+    // and each wallet tokenizes to a distinct token so the charge can be traced.
+    window.__wreq = null;
+    window.Square = {
+      payments: () => ({
+        card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_test_1' }) }),
+        paymentRequest: (o) => { window.__wreq = o && o.total && o.total.amount; return {}; },
+        googlePay: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_gpay' }) }),
+        applePay: async () => ({ tokenize: async () => ({ status: 'OK', token: 'tok_apay' }) }),
+      }),
+    };
+  });
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  const wFull = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none', apay: !!document.getElementById('sq-apay') }));
+  ok(wFull.req === '340.00' && wFull.shown && wFull.apay, `the balance ask mounts wallets for the FULL amount (${wFull.req})`);
+
+  // Open the part row with nothing typed → wallets come down (nothing to charge).
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150);
+  const wOpen = await page.evaluate(() => ((document.getElementById('sq-wallets') || { style: {} }).style.display));
+  ok(wOpen === 'none', `opening with no amount takes the wallets down (${wOpen})`);
+
+  // Type a slice → after the debounce the wallets RE-MOUNT, priced to the slice.
+  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '120'; a.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(600);
+  const wSlice = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none', apay: !!document.getElementById('sq-apay') }));
+  ok(wSlice.req === '120.00' && wSlice.shown && wSlice.apay, `a valid slice re-prices Apple/Google Pay to the slice (${wSlice.req})`);
+
+  // TAP the wallet: it must charge the £120 its sheet showed, as a part_amount —
+  // never the full amount, and never a value the field moved to after the mount.
+  const before = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
+  await page.evaluate(() => document.getElementById('sq-apay').click());
+  await page.waitForTimeout(700);
+  const wCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(before).pop();
+  ok(!!wCharge && wCharge.source_id === 'tok_apay', `the wallet tap tokenises through the wallet (${wCharge && wCharge.source_id})`);
+  ok(!!wCharge && wCharge.part_amount === 120, `…and charges the slice the sheet showed, not the full ask (${wCharge && wCharge.part_amount})`);
+
+  // THE PIN IS LOAD-BEARING: type a NEW figure and tap the wallet BEFORE the
+  // 350ms re-mount fires. The sheet still shows the old £120, so the charge must
+  // be £120 — the mounted amount — not the £150 now in the field. Without the
+  // pin the wallet would take a number its own sheet never displayed.
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(120);
+  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '120'; a.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(600); // let the wallet mount at £120
+  const pinBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
+  await page.evaluate(() => {
+    const a = document.getElementById('pay-part-amt'); a.value = '150'; a.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('sq-apay').click(); // tap NOW, before the 350ms re-mount
+  });
+  await page.waitForTimeout(700);
+  const pinCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(pinBefore).pop();
+  ok(!!pinCharge && pinCharge.part_amount === 120,
+    `a wallet tap charges the mounted figure, not an un-settled field value (${pinCharge && pinCharge.part_amount})`);
+
+  // A WALLET TAP WHILE CLOSED IS A FULL PAYMENT — part_amount 0, never the
+  // mounted figure. On the deposit stage the full charge is rental + refundable
+  // deposit; sending the mounted £225 would clamp the deposit off (booking_part
+  // _amount caps at the rental). So closed must send 0.
+  await page.evaluate(() => openPayView('paytok', '3', 'deposit'));
+  await page.waitForTimeout(900);
+  const depBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
+  await page.evaluate(() => document.getElementById('sq-apay').click());
+  await page.waitForTimeout(700);
+  const depCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(depBefore).pop();
+  ok(!!depCharge && depCharge.part_amount === 0,
+    `a wallet tap on the full deposit stage sends no slice, so the deposit is not clamped off (${depCharge && depCharge.part_amount})`);
+
+  // Closing re-prices the wallets back to the full ask.
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150); // open (wallets down)
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150); // close → immediate reprice to full
+  const wClose = await page.evaluate(() => ({ req: window.__wreq, shown: (document.getElementById('sq-wallets') || { style: {} }).style.display !== 'none' }));
+  ok(wClose.req === '340.00' && wClose.shown, `closing the row re-prices the wallets to the full ask (${wClose.req})`);
+
+  // Restore the wallet-less stub so the card-path sections below are unchanged.
+  await page.evaluate(() => {
+    window.Square = {
+      payments: () => ({
+        card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_test_1' }) }),
+        paymentRequest: () => { throw new Error('no wallets in this test'); },
+      }),
+    };
+  });
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
 
   // A DECLINED CARD KEEPS THE RETRY ALIVE. The decline must land as an inline
   // message with the form still on screen and the button re-enabled — routed

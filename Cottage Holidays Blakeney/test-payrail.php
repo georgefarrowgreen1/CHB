@@ -1352,7 +1352,7 @@ chk('the quote is verified BEFORE the part is applied', $qAt !== false && $cAt !
 // The refundable deposit rides the payment that COMPLETES the stage, not a
 // slice of it: bundling £50 onto a £20 request makes the sum not what they typed.
 chk('a part payment carries no refundable deposit', strpos($paySrc, '$damagesDue = 0.0;') !== false);
-chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: payState.partAmount || 0,') !== false);
+chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,') !== false);
 chk('...and the field is offered only when the server sends bounds', strpos($appSrc2, 'if (partWrap) partWrap.style.display = payState.part ? \'\' : \'none\';') !== false);
 
 // ============================================================
