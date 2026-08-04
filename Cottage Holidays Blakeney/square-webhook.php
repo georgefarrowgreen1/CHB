@@ -125,9 +125,15 @@ if (strpos($type, 'payment.') !== 0 || !$payment) {
     json_out(['ok' => true]);
 }
 
-$sqId = (string) ($payment['id'] ?? '');
-$status = (string) ($payment['status'] ?? '');
-$refId = (string) ($payment['reference_id'] ?? '');
+// SCALARS ONLY. Casting an array to string yields the literal "Array" (plus a
+// notice), and that string then flowed all the way to the ledger — measured,
+// a malformed event turned a COMPLETED charge's status into ARRAY, which every
+// money query then reads as not-completed, so the booking goes back to looking
+// unpaid and the guest is chased for money they have already paid.
+$scalar = fn($v) => is_scalar($v) ? (string) $v : '';
+$sqId = $scalar($payment['id'] ?? '');
+$status = $scalar($payment['status'] ?? '');
+$refId = $scalar($payment['reference_id'] ?? '');
 
 // Square computes the processing fee after settlement; sum any fee components
 // present on this event (in pence) so we can store gross/fee/net.
@@ -149,7 +155,12 @@ try {
     // Reflect the latest status (and fee, once known) on the ledger row. COALESCE
     // keeps a previously-recorded fee if this event doesn't carry one. Falls back
     // to a status-only update if the fee column hasn't been migrated yet.
-    if ($bookingId && $status !== '') {
+    // WHITELISTED, like the refund branch above. That one was given
+    // payment_status_known when a late PENDING was found able to overwrite a
+    // COMPLETED refund; this branch was left on the weaker "not empty" test, so
+    // any string Square (or a malformed event) put here was written verbatim.
+    // Three paths, three rules — this was the one still short of the others.
+    if ($bookingId && payment_status_known($status)) {
         try {
             db()
                 ->prepare('UPDATE payments SET status = ?, fee = COALESCE(?, fee) WHERE square_payment_id = ?')
@@ -187,7 +198,9 @@ $total =
             ? (float) $b['price_override']
             : (float) $b['agreed_total'])
         : 0.0;
-if ($total <= 0) {
+// Only when there is NO recorded price — a zero is a comped stay, not a missing
+// one. See booking_has_price in pricing.php.
+if ($total <= 0 && !booking_has_price($b)) {
     $rate = get_rate($b['prop_key']);
     if ($rate) {
         $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);

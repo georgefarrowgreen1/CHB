@@ -996,7 +996,7 @@ if ($action === 'set_payment') {
     // (agreed-first, then live — same helper pay.php / the composer use) so a
     // legacy booking prices like any other. Using booking_price (not a raw direct
     // price call) keeps the snapshot-guard call count intact.
-    if ($total <= 0 && ($b['agreed_total'] === null || $b['agreed_total'] === '')) {
+    if ($total <= 0 && !booking_has_price($b)) {
         $rate = get_rate($b['prop_key'] ?? '');
         $bp = $rate ? booking_price($rate, $b) : null;
         if ($bp && (float) ($bp['total'] ?? 0) > 0) {
