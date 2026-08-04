@@ -4453,6 +4453,13 @@ async function mountWallets(amountDue) {
         if (x) x.remove();
     }
     if (!live()) return;
+    // The express panel exists only when a wallet does, and its caption names
+    // the LIVE figure the buttons are priced to — the clearest statement of a
+    // re-priced part payment, in words, directly above the buttons.
+    const exEl = document.getElementById('pay-express');
+    if (exEl) exEl.style.display = any ? '' : 'none';
+    const exAmt = document.getElementById('pay-express-amt');
+    if (exAmt) exAmt.textContent = any ? gbp(amountDue) : '';
     const orEl = document.getElementById('sq-or');
     if (orEl) orEl.style.display = any ? '' : 'none';
     // ONE LABEL, NOT TWO. With a wallet mounted the divider already reads "or
@@ -4483,9 +4490,13 @@ function payWalletsReprice() {
     const target = Math.round(payWalletsTarget() * 100) / 100;
     if (!(target > 0)) {
         // Nothing to charge yet — take the wallets down and cancel any in-flight
-        // mount so a late one can't paint a stale button.
+        // mount so a late one can't paint a stale button. The express panel goes
+        // with them, or an empty captioned box would claim a checkout that
+        // isn't there.
         ++payState.walletStamp;
         if (wrap) { wrap.innerHTML = ''; wrap.style.display = 'none'; }
+        const exEl = document.getElementById('pay-express');
+        if (exEl) exEl.style.display = 'none';
         if (orEl) orEl.style.display = 'none';
         if (lblEl) lblEl.style.display = '';
         payState.walletAmount = 0;
@@ -14527,7 +14538,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'walletpart';
+    const BUILD = 'payrenew1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
