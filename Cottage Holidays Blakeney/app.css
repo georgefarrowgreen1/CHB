@@ -3072,6 +3072,181 @@ a.card {
 .pay-msg.show {
   display: block;
 }
+/* THE ARRANGEMENT CARD (payAutopayRender) + the schedule vocabulary it shares
+   with My Stays' plan block. Two visual languages for two truths: NUMBERED
+   step chips (.ap-step) for a schedule not yet running — dots inside a
+   selected radio option read as unchecked radios — and STATE dots + a slim
+   progress bar for a plan in flight (green done, accent next, hollow to come;
+   the words beside them always carry the state too). */
+.pay-autopay {
+  display: block;
+  margin: 14px 0 2px;
+  padding: 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+}
+.pay-ap-lead {
+  margin: 4px 0 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.pay-ap-opts {
+  display: grid;
+  gap: 8px;
+}
+.pay-ap-opt {
+  display: block;
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+}
+.pay-ap-opt.is-sel {
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.pay-ap-optrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pay-ap-optrow input {
+  accent-color: var(--accent);
+  flex: none;
+}
+.pay-ap-opttxt {
+  min-width: 0;
+  flex: 1;
+}
+.pay-ap-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-light);
+}
+.pay-ap-sub {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.pay-ap-fig {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pay-ap-body {
+  display: block;
+  margin: 11px 0 2px 26px;
+}
+.pay-ap-fine {
+  margin: 11px 2px 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.ap-rail {
+  display: grid;
+  gap: 7px;
+}
+.ap-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.79rem;
+  color: var(--text-light);
+}
+.ap-step {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.ap-date {
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+}
+.ap-figc {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 62px;
+}
+.ap-note {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ap-sum {
+  display: flex;
+  gap: 9px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--glass-border);
+  padding-top: 7px;
+}
+.ap-sum::before {
+  content: '';
+  width: 16px;
+  flex: none;
+}
+.ap-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  margin: 3px;
+}
+.ap-dot.is-done {
+  background: var(--ok-text);
+}
+.ap-dot.is-next {
+  background: var(--accent-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.ap-dot.is-todo {
+  border: 1.5px solid var(--text-muted);
+}
+.ap-bar {
+  display: block;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  overflow: hidden;
+  margin: 2px 0 10px;
+}
+.ap-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--ok-text);
+}
+.hub-plan {
+  margin: 12px 0 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+  text-align: left;
+}
+.hub-plan-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.hub-plan-sum {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
 .pay-done,
 .pay-error {
   text-align: center;

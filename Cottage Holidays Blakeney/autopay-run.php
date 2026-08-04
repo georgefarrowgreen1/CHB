@@ -14,6 +14,10 @@
 //  to drive from a test. Nothing is invented here.
 // ============================================================
 require_once __DIR__ . '/db.php';
+// pricing.php carries booking_autopay_state/booking_amount_due — without it
+// every run FATALED on the first candidate. Latent until now only because no
+// consent existed in production to collect.
+require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/autopay-lib.php';
 require_once __DIR__ . '/webpush.php';
 require_once __DIR__ . '/mailer.php';

@@ -142,6 +142,10 @@ if ($action === 'summary') {
         // way this screen quotes the money, so the two can never disagree.
         'autopayTerms' => booking_autopay_terms($b),
         'autopayState' => booking_autopay_state($b)[0],
+        // The MONTHLY offer (or null) — derived server-side so the screen that
+        // shows it and the charge that validates the guest's pick read the
+        // same object. The legacy hold is one authorisation, never a schedule.
+        'instalmentOffer' => $kind === 'hold' ? null : booking_instalment_offer($b),
         // …and the one ALREADY taken (charged with the first payment, or a
         // captured/kept legacy hold), so the pay screen's "of £X total · £Y
         // already paid" can fold it into both sides — the guest whose card took

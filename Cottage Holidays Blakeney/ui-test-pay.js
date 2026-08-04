@@ -46,8 +46,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
           part: { min: 20, max: 175 }, quote: '8:deposit:225.00:0123456789abcdef0123456789abcdef',
           // The arrangement is offered on the deposit ask (its real home —
-          // booking_autopay_terms only ever fires there): rest £525 on the due date.
-          autopayTerms: { amount: 525, due: '2026-07-28' }, autopayState: 'off',
+          // booking_autopay_terms only ever fires there): rest £525 by the due
+          // date, with the server-derived monthly offer beside it.
+          autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
+          instalmentOffer: { n: 3, per: 175, last: 175, due: '2026-10-28', dates: ['2026-08-28', '2026-09-28', '2026-10-28'] },
         });
         // Booking 5: a balance under the part-payment floor, so the server sends
         // NO bounds. The offer must not appear — it can only ever show what the
@@ -604,43 +606,102 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(restView.body && !restView.done, '…and the payment form is back on screen');
 
   // ============================================================
-  //  AUTOPAY STANDS DOWN WHILE A SLICE IS BEING CHOSEN. The consent sentence
-  //  quotes the rest after the FULL ask is paid — a slice makes that figure
-  //  wrong the moment it lands, and terms recorded beside a slice can never
-  //  match what the collector derives later (agreed, then silently never
-  //  fires). So the offer hides while the part row is open, unticks so a
-  //  full-payment consent can't ride a slice invisibly, and returns when the
-  //  row closes. pay.php refuses the server half.
+  //  THE ARRANGEMENT IS ONE THREE-WAY DECISION — I'll pay it myself (the
+  //  DEFAULT: consent is opted INTO), one payment, or monthly with the dated
+  //  schedule and its sum CLOSED on screen. It still stands down (and resets
+  //  to the default) while a part slice is being chosen — a consent chosen
+  //  for the full payment must never ride a slice invisibly.
   // ============================================================
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
   const ap0 = await page.evaluate(() => ({
-    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    label: (document.getElementById('pay-autopay-label') || {}).textContent || '',
+    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    cap: (document.getElementById('pay-ap-cap') || {}).textContent || '',
+    lead: (document.querySelector('.pay-ap-lead') || {}).textContent || '',
+    radios: document.querySelectorAll('input[name="pay-ap-choice"]').length,
+    selfChecked: !!(document.querySelector('input[name="pay-ap-choice"][value="self"]') || {}).checked,
+    oneSub: (document.querySelectorAll('.pay-ap-sub')[1] || {}).textContent || '',
+    monthlyFig: [...document.querySelectorAll('.pay-ap-fig')].map((e) => e.textContent).join('|'),
+    railRows: document.querySelectorAll('.pay-ap-body .ap-row').length,
   }));
-  ok(ap0.offered && /£525\.00/.test(ap0.label) && /28\/07\/2026/.test(ap0.label),
-    `the arrangement is offered on the full deposit ask, sum and day in the sentence (${ap0.label.slice(0, 70)}…)`);
+  ok(ap0.shown && /£525\.00 that's left/.test(ap0.cap), `the card is captioned with the SUM (${ap0.cap})`);
+  ok(/Due by 28\/10\/2026/.test(ap0.lead), `…and the lead carries the DAY (${ap0.lead})`);
+  ok(ap0.radios === 3, `three ways to handle it (${ap0.radios})`);
+  ok(ap0.selfChecked, "the DEFAULT is \"I'll pay it myself\" — consent is opted into, never out of");
+  ok(/taken automatically on 28\/10\/2026/.test(ap0.oneSub), `the one-payment option states its consequence (${ap0.oneSub})`);
+  ok(/3 × £175\.00/.test(ap0.monthlyFig), `the monthly option leads with its shape (${ap0.monthlyFig})`);
+  ok(ap0.railRows === 0, 'the schedule stays folded until monthly is chosen');
+  // Choose MONTHLY: the numbered rail opens with the sum closing on screen.
   await page.evaluate(() => {
-    /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked = true;
-    document.getElementById('pay-part-toggle').click();
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  await page.waitForTimeout(150);
-  const ap1 = await page.evaluate(() => ({
-    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    ticked: /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked,
-  }));
-  ok(!ap1.offered, 'opening the part row stands the offer down — its sentence describes the full payment');
-  ok(!ap1.ticked, '…and unticks it, so a consent given for the full payment cannot ride a slice invisibly');
-  // Charge a slice: the wire carries autopay:false however the box was left.
-  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '60'; a.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.waitForTimeout(200);
+  const apMo = await page.evaluate(() => ({
+    rows: document.querySelectorAll('.pay-ap-body .ap-row').length,
+    steps: [...document.querySelectorAll('.pay-ap-body .ap-step')].map((e) => e.textContent).join(''),
+    dates: [...document.querySelectorAll('.pay-ap-body .ap-date')].map((e) => e.textContent).join('|'),
+    sum: (document.querySelector('.pay-ap-body .ap-sum') || {}).textContent || '',
+    selClass: !!document.querySelector('.pay-ap-opt.is-sel input[value="monthly"]'),
+  }));
+  ok(apMo.rows === 3 && apMo.steps === '123', `choosing monthly opens the NUMBERED schedule (${apMo.steps})`);
+  ok(apMo.dates === '28/08/2026|28/09/2026|28/10/2026', `…dated as the server offered (${apMo.dates})`);
+  ok(/3 × £175\.00 = £525\.00/.test(apMo.sum), `…with the sum CLOSED on screen (${apMo.sum})`);
+  ok(apMo.selClass, '…and the chosen option wears the accent');
+  // The charge carries the pick — count and consent — and pay.php re-validates.
   const apBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
   await page.evaluate(() => document.getElementById('pay-btn').click());
   await page.waitForTimeout(700);
-  const apCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apBefore).pop();
-  ok(!!apCharge && apCharge.part_amount === 60 && apCharge.autopay === false,
-    `a slice charge carries no consent (part ${apCharge && apCharge.part_amount}, autopay ${apCharge && apCharge.autopay})`);
-  // Closing the row brings the offer back, still unticked.
+  const apChargeMo = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apBefore).pop();
+  ok(!!apChargeMo && apChargeMo.autopay === true && apChargeMo.autopay_instalments === 3,
+    `a monthly consent charges with the offered count (${apChargeMo && apChargeMo.autopay_instalments})`);
+  // ONE payment: consent yes, count 0.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('pay-btn').click();
+  });
+  await page.waitForTimeout(700);
+  const apChargeOne = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
+  ok(!!apChargeOne && apChargeOne.autopay === true && apChargeOne.autopay_instalments === 0,
+    'one payment consents with no count');
+  // The DEFAULT sends no consent at all.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const apChargeSelf = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
+  ok(!!apChargeSelf && apChargeSelf.autopay === false && apChargeSelf.autopay_instalments === 0,
+    'the untouched default consents to NOTHING');
+  // STAND-DOWN: choosing monthly then opening the part row hides the card and
+  // RESETS the decision — a slice charge carries no consent however it was left.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('pay-part-toggle').click();
+  });
+  await page.waitForTimeout(200);
+  const apDown = await page.evaluate(() => ({
+    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    choice: payState.autopayChoice,
+  }));
+  ok(!apDown.shown && apDown.choice === 'self', `opening the part row stands the card down and resets the choice (${apDown.choice})`);
+  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '60'; a.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(200);
+  const apSliceBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const apSlice = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apSliceBefore).pop();
+  ok(!!apSlice && apSlice.part_amount === 60 && apSlice.autopay === false && apSlice.autopay_instalments === 0,
+    `a slice charge carries no consent (part ${apSlice && apSlice.part_amount}, autopay ${apSlice && apSlice.autopay})`);
+  // Closing the row brings the card back, at the default.
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());
@@ -648,10 +709,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());
   await page.waitForTimeout(150);
   const ap2 = await page.evaluate(() => ({
-    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
-    ticked: /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked,
+    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    selfChecked: !!(document.querySelector('input[name="pay-ap-choice"][value="self"]') || {}).checked,
   }));
-  ok(ap2.offered && !ap2.ticked, 'closing the row brings the offer back, unticked');
+  ok(ap2.shown && ap2.selfChecked, 'closing the row brings the card back, at the default');
 
   // Back to the balance ask for the happy-path charge below.
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));

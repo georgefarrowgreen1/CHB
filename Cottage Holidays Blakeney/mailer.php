@@ -2404,32 +2404,62 @@ function autopay_notice_body($b, $payUrl = null)
     $name = first_name($b['name'], 'Guest');
     $prop = !empty($b['prop_name']) ? $b['prop_name'] : (function_exists('prop_display') ? prop_display((string) ($b['prop_key'] ?? ''))['name'] : 'your cottage');
     $amt = round((float) ($b['autopay_amount'] ?? 0), 2);
-    $when = uk_date((string) ($b['autopay_due'] ?? ''));
     if ($payUrl === null) {
         $payUrl = site_base_url() . 'index.html?pay=' . pay_token((int) $b['id']) . '&b=' . (int) $b['id'];
     }
-    $subject = "Coming up: we'll collect {$money($amt)} on {$when}";
-    $body =
-        "we're getting your stay at {$prop} ready. As you arranged when you paid your deposit, we'll collect the remaining " .
-        $money($amt) .
-        " from the card you saved on {$when}.";
+    // A MONTHLY plan's notice names WHICH payment this is and what follows —
+    // an automatic charge the guest can place in their own schedule is one
+    // they expected; an unplaced one is a dispute. The date is the NEXT
+    // collection, and the position comes from the same schedule the guest was
+    // shown at consent (guarded: mailer loads without pricing on some paths).
+    $apN = (int) ($b['autopay_instalments'] ?? 0);
+    $monthly = $apN > 1 && function_exists('booking_instalment_schedule');
+    $noticeDate = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    $when = uk_date($noticeDate !== '' ? $noticeDate : (string) ($b['autopay_due'] ?? ''));
+    $ofN = '';
+    $tail = '';
+    if ($monthly) {
+        $sched = booking_instalment_schedule(substr((string) $b['autopay_due'], 0, 10), $apN);
+        $pos = 1;
+        foreach ($sched as $i => $d) {
+            if ($d === $noticeDate) {
+                $pos = $i + 1;
+            }
+        }
+        $ofN = "payment {$pos} of {$apN}";
+        $tail =
+            $pos < $apN
+                ? ($apN - $pos) . ' more monthly payment' . ($apN - $pos === 1 ? ' follows' : 's follow') . ', the last on ' . uk_date(end($sched)) . " — and then your stay is all paid."
+                : 'This is the final payment — after it your stay is all paid.';
+    }
+    $subject = $monthly ? "Coming up: {$ofN} — {$money($amt)} on {$when}" : "Coming up: we'll collect {$money($amt)} on {$when}";
+    $body = $monthly
+        ? "we're getting your stay at {$prop} ready. As you arranged when you paid your deposit, we'll collect your next monthly payment of " .
+            $money($amt) .
+            " — {$ofN} — from the card you saved on {$when}."
+        : "we're getting your stay at {$prop} ready. As you arranged when you paid your deposit, we'll collect the remaining " .
+            $money($amt) .
+            " from the card you saved on {$when}.";
     $off = "There's nothing to do — this is just so it isn't a surprise. If you'd rather pay another way, or you'd like to stop the automatic payment, you can turn it off from your booking page any time before then.";
     $text =
         "Hello {$name},\n\n" .
         ucfirst($body) .
+        ($tail !== '' ? "\n\n" . $tail : '') .
         "\n\n" .
         $off .
         "\n\n" .
         "Your booking: {$payUrl}\n\n" .
         'Cottage Holidays Blakeney';
+    $rows = [['Amount', $money($amt)], ['Date', $esc($when)]];
+    if ($monthly) {
+        $rows[] = ['Payment', $esc($ofN)];
+    }
+    $rows[] = ['Cottage', $esc($prop)];
     $inner =
         email_h('A quick heads-up') .
         email_p('Hello ' . $esc($name) . ', ' . $esc($body)) .
-        email_rows([
-            ['Amount', $money($amt)],
-            ['Date', $esc($when)],
-            ['Cottage', $esc($prop)],
-        ]) .
+        email_rows($rows) .
+        ($tail !== '' ? email_p($esc($tail), true) : '') .
         email_p($esc($off), true) .
         email_btn($payUrl, 'View your booking') .
         email_p('Cottage Holidays Blakeney', true);

@@ -457,6 +457,11 @@ chk('an ARMED balance is not chased', substr_count($due, "booking_autopay_state(
 chk("...and nothing else suppresses the chase", strpos($due, "!== 'off'") === false && strpos($due, "'failed'") === false);
 $paySrc = file_get_contents(__DIR__ . '/pay.php');
 chk('the pay screen offers the arrangement', strpos($paySrc, "'autopayTerms' => booking_autopay_terms(\$b)") !== false);
+chk('...and the monthly offer beside it', strpos($paySrc, "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);
+// THE RUN LOADS ITS OWN DECISIONS. autopay-run.php never required pricing.php,
+// and autopay_run → booking_autopay_state lives there — every cron run FATALED
+// on the first candidate, latent only because no consent existed in production.
+chk('the collection run loads pricing, where its decisions live', strpos(file_get_contents(__DIR__ . '/autopay-run.php'), "require_once __DIR__ . '/pricing.php';") !== false);
 // CONSENT NEVER RIDES A SLICE. booking_autopay_terms describes the rest after
 // the FULL ask; recorded beside a part payment, the agreed sum can never match
 // what booking_autopay_state derives at collection — the arrangement would sit
@@ -471,9 +476,13 @@ chk('...after the ledger is written', strpos($paySrc, 'autopay_vault(') > strpos
 chk('...wrapped so it cannot fail the payment', preg_match('/try \{\s*require_once __DIR__ \. .\/autopay-lib\.php.;[\s\S]{0,700}\$vault = autopay_vault/', $paySrc) === 1);
 chk('the guest can turn it off from the screen that offered it', strpos($paySrc, "\$action === 'autopay_off'") !== false);
 $appSrc = file_get_contents(__DIR__ . '/app.js');
-chk('the checkbox names the sum and the day', preg_match('/collect my remaining \$\{gbp\(terms\.amount\)\} automatically on \$\{fmtDate\(terms\.due\)\}/', $appSrc) === 1);
+// The consent card is a three-way decision now — the sum and the day still
+// live IN the words: the caption carries the sum, the lead and the one-payment
+// option carry the day.
+chk('the card names the sum and the day', preg_match('/The \$\{gbp\(t\.amount\)\} that.s left/', $appSrc) === 1 && preg_match('/taken automatically on \$\{fmtDate\(t\.due\)\}/', $appSrc) === 1);
 chk('...and is only offered when there is something to schedule', strpos($appSrc, "s.autopayState === 'off'") !== false);
-chk('...read at the moment of paying, not from the render', preg_match('/autopay: !!\(/', $appSrc) === 1);
+chk('...read at the moment of paying, not from the render', strpos($appSrc, "autopay: payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly'") !== false);
+chk("...and the DEFAULT is \"I'll pay it myself\" — consent is opted into", strpos($appSrc, "payState.autopayChoice = 'self';") !== false);
 chk('My Stays shows an arranged balance as arranged, not as owing', strpos($appSrc, "b.autopayState === 'armed'") !== false);
 chk('...with the off switch beside it', strpos($appSrc, 'guestAutopayOff') !== false);
 chk('turning it off asks first, in terms of the consequence', preg_match("/glassConfirm\(\s*\"We'll stop collecting/", $appSrc) === 1);
@@ -583,7 +592,7 @@ echo "\n-- a dead card can be replaced --\n";
 // that could never be repaired — the only screen that can save a card would not
 // offer to.
 chk('the pay screen offers again after a failure', preg_match("/REPAIR = \['failed', 'nocard', 'stale'\]/", $appSrc) === 1);
-chk('...and says why it is asking twice', strpos($appSrc, "We couldn't use the card you saved before.") !== false);
+chk('...and says why it is asking twice', strpos($appSrc, "We couldn't use the card you saved before") !== false);
 // Deliberately NOT re-offered: they turned it off on purpose, and asking every
 // time they pay is nagging.
 chk("a guest who switched it off is not asked again", strpos($appSrc, "'revoked'") === false || !preg_match("/REPAIR = \[[^\]]*revoked/", $appSrc));
