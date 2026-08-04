@@ -261,6 +261,70 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(watch.undoDepth === 1 && /Watching/.test(watch.undoLabel || ''), `WATCH: setting one lands on the undo stack (${watch.undoLabel})`);
   ok(watch.stopped, 'WATCH: and undo actually stops it server-side');
 
+  // ---- STEP 5b: A DROPPED REQUEST IS NOT AN EMPTY LIST ----
+  // The `watching` command is how a watcher gets switched off, so the one answer
+  // it must never give wrongly is "you aren't watching anything". chbWatchersLoad's
+  // catch used to write `[]` — TRUTHY, so the memoising guard returned it for the
+  // rest of the session: one dropped request and the owner was told, for ever,
+  // that the notifications they had set did not exist. Driven through the real
+  // command with the endpoint failing.
+  const drop = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const realPost = window.apiPost;
+    let calls = 0;
+    let fails = true;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('watchers.php') && body.action === 'list') {
+        calls++;
+        if (fails) throw new Error('Failed to fetch');
+        return { watchers: [{ id: 'wLIVE', kind: 'gap-unsold', pk: 'jollyboat', from: '2027-03-10', to: '2027-03-13', tell: '2027-03-03', say: 'Watching Jollyboat 10–13 Mar' }] };
+      }
+      return realPost(url, body);
+    };
+    // Nothing fetched yet this session, and the mirror is empty, so this is the
+    // exact state the catch used to poison. NB the bare name, never
+    // `window.__chbWatchers`: these are top-level `let`s in a classic script, so
+    // they are lexical bindings and NOT window properties — assigning through
+    // window makes a second variable and leaves the real one alone.
+    __chbWatchers = null;
+    __chbWatchersErr = false;
+    const first = cmdkCommand('watching');
+    await until(() => __chbWatchersErr === true);
+    const failed = cmdkCommand('watching');
+    // The cache must be UNTOUCHED, or the retry below cannot re-ask.
+    const cacheAfter = __chbWatchers;
+    // Retry, exactly as the product does it: the row's own run() clears the flag,
+    // the next render finds a null cache and kicks the fetch, and the render after
+    // that has the answer. Two phases, not one — that is why the cache mattering
+    // is the check above.
+    fails = false;
+    if (failed[0] && typeof failed[0].run === 'function') failed[0].run();
+    const kicked = cmdkCommand('watching');
+    await until(() => Array.isArray(__chbWatchers));
+    const ok2 = cmdkCommand('watching');
+    window.apiPost = realPost;
+    return {
+      loading: (first[0] || {}).label || '',
+      failLabel: (failed[0] || {}).label || '',
+      failSub: (failed[0] || {}).sub || '',
+      cacheAfter: cacheAfter,
+      calls: calls,
+      kicked: (kicked[0] || {}).label || '',
+      recovered: (ok2[0] || {}).label || '',
+    };
+  });
+  ok(/Checking what you're watching/.test(drop.loading), `WATCH-DROP: it says it is asking (${drop.loading})`);
+  ok(/Couldn't check/i.test(drop.failLabel), `WATCH-DROP: a dropped request SAYS so (${drop.failLabel})`);
+  ok(!/Not watching anything/i.test(drop.failLabel), '…and never claims there are none');
+  ok(/still running/i.test(drop.failSub), `…and reassures that what was set is still live (${drop.failSub})`);
+  // The poison: a truthy [] in the cache would be returned by the memo guard for
+  // the rest of the session, and it also disables the landing's own fallback to
+  // the search-watchers mirror, which only fires while this is still null.
+  ok(drop.cacheAfter === null, `WATCH-DROP: the cache is left alone, not emptied (${JSON.stringify(drop.cacheAfter)})`);
+  ok(/Checking what you're watching/.test(drop.kicked), `WATCH-DROP: retrying asks again rather than repeating the refusal (${drop.kicked})`);
+  ok(drop.calls >= 2, `WATCH-DROP: so it really re-asks the server (${drop.calls} calls)`);
+  ok(/Jollyboat/.test(drop.recovered), `WATCH-DROP: and the watcher comes back (${drop.recovered})`);
+
   // ---- STEP 3: BULK — chase them all, in one tap ----
   // Driven the way the owner does it: search, look at the answer, TAP the action,
   // read the real confirm, press the real button. Nothing is called directly —

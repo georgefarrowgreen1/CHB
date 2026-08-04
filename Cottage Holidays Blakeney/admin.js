@@ -1083,8 +1083,15 @@ function cmdkCommand(q, today) {
     if (/^(watching|watchers|what am i watching|reminders?)$/.test(q.trim())) {
         const list = __chbWatchers;
         if (list === null) {
+            const reask = () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); };
+            // A DROPPED REQUEST SAYS SO. It used to be swallowed into an empty
+            // list, i.e. "you aren't watching anything" — the one wrong answer
+            // this screen must never give, because a watcher you cannot find is
+            // a notification you cannot switch off. Retry is one tap and the
+            // cache is untouched, so it really does re-ask.
+            if (__chbWatchersErr) return cmd('Couldn\'t check what you\'re watching', 'The connection dropped — tap to try again. Anything you set is still running.', () => { __chbWatchersErr = false; reask(); });
             // Not fetched yet this session: kick it and re-run once it lands.
-            chbWatchersLoad().then(() => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); });
+            chbWatchersLoad().then(reask, () => { __chbWatchersErr = true; reask(); });
             return cmd('Checking what you\'re watching…', 'One moment', () => {});
         }
         if (!list.length) return cmd('Not watching anything', 'Ask me to tell you if a gap hasn\'t sold, and it will appear here', () => { closeCmdK(); });
@@ -3324,12 +3331,20 @@ const CHB_CITY_TZ = { london: 'Europe/London', paris: 'Europe/Paris', madrid: 'E
 //  it lands on the UNDO STACK, so a watcher set by mistake is one tap from gone.
 // ============================================================
 let __chbWatchers = null; // cached list; null = not fetched this session
+let __chbWatchersErr = false; // the LAST attempt failed — distinct from "there are none"
+// COULDN'T ASK IS NOT THE SAME AS THERE ARE NONE — the loadData rule, on the one
+// store where the wrong answer switches off a notification. The catch used to
+// write `[]`, which is TRUTHY, so the guard above returned it for the rest of the
+// session: one dropped request and `watching` answered "Not watching anything"
+// for ever, about watchers that were still running and still going to fire. It
+// also disabled the landing's own fallback, which hydrates from the
+// `search-watchers` content mirror ONLY while this is still null. A failure now
+// leaves the cache alone — the mirror still answers, the next call still tries —
+// and RETHROWS, so the caller can say so instead of asserting an empty list.
 async function chbWatchersLoad(force) {
     if (__chbWatchers && !force) return __chbWatchers;
-    try {
-        const r = await apiPost('watchers.php', { action: 'list' });
-        __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : [];
-    } catch (e) { __chbWatchers = []; }
+    const r = await apiPost('watchers.php', { action: 'list' });
+    __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : [];
     return __chbWatchers;
 }
 async function chbWatchSet(w) {
