@@ -494,6 +494,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const motion = await page.evaluate(() => {
     const an = (el) => (el ? getComputedStyle(el).animationName : '');
     let rmRule = false;
+    let rmStroke = false;
     for (const ss of document.styleSheets) {
       let rules;
       try { rules = ss.cssRules; } catch (e) { continue; }
@@ -501,22 +502,39 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         // NB Chromium serializes `animation: none` long-hand ("animation:
         // auto ease 0s 1 normal none running none"), so match the reset
         // loosely — the break-test (deleting the block) still fails this.
-        if (r.media && /prefers-reduced-motion/.test(r.media.mediaText) && /#pay-body/.test(r.cssText) && /animation:[^;]*none/.test(r.cssText)) rmRule = true;
+        if (r.media && /prefers-reduced-motion/.test(r.media.mediaText)) {
+          if (/#pay-body/.test(r.cssText) && /animation:[^;]*none/.test(r.cssText)) rmRule = true;
+          // The DRAW starts invisible: reduced motion must restore the tick's
+          // strokes or the setting deletes the mark itself.
+          if (/\.pay-done-tick circle/.test(r.cssText) && /stroke-dashoffset:\s*0/.test(r.cssText)) rmStroke = true;
+        }
       }
     }
+    const btn = document.getElementById('pay-btn');
+    btn.classList.add('is-busy');
+    const spin = getComputedStyle(btn, '::after').animationName;
+    btn.classList.remove('is-busy');
     return {
       body: an(document.getElementById('pay-body')),
       row: an(document.getElementById('pay-part-row')),
       express: an(document.getElementById('pay-express')),
       amt: an(document.getElementById('pay-amount')),
       swapClass: document.getElementById('pay-amount').classList.contains('pay-amt-swap'),
+      // The sheet CASCADE: later form blocks land later (backwards fill).
+      partDelay: parseFloat(getComputedStyle(document.getElementById('pay-part')).animationDelay),
+      expressDelay: parseFloat(getComputedStyle(document.getElementById('pay-express')).animationDelay),
+      spin,
       rmRule,
+      rmStroke,
     };
   });
   ok(motion.body === 'payRise', `the form eases in rather than cutting (${motion.body})`);
   ok(motion.row === 'payRise' && motion.express === 'payRise', `the part row and express panel ease in when they appear (${motion.row}/${motion.express})`);
   ok(motion.amt === 'payAmtSwap' && motion.swapClass, `the hero ticks over when its figure changes (${motion.amt})`);
+  ok(motion.expressDelay > motion.partDelay, `the form blocks CASCADE like the Apple Pay sheet (${motion.partDelay}s → ${motion.expressDelay}s)`);
+  ok(motion.spin === 'paySpin', `the Pay button carries a spinner while money moves (${motion.spin})`);
   ok(motion.rmRule, 'reduced motion stands ALL of it down — asserted as the rule, not a computed read');
+  ok(motion.rmStroke, '…and restores the drawn tick\'s strokes, or the setting would delete the mark');
 
   // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
   // the sub's itemised lines and the settle-it-all link return as they were.
@@ -802,6 +820,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     restShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
     panelAnim: getComputedStyle(document.getElementById('pay-done')).animationName,
     tickAnim: getComputedStyle(document.querySelector('.pay-done-tick .ic')).animationName,
+    circleAnim: getComputedStyle(document.querySelector('.pay-done-tick circle')).animationName,
+    checkAnim: getComputedStyle(document.querySelector('.pay-done-tick path')).animationName,
   }));
   const charge = posts.find((p) => p.__url === 'pay.php' && p.action === 'charge');
   ok(!!charge && charge.source_id === 'tok_test_1' && charge.kind === 'balance', `charge posted with the tokenized card (${charge && charge.source_id})`);
@@ -811,6 +831,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!done.restShown, 'a full payment offers no "pay the rest"');
   ok(done.panelAnim === 'payRise' && done.tickAnim === 'payPop',
     `the done panel eases in and the tick pops on the spring (${done.panelAnim}/${done.tickAnim})`);
+  // The Apple Pay confirm: the ring DRAWS and the check strokes in — not a
+  // static mark that appears.
+  ok(done.circleAnim === 'payDraw' && done.checkAnim === 'payDraw',
+    `the tick draws itself, ring then check (${done.circleAnim}/${done.checkAnim})`);
 
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);
