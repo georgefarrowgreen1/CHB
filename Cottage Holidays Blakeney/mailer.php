@@ -868,6 +868,35 @@ function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
 }
 
 // Let the owner know money has landed. $b: name, prop_name, kind, amount, status.
+// Pure — split out of send_owner_payment_notice so a gate can drive the REAL
+// composer rather than reading its source (which proves the words exist, not
+// that they are ever reached).
+function owner_payment_notice_body($b)
+{
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $what = ($b['kind'] ?? '') === 'balance' ? 'balance' : 'deposit';
+    // A SLICE IS NOT ITS STAGE — the same fact the guest's receipt carries. The
+    // owner reading "Type: balance" beside £120 of a £290 balance would take the
+    // booking as settled and stop chasing it.
+    $typeLine = !empty($b['partial']) ? 'part payment towards the ' . $what : $what;
+    $statusTxt = ($b['status'] ?? '') === 'paid' ? ' — now paid in full' : '';
+    $prop = $b['prop_name'] ?? ($b['prop_key'] ?? 'a cottage');
+    return [
+        'subject' => 'Payment received: ' . $money($b['amount']) . " — {$prop}",
+        'text' =>
+            "Good news — a payment has come in.\n\n" .
+            'Guest: ' .
+            ($b['name'] ?? '—') .
+            "\n" .
+            "Property: {$prop}\n" .
+            "Type: {$typeLine}\n" .
+            'Amount: ' .
+            $money($b['amount']) .
+            $statusTxt .
+            "\n\n" .
+            "See Money & income for the full picture.\nCottage Holidays Blakeney",
+    ];
+}
 function send_owner_payment_notice($b)
 {
     // Guard on what send_owner() can actually deliver to: the co-host list
@@ -876,24 +905,8 @@ function send_owner_payment_notice($b)
     if (!owner_recipients()) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
-    $money = fn($n) => '£' . number_format((float) $n, 2);
-    $what = ($b['kind'] ?? '') === 'balance' ? 'balance' : 'deposit';
-    $statusTxt = ($b['status'] ?? '') === 'paid' ? ' — now paid in full' : '';
-    $prop = $b['prop_name'] ?? ($b['prop_key'] ?? 'a cottage');
-    $subject = 'Payment received: ' . $money($b['amount']) . " — {$prop}";
-    $text =
-        "Good news — a payment has come in.\n\n" .
-        'Guest: ' .
-        ($b['name'] ?? '—') .
-        "\n" .
-        "Property: {$prop}\n" .
-        "Type: {$what}\n" .
-        'Amount: ' .
-        $money($b['amount']) .
-        $statusTxt .
-        "\n\n" .
-        "See Money & income for the full picture.\nCottage Holidays Blakeney";
-    return send_owner($subject, $text);
+    $m = owner_payment_notice_body($b);
+    return send_owner($m['subject'], $m['text']);
 }
 
 // Ask a past guest to leave a review. $b: name, email, prop_key, prop_name, reviewUrl.
@@ -2421,6 +2434,10 @@ function payment_receipt_body($b)
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'balance' : 'deposit';
+    // A SLICE IS NOT ITS STAGE. "we've received your balance payment of £120.00"
+    // says the balance is settled — directly above this same email's own
+    // "Remaining balance: £220.00". Named for what it is, the two agree.
+    $partial = !empty($b['partial']);
     // The refundable damage deposit is charged WITH this payment and refunded after
     // checkout — so the amount actually taken is rental + deposit.
     $dep = round((float) ($b['deposit_charged'] ?? 0), 2);
@@ -2444,7 +2461,9 @@ function payment_receipt_body($b)
         "Hello {$name},\n\n" .
         ($auto
             ? "As arranged, we've now collected your {$what} of " . $money($paidNow) . " for {$prop}. Nothing was needed from you.\n"
-            : "Thank you — we've received your {$what} payment of " . $money($paidNow) . " for {$prop}.\n") .
+            : ($partial
+                ? "Thank you — we've received your payment of " . $money($paidNow) . " towards your {$what} for {$prop}.\n"
+                : "Thank you — we've received your {$what} payment of " . $money($paidNow) . " for {$prop}.\n")) .
         ($depLine !== '' ? $depLine . "\n" : '') .
         "Reference: {$b['ref']}\n" .
         'Rental paid so far: ' .
@@ -2470,7 +2489,9 @@ function payment_receipt_body($b)
                 // made of.
                 (!empty($b['automatic'])
                     ? 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
-                    : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.'),
+                    : ($partial
+                        ? 'thank you — we\'ve received your payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.'
+                        : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.')),
         ) .
         ($depLine !== '' ? email_p($esc($depLine), true) : '') .
         email_rows(

@@ -332,9 +332,18 @@ if ($action === 'charge') {
     // payment: bundling £50 onto a £20 slice makes the sum not what the guest
     // typed, and the deposit still rides the payment that completes the stage.
     $partReq = isset($in['part_amount']) ? (float) $in['part_amount'] : 0.0;
+    $partial = false;
     if ($partReq > 0) {
         $part = booking_part_amount($partReq, $amountDue);
         if ($part !== null) {
+            // A SLICE IS NOT ITS STAGE, and that fact is decided HERE — the one
+            // place that knows the clamp fired. Every surface that describes
+            // this payment named the STAGE, so £120 of a £290 balance read as
+            // "your balance payment" two lines above "Remaining balance:
+            // £220.00", and reached the owner as "Type: balance". The decision
+            // is shared; each surface still says it in its own voice.
+            // Asking for the whole of what is owed is not a part payment.
+            $partial = $part < $amountDue - 0.005;
             $amountDue = $part;
             $damagesDue = 0.0;
             $chargeTotal = round($amountDue, 2);
@@ -480,9 +489,9 @@ if ($action === 'charge') {
     log_activity(
         'payment',
         'payment.card',
-        ucfirst($kind) .
-            ' paid by card — £' .
+        ($partial ? 'Part payment by card — £' : ucfirst($kind) . ' paid by card — £') .
             number_format($amountDue, 2) .
+            ($partial ? ' towards the ' . $kind : '') .
             ($damagesDue > 0 ? ' + £' . number_format($damagesDue, 2) . ' refundable deposit' : '') .
             ($b['name'] ? ' · ' . $b['name'] : ''),
         ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
@@ -494,7 +503,7 @@ if ($action === 'charge') {
     // handshakes and the pushes are external HTTP calls, and none of them
     // should keep the guest staring at the card-payment spinner.
     require_once __DIR__ . '/mailer.php';
-    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId) {
+    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId, $partial) {
         // Receipt email (best-effort — never fails the payment).
         try {
             $receipt = send_payment_receipt([
@@ -504,6 +513,8 @@ if ($action === 'charge') {
                 'prop_name' => $propName,
                 'ref' => $ref,
                 'kind' => $kind,
+                // A slice of the stage, not the stage — see the clamp above.
+                'partial' => $partial,
                 'amount' => $amountDue,
                 'total' => $total,
                 'paid_so_far' => $newPaid,
@@ -533,6 +544,7 @@ if ($action === 'charge') {
                 'prop_key' => $b['prop_key'],
                 'prop_name' => $propName,
                 'kind' => $kind,
+                'partial' => $partial,
                 'amount' => $amountDue,
                 'status' => $newStatus,
             ]);

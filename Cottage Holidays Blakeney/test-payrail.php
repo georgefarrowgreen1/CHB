@@ -1302,6 +1302,41 @@ chk('a balance just over the floor slices to the floor at most', booking_part_am
 chk('...and a request under it still lands on the floor', booking_part_amount(1.0, 20.5) === PART_PAYMENT_MIN);
 chk('pence survive the round trip', booking_part_amount(50.559, 340.0) === 50.56);
 
+echo "\n-- part payment: a slice is not its stage --\n";
+// THE FIRST DRAFT OF THIS FEATURE SHIPPED THE OVER-CLAIM. £120 against a £290
+// balance reached the guest as "we've received your balance payment of £120.00"
+// two lines above this same email's "Remaining balance: £220.00", and reached
+// the owner as "Type: balance" — which is a booking they would stop chasing.
+// Driven through the REAL composers, both halves, both ways.
+$slice = [
+    'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'ref' => 'CHB-000042', 'kind' => 'balance', 'amount' => 120.0, 'total' => 400.0,
+    'paid_so_far' => 220.0, 'balance' => 220.0, 'fully_paid' => false, 'deposit_charged' => 0.0,
+];
+$sliceR = payment_receipt_body($slice + ['partial' => true]);
+$wholeR = payment_receipt_body($slice);
+chk('a slice is a payment TOWARDS the balance', strpos($sliceR['text'], "your payment of £120.00 towards your balance") !== false);
+chk('...and never "your balance payment"', strpos($sliceR['text'], 'your balance payment') === false);
+chk('...in the HTML half too', strpos($sliceR['html'], 'towards your balance') !== false && strpos($sliceR['html'], 'your balance payment') === false);
+// It is still a receipt, so what remains has to be on it — the sentence that
+// the over-claim used to contradict.
+chk('...with what is left still stated', strpos($sliceR['text'], 'Remaining balance: £220.00') !== false);
+// A payment that DOES settle its stage keeps its own wording — this is a
+// branch, not a rewrite (break-tested by forcing partial true throughout).
+chk('a full stage payment still says so', strpos($wholeR['text'], "your balance payment of £120.00") !== false);
+chk('...and does not claim to be part of anything', strpos($wholeR['text'], 'towards your balance') === false);
+$sliceO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit', 'partial' => true]);
+$wholeO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit']);
+chk('the owner is told it was a part payment', strpos($sliceO['text'], 'Type: part payment towards the balance') !== false);
+chk('...and a whole one still reads plainly', strpos($wholeO['text'], "Type: balance\n") !== false);
+// The DECISION lives in pay.php — both composers pass with it never set.
+$payW = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php decides partial where it clamps', strpos($payW, '$partial = $part < $amountDue - 0.005;') !== false);
+chk('...and carries it to the guest receipt', strpos($payW, "'partial' => \$partial,") !== false);
+chk('...to the owner notice', substr_count($payW, "'partial' => \$partial,") === 2);
+chk('...and into the activity log', strpos($payW, "\$partial ? 'Part payment by card") !== false);
+chk('the mail closure can actually see it', strpos($payW, '$bookingId, $partial) {') !== false);
+
 echo "\n-- part payment: the wiring --\n";
 $paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
 $appSrc2 = (string) file_get_contents(__DIR__ . '/app.js');
