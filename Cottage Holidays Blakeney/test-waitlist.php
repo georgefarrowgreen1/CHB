@@ -84,7 +84,12 @@ function dates_clash($prop, $from, $to)
     global $WL_CLASH;
     return $WL_CLASH;
 }
-function smtp_send($toEmail, $toName, $subject, $text, $html = null)
+// MIRRORS THE REAL SIGNATURE, all nine parameters. PHPStan analyses this file
+// alongside the app, so a short stub becomes the declaration it checks every
+// real call site against — and every caller passing attachments or headers is
+// then reported as passing too many arguments. A stub that lies about its shape
+// breaks the gate for code it has nothing to do with.
+function smtp_send($toEmail, $toName, $subject, $text, $html = null, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [])
 {
     global $WL_SENT, $WL_SEND_OK;
     $WL_SENT[] = ['to' => $toEmail, 'subject' => $subject, 'text' => $text, 'html' => $html];

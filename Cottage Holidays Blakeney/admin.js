@@ -13560,11 +13560,25 @@ async function cancelBooking(bookingId) {
             refund_amount: refund,
             reason: reason.trim(),
         });
-        toast(
-            'Booking cancelled.' +
-                (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
-                (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
-        );
+        // MONEY STILL OWED IS NOT A TOAST. The booking row has just been deleted,
+        // and it was the only record that this deposit is owed — so it is gone
+        // from the ring fence, from "Deposits to return" and from the duty list.
+        // A toast that fades in four seconds is the wrong shape for the one
+        // sentence the owner has to act on; it is logged as a warning too, so
+        // "Needs attention" carries it even if this alert is dismissed unread.
+        if (r.deposit_owed > 0) {
+            await glassAlert(
+                `Booking cancelled — but the ${gbp(r.deposit_owed)} refundable deposit could NOT be returned automatically.\n\n` +
+                    `${booking.name || 'The guest'} is still owed it, and the booking that recorded it has been cancelled. ` +
+                    `Return it by hand, then it is settled.\n\nIt is saved under Needs attention so you don't lose it.`,
+            );
+        } else {
+            toast(
+                'Booking cancelled.' +
+                    (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
+                    (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
+            );
+        }
         try {
             closeDetailsModal();
         } catch (e) {}
