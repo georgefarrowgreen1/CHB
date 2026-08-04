@@ -457,7 +457,12 @@ chk('an ARMED balance is not chased', substr_count($due, "booking_autopay_state(
 chk("...and nothing else suppresses the chase", strpos($due, "!== 'off'") === false && strpos($due, "'failed'") === false);
 $paySrc = file_get_contents(__DIR__ . '/pay.php');
 chk('the pay screen offers the arrangement', strpos($paySrc, "'autopayTerms' => booking_autopay_terms(\$b)") !== false);
-chk('...and vaults only when asked', strpos($paySrc, "if (!empty(\$in['autopay']))") !== false);
+// CONSENT NEVER RIDES A SLICE. booking_autopay_terms describes the rest after
+// the FULL ask; recorded beside a part payment, the agreed sum can never match
+// what booking_autopay_state derives at collection — the arrangement would sit
+// "agreed" and silently never fire. The client hides the offer while a slice is
+// armed (ui-test-pay); this is the server's half, for the stale tab that sends both.
+chk('...and vaults only when asked, never on a slice', strpos($paySrc, "if (!empty(\$in['autopay']) && !\$partial)") !== false);
 // THE PAYMENT MUST NEVER BE LOST BECAUSE THE CONVENIENCE FAILED: the vault runs
 // after the money is taken and the ledger written, and cannot reach the response.
 chk('...after the ledger is written', strpos($paySrc, 'autopay_vault(') > strpos($paySrc, 'INSERT IGNORE INTO payments'));

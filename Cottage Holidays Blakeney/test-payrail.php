@@ -1325,13 +1325,29 @@ chk('...with what is left still stated', strpos($sliceR['text'], 'Remaining bala
 // branch, not a rewrite (break-tested by forcing partial true throughout).
 chk('a full stage payment still says so', strpos($wholeR['text'], "your balance payment of £120.00") !== false);
 chk('...and does not claim to be part of anything', strpos($wholeR['text'], 'towards your balance') === false);
+// THE MAX-BOUND SLICE: the rental settles while the refundable deposit the
+// slice displaced is still to take. The receipt must neither say "paid in
+// full" (pay.php's payload never claims it for a partial) nor invent
+// "Remaining balance: £0.00 — we'll be in touch about settling it".
+// NB overrides FIRST: + keeps the LEFT operand's keys, and $slice already
+// carries amount/balance values of its own.
+$edgeR = payment_receipt_body(['partial' => true, 'amount' => 340.0, 'paid_so_far' => 400.0, 'balance' => 0.0] + $slice);
+chk('a max-bound slice receipt names the deposit as what is left',
+    strpos($edgeR['text'], "All that's left is your refundable damage deposit") !== false);
+chk('...never a £0.00 balance to settle', strpos($edgeR['text'], 'Remaining balance: £0.00') === false);
+chk('...and never paid in full', strpos($edgeR['text'], 'paid in full') === false);
+chk('...pay.php never claims fully paid for a partial', strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'fully_paid' => \$newStatus === 'paid' && !\$partial,") !== false);
 $sliceO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit', 'partial' => true]);
 $wholeO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit']);
 chk('the owner is told it was a part payment', strpos($sliceO['text'], 'Type: part payment towards the balance') !== false);
 chk('...and a whole one still reads plainly', strpos($wholeO['text'], "Type: balance\n") !== false);
 // The DECISION lives in pay.php — both composers pass with it never set.
+// Judged against the SCREEN'S ask ($fullCharge = rental + riding deposit), not
+// the rental alone: a slice at the max bound equals the rental due while the
+// deposit it displaced is still to take, and comparing to $amountDue called
+// that "not partial" — fullyPaid over an untaken deposit nothing would chase.
 $payW = (string) file_get_contents(__DIR__ . '/pay.php');
-chk('pay.php decides partial where it clamps', strpos($payW, '$partial = $part < $amountDue - 0.005;') !== false);
+chk('pay.php decides partial where it clamps, against the full ask', strpos($payW, '$partial = $part < $fullCharge - 0.005;') !== false);
 chk('...and carries it to the guest receipt', strpos($payW, "'partial' => \$partial,") !== false);
 chk('...to the owner notice', substr_count($payW, "'partial' => \$partial,") === 2);
 chk('...and into the activity log', strpos($payW, "\$partial ? 'Part payment by card") !== false);
@@ -1354,6 +1370,24 @@ chk('the quote is verified BEFORE the part is applied', $qAt !== false && $cAt !
 chk('a part payment carries no refundable deposit', strpos($paySrc, '$damagesDue = 0.0;') !== false);
 chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: partOverride !== undefined ? partOverride : payState.partAmount || 0,') !== false);
 chk('...and the field is offered only when the server sends bounds', strpos($appSrc2, 'if (partWrap) partWrap.style.display = payState.part ? \'\' : \'none\';') !== false);
+
+echo "\n-- part payment: the done screen is not a dead end --\n";
+// The charge answers with `remaining` — what is left of the ask the guest was
+// just reading, the part hint's own "£X would remain" figure — so the done
+// screen can state it and offer to take it now. Derived from the figure held
+// BEFORE the clamp, which must therefore be captured before the part block runs.
+$fcAt = strpos($paySrc, '$fullCharge = $chargeTotal;');
+$pcAt = strpos($paySrc, "isset(\$in['part_amount'])");
+chk('the full ask is captured BEFORE the clamp', $fcAt !== false && $pcAt !== false && $fcAt < $pcAt);
+chk('the charge response carries what is left of it', strpos($paySrc, "'remaining' => \$partial ? round(\$fullCharge - \$chargeTotal, 2) : 0,") !== false);
+// The client half: the done screen reads it (checked before fullyPaid — a max
+// slice settles the rental while the deposit is still to come), the button is
+// named for it, and "pay the rest" re-opens the same screen to re-ask the server.
+chk('the done screen states the remaining figure', strpos($appSrc2, 'is still to pay') !== false && strpos($appSrc2, "Number(res.remaining || 0)") !== false);
+$remAt = strpos($appSrc2, 'rem > 0.005');
+$fpAt = strpos($appSrc2, 'res.fullyPaid');
+chk('...checked before fullyPaid', $remAt !== false && $fpAt !== false && $remAt < $fpAt);
+chk('...with a button that re-opens the same screen', strpos($appSrc2, 'function payRestNow()') !== false && strpos($appSrc2, 'openPayView(payState.token, payState.bookingId, payState.kind)') !== false);
 
 // ============================================================
 //  A CANCELLED BOOKING'S DEPOSIT IS ACCOUNTED FOR ON ALL THREE SURFACES.

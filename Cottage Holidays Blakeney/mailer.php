@@ -2475,9 +2475,17 @@ function payment_receipt_body($b)
     // has to work before it is opened.
     $auto = !empty($b['automatic']);
     $subject = $auto ? "Balance collected — {$prop}" : "Payment received — {$prop}";
+    // Three states, not two: a part payment can settle the whole RENTAL while
+    // the refundable deposit it displaced is still to take (a slice typed at
+    // the max bound). "Remaining balance: £0.00 — we'll be in touch about
+    // settling it" states a figure with nothing behind it, so that case names
+    // the deposit instead. The receipt stays rental-framed on purpose — the
+    // deposit is the labelled exception, as it is everywhere on this document.
     $statusLine = !empty($b['fully_paid'])
         ? "Your booking is now paid in full. We can't wait to welcome you."
-        : 'Remaining balance: ' . $money($b['balance']) . ". We'll be in touch about settling it before your stay.";
+        : ((float) $b['balance'] <= 0.005
+            ? "All that's left is your refundable damage deposit — we'll be in touch about taking it before your stay."
+            : 'Remaining balance: ' . $money($b['balance']) . ". We'll be in touch about settling it before your stay.");
     $text =
         "Hello {$name},\n\n" .
         ($auto
