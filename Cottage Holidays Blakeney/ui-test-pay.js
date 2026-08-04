@@ -413,6 +413,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(bad.btnOff && bad.hero === '£340.00', `an amount outside the bounds arms nothing (${bad.hero})`);
   ok(/between £20\.00 and £290\.00/.test(bad.hint), `…and the hint says what is needed (${bad.hint})`);
+  // THE OWNER'S SCREENSHOT: "£340 to pay" directly above "between £20.00 and
+  // £290.00" with nothing reconciling them. The max is the rental due — the
+  // refundable deposit can't be split, it rides the payment that completes the
+  // stage — and the out-of-bounds state was the ONE bounds-showing state that
+  // didn't say so.
+  ok(/refundable £50\.00 deposit follows/.test(bad.hint),
+    `…and reconciles the £290 ceiling with the £340 headline (${bad.hint})`);
 
   // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
   // the sub's itemised lines and the settle-it-all link return as they were.

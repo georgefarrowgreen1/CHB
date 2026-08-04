@@ -4353,12 +4353,16 @@ function payPartRender() {
     if (hint && p) {
         const amt = /** @type {HTMLInputElement} */ (el('pay-part-amt'));
         const typed = amt ? String(amt.value).trim() : '';
+        // The deposit sentence rides EVERY bounds-showing state: the max is
+        // the rental due (the deposit can't split — it rides the completing
+        // payment), and the owner screenshotted the one state that never said
+        // why "£340 to pay" sat over "between £20.00 and £290.00".
+        const depLine = v.dep > 0.005 ? ` The refundable ${gbp(v.dep)} deposit follows with your next payment.` : '';
         hint.textContent = armed
             ? `${gbp(part)} now — ${gbp(Math.round((v.due - part) * 100) / 100)} would remain.`
             : typed !== ''
-              ? `Enter an amount between ${gbp(p.min)} and ${gbp(p.max)}.`
-              : `Anything from ${gbp(p.min)} to ${gbp(p.max)}.` +
-                (v.dep > 0.005 ? ` The refundable ${gbp(v.dep)} deposit follows with your next payment.` : '');
+              ? `Enter an amount between ${gbp(p.min)} and ${gbp(p.max)}.` + depLine
+              : `Anything from ${gbp(p.min)} to ${gbp(p.max)}.` + depLine;
     }
     const lbl = el('pay-kind-label'),
         big = el('pay-amount'),
@@ -14575,7 +14579,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payrest1';
+    const BUILD = 'parthint1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
