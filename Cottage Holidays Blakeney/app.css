@@ -3082,6 +3082,77 @@ a.card {
   height: 64px;
   color: var(--ok-text);
 }
+/* PAY-JOURNEY MOTION — states used to CUT. Animations replay on display:none →
+   shown, so each panel eases in at its own state change with no JS; the hero
+   ticks over via .pay-amt-swap (payPartRender, real change only). Close stays
+   instant; all of it stands down under reduced motion (decoration only). */
+@keyframes payRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes payPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  70% {
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes payAmtSwap {
+  from {
+    opacity: 0.2;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+#pay-body,
+.pay-error {
+  animation: payRise 0.38s var(--fluid-bezier);
+}
+.pay-done {
+  animation: payRise 0.42s var(--fluid-bezier);
+}
+.pay-done-tick .ic {
+  animation: payPop 0.5s var(--spring) 0.08s backwards;
+}
+.pay-part-row,
+.pay-express,
+.pay-autopay {
+  animation: payRise 0.32s var(--fluid-bezier);
+}
+.pay-msg.show {
+  animation: payRise 0.3s var(--fluid-bezier);
+}
+#pay-amount.pay-amt-swap {
+  animation: payAmtSwap 0.3s var(--fluid-bezier);
+}
+@media (prefers-reduced-motion: reduce) {
+  #pay-body,
+  .pay-done,
+  .pay-done-tick .ic,
+  .pay-part-row,
+  .pay-express,
+  .pay-autopay,
+  .pay-msg.show,
+  .pay-error,
+  #pay-amount.pay-amt-swap {
+    animation: none;
+  }
+}
 /* Desktop: make use of the wider screen — order summary beside the card form
            (the narrow single column is kept on phones, where it reads as a clean
            checkout). pay-head stays full-width above; pay-done/pay-error replace the
