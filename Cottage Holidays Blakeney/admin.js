@@ -1600,7 +1600,11 @@ async function chbBulkRun(rows, opts) {
     for (const x of send) {
         // Same validated endpoint the single-record action reaches through
         // requestPayment — what bulk drops is the preview, never the server rules.
-        const kind = x.ps && x.ps.deposit > 0.5 ? 'balance' : 'deposit';
+        // The STAGE is the hub's own derivation, not a second reading of it:
+        // `ps.deposit > 0.5` was the same "anything is in" test, so a part-paid
+        // deposit outside the window was chased here for the whole stay while
+        // the hub asked for the remainder.
+        const kind = hubAskKind(bookingDue(x.pk, x.b), (x.b.checkOut || '') <= todayDashed(), x.b, x.ps);
         try {
             if (o.send) await o.send(x);
             else await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
@@ -9680,9 +9684,18 @@ function bookingInBalanceWindow(b) {
 // booking_payment_kind's window clause too, because the SUM is derived from the
 // stage: get it wrong and the banner over-asks outside the window and under-asks
 // inside it.
-function hubAskKind(gt, past, b) {
+// A SLICE IS NOT ITS STAGE. This read `gt.paid > 0` — "anything is in" — true of
+// the deposit only while a guest could pay nothing but a WHOLE stage. £20 of a
+// £160 deposit flipped the ask to the BALANCE and quoted the whole remainder:
+// the over-ask above through a new door, jumping the schedule the guest agreed
+// to, and disagreeing with the SERVER, whose own default is
+// booking_deposit_settled. hubAskAmount already computes that figure, so it is
+// asked rather than restated. With no price summary there is nothing to derive
+// it from, so that call keeps the coarse test rather than guessing.
+function hubAskKind(gt, past, b, ps) {
     if (b && bookingInBalanceWindow(b)) return 'balance';
-    return gt.paid > 0 || past ? 'balance' : 'deposit';
+    const settled = ps ? hubAskAmount(b, ps, gt, 'deposit') <= 0.005 : gt.paid > 0;
+    return settled || past ? 'balance' : 'deposit';
 }
 // WHAT THE CARD ACTUALLY TAKES for the refundable deposit — era-aware: the agreed
 // figure before the charge, hold_amount once charged (`update` re-snapshots
@@ -9762,7 +9775,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
         .map((s, i) => pill(s, s.now || i === curIdx ? nowCls(s) : s.done ? 'is-done' : ''))
         .join(arrow);
 
-    const askKind = hubAskKind(gt, past, b);
+    const askKind = hubAskKind(gt, past, b, ps);
     // THE FIGURE THIS ACTION IS WORTH, derived once and carried on `next`, so the
     // banner and the sticky bar cannot quote two numbers for one tap. Both read
     // gt.balance — the whole outstanding — beside a button sending the DEPOSIT:
@@ -9789,9 +9802,15 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             };
         } else {
             next = {
-                text: `${gbp(askAmt)} balance remaining.`,
+                // THE WORDS FOLLOW THE STAGE, like the figure beside them: with
+                // the deposit part-paid this said "balance remaining" over the
+                // DEPOSIT's remainder — the label naming one stage and the
+                // number another, the pair A2d fixed pointing the other way.
+                text: askKind === 'deposit'
+                    ? `${gbp(askAmt)} of the deposit still to come.`
+                    : `${gbp(askAmt)} balance remaining.`,
                 onclick: canCard ? chbAttrs('requestPayment', String(b.id), askKind) : chbAttrs('recordPayment', String(b.id)),
-                btn: canCard ? 'Request the balance by card' : 'Record a payment',
+                btn: canCard ? (askKind === 'deposit' ? 'Request the rest by card' : 'Request the balance by card') : 'Record a payment',
                 btnShort: canCard ? 'Request by card' : 'Record a payment',
                 fig: askAmt,
                 money: true,

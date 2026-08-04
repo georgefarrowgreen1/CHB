@@ -384,6 +384,38 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.evaluate((iso) => { const b = findBookingById('b1'); b.checkIn = iso; showDetails('21a', b); }, d(30));
   await page.waitForTimeout(400);
 
+  // A SLICE IS NOT ITS STAGE. Part payment lets a guest pay SOME of the deposit,
+  // which the old `gt.paid > 0` test read as "the deposit is done" — so £20 of a
+  // £147.50 deposit flipped the ask to the balance and quoted the whole stay,
+  // the A2d over-ask arriving through a new door and breaking the schedule the
+  // guest agreed to. Asserted as an invariant against the plan panel's own
+  // figure, for the reason A2d states: writing the pounds down measures the
+  // fixture rather than the rule.
+  // Read the resting shape FIRST: once part-paid, the payline states what has
+  // been RECEIVED rather than the stay total, so the whole-stay figure has to be
+  // captured before the mutation or the comparison measures the wrong number.
+  const rest = await askFig();
+  const stayTotal = money(rest.total);
+  const planNum = Number(String(money(rest.plan)).replace(/[£,]/g, ''));
+  await page.evaluate(() => { const b = findBookingById('b1'); b.depositPaid = 20; b.payment = 'deposit'; showDetails('21a', b); });
+  await page.waitForTimeout(450);
+  const part = await askFig();
+  ask = await askShape();
+  ok(ask.banKind === 'deposit', `a part-paid DEPOSIT is still the deposit stage (${ask.banKind})`);
+  ok(money(part.ban) !== stayTotal, `…so the ask is not the whole stay (${money(part.ban)} of ${stayTotal})`);
+  // What is left OF THE DEPOSIT: the plan panel's own figure less the £20 in.
+  const owedDep = '£' + (planNum - 20).toFixed(2);
+  ok(money(part.ban) === owedDep, `…it is the REST of the deposit (${money(part.ban)}, plan £${planNum.toFixed(2)} less £20.00)`);
+  ok(money(part.sticky) === owedDep, `…and the sticky bar names that same figure (${part.sticky})`);
+  // Paying the deposit OFF still moves the stage on — this is a boundary, not a
+  // block (break-tested: pinning 'deposit' outright fails here).
+  await page.evaluate((paid) => { const b = findBookingById('b1'); b.depositPaid = paid; showDetails('21a', b); }, planNum);
+  await page.waitForTimeout(450);
+  ask = await askShape();
+  ok(ask.banKind === 'balance', `a SETTLED deposit moves on to the balance (${ask.banKind})`);
+  await page.evaluate(() => { const b = findBookingById('b1'); b.depositPaid = 0; b.payment = 'unpaid'; showDetails('21a', b); });
+  await page.waitForTimeout(400);
+
   // b3 is paid in full → nothing left to ask for.
   await page.evaluate(() => showDetails('21a', findBookingById('b3')));
   await page.waitForTimeout(500);
@@ -558,7 +590,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await rp;
   await page.waitForTimeout(500);
   const next2 = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
-  ok(/£390\.00 balance remaining/.test(next2), `after £100 recorded → balance ask (${next2.trim().slice(0, 50)}…)`);
+  // £100 against a £160 deposit does NOT settle the deposit, so the next ask is
+  // the REST OF IT — £60 — and not the £390 whole outstanding. This gate used to
+  // assert the £390: the client read "anything is in" as "the deposit is done"
+  // and jumped the schedule the guest agreed to, while the SERVER's own default
+  // (booking_deposit_settled) would have charged £60. A second, independent
+  // witness of the rule the part-paid case above pins.
+  ok(/£60\.00 of the deposit still to come/.test(next2), `after £100 of a £160 deposit → the REST of the deposit (${next2.trim().slice(0, 50)}…)`);
+  ok(!/balance remaining/.test(next2), '…and the words do not name a stage the figure is not');
   const pipe2 = await page.evaluate(() => ({
     now: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
     done: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
