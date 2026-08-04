@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 414;
+const ADMIN_BUNDLE_V = 415;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 148;
+const ADMIN_CSS_V = 149;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1292,6 +1292,18 @@ function mapBookingFromApi(row) {
         // The monthly schedule (my-bookings.php only) — null everywhere else,
         // and every renderer must treat null as "no plan".
         autopayPlan: row.autopay_plan && typeof row.autopay_plan === 'object' ? row.autopay_plan : null,
+        // The raw plan columns (owner rows carry them via SELECT *): the back
+        // office derives DISPLAY from these; every charged figure stays
+        // server-derived.
+        autopayConsentAt: row.autopay_consent_at || '',
+        autopayRevokedAt: row.autopay_revoked_at || '',
+        autopayAmount: parseFloat(row.autopay_amount) || 0,
+        autopayDue: row.autopay_due || '',
+        autopayInstalments: parseInt(row.autopay_instalments, 10) || 0,
+        autopayNextAt: row.autopay_next_at || '',
+        autopayAttempts: parseInt(row.autopay_attempts, 10) || 0,
+        autopayLastError: row.autopay_last_error || '',
+        autopayOffer: row.autopay_offer === null || row.autopay_offer === undefined || row.autopay_offer === '' ? null : parseInt(row.autopay_offer, 10),
         depositRequestedAt: row.deposit_requested_at || '',
         balanceRequestedAt: row.balance_requested_at || '',
         balanceRemindedAt: row.balance_reminded_at || '',
@@ -14711,7 +14723,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'instalb1';
+    const BUILD = 'instalc1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

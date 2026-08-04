@@ -4368,3 +4368,19 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
     .modal-col { min-width: 0; }
     .modal-cols .modal-col > .modal-sec:first-child { border-top: none; padding-top: 4px; }
 }
+
+.mo-chip {
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  font-size: 0.76rem;
+  color: var(--text-light);
+  background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
+}
+.mo-ap-row {
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}

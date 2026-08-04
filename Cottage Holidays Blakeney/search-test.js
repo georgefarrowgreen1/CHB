@@ -2473,6 +2473,72 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('if (__expOldGet) apiGet = __expOldGet; __cmdkExp = []; __cmdkExpOk = false;', ctx);
     }
 
+    // ---- §42. MONTHLY INSTALMENTS, THE OWNER'S SIDE. ----
+    // The failed-plan duty, the schedule mirror, the hub's monthly row and the
+    // fleet's Money-on-the-way card — all reading the SAME raw plan columns,
+    // driven with fixtures so every refusal is checked, not just the render.
+    console.log('\n== §42 Instalments: duty, hub row, money on the way ==');
+    if (typeof ctx.chbAutopayRows === 'function' && typeof ctx.hubPlanMonthlyHtml === 'function') {
+        const dFut = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+        // The schedule mirror agrees with pricing.php's rules.
+        check('the month mirror clamps the 31st', ctx.apShiftMonths('2026-01-31', 1) === '2026-02-28');
+        check('…keeps a leap 29th', ctx.apShiftMonths('2028-01-31', 1) === '2028-02-29');
+        check('…and the schedule anchors on the due date', JSON.stringify(ctx.apSchedule('2026-10-28', 3)) === '["2026-08-28","2026-09-28","2026-10-28"]');
+        // A) THE FAILED-PLAN DUTY, and its refusals.
+        const seed = (over) => vm.runInContext(`propertyMeta.jollyboat={name:'Jollyboat'};
+            Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[Object.assign({id:91,dbId:91,name:'Dan Rowe',email:'d@x.co',
+              checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',adults:2,children:0,payment:'deposit',
+              depositPaid:290,holdStatus:'charged',
+              agreedPrice:{total:670,perNight:650,nights:4,txnFee:20,damagesDeposit:50},
+              autopayConsentAt:'2026-07-01 10:00:00',autopayRevokedAt:'',autopayAmount:190,
+              autopayDue:'${dFut(30)}',autopayInstalments:4,autopayNextAt:'${dFut(10)}',
+              autopayAttempts:3,autopayLastError:'The card was declined.'}, ${JSON.stringify(over || {})})];`, ctx);
+        seed();
+        let duty = ctx.chbDuties().filter((d) => d.kind === 'autopay');
+        check('a plan whose card gave up is a DUTY', duty.length === 1 && /Dan Rowe/.test(duty[0].label) && /card was declined/i.test(duty[0].label), duty.map((d) => d.label).join('|'));
+        check('…whose sub carries the figure and the handover', /£380\.00 still owed/.test(duty[0].sub) && /ordinary chase/.test(duty[0].sub), duty[0].sub);
+        seed({ autopayAttempts: 2 });
+        check('…but a plan still trying is NOT', ctx.chbDuties().filter((d) => d.kind === 'autopay').length === 0);
+        seed({ autopayRevokedAt: '2026-08-01 09:00:00' });
+        check('…nor one the guest turned off', ctx.chbDuties().filter((d) => d.kind === 'autopay').length === 0);
+        seed({ depositPaid: 720 });
+        check('…nor one with nothing owed', ctx.chbDuties().filter((d) => d.kind === 'autopay').length === 0);
+        // B) THE HUB'S MONTHLY ROW: same vocabulary as the guest block, rows
+        // summing to the live rental remainder. The fixture is a COHERENT
+        // mid-plan: the next date sits ON the plan's own schedule.
+        const hubDue = dFut(90);
+        const hubSched = ctx.apSchedule(hubDue, 3);
+        seed({ autopayAttempts: 0, autopayInstalments: 3, autopayDue: hubDue, autopayNextAt: hubSched[1] });
+        const hb = vm.runInContext(`hubPlanMonthlyHtml(dbBookings.jollyboat[0], paymentSummary('jollyboat', dbBookings.jollyboat[0]))`, ctx);
+        check('the hub row names the plan', /Balance — 3 monthly payments/.test(hb), hb.slice(0, 90));
+        check('…says what is still to collect', /£380\.00 still to collect/.test(hb));
+        check('…and warns when the next notice goes', /notice /.test(hb));
+        check('…in the live-plan vocabulary, one dot per state', /is-done/.test(hb) && /is-next/.test(hb) && /is-todo/.test(hb), hb.slice(-300));
+        // C) MONEY ON THE WAY: two live plans + the failed one, figure-first,
+        // failed last with Fix.
+        vm.runInContext(`dbBookings.jollyboat.push(
+            Object.assign({}, dbBookings.jollyboat[0], {id:92,dbId:92,name:'Cara Nunn',autopayAttempts:0,autopayInstalments:3,autopayAmount:175,autopayNextAt:'${dFut(6)}'}),
+            Object.assign({}, dbBookings.jollyboat[0], {id:93,dbId:93,name:'Eve Marsh',autopayAttempts:0,autopayInstalments:0,autopayAmount:380,autopayNextAt:''}),
+            Object.assign({}, dbBookings.jollyboat[0], {id:94,dbId:94,name:'Bill Fail',autopayAttempts:3}));`, ctx);
+        const rows = ctx.chbAutopayRows();
+        check('every live arrangement is a row, the failed one too', rows.length === 4, String(rows.length));
+        check('the failed plan sorts LAST — it cannot hide', rows[rows.length - 1].failed === true && /Bill Fail|Dan Rowe/.test(rows[rows.length - 1].name));
+        check('a monthly row leads with its next collection', rows.some((r) => r.monthly && Math.abs(r.fig - 175) < 0.005));
+        check('a single collection leads with the whole rest', rows.some((r) => !r.monthly && Math.abs(r.fig - 380) < 0.005));
+        const card = ctx.chbMoneyOnTheWayHtml();
+        check('the card counts only LIVE money in its headline', /arranged across/.test(card) && /2 plans|3 plans/.test(card), card.slice(0, 200));
+        check('…names who needs you', /need/.test(card));
+        check('…and the stopped row reads stopped, with the fix beside it', /stopped/.test(card) && /Fix ›/.test(card));
+        // D) The Edit-plan wiring: the client sends the owner's say, the server
+        // validates it in words.
+        const adminSrc = require('fs').readFileSync(__dirname + '/admin.js', 'utf8');
+        const bkSrc = require('fs').readFileSync(__dirname + '/bookings.php', 'utf8');
+        check('the dialog sends the owner’s say', adminSrc.indexOf("autopay_offer: String(vals.apoffer == null ? '' : vals.apoffer)") !== -1);
+        check('…and the server refuses anything but 0/2/3/4', bkSrc.indexOf("in_array($apOffer, ['0', '2', '3', '4'], true)") !== -1);
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+    } else fail('chbAutopayRows / hubPlanMonthlyHtml missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

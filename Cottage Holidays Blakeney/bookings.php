@@ -1285,9 +1285,16 @@ if ($action === 'set_payment_plan') {
         ? (float) (booking_amount_due($b, 'balance')['total'] ?? 0)
         : 0.0;
     [$pct, $amt, $due] = payment_plan_parse($in, (string) ($b['check_in'] ?? ''), $tot);
+    // THE OWNER'S SAY over the monthly offer: '' = automatic, 0 = never,
+    // 2..4 = offer exactly that many. This only shapes what the deposit screen
+    // OFFERS — nothing collects until the guest agrees and saves a card.
+    $apOffer = trim((string) ($in['autopay_offer'] ?? ''));
+    if ($apOffer !== '' && !in_array($apOffer, ['0', '2', '3', '4'], true)) {
+        json_out(['error' => 'Monthly payments can be 2, 3 or 4 — or 0 to never offer them.'], 400);
+    }
     try {
-        db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?')
-            ->execute([$pct, $amt, $due, $id]);
+        db()->prepare('UPDATE bookings SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ? WHERE id = ?')
+            ->execute([$pct, $amt, $due, $apOffer === '' ? null : (int) $apOffer, $id]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Could not save the plan — has migrate.php been run?'], 500);
     }
@@ -1301,7 +1308,7 @@ if ($action === 'set_payment_plan') {
         $bits[] = 'balance due ' . uk_date($due);
     }
     log_activity('payment', 'payment.plan', ($bits ? 'Payment plan set — ' . implode(', ', $bits) : 'Payment plan cleared — back to the site standard') . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
-    json_out(['ok' => true, 'deposit_pct' => $pct, 'deposit_amount' => $amt, 'balance_due_date' => $due]);
+    json_out(['ok' => true, 'deposit_pct' => $pct, 'deposit_amount' => $amt, 'balance_due_date' => $due, 'autopay_offer' => $apOffer === '' ? null : (int) $apOffer]);
 }
 
 // Return the secure pay link for a booking (to copy/share by WhatsApp, SMS, etc.)

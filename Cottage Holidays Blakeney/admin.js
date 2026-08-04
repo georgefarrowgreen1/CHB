@@ -13615,6 +13615,81 @@ async function cancelBooking(bookingId) {
     }
 }
 // ---- Graphical Money overview (the dashboard shown above the folders) ----
+// MONEY ON THE WAY — every live arrangement across the fleet in one card:
+// what is scheduled, when, and the one that stopped. Client-derived from the
+// booking rows' own plan columns (display; every charged figure stays
+// server-derived), the same fields the hub panel and the failed-plan duty
+// read, so the three surfaces cannot disagree.
+function chbAutopayRows() {
+    const today = todayDashed();
+    const out = [];
+    Object.keys(dbBookings || {}).forEach((pk) =>
+        (dbBookings[pk] || []).forEach((b) => {
+            if (!b.autopayConsentAt || b.autopayRevokedAt || !b.autopayDue) return;
+            if (!b.checkIn || b.checkIn < today) return;
+            const owed = bookingDue(pk, b);
+            if (!owed || !(owed.balance > 0.5)) return;
+            const failed = (b.autopayAttempts || 0) >= 3;
+            const monthly = b.autopayInstalments > 1;
+            let next = String((monthly ? b.autopayNextAt : b.autopayDue) || '').slice(0, 10);
+            let fig = monthly ? Math.min(b.autopayAmount, owed.balance) : owed.balance;
+            let done = 0;
+            if (monthly) {
+                apSchedule(String(b.autopayDue).slice(0, 10), b.autopayInstalments).forEach((d) => {
+                    if (!next || d < next) done++;
+                });
+            }
+            out.push({
+                id: b.id, name: b.name || 'A guest', prop: (propertyMeta[pk] || {}).name || pk,
+                fig: Math.round(fig * 100) / 100, next, failed, monthly,
+                prog: failed
+                    ? `card declined${monthly ? ` at ${done + 1} of ${b.autopayInstalments}` : ''} · being chased`
+                    : monthly
+                      ? `monthly · ${done} of ${b.autopayInstalments} done`
+                      : 'one payment, on the due date',
+                toGo: owed.balance,
+            });
+        }),
+    );
+    out.sort((a, b2) => (a.failed !== b2.failed ? (a.failed ? 1 : -1) : String(a.next).localeCompare(String(b2.next))));
+    return out;
+}
+function chbMoneyOnTheWayHtml() {
+    const rows = chbAutopayRows();
+    if (!rows.length) return '';
+    const live = rows.filter((r) => !r.failed);
+    const total = Math.round(live.reduce((a, r) => a + r.toGo, 0) * 100) / 100;
+    const needs = rows.length - live.length;
+    // The month chips: upcoming collection figures grouped by calendar month.
+    const today = todayDashed();
+    const ym = (d) => String(d).slice(0, 7);
+    const thisM = Math.round(live.reduce((a, r) => a + (ym(r.next) === ym(today) ? r.fig : 0), 0) * 100) / 100;
+    const nextMKey = ym(apShiftMonths(today, 1));
+    const nextM = Math.round(live.reduce((a, r) => a + (ym(r.next) === nextMKey ? r.fig : 0), 0) * 100) / 100;
+    const nextMName = new Date(Date.UTC(+nextMKey.slice(0, 4), +nextMKey.slice(5, 7) - 1, 15)).toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+    const chip = (t) => `<span class="mo-chip">${t}</span>`;
+    const rowH = (r) => `
+        <button type="button" class="act-row mo-ap-row" ${chbAttrs('openBookingHub', String(r.id))} style="width:100%;text-align:left;justify-content:space-between;gap:10px;align-items:center;">
+            <span style="min-width:0;">
+                <strong style="font-size:0.86rem;${r.failed ? 'color:var(--danger-text);' : ''}">${escapeHtml(r.name)}</strong>
+                <span style="display:block;color:var(--text-muted);font-size:0.76rem;">${escapeHtml(r.prop)} · ${escapeHtml(r.prog)}</span>
+            </span>
+            <span style="flex:none;text-align:right;">
+                <span style="display:block;font-size:0.92rem;font-weight:600;font-variant-numeric:tabular-nums;${r.failed ? 'color:var(--danger-text);' : 'color:var(--text-light);'}">${r.failed ? 'stopped' : gbp(r.fig)}</span>
+                <span style="display:block;font-size:0.74rem;${r.failed ? 'color:var(--accent-text);font-weight:600;' : 'color:var(--text-muted);'}">${r.failed ? 'Fix ›' : fmtDate(r.next)}</span>
+            </span>
+        </button>`;
+    return `
+    <div class="glass-panel" style="padding:18px;margin-top:16px;">
+        <div class="bhub-headpay-cap" style="margin-bottom:4px;">Money on the way</div>
+        <p style="margin:0 0 10px;font-size:0.8rem;color:var(--text-muted);">
+            <strong style="color:var(--text-light);font-size:1.05rem;">${gbp(total)}</strong> arranged across
+            <strong style="color:var(--text-light);">${live.length} plan${live.length === 1 ? '' : 's'}</strong>${needs ? ` — ${needs === 1 ? 'one needs' : needs + ' need'} you` : ''}.
+        </p>
+        ${thisM > 0 || nextM > 0 ? `<div style="display:flex;gap:8px;margin-bottom:10px;">${thisM > 0 ? chip(`This month · ${gbp(thisM)}`) : ''}${nextM > 0 ? chip(`${nextMName} · ${gbp(nextM)}`) : ''}</div>` : ''}
+        ${rows.map(rowH).join('')}
+    </div>`;
+}
 function renderMoneyOverview() {
     const el = document.getElementById('money-overview');
     if (!el) return;
@@ -13781,6 +13856,11 @@ function renderMoneyOverview() {
                             <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
                     </div>
                 </details>`;
+    // The fleet's live arrangements ride the same repaint (display-only
+    // derivation — see chbMoneyOnTheWayHtml).
+    try {
+        el.innerHTML += chbMoneyOnTheWayHtml();
+    } catch (e) {}
 }
 // Per-booking payments & balances manager (top of the Money & income view).
 // Upcoming + current stays, with manual reconcile + Square request/refund.
@@ -15136,6 +15216,56 @@ function bookingPlanDueDate(b) {
 // standard-plan booking is settled (nothing left to schedule); a CUSTOM plan
 // stays visible as the record of what was agreed. Dates lead each line's
 // provenance so "why this figure?" is answered where the figure is.
+// DISPLAY mirrors of pricing.php's schedule maths (ukShiftMonthsPhp /
+// booking_instalment_schedule) — panel rendering only; every charged figure
+// stays server-derived. Month steps clamp the day into short months.
+function apShiftMonths(iso, months) {
+    const p = String(iso || '').slice(0, 10).split('-').map(Number);
+    if (p.length !== 3 || !p[0]) return String(iso);
+    let y = p[0], m0 = p[1] - 1 + months;
+    y += Math.floor(m0 / 12);
+    const m = ((m0 % 12) + 12) % 12;
+    const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(Math.min(p[2], last)).padStart(2, '0')}`;
+}
+function apSchedule(due, n) {
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) out.push(apShiftMonths(due, -i));
+    return out;
+}
+// Is a MONTHLY plan live on this booking, from the raw columns the owner rows
+// carry? Consent given and not revoked, more than one instalment, tries not
+// exhausted. (Attempts at the cap are the FAILED state — a duty, not a plan.)
+function apPlanLive(b) {
+    return !!(b && b.autopayConsentAt && !b.autopayRevokedAt && b.autopayInstalments > 1 && (b.autopayAttempts || 0) < 3);
+}
+// The hub plan panel's monthly row: progress bar + the state-dot rail, rows
+// summing to the live rental remainder (the final row absorbs manual
+// payments) — the same vocabulary the guest's My Stays block uses, so owner
+// and guest look at the same picture.
+function hubPlanMonthlyHtml(b, ps) {
+    const n = b.autopayInstalments;
+    const per = Math.round(b.autopayAmount * 100) / 100;
+    const due = String(b.autopayDue || '').slice(0, 10);
+    const next = String(b.autopayNextAt || '').slice(0, 10);
+    const rest = Math.max(0, Math.round(ps.balance * 100) / 100);
+    let left = 0;
+    const rows = apSchedule(due, n).map((d) => {
+        const st = !next ? 'done' : d < next ? 'done' : d === next ? 'next' : 'todo';
+        if (st !== 'done') left++;
+        return { d, st };
+    });
+    const doneN = rows.length - left;
+    const items = rows
+        .map((r, i) => {
+            const lastRow = i === rows.length - 1;
+            const fig = r.st === 'done' ? per : lastRow ? Math.max(0, Math.round((rest - per * Math.max(0, left - 1)) * 100) / 100) : per;
+            const note = r.st === 'done' ? 'paid' : r.st === 'next' ? `notice ${fmtDate(ukShiftDays(r.d, -3))}` : lastRow ? 'final' : '';
+            return `<span class="ap-row"><span class="ap-dot is-${r.st}" aria-hidden="true"></span><span class="ap-date">${fmtDate(r.d)}</span><span class="ap-figc">${gbp(fig)}</span>${note ? `<span class="ap-note">${note}</span>` : ''}</span>`;
+        })
+        .join('');
+    return `<div class="bhub-plan-row" style="align-items:flex-start;"><span class="bhub-plan-what"><strong class="bhub-plan-fig">Balance — ${n} monthly payments</strong><span class="bhub-plan-why">guest agreed ${fmtDate(String(b.autopayConsentAt || '').slice(0, 10))} · ${gbp(rest)} still to collect</span><span class="ap-bar" aria-hidden="true"><span style="width:${Math.round((doneN / n) * 100)}%"></span></span><span class="ap-rail">${items}</span></span></div>`;
+}
 function hubPlanHtml(b, ps, gt, past) {
     const custom = b.depositPctOverride > 0 || b.depositAmountOverride > 0 || !!b.balanceDueDate;
     if (gt.fullyPaid && !custom) return '';
@@ -15192,7 +15322,9 @@ function hubPlanHtml(b, ps, gt, past) {
               panel read as washed-out grey beside the payline above it. */ ''}
         <span class="bhub-plan-cap">Payment plan <span class="bhub-plan-tag${custom ? '' : ' is-std'}">${custom ? 'custom' : 'default'}</span></span>
         <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(depAsk)} deposit</strong><span class="bhub-plan-why">${escapeHtml(depFrom)}</span></span><span class="bhub-plan-state">${depState}</span></div>
-        <div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong><span class="bhub-plan-why">${escapeHtml(dueFrom)}</span></span><span class="bhub-plan-state">${balState}</span></div>
+        ${apPlanLive(b) && !gt.fullyPaid
+            ? hubPlanMonthlyHtml(b, ps)
+            : `<div class="bhub-plan-row"><span class="bhub-plan-what"><strong class="bhub-plan-fig">${gbp(Math.max(0, Math.round((ps.total - dep) * 100) / 100))} balance by ${fmtDate(due)}</strong><span class="bhub-plan-why">${escapeHtml(dueFrom)}</span></span><span class="bhub-plan-state">${balState}</span></div>`}
         ${/* The action-row vocabulary, not a muted linklike — it sat directly
               above the accent action rows as the one grey control in the
               panel (owner: "needs to be more visible"). The row's ::after
@@ -15305,6 +15437,21 @@ async function editPaymentPlan(bookingId) {
         [
             { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: depHint },
             { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
+            // The OWNER'S SAY over the monthly offer — this only shapes what
+            // the deposit screen offers; nothing collects until the guest
+            // agrees there and saves a card. You can't switch it on for them.
+            {
+                id: 'apoffer', label: 'Offer monthly payments', type: 'select',
+                value: b.autopayOffer === 0 ? '0' : b.autopayOffer > 0 ? String(b.autopayOffer) : '',
+                options: [
+                    { value: '', label: 'Automatic — when there is room' },
+                    { value: '0', label: 'Never' },
+                    { value: '2', label: 'Up to 2 payments' },
+                    { value: '3', label: 'Up to 3 payments' },
+                    { value: '4', label: 'Up to 4 payments' },
+                ],
+                hint: "Offered on the guest's deposit screen — instalments only start once they agree and save a card.",
+            },
             // Blank by default: a plan is usually for ONE booking, so naming it
             // is the exception. Named, it becomes reusable.
             { id: 'save', label: 'Save as (optional)', value: '', placeholder: 'e.g. Peak season', hint: 'Name it to reuse it on other bookings' },
@@ -15336,12 +15483,14 @@ async function editPaymentPlan(bookingId) {
             deposit_pct: pct,
             deposit_amount: '',
             balance_due_date: String(vals.due || '').trim(),
+            autopay_offer: String(vals.apoffer == null ? '' : vals.apoffer),
         });
         // Adopt the SERVER'S accepted values, not the typed ones — validation may
         // have normalised them, and the panel re-renders from the booking.
         b.depositPctOverride = res.deposit_pct != null ? parseFloat(res.deposit_pct) : null;
         b.depositAmountOverride = res.deposit_amount != null ? parseFloat(res.deposit_amount) : null;
         b.balanceDueDate = res.balance_due_date || '';
+        b.autopayOffer = res.autopay_offer === null || res.autopay_offer === undefined || res.autopay_offer === '' ? null : parseInt(res.autopay_offer, 10);
         // Remember it only once the SERVER accepted it — a preset built from a
         // refused plan would hand the same refusal to every future booking.
         if (presetName && Number(b.depositPctOverride) > 0) chbPlanPresetAdd(presetName, Number(b.depositPctOverride), presetDays);
@@ -15988,6 +16137,30 @@ function chbDuties() {
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
+    // 1b) AN AUTOMATIC PAYMENT THAT GAVE UP. The collector stands down after
+    // three tries and the ordinary chase takes over — but "the automatic thing
+    // stopped" is exactly what the owner arranged NOT to have to watch, so it
+    // lands on Today. Consent live, tries exhausted, money still owed on an
+    // upcoming stay.
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) =>
+            (dbBookings[pk] || []).forEach((b) => {
+                if (!b.autopayConsentAt || b.autopayRevokedAt) return;
+                if ((b.autopayAttempts || 0) < 3) return;
+                if (!b.checkIn || b.checkIn < today) return;
+                const owed = bookingDue(pk, b);
+                if (!owed || !(owed.balance > 0.5)) return;
+                out.push({
+                    kind: 'autopay', sev: 'danger', ic: 'alert',
+                    label: `${b.name || 'A guest'}’s automatic payment failed — ${b.autopayLastError ? String(b.autopayLastError).replace(/[.\s]+$/, '') : 'their card declined'}`,
+                    sub: `${gbp(owed.balance)} still owed · collection stopped; the ordinary chase has taken over`,
+                    act: 'Open', go: chbAttrs('openBookingHub', String(b.id)),
+                    board: 'money', scope: 'bookings',
+                    run: () => { closeCmdK(); openBookingHub(b.id); },
+                });
+            }),
+        );
+    } catch (e) {}
     // 1a) A CALENDAR SYNC THAT HAS STOPPED. This was only ever a line in the
     // assistant's foot — you had to open search AND read the bottom of it — and
     // it is the failure that costs the most: while an Airbnb feed is stale its
