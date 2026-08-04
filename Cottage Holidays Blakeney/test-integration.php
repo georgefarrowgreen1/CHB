@@ -1235,6 +1235,61 @@ it_check('a POST carries it too, so ANY request re-syncs', isset($rp['json']['sr
 it_check('json_out leaves a bare list a list',
     strpos((string) file_get_contents(__DIR__ . '/db.php'), 'array_keys($data) !== range(0, count($data) - 1)') !== false);
 
+// ============================================================
+//  20. MOVING A STAY UN-STAMPS ITS ARRIVAL EMAIL.
+//
+//  The arrival email states the cottage, the date and the check-in time, and
+//  pre-arrival.php's guard is `pre_arrival_sent IS NULL` — so once sent, moving
+//  the dates or the cottage left the guest holding arrival info for a stay that
+//  no longer exists, with nothing ever re-sending and the hub reading
+//  "Arrival info ✓". Autopay survives the same edit by COMPARING its agreed
+//  terms against the live plan (a moved date reads `stale`); this stamp has
+//  nothing to compare against, so `update` clears it and the cron re-sends.
+//  Driven through the REAL endpoint against the real column, because the fix
+//  is one conditional in a 20-line SQL builder and a source scan would pass
+//  with the condition inverted.
+// ============================================================
+echo "\n== 20. Moving a stay un-stamps its arrival email ==\n";
+$arrIn = date('Y-m-d', strtotime('+20 days'));
+$arrOut = date('Y-m-d', strtotime('+23 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, pre_arrival_sent) VALUES ('$propKey','Moved Stay','ms@gmail.com','$arrIn','$arrOut',2,0,'unpaid',0,300,300,0,3,NOW())");
+$arrId = (int) $rootDb->lastInsertId();
+$stamp = fn() => $rootDb->query("SELECT pre_arrival_sent FROM bookings WHERE id = $arrId")->fetchColumn();
+$restamp = fn() => $rootDb->exec("UPDATE bookings SET pre_arrival_sent = NOW() WHERE id = $arrId");
+
+// (a) The dates move → the stamp clears, so the cron re-sends for the new stay.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId,
+    'check_in' => date('Y-m-d', strtotime('+30 days')), 'check_out' => date('Y-m-d', strtotime('+33 days'))]);
+it_check('moving the dates clears pre_arrival_sent', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+// …and the history says why a second arrival email is coming.
+$hist = $rootDb->query("SELECT summary FROM activity_log WHERE action = 'booking.update' AND entity_id = '$arrId' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('...and the history says the arrival info will be re-sent', strpos((string) $hist, 'arrival info will be re-sent') !== false, (string) $hist);
+
+// (b) An edit that does NOT move the stay keeps the stamp — the sent email is
+// still true, and clearing it here would re-email every guest whose notes the
+// owner touched.
+$restamp();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'notes' => 'gate: notes only']);
+it_check('a notes-only edit keeps the stamp', ($r['json']['ok'] ?? false) && $stamp() !== null, $r['raw']);
+
+// (c) Moving to a DIFFERENT COTTAGE clears it too — the email names the
+// cottage, and directions to the wrong one are the worst version of stale.
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Arrival Annex', 'couple_rate' => 100]);
+$arrProp2 = $r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? '');
+it_check('(fixture) a second cottage exists to move to', $arrProp2 !== '', $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $arrId, 'prop_key' => $arrProp2, 'override_occupancy' => true, 'override_clash' => true]);
+it_check('moving to another cottage clears the stamp', ($r['json']['ok'] ?? false) && $stamp() === null, $r['raw']);
+
+// (d) A PAST stay is a record, not a plan: correcting its dates keeps the
+// stamp, or every historic tidy-up would flip a finished booking's pipeline
+// back to "arrival info not sent".
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, pre_arrival_sent) VALUES ('$propKey','Past Fix','pf@gmail.com','2025-06-01','2025-06-04',2,0,'unpaid',0,300,300,0,3,'2025-05-29 09:00:00')");
+$pastId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $pastId,
+    'check_in' => '2025-06-02', 'check_out' => '2025-06-05']);
+$pastStamp = $rootDb->query("SELECT pre_arrival_sent FROM bookings WHERE id = $pastId")->fetchColumn();
+it_check('correcting a finished stay keeps its stamp', ($r['json']['ok'] ?? false) && $pastStamp !== null, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
