@@ -1263,6 +1263,98 @@ chk('...and the bookings write path', strpos($bkSrc2, '$total <= 0 && !booking_h
 chk('no bare `$total <= 0` fallback is left anywhere',
     preg_match('/\$total <= 0\)\s*\{\s*\n\s*\$rate = get_rate/', $prcSrc . $whSrc . $bkSrc2) !== 1);
 
+// ============================================================
+//  PART PAYMENT — the guest pays some of it now.
+//
+//  The whole safety story is that the CLIENT never decides an amount. pay.php
+//  sends bounds it computed, clamps whatever comes back into them, and the
+//  signed quote still covers the FULL charge and is verified BEFORE the slice
+//  is taken — so the order of those two steps is the guarantee, not a detail.
+//  Checked here as bounds, clamp and WIRING, because the helpers pass with
+//  either call site deleted (break-tested both ways).
+// ============================================================
+echo "\n-- part payment: the bounds --\n";
+$pb = booking_part_bounds(340.0);
+chk('an ordinary balance offers a part payment', is_array($pb) && $pb['min'] === PART_PAYMENT_MIN && abs($pb['max'] - 340.0) < 0.005);
+chk('a settled booking offers none', booking_part_bounds(0.0) === null);
+chk('...nor does one under the floor', booking_part_bounds(15.0) === null);
+// AT the floor there is nothing to slice — paying "part" of £20 with a £20
+// minimum is the whole thing wearing a longer journey.
+chk('...nor one exactly at it', booking_part_bounds(PART_PAYMENT_MIN) === null);
+chk('a penny above the floor does', is_array(booking_part_bounds(PART_PAYMENT_MIN + 0.01)));
+chk('a negative due offers none', booking_part_bounds(-5.0) === null);
+
+echo "\n-- part payment: what a request actually charges --\n";
+chk('a sensible slice is taken as asked', booking_part_amount(50.0, 340.0) === 50.0);
+// Clamped rather than refused: a guest who typed £5 or £5000 meant "some of
+// it" either way, and a refusal at the last step is the experience the feature
+// exists to remove.
+chk('below the floor clamps UP to it', booking_part_amount(5.0, 340.0) === PART_PAYMENT_MIN);
+chk('above the balance clamps DOWN to it', booking_part_amount(5000.0, 340.0) === 340.0);
+chk('...so it can never charge more than is owed', booking_part_amount(340.01, 340.0) === 340.0);
+chk('a zero request is not a part payment', booking_part_amount(0.0, 340.0) === null);
+chk('...nor a negative one', booking_part_amount(-50.0, 340.0) === null);
+chk('a request against an unslicable balance is ignored', booking_part_amount(10.0, 15.0) === null);
+// The floor beats the balance when they cross: min-capping last would let a
+// £20.40 balance be sliced to £20.40 (fine) but a £20.00 one to £20.00 (which
+// bounds already refuses) — the pair below pins the order.
+chk('a balance just over the floor slices to the floor at most', booking_part_amount(20.4, 20.5) === 20.4);
+chk('...and a request under it still lands on the floor', booking_part_amount(1.0, 20.5) === PART_PAYMENT_MIN);
+chk('pence survive the round trip', booking_part_amount(50.559, 340.0) === 50.56);
+
+echo "\n-- part payment: a slice is not its stage --\n";
+// THE FIRST DRAFT OF THIS FEATURE SHIPPED THE OVER-CLAIM. £120 against a £290
+// balance reached the guest as "we've received your balance payment of £120.00"
+// two lines above this same email's "Remaining balance: £220.00", and reached
+// the owner as "Type: balance" — which is a booking they would stop chasing.
+// Driven through the REAL composers, both halves, both ways.
+$slice = [
+    'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'ref' => 'CHB-000042', 'kind' => 'balance', 'amount' => 120.0, 'total' => 400.0,
+    'paid_so_far' => 220.0, 'balance' => 220.0, 'fully_paid' => false, 'deposit_charged' => 0.0,
+];
+$sliceR = payment_receipt_body($slice + ['partial' => true]);
+$wholeR = payment_receipt_body($slice);
+chk('a slice is a payment TOWARDS the balance', strpos($sliceR['text'], "your payment of £120.00 towards your balance") !== false);
+chk('...and never "your balance payment"', strpos($sliceR['text'], 'your balance payment') === false);
+chk('...in the HTML half too', strpos($sliceR['html'], 'towards your balance') !== false && strpos($sliceR['html'], 'your balance payment') === false);
+// It is still a receipt, so what remains has to be on it — the sentence that
+// the over-claim used to contradict.
+chk('...with what is left still stated', strpos($sliceR['text'], 'Remaining balance: £220.00') !== false);
+// A payment that DOES settle its stage keeps its own wording — this is a
+// branch, not a rewrite (break-tested by forcing partial true throughout).
+chk('a full stage payment still says so', strpos($wholeR['text'], "your balance payment of £120.00") !== false);
+chk('...and does not claim to be part of anything', strpos($wholeR['text'], 'towards your balance') === false);
+$sliceO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit', 'partial' => true]);
+$wholeO = owner_payment_notice_body(['name' => 'Cara Lyon', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 120.0, 'status' => 'deposit']);
+chk('the owner is told it was a part payment', strpos($sliceO['text'], 'Type: part payment towards the balance') !== false);
+chk('...and a whole one still reads plainly', strpos($wholeO['text'], "Type: balance\n") !== false);
+// The DECISION lives in pay.php — both composers pass with it never set.
+$payW = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php decides partial where it clamps', strpos($payW, '$partial = $part < $amountDue - 0.005;') !== false);
+chk('...and carries it to the guest receipt', strpos($payW, "'partial' => \$partial,") !== false);
+chk('...to the owner notice', substr_count($payW, "'partial' => \$partial,") === 2);
+chk('...and into the activity log', strpos($payW, "\$partial ? 'Part payment by card") !== false);
+chk('the mail closure can actually see it', strpos($payW, '$bookingId, $partial) {') !== false);
+
+echo "\n-- part payment: the wiring --\n";
+$paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
+$appSrc2 = (string) file_get_contents(__DIR__ . '/app.js');
+chk('the summary sends the bounds it computed', strpos($paySrc, "'part' => \$kind === 'hold' ? null : booking_part_bounds(\$amountDue)") !== false);
+chk('the charge clamps the request through the helper', strpos($paySrc, 'booking_part_amount($partReq, $amountDue)') !== false);
+// ORDER IS THE SAFETY ARGUMENT. The quote proves the figure the guest READ;
+// the slice is then taken of the amount that check just proved. Clamping first
+// would let a moved balance through unnoticed, because the part figure is not
+// the one the quote describes.
+$qAt = strpos($paySrc, 'payment_quote_check($in[');
+$cAt = strpos($paySrc, "isset(\$in['part_amount'])");
+chk('the quote is verified BEFORE the part is applied', $qAt !== false && $cAt !== false && $qAt < $cAt);
+// The refundable deposit rides the payment that COMPLETES the stage, not a
+// slice of it: bundling £50 onto a £20 request makes the sum not what they typed.
+chk('a part payment carries no refundable deposit', strpos($paySrc, '$damagesDue = 0.0;') !== false);
+chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: payState.partAmount || 0,') !== false);
+chk('...and the field is offered only when the server sends bounds', strpos($appSrc2, 'if (partWrap) partWrap.style.display = payState.part ? \'\' : \'none\';') !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

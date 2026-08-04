@@ -44,6 +44,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
           total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
           damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
+          part: { min: 20, max: 175 }, quote: '8:deposit:225.00:0123456789abcdef0123456789abcdef',
+        });
+        // Booking 5: a balance under the part-payment floor, so the server sends
+        // NO bounds. The offer must not appear — it can only ever show what the
+        // charge would honour.
+        if (b.booking_id === '5') return json({
+          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
+          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
+          total: 390, alreadyPaid: 375, balance: 15, depositPct: 25, amountDue: 15,
+          damagesDue: 0, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
+          part: null, quote: '5:balance:15.00:0123456789abcdef0123456789abcdef',
         });
         // Booking 9: the SAME booking after that first payment — deposit CHARGED,
         // balance link opened. The screenshotted state: the card took £225, so
@@ -54,12 +65,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
           total: 700, alreadyPaid: 175, balance: 525, depositPct: 25, amountDue: 525,
           damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: '2020-01-01',
+          part: { min: 20, max: 525 }, quote: '9:balance:525.00:0123456789abcdef0123456789abcdef',
         });
         return json({
           ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
           checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'balance',
           total: 390, alreadyPaid: 100, balance: 290, depositPct: 25, amountDue: 290,
           damagesDue: 50, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
+          part: { min: 20, max: 290 }, quote: '7:balance:340.00:0123456789abcdef0123456789abcdef',
         });
       }
       if (b.__url === 'pay.php' && b.action === 'charge') return json({ ok: true, fullyPaid: true, charged: 340 });
@@ -301,9 +314,139 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!/£700\.00/.test(cv.sub) && !/£175\.00/.test(cv.sub),
     '…with the rental-rail figures gone from the guest\'s view');
 
+  // ============================================================
+  //  PART PAYMENT — "I can pay some of it now."
+  //  The client only ever ASKS: pay.php sends the bounds and clamps the charge
+  //  into them, so the offer appears ONLY where the server said there is room,
+  //  and what the guest reads is what the button sends.
+  // ============================================================
+  await page.evaluate(() => openPayView('paytok', '5', 'balance'));
+  await page.waitForTimeout(900);
+  const noPart = await page.evaluate(() => (document.getElementById('pay-part') || { style: {} }).style.display);
+  ok(noPart === 'none', `no bounds from the server → no offer (${noPart})`);
+
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  const rest0 = await page.evaluate(() => ({
+    offered: (document.getElementById('pay-part') || { style: {} }).style.display !== 'none',
+    tog: (document.getElementById('pay-part-toggle') || {}).textContent || '',
+    rowOpen: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+  }));
+  ok(rest0.offered && !rest0.rowOpen, 'the offer is there, folded away');
+  ok(/pay part of it/i.test(rest0.tog), `…and names itself in plain words (${rest0.tog})`);
+
+  // OPEN IT. The wallets stand down — Apple/Google Pay are mounted for the full
+  // amount and cannot be re-priced, so a wallet button beside a part field is
+  // one tap carrying two numbers. Nothing is armed yet, so the button waits.
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(200);
+  const opened = await page.evaluate(() => ({
+    rowOpen: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
+    expanded: (document.getElementById('pay-part-toggle') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
+    tog: (document.getElementById('pay-part-toggle') || {}).textContent || '',
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+    wallets: (document.getElementById('sq-wallets') || { style: {} }).style.display,
+    or: (document.getElementById('sq-or') || { style: {} }).style.display,
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+  }));
+  ok(opened.rowOpen && opened.expanded === 'true', 'opening reveals the field and says so to a screen reader');
+  ok(/Pay the full £340\.00 instead/.test(opened.tog), `…and the toggle becomes the way back (${opened.tog})`);
+  ok(/from £20\.00 to £290\.00/.test(opened.hint), `the hint states the SERVER's bounds (${opened.hint})`);
+  // The max is the rental due, not the hero — the refundable deposit rides the
+  // payment that completes the stage, and the hint has to say where it went or
+  // "up to £290" under a £340 headline reads as an error.
+  ok(/refundable £50\.00 deposit follows/.test(opened.hint), '…and where the refundable deposit went');
+  ok(opened.wallets === 'none' && opened.or === 'none', `the wallets stand down (${opened.wallets}/${opened.or})`);
+  ok(opened.btnOff, 'nothing typed yet → the button waits rather than charging the full amount');
+  ok(opened.hero === '£340.00', `…and the hero has not moved yet (${opened.hero})`);
+
+  // TYPE A REAL AMOUNT. One number on screen: the hero, the hint and the button
+  // all become the slice, and what remains is stated rather than inferred.
+  await page.evaluate(() => {
+    const a = document.getElementById('pay-part-amt');
+    a.value = '120';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const armed = await page.evaluate(() => ({
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+    label: (document.getElementById('pay-kind-label') || {}).textContent || '',
+    sub: (document.getElementById('pay-amount-sub') || {}).textContent || '',
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+    full: (document.getElementById('pay-full') || { style: {} }).style.display,
+  }));
+  ok(armed.hero === '£120.00' && /Paying now/i.test(armed.label), `the hero becomes the slice (${armed.label} ${armed.hero})`);
+  ok(armed.btn === 'Pay £120.00' && !armed.btnOff, `…and the button says the same figure (${armed.btn})`);
+  ok(/£220\.00 would remain/.test(armed.sub) && /£220\.00 would remain/.test(armed.hint),
+    `…with what is left stated, not inferred (${armed.sub})`);
+  ok(armed.full === 'none', 'the settle-it-all link stands down — it contradicts the slice');
+
+  // OUT OF BOUNDS ARMS NOTHING. Deliberately not clamped as they type, which
+  // would turn "5" on the way to "50" into the minimum under their fingers.
+  await page.evaluate(() => {
+    const a = document.getElementById('pay-part-amt');
+    a.value = '5';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const bad = await page.evaluate(() => ({
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+  }));
+  ok(bad.btnOff && bad.hero === '£340.00', `an amount outside the bounds arms nothing (${bad.hero})`);
+  ok(/between £20\.00 and £290\.00/.test(bad.hint), `…and the hint says what is needed (${bad.hint})`);
+
+  // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
+  // the sub's itemised lines and the settle-it-all link return as they were.
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(200);
+  const closed = await page.evaluate(() => ({
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+    label: (document.getElementById('pay-kind-label') || {}).textContent || '',
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+    lines: !!(document.getElementById('pay-amount-sub') || { classList: { contains: () => false } }).classList.contains('is-lines'),
+    amt: (document.getElementById('pay-part-amt') || {}).value,
+    expanded: (document.getElementById('pay-part-toggle') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
+  }));
+  ok(closed.hero === '£340.00' && closed.btn === 'Pay £340.00' && !closed.btnOff,
+    `closing restores the full ask (${closed.label} ${closed.hero} / ${closed.btn})`);
+  ok(closed.lines, '…including the itemised sub it replaced');
+  ok(closed.amt === '' && closed.expanded === 'false', '…and the field is emptied, so reopening starts clean');
+
+  // AND THE CHARGE CARRIES THE REQUEST. It is a request, not a decision —
+  // pay.php clamps it — but it must be the figure the guest read on the button.
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150);
+  await page.evaluate(() => {
+    const a = document.getElementById('pay-part-amt');
+    a.value = '120';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const partCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
+  ok(!!partCharge && partCharge.part_amount === 120, `the charge asks for the figure on the button (${partCharge && partCharge.part_amount})`);
+  // The quote still covers the FULL charge — pay.php verifies it BEFORE taking
+  // the slice, so a moved balance is caught on the figure the guest actually read.
+  ok(!!partCharge && typeof partCharge.quote === 'string' && partCharge.quote !== '',
+    '…while the signed quote still describes the whole amount');
+
   // Back to the balance ask for the happy-path charge below.
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
+  const reset = await page.evaluate(() => ({
+    open: (document.getElementById('pay-part-row') || { style: {} }).style.display !== 'none',
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+  }));
+  ok(!reset.open && reset.btn === 'Pay £340.00', `re-opening the screen resets the offer (${reset.btn})`);
 
   // A DECLINED CARD KEEPS THE RETRY ALIVE. The decline must land as an inline
   // message with the form still on screen and the button re-enabled — routed

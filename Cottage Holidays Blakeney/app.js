@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 408;
+const ADMIN_BUNDLE_V = 409;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3871,7 +3871,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '' };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4133,6 +4133,43 @@ async function openPayView(token, bookingId, kind) {
             const pb = document.getElementById('pay-btn');
             if (pb) pb.textContent = s.kind === 'hold' ? `Place ${gbp(payTotal)} hold` : `Pay ${gbp(payTotal)}`;
         } catch (e) {}
+        // PAY PART OF IT. Offered only where the SERVER sent bounds — it clamps
+        // the charge to them, so the field can only ever ASK. Its max is the
+        // RENTAL due, not the hero: the refundable deposit rides the payment
+        // that completes the stage, which is why the hint says where it went.
+        payState.part =
+            s.part && Number(s.part.max) > 0 ? { min: Number(s.part.min), max: Number(s.part.max) } : null;
+        payState.partAmount = 0;
+        const partRow = document.getElementById('pay-part-row');
+        const partAmt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+        const partTog = document.getElementById('pay-part-toggle');
+        const partWrap = document.getElementById('pay-part');
+        if (partRow) partRow.style.display = 'none';
+        if (partTog) partTog.setAttribute('aria-expanded', 'false');
+        if (partAmt) {
+            partAmt.value = '';
+            if (payState.part) {
+                partAmt.min = String(payState.part.min);
+                partAmt.max = String(payState.part.max);
+            }
+        }
+        if (partWrap) partWrap.style.display = payState.part ? '' : 'none';
+        // The resting screen, snapshotted so arming a slice can REPLACE it and
+        // disarming can put it back — one number on screen at a time.
+        payState.partView = payState.part
+            ? {
+                  due: payTotal,
+                  dep: dep,
+                  label: document.getElementById('pay-kind-label').textContent,
+                  amount: document.getElementById('pay-amount').textContent,
+                  subHtml: subEl ? subEl.innerHTML : '',
+                  subLines: !!(subEl && subEl.classList.contains('is-lines')),
+                  noteDisp: noteEl ? noteEl.style.display : 'none',
+                  fullDisp: fullEl ? fullEl.style.display : 'none',
+                  btn: document.getElementById('pay-btn') ? document.getElementById('pay-btn').textContent : '',
+              }
+            : null;
+        payPartRender();
         if (!(payTotal > 0)) {
             showPayError("This booking is already settled — there's nothing left to pay.");
             return;
@@ -4191,6 +4228,9 @@ async function payWithToken(sourceId) {
             kind: payState.kind,
             source_id: sourceId,
             quote: payState.quote,
+            // REQUESTED, not decided: pay.php clamps this into its own bounds
+            // and ignores it outright when there are none.
+            part_amount: payState.partAmount || 0,
             // Read at the moment of paying: they can untick it after the render.
             autopay: !!(
                 document.getElementById('pay-autopay-box') &&
@@ -4221,6 +4261,110 @@ async function payWithToken(sourceId) {
     try {
         toast('Payment received — thank you!');
     } catch (e) {}
+}
+// PAY PART OF IT — three functions, and none of them decides an amount. pay.php
+// sends the bounds and clamps the charge into them, and the signed quote still
+// covers the FULL charge and is checked BEFORE the slice is taken — so a
+// tampered field buys nothing but a smaller payment they could already make.
+function payPartToggle() {
+    const row = document.getElementById('pay-part-row');
+    const tog = document.getElementById('pay-part-toggle');
+    const v = payState.partView;
+    if (!row || !tog || !v) return;
+    const open = row.style.display === 'none';
+    row.style.display = open ? '' : 'none';
+    tog.setAttribute('aria-expanded', open ? 'true' : 'false');
+    // THE WALLETS STAND DOWN WHILE THE ROW IS OPEN: they are mounted for the full
+    // amount and cannot be re-priced, so a wallet button beside a part field is
+    // one tap carrying two numbers.
+    ['sq-wallets', 'sq-or'].forEach((id) => {
+        const e = document.getElementById(id);
+        if (!e) return;
+        if (open) {
+            if (v[id] === undefined) v[id] = e.style.display;
+            e.style.display = 'none';
+        } else if (v[id] !== undefined) {
+            e.style.display = v[id];
+        }
+    });
+    if (open) {
+        const amt = document.getElementById('pay-part-amt');
+        if (amt) {
+            try {
+                amt.focus();
+            } catch (e) {}
+        }
+    } else {
+        payState.partAmount = 0;
+        const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+        if (amt) amt.value = '';
+    }
+    payPartRender();
+}
+// Typing governs the hero and the button. An amount outside the bounds arms
+// nothing and the hint says what is needed — deliberately NOT clamped as they
+// type, which would turn "5" on the way to "50" into the minimum under their
+// fingers.
+function payPartSync() {
+    const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+    const p = payState.part;
+    if (!amt || !p) return;
+    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
+    payPartRender();
+}
+function payPartRender() {
+    const p = payState.part,
+        v = payState.partView;
+    if (!v) return;
+    const row = document.getElementById('pay-part-row');
+    const open = !!(row && row.style.display !== 'none');
+    const part = open ? payState.partAmount : 0;
+    const armed = part > 0;
+    const el = (id) => document.getElementById(id);
+    const tog = el('pay-part-toggle');
+    if (tog) tog.textContent = open ? `Pay the full ${gbp(v.due)} instead` : 'Pay part of it instead';
+    const hint = el('pay-part-hint');
+    if (hint && p) {
+        const amt = /** @type {HTMLInputElement} */ (el('pay-part-amt'));
+        const typed = amt ? String(amt.value).trim() : '';
+        hint.textContent = armed
+            ? `${gbp(part)} now — ${gbp(Math.round((v.due - part) * 100) / 100)} would remain.`
+            : typed !== ''
+              ? `Enter an amount between ${gbp(p.min)} and ${gbp(p.max)}.`
+              : `Anything from ${gbp(p.min)} to ${gbp(p.max)}.` +
+                (v.dep > 0.005 ? ` The refundable ${gbp(v.dep)} deposit follows with your next payment.` : '');
+    }
+    const lbl = el('pay-kind-label'),
+        big = el('pay-amount'),
+        sub = el('pay-amount-sub'),
+        note = el('pay-amount-note'),
+        full = el('pay-full'),
+        btn = /** @type {HTMLButtonElement} */ (el('pay-btn'));
+    if (armed) {
+        if (lbl) lbl.textContent = 'Paying now';
+        if (big) big.textContent = gbp(part);
+        if (sub) {
+            sub.classList.remove('is-lines');
+            sub.textContent = `of ${gbp(v.due)} due · ${gbp(Math.round((v.due - part) * 100) / 100)} would remain`;
+        }
+        if (note) note.style.display = 'none';
+        if (full) full.style.display = 'none';
+        if (btn) btn.textContent = `Pay ${gbp(part)}`;
+    } else {
+        if (lbl) lbl.textContent = v.label;
+        if (big) big.textContent = v.amount;
+        if (sub) {
+            sub.classList.toggle('is-lines', v.subLines);
+            sub.innerHTML = v.subHtml;
+        }
+        if (note) note.style.display = v.noteDisp;
+        if (full) full.style.display = open ? 'none' : v.fullDisp;
+        if (btn) btn.textContent = v.btn;
+    }
+    // An open row with nothing valid in it is not a payment yet, so the button
+    // says so rather than quietly charging the full amount they just declined.
+    if (btn) btn.disabled = open && !armed;
 }
 // Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
 // is independent + best-effort: an unsupported wallet is simply hidden and the
@@ -14280,7 +14424,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'clocksrv2';
+    const BUILD = 'partpay2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

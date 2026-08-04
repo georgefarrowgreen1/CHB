@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=233">
+    <link rel="stylesheet" href="app.css?v=235">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -882,6 +882,17 @@
                     <div class="pay-form">
                         <div id="sq-wallets" class="sq-wallets"></div>
                         <div id="sq-or" class="sq-or" style="display:none;"><span>or pay by card</span></div>
+                        <!-- PAY PART OF IT. Hidden unless the server offers bounds
+                             (pay.php's `part`), so it can never promise a
+                             payment the charge would refuse. -->
+                        <div class="pay-part" id="pay-part" style="display:none;">
+                            <button type="button" class="pay-full-link" id="pay-part-toggle" data-act="payPartToggle" aria-expanded="false" aria-controls="pay-part-row"></button>
+                            <div class="pay-part-row" id="pay-part-row" style="display:none;">
+                                <label class="pay-part-lbl" for="pay-part-amt" id="pay-part-lbl">How much would you like to pay now, in pounds?</label>
+                                <input class="input-glass" type="number" id="pay-part-amt" inputmode="decimal" step="0.01" min="0" autocomplete="off" data-act-input="payPartSync" />
+                                <p class="pay-part-hint" id="pay-part-hint"></p>
+                            </div>
+                        </div>
                         <!-- Shown only when the divider above ISN'T — mountWallets. -->
                         <div class="enq-field-label" id="sq-card-label">Card details</div>
                         <div id="sq-card" class="sq-card"></div>
@@ -1795,7 +1806,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=692"></script>
+    <script defer src="app.js?v=694"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

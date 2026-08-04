@@ -131,6 +131,11 @@ if ($action === 'summary') {
         // plan, a changed price, another payment landing) and stop instead of
         // charging a number the guest never read. See payment_quote_sign.
         'quote' => payment_quote_sign($bookingId, $kind, round($amountDue + $damagesDue, 2)),
+        // PAYING PART OF IT. The bounds come from the server so the screen that
+        // offers it and the charge that clamps it cannot disagree; null means
+        // there is nothing to part-pay (settled, or already under the floor).
+        // The legacy hold is excluded — it is one authorisation, not a balance.
+        'part' => $kind === 'hold' ? null : booking_part_bounds($amountDue),
         // WHAT THE CHECKBOX WOULD PROMISE, or null when there is nothing to
         // schedule — in which case it must not be OFFERED, rather than offered
         // and quietly doing nothing. booking_autopay_terms derives it the same
@@ -313,6 +318,42 @@ if ($action === 'charge') {
         );
     }
 
+    // PART PAYMENT, APPLIED AFTER THE QUOTE HAS VERIFIED THE FULL FIGURE.
+    // Order is the whole safety argument. The quote's job is "the figure the
+    // guest read is the figure that leaves" — and what they READ on a part
+    // payment is the balance, from which they chose a slice. So the balance is
+    // checked against the signed quote FIRST; only then is their slice taken of
+    // the amount that check just proved. Clamping before the check would let a
+    // moved balance through unnoticed, because the part figure would no longer
+    // be the one the quote describes.
+    //
+    // The client may ASK; booking_part_amount decides — the same rule as every
+    // other figure here. And the refundable deposit does NOT ride a part
+    // payment: bundling £50 onto a £20 slice makes the sum not what the guest
+    // typed, and the deposit still rides the payment that completes the stage.
+    $partReq = isset($in['part_amount']) ? (float) $in['part_amount'] : 0.0;
+    $partial = false;
+    if ($partReq > 0) {
+        $part = booking_part_amount($partReq, $amountDue);
+        if ($part !== null) {
+            // A SLICE IS NOT ITS STAGE, and that fact is decided HERE — the one
+            // place that knows the clamp fired. Every surface that describes
+            // this payment named the STAGE, so £120 of a £290 balance read as
+            // "your balance payment" two lines above "Remaining balance:
+            // £220.00", and reached the owner as "Type: balance". The decision
+            // is shared; each surface still says it in its own voice.
+            // Asking for the whole of what is owed is not a part payment.
+            $partial = $part < $amountDue - 0.005;
+            $amountDue = $part;
+            $damagesDue = 0.0;
+            $chargeTotal = round($amountDue, 2);
+        }
+    }
+    if ($chargeTotal <= 0) {
+        book_unlock($b['prop_key']);
+        json_out(['error' => 'This booking is already paid in full.'], 409);
+    }
+
     $pence = (int) round($chargeTotal * 100);
     $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
@@ -448,9 +489,9 @@ if ($action === 'charge') {
     log_activity(
         'payment',
         'payment.card',
-        ucfirst($kind) .
-            ' paid by card — £' .
+        ($partial ? 'Part payment by card — £' : ucfirst($kind) . ' paid by card — £') .
             number_format($amountDue, 2) .
+            ($partial ? ' towards the ' . $kind : '') .
             ($damagesDue > 0 ? ' + £' . number_format($damagesDue, 2) . ' refundable deposit' : '') .
             ($b['name'] ? ' · ' . $b['name'] : ''),
         ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
@@ -462,7 +503,7 @@ if ($action === 'charge') {
     // handshakes and the pushes are external HTTP calls, and none of them
     // should keep the guest staring at the card-payment spinner.
     require_once __DIR__ . '/mailer.php';
-    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId) {
+    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId, $partial) {
         // Receipt email (best-effort — never fails the payment).
         try {
             $receipt = send_payment_receipt([
@@ -472,6 +513,8 @@ if ($action === 'charge') {
                 'prop_name' => $propName,
                 'ref' => $ref,
                 'kind' => $kind,
+                // A slice of the stage, not the stage — see the clamp above.
+                'partial' => $partial,
                 'amount' => $amountDue,
                 'total' => $total,
                 'paid_so_far' => $newPaid,
@@ -501,6 +544,7 @@ if ($action === 'charge') {
                 'prop_key' => $b['prop_key'],
                 'prop_name' => $propName,
                 'kind' => $kind,
+                'partial' => $partial,
                 'amount' => $amountDue,
                 'status' => $newStatus,
             ]);
