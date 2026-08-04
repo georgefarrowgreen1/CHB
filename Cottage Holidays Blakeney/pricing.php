@@ -579,6 +579,45 @@ function booking_next_payment($b, $rate = null)
 // One predicate now, used by all three sites that fall back (this one,
 // square-webhook.php, and bookings.php — which already had the distinction and
 // was the outlier that revealed the other two were missing it).
+// ---- PAYING PART OF IT --------------------------------------------------
+// A guest who can manage £200 now and the rest next week had only "all" or
+// "nothing", so they paid nothing and got chased. The floor exists because a
+// card fee makes a tiny payment mostly cost: below this it is worth more to
+// everyone to wait. Capped at the amount owed, so a balance under the floor is
+// simply paid in full rather than being refused for being too small.
+const PART_PAYMENT_MIN = 20.0;
+
+// The bounds, stated once, so the screen that OFFERS a part payment and the
+// charge that CLAMPS one cannot disagree about what is allowed.
+// Returns null when a part payment makes no sense — there is nothing owed, or
+// what is owed is at or under the floor and should just be paid.
+function booking_part_bounds($amountDue)
+{
+    $due = round((float) $amountDue, 2);
+    if ($due <= PART_PAYMENT_MIN + 0.005) {
+        return null;
+    }
+    return ['min' => PART_PAYMENT_MIN, 'max' => $due];
+}
+
+// What a REQUESTED part payment actually charges. The client may ask; the
+// server decides — the same rule as every other figure on this path. An amount
+// outside the bounds is clamped rather than refused, because a guest who typed
+// £5 or £5000 meant "some of it" either way and a refusal at the last step is
+// the experience this feature exists to remove.
+function booking_part_amount($requested, $amountDue)
+{
+    $b = booking_part_bounds($amountDue);
+    if (!$b) {
+        return null; // no part payment available — charge the stage as usual
+    }
+    $r = round((float) $requested, 2);
+    if ($r <= 0) {
+        return null;
+    }
+    return max($b['min'], min($b['max'], $r));
+}
+
 function booking_has_price($b)
 {
     $o = $b['price_override'] ?? null;

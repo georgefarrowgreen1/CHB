@@ -2796,6 +2796,32 @@ a.card {
   font-variant-numeric: tabular-nums;
   color: var(--text-light);
 }
+/* PAY PART OF IT — a quiet alternative beneath the primary action, never a
+   competitor to it. Its toggle wears .pay-full-link and its field .input-glass:
+   both looks already exist on this screen, and a second one would say the same
+   thing in a different accent. */
+.pay-part {
+  margin-top: 12px;
+}
+.pay-part-lbl {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+/* The field is the house .input-glass — a second glass control drawn beside the
+   first would say the same thing in a different accent. Only the money-specific
+   bits are stated here; the 16px font-size that stops iOS zooming on focus is
+   already the shared rule's. */
+#pay-part-amt {
+  margin-bottom: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pay-part-hint {
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
 .pay-amount-note {
   font-size: 0.76rem;
   color: var(--text-muted);

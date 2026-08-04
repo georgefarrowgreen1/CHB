@@ -131,6 +131,11 @@ if ($action === 'summary') {
         // plan, a changed price, another payment landing) and stop instead of
         // charging a number the guest never read. See payment_quote_sign.
         'quote' => payment_quote_sign($bookingId, $kind, round($amountDue + $damagesDue, 2)),
+        // PAYING PART OF IT. The bounds come from the server so the screen that
+        // offers it and the charge that clamps it cannot disagree; null means
+        // there is nothing to part-pay (settled, or already under the floor).
+        // The legacy hold is excluded — it is one authorisation, not a balance.
+        'part' => $kind === 'hold' ? null : booking_part_bounds($amountDue),
         // WHAT THE CHECKBOX WOULD PROMISE, or null when there is nothing to
         // schedule — in which case it must not be OFFERED, rather than offered
         // and quietly doing nothing. booking_autopay_terms derives it the same
@@ -311,6 +316,33 @@ if ($action === 'charge') {
             ],
             409,
         );
+    }
+
+    // PART PAYMENT, APPLIED AFTER THE QUOTE HAS VERIFIED THE FULL FIGURE.
+    // Order is the whole safety argument. The quote's job is "the figure the
+    // guest read is the figure that leaves" — and what they READ on a part
+    // payment is the balance, from which they chose a slice. So the balance is
+    // checked against the signed quote FIRST; only then is their slice taken of
+    // the amount that check just proved. Clamping before the check would let a
+    // moved balance through unnoticed, because the part figure would no longer
+    // be the one the quote describes.
+    //
+    // The client may ASK; booking_part_amount decides — the same rule as every
+    // other figure here. And the refundable deposit does NOT ride a part
+    // payment: bundling £50 onto a £20 slice makes the sum not what the guest
+    // typed, and the deposit still rides the payment that completes the stage.
+    $partReq = isset($in['part_amount']) ? (float) $in['part_amount'] : 0.0;
+    if ($partReq > 0) {
+        $part = booking_part_amount($partReq, $amountDue);
+        if ($part !== null) {
+            $amountDue = $part;
+            $damagesDue = 0.0;
+            $chargeTotal = round($amountDue, 2);
+        }
+    }
+    if ($chargeTotal <= 0) {
+        book_unlock($b['prop_key']);
+        json_out(['error' => 'This booking is already paid in full.'], 409);
     }
 
     $pence = (int) round($chargeTotal * 100);
