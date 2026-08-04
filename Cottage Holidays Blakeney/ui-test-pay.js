@@ -421,6 +421,66 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/refundable £50\.00 deposit follows/.test(bad.hint),
     `…and reconciles the £290 ceiling with the £340 headline (${bad.hint})`);
 
+  // TYPING FREE, COMMIT CLAMPED (the owner's ask): an out-of-bounds figure
+  // snaps to the nearest bound when the number is FINISHED — change fires on
+  // blur or Enter — never per keystroke (the un-clamped mid-typing state is
+  // the check directly above). The field still holds the '5' from that check.
+  await page.evaluate(() => document.getElementById('pay-part-amt').dispatchEvent(new Event('change', { bubbles: true })));
+  await page.waitForTimeout(200);
+  const snapMin = await page.evaluate(() => ({
+    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
+    hero: (document.getElementById('pay-amount') || {}).textContent || '',
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+  }));
+  ok(snapMin.val === '20' && snapMin.hero === '£20.00' && snapMin.btn === 'Pay £20.00' && !snapMin.btnOff,
+    `committing an under-minimum figure snaps it up and arms it (${snapMin.val} → ${snapMin.btn})`);
+  ok(/Adjusted up to the £20\.00 minimum/.test(snapMin.hint) && /£320\.00 would remain/.test(snapMin.hint),
+    `…and the hint announces the correction (${snapMin.hint})`);
+  await page.evaluate(() => {
+    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+    a.value = '5000';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const snapMax = await page.evaluate(() => ({
+    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
+    btn: (document.getElementById('pay-btn') || {}).textContent || '',
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+  }));
+  ok(snapMax.val === '290' && snapMax.btn === 'Pay £290.00', `an over-maximum figure snaps down (${snapMax.val} → ${snapMax.btn})`);
+  ok(/Adjusted down to the £290\.00 maximum/.test(snapMax.hint), `…named as the maximum (${snapMax.hint})`);
+  // Typing again clears the note; an in-bounds commit is left exactly as typed.
+  await page.evaluate(() => {
+    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+    a.value = '120';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const snapNone = await page.evaluate(() => ({
+    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
+    hint: (document.getElementById('pay-part-hint') || {}).textContent || '',
+  }));
+  ok(snapNone.val === '120' && !/Adjusted/.test(snapNone.hint) && /£220\.00 would remain/.test(snapNone.hint),
+    `an in-bounds commit is untouched and the note clears (${snapNone.hint})`);
+  // Committing an EMPTY field corrects nothing — blank is "not choosing", and
+  // inventing the minimum there would arm a payment nobody typed.
+  await page.evaluate(() => {
+    const a = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+    a.value = '';
+    a.dispatchEvent(new Event('input', { bubbles: true }));
+    a.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const snapEmpty = await page.evaluate(() => ({
+    val: /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt')).value,
+    btnOff: !!(document.getElementById('pay-btn') || {}).disabled,
+  }));
+  ok(snapEmpty.val === '' && snapEmpty.btnOff, 'an empty commit stays empty — blank is not a choice');
+
   // CLOSING PUTS THE SCREEN BACK EXACTLY. The resting view is snapshotted, so
   // the sub's itemised lines and the settle-it-all link return as they were.
   await page.evaluate(() => document.getElementById('pay-part-toggle').click());

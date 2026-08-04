@@ -3878,7 +3878,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '' };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4333,10 +4333,31 @@ function payPartSync() {
     const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
     const p = payState.part;
     if (!amt || !p) return;
+    payState.partSnap = ''; // typing resumed — any earlier auto-correct note is stale
     const v = Math.round(parseFloat(amt.value) * 100) / 100;
     payState.partAmount = isFinite(v) && v >= p.min - 0.005 && v <= p.max + 0.005 ? v : 0;
     payPartRender();
     payWalletsSchedule(); // re-price Apple/Google Pay to the slice once typing settles
+}
+// ON COMMIT (change = blur/Enter) an out-of-bounds figure SNAPS to the nearest
+// bound and the hint says so — the owner's ask. Deliberately not on input:
+// clamping as they type turns "5" on the way to "50" into the minimum under
+// their fingers. Empty stays empty (blank is not choosing), and the reprice is
+// immediate — a commit has no typing race, the same call the toggle makes.
+function payPartClamp() {
+    const amt = /** @type {HTMLInputElement} */ (document.getElementById('pay-part-amt'));
+    const p = payState.part;
+    if (!amt || !p) return;
+    if (String(amt.value).trim() === '') return;
+    const v = Math.round(parseFloat(amt.value) * 100) / 100;
+    if (!isFinite(v)) return; // unreadable — the hint is already asking for a number
+    const snapped = v < p.min ? p.min : v > p.max ? p.max : null;
+    if (snapped === null) return;
+    amt.value = String(snapped);
+    payPartSync();
+    payState.partSnap = snapped === p.min ? 'min' : 'max';
+    payPartRender();
+    payWalletsReprice();
 }
 function payPartRender() {
     const p = payState.part,
@@ -4358,8 +4379,16 @@ function payPartRender() {
         // payment), and the owner screenshotted the one state that never said
         // why "£340 to pay" sat over "between £20.00 and £290.00".
         const depLine = v.dep > 0.005 ? ` The refundable ${gbp(v.dep)} deposit follows with your next payment.` : '';
+        // The auto-correct note (payPartClamp) leads the armed line, so a
+        // figure that moved under the guest is announced, never silent.
+        const snap =
+            payState.partSnap === 'min'
+                ? `Adjusted up to the ${gbp(p.min)} minimum. `
+                : payState.partSnap === 'max'
+                  ? `Adjusted down to the ${gbp(p.max)} maximum. `
+                  : '';
         hint.textContent = armed
-            ? `${gbp(part)} now — ${gbp(Math.round((v.due - part) * 100) / 100)} would remain.`
+            ? snap + `${gbp(part)} now — ${gbp(Math.round((v.due - part) * 100) / 100)} would remain.`
             : typed !== ''
               ? `Enter an amount between ${gbp(p.min)} and ${gbp(p.max)}.` + depLine
               : `Anything from ${gbp(p.min)} to ${gbp(p.max)}.` + depLine;
@@ -14579,7 +14608,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'parthint1';
+    const BUILD = 'partsnap1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
