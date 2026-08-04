@@ -928,6 +928,7 @@
                     <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
                     <h2 style="font-family:var(--font-serif);margin:14px 0 4px;" id="pay-done-title">Payment received</h2>
                     <p style="color:var(--text-muted);margin:0;" id="pay-done-sub"></p>
+                    <button type="button" class="btn-glass pay-cta" id="pay-done-rest" style="display:none;margin:22px 6px 0;padding:14px 30px;" data-act="payRestNow"></button>
                     <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
                 <div id="pay-error" class="pay-error" role="alert" style="display:none;">
@@ -1821,7 +1822,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=701"></script>
+    <script defer src="app.js?v=702"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

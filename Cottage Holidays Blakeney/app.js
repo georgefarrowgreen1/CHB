@@ -3878,7 +3878,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0 };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4010,6 +4010,8 @@ async function openPayView(token, bookingId, kind) {
         const REPAIR = ['failed', 'nocard', 'stale'];
         const isRepair = REPAIR.indexOf(s.autopayState) !== -1;
         const canOffer = terms && terms.amount > 0 && terms.due && (s.autopayState === 'off' || isRepair);
+        // Remembered so payAutopaySync can bring a slice-hidden offer back.
+        payState.autopayOffer = !!canOffer;
         if (apWrap && apBox && apLbl) {
             apBox.checked = false;
             apWrap.style.display = canOffer ? '' : 'none';
@@ -4268,12 +4270,30 @@ async function payWithToken(sourceId, partOverride) {
     // mis-charge to the guest.
     // Reveal BEFORE writing the text — see the hold branch above.
     document.getElementById('pay-done').style.display = '';
-    document.getElementById('pay-done-sub').textContent = res.fullyPaid
-        ? 'Your booking is now paid in full. We look forward to welcoming you.'
-        : `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+    // A PART PAYMENT'S DONE SCREEN IS NOT A DEAD END: `remaining` is what is
+    // left of the ask just read (the hint's "£X would remain", server-derived)
+    // — before fullyPaid, since a max-bound slice settles the rental with the
+    // deposit still to come, where "paid in full" is the wrong sentence.
+    const rem = Math.round(Number(res.remaining || 0) * 100) / 100;
+    document.getElementById('pay-done-sub').textContent =
+        rem > 0.005
+            ? `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. ${gbp(rem)} is still to pay — take care of it now, or we'll be in touch before your stay.`
+            : res.fullyPaid
+              ? 'Your booking is now paid in full. We look forward to welcoming you.'
+              : `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+    const restBtn = document.getElementById('pay-done-rest');
+    if (restBtn) {
+        restBtn.style.display = rem > 0.005 ? '' : 'none';
+        restBtn.textContent = rem > 0.005 ? `Pay the remaining ${gbp(rem)}` : '';
+    }
     try {
         toast('Payment received — thank you!');
     } catch (e) {}
+}
+// "Pay the remaining £X" on the done screen: re-open the same pay screen — the
+// summary refetches and asks for what is NOW left; this button decides nothing.
+function payRestNow() {
+    openPayView(payState.token, payState.bookingId, payState.kind).catch(() => {});
 }
 // PAY PART OF IT — three functions, and none of them decides an amount. pay.php
 // sends the bounds and clamps the charge into them, and the signed quote still
@@ -4370,6 +4390,23 @@ function payPartRender() {
     // An open row with nothing valid in it is not a payment yet, so the button
     // says so rather than quietly charging the full amount they just declined.
     if (btn) btn.disabled = open && !armed;
+    payAutopaySync();
+}
+// THE ARRANGEMENT STANDS DOWN WHILE THE PART ROW IS OPEN: its sentence quotes
+// the rest after the FULL ask, and terms recorded beside a slice never match
+// what the collector later derives — "agreed" yet never firing (pay.php
+// refuses that half). Unticked on hide so consent can't ride a slice unseen.
+function payAutopaySync() {
+    const wrap = document.getElementById('pay-autopay');
+    if (!wrap) return;
+    const row = document.getElementById('pay-part-row');
+    const open = !!(row && row.style.display !== 'none' && payState.part);
+    const show = payState.autopayOffer && !open;
+    wrap.style.display = show ? '' : 'none';
+    if (!show) {
+        const box = /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box'));
+        if (box) box.checked = false;
+    }
 }
 // Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
 // is independent + best-effort: an unsupported wallet is simply hidden and the
@@ -14538,7 +14575,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payrenew1';
+    const BUILD = 'payrest1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

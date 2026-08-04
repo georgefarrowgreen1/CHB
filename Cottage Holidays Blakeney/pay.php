@@ -331,6 +331,10 @@ if ($action === 'charge') {
     // other figure here. And the refundable deposit does NOT ride a part
     // payment: bundling £50 onto a £20 slice makes the sum not what the guest
     // typed, and the deposit still rides the payment that completes the stage.
+    // The screen's own ask, held BEFORE the clamp: `remaining` in the response
+    // is this minus what was taken, so the done screen can offer the rest in
+    // the same frame the guest was just reading ("£220.00 would remain").
+    $fullCharge = $chargeTotal;
     $partReq = isset($in['part_amount']) ? (float) $in['part_amount'] : 0.0;
     $partial = false;
     if ($partReq > 0) {
@@ -342,8 +346,15 @@ if ($action === 'charge') {
             // "your balance payment" two lines above "Remaining balance:
             // £220.00", and reached the owner as "Type: balance". The decision
             // is shared; each surface still says it in its own voice.
-            // Asking for the whole of what is owed is not a part payment.
-            $partial = $part < $amountDue - 0.005;
+            // Judged against the SCREEN'S ask ($fullCharge), not the rental
+            // alone: a slice typed at the max bound equals the rental due while
+            // the refundable deposit it displaced is still to take — comparing
+            // to $amountDue called that "not partial", so the guest the client
+            // had just told "£50.00 would remain" got fullyPaid, remaining 0,
+            // and nothing ever chased the deposit. Asking for the whole of what
+            // this screen asked is still not a part payment (damages-free max
+            // slice: the two figures are equal and nothing changes).
+            $partial = $part < $fullCharge - 0.005;
             $amountDue = $part;
             $damagesDue = 0.0;
             $chargeTotal = round($amountDue, 2);
@@ -463,7 +474,14 @@ if ($action === 'charge') {
     // response: a convenience that turned a successful payment into an error
     // page would invite the guest to pay a second time. A failure here leaves
     // them exactly where they were — no consent, no card, chased as usual.
-    if (!empty($in['autopay'])) {
+    // …BUT NEVER ON A SLICE. booking_autopay_terms describes the rest after the
+    // FULL ask is paid; recorded beside a part payment, the agreed sum can never
+    // match what booking_autopay_state derives at collection time, so the
+    // arrangement would sit "agreed" and silently never fire — the exact
+    // offered-and-quietly-doing-nothing promise the terms helper exists to
+    // prevent. The client hides the offer while a slice is armed; this is the
+    // server's half, for the stale tab or crafted request that sends both.
+    if (!empty($in['autopay']) && !$partial) {
         try {
             require_once __DIR__ . '/autopay-lib.php';
             $vault = autopay_vault($b, $sqId, booking_autopay_terms($b));
@@ -519,7 +537,11 @@ if ($action === 'charge') {
                 'total' => $total,
                 'paid_so_far' => $newPaid,
                 'balance' => round(max(0, $total - $newPaid), 2),
-                'fully_paid' => $newStatus === 'paid',
+                // A slice at the max bound settles the RENTAL while the
+                // refundable deposit it displaced is still to take — "paid in
+                // full" above "towards your balance" would be the receipt
+                // contradicting itself, so a partial never claims it.
+                'fully_paid' => $newStatus === 'paid' && !$partial,
                 // Refundable deposit taken with this payment (refunded after checkout).
                 'deposit_charged' => $damagesDue,
                 // Signed link to the guest invoice — reflects this payment.
@@ -569,8 +591,18 @@ if ($action === 'charge') {
 
     // 'charged' is what the CARD was actually charged (rental + bundled damages
     // deposit) — the figure the guest just saw on the Pay button. 'paid' stays
-    // the rental portion for compatibility.
-    json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'charged' => $chargeTotal, 'fullyPaid' => $newStatus === 'paid']);
+    // the rental portion for compatibility. 'remaining' is what is left OF THIS
+    // SCREEN'S ASK after a slice (including the refundable deposit the slice
+    // pushed to the next payment) — the same "£X would remain" the part hint
+    // showed — so the done screen can offer to take the rest.
+    json_out([
+        'ok' => true,
+        'status' => $newStatus,
+        'paid' => $amountDue,
+        'charged' => $chargeTotal,
+        'fullyPaid' => $newStatus === 'paid',
+        'remaining' => $partial ? round($fullCharge - $chargeTotal, 2) : 0,
+    ]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

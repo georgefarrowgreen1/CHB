@@ -45,6 +45,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
           damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
           part: { min: 20, max: 175 }, quote: '8:deposit:225.00:0123456789abcdef0123456789abcdef',
+          // The arrangement is offered on the deposit ask (its real home —
+          // booking_autopay_terms only ever fires there): rest £525 on the due date.
+          autopayTerms: { amount: 525, due: '2026-07-28' }, autopayState: 'off',
         });
         // Booking 5: a balance under the part-payment floor, so the server sends
         // NO bounds. The offer must not appear — it can only ever show what the
@@ -75,7 +78,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           part: { min: 20, max: 290 }, quote: '7:balance:340.00:0123456789abcdef0123456789abcdef',
         });
       }
-      if (b.__url === 'pay.php' && b.action === 'charge') return json({ ok: true, fullyPaid: true, charged: 340 });
+      if (b.__url === 'pay.php' && b.action === 'charge') {
+        // Echo the slice like the real endpoint: a part request comes back
+        // partial with the server-derived `remaining` (of the £340 balance
+        // ask); no slice = the full charge, nothing left.
+        const slice = Number(b.part_amount || 0);
+        return json(slice > 0
+          ? { ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100 }
+          : { ok: true, fullyPaid: true, charged: 340, remaining: 0 });
+      }
       return json({ ok: true });
     }
     if (url.includes('square-config.php')) return json({ enabled: true, applicationId: 'app-id', locationId: 'loc-id', environment: 'sandbox' });
@@ -440,6 +451,86 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!partCharge && typeof partCharge.quote === 'string' && partCharge.quote !== '',
     '…while the signed quote still describes the whole amount');
 
+  // ============================================================
+  //  THE DONE SCREEN AFTER A SLICE IS NOT A DEAD END. It states the server's
+  //  own `remaining` (the part hint's "£220 would remain" figure) and offers
+  //  to take it now — the button re-opens this same screen, which re-asks the
+  //  server for what is NOW left. Before this it said only "we'll be in touch",
+  //  closing the door on a guest ready to pay the rest.
+  // ============================================================
+  const partDone = await page.evaluate(() => ({
+    shown: document.getElementById('pay-done').style.display !== 'none',
+    sub: (document.getElementById('pay-done-sub') || {}).textContent || '',
+    btnShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
+    btnLabel: (document.getElementById('pay-done-rest') || {}).textContent || '',
+  }));
+  ok(partDone.shown && /£120\.00 received/.test(partDone.sub), `the slice's done screen names what was taken (${partDone.sub.slice(0, 40)}…)`);
+  ok(/£220\.00 is still to pay/.test(partDone.sub), `…and states the server's remaining figure (${partDone.sub.slice(40, 110)})`);
+  ok(!/paid in full/i.test(partDone.sub), '…never calling a part payment paid in full');
+  ok(partDone.btnShown && partDone.btnLabel === 'Pay the remaining £220.00', `…with a button named for the figure (${partDone.btnLabel})`);
+  // Tap it: the pay screen re-opens and RE-ASKS the server — the client decides
+  // nothing about what is now due.
+  const sumBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').length;
+  await page.evaluate(() => document.getElementById('pay-done-rest').click());
+  await page.waitForTimeout(900);
+  const reAsk = posts.filter((p) => p.__url === 'pay.php' && p.action === 'summary').slice(sumBefore).pop();
+  const restView = await page.evaluate(() => ({
+    body: document.getElementById('pay-body').style.display !== 'none',
+    done: document.getElementById('pay-done').style.display !== 'none',
+  }));
+  ok(!!reAsk && String(reAsk.booking_id) === '7', `"Pay the rest" re-asks the server about the same booking (${reAsk && reAsk.booking_id})`);
+  ok(restView.body && !restView.done, '…and the payment form is back on screen');
+
+  // ============================================================
+  //  AUTOPAY STANDS DOWN WHILE A SLICE IS BEING CHOSEN. The consent sentence
+  //  quotes the rest after the FULL ask is paid — a slice makes that figure
+  //  wrong the moment it lands, and terms recorded beside a slice can never
+  //  match what the collector derives later (agreed, then silently never
+  //  fires). So the offer hides while the part row is open, unticks so a
+  //  full-payment consent can't ride a slice invisibly, and returns when the
+  //  row closes. pay.php refuses the server half.
+  // ============================================================
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  const ap0 = await page.evaluate(() => ({
+    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    label: (document.getElementById('pay-autopay-label') || {}).textContent || '',
+  }));
+  ok(ap0.offered && /£525\.00/.test(ap0.label) && /28\/07\/2026/.test(ap0.label),
+    `the arrangement is offered on the full deposit ask, sum and day in the sentence (${ap0.label.slice(0, 70)}…)`);
+  await page.evaluate(() => {
+    /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked = true;
+    document.getElementById('pay-part-toggle').click();
+  });
+  await page.waitForTimeout(150);
+  const ap1 = await page.evaluate(() => ({
+    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    ticked: /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked,
+  }));
+  ok(!ap1.offered, 'opening the part row stands the offer down — its sentence describes the full payment');
+  ok(!ap1.ticked, '…and unticks it, so a consent given for the full payment cannot ride a slice invisibly');
+  // Charge a slice: the wire carries autopay:false however the box was left.
+  await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '60'; a.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.waitForTimeout(200);
+  const apBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const apCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apBefore).pop();
+  ok(!!apCharge && apCharge.part_amount === 60 && apCharge.autopay === false,
+    `a slice charge carries no consent (part ${apCharge && apCharge.part_amount}, autopay ${apCharge && apCharge.autopay})`);
+  // Closing the row brings the offer back, still unticked.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150);
+  await page.evaluate(() => document.getElementById('pay-part-toggle').click());
+  await page.waitForTimeout(150);
+  const ap2 = await page.evaluate(() => ({
+    offered: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    ticked: /** @type {HTMLInputElement} */ (document.getElementById('pay-autopay-box')).checked,
+  }));
+  ok(ap2.offered && !ap2.ticked, 'closing the row brings the offer back, unticked');
+
   // Back to the balance ask for the happy-path charge below.
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
@@ -604,10 +695,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const done = await page.evaluate(() => ({
     done: document.getElementById('pay-done').style.display !== 'none',
     sub: (document.getElementById('pay-done-sub') || {}).textContent || '',
+    restShown: (document.getElementById('pay-done-rest') || { style: {} }).style.display !== 'none',
   }));
   const charge = posts.find((p) => p.__url === 'pay.php' && p.action === 'charge');
   ok(!!charge && charge.source_id === 'tok_test_1' && charge.kind === 'balance', `charge posted with the tokenized card (${charge && charge.source_id})`);
   ok(done.done && /paid in full/i.test(done.sub), `receipt state shows (${done.sub.slice(0, 50)}…)`);
+  // The pay-the-rest button belongs to a slice's done screen alone — a full
+  // payment must not carry a stale one over from the earlier part charge.
+  ok(!done.restShown, 'a full payment offers no "pay the rest"');
 
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);
