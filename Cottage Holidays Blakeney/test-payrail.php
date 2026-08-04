@@ -860,8 +860,8 @@ chk('…parsing BEFORE the lock, so a refusal (which json_out-EXITS) cannot stra
     strpos($eaPlan, 'payment_plan_parse(') < strpos($eaPlan, "if (!book_lock(\$e['prop_key']))"));
 chk('…and the approval INSERT carries the three plan columns',
     strpos($eaPlan, 'deposit_pct_override,deposit_amount_override,balance_due_date') !== false);
-chk('the plan stores all three fields in one parameterised write',
-    strpos($bkPlan, 'SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ? WHERE id = ?') !== false);
+chk('the plan stores all four fields in one parameterised write',
+    strpos($bkPlan, 'SET deposit_pct_override = ?, deposit_amount_override = ?, balance_due_date = ?, autopay_offer = ? WHERE id = ?') !== false);
 
 // WIRING — the manual reminder: rides request_payment with reminder wording
 // (the same third argument the cron's reminder pass passes), is refused before
