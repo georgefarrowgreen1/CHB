@@ -484,7 +484,13 @@ if ($action === 'charge') {
     if (!empty($in['autopay']) && !$partial) {
         try {
             require_once __DIR__ . '/autopay-lib.php';
-            $vault = autopay_vault($b, $sqId, booking_autopay_terms($b));
+            // MONTHLY, only as offered: the client may ask for n instalments,
+            // and booking_autopay_terms honours it only when it matches what
+            // booking_instalment_offer derives — anything else returns null and
+            // autopay_vault refuses, never guessing a consent the guest was not
+            // shown. 0/absent keeps the single collection, byte for byte.
+            $apN = (int) ($in['autopay_instalments'] ?? 0);
+            $vault = autopay_vault($b, $sqId, booking_autopay_terms($b, $apN > 1 ? $apN : 1));
             if (!$vault['ok']) {
                 log_activity('payment', 'autopay.vault_failed', "Couldn't save the card for automatic payment — " . $vault['reason'], [
                     'severity' => 'info',

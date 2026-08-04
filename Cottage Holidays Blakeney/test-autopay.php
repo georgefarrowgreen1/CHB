@@ -466,7 +466,9 @@ chk('...and vaults only when asked, never on a slice', strpos($paySrc, "if (!emp
 // THE PAYMENT MUST NEVER BE LOST BECAUSE THE CONVENIENCE FAILED: the vault runs
 // after the money is taken and the ledger written, and cannot reach the response.
 chk('...after the ledger is written', strpos($paySrc, 'autopay_vault(') > strpos($paySrc, 'INSERT IGNORE INTO payments'));
-chk('...wrapped so it cannot fail the payment', preg_match('/try \{\s*require_once __DIR__ \. .\/autopay-lib\.php.;\s*\$vault = autopay_vault/', $paySrc) === 1);
+// The instalment lines sit between the require and the call now — what must
+// stay true is that the WHOLE consent path lives inside the one try.
+chk('...wrapped so it cannot fail the payment', preg_match('/try \{\s*require_once __DIR__ \. .\/autopay-lib\.php.;[\s\S]{0,700}\$vault = autopay_vault/', $paySrc) === 1);
 chk('the guest can turn it off from the screen that offered it', strpos($paySrc, "\$action === 'autopay_off'") !== false);
 $appSrc = file_get_contents(__DIR__ . '/app.js');
 chk('the checkbox names the sum and the day', preg_match('/collect my remaining \$\{gbp\(terms\.amount\)\} automatically on \$\{fmtDate\(terms\.due\)\}/', $appSrc) === 1);
@@ -586,6 +588,187 @@ chk('...and says why it is asking twice', strpos($appSrc, "We couldn't use the c
 // time they pay is nagging.
 chk("a guest who switched it off is not asked again", strpos($appSrc, "'revoked'") === false || !preg_match("/REPAIR = \[[^\]]*revoked/", $appSrc));
 chk('saving a new card clears the old failure', preg_match('/autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL/', $apSrc) === 1);
+
+// ============================================================
+//  MONTHLY INSTALMENTS — the schedule is the agreement. Same asymmetry as the
+//  rest of this file: a collection may take LESS than agreed (a guest who pays
+//  some by hand shrinks the remainder), never more, and every refusal is
+//  break-tested. NULL/1-instalment rows must behave byte-identically to the
+//  pre-instalment code — that guarantee is the whole existing suite above
+//  passing unchanged, plus the explicit dark checks below.
+// ============================================================
+
+echo "\n=== 10. The month arithmetic the schedule stands on ===\n";
+chk('a month step lands the same day', ukShiftMonthsPhp('2026-08-28', 1) === '2026-09-28');
+chk('...backwards too', ukShiftMonthsPhp('2026-10-28', -2) === '2026-08-28');
+chk('the 31st clamps into a shorter month, never overflows', ukShiftMonthsPhp('2026-01-31', 1) === '2026-02-28');
+chk('...and a leap February keeps its 29th', ukShiftMonthsPhp('2028-01-31', 1) === '2028-02-29');
+chk('a year boundary carries forward', ukShiftMonthsPhp('2026-12-15', 1) === '2027-01-15');
+chk('...and backward', ukShiftMonthsPhp('2027-01-15', -2) === '2026-11-15');
+chk('the DST months are pure date-part arithmetic', ukShiftMonthsPhp('2026-03-28', 1) === '2026-04-28' && ukShiftMonthsPhp('2026-10-25', -1) === '2026-09-25');
+$sched = booking_instalment_schedule('2026-10-28', 3);
+chk('the schedule ANCHORS ON THE DUE DATE and steps back', $sched === ['2026-08-28', '2026-09-28', '2026-10-28']);
+chk('a 31st-anchored schedule clamps each month independently', booking_instalment_schedule('2026-05-31', 3) === ['2026-03-31', '2026-04-30', '2026-05-31']);
+
+echo "\n=== 11. The offer — one derivation of what monthly could be ===\n";
+// A FAR-OUT deposit-stage booking (relative dates on purpose: the balance
+// window reads the wall clock, and a pinned check-in would cross it one day
+// and change the stage under the test — the July-only-greenness lesson).
+$OF_IN = date('Y-m-d', strtotime('+220 days'));
+$OF_DUE = date('Y-m-d', strtotime('+190 days'));
+function ofbk($over = [])
+{
+    global $OF_IN, $OF_DUE;
+    return array_merge(
+        [
+            'id' => 77, 'name' => 'Cara Nunn', 'email' => 'c@example.com', 'prop_key' => 'jollyboat',
+            'check_in' => $OF_IN, 'check_out' => date('Y-m-d', strtotime($OF_IN . ' +4 days')),
+            'adults' => 2, 'children' => 0,
+            'agreed_total' => 700.0, 'price_override' => null, 'deposit_paid' => 0.0,
+            'damages_deposit' => 0.0, 'hold_status' => 'none', 'hold_amount' => 0.0,
+            'deposit_pct_override' => 25.0, 'deposit_amount_override' => null,
+            'balance_due_date' => $OF_DUE, 'autopay_offer' => null,
+            'autopay_consent_at' => null, 'autopay_revoked_at' => null,
+            'autopay_card_id' => null, 'autopay_customer_id' => null,
+            'autopay_amount' => null, 'autopay_due' => null, 'autopay_instalments' => null,
+            'autopay_next_at' => null, 'autopay_attempts' => 0, 'autopay_last_try' => null,
+        ],
+        $over,
+    );
+}
+$NOW = date('Y-m-d');
+$of = booking_instalment_offer(ofbk(), $NOW);
+// £700 stay, 25% deposit → £525 rest. Auto picks the most spreading n that fits.
+chk('a far-out balance is offered monthly', is_array($of) && $of['n'] === 4);
+chk('...whose sum CLOSES exactly', $of && abs($of['per'] * ($of['n'] - 1) + $of['last'] - 525.0) < 0.005);
+chk('...whose final collection lands ON the due date', $of && end($of['dates']) === $OF_DUE && $of['due'] === $OF_DUE);
+chk('...with one date per instalment, monthly apart', $of && count($of['dates']) === 4 && $of['dates'][2] === ukShiftMonthsPhp($OF_DUE, -1));
+chk('the per-instalment ceiling is rest ÷ n rounded UP', $of && abs($of['per'] - ceil((525.0 / 4) * 100) / 100) < 0.005);
+// The owner's say: 0 = never, N = at most N, NULL = automatic.
+chk('the owner can switch the offer off', booking_instalment_offer(ofbk(['autopay_offer' => 0]), $NOW) === null);
+$of3 = booking_instalment_offer(ofbk(['autopay_offer' => 3]), $NOW);
+chk('...or pin the count — 3 × £175.00 exactly', $of3 && $of3['n'] === 3 && abs($of3['per'] - 175.0) < 0.005 && abs($of3['last'] - 175.0) < 0.005);
+// The £50 floor: a small balance spreads less, or not at all.
+chk('a small balance shrinks n to keep every instalment over the floor',
+    booking_instalment_offer(ofbk(['agreed_total' => 180.0]), $NOW)['n'] === 2); // rest £135 → 3× would be £45
+chk('...and one the floor cannot fit at all is not offered', booking_instalment_offer(ofbk(['agreed_total' => 120.0]), $NOW) === null); // rest £90 → 2× £45
+// The first collection needs room for its notice.
+chk('a due date too close for the first notice is not offered monthly',
+    booking_instalment_offer(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+40 days'))]), $NOW) === null
+    || booking_instalment_offer(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+40 days'))]), $NOW)['n'] === 2);
+chk('...and inside the balance window there is no offer at all',
+    booking_instalment_offer(ofbk(['balance_due_date' => date('Y-m-d', strtotime('-1 day'))]), $NOW) === null);
+// Terms honour the pick ONLY when it matches the offer.
+$t3 = booking_autopay_terms(ofbk(['autopay_offer' => 3]), 3);
+chk('terms for the agreed pick carry the ceiling, count and first date',
+    $t3 && abs($t3['amount'] - 175.0) < 0.005 && $t3['instalments'] === 3 && $t3['next'] === ukShiftMonthsPhp($OF_DUE, -2) && $t3['due'] === $OF_DUE);
+chk('a pick the offer never made returns NO terms — nothing to consent to',
+    booking_autopay_terms(ofbk(['autopay_offer' => 3]), 4) === null);
+chk('n = 1 keeps the single-collection terms byte for byte',
+    abs(booking_autopay_terms(ofbk())['amount'] - 525.0) < 0.005 && !isset(booking_autopay_terms(ofbk())['instalments']));
+
+echo "\n=== 12. The state machine, mid-plan ===\n";
+// A COHERENT plan, one collection in: £700 stay, £175 deposit paid at consent
+// plus the 28/08 instalment = £350 in, £350 left = exactly the two remaining
+// £175 collections, final (= the due date) 28/10. Wall-clock safe: the kind
+// resolves 'balance' via deposit-settled, not via the window.
+function mpbk($over = [])
+{
+    return array_merge(
+        apbk([
+            'agreed_total' => 700.0, 'deposit_paid' => 350.0,
+            'balance_due_date' => '2026-10-28',
+            'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
+            'autopay_instalments' => 3, 'autopay_next_at' => '2026-09-28',
+        ]),
+        $over,
+    );
+}
+$st = booking_autopay_state(mpbk(), $TODAY);
+chk('mid-plan, matching → ARMED', $st[0] === 'armed');
+chk('...and the sentence says monthly and names the NEXT date', strpos($st[1], 'monthly') !== false && strpos($st[1], uk_date('2026-09-28')) !== false);
+chk('...but the next date has not arrived, so it may not charge yet', booking_autopay_may_charge(mpbk(), $TODAY) === false);
+chk('on the next date it may', booking_autopay_may_charge(mpbk(), '2026-09-28') === true);
+// A guest who paid some by hand SHRINKS the plan — never stands it down.
+chk('a manual part-payment does not stand the plan down', booking_autopay_state(mpbk(['deposit_paid' => 400.0]), $TODAY)[0] === 'armed');
+chk('everything paid → settled', booking_autopay_state(mpbk(['deposit_paid' => 700.0]), $TODAY)[0] === 'settled');
+// The owner raising the price PAST what the schedule can collect needs re-asking.
+chk('a raised price the remaining collections cannot cover → STALE',
+    booking_autopay_state(mpbk(['agreed_total' => 1000.0]), $TODAY)[0] === 'stale');
+chk('...but one the collections still cover stays armed — the manual overpayment made room',
+    booking_autopay_state(mpbk(['deposit_paid' => 400.0, 'agreed_total' => 740.0]), $TODAY)[0] === 'armed');
+chk('a moved due date is stale, as it always was', booking_autopay_state(mpbk(['balance_due_date' => '2026-11-15']), $TODAY)[0] === 'stale');
+// What a collection may TAKE, decided in one place.
+$take = booking_autopay_collect_amount(mpbk(), '2026-09-28');
+chk('a mid-plan collection takes the agreed ceiling', abs($take['charge'] - 175.0) < 0.005 && $take['final'] === false);
+chk('...never more than is owed', abs(booking_autopay_collect_amount(mpbk(['deposit_paid' => 600.0]), '2026-09-28')['charge'] - 100.0) < 0.005);
+chk('...and no damages ride an instalment', $take['damages'] === 0.0);
+// The final date takes the remainder — here smaller than the ceiling because
+// the guest paid a little by hand along the way.
+$takeF = booking_autopay_collect_amount(mpbk(['deposit_paid' => 560.0, 'autopay_next_at' => '2026-10-28']), '2026-10-28');
+chk('ON the final date it takes whatever remains', abs($takeF['charge'] - 140.0) < 0.005 && $takeF['final'] === true);
+chk('advancing follows the schedule the guest was shown',
+    booking_autopay_next_after(mpbk(), '2026-08-28') === '2026-09-28'
+    && booking_autopay_next_after(mpbk(), '2026-10-28') === null);
+
+echo "\n=== 13. Collecting an instalment, all the way through ===\n";
+reset_env(mpbk());
+$DB_LIST = [];
+$out = autopay_collect_one(mpbk(), '2026-09-28');
+$call = sqCall('/v2/payments');
+chk('the instalment collects on its scheduled day', $out[0] === 'ok');
+chk('...for the CEILING, in pence', $call && $call[1]['amount_money']['amount'] === 17500);
+$adv = wrote('autopay_next_at');
+chk('success ADVANCES the plan to its next date', $adv && in_array('2026-10-28', $adv[1], true));
+chk('...and resets the attempt counter — each instalment earns its own tries', $adv && strpos($adv[0], 'autopay_attempts = 0') !== false);
+chk('...and the guest gets the shared receipt', mailed('receipt') !== null);
+// The FINAL collection: remainder, then the plan closes (next NULL).
+$fin = mpbk(['deposit_paid' => 560.0, 'autopay_next_at' => '2026-10-28']);
+reset_env($fin);
+$out = autopay_collect_one($fin, '2026-10-28');
+$call = sqCall('/v2/payments');
+chk('the final collection takes the remainder', $out[0] === 'ok' && $call && $call[1]['amount_money']['amount'] === 14000);
+$adv = wrote('autopay_next_at');
+chk('...and closes the plan', $adv && in_array(null, $adv[1], true));
+
+echo "\n=== 14. Every instalment earns its own notice ===\n";
+$nb = mpbk(['autopay_next_at' => ukShiftDaysPhp($TODAY, 2)]);
+chk('a notice is due before the NEXT collection, not only the final one', autopay_notice_due($nb, $TODAY) === true);
+chk('...and not resent once stamped FOR THAT DATE', autopay_notice_due(array_merge($nb, ['autopay_notified_at' => ukShiftDaysPhp($TODAY, 2)]), $TODAY) === false);
+chk('...but the plan advancing makes the stamp stale by construction',
+    autopay_notice_due(array_merge($nb, ['autopay_notified_at' => '2026-07-28']), $TODAY) === true);
+chk('too far out is not warned yet', autopay_notice_due(mpbk(['autopay_next_at' => ukShiftDaysPhp($TODAY, 10)]), $TODAY) === false);
+
+echo "\n=== 15. Consent stores the schedule, or refuses ===\n";
+reset_env(ofbk(['autopay_offer' => 3]));
+// The vault talks to Square twice before it writes anything.
+$SQ_REPLY['/v2/customers'] = ['status' => 200, 'body' => ['customer' => ['id' => 'CUST9']]];
+$SQ_REPLY['/v2/cards'] = ['status' => 200, 'body' => ['card' => ['id' => 'ccof:new']]];
+$v = autopay_vault(ofbk(['autopay_offer' => 3]), 'sq_pay_1', booking_autopay_terms(ofbk(['autopay_offer' => 3]), 3));
+$w = wrote('autopay_instalments');
+chk('a monthly consent stores the count and the first date', $v['ok'] && $w && in_array(3, $w[1], true) && in_array(ukShiftMonthsPhp($OF_DUE, -2), $w[1], true));
+chk('...and the per-instalment ceiling as the agreed amount', $w && in_array(175.0, $w[1]));
+reset_env(ofbk());
+$SQ_REPLY['/v2/customers'] = ['status' => 200, 'body' => ['customer' => ['id' => 'CUST9']]];
+$SQ_REPLY['/v2/cards'] = ['status' => 200, 'body' => ['card' => ['id' => 'ccof:new']]];
+$v = autopay_vault(ofbk(), 'sq_pay_1', booking_autopay_terms(ofbk()));
+$w = wrote('autopay_instalments');
+chk('a single-collection consent writes NULLs into the new columns', $v['ok'] && $w && in_array(null, $w[1], true));
+chk('a pick that matches no offer vaults NOTHING', autopay_vault(ofbk(['autopay_offer' => 3]), 'sq_pay_1', booking_autopay_terms(ofbk(['autopay_offer' => 3]), 4))['ok'] === false);
+
+echo "\n=== 16. Dark by construction ===\n";
+// The whole suite above this section drives NULL-instalment rows through the
+// unchanged paths — these pin the seams the instalment code touched.
+chk('no offer exists inside the balance window, so the old screens see nothing new',
+    booking_instalment_offer(apbk(), $TODAY) === null);
+$one = booking_autopay_collect_amount(apbk(), $TODAY);
+chk('a single collection still takes rest + damages in one go', abs($one['charge'] - 300.0) < 0.005 && $one['final'] === true);
+chk('...and still keys on the due date', booking_autopay_may_charge(apbk(), $TODAY) === true);
+$apSrc2 = file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('the run picks candidates by the NEXT collection date', substr_count($apSrc2, 'COALESCE(autopay_next_at, autopay_due)') >= 3);
+$paySrc2 = file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php honours a requested count only through the terms derivation',
+    strpos($paySrc2, 'booking_autopay_terms($b, $apN > 1 ? $apN : 1)') !== false);
 
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);

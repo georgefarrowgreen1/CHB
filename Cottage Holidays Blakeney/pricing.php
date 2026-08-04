@@ -464,11 +464,32 @@ function booking_autopay_state($b, $today = null)
     $agreedAmt = round((float) ($b['autopay_amount'] ?? 0), 2);
     $agreedDue = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
     $dueNow = (string) booking_balance_due_date($b);
-    if (abs($charge - $agreedAmt) > 0.005) {
-        return ['stale', 'The amount has changed since they agreed — ask them again.'];
-    }
     if ($agreedDue === '' || $dueNow === '' || $agreedDue !== $dueNow) {
         return ['stale', 'The due date has changed since they agreed — ask them again.'];
+    }
+    // A MONTHLY plan's consent is the SCHEDULE — n collections of at most the
+    // agreed ceiling, final by the agreed day. The single-collection equality
+    // test is wrong for it twice over: a mid-plan remainder never equals the
+    // ceiling, and a guest who pays some by hand SHRINKS what is left, which
+    // must never stand the plan down. What does: the owner raising the price
+    // until the remaining collections can no longer cover what is owed — the
+    // guest agreed a total, and charging past it needs asking again.
+    $n = (int) ($b['autopay_instalments'] ?? 0);
+    if ($n > 1) {
+        $next = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10);
+        $left = 0;
+        foreach (booking_instalment_schedule($agreedDue, $n) as $d) {
+            if ($next === '' || $d >= $next) {
+                $left++;
+            }
+        }
+        if ($left <= 0 || $charge > $agreedAmt * $left + 0.01) {
+            return ['stale', 'The plan no longer covers what is owed — ask them again.'];
+        }
+        return ['armed', 'Scheduled — £' . number_format($agreedAmt, 2) . ' monthly, next on ' . uk_date($next !== '' ? $next : $agreedDue) . '.'];
+    }
+    if (abs($charge - $agreedAmt) > 0.005) {
+        return ['stale', 'The amount has changed since they agreed — ask them again.'];
     }
     return ['armed', 'Scheduled — £' . number_format($charge, 2) . ' on ' . uk_date($agreedDue) . '.'];
 }
@@ -486,7 +507,13 @@ function booking_autopay_may_charge($b, $today = null)
     if ($state[0] !== 'armed') {
         return false;
     }
-    return $today >= substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    // A monthly plan charges on its NEXT scheduled date; a single collection
+    // keeps keying on the due date exactly as it always did.
+    $gate = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10);
+    if ($gate === '') {
+        $gate = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    }
+    return $gate !== '' && $today >= $gate;
 }
 
 // What the guest would be agreeing TO, at the moment they are asked. Recorded
@@ -495,7 +522,7 @@ function booking_autopay_may_charge($b, $today = null)
 // can never promise a different figure from the one printed above it.
 // Returns null when there is nothing to schedule — and the checkbox must not be
 // offered at all then, rather than offered and quietly doing nothing.
-function booking_autopay_terms($b)
+function booking_autopay_terms($b, $instalments = 1)
 {
     $kind = booking_payment_kind($b);
     // Only a BALANCE is ever scheduled. The legacy authorise-only hold is not a
@@ -508,11 +535,157 @@ function booking_autopay_terms($b)
     if ($due === null) {
         return null;
     }
+    // MONTHLY terms come from the offer, and ONLY when the requested count is
+    // the count the offer derives — the client picks from what it was shown,
+    // and anything else vaults nothing rather than guessing a consent the
+    // guest never saw. `amount` is the agreed PER-INSTALMENT ceiling.
+    if ((int) $instalments > 1) {
+        $offer = booking_instalment_offer($b);
+        if (!$offer || (int) $offer['n'] !== (int) $instalments) {
+            return null;
+        }
+        return ['amount' => $offer['per'], 'due' => $offer['due'], 'instalments' => $offer['n'], 'next' => $offer['dates'][0]];
+    }
     $amt = booking_amount_due($b, 'deposit');
     // What is left AFTER the payment being made right now — plus nothing else:
     // the refundable deposit rides this first payment, so it is not owed later.
     $rest = round(max(0, $amt['total'] - $amt['alreadyPaid'] - $amt['due']), 2);
     return $rest > 0.005 ? ['amount' => $rest, 'due' => $due] : null;
+}
+
+// ---- MONTHLY INSTALMENTS ----------------------------------------------------
+// The floor an instalment may not go under (scheduling £12 charges helps
+// nobody), the most collections a plan may hold, and the clearance the FIRST
+// collection needs from today — room for the 3-day advance notice plus a
+// working day either side.
+const AUTOPAY_INSTALMENT_MIN = 50.0;
+const AUTOPAY_INSTALMENTS_MAX = 4;
+const AUTOPAY_FIRST_GAP_DAYS = 7;
+
+// A calendar-month step with the day CLAMPED into the target month (31 Jan + 1
+// month = 28/29 Feb, never 2/3 Mar). Pure date-part arithmetic — no time
+// component, so there is no DST hour to trip over.
+function ukShiftMonthsPhp($iso, $months)
+{
+    $p = explode('-', substr((string) $iso, 0, 10));
+    if (count($p) !== 3) {
+        return (string) $iso;
+    }
+    [$y, $m, $d] = [(int) $p[0], (int) $p[1], (int) $p[2]];
+    $m0 = $m - 1 + (int) $months;
+    $y += intdiv($m0, 12);
+    $m = ($m0 % 12) + 1;
+    if ($m < 1) {
+        $m += 12;
+        $y -= 1;
+    }
+    $last = (int) date('t', mktime(12, 0, 0, $m, 1, $y));
+    return sprintf('%04d-%02d-%02d', $y, $m, min($d, $last));
+}
+
+// The schedule is ANCHORED ON THE DUE DATE and steps back a month at a time —
+// the final collection always lands on the day the balance was always due, so
+// instalments can never push money later than the plan the owner set.
+function booking_instalment_schedule($due, $n)
+{
+    $dates = [];
+    for ($i = (int) $n - 1; $i >= 0; $i--) {
+        $dates[] = ukShiftMonthsPhp($due, -$i);
+    }
+    return $dates;
+}
+
+// THE ONE DERIVATION of what monthly collection this booking could be offered —
+// read by the pay screen that shows it, the charge that validates the guest's
+// pick, and the owner's Edit-plan preview, so the three can never disagree.
+// Returns null (no offer) or ['n','per','last','due','dates'] where `per` is
+// the per-instalment ceiling (rest ÷ n, rounded UP to the penny) and `last` is
+// the final collection's figure — per × (n−1) + last = rest exactly.
+// Constraints, largest workable n wins: the owner's autopay_offer (0 = never,
+// 2..4 = at most that many, NULL = automatic), every instalment ≥ the £50
+// floor, and the first collection ≥ 7 days out so its notice can precede it.
+function booking_instalment_offer($b, $today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    $ownerSay = $b['autopay_offer'] ?? null;
+    if ($ownerSay !== null && (int) $ownerSay === 0) {
+        return null;
+    }
+    $base = booking_autopay_terms($b); // the single-collection terms gate eligibility
+    if (!$base) {
+        return null;
+    }
+    $due = $base['due'];
+    $rest = (float) $base['amount'];
+    $maxN = $ownerSay !== null ? min((int) $ownerSay, AUTOPAY_INSTALMENTS_MAX) : AUTOPAY_INSTALMENTS_MAX;
+    for ($n = $maxN; $n >= 2; $n--) {
+        $per = ceil(($rest / $n) * 100) / 100;
+        $dates = booking_instalment_schedule($due, $n);
+        $first = $dates[0];
+        if ($per < AUTOPAY_INSTALMENT_MIN) {
+            continue;
+        }
+        // NB day-shift via strtotime on a date-only string — the same shape
+        // booking_balance_due_date uses; ukShiftDaysPhp lives in autopay-lib,
+        // which is not loaded everywhere pricing.php is.
+        if ($first < date('Y-m-d', strtotime($today . ' +' . AUTOPAY_FIRST_GAP_DAYS . ' days'))) {
+            continue;
+        }
+        $last = round($rest - $per * ($n - 1), 2);
+        if ($last <= 0.005) {
+            continue; // over-rounded away — a schedule whose final collects nothing is not n instalments
+        }
+        return ['n' => $n, 'per' => $per, 'last' => $last, 'due' => $due, 'dates' => $dates];
+    }
+    return null;
+}
+
+// What THIS collection may take, decided in one place for the state machine,
+// the collector and the tests. For a monthly plan: the agreed per-instalment
+// ceiling — or whatever remains once the FINAL date has arrived, so the plan
+// always completes by the day the guest agreed. Either way it is capped by
+// what is actually owed: a guest who pays some by hand shrinks the next
+// collection (we may take less than agreed, never more). Instalments collect
+// the RENTAL only — the refundable deposit rode the first payment, and on the
+// rare row where it did not, bundling it onto an instalment would make the sum
+// not the one the guest agreed.
+function booking_autopay_collect_amount($b, $today = null)
+{
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    $kind = booking_payment_kind($b);
+    $amt = booking_amount_due($b, $kind === 'hold' ? 'deposit' : $kind);
+    $n = (int) ($b['autopay_instalments'] ?? 0);
+    if ($n > 1) {
+        $rest = round(max(0, (float) $amt['due']), 2);
+        $per = round((float) ($b['autopay_amount'] ?? 0), 2);
+        $due = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+        $final = $due !== '' && $today >= $due;
+        return ['charge' => $final ? $rest : round(min($rest, $per), 2), 'rental' => $final ? $rest : round(min($rest, $per), 2), 'damages' => 0.0, 'final' => $final];
+    }
+    $damages = booking_damages_due($b);
+    $charge = round($amt['due'] + $damages, 2);
+    return ['charge' => $charge, 'rental' => round((float) $amt['due'], 2), 'damages' => $damages, 'final' => true];
+}
+
+// After a successful collection: the next schedule date STRICTLY AFTER the one
+// just collected, or null when the plan is done. Derived from the same schedule
+// the offer showed, so advancing can never invent a date the guest was not shown.
+function booking_autopay_next_after($b, $collectedOn)
+{
+    $n = (int) ($b['autopay_instalments'] ?? 0);
+    if ($n <= 1) {
+        return null;
+    }
+    $due = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    if ($due === '') {
+        return null;
+    }
+    foreach (booking_instalment_schedule($due, $n) as $d) {
+        if ($d > substr((string) $collectedOn, 0, 10)) {
+            return $d;
+        }
+    }
+    return null;
 }
 
 // The booking's refundable damages deposit, WHATEVER its state — the frozen
