@@ -44,6 +44,19 @@ $secret = rawurlencode(APP_SECRET);
 
 // The daily jobs, in order. Each is a relative URL; the cron secret is appended.
 $jobs = [
+    // FIRST, ALWAYS. migrate.php has always accepted the cron secret — it just
+    // was never in this list, so a schema change waited for the owner to
+    // remember a button in Manage. Everything the deploy shipped that needs a
+    // new column silently no-ops until then (measured: migrations 106 and 107
+    // sat unapplied while automatic collection returned a quiet ok:false), and
+    // nothing anywhere told them a migration was pending.
+    //
+    // Safe to run nightly by construction: the files are idempotent
+    // (CREATE TABLE IF NOT EXISTS, guarded ADD COLUMN — migrate.php treats a
+    // duplicate-column error as already-applied) and the ledger records what has
+    // been applied, so a second run is a no-op. Ordered ahead of every other job
+    // for the obvious reason: a job must never run against a schema it predates.
+    'migrate.php?cron=' => 'Apply any pending database updates',
     'ical-import.php?cron=' => 'Airbnb/Vrbo calendar sync (avoid double-bookings)',
     'conflict-audit.php?cron=' => 'Double-booking safety check',
     'self-repair.php?cron=' => 'Self-repair (state checks & safe fixes)',
@@ -80,11 +93,25 @@ foreach ($jobs as $path => $label) {
     curl_close($ch);
 
     $body = $raw ? json_decode($raw, true) : null;
+    // A 2xx IS NOT ALWAYS SUCCESS. migrate.php answers 200 and reports each file
+    // individually, so a schema change that failed to apply would otherwise be
+    // recorded as a job that went fine — and the feature it was for goes on
+    // quietly doing nothing. Read the per-file verdicts it already returns.
+    $ok = $status >= 200 && $status < 300;
+    $note = '';
+    if ($ok && is_array($body['migrations'] ?? null)) {
+        $bad = array_values(array_filter($body['migrations'], fn($m) => ($m['status'] ?? '') === 'ERROR'));
+        if ($bad) {
+            $ok = false;
+            $note = count($bad) . ' migration(s) failed to apply — ' . (string) ($bad[0]['file'] ?? '?');
+        }
+    }
     $results[] = [
         'job' => $label,
         'script' => strtok($path, '?'),
         'status' => $status,
-        'ok' => $status >= 200 && $status < 300,
+        'ok' => $ok,
+        'note' => $note,
         'result' => is_array($body) ? $body : ($err ?: substr((string) $raw, 0, 200)),
     ];
 }
@@ -93,7 +120,7 @@ foreach ($jobs as $path => $label) {
 // stream rather than failing silently in the background.
 foreach ($results as $r) {
     if (empty($r['ok'])) {
-        log_activity('system', 'cron.job_fail', 'Automation job failed — ' . $r['job'], [
+        log_activity('system', 'cron.job_fail', 'Automation job failed — ' . $r['job'] . ($r['note'] ? ': ' . $r['note'] : ''), [
             'severity' => 'warn',
             'actor' => $isCron ? 'cron' : 'owner',
             'entity' => 'cron',
