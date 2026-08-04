@@ -169,29 +169,54 @@ function autopay_vault($b, $squarePaymentId, $terms)
     // Consent and its TERMS are written in one statement, because a consent with
     // no terms beside it is the one state booking_autopay_state cannot judge.
     // COALESCE on the timestamp so re-paying never re-dates an older agreement.
+    // MONTHLY terms carry `instalments` + `next` (booking_autopay_terms with
+    // n > 1); a single collection writes NULLs, which is exactly what every
+    // pre-instalment row already holds.
+    $instalments = isset($terms['instalments']) && (int) $terms['instalments'] > 1 ? (int) $terms['instalments'] : null;
+    $nextAt = $instalments !== null && !empty($terms['next']) ? substr((string) $terms['next'], 0, 10) : null;
     try {
         db()
             ->prepare(
                 'UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_amount = ?, autopay_due = ?,
+                    autopay_instalments = ?, autopay_next_at = ?,
                     autopay_consent_at = COALESCE(autopay_consent_at, NOW()), autopay_revoked_at = NULL,
                     autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL
                  WHERE id = ?',
             )
-            ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $bookingId]);
+            ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $instalments, $nextAt, $bookingId]);
     } catch (\Throwable $e) {
-        // migration-107 not applied on this install — record the arrangement
-        // without the code column rather than refusing to save a card at all.
+        // migration-108 (or 107) not applied on this install. A MONTHLY consent
+        // must NOT degrade to the old single-collection write — the stored
+        // amount would be the per-instalment ceiling, and the state machine
+        // would read a single plan promising a third of the money. Refuse, and
+        // the ordinary chase carries on exactly as before.
+        if ($instalments !== null) {
+            return $bad('This install cannot record a monthly plan yet');
+        }
         try {
             db()
                 ->prepare(
                     'UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_amount = ?, autopay_due = ?,
                         autopay_consent_at = COALESCE(autopay_consent_at, NOW()), autopay_revoked_at = NULL,
-                        autopay_attempts = 0, autopay_last_error = NULL
+                        autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL
                      WHERE id = ?',
                 )
                 ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $bookingId]);
-        } catch (\Throwable $e2) {
-            return $bad('Could not record the arrangement');
+        } catch (\Throwable $e1) {
+            // migration-107 not applied either — record the arrangement without
+            // the code column rather than refusing to save a card at all.
+            try {
+                db()
+                    ->prepare(
+                        'UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_amount = ?, autopay_due = ?,
+                            autopay_consent_at = COALESCE(autopay_consent_at, NOW()), autopay_revoked_at = NULL,
+                            autopay_attempts = 0, autopay_last_error = NULL
+                         WHERE id = ?',
+                    )
+                    ->execute([$cust, $cardId, round((float) $terms['amount'], 2), substr((string) $terms['due'], 0, 10), $bookingId]);
+            } catch (\Throwable $e2) {
+                return $bad('Could not record the arrangement');
+            }
         }
     }
     return ['ok' => true, 'reason' => '', 'card_id' => $cardId, 'customer_id' => $cust];
@@ -257,10 +282,13 @@ function autopay_collect_one($b, $today = null)
             book_unlock($b['prop_key']);
             return ['skip', $state[1]];
         }
-        $kind = booking_payment_kind($now);
-        $amt = booking_amount_due($now, $kind === 'hold' ? 'deposit' : $kind);
-        $damages = booking_damages_due($now);
-        $charge = round($amt['due'] + $damages, 2);
+        // WHAT THIS COLLECTION MAY TAKE is one derivation (pricing.php): the
+        // whole rest for a single collection; for a monthly plan the agreed
+        // per-instalment ceiling — or the remainder once the final date has
+        // arrived — capped either way by what is actually owed.
+        $take = booking_autopay_collect_amount($now, $today);
+        $damages = $take['damages'];
+        $charge = $take['charge'];
         // The agreed figure is checked by booking_autopay_state above; this is the
         // floor that stops a zero or negative ever reaching Square.
         if ($charge <= 0.005) {
@@ -292,7 +320,7 @@ function autopay_collect_one($b, $today = null)
             book_unlock($b['prop_key']);
             return ['fail', $why];
         }
-        autopay_record_success($now, $payment, $amt['due'], $damages, $today);
+        autopay_record_success($now, $payment, $take['rental'], $damages, $today);
         book_unlock($b['prop_key']);
         return ['ok', 'Collected £' . number_format($charge, 2) . ' from ' . (string) ($now['name'] ?? 'the guest')];
     } catch (\Throwable $e) {
@@ -384,16 +412,30 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
         } catch (\Throwable $e) {
         }
     }
+    // Read the paid figure back through the shared helper rather than adding
+    // to a number carried in from before the lock — the one definition rule.
+    $paid = round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]) + $rental, 2);
+    $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+    $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
+    // A MONTHLY plan advances to its next scheduled date (NULL once done) and
+    // gets a fresh set of tries — each instalment earns its own three. Derived
+    // from the same schedule the guest was shown; the date this collection was
+    // FOR is the gate that admitted it.
+    $gate = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    $nextAt = booking_autopay_next_after($b, $gate !== '' ? $gate : $today);
     try {
-        // Read the paid figure back through the shared helper rather than adding
-        // to a number carried in from before the lock — the one definition rule.
-        $paid = round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]) + $rental, 2);
-        $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
-        $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
         db()
-            ->prepare('UPDATE bookings SET deposit_paid = ?, payment_status = ?, autopay_last_try = ?, autopay_last_error = NULL WHERE id = ?')
-            ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $bookingId]);
+            ->prepare('UPDATE bookings SET deposit_paid = ?, payment_status = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_attempts = 0 WHERE id = ?')
+            ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $nextAt, $bookingId]);
     } catch (\Throwable $e) {
+        // migration-108 not applied — keep the pre-instalment write so a single
+        // collection still records exactly as it always did.
+        try {
+            db()
+                ->prepare('UPDATE bookings SET deposit_paid = ?, payment_status = ?, autopay_last_try = ?, autopay_last_error = NULL WHERE id = ?')
+                ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $bookingId]);
+        } catch (\Throwable $e2) {
+        }
     }
     try {
         log_activity('payment', 'autopay.collected', 'Balance collected automatically — £' . number_format($rental + $damages, 2) . ' · ' . (string) ($b['name'] ?? ''), [
@@ -478,8 +520,8 @@ function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
              WHERE autopay_consent_at IS NOT NULL AND autopay_revoked_at IS NULL
                AND autopay_card_id IS NOT NULL AND autopay_card_id <> ''
                AND autopay_attempts < " . AUTOPAY_MAX_TRIES . "
-               AND autopay_due IS NOT NULL AND autopay_due <= ?
-             ORDER BY autopay_due ASC LIMIT " . ((int) $limit + 1),
+               AND autopay_due IS NOT NULL AND COALESCE(autopay_next_at, autopay_due) <= ?
+             ORDER BY COALESCE(autopay_next_at, autopay_due) ASC LIMIT " . ((int) $limit + 1),
         );
         $q->execute([$today]);
         $rows = $q->fetchAll();
@@ -524,13 +566,19 @@ function autopay_notice_due($b, $today = null)
     if (booking_autopay_state($b, $today)[0] !== 'armed') {
         return false;
     }
-    $due = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    // A monthly plan warns before its NEXT collection — every instalment earns
+    // its own notice; a single collection keys on the due date as it always did.
+    $due = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10);
+    if ($due === '') {
+        $due = substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    }
     if ($due === '') {
         return false;
     }
-    // ALREADY SENT FOR THIS DATE. Keyed on the due date rather than a flag, so
-    // an owner moving the balance date makes a fresh notice due by construction
-    // — the notice already sent describes a day that is no longer the day.
+    // ALREADY SENT FOR THIS DATE. Keyed on the date rather than a flag, so an
+    // owner moving the balance date — or the plan advancing to its next
+    // instalment — makes a fresh notice due by construction: the notice
+    // already sent describes a day that is no longer the day.
     if (substr((string) ($b['autopay_notified_at'] ?? ''), 0, 10) === $due) {
         return false;
     }
@@ -546,13 +594,16 @@ function autopay_notice_run($today = null)
     $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
     $out = ['ok' => true, 'sent' => 0, 'skipped' => 0];
     try {
+        // COALESCE so a monthly plan's window follows its NEXT collection —
+        // migration-108 ships in the same deploy as this query, the 105-107
+        // precedent.
         $q = db()->prepare(
             "SELECT * FROM bookings
              WHERE autopay_consent_at IS NOT NULL AND autopay_revoked_at IS NULL
                AND autopay_card_id IS NOT NULL AND autopay_card_id <> ''
                AND autopay_due IS NOT NULL
-               AND autopay_due >= ? AND autopay_due <= ?
-             ORDER BY autopay_due ASC LIMIT " . (int) AUTOPAY_RUN_MAX,
+               AND COALESCE(autopay_next_at, autopay_due) >= ? AND COALESCE(autopay_next_at, autopay_due) <= ?
+             ORDER BY COALESCE(autopay_next_at, autopay_due) ASC LIMIT " . (int) AUTOPAY_RUN_MAX,
         );
         $q->execute([$today, ukShiftDaysPhp($today, AUTOPAY_NOTICE_DAYS)]);
         $rows = $q->fetchAll();
@@ -578,14 +629,17 @@ function autopay_notice_run($today = null)
             $out['skipped']++;
             continue;
         }
+        // The stamp and the log both carry the date the notice is ABOUT — for a
+        // monthly plan that is the next collection, and notice_due keys off it.
+        $noticeFor = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) $b['autopay_due'], 0, 10);
         try {
             db()
                 ->prepare('UPDATE bookings SET autopay_notified_at = ? WHERE id = ?')
-                ->execute([substr((string) $b['autopay_due'], 0, 10), (int) $b['id']]);
+                ->execute([$noticeFor, (int) $b['id']]);
         } catch (\Throwable $e) {
         }
         try {
-            log_activity('comms', 'autopay.notice', 'Told ' . (string) ($b['name'] ?? 'the guest') . " we'll take £" . number_format((float) $b['autopay_amount'], 2) . ' on ' . uk_date((string) $b['autopay_due']), [
+            log_activity('comms', 'autopay.notice', 'Told ' . (string) ($b['name'] ?? 'the guest') . " we'll take £" . number_format((float) $b['autopay_amount'], 2) . ' on ' . uk_date($noticeFor), [
                 'actor' => 'cron',
                 'entity' => 'booking',
                 'entity_id' => (string) (int) $b['id'],
