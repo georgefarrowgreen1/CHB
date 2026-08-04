@@ -4097,6 +4097,9 @@ body.cmdk-open {
     padding: 3px 10px; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;
 }
 .bhub-chip.is-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+/* PART of what is needed — the register short of the booking's party. Its own
+   state because a tick and a blank are both wrong for it. */
+.bhub-chip.is-warn { color: var(--warn-text); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .bhub-payask {
     margin: -2px 0 12px; padding-bottom: 12px;
     border-bottom: 1px solid var(--glass-border);
@@ -4289,6 +4292,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
 .bhub-chip-dot.is-ok { background: var(--ok); }
 .bhub-chip-dot.is-bad { background: var(--danger); }
+.bhub-chip-dot.is-warn { background: var(--warn); }
 
 /* A dot breathes before its words. */
 .bhub-kv-val .bhub-chip-dot, .bhub-plan-state .bhub-chip-dot { margin-right: 7px; }

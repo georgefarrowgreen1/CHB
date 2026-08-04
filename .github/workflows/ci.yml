@@ -156,6 +156,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-ical.php
 
+      - name: Waitlist — who gets told a space opened, and who must NOT
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-waitlist.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

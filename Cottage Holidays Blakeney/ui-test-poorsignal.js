@@ -252,6 +252,65 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     });
     ok(shown === 'Barclays · 20-00-00 · 12345678', `the bank-details field shows the kept value, not a blank (${JSON.stringify(shown)})`);
 
+    // ---- 10. THE GUEST SIDE: a dropped fetch must not DELETE the page ----
+    // Things to do is the one guest page where breaking the keep-last-good rule
+    // destroyed content already on screen. experiences-page.php renders the
+    // published list into #exp-grid server-side for crawlers; renderExperiencesView
+    // then blanked that grid on a failed fetch and showed "Experiences coming
+    // soon — We're putting together our favourite local spots", which is a claim
+    // about the BUSINESS made because a request failed, with no way back but
+    // leaving the page.
+    await page.route(/experiences\.php/, (route) => route.abort('failed'));
+    const exp = await page.evaluate(async () => {
+        const grid = document.getElementById('exp-grid');
+        // Stand in for what experiences-page.php serves: real cards, already read.
+        grid.innerHTML = '<div class="exp-card" data-ssr="1">Blakeney Point seal trip</div>';
+        __experiences = [];
+        await renderExperiencesView();
+        const vis = (id) => { const e = document.getElementById(id); return !!e && e.style.display !== 'none'; };
+        return {
+            kept: !!grid.querySelector('[data-ssr]'),
+            emptyShown: vis('exp-empty'),
+            errShown: vis('exp-error'),
+            errText: (document.getElementById('exp-error') || {}).textContent || '',
+        };
+    });
+    ok(exp.kept, 'GUEST: a dropped fetch does not delete the server-rendered list');
+    ok(!exp.emptyShown, '…and never claims the cottages have no local favourites yet');
+    // With something still on screen there is nothing to explain — the panel is
+    // for a genuinely blank page, which is the next case.
+    ok(!exp.errShown, '…nor stacks an error panel over content that is still there');
+
+    const expBlank = await page.evaluate(async () => {
+        document.getElementById('exp-grid').innerHTML = '';
+        __experiences = [];
+        await renderExperiencesView();
+        const vis = (id) => { const e = document.getElementById(id); return !!e && e.style.display !== 'none'; };
+        return {
+            emptyShown: vis('exp-empty'),
+            errShown: vis('exp-error'),
+            errText: (document.getElementById('exp-error') || {}).textContent || '',
+            retry: !!document.querySelector('#exp-error [data-act="renderExperiencesView"]'),
+        };
+    });
+    ok(expBlank.errShown && !expBlank.emptyShown,
+        'GUEST: a blank page says the connection dropped, not "coming soon"');
+    ok(/Couldn/i.test(expBlank.errText) && expBlank.retry, `…with a way to try again (${expBlank.retry})`);
+    // …and it really is a state, not a one-way door: once the endpoint answers,
+    // the page fills in and the panel goes.
+    await page.unroute(/experiences\.php/);
+    await page.route(/experiences\.php/, (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ experiences: [{ id: 1, title: 'Seal trip', category: 'Boat trips', body: 'Go.', status: 'approved' }] }),
+    }));
+    const expBack = await page.evaluate(async () => {
+        await renderExperiencesView();
+        const vis = (id) => { const e = document.getElementById(id); return !!e && e.style.display !== 'none'; };
+        return { errShown: vis('exp-error'), cards: document.getElementById('exp-grid').innerHTML.length };
+    });
+    ok(!expBack.errShown && expBack.cards > 0, `…and retrying fills the page in (${expBack.cards} chars)`);
+    await page.unroute(/experiences\.php/);
+
     console.log('');
     console.log(fails ? `  ${fails} POOR-SIGNAL CHECK(S) FAILED ❌` : '  POOR-SIGNAL SUITE PASSED ✅');
     await done(fails);

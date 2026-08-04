@@ -1083,8 +1083,15 @@ function cmdkCommand(q, today) {
     if (/^(watching|watchers|what am i watching|reminders?)$/.test(q.trim())) {
         const list = __chbWatchers;
         if (list === null) {
+            const reask = () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); };
+            // A DROPPED REQUEST SAYS SO. It used to be swallowed into an empty
+            // list, i.e. "you aren't watching anything" — the one wrong answer
+            // this screen must never give, because a watcher you cannot find is
+            // a notification you cannot switch off. Retry is one tap and the
+            // cache is untouched, so it really does re-ask.
+            if (__chbWatchersErr) return cmd('Couldn\'t check what you\'re watching', 'The connection dropped — tap to try again. Anything you set is still running.', () => { __chbWatchersErr = false; reask(); });
             // Not fetched yet this session: kick it and re-run once it lands.
-            chbWatchersLoad().then(() => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); });
+            chbWatchersLoad().then(reask, () => { __chbWatchersErr = true; reask(); });
             return cmd('Checking what you\'re watching…', 'One moment', () => {});
         }
         if (!list.length) return cmd('Not watching anything', 'Ask me to tell you if a gap hasn\'t sold, and it will appear here', () => { closeCmdK(); });
@@ -3324,12 +3331,20 @@ const CHB_CITY_TZ = { london: 'Europe/London', paris: 'Europe/Paris', madrid: 'E
 //  it lands on the UNDO STACK, so a watcher set by mistake is one tap from gone.
 // ============================================================
 let __chbWatchers = null; // cached list; null = not fetched this session
+let __chbWatchersErr = false; // the LAST attempt failed — distinct from "there are none"
+// COULDN'T ASK IS NOT THE SAME AS THERE ARE NONE — the loadData rule, on the one
+// store where the wrong answer switches off a notification. The catch used to
+// write `[]`, which is TRUTHY, so the guard above returned it for the rest of the
+// session: one dropped request and `watching` answered "Not watching anything"
+// for ever, about watchers that were still running and still going to fire. It
+// also disabled the landing's own fallback, which hydrates from the
+// `search-watchers` content mirror ONLY while this is still null. A failure now
+// leaves the cache alone — the mirror still answers, the next call still tries —
+// and RETHROWS, so the caller can say so instead of asserting an empty list.
 async function chbWatchersLoad(force) {
     if (__chbWatchers && !force) return __chbWatchers;
-    try {
-        const r = await apiPost('watchers.php', { action: 'list' });
-        __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : [];
-    } catch (e) { __chbWatchers = []; }
+    const r = await apiPost('watchers.php', { action: 'list' });
+    __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : [];
     return __chbWatchers;
 }
 async function chbWatchSet(w) {
@@ -9831,9 +9846,15 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             fig: askAmt,
             money: true,
         };
-    } else if (flow.hasReg && !b.regSubmitted && !past) {
+    } else if (flow.hasReg && !bookingRegComplete(b) && !past) {
+        // A SHORT register is as actionable as a missing one, and needs its own
+        // sentence: "haven't been provided yet" is false of a guest who filled
+        // the form in for the party the booking had at the time.
+        const regNeed = Math.max(1, Number(b.adults) || 1);
         next = {
-            text: 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
+            text: b.regSubmitted
+                ? `Only ${b.regCount} of ${regNeed} guests are on the register — the rest are required before arrival (UK guest records).`
+                : 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
             onclick: chbAttrs('copyGuestRegLink', String(b.id)),
             btn: 'Copy the details link',
         };
@@ -10313,7 +10334,12 @@ function renderBookingHub() {
                       the owner already knows; the register page itself states
                       the rule and the retention. */ ''}
                 ${contact('Register', b.regSubmitted
-                    ? `<span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded`
+                    ? (bookingRegComplete(b)
+                        ? `<span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded`
+                        // SHORT OF THE PARTY: the booking's adult count moved after
+                        // the guest submitted, so the record covers some of them.
+                        // Stated as the gap it is, not as a tick.
+                        : `<span class="bhub-chip-dot is-warn" aria-hidden="true"></span>${b.regCount} of ${Math.max(1, Number(b.adults) || 1)} guests recorded · the rest are still needed`)
                     : '<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Not yet submitted')}
             </div>
             ${b.regUrl
@@ -10397,7 +10423,9 @@ function hubChipsHtml(b) {
             : `<span class="bhub-chip">${dot(false)}Terms · not recorded</span>`,
         b.noDogsAt ? `<span class="bhub-chip is-ok">${dot(true)}No dog</span>` : `<span class="bhub-chip">${dot(false)}No-dog · not recorded</span>`,
         b.regSubmitted
-            ? `<span class="bhub-chip is-ok">${dot(true)}Register · ${b.regCount || 0}</span>`
+            ? (bookingRegComplete(b)
+                ? `<span class="bhub-chip is-ok">${dot(true)}Register · ${b.regCount || 0}</span>`
+                : `<span class="bhub-chip is-warn">${dot(false)}Register · ${b.regCount || 0} of ${Math.max(1, Number(b.adults) || 1)}</span>`)
             : `<span class="bhub-chip">${dot(false)}Register · waiting</span>`,
         `<span class="bhub-chip">${rail}</span>`,
         b.smsOptIn ? `<span class="bhub-chip is-ok">${dot(true)}Texts OK</span>` : '',
@@ -13532,11 +13560,25 @@ async function cancelBooking(bookingId) {
             refund_amount: refund,
             reason: reason.trim(),
         });
-        toast(
-            'Booking cancelled.' +
-                (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
-                (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
-        );
+        // MONEY STILL OWED IS NOT A TOAST. The booking row has just been deleted,
+        // and it was the only record that this deposit is owed — so it is gone
+        // from the ring fence, from "Deposits to return" and from the duty list.
+        // A toast that fades in four seconds is the wrong shape for the one
+        // sentence the owner has to act on; it is logged as a warning too, so
+        // "Needs attention" carries it even if this alert is dismissed unread.
+        if (r.deposit_owed > 0) {
+            await glassAlert(
+                `Booking cancelled — but the ${gbp(r.deposit_owed)} refundable deposit could NOT be returned automatically.\n\n` +
+                    `${booking.name || 'The guest'} is still owed it, and the booking that recorded it has been cancelled. ` +
+                    `Return it by hand, then it is settled.\n\nIt is saved under Needs attention so you don't lose it.`,
+            );
+        } else {
+            toast(
+                'Booking cancelled.' +
+                    (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
+                    (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
+            );
+        }
         try {
             closeDetailsModal();
         } catch (e) {}

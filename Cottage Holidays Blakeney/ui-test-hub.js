@@ -750,16 +750,51 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     };
     const waiting = read();
     const b = findBookingById('b1');
-    const keep = { s: b.regSubmitted, c: b.regCount };
-    b.regSubmitted = true; b.regCount = 2; renderBookingHub();
+    const keep = { s: b.regSubmitted, c: b.regCount, a: b.adults };
+    b.regSubmitted = true; b.regCount = 2; b.adults = 2; renderBookingHub();
     const submitted = read();
-    b.regSubmitted = keep.s; b.regCount = keep.c; renderBookingHub();
-    return { waiting, submitted, okC, badC };
+    // SHORT OF THE PARTY. guest-details.php refuses a short submission against
+    // the booking's adult count AT THAT MOMENT; edit the booking upward
+    // afterwards and the record covers some of them. Nothing re-asked, so a
+    // legally incomplete register read as done — with both figures on screen.
+    b.adults = 4; renderBookingHub();
+    const short = read();
+    // The NEXT-ACTION slot is money-first by design, so the register branch is
+    // only reachable on a settled booking — pay it off to read that sentence.
+    // …and the branch is gated on flow.hasReg, i.e. the booking actually having
+    // a register link, which this fixture otherwise does without.
+    const keepPay = b.payment, keepUrl = b.regUrl;
+    b.payment = 'paid'; b.regUrl = 'guest-details.php?b=1&token=z'; renderBookingHub();
+    const shortNext = ((document.querySelector('.bhub-next') || {}).textContent || '').trim();
+    b.payment = keepPay; b.regUrl = keepUrl; renderBookingHub();
+    const shortChip = [...document.querySelectorAll('#booking-hub-content .bhub-chip')]
+      .map((c) => ({ t: c.textContent.trim(), warn: c.classList.contains('is-warn'), ok: c.classList.contains('is-ok') }))
+      .find((c) => /Register/i.test(c.t)) || { t: '', warn: false, ok: false };
+    // Over-recorded is still complete — an edit DOWN must not nag.
+    b.adults = 1; renderBookingHub();
+    const over = read();
+    // A count of ZERO is "we don't know", not "none": the column predates the
+    // tracking, so an old row must not turn red.
+    b.regCount = 0; b.adults = 4; renderBookingHub();
+    const legacy = read();
+    b.regSubmitted = keep.s; b.regCount = keep.c; b.adults = keep.a; renderBookingHub();
+    return { waiting, submitted, short, shortNext, shortChip, over, legacy, okC, badC, warnC: probe('--warn') };
   });
   ok(/Not yet submitted/.test(regDots.waiting.text) && regDots.waiting.dot === regDots.badC,
     'register waiting → red dot beside "Not yet submitted"');
   ok(/Submitted · 2 guests recorded/.test(regDots.submitted.text) && regDots.submitted.dot === regDots.okC,
     'register filled in → green dot beside the count');
+  ok(/2 of 4 guests recorded/.test(regDots.short.text) && regDots.short.dot === regDots.warnC,
+    `a register short of the party says so, in amber (${regDots.short.text})`);
+  ok(!/Submitted ·/.test(regDots.short.text), '…and never reads as a completed record');
+  ok(regDots.shortChip.warn && !regDots.shortChip.ok && /2 of 4/.test(regDots.shortChip.t),
+    `…the status chip agrees (${regDots.shortChip.t})`);
+  ok(/Only 2 of 4 guests are on the register/.test(regDots.shortNext),
+    `…and it becomes the booking's next action (${regDots.shortNext.slice(0, 70)})`);
+  ok(/Submitted · 2 guests recorded/.test(regDots.over.text) && regDots.over.dot === regDots.okC,
+    'a party edited DOWN is over-recorded, not incomplete');
+  ok(regDots.legacy.dot === regDots.okC,
+    'a legacy row with no count is unknown, not incomplete — old bookings stay green');
   // The money ask lives in the Payments block's own header — ONE statement of
   // the balance — and the standalone banner is gone while it does.
   const merged = await page.evaluate(() => ({

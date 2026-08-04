@@ -1917,6 +1917,9 @@ if ($action === 'cancel') {
             : 0.0;
     $refundedByCard = 0.0;
     $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)
+    // …and what could NOT be returned. Cancelling DELETES the booking row, which
+    // is the only record that a damages deposit is owed — see the block below.
+    $depositOwed = 0.0;
     // CAP IT, exactly as the per-row 'refund' action does. This is a free-typed figure
     // on the one screen where a typo is most likely, and without the cap the only thing
     // stopping an over-refund was Square rejecting it — which then aborts the
@@ -1958,11 +1961,21 @@ if ($action === 'cancel') {
     // afterwards there's no hold_payment_id to act against. A charged deposit is
     // refunded to the guest (they aren't staying); a legacy authorised hold is
     // released. Best-effort — never blocks the cancellation.
-    if (square_enabled()) {
-        $hs = $b['hold_status'] ?? 'none';
-        if ($hs === 'charged' && !empty($b['hold_payment_id'])) {
-            $dep = round(max(0, damages_collected($b) - damages_returned($id)), 2);
-            if ($dep > 0) {
+    // A DEPOSIT THAT COULD NOT GO BACK MUST OUTLIVE THE BOOKING. The rental
+    // refund above ABORTS the cancellation when Square refuses it; this one is
+    // deliberately best-effort, because the owner must be able to cancel with
+    // Square down. But the row is DELETED a few lines below, and that row is the
+    // only place a damages deposit is recorded — so a refused refund (expired
+    // card, no Square balance, Square switched off) silently deleted the fact
+    // that the owner owes the guest their money: gone from the ring fence, gone
+    // from "Deposits to return", gone from the duty list, with the owner told
+    // only "Booking cancelled." It is reported and LOGGED instead, and the log
+    // line has to stand on its own — the booking it points at will not exist.
+    $hs = $b['hold_status'] ?? 'none';
+    if ($hs === 'charged' && !empty($b['hold_payment_id'])) {
+        $dep = round(max(0, damages_collected($b) - damages_returned($id)), 2);
+        if ($dep > 0) {
+            if (square_enabled()) {
                 book_lock($b['prop_key'] ?? '');
                 $depRr = record_square_refund($id, $b['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $b['name'], $b['prop_key']);
                 book_unlock($b['prop_key'] ?? '');
@@ -1970,7 +1983,13 @@ if ($action === 'cancel') {
                     $depositRefunded = $dep;
                 }
             }
-        } elseif ($hs === 'authorized' && !empty($b['hold_payment_id'])) {
+            if ($depositRefunded <= 0) {
+                $depositOwed = $dep;
+            }
+        }
+    }
+    if (square_enabled()) {
+        if ($hs === 'authorized' && !empty($b['hold_payment_id'])) {
             try {
                 square_api('POST', '/v2/payments/' . rawurlencode($b['hold_payment_id']) . '/cancel', new stdClass());
             } catch (\Throwable $e) {
@@ -1991,6 +2010,8 @@ if ($action === 'cancel') {
                 'check_out' => $b['check_out'],
                 'refund' => $refundAmount,
                 'card' => $refundedByCard > 0,
+                // Settled just above, and only ever the amount that really went.
+                'deposit_refunded' => $depositRefunded,
                 'reason' => $reason,
             ]);
         } catch (\Throwable $e) {
@@ -2011,6 +2032,24 @@ if ($action === 'cancel') {
         'Booking cancelled — ' . ($b['name'] ?? '') . ($refundAmount > 0 ? ' (refund £' . number_format((float) $refundAmount, 2) . ')' : ''),
         ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id],
     );
+    if ($depositOwed > 0) {
+        // WARN, so it lands in "Needs attention" and the weekly digest — this is
+        // an unpaid obligation, not a note. It names the guest, the amount and
+        // how to reach them, because the booking that held all three is gone.
+        log_activity(
+            'payment',
+            'deposit.owed',
+            'Refundable deposit of £' . number_format($depositOwed, 2) . ' still owed to ' . ($b['name'] ?: 'the guest') .
+                ' — their booking was cancelled and the automatic refund did not go through. Return it by hand.',
+            [
+                'severity' => 'warn',
+                'prop_key' => $b['prop_key'] ?? '',
+                'entity' => 'booking',
+                'entity_id' => (string) $id,
+                'meta' => ['amount' => $depositOwed, 'email' => (string) ($b['email'] ?? ''), 'phone' => (string) ($b['phone'] ?? '')],
+            ],
+        );
+    }
     json_out([
         'ok' => true,
         'refunded' => $refundedByCard,
@@ -2018,6 +2057,8 @@ if ($action === 'cancel') {
         // report it so the owner isn't left thinking they must refund it by hand (and
         // double-return it) when the rental refund couldn't be auto-matched.
         'deposit_refunded' => $depositRefunded,
+        // Still owed to the guest, with no booking left to hold the fact.
+        'deposit_owed' => $depositOwed,
         'manual_refund' => $refundAmount > $refundedByCard + 0.001,
         'email' => $emailResult,
     ]);

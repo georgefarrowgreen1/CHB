@@ -1355,6 +1355,50 @@ chk('a part payment carries no refundable deposit', strpos($paySrc, '$damagesDue
 chk('the client only ever ASKS', strpos($appSrc2, 'part_amount: payState.partAmount || 0,') !== false);
 chk('...and the field is offered only when the server sends bounds', strpos($appSrc2, 'if (partWrap) partWrap.style.display = payState.part ? \'\' : \'none\';') !== false);
 
+// ============================================================
+//  A CANCELLED BOOKING'S DEPOSIT IS ACCOUNTED FOR ON ALL THREE SURFACES.
+//
+//  `cancel` DELETES the booking row, and that row is the only place a damages
+//  deposit is recorded. The rental refund on the same path ABORTS the
+//  cancellation when Square refuses it; the deposit refund is deliberately
+//  best-effort (the owner must be able to cancel with Square down) — so a
+//  refused refund silently deleted the fact that the owner owes the guest their
+//  money. Gone from the ring fence, from "Deposits to return", from the duty
+//  list, with the owner told only "Booking cancelled."
+// ============================================================
+echo "\n-- a cancelled booking's refundable deposit --\n";
+$cxBase = ['name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'check_in' => $IN10, 'check_out' => $OUT];
+$cxBack = send_cancellation_email_body($cxBase + ['refund' => 300.0, 'card' => true, 'deposit_refunded' => 75.0]);
+$cxNone = send_cancellation_email_body($cxBase + ['refund' => 300.0, 'card' => true, 'deposit_refunded' => 0.0]);
+chk('a deposit that went back is stated to the guest', strpos($cxBack['text'], 'refundable damage deposit of £75.00') !== false);
+chk('...in the HTML half too', strpos($cxBack['html'], 'refundable damage deposit of £75.00') !== false);
+chk('...beside the rental refund, not instead of it', strpos($cxBack['text'], 'A refund of £300.00') !== false);
+// A refund that was REFUSED is being returned by hand: promising a mechanism
+// that has already failed is worse than saying nothing here.
+chk('a deposit that did NOT go back promises the guest nothing', strpos($cxNone['text'], 'refundable damage deposit') === false);
+chk('...nor in the HTML half', strpos($cxNone['html'], 'refundable damage deposit') === false);
+chk('a cancellation with no deposit at all is unchanged', strpos(send_cancellation_email_body($cxBase + ['refund' => 0.0])['text'], 'refundable damage deposit') === false);
+
+echo "\n-- …and the wiring, which is where it actually failed --\n";
+$bkSrc3 = (string) file_get_contents(__DIR__ . '/bookings.php');
+$admSrc3 = (string) file_get_contents(__DIR__ . '/admin.js');
+// The deposit is settled OUTSIDE the square_enabled() gate now: with Square
+// switched off the old code skipped the block entirely and deleted the row,
+// so the obligation vanished without even an attempt.
+chk('an unreturned deposit is recorded as owed', strpos($bkSrc3, '$depositOwed = $dep;') !== false);
+chk('...even when Square is switched off entirely', preg_match('/\$hs === \'charged\'.*?if \(square_enabled\(\)\) \{/s', $bkSrc3) === 1);
+// The log line has to stand on its own — the booking it points at is deleted a
+// few lines later — and it must be a WARNING, or it never reaches the owner.
+chk('it is logged, not just returned', strpos($bkSrc3, "'deposit.owed'") !== false);
+chk('...as a warning, so it lands in Needs attention', preg_match("/'deposit\.owed'.*?'severity' => 'warn'/s", $bkSrc3) === 1);
+chk('...naming the guest, because the booking will not exist',
+    strpos($bkSrc3, "still owed to ' . (\$b['name']") !== false);
+chk('the response carries it', strpos($bkSrc3, "'deposit_owed' => \$depositOwed,") !== false);
+chk('the email is told what really went back', strpos($bkSrc3, "'deposit_refunded' => \$depositRefunded,") !== false);
+// A toast fades; money still owed must not.
+chk('the owner gets an alert, not a toast', preg_match('/r\.deposit_owed > 0\) \{\s*await glassAlert/s', $admSrc3) === 1);
+chk('...that names the figure', strpos($admSrc3, 'refundable deposit could NOT be returned automatically') !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

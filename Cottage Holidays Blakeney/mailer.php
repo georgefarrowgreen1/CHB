@@ -2306,11 +2306,11 @@ function send_deposit_return_email($b)
 
 // Booking cancellation notice. $b: name, email, prop_key, prop_name, check_in,
 // check_out, refund (amount), card (bool — refunded to card vs manual), reason.
-function send_cancellation_email($b)
+// Pure — split out for the reason payment_request_body / owner_payment_notice_body
+// were: a gate that reads mailer.php's source proves the words EXIST, not that
+// they are ever reached.
+function send_cancellation_email_body($b)
 {
-    if (empty($b['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on file'];
-    }
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
@@ -2324,6 +2324,17 @@ function send_cancellation_email($b)
                 (!empty($b['card']) ? ' is on its way back to the card you paid with' : ' will be arranged with you') .
                 '.'
             : '';
+    // THE DEPOSIT IS THEIR MONEY TOO. A guest whose refundable deposit went back
+    // on its own Square refund was told nothing about it here — the email named
+    // the rental refund only — so the amount landing on their statement did not
+    // match the one sentence they had in writing. Stated ONLY when it actually
+    // went: a deposit whose refund was refused is being returned by hand, and
+    // promising a mechanism that has already failed is worse than saying nothing
+    // (the owner is told to settle it, and the activity log carries it).
+    $depBack = round((float) ($b['deposit_refunded'] ?? 0), 2);
+    $depLine = $depBack > 0.001
+        ? 'Your refundable damage deposit of ' . $money($depBack) . ' is also on its way back to the card you paid with.'
+        : '';
 
     $subject = "Booking cancelled — {$prop}";
     $text =
@@ -2333,6 +2344,7 @@ function send_cancellation_email($b)
         " has been cancelled.\n\n" .
         ($reason !== '' ? "Reason: {$reason}\n\n" : '') .
         ($refundLine !== '' ? $refundLine . "\n\n" : '') .
+        ($depLine !== '' ? $depLine . "\n\n" : '') .
         "If you have any questions, just reply to this email.\n\nCottage Holidays Blakeney";
 
     $inner =
@@ -2348,10 +2360,19 @@ function send_cancellation_email($b)
         ) .
         ($reason !== '' ? email_p('<strong style="color:#2A2622;">Reason:</strong> ' . $esc($reason), true) : '') .
         ($refundLine !== '' ? email_note($esc($refundLine)) : '') .
+        ($depLine !== '' ? email_note($esc($depLine)) : '') .
         email_p('If you have any questions, just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Booking cancelled — ' . $prop, $inner);
 
-    return smtp_send($b['email'], $name, $subject, $text, $html);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html, 'name' => $name];
+}
+function send_cancellation_email($b)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $m = send_cancellation_email_body($b);
+    return smtp_send($b['email'], $m['name'], $m['subject'], $m['text'], $m['html']);
 }
 
 // ---- "WE'LL TAKE IT ON FRIDAY" ---------------------------------------------
