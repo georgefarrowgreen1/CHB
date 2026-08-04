@@ -583,6 +583,23 @@ pochk('a move-money question is answered in the window',
 pochk('…stamp-guarded, so a late answer never lands over a newer query',
     preg_match('/__cmdkSweepStamp[\s\S]{0,600}stamp !== __cmdkSweepStamp \|\| gen !== __cmdkQueryGen/', $adm) === 1);
 
+// ============================================================
+//  THE ENDPOINT'S REFUSAL IS A REFUSAL. square-setup.php's payouts_refresh
+//  used to answer a failed Square read with HTTP 200 + an error body — which
+//  apiPost does not throw on, so one caller had to model the banned
+//  "check a 200 body for an error" shape and the other (the location-change
+//  re-read) swallowed it and told the owner the money screens were already
+//  reading the new location. A source assertion, because the lib's own
+//  failure (['ok' => false]) is already driven above — what was wrong was
+//  the TRANSLATION to HTTP, which no stub here can see.
+// ============================================================
+echo "\n-- the endpoint translates a failed refresh to a failing status --\n";
+$setupSrc = (string) file_get_contents(__DIR__ . '/square-setup.php');
+pochk('a failed refresh answers 502, so apiPost throws for every caller',
+    preg_match("/'error' => \\\$r\\['reason'\\][^\\n]*\\], 502\\)/", $setupSrc) === 1);
+pochk('...and no 200-with-error is left in the file',
+    preg_match("/'error'[^\\n]*\\], 200\\)/", $setupSrc) !== 1);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAYOUT CHECK(S) FAILED \u{274C}\n";

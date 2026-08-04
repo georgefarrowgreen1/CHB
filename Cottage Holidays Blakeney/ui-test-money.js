@@ -42,6 +42,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // What Square says the seller's locations are, and which one is chosen.
   let sqLocations = [];
   let sqLocation = '';
+  let refreshFails = false; // flip to drive payouts_refresh's 502 path
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -58,6 +59,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         if (b.action === 'confirm_return_settled') return json({ ok: true, confirmed: 1, amount: 73.69 });
         return json({ ok: true });
       }
+      // A failed Square read is a NON-2xx with a sentence — the endpoint's real
+      // contract; the tests below flip this on to drive both callers through it.
+      if (b.__url === 'square-setup.php' && b.action === 'payouts_refresh' && refreshFails)
+        return route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'Square couldn\u2019t be reached — the payout data may be out of date.' }) });
       // The Square settings status, which now carries the LOCATIONS the picker offers.
       if (b.__url === 'square-setup.php' && b.action === 'status')
         return json({ square: true, connected: true, enabled: true, events: [], locations: sqLocations, location: sqLocation });
@@ -1189,6 +1194,37 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(posts.some((p) => JSON.stringify(p).includes('square-location')), 'the choice is written to square-location');
   ok(posts.some((p) => p.__url === 'square-setup.php' && p.action === 'payouts_refresh'),
     'and Square is re-read at once, so stale figures for the old location do not linger');
+
+  // …AND WHEN THE RE-READ FAILS, THE SAVE MUST NOT CLAIM IT WORKED. The old
+  // endpoint answered 200-with-error, this call site swallowed it, and the
+  // message read "the money screens now read this location" over figures still
+  // describing the old shop. Driven against the endpoint's real 502.
+  refreshFails = true;
+  const savedFail = await page.evaluate(async () => {
+    const sel = /** @type {HTMLSelectElement} */ (document.getElementById('sq-location'));
+    sel.value = 'L2';
+    await saveSquareLocation();
+    await new Promise((r) => setTimeout(r, 600));
+    return (document.getElementById('sq-loc-msg') || {}).textContent || '';
+  });
+  ok(/Saved/.test(savedFail) && !/now read this location/.test(savedFail),
+    `a failed re-read never claims the screens follow the new location (${savedFail.slice(0, 60)}…)`);
+  ok(/couldn/i.test(savedFail) && /Check Square now/.test(savedFail),
+    '…it says what failed and names the control that retries it');
+  // The explicit "Check Square now" tap surfaces the server's own sentence —
+  // not a generic connection line, and never a false "Payouts up to date".
+  const toastSaid = await page.evaluate(async () => {
+    let said = '';
+    const t = window.toast;
+    window.toast = (m, kind) => { said = String(m || ''); return t ? t(m, kind) : undefined; };
+    await sweepRefreshPayouts();
+    window.toast = t;
+    return said;
+  });
+  ok(/Square couldn\u2019t be reached/.test(toastSaid) || /Square couldn’t be reached/.test(toastSaid),
+    `the refusal reaches the owner in the server's own words (${toastSaid.slice(0, 60)})`);
+  ok(!/Payouts up to date/.test(toastSaid), '…and a failure is never reported as up to date');
+  refreshFails = false;
 
   // ONE location is not a choice, so there is no control to get wrong.
   sqLocations = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }];

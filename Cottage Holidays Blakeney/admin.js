@@ -7229,8 +7229,20 @@ function cmdkHi(text) {
 // Coffee" is findable ANYWHERE — not just on the experiences page. collect() is
 // synchronous, so we prefetch the public list once on owner boot.
 let __cmdkExp = [];
+let __cmdkExpOk = false; // has ANY fetch succeeded? distinct from "none published"
 async function cmdkPrefetchExperiences() {
-    try { const r = await apiGet('experiences.php'); __cmdkExp = (r && r.experiences) || []; } catch (e) { __cmdkExp = []; }
+    // COULDN'T FETCH IS NOT NONE PUBLISHED. This runs once on owner boot, so one
+    // dropped request used to make every experience unfindable in search for the
+    // whole session — a quiet failure-as-fact (the mild, fails-to-acquire cousin
+    // of the guest page that DELETED its list). The success flag lets the search
+    // path below re-kick the fetch instead of trusting an empty answer it never
+    // actually received; a genuinely empty published list sets it too, because
+    // that answer WAS received and re-asking would poll for no reason.
+    try {
+        const r = await apiGet('experiences.php');
+        __cmdkExp = (r && r.experiences) || [];
+        __cmdkExpOk = true;
+    } catch (e) { /* keep last-good; retried from cmdkContentMatches */ }
 }
 function cmdkContentMatches(ql) {
     if (!ql || ql.length < 3) return [];
@@ -7242,6 +7254,10 @@ function cmdkContentMatches(ql) {
     const apc = (typeof adminPrivateContent === 'object' && adminPrivateContent) || {};
     const pub = (typeof siteContent === 'object' && siteContent) || {};
     const out = [];
+    // The boot prefetch never landed → re-kick it, fire-and-forget. This render
+    // still answers without experiences (collect() is synchronous), but the next
+    // keystroke has them — instead of a session-long blank spot nobody can see.
+    if (!__cmdkExpOk && !__cmdkExp.length) { try { cmdkPrefetchExperiences(); } catch (e) {} }
     // Experiences first, so a searched thing-to-do always surfaces (the property
     // content below caps the list). Match title / category / description.
     (Array.isArray(__cmdkExp) ? __cmdkExp : []).forEach((x) => {
@@ -13126,14 +13142,13 @@ async function sweepRememberBalance() {
 // comes back as a plain sentence and is shown as-is — never a status code.
 async function sweepRefreshPayouts() {
     try {
-        const r = await apiPost('square-setup.php', { action: 'payouts_refresh' });
-        if (r && r.error) {
-            toast(String(r.error), 'error');
-        } else {
-            toast('Payouts up to date', 'success');
-        }
+        await apiPost('square-setup.php', { action: 'payouts_refresh' });
+        toast('Payouts up to date', 'success');
     } catch (e) {
-        toast('Couldn\'t reach Square — check your connection.', 'error');
+        // The endpoint refuses with a 502 + sentence now, so the server's own
+        // words arrive here — a checked-for error inside a 200 body is the shape
+        // the resend work banned, and this was the last caller modelling it.
+        toast((e && e.message) || 'Couldn\'t reach Square — check your connection.', 'error');
     }
     renderSweep(); // refetch: the liability figures move with the new payout data
 }
@@ -14937,12 +14952,19 @@ async function saveSquareLocation() {
         // shop. Re-read at once rather than leaving stale figures on screen until the
         // nightly cron: this is the one setting whose whole point is that the data
         // changes with it.
-        try { await apiPost('square-setup.php', { action: 'payouts_refresh' }); } catch (e) {}
+        let reread = true;
+        try { await apiPost('square-setup.php', { action: 'payouts_refresh' }); } catch (e) { reread = false; }
         // renderSweep(true) re-fetches accounts.php, so the money screen stops showing
         // figures gathered for the location the owner has just moved away from.
         try { await renderSweep(true); } catch (e) {}
         try { await loadSquareWebhookStatus(); } catch (e) {}
-        if (msg) msg.textContent = 'Saved. The money screens now read this location.';
+        // "The money screens now read this location" is a claim about the RE-READ,
+        // not the save — when the re-read failed it was false, and the cached
+        // figures still describe the shop the owner just moved away from. The
+        // save itself is fine either way; only the claim changes.
+        if (msg) msg.textContent = reread
+            ? 'Saved. The money screens now read this location.'
+            : 'Saved — but Square couldn\u2019t be re-read just now, so the money screens may show the old location until the next automatic check. \u201cCheck Square now\u201d on the money screen retries it.';
     } catch (e) {
         if (msg) msg.textContent = "Couldn't save that just now.";
     }
