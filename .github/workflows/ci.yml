@@ -185,6 +185,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-auth-posture.php
 
+      - name: Error-status gate (a failure must not answer with a 2xx)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-error-status.php
+
       # Content-key classification: every content-table key written by server
       # code must be classified internal/private (db.php) or explicitly public,
       # or the public content GET serves it to anonymous visitors (the
