@@ -236,8 +236,14 @@ if ($action === 'payouts_refresh') {
     $bank = bank_refresh();
     $r = payouts_refresh();
     if (empty($r['ok'])) {
-        // A plain sentence, not a status code: this reaches the owner's screen.
-        json_out(['error' => $r['reason'] ?: 'Couldn\'t reach Square just now.'], 200);
+        // A plain sentence AND a failing status, like every other Square refusal
+        // in this file. This answered 200 with an error body, which apiPost does
+        // not throw on — so of its two callers, one had to model the "check a 200
+        // body for an error" shape the resend work banned, and the other (the
+        // location-change re-read) swallowed it and told the owner "the money
+        // screens now read this location" over figures still describing the old
+        // shop. 502: the upstream said no, nothing here is malformed.
+        json_out(['error' => $r['reason'] ?: 'Couldn\'t reach Square just now.'], 502);
     }
     json_out(['ok' => true, 'payouts' => $r['payouts'], 'charges' => $r['charges'], 'bank' => (int) ($bank['accounts'] ?? 0), 'checked' => time()]);
 }

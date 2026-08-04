@@ -2446,6 +2446,33 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;`, ctx);
     } else fail('bookingDue missing from the bundle');
 
+    // ---- §41. A DROPPED EXPERIENCES PREFETCH IS RETRIED, NOT TRUSTED. ----
+    // cmdkPrefetchExperiences runs once on owner boot, so one dropped request
+    // used to leave every published thing-to-do unfindable in search for the
+    // whole session — an empty list indistinguishable from "none published".
+    // The success flag tells the two apart, and the content-search path re-kicks
+    // the fetch when the boot one never landed.
+    if (typeof ctx.cmdkContentMatches === 'function' && typeof ctx.cmdkPrefetchExperiences === 'function') {
+        vm.runInContext(`__cmdkExp = []; __cmdkExpOk = false; __expGets = 0;
+            __expOldGet = typeof apiGet !== 'undefined' ? apiGet : null;
+            apiGet = async () => { __expGets++; throw new Error('dropped'); };`, ctx);
+        await ctx.cmdkPrefetchExperiences(); // the boot fetch, dropping
+        check('a dropped prefetch does not claim success', vm.runInContext('__cmdkExpOk', ctx) === false);
+        // The connection comes back; the next SEARCH re-kicks the fetch.
+        vm.runInContext(`apiGet = async () => { __expGets++; return { experiences: [{ id: 9, title: 'Retry Rambles', category: 'Walks', description: 'Found on retry.' }] }; };`, ctx);
+        const before = ctx.cmdkContentMatches('retry rambles');
+        check('the failed-boot search answers without them (sync render, no block)', Array.isArray(before) && before.length === 0);
+        await null; await null; await null; // flush the fire-and-forget refetch
+        const after = ctx.cmdkContentMatches('retry rambles');
+        check('…and the NEXT keystroke has them', after.some((r) => /retry rambles/i.test(r.label || '')), JSON.stringify(after.map((r) => r.label)));
+        // A SUCCESSFUL empty answer is an answer — no keystroke-by-keystroke poll.
+        vm.runInContext('__cmdkExp = []; __cmdkExpOk = true; __expGets = 0;', ctx);
+        ctx.cmdkContentMatches('anything at all');
+        await null; await null;
+        check('a genuinely empty published list is never re-polled', vm.runInContext('__expGets', ctx) === 0);
+        vm.runInContext('if (__expOldGet) apiGet = __expOldGet; __cmdkExp = []; __cmdkExpOk = false;', ctx);
+    }
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
