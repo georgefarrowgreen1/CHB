@@ -2235,7 +2235,11 @@ if ($action === 'email_render') {
     $kind = preg_replace('/[^a-z._]/', '', strtolower((string) ($in['kind'] ?? '')));
     require_once __DIR__ . '/mailer.php';
     if (!function_exists('mail_preview_start')) {
-        json_out(['error' => 'Preview isn’t available on this version.'], 200);
+        // NOT an error — a successful "no preview available" answer. The composer
+        // (previewAndSendEmail) reads only r.ok and falls back to a plain confirm,
+        // so this is a legitimate 200 carrying ok:false, never `error` at 2xx (the
+        // shape apiPost can't throw on — gated by test-error-status.php).
+        json_out(['ok' => false, 'reason' => 'Preview isn’t available on this version.']);
     }
     mail_preview_start();
     try {
@@ -2275,7 +2279,8 @@ if ($action === 'email_render') {
         $pick = $caps[0];
     }
     if (!$pick) {
-        json_out(['error' => 'That email can’t be previewed (it may need Square on, or there’s nothing left to pay).'], 200);
+        // Same as above: a successful "nothing to preview" answer, not an error.
+        json_out(['ok' => false, 'reason' => 'That email can’t be previewed (it may need Square on, or there’s nothing left to pay).']);
     }
     json_out(['ok' => true, 'subject' => $pick['subject'], 'html' => $pick['html'], 'text' => $pick['text']]);
 }
