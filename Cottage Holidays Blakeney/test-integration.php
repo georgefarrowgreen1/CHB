@@ -401,6 +401,67 @@ it_check('signed webhook accepted (signature verifies)', $whCode === 200, 'code=
 $bcmRow = $rootDb->query("SELECT deposit_paid, payment FROM bookings WHERE id=$bcmId")->fetch(PDO::FETCH_ASSOC);
 it_check('webhook did NOT wipe the £500 bank money (deposit_paid still £500)', $bcmRow && abs((float) $bcmRow['deposit_paid'] - 500.0) < 0.005, json_encode($bcmRow));
 
+// ---- 10c. THE WEBHOOK AGAINST SHAPES SQUARE MIGHT NOT SEND ----------------
+// The last gap from the payment audit. test-webhook.php proves the SIGNATURE
+// and nothing about what happens once a signed event is trusted; this section
+// drove one well-formed payment.updated and stopped there. But a webhook is the
+// one money path where the input is not ours: an event arriving malformed, out
+// of order, or naming a booking it has no business naming must never corrupt
+// state that is already correct. Every case here is a SILENCE — the endpoint
+// must acknowledge (so Square stops retrying) and write nothing.
+$post = function ($payload) use ($WEBHOOK_URL, $WEBHOOK_KEY) {
+    $body = json_encode($payload);
+    $sg = base64_encode(hash_hmac('sha256', $WEBHOOK_URL . $body, $WEBHOOK_KEY, true));
+    $o = ['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\nx-square-hmacsha256-signature: $sg", 'content' => $body, 'timeout' => 15, 'ignore_errors' => true]];
+    $http_response_header = [];
+    $raw = @file_get_contents($WEBHOOK_URL, false, stream_context_create($o));
+    $code = 0;
+    foreach ($http_response_header as $h) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+            $code = (int) $m[1];
+        }
+    }
+    return ['code' => $code, 'raw' => (string) $raw];
+};
+$paidBefore = (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id=$bcmId")->fetchColumn();
+$statusBefore = (string) $rootDb->query("SELECT status FROM payments WHERE square_payment_id='sq_bcm_charge'")->fetchColumn();
+foreach ([
+    'no data at all' => ['type' => 'payment.updated'],
+    'no payment object' => ['type' => 'payment.updated', 'data' => ['object' => []]],
+    'a payment with no id' => ['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['status' => 'COMPLETED']]]],
+    'an event type we do not handle' => ['type' => 'invoice.published', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => 'CANCELED']]]],
+    'a payment id Square has but we do not' => ['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_never_seen', 'status' => 'COMPLETED']]]],
+    'a reference naming a booking that does not exist' => ['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_other', 'status' => 'COMPLETED', 'reference_id' => 'CHB-999999']]]],
+    'a wrong-typed status' => ['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => ['nested' => 'rubbish']]]]],
+] as $why => $evtBad) {
+    $r = $post($evtBad);
+    it_check("malformed event acknowledged, not a 500 — $why", $r['code'] === 200, 'code=' . $r['code'] . ' body=' . substr($r['raw'], 0, 120));
+}
+$paidAfter = (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id=$bcmId")->fetchColumn();
+$statusAfter = (string) $rootDb->query("SELECT status FROM payments WHERE square_payment_id='sq_bcm_charge'")->fetchColumn();
+it_check('...and none of them moved the money', abs($paidAfter - $paidBefore) < 0.005, "before=$paidBefore after=$paidAfter");
+it_check('...nor overwrote a good ledger status', $statusAfter === $statusBefore, "before=$statusBefore after=$statusAfter");
+// AN EMPTY STATUS MUST NOT BLANK A GOOD ONE. The refund branch used to write
+// `$refund['status'] ?? ''` straight in; the payment branch guards on
+// `$status !== ''`. Driven, so the guard cannot be removed silently.
+$post(['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => '', 'reference_id' => 'CHB-' . $bcmId]]]]);
+it_check('an EMPTY status leaves the recorded one alone',
+    (string) $rootDb->query("SELECT status FROM payments WHERE square_payment_id='sq_bcm_charge'")->fetchColumn() === $statusBefore);
+// AND AN UNSIGNED EVENT IS REFUSED, whatever it carries — the one case where
+// acknowledging would be wrong, because it is not Square talking.
+$unsignedBody = json_encode(['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => 'CANCELED', 'reference_id' => 'CHB-' . $bcmId]]]]);
+$uo = ['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\nx-square-hmacsha256-signature: not-a-signature", 'content' => $unsignedBody, 'timeout' => 15, 'ignore_errors' => true]];
+$http_response_header = [];
+@file_get_contents($WEBHOOK_URL, false, stream_context_create($uo));
+$uCode = 0;
+foreach ($http_response_header as $h) {
+    if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+        $uCode = (int) $m[1];
+    }
+}
+it_check('an unsigned event is REFUSED, not acknowledged', $uCode !== 200, 'code=' . $uCode);
+it_check('...and changed nothing', (string) $rootDb->query("SELECT status FROM payments WHERE square_payment_id='sq_bcm_charge'")->fetchColumn() === $statusBefore);
+
 // ---- 11. Accounts income allocation (audit findings 6, 7, 11) -------------
 echo "\n== 10. Accounts income allocation ==\n";
 // Seed three cottages-worth of scenarios directly, then read accounts.php per year.
