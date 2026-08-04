@@ -462,6 +462,38 @@ foreach ($http_response_header as $h) {
 it_check('an unsigned event is REFUSED, not acknowledged', $uCode !== 200, 'code=' . $uCode);
 it_check('...and changed nothing', (string) $rootDb->query("SELECT status FROM payments WHERE square_payment_id='sq_bcm_charge'")->fetchColumn() === $statusBefore);
 
+// ---- 10d. THE NIGHTLY RUN APPLIES PENDING SCHEMA CHANGES ------------------
+// migrate.php has always accepted the cron secret; it was simply never in
+// cron.php's job list. So every deploy carrying a migration waited on the owner
+// remembering a button in Manage, and until they did, whatever the deploy
+// shipped that needed a new column silently did nothing — measured, migrations
+// 106 and 107 sat unapplied while automatic collection returned a quiet
+// ok:false. Nothing anywhere said a migration was pending.
+echo "\n== 10d. Migrations run nightly ==\n";
+$cronSrc = (string) file_get_contents(__DIR__ . '/cron.php');
+it_check('migrate.php is one of the daily jobs', strpos($cronSrc, "'migrate.php?cron=' =>") !== false);
+// Ordered first, because a job must never run against a schema it predates.
+it_check('...and runs BEFORE every other job',
+    strpos($cronSrc, "'migrate.php?cron=' =>") < strpos($cronSrc, "'ical-import.php?cron=' =>"));
+// A 2xx is not always success: migrate.php answers 200 and reports each file
+// individually, so a failed schema change would read as a job that went fine.
+// Pinned on the GUARD'S CONDITION, not on the strings inside it: replacing the
+// `if` with `if (false)` left both of those still present in the source and both
+// checks green — the ingredient-not-enforcement trap this file keeps meeting.
+it_check('a per-file ERROR is read out of the 200 response',
+    strpos($cronSrc, 'if ($ok && is_array($body[\'migrations\'] ?? null)) {') !== false);
+it_check('...inside a branch that can actually run',
+    strpos($cronSrc, "(\$m['status'] ?? '') === 'ERROR'") !== false && strpos($cronSrc, 'if (false)') === false);
+it_check('...and demotes the job to failed, which is what logs a warning',
+    preg_match('/\$ok = false;\s*\n\s*\$note = /', $cronSrc) === 1);
+// The safety property that makes nightly application sound at all: running the
+// whole set twice must be a no-op. §2 already proves the second pass records
+// every file as already-recorded; assert the ledger is what makes it so.
+$mig3 = http($guest, 'GET', '/migrate.php?cron=' . $SECRET);
+$reruns3 = array_filter($mig3['json']['migrations'] ?? [], fn($m) => ($m['status'] ?? '') !== 'already-recorded');
+it_check('a third run is still a complete no-op (safe to repeat nightly)',
+    $mig3['code'] === 200 && !$reruns3, 'code=' . $mig3['code'] . ' changed=' . count($reruns3));
+
 // ---- 11. Accounts income allocation (audit findings 6, 7, 11) -------------
 echo "\n== 10. Accounts income allocation ==\n";
 // Seed three cottages-worth of scenarios directly, then read accounts.php per year.
