@@ -162,6 +162,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(h && /all set/i.test(h.sub) && !h.pay, `fully-paid, details-in guest reads "you're all set" with no CTA (${h && h.sub.trim().slice(-30)})`);
   await page.close();
 
+  // 3b) …but a register SHORT of the party is not "all set". guest-details.php
+  // refuses a short submission against the booking's adult count at the time;
+  // edit the booking up afterwards and the legal record covers some of them.
+  // The form prefills what is there and asks for the rest, so re-offering it is
+  // the whole fix — the guest is the only one who can finish it.
+  page = await openPage({ name: 'Grown Party', email: 'g@x.co' }, [mk('jollyboat', d(6), d(9), { payment: 'paid', reg_submitted: true, reg_count: 2, adults: 4, reg_url: 'guest-details.php?b=1&token=z' })]);
+  h = await hub(page);
+  ok(h && /add your guest details/i.test(h.sub), `a short register re-offers the form (${h && h.sub.trim().slice(-40)})`);
+  ok(h && !/all set/i.test(h.sub), '…and never tells them they are all set');
+  await page.close();
+
   // 4) Tomorrow wording at +1 day.
   page = await openPage({ name: 'Soon Guest', email: 's@x.co' }, [mk('21a', d(1), d(3), { payment: 'unpaid', pay_token: 'tok2' })]);
   h = await hub(page);

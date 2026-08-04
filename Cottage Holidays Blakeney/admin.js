@@ -9846,9 +9846,15 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
             fig: askAmt,
             money: true,
         };
-    } else if (flow.hasReg && !b.regSubmitted && !past) {
+    } else if (flow.hasReg && !bookingRegComplete(b) && !past) {
+        // A SHORT register is as actionable as a missing one, and needs its own
+        // sentence: "haven't been provided yet" is false of a guest who filled
+        // the form in for the party the booking had at the time.
+        const regNeed = Math.max(1, Number(b.adults) || 1);
         next = {
-            text: 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
+            text: b.regSubmitted
+                ? `Only ${b.regCount} of ${regNeed} guests are on the register — the rest are required before arrival (UK guest records).`
+                : 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
             onclick: chbAttrs('copyGuestRegLink', String(b.id)),
             btn: 'Copy the details link',
         };
@@ -10328,7 +10334,12 @@ function renderBookingHub() {
                       the owner already knows; the register page itself states
                       the rule and the retention. */ ''}
                 ${contact('Register', b.regSubmitted
-                    ? `<span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded`
+                    ? (bookingRegComplete(b)
+                        ? `<span class="bhub-chip-dot is-ok" aria-hidden="true"></span>Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded`
+                        // SHORT OF THE PARTY: the booking's adult count moved after
+                        // the guest submitted, so the record covers some of them.
+                        // Stated as the gap it is, not as a tick.
+                        : `<span class="bhub-chip-dot is-warn" aria-hidden="true"></span>${b.regCount} of ${Math.max(1, Number(b.adults) || 1)} guests recorded · the rest are still needed`)
                     : '<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Not yet submitted')}
             </div>
             ${b.regUrl
@@ -10412,7 +10423,9 @@ function hubChipsHtml(b) {
             : `<span class="bhub-chip">${dot(false)}Terms · not recorded</span>`,
         b.noDogsAt ? `<span class="bhub-chip is-ok">${dot(true)}No dog</span>` : `<span class="bhub-chip">${dot(false)}No-dog · not recorded</span>`,
         b.regSubmitted
-            ? `<span class="bhub-chip is-ok">${dot(true)}Register · ${b.regCount || 0}</span>`
+            ? (bookingRegComplete(b)
+                ? `<span class="bhub-chip is-ok">${dot(true)}Register · ${b.regCount || 0}</span>`
+                : `<span class="bhub-chip is-warn">${dot(false)}Register · ${b.regCount || 0} of ${Math.max(1, Number(b.adults) || 1)}</span>`)
             : `<span class="bhub-chip">${dot(false)}Register · waiting</span>`,
         `<span class="bhub-chip">${rail}</span>`,
         b.smsOptIn ? `<span class="bhub-chip is-ok">${dot(true)}Texts OK</span>` : '',

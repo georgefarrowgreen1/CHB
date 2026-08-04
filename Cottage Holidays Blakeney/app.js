@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 411;
+const ADMIN_BUNDLE_V = 412;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 146;
+const ADMIN_CSS_V = 147;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3750,7 +3750,9 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         if (payToken && b.autopayState === 'armed')
             cta = `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment</button>`;
         else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
-    } else if (b.regUrl && !b.regSubmitted) {
+    } else if (b.regUrl && !bookingRegComplete(b)) {
+        // Short of the party as well as absent: the form prefills what is already
+        // there and asks for the rest, so re-offering it is the whole fix here.
         ready = `<span class="hub-warn">add your guest details</span>`;
         cta = `<a class="btn-glass btn-sm hub-cta-btn" href="${escapeHtml(b.regUrl)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Add your details</a>`;
     } else {
@@ -7347,6 +7349,23 @@ function paymentSummary(propKey, b) {
     return { total, deposit, balance, fullyPaid };
 }
 
+// IS THE LEGAL RECORD ACTUALLY COMPLETE? The register needs one entry per guest
+// aged 16+ (CHILD_UNDER_AGE), and guest-details.php enforces exactly that on the
+// WAY IN — guest_reg_clean refuses a short party against the booking's adult
+// count AT THAT MOMENT. Nothing re-asked it on the way out: edit the booking to
+// 4 adults afterwards, which the owner may do at any time, and the record covers
+// 2 of them while all five surfaces still say done. Both figures were already on
+// screen — "Submitted · 2 guests recorded" on a 4-adult booking — and nothing
+// compared them.
+// A count of ZERO means "we don't know how many were recorded", not "none": the
+// column defaults to 0 and every real submission writes at least 1, so a 0 is a
+// row from before it was tracked. Unknown is not a failure, so it stays complete
+// rather than turning old bookings red.
+function bookingRegComplete(b) {
+    if (!b || !b.regSubmitted) return false;
+    const n = Number(b.regCount) || 0;
+    return n <= 0 || n >= Math.max(1, Number(b.adults) || 1);
+}
 // ---- Unified booking flow ------------------------------------------------
 // The ONE ordered progress model, shared by the admin booking hub and the
 // guest's My Stays card, so both sides show the same journey. Each stage is
@@ -7399,6 +7418,8 @@ function bookingFlow(propKey, b) {
     const past = !!(b.checkOut && b.checkOut <= today);
     const inStay = !past && hasCheckedIn(b);
     const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    // (bookingRegComplete is defined below — hoisted, and read here as the
+    // register stage's done-state.)
     const ps = paymentSummary(propKey, b);
     const gt = displayGrand(p, ps, b.holdStatus, b);
     const hold = b.holdStatus || 'none';
@@ -7408,7 +7429,7 @@ function bookingFlow(propKey, b) {
         { key: 'booked', label: 'Booked', glabel: 'Booked', done: true },
         { key: 'deposit', label: 'Deposit', glabel: 'Deposit paid', done: gt.paid > 0.001 },
     ];
-    if (hasReg) stages.push({ key: 'details', label: 'Guest details', glabel: 'Your details', done: !!b.regSubmitted });
+    if (hasReg) stages.push({ key: 'details', label: 'Guest details', glabel: 'Your details', done: bookingRegComplete(b) });
     stages.push({ key: 'paid', label: 'Paid in full', glabel: 'Balance paid', done: !!gt.fullyPaid });
     stages.push({ key: 'arrival', label: 'Arrival info', glabel: 'Arrival info', done: !!b.preArrivalSent });
     stages.push({ key: 'stay', label: past ? 'Stayed' : 'Stay', glabel: past ? 'Stay complete' : 'Your stay', done: past, now: inStay });
@@ -14448,7 +14469,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'expfix1';
+    const BUILD = 'regcomp1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
