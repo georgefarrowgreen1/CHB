@@ -285,6 +285,37 @@ else {
         regAge = m ? Number(m[1]) : null;
     } catch (e) {}
     check('app.js states the age a child is under', cua === 16);
+
+    // ---- CLIENT AND SERVER MUST REFUSE THE SAME STAY -----------------------
+    // The booking rules are enforced twice — checkBookingRules in the browser so
+    // the guest is told early, and enquiries.php so the public form cannot be
+    // bypassed. They read the same rules-<propKey> store, but each carries its
+    // OWN DEFAULT for a cottage the owner has never configured, and those two
+    // numbers are written in different files with nothing tying them together.
+    //
+    // This has already bitten once: app.js line ~6930 still carries the note —
+    // "`|| 1` let the client offer/price a 1-night stay the server then rejected
+    // AFTER the guest filled the whole enquiry form". It was fixed by hand and
+    // never gated, so nothing stops it drifting back. The failure is silent on
+    // the way in: everything looks fine until a guest reaches the last step.
+    let srvMinN = null;
+    try {
+        const enq = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'enquiries.php'), 'utf8');
+        const m = enq.match(/\$defaultRules = \['minNights' => (\d+)/);
+        srvMinN = m ? Number(m[1]) : null;
+    } catch (e) {}
+    const cliMinN = (appScript.match(/minNights: def\.minNights \|\| (\d+)/) || [])[1];
+    check(`the server declares a default minimum stay (${srvMinN})`, srvMinN !== null && srvMinN >= 1);
+    check(`…and the client synthesises the SAME one for a new cottage (${cliMinN})`,
+        cliMinN !== undefined && Number(cliMinN) === srvMinN);
+    // The three original cottages are hardcoded rather than synthesised, so they
+    // need the same number for the same reason.
+    // Every literal `minNights: N` in app.js — the three hardcoded cottages and
+    // the synthesised default alike. The count is asserted as well as the
+    // values, so a regex that stopped matching cannot pass as "all agree".
+    const hardMins = [...appScript.matchAll(/\bminNights: (\d+)\b/g)].map((m) => Number(m[1]));
+    check(`…as do the hardcoded cottages (${hardMins.join(', ') || 'none found'})`,
+        hardMins.length >= 3 && hardMins.every((n) => n === srvMinN));
     // Both pickers the guest decides at — the hero search and the enquiry form.
     check(`both guest pickers band their children (${kidBands.length} found)`, kidBands.length === 2);
     check(`…and their adults (${adultBands.length} found)`, adultBands.length === 2);
