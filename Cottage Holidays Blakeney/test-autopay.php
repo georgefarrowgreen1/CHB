@@ -772,6 +772,12 @@ chk('a raised price the remaining collections cannot cover → STALE',
 chk('...but one the collections still cover stays armed — the manual overpayment made room',
     booking_autopay_state(mpbk(['deposit_paid' => 400.0, 'agreed_total' => 740.0]), $TODAY)[0] === 'armed');
 chk('a moved due date is stale, as it always was', booking_autopay_state(mpbk(['balance_due_date' => '2026-11-15']), $TODAY)[0] === 'stale');
+// A COMPLETED monthly plan (next_at cleared) must NOT re-arm when the owner
+// raises the price before check-in — it charged the top-up unconsented. Empty
+// next means zero collections left, so a fresh charge is stale, not armed.
+chk('a completed plan raised in price is STALE, never armed',
+    booking_autopay_state(mpbk(['deposit_paid' => 700.0, 'agreed_total' => 800.0, 'autopay_next_at' => null]), $TODAY)[0] === 'stale');
+chk('...and cannot charge', booking_autopay_may_charge(mpbk(['deposit_paid' => 700.0, 'agreed_total' => 800.0, 'autopay_next_at' => null]), $TODAY) === false);
 // What a collection may TAKE, decided in one place.
 $take = booking_autopay_collect_amount(mpbk(), '2026-09-28');
 chk('a mid-plan collection takes the agreed ceiling', abs($take['charge'] - 175.0) < 0.005 && $take['final'] === false);
@@ -916,6 +922,8 @@ $paySrc3 = file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php routes update_card through autopay_replace_card',
     strpos($paySrc3, "if (\$action === 'update_card')") !== false && strpos($paySrc3, 'autopay_replace_card($b,') !== false);
 chk('...and the summary carries autopayRepair', strpos($paySrc3, "'autopayRepair' => \$apRepair,") !== false);
+chk('update_card is rate-limited like the other card actions — no card-testing oracle',
+    preg_match("/\\\$action === 'charge' \\|\\| \\\$action === 'authorize' \\|\\| \\\$action === 'update_card'\\)\\s*\\{\\s*rate_limit/", $paySrc3) === 1);
 chk('the collector notifies through the guarded send',
     strpos($apSrc2, "function_exists('send_autopay_failure')") !== false && strpos($apSrc2, 'send_autopay_failure($now, $why, $stopped, $today, $charge)') !== false);
 // The account payload keeps a TROUBLED plan on the guest's card (states

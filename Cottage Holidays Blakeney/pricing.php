@@ -477,10 +477,20 @@ function booking_autopay_state($b, $today = null)
     $n = (int) ($b['autopay_instalments'] ?? 0);
     if ($n > 1) {
         $next = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10);
+        // An empty NEXT date means the plan is COMPLETE — zero collections left,
+        // not n. Counting all n here re-armed a finished plan the instant the
+        // owner raised the price before check-in (an added night, a pet fee):
+        // charge > 0 so not 'settled', the due date unchanged so not date-stale,
+        // and left = n made the top-up look covered — so the collector charged
+        // the stored card an amount the guest never agreed to. next '' → left 0
+        // → stale → ask again, matching what the single-collection branch below
+        // already does for the same edit.
         $left = 0;
-        foreach (booking_instalment_schedule($agreedDue, $n) as $d) {
-            if ($next === '' || $d >= $next) {
-                $left++;
+        if ($next !== '') {
+            foreach (booking_instalment_schedule($agreedDue, $n) as $d) {
+                if ($d >= $next) {
+                    $left++;
+                }
             }
         }
         if ($left <= 0 || $charge > $agreedAmt * $left + 0.01) {
