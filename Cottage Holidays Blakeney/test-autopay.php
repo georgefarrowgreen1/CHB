@@ -933,6 +933,32 @@ $mbSrc = file_get_contents(__DIR__ . '/my-bookings.php');
 chk('the account payload keeps a troubled plan on the card',
     strpos($mbSrc, "in_array(\$ap[0], ['armed', 'failed'], true)") !== false
     && strpos($mbSrc, "'stopped' : (\$apAtt > 0 ? 'retrying' : 'on')") !== false);
+// The repair writes UNDER book_lock so a collection in flight can't walk it
+// back to 'stopped' — the collector holds the same lock across its read→write.
+chk('autopay_replace_card takes book_lock around its write',
+    strpos($apSrc2, "\$held = \$plock !== '' && function_exists('book_lock') ? book_lock(\$plock) : false;") !== false
+    && strpos($apSrc2, 'if ($held) {') !== false
+    && strpos($apSrc2, 'book_unlock($plock)') !== false);
+
+echo "\n=== 19. The owner notification quotes the right line on a mixed pass ===\n";
+// autopay_run kept ok and fail lines in ONE positional list, and autopay-run.php
+// read lines[0] for a collection and lines[count-1] for a failure — so a pass
+// with one of each swapped the two bodies. Separate buckets fix it.
+// next_at = TODAY so the collection is DUE (may_charge true) and the 402 makes
+// it a real 'fail', not a 'skip'.
+$runBk = mpbk(['autopay_attempts' => 0, 'autopay_next_at' => $TODAY]);
+reset_env($runBk);
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'CARD_DECLINED', 'detail' => 'x']]]]];
+$DB_LIST = [$runBk];
+$MAIL = [];
+$run = autopay_run($TODAY);
+chk('a failing pass fills failLines, not okLines', count($run['failLines']) === 1 && count($run['okLines']) === 0);
+$run2 = autopay_run($TODAY); // empty candidate list path still returns both buckets
+chk('the run always returns both buckets', is_array($run['okLines']) && is_array($run['failLines']));
+$runSrc = file_get_contents(__DIR__ . '/autopay-run.php');
+chk('the collected alert reads the OK bucket, the failed alert the FAIL bucket',
+    strpos($runSrc, "\$res['okLines'][0]") !== false && strpos($runSrc, "\$res['failLines'][0]") !== false
+    && strpos($runSrc, "\$res['lines'][count(\$res['lines']) - 1]") === false);
 
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);

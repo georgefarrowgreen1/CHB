@@ -48,7 +48,9 @@ if ($res['collected'] > 0) {
     try {
         alert_owner(
             'Balance collected automatically',
-            $res['collected'] === 1 ? $res['lines'][0] : $res['collected'] . ' balances collected',
+            // Read the COLLECTED bucket, not lines[0] — on a mixed pass lines[0]
+            // could be a failure. See autopay_run's okLines/failLines split.
+            $res['collected'] === 1 ? ($res['okLines'][0] ?? '') : $res['collected'] . ' balances collected',
             ['category' => 'money', 'tag' => 'autopay-' . $today],
         );
     } catch (\Throwable $e) {
@@ -58,7 +60,7 @@ if ($res['failed'] > 0) {
     try {
         alert_owner(
             "Automatic payment didn't go through",
-            $res['failed'] === 1 ? $res['lines'][count($res['lines']) - 1] : $res['failed'] . " automatic payments failed — they'll need chasing",
+            $res['failed'] === 1 ? ($res['failLines'][0] ?? '') : $res['failed'] . " automatic payments failed — they'll need chasing",
             // 'urgent' so a mute cannot swallow it: a failed collection means a
             // balance nobody is now chasing, and the whole point of arranging it
             // was that the owner stopped watching.
