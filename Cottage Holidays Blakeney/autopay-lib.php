@@ -425,7 +425,16 @@ function autopay_collect_one($b, $today = null)
             $stopped = $failKind === 'hard' || $prior + 1 >= AUTOPAY_MAX_TRIES;
             if (($stopped || $prior === 0) && function_exists('send_autopay_failure')) {
                 try {
-                    send_autopay_failure($now, $why, $stopped, $today, $charge);
+                    // What is owed now, so the email's future rows show the real
+                    // shrunk figures after a manual part-payment (the composer is
+                    // otherwise DB-free and falls back to the ceiling).
+                    $restNow = null;
+                    if (function_exists('booking_amount_due') && function_exists('booking_payment_kind')) {
+                        $rk = booking_payment_kind($now);
+                        $rd = booking_amount_due($now, $rk === 'hold' ? 'deposit' : $rk);
+                        $restNow = round((float) $rd['due'], 2);
+                    }
+                    send_autopay_failure($now, $why, $stopped, $today, $charge, $restNow);
                 } catch (\Throwable $e) {
                 }
             }

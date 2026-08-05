@@ -393,6 +393,77 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/stopped trying/.test(stopState.why) && stopState.fix, `…promising no further charge, with the fix present (${stopState.why.slice(0, 80)})`);
   await page.close();
 
+  // 16) A SINGLE "one payment" consent in trouble has NO schedule block, but it
+  // must not read as healthy — the failure email sends the guest here. The
+  // autopay_trouble descriptor drives a warn line + the update-card route.
+  // Retrying keeps autopay_state 'armed'; without this fix that showed green.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+    autopay_state: 'armed', autopay_says: 'Scheduled.', autopay_plan: null,
+    autopay_trouble: { state: 'retrying', why: 'The card was declined.', fig: 525, retry: d(2) },
+  })]);
+  const single = await page.evaluate(() => {
+    const hub = document.querySelector('.my-stay-hub-soon');
+    const block = hub && hub.querySelector('.hub-plan-trouble');
+    return {
+      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
+      green: hub ? !!hub.querySelector('.hub-ok') : false,
+      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
+      fix: block ? (block.querySelector('.hub-plan-fix') || {}).textContent || '' : '',
+      hasSchedule: hub ? !!hub.querySelector('.ap-rail') : false,
+    };
+  });
+  ok(/needs a new card/.test(single.warn) && !single.green, `a single trouble consent reads warn, never green (${single.warn})`);
+  ok(/We couldn.t take £525\.00/.test(single.why) && /try again/.test(single.why), `…with why + when, no schedule block (${single.why.slice(0, 70)})`);
+  ok(/Update card/.test(single.fix) && !single.hasSchedule, `…and the fix, without an instalment rail (${single.fix})`);
+  await page.close();
+
+  // 17) THE NEXT figure reflects a manual part-payment — the plan payload now
+  // shrinks each remaining row to min(per, running), so the card announces what
+  // the collector will really take, not the ceiling (a £150-when-£60-owed alarm).
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+    autopay_state: 'armed', autopay_says: 'Scheduled.',
+    // One done, £60 left across two rows: next £60, final £0 — never 2×£175.
+    autopay_plan: { n: 3, per: 175, toGo: 60, next: d(20), dates: [
+      { date: d(-10), state: 'done', fig: 175 },
+      { date: d(20), state: 'next', fig: 60 },
+      { date: d(50), state: 'todo', fig: 0 },
+    ] },
+  })]);
+  const shrunk = await page.evaluate(() => {
+    const figs = [...document.querySelectorAll('.my-stay-hub-soon .ap-figc')].map((e) => e.textContent);
+    return { figs: figs.join('|'), sum: (document.querySelector('.my-stay-hub-soon .hub-plan-sum') || {}).textContent || '' };
+  });
+  ok(/£60\.00/.test(shrunk.figs) && !/£175\.00\|£175\.00\|£175\.00/.test(shrunk.figs), `the next figure is what will be taken, not the ceiling (${shrunk.figs})`);
+  ok(/£60\.00 to go/.test(shrunk.sum), `…and the rows agree with what's left (${shrunk.sum})`);
+  await page.close();
+
+  // 18) check_in_time is guest-supplied free text (enquiries.php clean() is
+  // trim-only) and reaches the pre-arrival hub's innerHTML — it must be escaped.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9', check_in_time: '<img src=x onerror=window.__xss=1>',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+  })]);
+  const xss = await page.evaluate(() => ({
+    fired: !!window.__xss,
+    injected: !!document.querySelector('.my-stay-hub-soon img'),
+  }));
+  ok(!xss.fired && !xss.injected, `a crafted check-in time is escaped, not injected (fired=${xss.fired}, img=${xss.injected})`);
+  await page.close();
+
+  // 19) openPayView SUPERSEDE — the source carries the stamp guard so a slow
+  // summary from an earlier open can't paint over a newer booking (a race that
+  // could act on the wrong figures). Gated at source: the race itself is timing.
+  const appSrc = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
+  ok(/const openStamp = \+\+payState\.openStamp;/.test(appSrc) && (appSrc.match(/if \(!openLive\(\)\) return;/g) || []).length >= 2,
+    'openPayView captures a supersede stamp and bails after each await');
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

@@ -668,7 +668,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/taken automatically on 28\/10\/2026/.test(ap0.oneSub), `the one-payment option states its consequence (${ap0.oneSub})`);
   ok(/3 × £175\.00/.test(ap0.monthlyFig), `the monthly option leads with its shape (${ap0.monthlyFig})`);
   ok(ap0.railRows === 0, 'the schedule stays folded until monthly is chosen');
-  ok(/each payment/.test(ap0.fine), `with monthly on the card the fine print speaks plural (${ap0.fine.slice(0, 44)}…)`);
+  // THE FINE PRINT FOLLOWS THE SELECTION, not merely the offer. At the default
+  // "I'll pay it myself" it must NOT promise "we'll email you before each
+  // payment" (an arrangement the guest hasn't made) — it invites instead.
+  ok(/Choose an automatic option/.test(ap0.fine) && !/each payment/.test(ap0.fine),
+    `the default self fine print invites, it doesn't promise emails (${ap0.fine.slice(0, 50)}…)`);
+  const fineMo = await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
+  });
+  ok(/each payment/.test(fineMo), `choosing monthly makes it speak plural (${fineMo.slice(0, 44)}…)`);
+  const fineOne = await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
+  });
+  ok(/before it's taken/.test(fineOne) && !/each payment/.test(fineOne), `choosing one payment speaks singular (${fineOne.slice(0, 44)}…)`);
   // THE FLOOR'S GUEST FACE: the same deposit ask when pay.php sends NO offer
   // (the owner's floor, or a plan that cannot fit). The card falls to its
   // two-way form and the fine print goes SINGULAR — "each payment" is a
@@ -682,8 +700,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     fine: (document.querySelector('.pay-ap-fine') || {}).textContent || '',
   }));
   ok(apNo.shown && apNo.radios === 2 && !apNo.monthly, `no offer → the two-way card (${apNo.radios} ways, monthly ${apNo.monthly})`);
-  ok(/before it's taken/.test(apNo.fine) && !/each payment/.test(apNo.fine),
-    `…whose fine print speaks in the singular (${apNo.fine.slice(0, 60)}…)`);
+  ok(/Choose an automatic option/.test(apNo.fine) && !/each payment/.test(apNo.fine),
+    `…whose default fine print invites, never promising a plan not on the card (${apNo.fine.slice(0, 50)}…)`);
+  const apNoOne = await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    return (document.querySelector('.pay-ap-fine') || {}).textContent || '';
+  });
+  ok(/before it's taken/.test(apNoOne), `…and choosing the one payment speaks singular (${apNoOne.slice(0, 44)}…)`);
   ok(await page.evaluate(() => (document.getElementById('pay-repair') || { style: {} }).style.display === 'none'),
     'no failed try → no repair card');
   // THE REPAIR CARD — mid-plan with a failed try, autopayTerms null, so this

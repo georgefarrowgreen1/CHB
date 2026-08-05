@@ -2509,12 +2509,12 @@ function autopay_notice_body($b, $payUrl = null)
 // to the very person who could mend it — only the third became an owner duty.
 // autopay-lib sends it on the first soft failure and on the failure that STOPS
 // the plan; the middle attempt is silence, they already know.
-function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null)
+function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null, $restNow = null)
 {
     if (empty($b['email'])) {
         return ['ok' => false, 'error' => 'No guest email on file'];
     }
-    $m = autopay_failure_body($b, $why, $stopped, $today, $charge);
+    $m = autopay_failure_body($b, $why, $stopped, $today, $charge, null, $restNow);
     return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
 }
 
@@ -2525,7 +2525,7 @@ function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null)
 // autopay_square_why's prose, never a raw body. $stopped separates "we'll try
 // again on <date>" from "we've stopped trying" — the two must never blur,
 // because the first promises a charge and the second promises its absence.
-function autopay_failure_body($b, $why, $stopped, $today = null, $charge = null, $payUrl = null)
+function autopay_failure_body($b, $why, $stopped, $today = null, $charge = null, $payUrl = null, $restNow = null)
 {
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
@@ -2550,9 +2550,25 @@ function autopay_failure_body($b, $why, $stopped, $today = null, $charge = null,
     if ($monthly) {
         $sched = booking_instalment_schedule(substr((string) $b['autopay_due'], 0, 10), $apN);
         $per = round((float) ($b['autopay_amount'] ?? 0), 2);
+        // Rows AFTER the declined one show what the collector will TAKE, not the
+        // ceiling — the my-bookings card fix, mirrored: after a manual
+        // part-payment the later charges shrink, so a future row printing the
+        // full £per would promise more than will be collected. $restNow is what
+        // is owed right now (the collector passes it — it holds the booking
+        // under lock with the DB); the remainder BEYOND this attempt is that
+        // minus the declined charge. The composer stays DB-FREE: with $restNow
+        // null (a caller that can't cheaply derive it) the rows fall back to
+        // $per, exactly as before.
+        $runAfter = $restNow !== null ? round(max(0, (float) $restNow - (float) $amt), 2) : null;
         foreach ($sched as $i => $d) {
             if ($d === $failDate) {
                 $ofN = 'payment ' . ($i + 1) . ' of ' . $apN;
+            }
+            $future = $money($per);
+            if ($d > $failDate && $runAfter !== null) {
+                $take = round(min($per, max(0, $runAfter)), 2);
+                $runAfter = round($runAfter - $take, 2);
+                $future = $money($take);
             }
             $rows[] = [
                 'Payment ' . ($i + 1) . ' — ' . uk_date($d),
@@ -2560,7 +2576,7 @@ function autopay_failure_body($b, $why, $stopped, $today = null, $charge = null,
                     ? 'paid ✓'
                     : ($d === $failDate
                         ? $money($amt) . ' — declined' . ($stopped ? '' : ', retrying ' . $retry)
-                        : $money($per) . ($i + 1 === $apN ? ' · final' : '')),
+                        : $future . ($i + 1 === $apN ? ' · final' : '')),
             ];
         }
     } else {
