@@ -1061,6 +1061,25 @@ console.log('\n== 7. Every required PHP file survives the deploy ==');
         check(`${boot}: every payload helper it calls is declared by a file it requires (${called.size} helpers)`,
             called.size >= 4 && missing.length === 0, missing.join(', '));
     }
+
+    // ---- §7c. ONE definition of the site's base URL. -----------------------
+    // Four crons rebuilt it by hand from HTTP_HOST (?? 'localhost') + the
+    // detected scheme — the exact reconstruction that broke the Square webhook
+    // (a proxy hiding the scheme, an untrusted Host header): review-request
+    // emails one proxy quirk away from http:// links, the Airbnb export URL
+    // built off whatever Host arrived. site_base_url() (db.php) is the
+    // trusted-host + proxy-aware definition; the marker of a hand-rolled copy
+    // is dirname($_SERVER['SCRIPT_NAME']), which only that helper may use.
+    {
+        const offenders = [];
+        for (const f of fs.readdirSync(__dirname).filter((n) => n.endsWith('.php') && n !== 'db.php')) {
+            if (fs.readFileSync(path.join(__dirname, f), 'utf8').includes("dirname($_SERVER['SCRIPT_NAME']")) offenders.push(f);
+        }
+        check(`no file rebuilds the base URL by hand — site_base_url() is the one definition${offenders.length ? ' — ' + offenders.join(', ') : ''}`,
+            offenders.length === 0);
+        check('…and the helper itself still exists to point at',
+            fs.readFileSync(path.join(__dirname, 'db.php'), 'utf8').includes('function site_base_url'));
+    }
 }
 
 // ---- 12. Nothing overrides the double-booking guard on its own ------------

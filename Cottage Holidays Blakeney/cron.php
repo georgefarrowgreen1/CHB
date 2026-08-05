@@ -36,10 +36,9 @@ if (!$isCron) {
 
 // Build an absolute base URL to this folder from the current request, so the
 // dispatcher works at the domain root or in any subfolder.
-$scheme = request_is_https() ? 'https' : 'http';
-$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-$dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
-$base = $scheme . '://' . $host . $dir . '/';
+// site_base_url(): trusted-host + proxy-aware, ONE definition — the hand-rolled
+// copy here fell back to http://localhost/ off-web and trusted any Host header.
+$base = site_base_url();
 $secret = rawurlencode(APP_SECRET);
 
 // The daily jobs, in order. Each is a relative URL; the cron secret is appended.

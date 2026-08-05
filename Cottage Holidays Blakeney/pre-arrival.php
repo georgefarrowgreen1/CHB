@@ -95,10 +95,10 @@ try {
 } // column not migrated yet
 
 if ($toAsk) {
-    $scheme = request_is_https() ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
-    $base = $scheme . '://' . $host . $dir . '/';
+    // site_base_url(): trusted-host + proxy-aware — a hand-rolled base here
+    // put http:// (or localhost) links in guests' review-request emails
+    // whenever the proxy hid the scheme or the host header was off.
+    $base = site_base_url();
     $googleUrl = trim(content_value('google-review-url')); // owner-set, optional
     foreach ($toAsk as $b) {
         $res = send_review_request_email([
