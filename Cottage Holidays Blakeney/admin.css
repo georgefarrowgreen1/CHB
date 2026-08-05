@@ -4392,6 +4392,15 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   color: var(--text-light);
   background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
 }
+/* HOW THE OFFER IS DOING — Money on the way's footer: figure-first tiles (the
+   money overview's own vocabulary) + the floor's feedback sentence. */
+.mo-uptake { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
+.mo-uptake-cap { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.mo-tiles { display: flex; gap: 8px; }
+.mo-tile { flex: 1; min-width: 0; padding: 10px 8px; border: 1px solid var(--glass-border); border-radius: var(--r-md); text-align: center; }
+.mo-tile-fig { font-size: 1.05rem; font-weight: 700; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.mo-tile-lbl { font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-top: 2px; }
+.mo-floorline { margin: 10px 0 0; font-size: 0.78rem; line-height: 1.55; color: var(--text-light); }
 .mo-ap-row {
   background: none;
   border: 0;
