@@ -2564,6 +2564,10 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // F) HOW THE OFFER IS DOING — counted live from the plan columns,
         // nothing new stored. Consent dates ride todayDashed so the "this
         // year" count cannot rot at a year boundary (the July-only lesson).
+        // A KEPT booking is one where a 2-payment plan WOULD fit but for the
+        // floor: due 45 days out (its first collection, a month before, clears
+        // the 7-day gap) and balance > £100. The false cases the review named —
+        // "never offer", too-close, sub-£100 — must NOT count.
         vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
             propertyMeta.jollyboat = { name: 'Jollyboat' };
             (function () {
@@ -2575,21 +2579,38 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
                     Object.assign({}, base, { id: 81, dbId: 81, name: 'A Done', depositPaid: 700, autopayConsentAt: T + ' 10:00:00', autopayAttempts: 0 }),
                     Object.assign({}, base, { id: 82, dbId: 82, name: 'B Stop', autopayConsentAt: T + ' 10:00:00', autopayAttempts: 3 }),
                     Object.assign({}, base, { id: 83, dbId: 83, name: 'C Run', autopayConsentAt: T + ' 10:00:00', autopayAttempts: 0 }),
-                    Object.assign({}, base, { id: 84, dbId: 84, name: 'D Kept', autopayConsentAt: '', balanceDueDate: '${dFut(20)}' }),
+                    Object.assign({}, base, { id: 85, dbId: 85, name: 'E Revoked', autopayConsentAt: T + ' 10:00:00', autopayRevokedAt: T + ' 12:00:00', autopayAttempts: 0 }),
+                    Object.assign({}, base, { id: 84, dbId: 84, name: 'D Kept', autopayConsentAt: '', balanceDueDate: '${dFut(45)}' }),
+                    Object.assign({}, base, { id: 86, dbId: 86, name: 'F Never', autopayConsentAt: '', autopayOffer: 0, balanceDueDate: '${dFut(45)}' }),
+                    Object.assign({}, base, { id: 87, dbId: 87, name: 'G TooClose', autopayConsentAt: '', balanceDueDate: '${dFut(20)}' }),
+                    Object.assign({}, base, { id: 88, dbId: 88, name: 'H Tiny', autopayConsentAt: '', depositPaid: 650, balanceDueDate: '${dFut(45)}' }),
                 ];
             })();
             adminPrivateContent['instalment-floor-months'] = 2;`, ctx);
         const up = ctx.chbAutopayUptake();
         check('uptake counts took / finished / stopped / running off the columns',
-            up.took === 3 && up.finished === 1 && up.stopped === 1 && up.running === 1, JSON.stringify(up));
-        check('…and what the floor kept the offer from', up.kept === 1 && up.floor === 2, JSON.stringify(up));
+            up.took === 4 && up.finished === 1 && up.stopped === 1 && up.running === 1, JSON.stringify(up));
+        check('…a revoked plan still counts in "took" but leaves the live trio', up.took === 4 && up.running === 1, JSON.stringify(up));
+        check('…and the floor kept ONLY the booking a plan would fit but for it', up.kept === 1 && up.floor === 2, JSON.stringify(up));
         vm.runInContext("adminPrivateContent['instalment-floor-months'] = 0;", ctx);
         check('floor off → nothing kept', ctx.chbAutopayUptake().kept === 0);
         vm.runInContext("adminPrivateContent['instalment-floor-months'] = 2;", ctx);
         const upHtml = ctx.chbAutopayUptakeHtml();
         check('the footer shows figure-first tiles', /took a plan this year/.test(upHtml) && /1 of 2/.test(upHtml) && /running now/.test(upHtml), upHtml.slice(0, 200));
         check('…and the floor sentence the owner can act on', /2-month floor/.test(upHtml) && /kept the offer from/.test(upHtml));
-        check('…riding the Money-on-the-way card', adminSrc.indexOf('${chbAutopayUptakeHtml()}') !== -1);
+        check('…riding the Money-on-the-way card', adminSrc.indexOf('${uptakeHtml}') !== -1);
+        // C7: the floor has blocked bookings but produced NO consents yet — the
+        // card must still render its feedback (the strongest "lower it" signal).
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            (function () {
+                const base = { checkIn: '${dFut(40)}', checkOut: '${dFut(43)}', payment: 'deposit', depositPaid: 175,
+                    holdStatus: 'none', agreedPrice: { total: 700, perNight: 233.33, nights: 3, txnFee: 0, damagesDeposit: 0 }, autopayRevokedAt: '' };
+                dbBookings.jollyboat = [ Object.assign({}, base, { id: 90, dbId: 90, name: 'Only Kept', autopayConsentAt: '', balanceDueDate: '${dFut(45)}' }) ];
+            })();`, ctx);
+        const upNone = ctx.chbAutopayUptake();
+        check('with no consents but a blocked booking, kept still counts', upNone.kept === 1 && upNone.took === 0);
+        const cardNone = ctx.chbMoneyOnTheWayHtml();
+        check('…and the card renders the floor line despite no live rows', /kept the offer from/.test(cardNone) && cardNone.length > 0, cardNone.slice(0, 80));
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     } else fail('chbAutopayRows / hubPlanMonthlyHtml missing from the bundle');
 

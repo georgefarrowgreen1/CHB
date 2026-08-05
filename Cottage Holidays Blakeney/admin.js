@@ -13669,14 +13669,28 @@ function chbAutopayUptake() {
     const up = { took: 0, finished: 0, stopped: 0, running: 0, kept: 0, floor };
     for (const pk of Object.keys(dbBookings)) {
         for (const b of dbBookings[pk] || []) {
-            if (b.autopayConsentAt && !b.autopayRevokedAt) {
+            if (b.autopayConsentAt) {
+                // "Took a plan this year" is about the AGREEING, so a plan the
+                // guest later turned off still counts — revoking doesn't undo
+                // that they took it. The live-state trio (finished/stopped/
+                // running) is only for consents still in force.
                 if (String(b.autopayConsentAt).slice(0, 4) === year) up.took++;
+                if (b.autopayRevokedAt) continue;
                 if (!(bookingDue(pk, b).balance > 0.5)) up.finished++;
                 else if ((b.autopayAttempts || 0) >= 3) up.stopped++;
                 else up.running++;
-            } else if (floor > 0 && !b.autopayConsentAt) {
+            } else if (floor > 0) {
+                // "Kept from the offer by the floor" must mean a plan that WOULD
+                // have fit but for the floor — not every consent-less booking in
+                // the window. Exclude: the owner set "never offer" (the floor
+                // kept nothing there); a balance too small for two £50
+                // instalments; and a due date so close no plan fits at any floor
+                // (the smallest, a 2-payment, needs its first collection — a
+                // month before the due date — to clear the 7-day notice gap).
+                if (b.autopayOffer === 0) continue;
                 const due = bookingPlanDueDate(b);
-                if (due && due >= today && due < edge && bookingDue(pk, b).balance > 0.5) up.kept++;
+                const owed = bookingDue(pk, b).balance;
+                if (due && due >= today && due < edge && owed > 100 && apShiftMonths(due, -1) >= ukShiftDays(today, 7)) up.kept++;
             }
         }
     }
@@ -13684,7 +13698,16 @@ function chbAutopayUptake() {
 }
 function chbMoneyOnTheWayHtml() {
     const rows = chbAutopayRows();
-    if (!rows.length) return '';
+    const uptakeHtml = chbAutopayUptakeHtml();
+    // The card renders when there are plans on the way OR the offer has a story
+    // to tell (uptake, or a floor blocking bookings) — otherwise the floor
+    // feedback would vanish in the very all-blocked state where "lower it" is
+    // the strongest signal.
+    if (!rows.length) {
+        return uptakeHtml
+            ? `<div class="glass-panel" style="padding:18px;margin-top:16px;"><div class="bhub-headpay-cap" style="margin-bottom:4px;">Monthly payments</div>${uptakeHtml}</div>`
+            : '';
+    }
     const live = rows.filter((r) => !r.failed);
     const total = Math.round(live.reduce((a, r) => a + r.toGo, 0) * 100) / 100;
     const needs = rows.length - live.length;
@@ -13716,15 +13739,17 @@ function chbMoneyOnTheWayHtml() {
         </p>
         ${thisM > 0 || nextM > 0 ? `<div style="display:flex;gap:8px;margin-bottom:10px;">${thisM > 0 ? chip(`This month · ${gbp(thisM)}`) : ''}${nextM > 0 ? chip(`${nextMName} · ${gbp(nextM)}`) : ''}</div>` : ''}
         ${rows.map(rowH).join('')}
-        ${chbAutopayUptakeHtml()}
+        ${uptakeHtml}
     </div>`;
 }
 // The card's footer: three figure-first tiles + the one sentence the floor
-// owner can act on. Empty when there is no history to report.
+// owner can act on. Renders when there is any story — including a floor that
+// has blocked bookings but produced no consents yet (kept > 0), the case where
+// "lower the floor" matters most.
 function chbAutopayUptakeHtml() {
     const up = chbAutopayUptake();
     const doneDen = up.finished + up.stopped;
-    if (!up.took && !doneDen && !up.running) return '';
+    if (!up.took && !doneDen && !up.running && !up.kept) return '';
     const tile = (fig, lbl) => `<div class="mo-tile"><div class="mo-tile-fig">${fig}</div><div class="mo-tile-lbl">${lbl}</div></div>`;
     return `
         <div class="mo-uptake">

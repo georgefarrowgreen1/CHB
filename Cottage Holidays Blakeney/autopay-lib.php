@@ -291,6 +291,13 @@ function autopay_replace_card($b, $sourceId)
     }
     // Fresh card, fresh tries — the failed state exists to stop a refusing card
     // being presented for ever, and this is the one event that changes the card.
+    // UNDER book_lock: the collector holds this same lock across its whole
+    // read → Square → write, so a repair landing mid-collection blocks until the
+    // collector's failure-write finishes and THEN resets the tries — otherwise a
+    // hard-decline write (attempts = MAX) issued after our reset would silently
+    // walk the plan back to 'stopped', undoing the card the guest just saved.
+    $plock = (string) ($b['prop_key'] ?? '');
+    $held = $plock !== '' && function_exists('book_lock') ? book_lock($plock) : false;
     try {
         db()
             ->prepare('UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL WHERE id = ?')
@@ -301,8 +308,14 @@ function autopay_replace_card($b, $sourceId)
                 ->prepare('UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_attempts = 0, autopay_last_error = NULL WHERE id = ?')
                 ->execute([$cust, $cardId, $bookingId]);
         } catch (\Throwable $e2) {
+            if ($held) {
+                book_unlock($plock);
+            }
             return $bad('Could not record the new card');
         }
+    }
+    if ($held) {
+        book_unlock($plock);
     }
     try {
         log_activity('payment', 'autopay.card_updated', 'Guest saved a new card — the plan resumes', [
@@ -627,7 +640,7 @@ function autopay_send_receipt($b, $sqId, $rental, $damages)
 function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
 {
     $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
-    $out = ['ok' => true, 'collected' => 0, 'failed' => 0, 'skipped' => 0, 'lines' => [], 'truncated' => false];
+    $out = ['ok' => true, 'collected' => 0, 'failed' => 0, 'skipped' => 0, 'lines' => [], 'okLines' => [], 'failLines' => [], 'truncated' => false];
     if (!function_exists('square_enabled') || !square_enabled()) {
         $out['ok'] = false;
         return $out;
@@ -659,9 +672,15 @@ function autopay_run($today = null, $limit = AUTOPAY_RUN_MAX)
         if ($verdict === 'ok') {
             $out['collected']++;
             $out['lines'][] = $line;
+            // Kept SEPARATE from the failures: the owner notification used to
+            // read lines[0] for a collection and lines[count-1] for a failure,
+            // positional — so on a pass with one of each, each alert quoted the
+            // OTHER event's body. Read the matching bucket instead.
+            $out['okLines'][] = $line;
         } elseif ($verdict === 'fail') {
             $out['failed']++;
             $out['lines'][] = $line;
+            $out['failLines'][] = $line;
         } else {
             $out['skipped']++;
         }
