@@ -13654,6 +13654,34 @@ function chbAutopayRows() {
     out.sort((a, b2) => (a.failed !== b2.failed ? (a.failed ? 1 : -1) : String(a.next).localeCompare(String(b2.next))));
     return out;
 }
+// HOW THE OFFER IS DOING — counted live from the plan columns the bookings
+// already carry, nothing new stored. `finished` = a consent with nothing left
+// to collect; `stopped` = the try cap with money still owed; `kept` = upcoming
+// unpaid bookings whose due date sits inside the owner's floor — the feedback
+// loop for the Manage → Payments setting (display-only, so the rail is not
+// re-derived client-side; a cash booking in the count overstates it slightly,
+// which is the safe direction for a hint to lower the floor).
+function chbAutopayUptake() {
+    const today = todayDashed();
+    const year = today.slice(0, 4);
+    const floor = apFloorMonths();
+    const edge = floor > 0 ? apShiftMonths(today, floor) : '';
+    const up = { took: 0, finished: 0, stopped: 0, running: 0, kept: 0, floor };
+    for (const pk of Object.keys(dbBookings)) {
+        for (const b of dbBookings[pk] || []) {
+            if (b.autopayConsentAt && !b.autopayRevokedAt) {
+                if (String(b.autopayConsentAt).slice(0, 4) === year) up.took++;
+                if (!(bookingDue(pk, b).balance > 0.5)) up.finished++;
+                else if ((b.autopayAttempts || 0) >= 3) up.stopped++;
+                else up.running++;
+            } else if (floor > 0 && !b.autopayConsentAt) {
+                const due = bookingPlanDueDate(b);
+                if (due && due >= today && due < edge && bookingDue(pk, b).balance > 0.5) up.kept++;
+            }
+        }
+    }
+    return up;
+}
 function chbMoneyOnTheWayHtml() {
     const rows = chbAutopayRows();
     if (!rows.length) return '';
@@ -13688,7 +13716,28 @@ function chbMoneyOnTheWayHtml() {
         </p>
         ${thisM > 0 || nextM > 0 ? `<div style="display:flex;gap:8px;margin-bottom:10px;">${thisM > 0 ? chip(`This month · ${gbp(thisM)}`) : ''}${nextM > 0 ? chip(`${nextMName} · ${gbp(nextM)}`) : ''}</div>` : ''}
         ${rows.map(rowH).join('')}
+        ${chbAutopayUptakeHtml()}
     </div>`;
+}
+// The card's footer: three figure-first tiles + the one sentence the floor
+// owner can act on. Empty when there is no history to report.
+function chbAutopayUptakeHtml() {
+    const up = chbAutopayUptake();
+    const doneDen = up.finished + up.stopped;
+    if (!up.took && !doneDen && !up.running) return '';
+    const tile = (fig, lbl) => `<div class="mo-tile"><div class="mo-tile-fig">${fig}</div><div class="mo-tile-lbl">${lbl}</div></div>`;
+    return `
+        <div class="mo-uptake">
+            <div class="mo-uptake-cap">How the offer is doing</div>
+            <div class="mo-tiles">
+                ${tile(String(up.took), 'took a plan this year')}
+                ${doneDen ? tile(`${up.finished} of ${doneDen}`, 'completed') : ''}
+                ${tile(String(up.running), 'running now')}
+            </div>
+            ${up.floor > 0 && up.kept > 0
+                ? `<p class="mo-floorline">Your <strong>${up.floor}-month floor</strong> kept the offer from <strong>${up.kept}</strong> upcoming booking${up.kept === 1 ? '' : 's'} — low uptake with quiet close-in months is a hint to lower it.</p>`
+                : ''}
+        </div>`;
 }
 function renderMoneyOverview() {
     const el = document.getElementById('money-overview');
