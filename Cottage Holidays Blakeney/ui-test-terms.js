@@ -185,6 +185,35 @@ const clause = (text, n) => {
   const own = await saved.evaluate(() => chatFaqAnswer(CHAT_FAQ.checkin));
   ok(/Ring us when you set off/.test(own), `the saved answer is served verbatim (${own.slice(0, 40)})`);
 
+  console.log('9. the automatic-payments facility is DISCLOSED, with the collector\'s own numbers');
+  // A continuous payment authority belongs in the contract document, not only
+  // in the checkout consent that grants it. NON-DEFAULT numbers (5 days / 3
+  // instalments) so the shipped constants can't pass as prose; the clause must
+  // state optionality, the notice, the off-switch, and that the due date is
+  // unmoved.
+  const apOn = await openSite(browser, base, {
+    payment: { deposit_pct: 30, balance_days: 45, autopay: { enabled: true, notice_days: 5, max_instalments: 3 } },
+  });
+  const apT = await termsText(apOn);
+  const apPay = clause(apT.text, 5);
+  ok(/up to 3 monthly instalments ending on it/.test(apPay), `the clause quotes the server's instalment cap (${(apPay.match(/up to \d+ [^.]*/) || [''])[0]})`);
+  ok(/at least 5 days before each collection/.test(apPay), '…and the server\'s notice window');
+  ok(/This is optional/.test(apPay) && /turn it off at any time from your booking page/.test(apPay),
+    '…states optionality and the off-switch');
+  ok(/doesn’t change when the balance is due/.test(apPay), '…and that choosing it never moves the due date');
+
+  console.log('10. …and is NOT promised when the server doesn\'t offer it');
+  // Both silence shapes: card payments off (enabled false), and an older server
+  // whose payment block predates the field entirely.
+  const apOff = await openSite(browser, base, {
+    payment: { deposit_pct: 30, balance_days: 45, autopay: { enabled: false, notice_days: 3, max_instalments: 4 } },
+  });
+  ok(!/collected automatically/.test(clause((await termsText(apOff)).text, 5)),
+    'card payments off → no automatic-collection sentence');
+  const apOld = await openSite(browser, base, { payment: { deposit_pct: 30, balance_days: 45 } });
+  ok(!/collected automatically/.test(clause((await termsText(apOld)).text, 5)),
+    'an older server (no autopay field) promises nothing');
+
   console.log(fails ? `\n  TERMS SUITE FAILED ❌ (${fails})` : '\n  TERMS SUITE PASSED ✅');
   await done(fails);
 })();

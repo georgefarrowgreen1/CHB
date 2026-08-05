@@ -5429,12 +5429,22 @@ const TERMS_MONEY_DEFS = {
     'Balance due date': () => termsDays() + ' before your arrival date.',
 };
 function paymentClauseParagraphs() {
-    return [
+    const paras = [
         'The price is confirmed in your confirmation.',
         `Booking ${termsDays()} or more before your arrival date: pay the ${termsPct()}% deposit now, with the balance due by the balance due date.`,
         `Booking less than ${termsDays()} before your arrival date: pay in full when you book.`,
         'We can’t let you in until the full price is paid.',
     ];
+    // The OPTIONAL saved-card collection, disclosed in the contract with the
+    // numbers the collector actually uses (a continuous payment authority
+    // should be named here, not only in the checkout consent that grants it).
+    // Rendered only when the server confirms the facility — see paymentTerms.
+    const ap = paymentTerms.autopay;
+    if (ap) {
+        paras.splice(2, 0,
+            `When you pay your deposit you may choose to have the remaining balance collected automatically from your card — as one payment on the balance due date, or in up to ${ap.maxInstalments} monthly instalments ending on it. This is optional; we’ll email you at least ${ap.noticeDays} day${ap.noticeDays === 1 ? '' : 's'} before each collection, and you can turn it off at any time from your booking page. Choosing it doesn’t change when the balance is due.`);
+    }
+    return paras;
 }
 // Swap clause 1's money facts for the live ones, keeping the list's order and
 // every other definition in one place above.
@@ -6546,7 +6556,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-07b';
+const TERMS_VERSION = '2026-08a';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -7334,7 +7344,10 @@ let propertyRates = JSON.parse(JSON.stringify(defaultRates));
 // The PAYMENT SCHEDULE as the server enforces it, fetched with the rates at boot,
 // because the Terms state these numbers to the guest. Below is only the
 // offline/first-paint fallback, and matches the defaults in pricing.php.
-let paymentTerms = { depositPct: 25, balanceDays: 30 };
+// `autopay` stays null until the server CONFIRMS the facility (enabled, with
+// its notice days + instalment cap) — an older server or one with card
+// payments off must not have the terms disclose a facility it doesn't offer.
+let paymentTerms = { depositPct: 25, balanceDays: 30, autopay: null };
 // Can the site text a guest at all (Manage → Text messages)? FALSE until the
 // server says otherwise, so the form never offers a text that cannot be sent.
 let smsAvailable = false;
@@ -7419,6 +7432,17 @@ async function loadRates(pre) {
             const bd = parseInt(res.payment.balance_days, 10);
             if (dp > 0 && dp <= 100) paymentTerms.depositPct = dp;
             if (bd > 0) paymentTerms.balanceDays = bd;
+            // The automatic-collection facility, for the terms' disclosure
+            // clause. Only when the server says it is ENABLED with sane
+            // numbers — the opposite default from the two above, because
+            // over-promising a facility is the failure here, not zeroing one.
+            const ap = res.payment.autopay;
+            paymentTerms.autopay = null;
+            if (ap && typeof ap === 'object' && ap.enabled) {
+                const nd = parseInt(ap.notice_days, 10);
+                const mi = parseInt(ap.max_instalments, 10);
+                if (nd > 0 && mi > 1) paymentTerms.autopay = { noticeDays: nd, maxInstalments: mi };
+            }
         }
         // Occupancy caps come from the server (single source of truth); the
         // hardcoded occupancyLimits below act only as an offline fallback.
@@ -14853,7 +14877,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'instalfix2';
+    const BUILD = 'termsap1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
