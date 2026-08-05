@@ -3101,6 +3101,12 @@ a.card {
   border-radius: var(--r-md);
   border: 1px solid var(--glass-border);
   cursor: pointer;
+  /* The pill-control press from the #1000 makeover — these are the same
+     species of control as the part toggle. */
+  transition: transform 0.18s var(--fluid-bezier), border-color 0.18s var(--fluid-bezier);
+}
+.pay-ap-opt:active {
+  transform: scale(0.985);
 }
 .pay-ap-opt.is-sel {
   border-color: color-mix(in srgb, var(--accent) 62%, transparent);
@@ -3141,6 +3147,9 @@ a.card {
 .pay-ap-body {
   display: block;
   margin: 11px 0 2px 26px;
+  /* The schedule REVEALS when monthly is chosen — the same easing as every
+     other pay-state change, instead of the one remaining hard cut. */
+  animation: payRise 0.32s var(--fluid-bezier);
 }
 .pay-ap-fine {
   margin: 11px 2px 0;
@@ -3410,6 +3419,15 @@ a.card {
   }
   #view-pay .pay-full-link:active,
   #pay-done button:active {
+    transform: none;
+  }
+  .pay-ap-body {
+    animation: none;
+  }
+  .pay-ap-opt {
+    transition: none;
+  }
+  .pay-ap-opt:active {
     transform: none;
   }
 }

@@ -485,7 +485,13 @@ if ($action === 'charge') {
     // offered-and-quietly-doing-nothing promise the terms helper exists to
     // prevent. The client hides the offer while a slice is armed; this is the
     // server's half, for the stale tab or crafted request that sends both.
+    // The OUTCOME of the arrangement, carried to the response: a guest who
+    // just agreed to automatic payments must hear whether that WORKED — the
+    // old shape logged a failed vault for the owner and told the guest
+    // nothing, so they left believing something was arranged that was not.
+    $apOutcome = null;
     if (!empty($in['autopay']) && !$partial) {
+        $apOutcome = ['ok' => false];
         try {
             require_once __DIR__ . '/autopay-lib.php';
             // MONTHLY, only as offered: the client may ask for n instalments,
@@ -494,8 +500,18 @@ if ($action === 'charge') {
             // autopay_vault refuses, never guessing a consent the guest was not
             // shown. 0/absent keeps the single collection, byte for byte.
             $apN = (int) ($in['autopay_instalments'] ?? 0);
-            $vault = autopay_vault($b, $sqId, booking_autopay_terms($b, $apN > 1 ? $apN : 1));
-            if (!$vault['ok']) {
+            $apTerms = booking_autopay_terms($b, $apN > 1 ? $apN : 1);
+            $vault = autopay_vault($b, $sqId, $apTerms);
+            if ($vault['ok'] && $apTerms) {
+                $apOutcome = [
+                    'ok' => true,
+                    'monthly' => isset($apTerms['instalments']) && (int) $apTerms['instalments'] > 1,
+                    'n' => (int) ($apTerms['instalments'] ?? 1),
+                    'per' => round((float) $apTerms['amount'], 2),
+                    'next' => $apTerms['next'] ?? null,
+                    'due' => $apTerms['due'],
+                ];
+            } else {
                 log_activity('payment', 'autopay.vault_failed', "Couldn't save the card for automatic payment — " . $vault['reason'], [
                     'severity' => 'info',
                     'entity' => 'booking',
@@ -612,6 +628,9 @@ if ($action === 'charge') {
         'charged' => $chargeTotal,
         'fullyPaid' => $newStatus === 'paid',
         'remaining' => $partial ? round($fullCharge - $chargeTotal, 2) : 0,
+        // The arrangement's outcome (null = none was asked for) — the done
+        // screen speaks it, both ways round.
+        'autopay' => $apOutcome,
     ]);
 }
 
