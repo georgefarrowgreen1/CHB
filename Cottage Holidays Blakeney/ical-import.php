@@ -350,11 +350,10 @@ if ($action === 'list') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
     $s = db()->prepare('SELECT COUNT(*) c FROM ical_blocks WHERE prop_key = ?');
     $s->execute([$prop]);
-    // Build the absolute export URL for this property's feed.
-    $scheme = request_is_https() ? 'https' : 'http'; // proxy-aware (IONOS terminates TLS upstream)
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    $dir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
-    $exportUrl = $scheme . '://' . $host . $dir . '/ical-export.php?prop=' . $prop . '&token=' . ical_token($prop);
+    // The absolute export URL the owner pastes into Airbnb/Booking.com —
+    // site_base_url() (trusted-host + proxy-aware), because a URL built off a
+    // wrong Host header hands the platform a feed address that never resolves.
+    $exportUrl = site_base_url() . 'ical-export.php?prop=' . $prop . '&token=' . ical_token($prop);
     json_out([
         'ok' => true,
         'feeds' => get_feeds($prop),

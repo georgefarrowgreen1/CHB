@@ -97,11 +97,10 @@ if ($action === 'broadcast') {
         json_out(['ok' => true, 'sent' => 0, 'note' => 'No active subscribers yet.']);
     }
 
-    // Build the unsubscribe link base from this request.
-    $scheme = request_is_https() ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
-    $base = $scheme . '://' . $host . $dir . '/';
+    // The unsubscribe link base — site_base_url() (trusted-host + proxy-aware),
+    // never a hand-rolled copy: a broken unsubscribe link is a compliance
+    // problem, not just a dead link.
+    $base = site_base_url();
 
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $bodyHtml = nl2br($esc($bodyText));
