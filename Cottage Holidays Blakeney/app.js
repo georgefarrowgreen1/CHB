@@ -1292,6 +1292,9 @@ function mapBookingFromApi(row) {
         // The monthly schedule (my-bookings.php only) — null everywhere else,
         // and every renderer must treat null as "no plan".
         autopayPlan: row.autopay_plan && typeof row.autopay_plan === 'object' ? row.autopay_plan : null,
+        // A single "one payment" consent in trouble — no schedule block, but it
+        // must not read as healthy (the monthly plan carries its own trouble).
+        autopayTrouble: row.autopay_trouble && typeof row.autopay_trouble === 'object' ? row.autopay_trouble : null,
         // The raw plan columns (owner rows carry them via SELECT *): the back
         // office derives DISPLAY from these; every charged figure stays
         // server-derived.
@@ -3617,7 +3620,7 @@ async function renderGuestBookings() {
                             <div class="guest-ref">Booking ref ${bookingRef(b.id)}</div>
                             <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkIn)} · ${b.checkInTime || '15:00'}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkIn)} · ${escapeHtml(b.checkInTime || '15:00')}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(b.guests || '')}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Payment</span><span class="booking-detail-value" style="font-size:1rem;color:${pay.color};">${pay.label}</span></div>
@@ -3801,9 +3804,16 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         // not key on 'armed' alone or a stopped plan falls to the bare Pay
         // button as though nothing was ever arranged.
         const apPlan = b.autopayPlan;
-        const apTrouble = !!(apPlan && (apPlan.state === 'retrying' || apPlan.state === 'stopped'));
+        const apMonthlyTrouble = !!(apPlan && (apPlan.state === 'retrying' || apPlan.state === 'stopped'));
+        // A single "one payment" consent in trouble has no schedule block; its
+        // descriptor drives the same warn line + repair route. Either kind is
+        // "trouble" for the gates below.
+        const apSingleTrouble = !apPlan && b.autopayTrouble && (b.autopayTrouble.state === 'retrying' || b.autopayTrouble.state === 'stopped') ? b.autopayTrouble : null;
+        const apTrouble = apMonthlyTrouble || !!apSingleTrouble;
         if (apTrouble) {
-            ready = `<span class="hub-warn">${apPlan.state === 'stopped' ? 'monthly payments paused — needs a new card' : 'a payment didn’t go through — needs a new card'}</span>`;
+            const stopped = apMonthlyTrouble ? apPlan.state === 'stopped' : apSingleTrouble.state === 'stopped';
+            const noun = apMonthlyTrouble ? 'monthly payments' : 'your automatic payment';
+            ready = `<span class="hub-warn">${stopped ? `${noun} paused — needs a new card` : 'a payment didn’t go through — needs a new card'}</span>`;
         } else if (b.autopayState === 'armed') {
             // A monthly plan on track means NOTHING is outstanding — the plan
             // block below carries the detail; a single collection keeps its
@@ -3814,9 +3824,23 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         } else {
             ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
         }
-        if (payToken && (b.autopayState === 'armed' || apTrouble))
-            cta = (apPlan ? guestPlanBlockHtml(apPlan, payToken, b.dbId) : '') +
+        if (payToken && (b.autopayState === 'armed' || apTrouble)) {
+            // Monthly: the plan block carries why + the fix. Single trouble: no
+            // block, so a one-line why + the same update-card route stands in.
+            let head = '';
+            if (apPlan) head = guestPlanBlockHtml(apPlan, payToken, b.dbId);
+            else if (apSingleTrouble) {
+                const st = apSingleTrouble;
+                const why = `We couldn’t take ${gbp(st.fig)} — ${escapeHtml(String(st.why || 'the card said no').replace(/\.+$/, ''))}. ${
+                    st.state === 'stopped'
+                        ? 'We’ve stopped trying — update your card, or pay another way.'
+                        : `We'll try again${st.retry ? ` on ${fmtDate(st.retry)}` : ' in the next day or two'}, or fix it now:`
+                }`;
+                head = `<div class="hub-plan hub-plan-trouble"><p class="hub-plan-why">${why}</p><button class="btn-glass btn-sm hub-plan-fix" ${chbAttrs('openPayView', String(payToken), b.dbId)}>Update card &amp; keep the payment</button></div>`;
+            }
+            cta = head +
                 `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment${apPlan ? 's' : ''}</button>`;
+        }
         else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
     } else if (b.regUrl && !bookingRegComplete(b)) {
         // Short of the party as well as absent: the form prefills what is already
@@ -3832,7 +3856,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <span class="legend-swatch swatch-${propKey}"></span>
                 <div class="hub-head-text">
                     <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong> — ${head}</div>
-                    <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${b.checkInTime || '15:00'} · ${ready}</div>
+                    <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${escapeHtml(b.checkInTime || '15:00')} · ${ready}</div>
                 </div>
                 <div class="hub-count" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
             </div>
@@ -3946,7 +3970,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, apRepairInfo: null, autopayChoice: 'self' };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, openStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, apRepairInfo: null, autopayChoice: 'self' };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4016,6 +4040,11 @@ async function openPayView(token, bookingId, kind) {
     } catch (e) {}
     payState.token = token;
     payState.bookingId = bookingId;
+    // SUPERSEDE (the mountWallets guard): two opens can be in flight (dock tap,
+    // "pay the rest", amount-changed recovery), so a slow summary from an earlier
+    // one must not paint its booking over the newer one after each await.
+    const openStamp = ++payState.openStamp;
+    const openLive = () => payState.openStamp === openStamp;
     // A stage if the caller has one, NULL if not — and null means "no
     // preference", which the server resolves off the booking. It used to
     // default to 'deposit': a preference invented for a caller that had none,
@@ -4036,6 +4065,7 @@ async function openPayView(token, bookingId, kind) {
     nav('view-pay');
     try {
         const cfg = await apiGet('square-config.php');
+        if (!openLive()) return; // a newer open took over while we waited
         if (!cfg.enabled || !cfg.applicationId || !cfg.locationId)
             throw new Error('Online payment is not available right now.');
         const s = await apiPost('pay.php', {
@@ -4044,6 +4074,7 @@ async function openPayView(token, bookingId, kind) {
             token: payState.token,
             kind: payState.kind,
         });
+        if (!openLive()) return; // ditto — do not paint a superseded booking
         // The refundable damage deposit is charged WITH this payment and refunded
         // after checkout — so the guest pays (and the wallet sheet shows) rental +
         // deposit. The server computes the same total independently. On the LEGACY
@@ -4594,9 +4625,12 @@ function payAutopayRender() {
             ${opt('one', 'One payment', gbp(t.amount), `taken automatically on ${fmtDate(t.due)}`, '')}
             ${monthly}
         </div>
-        <p class="pay-ap-fine">${mo
-            ? "We'll email you 3 days before each payment, and you can turn this off any time from My Stays."
-            : "Choose the automatic payment and we'll email you 3 days before it's taken — and you can change your mind any time from My Stays."}</p>`;
+        <p class="pay-ap-fine">${
+            sel === 'monthly'
+                ? "We'll email you 3 days before each payment, and you can turn this off any time from My Stays."
+                : sel === 'one'
+                  ? "We'll email you 3 days before it's taken, and you can change your mind any time from My Stays."
+                  : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My Stays."}</p>`;
 }
 function payAutopayChoice() {
     const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
@@ -8323,7 +8357,7 @@ function showChangeoverToasts() {
                     <div class="toast-body">
                         <span class="toast-prop"><span class="legend-swatch swatch-${c.propKey}"></span> ${escapeHtml(meta.name)}</span><br>
                         <strong>${escapeHtml(c.leaving.name || 'Guest')}</strong> checks out (by ${c.leaving.checkOutTime || '10:00'}) and
-                        <strong>${escapeHtml(c.arriving.name || 'Guest')}</strong> checks in (from ${c.arriving.checkInTime || '15:00'}).
+                        <strong>${escapeHtml(c.arriving.name || 'Guest')}</strong> checks in (from ${escapeHtml(c.arriving.checkInTime || '15:00')}).
                         <div class="toast-date">${c.date}</div>
                     </div>
                     <button class="btn-sm btn-edit toast-dismiss">Got it — dismiss</button>`;
@@ -14819,7 +14853,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'instalup1';
+    const BUILD = 'instalfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

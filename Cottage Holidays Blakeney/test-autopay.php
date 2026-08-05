@@ -185,10 +185,10 @@ function send_autopay_notice($b, $payUrl = null)
     $MAIL[] = ['notice', $b];
     return ['ok' => $MAIL_OK];
 }
-function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null)
+function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null, $restNow = null)
 {
     global $MAIL, $MAIL_OK;
-    $MAIL[] = ['failure', $b, $stopped, $charge];
+    $MAIL[] = ['failure', $b, $stopped, $charge, $restNow];
     return ['ok' => $MAIL_OK];
 }
 function prop_display($k)
@@ -925,7 +925,7 @@ chk('...and the summary carries autopayRepair', strpos($paySrc3, "'autopayRepair
 chk('update_card is rate-limited like the other card actions — no card-testing oracle',
     preg_match("/\\\$action === 'charge' \\|\\| \\\$action === 'authorize' \\|\\| \\\$action === 'update_card'\\)\\s*\\{\\s*rate_limit/", $paySrc3) === 1);
 chk('the collector notifies through the guarded send',
-    strpos($apSrc2, "function_exists('send_autopay_failure')") !== false && strpos($apSrc2, 'send_autopay_failure($now, $why, $stopped, $today, $charge)') !== false);
+    strpos($apSrc2, "function_exists('send_autopay_failure')") !== false && strpos($apSrc2, 'send_autopay_failure($now, $why, $stopped, $today, $charge, $restNow)') !== false);
 // The account payload keeps a TROUBLED plan on the guest's card (states
 // 'retrying'/'stopped' + why + the retry day) — ui-test-yourstay drives the
 // rendering from a stubbed payload, so the server half is pinned here.

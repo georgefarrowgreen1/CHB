@@ -97,19 +97,28 @@ function my_bookings_payload(string $email, bool $preview = false): array
             $apRest = round(max(0, (float) $apAmt['due']), 2);
             $apPer = round((float) ($bk['autopay_amount'] ?? 0), 2);
             $apDates = [];
-            $apLeft = 0;
             foreach (booking_instalment_schedule($apDue, $apN) as $d) {
                 $st = $apNext === '' ? 'done' : ($d < $apNext ? 'done' : ($d === $apNext ? 'next' : 'todo'));
-                if ($st !== 'done') {
-                    $apLeft++;
-                }
                 $apDates[] = ['date' => $d, 'state' => $st, 'fig' => $apPer];
             }
-            // The FINAL not-done row carries the live remainder net of the
-            // middle collections, so the visible rows always sum to $apRest.
-            if ($apLeft > 0) {
-                $apDates[count($apDates) - 1]['fig'] = round(max(0, $apRest - $apPer * ($apLeft - 1)), 2);
+            // EACH remaining row shows what the collector will actually TAKE —
+            // min(per, running remainder) — not the agreed ceiling. The old code
+            // put the whole shrink on the FINAL row only, so after a manual
+            // part-payment the NEXT row still announced the full £per while the
+            // collector (min(rest, per)) would take less: a card promising £150
+            // when £60 is owed is the alarm this card exists to avoid. Walking
+            // the not-done rows in order keeps the rows summing to $apRest AND
+            // makes the "next" figure the one that will really be charged.
+            $apRun = $apRest;
+            foreach ($apDates as &$apRow) {
+                if ($apRow['state'] === 'done') {
+                    continue;
+                }
+                $apTake = round(min($apPer, max(0, $apRun)), 2);
+                $apRow['fig'] = $apTake;
+                $apRun = round($apRun - $apTake, 2);
             }
+            unset($apRow);
             $apPlan = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
             // The plan's own weather: 'on' (nothing wrong), 'retrying' (a try
             // failed, more to come — the collector's cadence names the day) or
@@ -125,6 +134,31 @@ function my_bookings_payload(string $email, bool $preview = false): array
                 }
             }
             $bk['autopay_plan'] = $apPlan;
+        }
+        // A SINGLE "one payment" consent in trouble has no schedule block, but it
+        // must not read as healthy — the failure email sends the guest here, and
+        // without this a retrying single collection showed the green "on the way"
+        // line and a stopped one fell to "balance due" + a bare Pay button, as
+        // though nothing had ever been arranged. A lightweight descriptor drives
+        // the same warn line + repair route the monthly block carries. Only for
+        // n <= 1 (the monthly plan block already owns the n > 1 case) and only
+        // when a try has actually failed.
+        $bk['autopay_trouble'] = null;
+        $apAtt1 = (int) ($bk['autopay_attempts'] ?? 0);
+        if (in_array($ap[0], ['armed', 'failed'], true) && $apN <= 1 && $apAtt1 > 0) {
+            $apK1 = booking_payment_kind($bk);
+            $apA1 = booking_amount_due($bk, $apK1 === 'hold' ? 'deposit' : $apK1);
+            $tr = [
+                'state' => $ap[0] === 'failed' ? 'stopped' : 'retrying',
+                'why' => (string) ($bk['autopay_last_error'] ?? ''),
+                'fig' => round((float) $apA1['due'] + booking_damages_due($bk), 2),
+            ];
+            $apLastTry1 = substr((string) ($bk['autopay_last_try'] ?? ''), 0, 10);
+            if ($tr['state'] === 'retrying' && $apLastTry1 !== '') {
+                $apRetryDays1 = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
+                $tr['retry'] = date('Y-m-d', strtotime($apLastTry1 . ' +' . $apRetryDays1 . ' days'));
+            }
+            $bk['autopay_trouble'] = $tr;
         }
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether

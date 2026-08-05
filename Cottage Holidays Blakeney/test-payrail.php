@@ -1099,6 +1099,29 @@ $fSingle = autopay_failure_body($ap([
     'autopay_amount' => 600.0, 'autopay_due' => '2026-10-28',
 ]), 'The card was declined.', false, '2026-08-28', 600.0, 'https://example.test/pay');
 chk('a single collection failure carries no schedule rows', strpos($fSingle['subject'], "Your automatic payment didn't go through") !== false && strpos($fSingle['html'], 'Payment 1 —') === false);
+// FUTURE rows show what will actually be TAKEN, not the ceiling. After a manual
+// part-payment shrinks the balance, a future row printing the full £per would
+// promise more than the collector (min(rest, per)) will charge. Fixture: 3×£175
+// plan, £350 already paid (deposit+one), then a further £115 by hand → only £35
+// owed, next collection (£175) declines. rest-beyond-this-attempt = 35-35 = 0,
+// so the final row shows £0.00, not £175.00.
+// $restNow (owed right now, passed by the collector — the composer stays
+// DB-free) drives the future-row shrink: £35 owed, next collection £35 declines,
+// remainder beyond it is £0, so the final row shows £0.00 not the £175 ceiling.
+$apSchedBk = $ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
+    'autopay_instalments' => 3, 'autopay_next_at' => '2026-09-28',
+]);
+$fShrunk = autopay_failure_body($apSchedBk, 'The card was declined.', false, '2026-09-28', 35.0, 'https://example.test/pay', 35.0);
+chk('the declined row shows the real attempted figure', strpos($fShrunk['html'], '£35.00 — declined') !== false);
+chk('...and the future row shows what will be taken, not the ceiling', strpos($fShrunk['html'], '£0.00 · final') !== false && strpos($fShrunk['html'], '£175.00 · final') === false);
+// Without $restNow the composer is DB-free and keeps the ceiling (no regression).
+$fCeil = autopay_failure_body($apSchedBk, 'The card was declined.', false, '2026-09-28', 175.0, 'https://example.test/pay');
+chk('no restNow → the ceiling, DB-free (unchanged for the common full-plan case)', strpos($fCeil['html'], '£175.00 · final') !== false);
+// The collector passes it — the wiring, not just the helper.
+$apLibSrc = (string) file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('the collector derives restNow and passes it', strpos($apLibSrc, 'send_autopay_failure($now, $why, $stopped, $today, $charge, $restNow)') !== false);
 // The summary sends the offer the consent card renders from.
 chk('the pay summary sends the monthly offer',
     strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);
