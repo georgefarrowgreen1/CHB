@@ -583,6 +583,30 @@ function ukShiftMonthsPhp($iso, $months)
     return sprintf('%04d-%02d-%02d', $y, $m, min($d, $last));
 }
 
+// THE OWNER'S FLOOR under the monthly offer (content key
+// 'instalment-floor-months', Manage → Payments): monthly instalments are only
+// OFFERED while the balance due date is at least this many months away.
+// 0/absent/garbage = no floor — offered whenever a plan fits, the behaviour
+// before the setting existed. Read like square_deposit_pct (a direct content
+// query under try/catch, so a stubbed or unreadable table degrades to the
+// default rather than throwing inside a price calculation).
+function instalment_floor_months()
+{
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute(['instalment-floor-months']);
+        $r = $s->fetch();
+        if ($r) {
+            $v = (int) json_decode((string) $r['item_value'], true);
+            if ($v >= 1 && $v <= 6) {
+                return $v;
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    return 0;
+}
+
 // The schedule is ANCHORED ON THE DUE DATE and steps back a month at a time —
 // the final collection always lands on the day the balance was always due, so
 // instalments can never push money later than the plan the owner set.
@@ -617,6 +641,18 @@ function booking_instalment_offer($b, $today = null)
     }
     $due = $base['due'];
     $rest = (float) $base['amount'];
+    // The owner's floor: with less than N months of runway before the due
+    // date, monthly is not offered at all — even where a 2-payment plan would
+    // still physically fit. Inclusive boundary: due exactly N months out IS
+    // offered ("at least"). Gating here gates everything — the pay screen's
+    // summary reads this offer, and booking_autopay_terms routes back through
+    // it for n > 1, so a consent posted from a stale tab inside the floor is
+    // refused where it would be RECORDED, not just hidden. A plan already
+    // agreed is untouched: the collector reads the stored consent, never this.
+    $floorM = instalment_floor_months();
+    if ($floorM > 0 && $due < ukShiftMonthsPhp($today, $floorM)) {
+        return null;
+    }
     $maxN = $ownerSay !== null ? min((int) $ownerSay, AUTOPAY_INSTALMENTS_MAX) : AUTOPAY_INSTALMENTS_MAX;
     for ($n = $maxN; $n >= 2; $n--) {
         $per = ceil(($rest / $n) * 100) / 100;

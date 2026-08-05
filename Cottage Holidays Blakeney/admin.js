@@ -15092,6 +15092,7 @@ function renderSquareSettings() {
         const warn = document.getElementById('bacs-details-warn');
         if (warn) warn.style.display = String(stored).trim() ? 'none' : 'block';
     }
+    try { renderInstalFloor(); } catch (e) {}
     try { loadSquareWebhookStatus(); } catch (e) {}
 }
 // Save the owner's bank details for guests paying by transfer. Empty is allowed —
@@ -15232,6 +15233,94 @@ function apSchedule(due, n) {
     const out = [];
     for (let i = n - 1; i >= 0; i--) out.push(apShiftMonths(due, -i));
     return out;
+}
+// ---- The floor under the monthly offer (Manage → Payments) -----------------
+// DISPLAY mirror of pricing.php's instalment_floor_months — the offer itself
+// is always derived server-side. adminPrivateContent FIRST (the bacs-details
+// rule): an internal key is absent from the anonymous boot GET.
+function apFloorMonths() {
+    const apc = typeof adminPrivateContent === 'object' && adminPrivateContent ? adminPrivateContent : {};
+    const raw = apc['instalment-floor-months'] !== undefined ? apc['instalment-floor-months'] : siteContent['instalment-floor-months'];
+    const v = parseInt(String(raw == null ? '' : raw), 10);
+    return v >= 1 && v <= 6 ? v : 0;
+}
+// The runway LADDER: what the offer yields per band of time-before-due, the
+// floor drawn as a line across it. DISPLAY ONLY — the bands restate
+// booking_instalment_offer's arithmetic (a month of room per instalment, a
+// week's clearance on the first). `line` = the row the floor sits above, −1
+// when off. Pure, so search-test drives every floor value.
+function apFloorLadderRows(floor) {
+    const bands = [
+        { min: 3, lead: 'More than 3 months', offer: 'Up to 4 payments' },
+        { min: 2, lead: '2 – 3 months', offer: '3 payments' },
+        { min: 1, lead: '1 – 2 months', offer: '2 payments' },
+    ];
+    const rows = [];
+    if (!(floor >= 1)) {
+        for (const b of bands) rows.push({ lead: b.lead, offer: b.offer, dim: false });
+        rows.push({ lead: 'Under ~5 weeks', offer: 'No plan fits — one payment only', dim: true });
+        return { rows, line: -1 };
+    }
+    for (const b of bands) {
+        if (b.min >= floor) rows.push({ lead: b.lead, offer: b.offer, dim: false });
+    }
+    // A floor above every band (4 months) still states what survives it.
+    if (!rows.length) rows.push({ lead: `More than ${floor} months`, offer: 'Up to 4 payments', dim: false });
+    const line = rows.length;
+    rows.push({ lead: `Under ${floor} months`, offer: 'No monthly offered', dim: true });
+    rows.push({ lead: 'Under ~5 weeks', offer: 'No plan would fit anyway', dim: true });
+    return { rows, line };
+}
+function apFloorLadderHtml(floor) {
+    const { rows, line } = apFloorLadderRows(floor);
+    let html = '<div style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">What guests are offered, by time left</div>';
+    rows.forEach((r, i) => {
+        if (i === line) html += `<div class="apfl-line"><span>Your floor · ${floor} months</span></div>`;
+        html += `<div class="apfl-rung${r.dim ? ' is-dim' : ''}"><span class="apfl-lead">${r.lead}</span><span class="apfl-dots"></span><span class="apfl-offer">${r.offer}</span></div>`;
+    });
+    html += '<p style="font-size:0.76rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Cut-offs include a week\'s clearance for the advance-notice email, and each payment must be at least £50 — a small balance may offer fewer.</p>';
+    return html;
+}
+function renderInstalFloor() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
+    const lad = document.getElementById('instal-ladder');
+    if (!sel || !lad) return;
+    const cur = apFloorMonths();
+    sel.value = cur >= 1 ? String(cur) : '';
+    lad.innerHTML = apFloorLadderHtml(cur);
+}
+// The ladder follows the select as the owner browses the options — the line
+// moves BEFORE saving, so the choice can be seen before it is made.
+function instalFloorPreview() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
+    const lad = document.getElementById('instal-ladder');
+    if (!sel || !lad) return;
+    const v = parseInt(sel.value, 10);
+    lad.innerHTML = apFloorLadderHtml(v >= 1 && v <= 6 ? v : 0);
+}
+async function saveInstalFloor() {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('instal-floor'));
+    if (!sel) return;
+    const v = parseInt(sel.value, 10);
+    const n = v >= 1 && v <= 6 ? v : 0;
+    try {
+        await saveContent('instalment-floor-months', n);
+        if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['instalment-floor-months'] = n;
+        toast(n ? `Monthly payments now need at least ${n} months of runway.` : 'Monthly payments offered whenever a plan fits.');
+        renderInstalFloor();
+    } catch (e) {
+        glassAlert("Couldn't save: " + e.message);
+    }
+}
+// The floor, said where the owner would otherwise wonder why a pinned plan is
+// not showing: the Edit-plan dialog's monthly field. '' when the floor is off
+// or this booking clears it — the standard hint then stands.
+function apFloorNote(b) {
+    const floor = apFloorMonths();
+    if (!floor) return '';
+    const due = bookingPlanDueDate(b);
+    if (!due || due >= apShiftMonths(todayDashed(), floor)) return '';
+    return `Not offered right now — the balance is due ${fmtDate(due)}, inside your ${floor}-month floor (site setting). Move the due date later and a pinned plan returns.`;
 }
 // Is a MONTHLY plan live on this booking, from the raw columns the owner rows
 // carry? Consent given and not revoked, more than one instalment, tries not
@@ -15450,7 +15539,10 @@ async function editPaymentPlan(bookingId) {
                     { value: '3', label: 'Up to 3 payments' },
                     { value: '4', label: 'Up to 4 payments' },
                 ],
-                hint: "Offered on the guest's deposit screen — instalments only start once they agree and save a card.",
+                // The site-wide floor pre-empts this field: a pinned plan under
+                // it silently never appears, which reads as broken — so the
+                // hint says so, and names the lever (the due date above).
+                hint: apFloorNote(b) || "Offered on the guest's deposit screen — instalments only start once they agree and save a card.",
             },
             // Blank by default: a plan is usually for ONE booking, so naming it
             // is the exception. Named, it becomes reusable.
@@ -22146,7 +22238,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable

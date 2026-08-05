@@ -817,12 +817,29 @@
                         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
                     </details>
                 </div>
+                <!-- The floor under the monthly offer — the ladder is rendered by
+                     renderInstalFloor/apFloorLadderHtml (admin.js). -->
+                <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
+                    <div class="label">Monthly payments</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 10px;">Guests paying a deposit can be offered the rest in monthly instalments. Plans already shrink as the stay approaches — each payment needs a month of room. This sets your floor beneath that; a plan a guest has already agreed keeps running whatever you choose.</p>
+                    <label class="modal-label" for="instal-floor">Only offer monthly payments when the balance is due…</label>
+                    <select id="instal-floor" class="input-glass" style="max-width:340px;" data-act-change="instalFloorPreview">
+                        <option value="">Whenever a plan fits — no minimum</option>
+                        <option value="2">At least 2 months away</option>
+                        <option value="3">At least 3 months away</option>
+                        <option value="4">At least 4 months away</option>
+                    </select>
+                    <div style="margin-top:10px;">
+                        <button class="btn-sm btn-edit" data-act="saveInstalFloor">Save</button>
+                    </div>
+                    <div id="instal-ladder" style="margin-top:14px;"></div>
+                </div>
                 <!-- WHICH SQUARE LOCATION THIS SITE IS. Square scopes payouts and bank
                      accounts per location and silently answers for the seller's MAIN one
                      when you don't say, so a seller with more than one gets a confident,
                      complete-looking answer about the wrong shop. Only rendered when
                      there IS a choice to make. -->
-                <div class="accounts-stat" style="max-width:640px;margin-top:14px;" id="sq-loc-card" hidden>
+                <div class="accounts-stat" style="max-width:640px;margin-top:14px;" id="sq-loc-card" hidden
                     <div class="label">Which Square location is this site?</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 10px;">Your Square account has more than one location. The money screens read payouts and bank accounts for the one you pick here — leave it unset and Square answers for your main location, which may not be this business.</p>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
