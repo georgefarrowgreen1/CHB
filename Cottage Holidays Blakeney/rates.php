@@ -75,6 +75,19 @@ function rates_public_payload()
         'payment' => [
             'deposit_pct' => square_deposit_pct(),
             'balance_days' => payment_balance_days(),
+            // The OPTIONAL saved-card collection, so the terms can DISCLOSE the
+            // facility with the numbers the collector actually uses — a
+            // continuous payment authority belongs in the contract document,
+            // not only in the checkout consent that grants it. Facts only
+            // (a flag and two integers), nothing about the Square account.
+            'autopay' => (function () {
+                require_once __DIR__ . '/autopay-lib.php';
+                return [
+                    'enabled' => function_exists('square_enabled') && square_enabled(),
+                    'notice_days' => AUTOPAY_NOTICE_DAYS,
+                    'max_instalments' => AUTOPAY_INSTALMENTS_MAX,
+                ];
+            })(),
         ],
         // Can this site actually text a guest? The enquiry form offers "Text me
         // booking updates", and offered it unconditionally — so with Twilio

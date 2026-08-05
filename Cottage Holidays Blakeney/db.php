@@ -775,6 +775,10 @@ function is_internal_content_key($key)
         // setup.php) — operational, not secret, but owner-only (the signing key
         // itself is the encrypted 'apikey-square-webhook', never exposed).
         'square-webhook-sub-id',
+        // The exact notification_url registered with Square — the string
+        // square-webhook.php verifies signatures against, so it must be the one
+        // Square holds, not one reconstructed per-request. Operational config.
+        'square-webhook-url',
         // Found by test-content-keys.php's classification gate — all three were
         // written by server code but missing here, so the public content GET
         // served them to any visitor. owner-ping is the worst: it holds the
@@ -1142,12 +1146,69 @@ function square_api_base()
 // installs that pinned it), else it's derived from the live host so the app can
 // self-provision the subscription with no manual config. NB square-webhook.php
 // recomputes the HMAC over THIS exact string, so it must match what we register.
+const SQUARE_WEBHOOK_URL_KEY = 'square-webhook-url';
 function square_webhook_url()
 {
     if (defined('SQUARE_WEBHOOK_URL') && SQUARE_WEBHOOK_URL !== '') {
         return SQUARE_WEBHOOK_URL;
     }
+    // The URL actually REGISTERED with Square, stored at setup — the source of
+    // truth for what Square signs against. Reconstructing it per-request from
+    // HTTP_HOST + the detected scheme was the bug: a server-to-server delivery
+    // behind IONOS's TLS-terminating proxy reaches PHP as http (no
+    // X-Forwarded-Proto) or with a www/apex host difference, so the verify URL
+    // differed from the signed one and EVERY delivery 401'd (312 in a row,
+    // Square about to disable the endpoint). Stored value first; reconstruct
+    // only before the first Connect.
+    try {
+        $stored = trim((string) content_value(SQUARE_WEBHOOK_URL_KEY));
+        if ($stored !== '') {
+            return $stored;
+        }
+    } catch (\Throwable $e) {
+    }
     return site_base_url() . 'square-webhook.php';
+}
+// The URL forms Square could legitimately have signed against for THIS endpoint,
+// so verification tolerates the scheme/host variance a reverse proxy introduces
+// without ever leaving our own domain. Square only ever signs an HTTPS URL (it
+// refuses to register a non-HTTPS notification_url), so the scheme is forced to
+// https here — which is the exact fix for the http-behind-the-proxy case — and
+// both the apex and www hosts are tried. Security is unchanged: forging any of
+// these still needs the secret signing key; we only widen which correct URL the
+// key is checked against.
+function square_webhook_url_candidates()
+{
+    $urls = [];
+    $push = function ($u) use (&$urls) {
+        $u = trim((string) $u);
+        if ($u !== '' && !in_array($u, $urls, true)) {
+            $urls[] = $u;
+        }
+    };
+    // The registered URL, and a config override, are exact — try them first.
+    if (defined('SQUARE_WEBHOOK_URL') && SQUARE_WEBHOOK_URL !== '') {
+        $push(SQUARE_WEBHOOK_URL);
+    }
+    try {
+        $push(content_value(SQUARE_WEBHOOK_URL_KEY));
+    } catch (\Throwable $e) {
+    }
+    // Then every legitimate form of this endpoint: the script's own path on the
+    // canonical apex + www hosts, always https.
+    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/square-webhook.php')), '/');
+    $file = basename($_SERVER['SCRIPT_NAME'] ?? 'square-webhook.php') ?: 'square-webhook.php';
+    $canon = site_canonical_host();
+    $apex = preg_replace('/^staging\./', '', $canon);
+    $hosts = [$canon, $apex, 'www.' . $apex];
+    $reqHost = strtolower(preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? '')));
+    if ($reqHost !== '' && site_host_trusted($reqHost)) {
+        array_unshift($hosts, $reqHost);
+    }
+    foreach ($hosts as $h) {
+        $push('https://' . $h . $dir . '/' . $file);
+    }
+    return $urls;
 }
 // WHICH SQUARE LOCATION THIS SITE TRADES UNDER. Square scopes payouts and bank
 // accounts PER LOCATION, and every one of its list endpoints quietly defaults to the

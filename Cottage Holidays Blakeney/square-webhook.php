@@ -20,13 +20,30 @@ $sig = $_SERVER['HTTP_X_SQUARE_HMACSHA256_SIGNATURE'] ?? '';
 // app stored when it wired the webhook up (square-setup.php) — so this works with
 // no manual config once "Connect automatic payment updates" has been run.
 $key = square_webhook_signing_key();
-$url = square_webhook_url();
-
-if ($key === '' || $url === '') {
+if ($key === '') {
     json_out(['error' => 'Webhook not configured'], 503);
 }
-if (!square_webhook_signature_ok($url, $raw, $key, $sig)) {
+// Verify against every legitimate URL form of this endpoint, not one rebuilt
+// from the incoming request — a proxy that hands PHP http:// (TLS terminated
+// upstream) or a www/apex host difference made the reconstructed URL diverge
+// from the one Square signed, 401'ing every delivery. The first candidate that
+// matches is the URL Square is actually using; PIN it so the store is the
+// source of truth from here on (and square-setup's status reads clean).
+$matchedUrl = '';
+foreach (square_webhook_url_candidates() as $cand) {
+    if (square_webhook_signature_ok($cand, $raw, $key, $sig)) {
+        $matchedUrl = $cand;
+        break;
+    }
+}
+if ($matchedUrl === '') {
     json_out(['error' => 'Invalid signature'], 401);
+}
+try {
+    if (function_exists('content_value') && trim((string) content_value(SQUARE_WEBHOOK_URL_KEY)) !== $matchedUrl && function_exists('content_set_scalar')) {
+        content_set_scalar(SQUARE_WEBHOOK_URL_KEY, $matchedUrl);
+    }
+} catch (\Throwable $e) {
 }
 
 $event = json_decode($raw, true);
