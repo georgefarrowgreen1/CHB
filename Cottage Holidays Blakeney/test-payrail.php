@@ -1056,6 +1056,13 @@ chk('a single collection keeps its original wording', strpos($nSingle['text'], "
 // The summary sends the offer the consent card renders from.
 chk('the pay summary sends the monthly offer',
     strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);
+// …and the charge answers with the ARRANGEMENT'S OUTCOME: a guest who agreed
+// to automatic payments hears whether it worked — a failed vault used to be
+// logged for the owner while the guest left believing it was arranged.
+$payAp = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('the charge response carries the arrangement outcome', strpos($payAp, "'autopay' => \$apOutcome,") !== false);
+chk('...defaulting to a spoken failure whenever consent was asked', strpos($payAp, "\$apOutcome = ['ok' => false];") !== false);
+chk('...and success only with the terms that were actually vaulted', strpos($payAp, "if (\$vault['ok'] && \$apTerms) {") !== false);
 
 // WIRING — the collector is deliberately NOT built yet, and that is asserted so
 // nobody wires a charger to these helpers without the rest of the safeguards.

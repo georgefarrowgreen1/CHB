@@ -4309,12 +4309,25 @@ async function payWithToken(sourceId, partOverride) {
     // — before fullyPaid, since a max-bound slice settles the rental with the
     // deposit still to come, where "paid in full" is the wrong sentence.
     const rem = Math.round(Number(res.remaining || 0) * 100) / 100;
+    // THE ARRANGEMENT'S OUTCOME IS SPOKEN, both ways round. A guest who just
+    // agreed to automatic payments used to get the generic "we'll be in
+    // touch" — and a FAILED card-save was logged for the owner while the
+    // guest left believing something was arranged that was not. res.autopay
+    // is null when nothing was asked for; the old sentence stands there.
+    const took = gbp(res.charged != null ? res.charged : res.paid);
+    const apo = res.autopay;
     document.getElementById('pay-done-sub').textContent =
         rem > 0.005
-            ? `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. ${gbp(rem)} is still to pay — take care of it now, or we'll be in touch before your stay.`
+            ? `Thank you — ${took} received. ${gbp(rem)} is still to pay — take care of it now, or we'll be in touch before your stay.`
             : res.fullyPaid
               ? 'Your booking is now paid in full. We look forward to welcoming you.'
-              : `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+              : apo && apo.ok && apo.monthly
+                ? `Thank you — ${took} received. Your monthly payments are set up: ${gbp(apo.per)} on ${fmtDate(apo.next)}${apo.n > 2 ? `, then monthly until ${fmtDate(apo.due)}` : `, and the rest by ${fmtDate(apo.due)}`}. We'll email you before each one.`
+                : apo && apo.ok
+                  ? `Thank you — ${took} received. That's everything arranged — we'll collect the remaining ${gbp(apo.per)} automatically on ${fmtDate(apo.due)}, with an email before.`
+                  : apo && !apo.ok
+                    ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My Stays.`
+                    : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
     const restBtn = document.getElementById('pay-done-rest');
     if (restBtn) {
         restBtn.style.display = rem > 0.005 ? '' : 'none';
@@ -14723,7 +14736,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'instalc1';
+    const BUILD = 'payoutc1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

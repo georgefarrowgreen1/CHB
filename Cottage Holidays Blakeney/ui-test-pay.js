@@ -81,13 +81,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         });
       }
       if (b.__url === 'pay.php' && b.action === 'charge') {
-        // Echo the slice like the real endpoint: a part request comes back
-        // partial with the server-derived `remaining` (of the £340 balance
-        // ask); no slice = the full charge, nothing left.
+        // Echo the slice AND the arrangement like the real endpoint: a part
+        // request comes back partial with the server-derived `remaining`; a
+        // consent comes back with its outcome (booking 8 is the stub's
+        // vault-failure case). A deposit-stage full charge is not fullyPaid.
         const slice = Number(b.part_amount || 0);
-        return json(slice > 0
-          ? { ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100 }
-          : { ok: true, fullyPaid: true, charged: 340, remaining: 0 });
+        const autopay = !b.autopay
+          ? null
+          : b.booking_id === '8'
+            ? { ok: false }
+            : b.autopay_instalments > 0
+              ? { ok: true, monthly: true, n: b.autopay_instalments, per: 175, next: '2026-08-28', due: '2026-10-28' }
+              : { ok: true, monthly: false, n: 1, per: 525, next: null, due: '2026-10-28' };
+        if (slice > 0) return json({ ok: true, fullyPaid: false, charged: slice, remaining: Math.round((340 - slice) * 100) / 100, autopay });
+        return json(b.kind === 'deposit'
+          ? { ok: true, fullyPaid: false, charged: 225, remaining: 0, autopay }
+          : { ok: true, fullyPaid: true, charged: 340, remaining: 0, autopay });
       }
       return json({ ok: true });
     }
@@ -713,6 +722,71 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     selfChecked: !!(document.querySelector('input[name="pay-ap-choice"][value="self"]') || {}).checked,
   }));
   ok(ap2.shown && ap2.selfChecked, 'closing the row brings the card back, at the default');
+
+  // ============================================================
+  //  THE DONE SCREEN SPEAKS THE ARRANGEMENT, both ways round. A guest who
+  //  just agreed to automatic payments used to get the generic "we'll be in
+  //  touch" — and a FAILED card-save was logged for the owner while the guest
+  //  left believing something was arranged that was not.
+  // ============================================================
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('pay-btn').click();
+  });
+  await page.waitForTimeout(700);
+  const doneMo = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
+  ok(/monthly payments are set up/.test(doneMo) && /£175\.00 on 28\/08\/2026/.test(doneMo),
+    `a monthly consent's done screen confirms the schedule (${doneMo.slice(0, 90)})`);
+  ok(/email you before each one/.test(doneMo), '…and repeats the notice promise');
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('pay-btn').click();
+  });
+  await page.waitForTimeout(700);
+  const doneOne = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
+  ok(/collect the remaining £525\.00 automatically on 28\/10\/2026/.test(doneOne),
+    `a one-payment consent confirms the collection (${doneOne.slice(0, 90)})`);
+  // The FAILED vault is told to the guest, honestly — booking 8 is the stub's
+  // failure case (same summary shape as the deposit ask).
+  await page.evaluate(() => openPayView('paytok', '8', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="one"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('pay-btn').click();
+  });
+  await page.waitForTimeout(700);
+  const doneFail = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
+  ok(/couldn't set up automatic payments/.test(doneFail) && /nothing else was charged/.test(doneFail),
+    `a failed card-save is told to the guest, not just the log (${doneFail.slice(0, 90)})`);
+  // No consent → the original sentence, untouched.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => document.getElementById('pay-btn').click());
+  await page.waitForTimeout(700);
+  const doneNone = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
+  ok(/We'll be in touch about the remaining balance/.test(doneNone),
+    `no consent keeps the original sentence (${doneNone.slice(0, 80)})`);
+  // The schedule REVEAL eases like everything else on this screen.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  const revealAnim = await page.evaluate(() => getComputedStyle(document.querySelector('.pay-ap-body')).animationName);
+  ok(revealAnim === 'payRise', `the schedule reveal eases in (${revealAnim})`);
 
   // Back to the balance ask for the happy-path charge below.
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
