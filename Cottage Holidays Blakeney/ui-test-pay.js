@@ -37,6 +37,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       b.__url = url.split('/').pop().split('?')[0];
       posts.push(b);
       if (b.__url === 'pay.php' && b.action === 'summary') {
+        // Booking 12: the deposit ask when the monthly offer is ABSENT — the
+        // owner's floor, or a plan that cannot fit; either way pay.php sends
+        // instalmentOffer null. Checked BEFORE the generic deposit shape.
+        if (b.booking_id === '12') return json({
+          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
+          checkIn: '2026-08-27', checkOut: '2026-08-30', currency: 'GBP', kind: 'deposit',
+          total: 700, alreadyPaid: 0, balance: 700, depositPct: 25, amountDue: 175,
+          damagesDue: 50, holdAmount: 50, holdStatus: 'none', balanceDueDate: '2026-07-28',
+          part: { min: 20, max: 175 }, quote: '12:deposit:225.00:0123456789abcdef0123456789abcdef',
+          autopayTerms: { amount: 525, due: '2026-10-28' }, autopayState: 'off',
+          instalmentOffer: null,
+        });
         // The DEPOSIT shape is the audit's custom-price booking: agreed £700, 25%
         // deposit £175, £50 damages deposit riding the first payment → £225 hero.
         if (b.kind === 'deposit') return json({
@@ -632,6 +644,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     oneSub: (document.querySelectorAll('.pay-ap-sub')[1] || {}).textContent || '',
     monthlyFig: [...document.querySelectorAll('.pay-ap-fig')].map((e) => e.textContent).join('|'),
     railRows: document.querySelectorAll('.pay-ap-body .ap-row').length,
+    fine: (document.querySelector('.pay-ap-fine') || {}).textContent || '',
   }));
   ok(ap0.shown && /£525\.00 that's left/.test(ap0.cap), `the card is captioned with the SUM (${ap0.cap})`);
   ok(/Due by 28\/10\/2026/.test(ap0.lead), `…and the lead carries the DAY (${ap0.lead})`);
@@ -640,6 +653,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/taken automatically on 28\/10\/2026/.test(ap0.oneSub), `the one-payment option states its consequence (${ap0.oneSub})`);
   ok(/3 × £175\.00/.test(ap0.monthlyFig), `the monthly option leads with its shape (${ap0.monthlyFig})`);
   ok(ap0.railRows === 0, 'the schedule stays folded until monthly is chosen');
+  ok(/each payment/.test(ap0.fine), `with monthly on the card the fine print speaks plural (${ap0.fine.slice(0, 44)}…)`);
+  // THE FLOOR'S GUEST FACE: the same deposit ask when pay.php sends NO offer
+  // (the owner's floor, or a plan that cannot fit). The card falls to its
+  // two-way form and the fine print goes SINGULAR — "each payment" is a
+  // promise about a plan that is not on the card.
+  await page.evaluate(() => openPayView('paytok', '12', 'deposit'));
+  await page.waitForTimeout(900);
+  const apNo = await page.evaluate(() => ({
+    shown: (document.getElementById('pay-autopay') || { style: {} }).style.display !== 'none',
+    radios: document.querySelectorAll('input[name="pay-ap-choice"]').length,
+    monthly: !!document.querySelector('input[name="pay-ap-choice"][value="monthly"]'),
+    fine: (document.querySelector('.pay-ap-fine') || {}).textContent || '',
+  }));
+  ok(apNo.shown && apNo.radios === 2 && !apNo.monthly, `no offer → the two-way card (${apNo.radios} ways, monthly ${apNo.monthly})`);
+  ok(/before it's taken/.test(apNo.fine) && !/each payment/.test(apNo.fine),
+    `…whose fine print speaks in the singular (${apNo.fine.slice(0, 60)}…)`);
+  // Back to the offered booking for the rest of the section.
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
   // Choose MONTHLY: the numbered rail opens with the sum closing on screen.
   await page.evaluate(() => {
     const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');

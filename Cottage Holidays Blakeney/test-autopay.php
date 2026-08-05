@@ -17,6 +17,7 @@
 
 $SQ_CALLS = []; // [method.' '.path, payload] per request, in order
 $SQ_REPLY = []; // path fragment => ['status'=>int,'body'=>array]
+$CONTENT = []; // content-table rows (item_key => value) for ApContentStmt
 $SQ_ENABLED = true;
 $DB_WRITES = []; // [sql, args]
 $DB_ROW = []; // what SELECT * FROM bookings returns
@@ -96,11 +97,35 @@ class ApWrite extends ApStmt
         return true;
     }
 }
+// The content table, as instalment_floor_months (and square_deposit_pct) read
+// it — keyed off the bound param so a test can set the floor and leave every
+// other key answering "nothing stored" exactly as the empty stub always has.
+class ApContentStmt extends ApStmt
+{
+    private $key = '';
+    public function __construct()
+    {
+        parent::__construct([]);
+    }
+    public function execute($args = null)
+    {
+        $this->key = is_array($args) ? (string) ($args[0] ?? '') : '';
+        return true;
+    }
+    public function fetch()
+    {
+        global $CONTENT;
+        return isset($CONTENT[$this->key]) ? ['item_value' => json_encode($CONTENT[$this->key])] : false;
+    }
+}
 class ApDb
 {
     public function prepare($sql)
     {
         global $DB_ROW, $DB_LIST;
+        if (stripos($sql, 'FROM content') !== false) {
+            return new ApContentStmt();
+        }
         if (stripos($sql, 'SELECT * FROM bookings WHERE id') !== false) {
             return new ApStmt($DB_ROW ? [$DB_ROW] : []);
         }
@@ -675,6 +700,40 @@ chk('a pick the offer never made returns NO terms — nothing to consent to',
     booking_autopay_terms(ofbk(['autopay_offer' => 3]), 4) === null);
 chk('n = 1 keeps the single-collection terms byte for byte',
     abs(booking_autopay_terms(ofbk())['amount'] - 525.0) < 0.005 && !isset(booking_autopay_terms(ofbk())['instalments']));
+
+echo "\n=== 11b. The owner's floor under the offer ===\n";
+// Monthly is only OFFERED with at least N months of runway before the due
+// date ('instalment-floor-months', Manage → Payments). The floor gates the
+// OFFER and the CONSENT — never a plan already running, and never the
+// single-collection option. Boundary inclusive: exactly N months out is
+// "at least N months away".
+$CONTENT = ['instalment-floor-months' => 2];
+chk('a far-out offer clears the floor untouched', booking_instalment_offer(ofbk(), $NOW)['n'] === 4);
+$edge = ukShiftMonthsPhp($NOW, 2);
+chk('due EXACTLY N months out is still offered — "at least" includes the day',
+    is_array(booking_instalment_offer(ofbk(['balance_due_date' => $edge]), $NOW)));
+$inside = date('Y-m-d', strtotime($edge . ' -1 day'));
+chk('one day inside the floor and monthly is gone',
+    booking_instalment_offer(ofbk(['balance_due_date' => $inside]), $NOW) === null);
+chk('...even where a 2-payment plan would still physically fit',
+    booking_instalment_offer(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+45 days'))]), $NOW) === null);
+chk('...and a consent posted from inside it vaults NOTHING — refused where recorded',
+    booking_autopay_terms(ofbk(['balance_due_date' => $inside]), 2) === null);
+chk('the single-collection terms are untouched by the floor',
+    is_array(booking_autopay_terms(ofbk(['balance_due_date' => $inside]))));
+$CONTENT = ['instalment-floor-months' => 3];
+chk('a taller floor cuts deeper', booking_instalment_offer(ofbk(['balance_due_date' => ukShiftMonthsPhp($NOW, 2)]), $NOW) === null
+    && is_array(booking_instalment_offer(ofbk(['balance_due_date' => ukShiftMonthsPhp($NOW, 3)]), $NOW)));
+// Garbage degrades to no floor — never to "no offer".
+$CONTENT = ['instalment-floor-months' => 99];
+chk('an out-of-range stored value means no floor', booking_instalment_offer(ofbk(['balance_due_date' => date('Y-m-d', strtotime('+45 days'))]), $NOW)['n'] === 2);
+// A PLAN ALREADY AGREED keeps running whatever the floor says: the collector
+// and the state machine read the stored consent, never the offer.
+$CONTENT = ['instalment-floor-months' => 6];
+chk('a running plan still collects under any floor',
+    abs(booking_autopay_collect_amount(mpbk(), '2026-09-28')['charge'] - 175.0) < 0.005);
+chk('...and stays ARMED', booking_autopay_state(mpbk(), $TODAY)[0] === 'armed');
+$CONTENT = [];
 
 echo "\n=== 12. The state machine, mid-plan ===\n";
 // A COHERENT plan, one collection in: £700 stay, £175 deposit paid at consent

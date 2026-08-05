@@ -682,6 +682,12 @@ function is_internal_content_key($key)
         return true; // the owner's saved payment plans (chbPlanPresets) — their own
                      // commercial terms; never public
     }
+    if ($key === 'instalment-floor-months') {
+        return true; // the owner's floor under the monthly-instalment offer
+                     // (instalment_floor_months) — a commercial term like
+                     // plan-presets; the guest only ever sees its consequence
+                     // (the offer pay.php derives), never the setting
+    }
     if ($key === 'search-undo') {
         return true; // the owner's reversible changes (chbUndoPush) — their own
                      // history, naming cottages and rates; never public

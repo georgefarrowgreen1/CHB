@@ -4204,6 +4204,20 @@ body.cmdk-open {
 .bhub-plan-ok { color: var(--ok-text); }
 .bhub-plan .bhub-actlink { border-top: 1px solid var(--glass-border); margin-top: 2px; }
 
+/* THE MONTHLY-OFFER FLOOR LADDER (Manage → Payments, apFloorLadderHtml).
+   Rungs read most-runway first with a dotted leader carrying the eye to the
+   offer; the owner's floor is an accent LINE ACROSS the ladder and the rungs
+   beneath it DIM — one device saying one thing, never strikethrough plus a
+   warn colour both shouting it. */
+.apfl-rung { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 2px; font-size: 0.8rem; }
+.apfl-rung.is-dim { opacity: 0.55; }
+.apfl-lead { color: var(--text-muted); white-space: nowrap; }
+.apfl-dots { flex: 1; border-bottom: 1px dotted var(--glass-border); transform: translateY(-4px); }
+.apfl-offer { font-weight: 600; color: var(--text-light); text-align: right; }
+.apfl-line { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.apfl-line::before, .apfl-line::after { content: ''; flex: 1; height: 2px; border-radius: 1px; background: var(--accent); }
+.apfl-line span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); white-space: nowrap; }
+
 /* THE HUB'S ACTION HIERARCHY — one loud control, then ACTION ROWS.
    The payask band is the single call to action. The complementary actions
    first became free-floating text links, and on the dark theme the owner

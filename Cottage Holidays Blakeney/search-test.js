@@ -2536,6 +2536,31 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const bkSrc = require('fs').readFileSync(__dirname + '/bookings.php', 'utf8');
         check('the dialog sends the owner’s say', adminSrc.indexOf("autopay_offer: String(vals.apoffer == null ? '' : vals.apoffer)") !== -1);
         check('…and the server refuses anything but 0/2/3/4', bkSrc.indexOf("in_array($apOffer, ['0', '2', '3', '4'], true)") !== -1);
+        // E) THE FLOOR ('instalment-floor-months'): the display mirror, the
+        // ladder, and the Edit-plan note. The OFFER itself is gated server-side
+        // (test-autopay §11b) — these are the surfaces that describe it.
+        vm.runInContext("adminPrivateContent['instalment-floor-months'] = 3;", ctx);
+        check('the floor mirror reads the internal key first (the bacs rule)', ctx.apFloorMonths() === 3);
+        vm.runInContext("adminPrivateContent['instalment-floor-months'] = 99;", ctx);
+        check('…and degrades garbage to no floor', ctx.apFloorMonths() === 0);
+        const lOff = ctx.apFloorLadderRows(0);
+        check('no floor → no line, every band live', lOff.line === -1 && lOff.rows.filter((r) => !r.dim).length === 3);
+        const l2 = ctx.apFloorLadderRows(2);
+        check('a 2-month floor draws its line above the cut', l2.line === 2 && l2.rows[2].dim === true && /Under 2 months/.test(l2.rows[2].lead), JSON.stringify(l2));
+        check('…keeping the surviving bands live', l2.rows[0].dim === false && l2.rows[1].dim === false);
+        const l4 = ctx.apFloorLadderRows(4);
+        check('a floor above every band still states what survives it', l4.line === 1 && l4.rows[0].dim === false && /More than 4 months/.test(l4.rows[0].lead), JSON.stringify(l4));
+        const lh = ctx.apFloorLadderHtml(2);
+        check('the ladder html carries the line and every rung', /Your floor · 2 months/.test(lh) && (lh.match(/apfl-rung/g) || []).length >= 4, lh.slice(0, 160));
+        vm.runInContext("adminPrivateContent['instalment-floor-months'] = 2;", ctx);
+        const nearBk = { balanceDueDate: dFut(20), checkIn: dFut(50) };
+        check('the Edit-plan note fires inside the floor, names it, and points at the lever',
+            /inside your 2-month floor/.test(ctx.apFloorNote(nearBk)) && /Move the due date later/.test(ctx.apFloorNote(nearBk)), ctx.apFloorNote(nearBk));
+        check('…stands down outside it', ctx.apFloorNote({ balanceDueDate: dFut(200), checkIn: dFut(230) }) === '');
+        vm.runInContext("adminPrivateContent['instalment-floor-months'] = 0;", ctx);
+        check('…and with the floor off', ctx.apFloorNote(nearBk) === '');
+        check('the dialog reads the note where the field renders', /hint: apFloorNote\(b\) \|\|/.test(adminSrc));
+        check('the setting saves through the classified key', adminSrc.indexOf("saveContent('instalment-floor-months', n)") !== -1);
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     } else fail('chbAutopayRows / hubPlanMonthlyHtml missing from the bundle');
 
