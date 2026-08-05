@@ -188,7 +188,12 @@ if ($action === 'setup') {
         }
     }
 
-    // Persist: signing key ENCRYPTED (private apikey- key), subscription id plain.
+    // Persist: signing key ENCRYPTED (private apikey- key), subscription id plain,
+    // and the EXACT notification_url Square holds — the string it signs against,
+    // so square-webhook.php verifies against that rather than one reconstructed
+    // per-request (the 401-every-delivery bug). Prefer Square's own echo of the
+    // URL over our $url, in case they normalised it.
+    $registeredUrl = trim((string) ($sub['notification_url'] ?? '')) ?: $url;
     try {
         if ($signingKey !== '') {
             content_set_secret('apikey-square-webhook', $signingKey);
@@ -196,6 +201,7 @@ if ($action === 'setup') {
         if (!empty($sub['id'])) {
             content_set_scalar('square-webhook-sub-id', (string) $sub['id']);
         }
+        content_set_scalar(SQUARE_WEBHOOK_URL_KEY, $registeredUrl);
     } catch (\Throwable $e) {
         json_out(['error' => 'Connected at Square, but could not save the key locally.'], 500);
     }
