@@ -9235,6 +9235,15 @@ function openWaitlistModal(prefill) {
     };
     set('wl-checkin', prefill.checkIn);
     set('wl-checkout', prefill.checkOut);
+    // These are NATIVE date inputs (no shared picker), so the night-before
+    // floor has to be stated here — the server refuses a dated join starting
+    // today or earlier (waitlist.php), and min keeps the browser's own picker
+    // from offering what the submit would bounce.
+    const wlMin = ukShiftDays(todayDashed(), 1);
+    ['wl-checkin', 'wl-checkout'].forEach((id) => {
+        const e = document.getElementById(id);
+        if (e) e.setAttribute('min', wlMin);
+    });
     set('wl-name', currentGuest ? currentGuest.name : '');
     set('wl-email', currentGuest ? currentGuest.email : '');
     const msg = document.getElementById('wl-msg');
@@ -14899,7 +14908,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'availchip1';
+    const BUILD = 'wlnotice2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

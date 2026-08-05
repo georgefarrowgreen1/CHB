@@ -339,6 +339,8 @@ else {
     check('…and tomorrow clears it (the boundary from the other side)', noticeTomorrow === null);
     let enqSrc = '';
     try { enqSrc = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'enquiries.php'), 'utf8'); } catch (e) {}
+    let wlSrc = '';
+    try { wlSrc = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'waitlist.php'), 'utf8'); } catch (e) {}
     const noticeSentence = /Online bookings need at least a day’s notice[^']*/;
     const cliNotice = (appScript.match(noticeSentence) || [])[0];
     const srvNotice = (enqSrc.match(noticeSentence) || [])[0];
@@ -348,6 +350,12 @@ else {
     // must sit inside a guest-only same-day guard, not merely exist as a string.
     check('…from inside a guest-only same-day guard',
         /if \(!\$isAdminEdit && \$checkIn <= date\('Y-m-d'\)\) \{\s*json_out\(\['error' => 'Online bookings need at least a day’s notice/.test(enqSrc));
+    // The waitlist is the third holder of the rule: a dated join starting
+    // today or earlier could only notify a guest about dates the form refuses.
+    const wlNotice = (wlSrc.match(noticeSentence) || [])[0];
+    check('…and the waitlist refuses a dated same-day join, same sentence, wired',
+        !!wlNotice && wlNotice === cliNotice &&
+        /if \(\$ci && \$ci <= date\('Y-m-d'\)\) \{\s*json_out\(\['error' => 'Online bookings need at least a day’s notice/.test(wlSrc));
     // Both pickers the guest decides at — the hero search and the enquiry form.
     check(`both guest pickers band their children (${kidBands.length} found)`, kidBands.length === 2);
     check(`…and their adults (${adultBands.length} found)`, adultBands.length === 2);

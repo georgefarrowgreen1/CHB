@@ -765,6 +765,17 @@ it_check('only ONE waitlist row exists for the same cottage+dates', $wcount === 
 http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => date('Y-m-d', strtotime($in . ' +60 days')), 'check_out' => date('Y-m-d', strtotime($out . ' +60 days'))]));
 $wcount2 = (int) $rootDb->query("SELECT COUNT(*) FROM waitlist WHERE email='wait@x.co'")->fetchColumn();
 it_check('a different date range is still a separate waitlist entry', $wcount2 === 2, 'rows=' . $wcount2);
+// Book by the night before: a dated join starting today can only ever notify
+// the guest about dates the enquiry form refuses, so it is refused up front.
+// An OPEN-date join ("any time") carries no check-in and stays allowed.
+$r = http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => date('Y-m-d'), 'check_out' => date('Y-m-d', strtotime('+3 days'))]));
+it_check(
+    'a same-day dated waitlist join is refused with the notice rule',
+    $r['code'] === 400 && str_contains((string) ($r['json']['error'] ?? ''), 'earliest check-in is tomorrow'),
+    $r['raw'],
+);
+$r = http($guest, 'POST', '/waitlist.php', ['action' => 'join', 'prop' => $propKey, 'name' => 'Open Wait', 'email' => 'openwait@x.co']);
+it_check('an open-date waitlist join is still welcome', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
 
 // A SOFT report (chbSwallow) is a diagnostic, not breakage: the front end caught the
 // error and carried on by design. It must be recorded so someone can find out why
