@@ -40,6 +40,13 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
         if ($ci && $co && $co <= $ci) {
             json_out(['error' => 'Check-out must be after check-in.'], 400);
         }
+        // Book by the night before, as a minimum (the enquiries.php rule): a
+        // dated wait for a stay starting today or earlier could only ever
+        // notify the guest about dates the booking form refuses. Open-date
+        // joins ("any time these free up") are untouched.
+        if ($ci && $ci <= date('Y-m-d')) {
+            json_out(['error' => 'Online bookings need at least a day’s notice — the earliest check-in is tomorrow. For a same-day stay, please get in touch.'], 400);
+        }
         // Already waiting for this exact cottage + dates? Idempotent — don't pile
         // up a duplicate the owner would email twice. (The uniq_join index from
         // migration-100 race-proofs the dated case; this pre-check also covers
