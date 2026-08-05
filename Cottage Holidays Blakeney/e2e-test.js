@@ -399,21 +399,23 @@ async function waitForServer(url, tries = 40) {
     (await page.evaluate(() => document.body.classList.contains('light-mode'))) === themeBefore ? pass('theme toggle returns to the original palette') : fail('theme toggle did not return to the original palette');
 
     console.log('== 9. Availability tells the truth (chip ↔ calendar) ==');
-    // 21a is booked tonight; jollyboat is free tonight. The card chips and the
-    // cottage-page calendar must agree — "Available now" ONLY when tonight is
-    // genuinely free (regression: the chip once claimed "now" for a gap 2 days
-    // out while the calendar showed today struck through).
+    // 21a is booked tonight + tomorrow; jollyboat is free tonight. The card
+    // chips, the cottage-page calendar AND the booking rules must agree: the
+    // earliest bookable check-in is tomorrow (book by the night before), so
+    // the strongest chip is "Available from tomorrow" — never "Available now",
+    // which would promise a night the enquiry form refuses (regression: the
+    // chip once claimed "now" for a gap 2 days out, the same defect mirrored).
     await page.evaluate(() => { nav('view-main'); return loadPublicAvailability(); });
     await page.waitForTimeout(700);
     const chips = await page.evaluate(() => ({
       blocked: ((document.getElementById('home-card-avail-21a') || {}).textContent || '') + ((document.getElementById('card-avail-21a') || {}).textContent || ''),
       free: ((document.getElementById('home-card-avail-jollyboat') || {}).textContent || '') + ((document.getElementById('card-avail-jollyboat') || {}).textContent || ''),
     }));
-    (/Available from/.test(chips.blocked) && !/Available now/.test(chips.blocked))
-      ? pass('cottage booked tonight says "Available from …", never "Available now"')
+    (/Available from/.test(chips.blocked) && !/Available now/.test(chips.blocked) && !/from tomorrow/.test(chips.blocked))
+      ? pass('cottage booked tonight+tomorrow says "Available from <date>", never "now" or "tomorrow"')
       : fail('booked-tonight cottage chip wrong: "' + chips.blocked + '"');
-    /Available now/.test(chips.free)
-      ? pass('cottage genuinely free tonight says "Available now"')
+    (/Available from tomorrow/.test(chips.free) && !/Available now/.test(chips.free))
+      ? pass('cottage free tonight says "Available from tomorrow" (the earliest bookable check-in)')
       : fail('free cottage chip wrong: "' + chips.free + '"');
     const todayCell = await page.evaluate(async () => {
       nav('view-21a');
