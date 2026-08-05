@@ -101,6 +101,25 @@ if ($kind === 'hold') {
 $propName = $rate['name'] ?? $b['prop_key'];
 
 if ($action === 'summary') {
+    // THE WAY BACK IN after a failed collection: whenever a live consent has a
+    // failed try recorded, the screen renders the repair card, whose save-a-card
+    // action touches no money. 'stale' is not card-repairable (the terms moved,
+    // not the card) and 'settled' has nothing left, so neither invites it.
+    $apAttempts = (int) ($b['autopay_attempts'] ?? 0);
+    $apStateNow = booking_autopay_state($b);
+    $apRepair = null;
+    if (!empty($b['autopay_consent_at']) && empty($b['autopay_revoked_at']) && $apAttempts > 0 && !in_array($apStateNow[0], ['settled', 'stale'], true)) {
+        $apRetryDays = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
+        $apLastTry = substr((string) ($b['autopay_last_try'] ?? ''), 0, 10);
+        $apRepair = [
+            'stopped' => $apAttempts >= AUTOPAY_MAX_TRIES,
+            'why' => (string) ($b['autopay_last_error'] ?? ''),
+            'monthly' => (int) ($b['autopay_instalments'] ?? 0) > 1,
+            // When the collector will present the card again — null once stopped
+            // (it will not) or before any try is stamped.
+            'retry' => $apAttempts >= AUTOPAY_MAX_TRIES || $apLastTry === '' ? null : date('Y-m-d', strtotime($apLastTry . ' +' . $apRetryDays . ' days')),
+        ];
+    }
     json_out([
         'ok' => true,
         'propName' => $propName,
@@ -154,6 +173,7 @@ if ($action === 'summary') {
         'depositCharged' => in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $holdAmount : 0.0,
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
+        'autopayRepair' => $apRepair,
     ]);
 }
 
@@ -170,6 +190,27 @@ if ($action === 'autopay_off') {
         'entity_id' => (string) $bookingId,
     ]);
     json_out(['ok' => true, 'autopayState' => 'revoked']);
+}
+
+// A NEW CARD FOR THE PLAN — the repair the failure email points at. Touches no
+// money: autopay_replace_card stores the tokenised card against the existing
+// consent and resets the tries; the collector resumes on its own tick. Rides
+// the pay token like autopay_off (no new way in), refuses in words and a 400
+// so the screen can show them verbatim, and never invents a consent — a
+// booking without a live one is refused inside the lib.
+if ($action === 'update_card') {
+    require_once __DIR__ . '/autopay-lib.php';
+    $r = autopay_replace_card($b, (string) ($in['source_id'] ?? ''));
+    if (empty($r['ok'])) {
+        json_out(['error' => $r['reason'] !== '' ? $r['reason'] : 'Could not save the card'], 400);
+    }
+    json_out([
+        'ok' => true,
+        'say' => 'Card updated — the plan carries on, and nothing was charged today.',
+        // The state as it now stands, so the screen can re-render without a
+        // second round trip (the lib reset the tries and cleared the error).
+        'autopayState' => booking_autopay_state(array_merge($b, ['autopay_card_id' => $r['card_id'], 'autopay_attempts' => 0, 'autopay_last_error' => null]))[0],
+    ]);
 }
 
 // Place a refundable card HOLD for the damages deposit (authorise, do NOT capture).

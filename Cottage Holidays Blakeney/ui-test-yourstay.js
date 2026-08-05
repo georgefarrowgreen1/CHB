@@ -327,6 +327,72 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/Turn off automatic payments/.test(plan.off), `the off-switch is one tap away (${plan.off})`);
   await page.close();
 
+  // 14) A PLAN IN TROUBLE STAYS ON THE CARD, WITH ITS FIX. A failed try
+  // ('retrying') marks the declined row in place, says why + when in one
+  // sentence, and leads with "Update card & keep the plan" — the same pay
+  // screen the failure email points at. A plan silently vanishing the moment
+  // it needs the guest would read as "sorted".
+  const troublePlan = (state, extra) => ({
+    n: 3, per: 175, toGo: 350, next: d(20), state,
+    why: 'The card was declined.', ...extra,
+    dates: [
+      { date: d(-10), state: 'done', fig: 175 },
+      { date: d(20), state: 'next', fig: 175 },
+      { date: d(50), state: 'todo', fig: 175 },
+    ],
+  });
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+    autopay_state: 'armed', autopay_says: 'Scheduled.',
+    autopay_plan: troublePlan('retrying', { retry: d(2) }),
+  })]);
+  const retryState = await page.evaluate(() => {
+    const hub = document.querySelector('.my-stay-hub-soon');
+    const block = hub && hub.querySelector('.hub-plan');
+    return {
+      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
+      trouble: !!(block && block.classList.contains('hub-plan-trouble')),
+      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
+      note: block ? [...block.querySelectorAll('.ap-note')].map((e) => e.textContent).join('|') : '',
+      fix: block ? (block.querySelector('.hub-plan-fix') || {}).textContent || '' : '',
+      off: hub ? !!hub.querySelector('.hub-autopay-off') : false,
+    };
+  });
+  ok(/didn’t go through — needs a new card/.test(retryState.warn), `a failed try turns the hub line amber (${retryState.warn})`);
+  ok(retryState.trouble && /declined/.test(retryState.note), `…and the declined row says so in place (${retryState.note})`);
+  ok(/We couldn't take £175\.00 — The card was declined/.test(retryState.why) && /try again/.test(retryState.why),
+    `…with why and when in one sentence (${retryState.why.slice(0, 90)})`);
+  ok(/Update card & keep the plan/.test(retryState.fix), `…and the fix leads (${retryState.fix})`);
+  ok(retryState.off, '…while the off-switch stays');
+  await page.close();
+
+  // 15) STOPPED (the try cap): the summary reads paused, the sentence promises
+  // no further charge, and the block still renders although autopay_state is
+  // 'failed' — the state that used to drop the guest to a bare Pay button.
+  page = await openPage({ name: 'Cara Nunn', email: 'c@x.co' }, [mk('jollyboat', d(80), d(83), {
+    payment: 'deposit', pay_token: 'tok9',
+    agreed_total: 700, agreed_per_night: 233.33, agreed_nights: 3, agreed_nightly: 700,
+    agreed_txn_fee: 0, agreed_txn_pct: 0, agreed_booking_fee: 0,
+    autopay_state: 'failed', autopay_says: 'Automatic payment didn’t go through.',
+    autopay_plan: troublePlan('stopped', {}),
+  })]);
+  const stopState = await page.evaluate(() => {
+    const hub = document.querySelector('.my-stay-hub-soon');
+    const block = hub && hub.querySelector('.hub-plan');
+    return {
+      warn: hub ? (hub.querySelector('.hub-warn') || {}).textContent || '' : '',
+      sum: block ? (block.querySelector('.hub-plan-sum') || {}).textContent || '' : '',
+      why: block ? (block.querySelector('.hub-plan-why') || {}).textContent || '' : '',
+      fix: block ? !!block.querySelector('.hub-plan-fix') : false,
+    };
+  });
+  ok(/paused — needs a new card/.test(stopState.warn), `a stopped plan reads paused on the hub line (${stopState.warn})`);
+  ok(/paused — 1 of 3 done/.test(stopState.sum), `…and in the block's own summary (${stopState.sum})`);
+  ok(/stopped trying/.test(stopState.why) && stopState.fix, `…promising no further charge, with the fix present (${stopState.why.slice(0, 80)})`);
+  await page.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

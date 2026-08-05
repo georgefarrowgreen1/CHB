@@ -185,6 +185,12 @@ function send_autopay_notice($b, $payUrl = null)
     $MAIL[] = ['notice', $b];
     return ['ok' => $MAIL_OK];
 }
+function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null)
+{
+    global $MAIL, $MAIL_OK;
+    $MAIL[] = ['failure', $b, $stopped, $charge];
+    return ['ok' => $MAIL_OK];
+}
 function prop_display($k)
 {
     return ['name' => 'Jollyboat'];
@@ -837,6 +843,88 @@ chk('the run picks candidates by the NEXT collection date', substr_count($apSrc2
 $paySrc2 = file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php honours a requested count only through the terms derivation',
     strpos($paySrc2, 'booking_autopay_terms($b, $apN > 1 ? $apN : 1)') !== false);
+
+echo "\n=== 17. The guest hears first — failure emails from the collector ===\n";
+// Sent on the FIRST soft failure ("we'll try again") and on the failure that
+// STOPS the plan (a hard decline, or the soft one reaching the cap); the middle
+// attempt is silence — they already know. The silences carry checks too.
+$FAIL_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'TEMPORARY_ERROR', 'detail' => 'x']]]]];
+$failMails = function () {
+    global $MAIL;
+    return array_values(array_filter($MAIL, fn($m) => $m[0] === 'failure'));
+};
+reset_env(mpbk(['autopay_attempts' => 0]));
+$SQ_REPLY = $FAIL_REPLY;
+$MAIL = [];
+$out = autopay_collect_one(mpbk(['autopay_attempts' => 0]), '2026-09-28');
+$fm = $failMails();
+chk('the FIRST soft failure emails the guest', $out[0] === 'fail' && count($fm) === 1);
+chk('...as a retry, not a stop', $fm && $fm[0][2] === false);
+chk('...carrying the attempted charge', $fm && abs((float) $fm[0][3] - 175.0) < 0.005);
+reset_env(mpbk(['autopay_attempts' => 1]));
+$SQ_REPLY = $FAIL_REPLY;
+$MAIL = [];
+autopay_collect_one(mpbk(['autopay_attempts' => 1]), '2026-09-28');
+chk('the MIDDLE attempt is silence — they already know', count($failMails()) === 0);
+reset_env(mpbk(['autopay_attempts' => 2]));
+$SQ_REPLY = $FAIL_REPLY;
+$MAIL = [];
+autopay_collect_one(mpbk(['autopay_attempts' => 2]), '2026-09-28');
+$fm = $failMails();
+chk('the soft failure that reaches the cap says the plan STOPPED', count($fm) === 1 && $fm[0][2] === true);
+reset_env(mpbk(['autopay_attempts' => 0]));
+$SQ_REPLY = ['/v2/payments' => ['status' => 402, 'body' => ['errors' => [['code' => 'CARD_DECLINED', 'detail' => 'x']]]]];
+$MAIL = [];
+autopay_collect_one(mpbk(['autopay_attempts' => 0]), '2026-09-28');
+$fm = $failMails();
+chk('a HARD decline stops on its first failure and says so', count($fm) === 1 && $fm[0][2] === true);
+
+echo "\n=== 18. A new card for an existing consent ===\n";
+// autopay_replace_card stores a card and touches NO money. Only a LIVE consent
+// is repairable — every refusal is in words, because pay.php shows them.
+chk('no consent → nothing to repair',
+    autopay_replace_card(mpbk(['autopay_consent_at' => null]), 'cnon_x')['ok'] === false
+    && strpos(autopay_replace_card(mpbk(['autopay_consent_at' => null]), 'cnon_x')['reason'], 'no automatic payment') !== false);
+chk('revoked → a new card must not quietly re-arm it',
+    autopay_replace_card(mpbk(['autopay_revoked_at' => '2026-08-01']), 'cnon_x')['ok'] === false);
+chk('settled → nothing left to collect', autopay_replace_card(mpbk(['deposit_paid' => 700.0]), 'cnon_x')['ok'] === false);
+chk('stale → the terms moved, not the card', autopay_replace_card(mpbk(['balance_due_date' => '2026-11-15']), 'cnon_x')['ok'] === false);
+chk('no card supplied → refused', autopay_replace_card(mpbk(['autopay_attempts' => 3]), '')['ok'] === false);
+reset_env(mpbk(['autopay_attempts' => 3]));
+$SQ_REPLY['/v2/cards'] = ['status' => 200, 'body' => ['card' => ['id' => 'ccof_new']]];
+$r = autopay_replace_card(mpbk(['autopay_attempts' => 3]), 'cnon_tok');
+$cardCall = sqCall('/v2/cards');
+$w = wrote('autopay_card_id');
+chk('a STOPPED plan takes the new card', $r['ok'] === true && $r['card_id'] === 'ccof_new');
+chk('...stored from the tokenised card, against the existing customer',
+    $cardCall && $cardCall[1]['source_id'] === 'cnon_tok' && !empty($cardCall[1]['card']['customer_id']));
+chk('...and fresh card means fresh tries', $w && stripos($w[0], 'autopay_attempts = 0') !== false && in_array('ccof_new', $w[1], true));
+chk('...with no payment made', sqCall('/v2/payments') === null);
+reset_env(mpbk(['autopay_attempts' => 3, 'autopay_customer_id' => null]));
+$SQ_REPLY['/v2/customers'] = ['status' => 200, 'body' => ['customer' => ['id' => 'cust_new']]];
+$SQ_REPLY['/v2/cards'] = ['status' => 200, 'body' => ['card' => ['id' => 'ccof_new2']]];
+$r = autopay_replace_card(mpbk(['autopay_attempts' => 3, 'autopay_customer_id' => null]), 'cnon_tok2');
+chk('a nocard repair creates the customer first, the vault way', $r['ok'] === true && sqCall('/v2/customers') !== null);
+reset_env(mpbk(['autopay_attempts' => 3]));
+$SQ_REPLY['/v2/cards'] = ['status' => 402, 'body' => ['errors' => [['code' => 'INVALID_CARD', 'detail' => 'Card nonce not found']]]];
+$r = autopay_replace_card(mpbk(['autopay_attempts' => 3]), 'cnon_bad');
+chk("Square's refusal comes back in words, and nothing is written",
+    $r['ok'] === false && $r['reason'] !== '' && wrote('autopay_card_id') === null);
+// The wiring: pay.php routes the action through the lib and the summary carries
+// the repair object — the helper alone proving nothing is the recurring trap.
+$paySrc3 = file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php routes update_card through autopay_replace_card',
+    strpos($paySrc3, "if (\$action === 'update_card')") !== false && strpos($paySrc3, 'autopay_replace_card($b,') !== false);
+chk('...and the summary carries autopayRepair', strpos($paySrc3, "'autopayRepair' => \$apRepair,") !== false);
+chk('the collector notifies through the guarded send',
+    strpos($apSrc2, "function_exists('send_autopay_failure')") !== false && strpos($apSrc2, 'send_autopay_failure($now, $why, $stopped, $today, $charge)') !== false);
+// The account payload keeps a TROUBLED plan on the guest's card (states
+// 'retrying'/'stopped' + why + the retry day) — ui-test-yourstay drives the
+// rendering from a stubbed payload, so the server half is pinned here.
+$mbSrc = file_get_contents(__DIR__ . '/my-bookings.php');
+chk('the account payload keeps a troubled plan on the card',
+    strpos($mbSrc, "in_array(\$ap[0], ['armed', 'failed'], true)") !== false
+    && strpos($mbSrc, "'stopped' : (\$apAtt > 0 ? 'retrying' : 'on')") !== false);
 
 echo "\n" . ($fail ? "✗ $fail FAILED, $pass passed\n" : "✓ ALL $pass CHECKS PASSED\n");
 exit($fail ? 1 : 0);
