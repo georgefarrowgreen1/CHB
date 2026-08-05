@@ -1834,6 +1834,32 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     // deposit sentence beneath explains the split.
     $cta = payment_cta($rail, $payUrl, $bacs, 'To secure your stay, please pay ' . $money($f['chargedNow']));
 
+    // THE MONTHLY OPTION, previewed as the SCHEDULE the checkout will offer —
+    // guests deciding whether they can afford to book learn it exists here,
+    // not as a surprise at the pay screen. Card rail only: a guest getting
+    // bank details is not meeting this checkout. The rows are the offer's own
+    // dates and figures, so the preview and the consent card cannot disagree.
+    $offer = is_array($b['instalment_offer'] ?? null) && $rail === 'card' ? $b['instalment_offer'] : null;
+    $offerHtml = '';
+    $offerText = '';
+    if ($offer) {
+        $oN = (int) $offer['n'];
+        $oPer = round((float) $offer['per'], 2);
+        $oLast = round((float) $offer['last'], 2);
+        $oRest = round($oPer * ($oN - 1) + $oLast, 2);
+        $oRows = [];
+        $oLines = [];
+        foreach ((array) $offer['dates'] as $i => $d) {
+            $fig = $i + 1 === $oN ? $money($oLast) . ' · final' : $money($oPer);
+            $oRows[] = ['Payment ' . ($i + 1) . ' — ' . uk_date($d), $fig];
+            $oLines[] = '  ' . ($i + 1) . '. ' . uk_date($d) . ' — ' . $fig;
+        }
+        $offerLead = 'Rather spread the ' . $money($oRest) . " that's left? When you pay, you can choose:";
+        $offerFine = 'From the card you pay with — an email before each one, and you can turn it off any time.';
+        $offerHtml = email_p('<strong>' . $esc($offerLead) . '</strong>', true) . email_rows($oRows) . email_p($esc($offerFine), true);
+        $offerText = "\n\n" . $offerLead . "\n" . implode("\n", $oLines) . "\n" . $offerFine;
+    }
+
     $subject = "Pay your {$what} — {$prop}";
     $text =
         "Hello {$name},\n\n" .
@@ -1848,7 +1874,8 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         // What they have ALREADY put down — a balance request that never says so
         // leaves the guest to work it out from two other numbers.
         ($f['paidLine'] !== '' ? ' ' . $f['paidLine'] : '') .
-        " You can reply to this email with any questions.\n\n" .
+        $offerText .
+        "\n\nYou can reply to this email with any questions.\n\n" .
         'Cottage Holidays Blakeney';
 
     $inner =
@@ -1876,6 +1903,7 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
             )
             : '') .
         $cta['html'] .
+        $offerHtml .
         email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Pay your ' . $what . ' for ' . $prop, $inner, $accent);
 
@@ -1958,6 +1986,14 @@ function request_booking_payment($b, $kind, $reminder = false)
         // Carried so the email can pick the guest's rail (payment_rail): someone
         // who paid their deposit in cash gets bank details, not a card link.
         'payment_method' => $b['payment_method'] ?? '',
+        // THE MONTHLY OPTION IS MENTIONED BEFORE CHECKOUT — derived from the
+        // same booking_instalment_offer the pay screen shows, so the email can
+        // never promise a plan the checkout won't offer, and the owner's floor
+        // rides along for free: no offer, no sentence. Deposit asks only (the
+        // offer exists only at the deposit stage). The REMINDER deliberately
+        // stays without it: a reminder chases money already asked for, and the
+        // ask is the one place the option is put forward.
+        'instalment_offer' => $kind === 'deposit' && function_exists('booking_instalment_offer') ? booking_instalment_offer($b) : null,
     ];
     $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
     $res['amount'] = $amt['due'];

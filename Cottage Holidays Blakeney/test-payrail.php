@@ -105,6 +105,28 @@ chk('cash, no details on file: asks them to reply', stripos($rNone['text'], 'rep
 $rNew = payment_request_body(array_merge(bk(''), ['kind' => 'deposit']), $URL, '#C79A64', $BANK);
 chk('a fresh booking (no method) still gets the card link', strpos($rNew['text'], $URL) !== false);
 
+echo "\n== The deposit ask previews the monthly option ==\n";
+// The offer is mentioned BEFORE checkout — as the SCHEDULE the pay screen will
+// show, from the same booking_instalment_offer derivation, so the email can
+// never promise a plan the checkout won't offer. Card rail only; the REMINDER
+// deliberately never carries it (a reminder chases money already asked for).
+$OFFER = ['n' => 3, 'per' => 175.0, 'last' => 175.0, 'due' => '2026-10-28', 'dates' => ['2026-08-28', '2026-09-28', '2026-10-28']];
+$oAsk = payment_request_body(array_merge(bk(''), ['kind' => 'deposit', 'instalment_offer' => $OFFER]), $URL, '#C79A64', $BANK);
+chk('with an offer, the ask previews the spread and its sum', strpos($oAsk['text'], "Rather spread the £525.00 that's left?") !== false);
+chk("…as the checkout's own dated schedule", strpos($oAsk['html'], 'Payment 1 — 28/08/2026') !== false && strpos($oAsk['html'], '· final') !== false);
+chk('…with the two promises that matter', strpos($oAsk['text'], 'an email before each one') !== false && stripos($oAsk['text'], 'turn it off any time') !== false);
+$oNone = payment_request_body(array_merge(bk(''), ['kind' => 'deposit']), $URL, '#C79A64', $BANK);
+chk('no offer (the floor, or no room) → no sentence', strpos($oNone['text'], 'Rather spread') === false && strpos($oNone['html'], 'Payment 1 —') === false);
+$oBacs = payment_request_body(array_merge(bk('Cash'), ['kind' => 'deposit', 'instalment_offer' => $OFFER]), $URL, '#C79A64', $BANK);
+chk('a bank-details guest is not offered a card plan', strpos($oBacs['text'], 'Rather spread') === false);
+$oChase = payment_reminder_body(array_merge(bk('Square card'), ['instalment_offer' => $OFFER]), $URL, '#C79A64', $BANK);
+chk('the reminder deliberately stays without it', strpos($oChase['text'], 'Rather spread') === false);
+// The WIRING: the payload derives the offer at the one send site — the
+// helper-tested-alone trap otherwise.
+$mailSrc = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('request_booking_payment derives the offer for deposit asks only',
+    strpos($mailSrc, "'instalment_offer' => \$kind === 'deposit' && function_exists('booking_instalment_offer') ? booking_instalment_offer(\$b) : null,") !== false);
+
 // ---- THE ASK AND ITS CHASE MUST QUOTE THE SAME SUM --------------------------
 // The request and the reminder chase the SAME money and were composed
 // independently. Measured before this: the request said "£340.00 will be charged
