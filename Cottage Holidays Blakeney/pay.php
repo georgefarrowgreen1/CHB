@@ -34,9 +34,13 @@ if ($bookingId <= 0 || !hash_equals(pay_token($bookingId), $token)) {
     json_out(['error' => 'This payment link is invalid or has expired.'], 403);
 }
 
-// Rate-limit the money-moving actions per IP so a leaked pay link can't be used
-// to card-test (submit many card tokens). Summary is read-only, so it's exempt.
-if ($action === 'charge' || $action === 'authorize') {
+// Rate-limit the card-touching actions per IP so a leaked pay link can't be used
+// to card-test (submit many card tokens). `update_card` belongs here too: it
+// posts an arbitrary source token to Square's CreateCard, which runs an issuer
+// verification and hands the decline reason back — the same probe `charge`
+// throttles, so leaving it open re-opened the hole this guard exists to close.
+// Summary is read-only, so it's exempt.
+if ($action === 'charge' || $action === 'authorize' || $action === 'update_card') {
     rate_limit('pay', 20, 10);
 }
 
