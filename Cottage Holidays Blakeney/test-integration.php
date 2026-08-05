@@ -254,6 +254,25 @@ $r = http($guest, 'POST', '/enquiries.php', [
     'terms_accepted' => 1, 'no_dogs' => 1,
 ]);
 it_check('public enquiry submit succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+// Book by the night before, as a minimum: a same-day check-in is refused for
+// guest submissions. The picker enforces this client-side; the endpoint is the
+// gate that matters — a stale tab or a direct POST is exactly what it is for.
+$r = http($guest, 'POST', '/enquiries.php', [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Sam Sameday',
+    'check_in' => date('Y-m-d'), 'check_out' => date('Y-m-d', strtotime('+3 days')),
+    'adults' => 2, 'children' => 0, 'email' => 'sam.sameday@gmail.com',
+    'message' => 'Tonight please.', 'terms_accepted' => 1, 'no_dogs' => 1,
+]);
+it_check(
+    'a same-day enquiry is refused with the notice rule',
+    $r['code'] === 400 && str_contains((string) ($r['json']['error'] ?? ''), 'earliest check-in is tomorrow'),
+    $r['raw'],
+);
+// The refused submit above still burned one unit of rate_limit('enquiry', 6, 15)
+// — the limiter counts the ATTEMPT, before validation — and the suite's later
+// enquiry sections sit exactly at that budget, so give it back rather than let
+// an unrelated section 429.
+$rootDb->exec("DELETE FROM login_attempts WHERE identifier = 'enquiry'");
 $r = http($admin, 'GET', '/enquiries.php');
 $enqs = $r['json']['enquiries'] ?? [];
 $enq = array_values(array_filter($enqs, fn($e) => ($e['name'] ?? '') === 'Ivy Tester'));

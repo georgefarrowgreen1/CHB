@@ -163,6 +163,15 @@ if ($action === 'submit') {
     if (!$isAdminEdit && $checkIn < date('Y-m-d')) {
         json_out(['error' => 'Check-in can’t be in the past.'], 400);
     }
+    // Book by the night before, as a minimum: the earliest guest check-in is
+    // TOMORROW. The picker withholds today client-side; this stops a direct
+    // POST or a stale tab from creating a same-day stay. Admin edits stay
+    // exempt for the same reason as above — a phone walk-in is the owner's to
+    // take, entered by hand. JS twin: checkBookingRules (app.js); smoke-test
+    // holds the two sentences in step.
+    if (!$isAdminEdit && $checkIn <= date('Y-m-d')) {
+        json_out(['error' => 'Online bookings need at least a day’s notice — the earliest check-in is tomorrow. For a same-day stay, please get in touch.'], 400);
+    }
     // The email was previously stored with NO validation at all — a typo'd
     // address sailed through submit, approval and the confirmation send before
     // anyone noticed (see the ntl-world.com incident). Validate the format and

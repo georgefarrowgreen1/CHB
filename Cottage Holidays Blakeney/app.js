@@ -6488,6 +6488,13 @@ const occupancyLimits = {
 // Validate dates against a property's booking rules (min nights, arrival days).
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function checkBookingRules(propKey, checkIn, checkOut) {
+    // Book by the night before, as a minimum: the earliest guest check-in is
+    // TOMORROW. Checked first (it holds regardless of the per-cottage rules);
+    // every guest surface funnels through this helper, admin paths never do.
+    // Server twin: enquiries.php's guard — smoke-test holds the two in step.
+    if (checkIn <= todayDashed()) {
+        return 'Online bookings need at least a day’s notice — the earliest check-in is tomorrow. For a same-day stay, please get in touch.';
+    }
     const r = propertyRates[propKey] || defaultRates[propKey] || {};
     const nights = nightsBetween(checkIn, checkOut);
     const minN = Math.max(1, parseInt(r.minNights, 10) || 1);
@@ -11391,10 +11398,13 @@ function renderAvailCal() {
         const ds = `${year}-${pad(month + 1)}-${pad(d)}`;
         let cls = 'avail-cell ';
         const taken = isBooked(ds);
-        if (ds < todayStr) cls += 'past ' + (taken ? 'taken' : 'free');
+        // TODAY renders like the past (`<=`): under the night-before rule a
+        // free today cell with a price would advertise a night the picker then
+        // refuses — the "calendar says free, picker says no" contradiction.
+        if (ds <= todayStr) cls += 'past ' + (taken ? 'taken' : 'free');
         else cls += taken ? 'taken' : 'free';
         let priceTag = '';
-        if (!taken && ds >= todayStr) {
+        if (!taken && ds > todayStr) {
             const nightly = nightlyRateFor(ds, rate, seasons);
             if (nightly > 0) priceTag = `<span class="ac-price">£${Math.round(nightly)}</span>`;
         }
@@ -11546,10 +11556,15 @@ function renderDatePicker() {
     const minNights = guestPick
         ? Math.max(1, parseInt((propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {}).minNights, 10) || 1)
         : 1;
+    const todayDs = formatDashed(today);
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
         const ds = formatDashed(date);
         const isPast = date < today;
+        // Book by the night before: TODAY can never sit inside a NEW stay, so
+        // outside admin mode it is not pickable — and it says why (the dp-out
+        // lesson). Applies to the hero search too; admin stays exempt.
+        const tooSoon = dpMode !== 'admin' && !isPast && ds === todayDs;
         const booked =
             dpMode === 'admin'
                 ? !!(adminConflicts && modalDayState(adminConflicts, ds))
@@ -11559,8 +11574,9 @@ function renderDatePicker() {
         // used to carry `!pickingEnd` and so evaporated the moment a check-in was
         // picked and came back when a checkout was, changing three times per
         // selection. Each branch below decides whether the question applies.
+        // `!tooSoon`: today's refusal states the notice rule, not the minimum.
         const tooShort =
-            guestPick && !isPast && !booked && minNights > 1 && !dpCheckinFits(date, minNights);
+            guestPick && !isPast && !booked && !tooSoon && minNights > 1 && !dpCheckinFits(date, minNights);
         // Clickability rules (server enforces too — this is the friendly layer):
         //  - picking check-in: any free future night that can start a stay (a
         //    checkout/turnover day IS free)
@@ -11575,7 +11591,7 @@ function renderDatePicker() {
         //    and the availability strip + server clash confirm guard the save).
         let clickable;
         if (dpMode === 'admin') clickable = true;
-        else if (isPast) clickable = false;
+        else if (isPast || tooSoon) clickable = false;
         else if (dpMode === 'search')
             clickable = true; // hero search: any future date
         else if (!pickingEnd) clickable = !booked && !tooShort;
@@ -11583,7 +11599,7 @@ function renderDatePicker() {
             clickable = !booked && !tooShort; // restart selection — a NEW check-in
         else clickable = !rangeCrossesBooked(dpState.start, ds); // valid checkout
         const classes = ['dp-day'];
-        if (isPast && dpMode !== 'admin') classes.push('dp-disabled');
+        if ((isPast || tooSoon) && dpMode !== 'admin') classes.push('dp-disabled');
         // A cross means "cannot be used", so it is wrong on a cell that IS being used:
         // a turnover day offered as a checkout, and every night of a chosen stay. The
         // second was missing, so picking a checkout crossed out both the night below
@@ -11603,9 +11619,9 @@ function renderDatePicker() {
         // picker simply stopped responding with nothing to explain it. NOT a
         // line-through, which would say "booked": these are free nights, out of reach
         // from THIS check-in only, and another check-in brings them back.
-        const outOfReach = !clickable && !crossed && !isPast && dpMode !== 'admin';
+        const outOfReach = !clickable && !crossed && !isPast && !tooSoon && dpMode !== 'admin';
         if (outOfReach) classes.push('dp-out');
-        if (ds === formatDashed(today)) classes.push('dp-today');
+        if (ds === todayDs) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
         if (dpState.start && dpState.end && ds > dpState.start && ds < dpState.end)
@@ -11619,18 +11635,22 @@ function renderDatePicker() {
         // turnover day offered as a checkout was read out as "booked".
         const unavailNote = booked
             ? ' — booked, unavailable'
-            : tooShort
-              ? ` — minimum stay ${minNights} nights, unavailable`
-              : outOfReach
-                ? ' — too late, a booking falls before this date'
-                : '';
+            : tooSoon
+              ? ' — same-day stays need a day’s notice, unavailable'
+              : tooShort
+                ? ` — minimum stay ${minNights} nights, unavailable`
+                : outOfReach
+                  ? ' — too late, a booking falls before this date'
+                  : '';
         const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || outOfReach ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
         const title = crossed && !clickable
             ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
-            : outOfReach
-              ? ' title="There\'s a booking before this date"'
-              : '';
+            : tooSoon
+              ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
+              : outOfReach
+                ? ' title="There\'s a booking before this date"'
+                : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
     grid.innerHTML = cells;
@@ -14877,7 +14897,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'termsap1';
+    const BUILD = 'minnotice1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

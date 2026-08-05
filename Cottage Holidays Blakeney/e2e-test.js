@@ -427,8 +427,12 @@ async function waitForServer(url, tries = 40) {
       availCalMonth = new Date(uk.y, uk.m - 1, 1);
       renderAvailCal();
       const dayN = String(uk.d);
+      // Today is deliberately past-STYLED now (book by the night before —
+      // tonight can never be part of a new stay, so it carries no price), so
+      // look the cell up by day number alone; the strike-through is what the
+      // chip agreement needs and 'taken' still rides the class list.
       const cell = [...document.querySelectorAll('#avail-cal-grid .avail-cell')]
-        .find((c) => ((c.querySelector('.ac-day') || {}).textContent || '') === dayN && !c.classList.contains('past'));
+        .find((c) => ((c.querySelector('.ac-day') || {}).textContent || '') === dayN);
       return cell ? cell.className : 'missing';
     });
     /taken/.test(todayCell)
