@@ -10452,9 +10452,12 @@ document.addEventListener('visibilitychange', () => {
 });
 // Free runs of at least minNights within the next `days`, from blocked
 // ranges (end-exclusive, matching availability.php). Returns
-// [{start, end (checkout), nights}] in date order.
+// [{start, end (checkout), nights}] in date order. Scans from TOMORROW: under
+// the night-before rule tonight can't start a new stay, so a "today" gap is
+// not an offer the site can honour (and one of exactly minNights would be a
+// night short from its real first check-in). Both callers offer dates.
 function freeGaps(ranges, days, minNights) {
-    const t0 = dpParse(todayDashed());
+    const t0 = dpParse(ukShiftDays(todayDashed(), 1));
     const blocked = new Set();
     (ranges || []).forEach((r) => {
         for (
@@ -10481,25 +10484,24 @@ function freeGaps(ranges, days, minNights) {
     if (run && run.nights >= minNights) gaps.push(run);
     return gaps;
 }
-// The card chip must tell the truth against the cottage's own calendar:
-// "Available now" ONLY when tonight is genuinely free (the first bookable gap
-// starts today). A gap starting tomorrow or later says "Available from <date>"
-// — the old 2-day grace read as a lie next to a calendar showing today booked.
-function availChipHtml(gapStart, today) {
-    return gapStart <= today
-        ? `<span class="avail-chip now"><span class="dot"></span>Available now</span>`
+// The chip's strongest claim is "Available from tomorrow" — the earliest
+// bookable check-in (freeGaps scans from there). "Available now" promised a
+// night the enquiry form then refused, the old 2-day-grace defect mirrored.
+function availChipHtml(gapStart, tomorrow) {
+    return gapStart <= tomorrow
+        ? `<span class="avail-chip now"><span class="dot"></span>Available from tomorrow</span>`
         : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(gapStart)}</span>`;
 }
 function renderCardAvailability() {
     if (!publicAllAvailability) return;
-    const today = todayDashed();
+    const tomorrow = ukShiftDays(todayDashed(), 1);
     liveCottageKeys().forEach((k) => {
         if (!(k in publicAllAvailability)) return;
         const minN = Math.max(1, (propertyRates[k] && propertyRates[k].minNights) || 1);
         const gaps = freeGaps(publicAllAvailability[k], 60, minN);
         let html = '';
         if (gaps.length) {
-            html = availChipHtml(gaps[0].start, today);
+            html = availChipHtml(gaps[0].start, tomorrow);
         }
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
@@ -14897,7 +14899,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'minnotice1';
+    const BUILD = 'availchip1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
