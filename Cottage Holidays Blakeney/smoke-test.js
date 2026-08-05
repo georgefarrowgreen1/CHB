@@ -316,6 +316,30 @@ else {
     const hardMins = [...appScript.matchAll(/\bminNights: (\d+)\b/g)].map((m) => Number(m[1]));
     check(`…as do the hardcoded cottages (${hardMins.join(', ') || 'none found'})`,
         hardMins.length >= 3 && hardMins.every((n) => n === srvMinN));
+    // ---- BOOK BY THE NIGHT BEFORE, AS A MINIMUM ----------------------------
+    // The earliest guest check-in is TOMORROW: checkBookingRules refuses a
+    // same-day stay (one helper, so the enquiry form, the chat and the flex
+    // suggestions all agree) and enquiries.php refuses the direct POST. The two
+    // sentences are asserted EQUAL, not merely present — the same-stay/same-
+    // refusal discipline the min-nights default above earns the hard way.
+    const noticeToday = evalIn(
+        `checkBookingRules('jollyboat', todayDashed(), ukShiftDays(todayDashed(), 7))`);
+    check('a same-day check-in is refused with the notice rule',
+        /day’s notice/.test(noticeToday || ''));
+    const noticeTomorrow = evalIn(
+        `checkBookingRules('jollyboat', ukShiftDays(todayDashed(), 1), ukShiftDays(todayDashed(), 8))`);
+    check('…and tomorrow clears it (the boundary from the other side)', noticeTomorrow === null);
+    let enqSrc = '';
+    try { enqSrc = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'enquiries.php'), 'utf8'); } catch (e) {}
+    const noticeSentence = /Online bookings need at least a day’s notice[^']*/;
+    const cliNotice = (appScript.match(noticeSentence) || [])[0];
+    const srvNotice = (enqSrc.match(noticeSentence) || [])[0];
+    check('the server states the same refusal, word for word',
+        !!cliNotice && !!srvNotice && cliNotice === srvNotice);
+    // …and ENFORCES it (assert the wiring, not the ingredient): the sentence
+    // must sit inside a guest-only same-day guard, not merely exist as a string.
+    check('…from inside a guest-only same-day guard',
+        /if \(!\$isAdminEdit && \$checkIn <= date\('Y-m-d'\)\) \{\s*json_out\(\['error' => 'Online bookings need at least a day’s notice/.test(enqSrc));
     // Both pickers the guest decides at — the hero search and the enquiry form.
     check(`both guest pickers band their children (${kidBands.length} found)`, kidBands.length === 2);
     check(`…and their adults (${adultBands.length} found)`, adultBands.length === 2);

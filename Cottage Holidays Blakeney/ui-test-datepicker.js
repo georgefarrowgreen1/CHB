@@ -319,6 +319,52 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(!/Good news/.test(chat[0] || ''), '…and is NOT announced as available');
   ok(/Good news/.test(chat[1] || ''), 'a stay that clears both rules still gets the good news');
 
+  console.log('10. book by the night before — today is not for sale online');
+  // The minimum-notice rule: the earliest guest check-in is TOMORROW. Today must
+  // be withheld WITH ITS REASON (the dp-out lesson — a refusal the guest cannot
+  // see is the calendar not working), and tomorrow must stay open, so the
+  // boundary is asserted from both sides. The clock is pinned to 15 July, so the
+  // month under test here is JULY, not the August fixture (which is all future).
+  await openAt();
+  await page.evaluate(() => { dpState.view = new Date(2026, 6, 1); renderDatePicker(); });
+  await page.waitForTimeout(120);
+  const notice = await page.evaluate(() => {
+    const cells = {};
+    document.querySelectorAll('#dp-grid .dp-day').forEach((el) => {
+      const n = parseInt(el.textContent.trim(), 10);
+      if (!n) return;
+      cells[n] = {
+        clickable: el.getAttribute('data-act') === 'dpPick',
+        disabled: el.classList.contains('dp-disabled'),
+        title: el.getAttribute('title') || '',
+        aria: el.getAttribute('aria-label') || '',
+      };
+    });
+    return { today: cells[15], tomorrow: cells[16], rule: checkBookingRules('jollyboat', todayDashed(), '2026-07-22') };
+  });
+  ok(notice.today && !notice.today.clickable && notice.today.disabled, 'today cannot be picked as a check-in');
+  ok(/night before/.test(notice.today.title) && /notice/.test(notice.today.aria),
+    `…and says why in its title and announced name (${notice.today.title.slice(0, 60)})`);
+  ok(notice.tomorrow && notice.tomorrow.clickable, 'tomorrow — the earliest allowed — is still open');
+  ok(/day’s notice/.test(notice.rule || ''), 'checkBookingRules refuses a same-day stay in words');
+  // The chat's availability check speaks the same rule — it routes through
+  // checkBookingRules, so a "tonight" ask is refused, never blessed "Good news".
+  const chatToday = await page.evaluate(async () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<select id="t2-prop"><option value="jollyboat">J</option></select>'
+      + '<input id="t2-ci" value="2026-07-15"><input id="t2-co" value="2026-07-17">';
+    document.body.appendChild(host);
+    const said = [];
+    const real = window.chatBot;
+    window.chatBot = (m) => said.push(m);
+    await chatAvailRun('t2');
+    window.chatBot = real;
+    host.remove();
+    return (said[0] || '').replace(/<[^>]*>/g, ' ');
+  });
+  ok(/day’s notice/.test(chatToday) && !/Good news/.test(chatToday),
+    'the chat refuses a same-day stay with the notice rule');
+
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
 })();
