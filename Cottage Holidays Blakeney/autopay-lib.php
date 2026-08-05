@@ -222,6 +222,99 @@ function autopay_vault($b, $squarePaymentId, $terms)
     return ['ok' => true, 'reason' => '', 'card_id' => $cardId, 'customer_id' => $cust];
 }
 
+// A NEW CARD FOR AN EXISTING CONSENT — the repair half of the vault. The
+// agreement (amount, dates, count) is untouched: only the card that pays it
+// changes, the attempt counter resets, and the collector picks the plan up on
+// its next tick. NOTHING IS CHARGED here — the source is a tokenised card,
+// stored via /v2/cards exactly as the vault stores a payment's card. Refusals
+// come back in words because pay.php shows them to the guest verbatim.
+function autopay_replace_card($b, $sourceId)
+{
+    $bad = function ($why) {
+        return ['ok' => false, 'reason' => $why, 'card_id' => ''];
+    };
+    if (!function_exists('square_enabled') || !square_enabled()) {
+        return $bad('Card payments are not switched on');
+    }
+    $src = trim((string) $sourceId);
+    if ($src === '') {
+        return $bad('No card to save');
+    }
+    $bookingId = (int) ($b['id'] ?? 0);
+    if ($bookingId <= 0) {
+        return $bad('No booking');
+    }
+    // Only a LIVE consent is repairable. No consent means nothing was agreed;
+    // a revoked one means the guest turned it off, and a new card must not
+    // quietly turn it back on; a settled plan has nothing left to pay; and a
+    // STALE plan's problem is the terms, not the card — a fresh card would arm
+    // a schedule the guest never saw.
+    if (empty($b['autopay_consent_at'])) {
+        return $bad('There is no automatic payment set up on this booking');
+    }
+    if (!empty($b['autopay_revoked_at'])) {
+        return $bad('Automatic payments were switched off — you can set them up again next time you pay');
+    }
+    $state = booking_autopay_state($b);
+    if ($state[0] === 'settled') {
+        return $bad('Nothing is left to collect — there is no plan to repair');
+    }
+    if ($state[0] === 'stale') {
+        return $bad('The plan has changed since you agreed it — pay any time, or set it up again when you do');
+    }
+    // The same customer-per-booking rule the vault documents; a 'nocard' repair
+    // may arrive before any customer exists, so it is created the same way.
+    $cust = trim((string) ($b['autopay_customer_id'] ?? ''));
+    if ($cust === '') {
+        $res = square_api('POST', '/v2/customers', [
+            'idempotency_key' => 'chb-cust-' . $bookingId,
+            'given_name' => (string) ($b['name'] ?? 'Guest'),
+            'email_address' => (string) ($b['email'] ?? ''),
+            'reference_id' => 'CHB-' . $bookingId,
+        ]);
+        $cust = (string) ($res['body']['customer']['id'] ?? '');
+        if ($cust === '') {
+            return $bad(autopay_square_why($res, "Square wouldn't set up the card"));
+        }
+    }
+    $res = square_api('POST', '/v2/cards', [
+        'idempotency_key' => 'chb-recard-' . $bookingId . '-' . substr(sha1($src), 0, 12),
+        'source_id' => $src,
+        'card' => [
+            'customer_id' => $cust,
+            'reference_id' => 'CHB-' . $bookingId,
+        ],
+    ]);
+    $cardId = (string) ($res['body']['card']['id'] ?? '');
+    if ($cardId === '') {
+        return $bad(autopay_square_why($res, "Square wouldn't save the card"));
+    }
+    // Fresh card, fresh tries — the failed state exists to stop a refusing card
+    // being presented for ever, and this is the one event that changes the card.
+    try {
+        db()
+            ->prepare('UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_attempts = 0, autopay_last_error = NULL, autopay_last_code = NULL WHERE id = ?')
+            ->execute([$cust, $cardId, $bookingId]);
+    } catch (\Throwable $e) {
+        try {
+            db()
+                ->prepare('UPDATE bookings SET autopay_customer_id = ?, autopay_card_id = ?, autopay_attempts = 0, autopay_last_error = NULL WHERE id = ?')
+                ->execute([$cust, $cardId, $bookingId]);
+        } catch (\Throwable $e2) {
+            return $bad('Could not record the new card');
+        }
+    }
+    try {
+        log_activity('payment', 'autopay.card_updated', 'Guest saved a new card — the plan resumes', [
+            'actor' => 'guest',
+            'entity' => 'booking',
+            'entity_id' => (string) $bookingId,
+        ]);
+    } catch (\Throwable $e) {
+    }
+    return ['ok' => true, 'reason' => '', 'card_id' => $cardId];
+}
+
 // Square's own words where it gave any, ours where it did not. Never the raw
 // body: a failed request's body can carry internals, and this string is shown.
 function autopay_square_why($res, $fallback)
@@ -316,7 +409,26 @@ function autopay_collect_one($b, $today = null)
         if (!$payment || $st < 200 || $st >= 300) {
             $code = (string) ($res['body']['errors'][0]['code'] ?? '');
             $why = autopay_square_why($res, 'The payment did not go through');
-            autopay_record_failure($bookingId, $today, $why, autopay_decline_kind($code), $code);
+            $failKind = autopay_decline_kind($code);
+            autopay_record_failure($bookingId, $today, $why, $failKind, $code);
+            // THE GUEST HEARS FIRST. A declined card is usually theirs to fix
+            // (expired, reissued), and the person best placed to fix it is the
+            // one reading the email — most plans repair themselves before the
+            // third failure ever becomes the owner's duty. Sent on the FIRST
+            // soft failure ("we'll try again") and on the failure that STOPS
+            // the plan (a hard decline, or the soft one that reaches the cap);
+            // the middle attempt is silence — they already know. Deduped by
+            // construction: each attempt count is hit once, and a hard decline
+            // jumps straight to the cap so no further tries follow. Best-effort
+            // and wrapped — the failure is already recorded either way.
+            $prior = (int) ($now['autopay_attempts'] ?? 0);
+            $stopped = $failKind === 'hard' || $prior + 1 >= AUTOPAY_MAX_TRIES;
+            if (($stopped || $prior === 0) && function_exists('send_autopay_failure')) {
+                try {
+                    send_autopay_failure($now, $why, $stopped, $today, $charge);
+                } catch (\Throwable $e) {
+                }
+            }
             book_unlock($b['prop_key']);
             return ['fail', $why];
         }

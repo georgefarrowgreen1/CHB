@@ -2468,6 +2468,103 @@ function autopay_notice_body($b, $payUrl = null)
     return ['subject' => $subject, 'text' => $text, 'html' => $html];
 }
 
+// A FAILED COLLECTION TELLS THE GUEST FIRST. A declined card is usually theirs
+// to fix (expired, reissued), and until this email the first failure was silent
+// to the very person who could mend it — only the third became an owner duty.
+// autopay-lib sends it on the first soft failure and on the failure that STOPS
+// the plan; the middle attempt is silence, they already know.
+function send_autopay_failure($b, $why, $stopped, $today = null, $charge = null)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $m = autopay_failure_body($b, $why, $stopped, $today, $charge);
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
+}
+
+// Pure, same reason as autopay_notice_body — and the one email in the plan's
+// life carrying BAD news, so its jobs come in order: the booking is safe, here
+// is exactly where the plan stands (the notice email's own rows, the declined
+// one saying so in place), here is the one-minute fix. $why is
+// autopay_square_why's prose, never a raw body. $stopped separates "we'll try
+// again on <date>" from "we've stopped trying" — the two must never blur,
+// because the first promises a charge and the second promises its absence.
+function autopay_failure_body($b, $why, $stopped, $today = null, $charge = null, $payUrl = null)
+{
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $today = $today !== null ? substr((string) $today, 0, 10) : date('Y-m-d');
+    $name = first_name($b['name'], 'Guest');
+    $prop = !empty($b['prop_name']) ? $b['prop_name'] : (function_exists('prop_display') ? prop_display((string) ($b['prop_key'] ?? ''))['name'] : 'your cottage');
+    $amt = $charge !== null ? round((float) $charge, 2) : round((float) ($b['autopay_amount'] ?? 0), 2);
+    if ($payUrl === null) {
+        $payUrl = site_base_url() . 'index.html?pay=' . pay_token((int) $b['id']) . '&b=' . (int) $b['id'];
+    }
+    // The retry day is derived, not promised loosely: last try + the collector's
+    // own cadence. Guarded like the schedule below — mailer loads without
+    // autopay-lib on some paths, and a day-shift on a date-only string is the
+    // booking_balance_due_date shape.
+    $retryDays = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
+    $retry = uk_date(date('Y-m-d', strtotime($today . ' +' . $retryDays . ' days')));
+    $apN = (int) ($b['autopay_instalments'] ?? 0);
+    $monthly = $apN > 1 && function_exists('booking_instalment_schedule');
+    $failDate = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) ($b['autopay_due'] ?? ''), 0, 10);
+    $ofN = '';
+    $rows = [];
+    if ($monthly) {
+        $sched = booking_instalment_schedule(substr((string) $b['autopay_due'], 0, 10), $apN);
+        $per = round((float) ($b['autopay_amount'] ?? 0), 2);
+        foreach ($sched as $i => $d) {
+            if ($d === $failDate) {
+                $ofN = 'payment ' . ($i + 1) . ' of ' . $apN;
+            }
+            $rows[] = [
+                'Payment ' . ($i + 1) . ' — ' . uk_date($d),
+                $d < $failDate
+                    ? 'paid ✓'
+                    : ($d === $failDate
+                        ? $money($amt) . ' — declined' . ($stopped ? '' : ', retrying ' . $retry)
+                        : $money($per) . ($i + 1 === $apN ? ' · final' : '')),
+            ];
+        }
+    } else {
+        $rows = [['Amount', $money($amt)], ['Tried on', uk_date($today)], ['Cottage', $esc($prop)]];
+    }
+    $subject =
+        ($monthly && $ofN !== '' ? ucfirst($ofN) . " didn't go through" : "Your automatic payment didn't go through") .
+        ' — ' .
+        ($stopped ? "let's sort the card" : 'we\'ll try again on ' . $retry);
+    $happened =
+        'we tried to take ' . $money($amt) . ' for your stay at ' . $prop . " today and it didn't go through — " . rtrim((string) $why, '.') . '. Your booking is completely safe.';
+    $next = $stopped
+        ? "We've stopped trying that card. Update it below and " .
+            ($monthly ? 'the plan carries on where it left off' : 'the payment is collected as arranged') .
+            ' — or pay any time, your own way. No fees either way.'
+        : "We'll simply try again on {$retry}. If the card has changed, you can put it right in a minute — or pay this one now. No fees either way.";
+    $tail = $stopped ? '' : 'If it keeps not going through, the plan simply pauses and the ordinary balance reminders take over — nothing is lost.';
+    $text =
+        "Hello {$name},\n\n" .
+        ucfirst($happened) .
+        "\n\n" .
+        $next .
+        ($tail !== '' ? "\n\n" . $tail : '') .
+        "\n\n" .
+        "Update your card, or pay this one now: {$payUrl}\n\n" .
+        'Cottage Holidays Blakeney';
+    $inner =
+        email_h('Your booking is safe') .
+        email_p('Hello ' . $esc($name) . ', ' . $esc($happened)) .
+        email_rows($rows) .
+        email_p($esc($next), true) .
+        email_btn($payUrl, 'Update your card') .
+        email_p('Or pay this one now, your own way — the same page does both.', true) .
+        ($tail !== '' ? email_p($esc($tail), true) : '') .
+        email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell($subject, $inner);
+
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+
 function send_payment_receipt($b)
 {
     if (empty($b['email'])) {

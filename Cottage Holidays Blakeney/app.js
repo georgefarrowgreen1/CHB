@@ -3744,19 +3744,39 @@ function guestPayCta(b, gt) {
 // then the dated rail in the live-plan vocabulary: green done, accent next,
 // hollow still-to-come. Figures come from the server payload, whose rows SUM
 // to what is actually left.
-function guestPlanBlockHtml(p) {
+function guestPlanBlockHtml(p, payToken, dbId) {
     const done = p.dates.filter((d) => d.state === 'done').length;
+    // A troubled plan ('retrying'/'stopped') STAYS on this card with its fix —
+    // one that vanished the moment it needed the guest would read as "sorted".
+    const trouble = p.state === 'retrying' || p.state === 'stopped';
     const rows = p.dates
         .map((d, i) => {
-            const note = d.state === 'done' ? 'paid' : d.state === 'next' ? 'next' : i === p.dates.length - 1 ? 'final' : '';
-            return `<span class="ap-row"><span class="ap-dot is-${escapeHtml(d.state)}" aria-hidden="true"></span><span class="ap-date">${fmtDate(d.date)}</span><span class="ap-figc">${gbp(d.fig)}</span>${note ? `<span class="ap-note">${note}</span>` : ''}</span>`;
+            const bad = trouble && d.state === 'next';
+            const note = d.state === 'done' ? 'paid' : bad ? 'declined' : d.state === 'next' ? 'next' : i === p.dates.length - 1 ? 'final' : '';
+            return `<span class="ap-row"><span class="ap-dot is-${escapeHtml(d.state)}" aria-hidden="true"></span><span class="ap-date">${fmtDate(d.date)}</span><span class="ap-figc">${gbp(d.fig)}</span>${note ? `<span class="ap-note${bad ? ' ap-note-warn' : ''}">${note}</span>` : ''}</span>`;
         })
         .join('');
+    const failFig = (p.dates.find((d) => d.state === 'next') || { fig: p.per }).fig;
+    // Why + what happens next — the failure email's own two facts.
+    const why = trouble
+        ? `<p class="hub-plan-why">We couldn't take ${gbp(failFig)} — ${escapeHtml(String(p.why || 'the card said no').replace(/\.+$/, ''))}. ${
+              p.state === 'stopped'
+                  ? 'We’ve stopped trying — update your card to carry on, or pay the rest your own way.'
+                  : `We'll try again ${p.retry ? `on ${fmtDate(p.retry)}` : 'in the next day or two'}, or fix it now:`
+          }</p>`
+        : '';
+    const fix = trouble && payToken
+        ? `<button class="btn-glass btn-sm hub-plan-fix" ${chbAttrs('openPayView', String(payToken), dbId)}>Update card &amp; keep the plan</button>`
+        : '';
     return `
-        <div class="hub-plan">
-            <div class="hub-plan-head"><span class="pay-sec-cap">Monthly payments</span><span class="hub-plan-sum">${done} of ${p.n} done · ${gbp(p.toGo)} to go</span></div>
+        <div class="hub-plan${trouble ? ' hub-plan-trouble' : ''}">
+            <div class="hub-plan-head"><span class="pay-sec-cap">Monthly payments</span><span class="hub-plan-sum${trouble ? ' hub-plan-sum-warn' : ''}">${
+                p.state === 'stopped' ? `paused — ${done} of ${p.n} done` : `${done} of ${p.n} done · ${gbp(p.toGo)} to go`
+            }</span></div>
             <span class="ap-bar" aria-hidden="true"><span style="width:${Math.round((done / p.n) * 100)}%"></span></span>
+            ${why}
             <span class="ap-rail">${rows}</span>
+            ${fix}
         </div>`;
 }
 function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
@@ -3777,19 +3797,26 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
         // AN ARRANGED BALANCE IS NOT AN OUTSTANDING TASK. "£750 due by 15/08" in
         // warning ink asks them to do what they have already done. Still figure-
         // first, but it reads as settled, with the way to stop it beside it.
-        if (b.autopayState === 'armed') {
+        // b.autopayState is 'failed' once stopped, so the plan gates below must
+        // not key on 'armed' alone or a stopped plan falls to the bare Pay
+        // button as though nothing was ever arranged.
+        const apPlan = b.autopayPlan;
+        const apTrouble = !!(apPlan && (apPlan.state === 'retrying' || apPlan.state === 'stopped'));
+        if (apTrouble) {
+            ready = `<span class="hub-warn">${apPlan.state === 'stopped' ? 'monthly payments paused — needs a new card' : 'a payment didn’t go through — needs a new card'}</span>`;
+        } else if (b.autopayState === 'armed') {
             // A monthly plan on track means NOTHING is outstanding — the plan
             // block below carries the detail; a single collection keeps its
             // figure-first line.
-            ready = b.autopayPlan
+            ready = apPlan
                 ? `<span class="hub-ok">payments on track — nothing needed from you</span>`
                 : `<span class="hub-ok">${gbp(nx.amount)} on the way${balanceDueBySuffix(b.balanceDueBy)}</span>`;
         } else {
             ready = `<span class="hub-warn">${nx.word} ${gbp(nx.amount)} due${nx.word === 'balance' ? balanceDueBySuffix(b.balanceDueBy) : ''}</span>`;
         }
-        if (payToken && b.autopayState === 'armed')
-            cta = (b.autopayPlan ? guestPlanBlockHtml(b.autopayPlan) : '') +
-                `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment${b.autopayPlan ? 's' : ''}</button>`;
+        if (payToken && (b.autopayState === 'armed' || apTrouble))
+            cta = (apPlan ? guestPlanBlockHtml(apPlan, payToken, b.dbId) : '') +
+                `<button class="hub-autopay-off" ${chbAttrs('guestAutopayOff', String(payToken), b.dbId)}>Turn off automatic payment${apPlan ? 's' : ''}</button>`;
         else if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${nx.word} ${gbp(nx.amount)}</button>`;
     } else if (b.regUrl && !bookingRegComplete(b)) {
         // Short of the party as well as absent: the form prefills what is already
@@ -3919,7 +3946,7 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, autopayChoice: 'self' };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '', quote: '', part: null, partAmount: 0, partView: null, walletAmount: 0, walletT: null, walletStamp: 0, autopayOffer: false, partSnap: '', apTerms: null, apMonthly: null, apRepair: false, apRepairInfo: null, autopayChoice: 'self' };
 let squarePayments = null,
     squareCard = null;
 // Strong Customer Authentication (UK/EU banks): passing these details to
@@ -4054,6 +4081,11 @@ async function openPayView(token, bookingId, kind) {
         payState.apRepair = !!isRepair;
         payState.autopayChoice = 'self';
         payAutopayRender();
+        // THE REPAIR CARD — fixes the CARD on an existing consent. Mid-plan the
+        // kind is 'balance' so autopayTerms is null and the consent card never
+        // renders: this is the only affordance the failure email can point at.
+        payState.apRepairInfo = s.autopayRepair && typeof s.autopayRepair === 'object' ? s.autopayRepair : null;
+        payRepairRender();
         payState.guestName = s.guestName || '';
         // Stay context: the cottage as its accent chip + dates + nights, so the
         // page reads like a receipt for THEIR stay, not a bare payment form.
@@ -4570,6 +4602,55 @@ function payAutopayChoice() {
     const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
     payState.autopayChoice = r && (r.value === 'one' || r.value === 'monthly') ? r.value : 'self';
     payAutopayRender();
+}
+// THE REPAIR CARD. Its one action stores a card (update_card) and touches NO
+// money; `doneSay` replaces it with the confirmation.
+function payRepairRender(doneSay) {
+    const wrap = document.getElementById('pay-repair');
+    if (!wrap) return;
+    if (doneSay) {
+        wrap.style.display = '';
+        wrap.innerHTML = `<div class="pay-sec-cap pay-rep-ok" id="pay-rep-cap">All sorted</div><p class="pay-rep-body">${escapeHtml(doneSay)}</p>`;
+        return;
+    }
+    const r = payState.apRepairInfo;
+    if (!r) {
+        wrap.style.display = 'none';
+        wrap.innerHTML = '';
+        return;
+    }
+    // The booking is safe and the fix is a minute — warn-tinted, never danger.
+    const why = String(r.why || 'the card said no').trim().replace(/\.+$/, '');
+    const next = r.stopped
+        ? `We've stopped trying that card${r.monthly ? ' — the plan is paused where it got to' : ''}. Save a new one and ${r.monthly ? 'it carries on' : 'the payment is collected as arranged'}, or simply pay here instead.`
+        : `We'll try again ${r.retry ? `on ${fmtDate(r.retry)}` : 'in the next day or two'}. Save a new card and the plan carries on — or simply pay here instead.`;
+    wrap.style.display = '';
+    wrap.innerHTML = `
+        <div class="pay-sec-cap" id="pay-rep-cap">Your saved card needs attention</div>
+        <p class="pay-rep-body">${escapeHtml(why)}. ${escapeHtml(next)}</p>
+        <button type="button" class="btn-glass pay-rep-btn" data-act="payUpdateCard">Save new card &amp; keep the plan</button>
+        <p class="pay-rep-fine">Uses the card details you enter below — nothing is charged when you save.</p>`;
+}
+async function payUpdateCard() {
+    const msg = document.getElementById('pay-msg');
+    if (!squareCard) {
+        if (msg) msg.textContent = 'The card box is still loading — one moment.';
+        return;
+    }
+    try {
+        // Bare tokenize: a STORE, not a charge — no verification amount rides it.
+        const result = await squareCard.tokenize();
+        if (!result || result.status !== 'OK' || !result.token) {
+            if (msg) msg.textContent = 'Check the card details in the card box and try again.';
+            return;
+        }
+        const res = await apiPost('pay.php', { action: 'update_card', token: payState.token, booking_id: payState.bookingId, source_id: result.token });
+        payState.apRepairInfo = null;
+        payRepairRender(res && res.say ? res.say : 'Card updated — the plan carries on, and nothing was charged today.');
+        if (msg) msg.textContent = '';
+    } catch (e) {
+        if (msg) msg.textContent = (e && e.message) || 'Could not save the card just now.';
+    }
 }
 // Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
 // is independent + best-effort: an unsupported wallet is simply hidden and the
@@ -14738,7 +14819,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'instalfl1';
+    const BUILD = 'instalrp1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

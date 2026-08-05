@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=240">
+    <link rel="stylesheet" href="app.css?v=241">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -888,6 +888,9 @@
                         </div>
                     </div>
                     <div class="pay-form">
+                        <!-- THE REPAIR CARD (summary's autopayRepair): stores a card,
+                             touches no money — it leads the form. -->
+                        <section class="pay-repair" id="pay-repair" style="display:none;" aria-labelledby="pay-rep-cap"></section>
                         <!-- The amount choice comes FIRST (decide the amount, then
                              how to pay it) — below the wallets, a typed part amount
                              left the re-priced buttons two sections above the field.
@@ -1819,7 +1822,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=710"></script>
+    <script defer src="app.js?v=711"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

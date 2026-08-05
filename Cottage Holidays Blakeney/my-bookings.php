@@ -84,7 +84,12 @@ function my_bookings_payload(string $email, bool $preview = false): array
         // actually left (the final row absorbs any manual payments), so the card
         // can never promise money the ledger disagrees with.
         $apN = (int) ($bk['autopay_instalments'] ?? 0);
-        if ($ap[0] === 'armed' && $apN > 1 && !empty($bk['autopay_due'])) {
+        // A plan in TROUBLE still renders — 'failed' (stopped at the try cap)
+        // and armed-with-failed-tries both carry the schedule plus why and what
+        // happens next, because a plan that silently vanishes from the guest's
+        // own screen the moment it needs them is the worst version of this
+        // card. 'revoked' stays hidden: they turned it off on purpose.
+        if (in_array($ap[0], ['armed', 'failed'], true) && $apN > 1 && !empty($bk['autopay_due'])) {
             $apDue = substr((string) $bk['autopay_due'], 0, 10);
             $apNext = substr((string) ($bk['autopay_next_at'] ?? ''), 0, 10);
             $apKind = booking_payment_kind($bk);
@@ -105,7 +110,21 @@ function my_bookings_payload(string $email, bool $preview = false): array
             if ($apLeft > 0) {
                 $apDates[count($apDates) - 1]['fig'] = round(max(0, $apRest - $apPer * ($apLeft - 1)), 2);
             }
-            $bk['autopay_plan'] = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
+            $apPlan = ['n' => $apN, 'per' => $apPer, 'toGo' => $apRest, 'next' => $apNext, 'dates' => $apDates];
+            // The plan's own weather: 'on' (nothing wrong), 'retrying' (a try
+            // failed, more to come — the collector's cadence names the day) or
+            // 'stopped' (the try cap). why is autopay_square_why's prose.
+            $apAtt = (int) ($bk['autopay_attempts'] ?? 0);
+            $apPlan['state'] = $ap[0] === 'failed' ? 'stopped' : ($apAtt > 0 ? 'retrying' : 'on');
+            if ($apAtt > 0) {
+                $apPlan['why'] = (string) ($bk['autopay_last_error'] ?? '');
+                $apLastTry = substr((string) ($bk['autopay_last_try'] ?? ''), 0, 10);
+                if ($apPlan['state'] === 'retrying' && $apLastTry !== '') {
+                    $apRetryDays = defined('AUTOPAY_RETRY_DAYS') ? AUTOPAY_RETRY_DAYS : 1;
+                    $apPlan['retry'] = date('Y-m-d', strtotime($apLastTry . ' +' . $apRetryDays . ' days'));
+                }
+            }
+            $bk['autopay_plan'] = $apPlan;
         }
         // The token URL is login-free (guest-details.php verifies the HMAC), so a
         // preview must NOT carry it. Never carries the PII itself — only whether

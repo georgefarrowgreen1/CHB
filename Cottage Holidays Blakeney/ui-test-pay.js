@@ -37,6 +37,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       b.__url = url.split('/').pop().split('?')[0];
       posts.push(b);
       if (b.__url === 'pay.php' && b.action === 'summary') {
+        // Booking 13: MID-PLAN WITH A FAILED TRY — the summary carries
+        // autopayRepair (kind is 'balance', so autopayTerms is null and the
+        // consent card cannot render; the repair card is the only affordance).
+        if (b.booking_id === '13') return json({
+          ok: true, propName: 'Annex', propKey: 'jollyboat', guestName: 'Debbie McGoldrick',
+          checkIn: '2026-11-27', checkOut: '2026-11-30', currency: 'GBP', kind: 'balance',
+          total: 700, alreadyPaid: 350, balance: 350, depositPct: 25, amountDue: 350,
+          damagesDue: 0, depositCharged: 50, holdAmount: 50, holdStatus: 'charged', balanceDueDate: '2026-10-28',
+          part: { min: 20, max: 350 }, quote: '13:balance:350.00:0123456789abcdef0123456789abcdef',
+          autopayTerms: null, autopayState: 'armed', instalmentOffer: null,
+          autopayRepair: { stopped: false, why: 'The card was declined.', monthly: true, retry: '2026-08-30' },
+        });
         // Booking 12: the deposit ask when the monthly offer is ABSENT — the
         // owner's floor, or a plan that cannot fit; either way pay.php sends
         // instalmentOffer null. Checked BEFORE the generic deposit shape.
@@ -91,6 +103,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           damagesDue: 50, holdAmount: 0, holdStatus: 'none', balanceDueDate: '2030-01-15',
           part: { min: 20, max: 290 }, quote: '7:balance:340.00:0123456789abcdef0123456789abcdef',
         });
+      }
+      if (b.__url === 'pay.php' && b.action === 'update_card') {
+        return json({ ok: true, say: 'Card updated — the plan carries on, and nothing was charged today.', autopayState: 'armed' });
       }
       if (b.__url === 'pay.php' && b.action === 'charge') {
         // Echo the slice AND the arrangement like the real endpoint: a part
@@ -669,6 +684,39 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(apNo.shown && apNo.radios === 2 && !apNo.monthly, `no offer → the two-way card (${apNo.radios} ways, monthly ${apNo.monthly})`);
   ok(/before it's taken/.test(apNo.fine) && !/each payment/.test(apNo.fine),
     `…whose fine print speaks in the singular (${apNo.fine.slice(0, 60)}…)`);
+  ok(await page.evaluate(() => (document.getElementById('pay-repair') || { style: {} }).style.display === 'none'),
+    'no failed try → no repair card');
+  // THE REPAIR CARD — mid-plan with a failed try, autopayTerms null, so this
+  // is the only affordance the failure email can point at. Its save action
+  // stores a card and must touch NO money: the post is update_card with the
+  // tokenised source, never a charge.
+  await page.evaluate(() => openPayView('paytok', '13', 'balance'));
+  await page.waitForTimeout(900);
+  const rep = await page.evaluate(() => ({
+    shown: (document.getElementById('pay-repair') || { style: {} }).style.display !== 'none',
+    cap: (document.getElementById('pay-rep-cap') || {}).textContent || '',
+    body: (document.querySelector('.pay-rep-body') || {}).textContent || '',
+    btn: !!document.querySelector('[data-act="payUpdateCard"]'),
+    consent: (document.getElementById('pay-autopay') || { style: {} }).style.display === 'none',
+  }));
+  ok(rep.shown && /needs attention/.test(rep.cap), `a failed try renders the repair card (${rep.cap})`);
+  ok(/The card was declined/.test(rep.body) && /30\/08\/2026/.test(rep.body),
+    `…saying why and when the next try is (${rep.body.slice(0, 80)}…)`);
+  ok(rep.btn && rep.consent, '…with the save-card action, and no consent card beside it');
+  const repBefore = posts.length;
+  await page.evaluate(() => document.querySelector('[data-act="payUpdateCard"]').click());
+  await page.waitForTimeout(600);
+  const repPost = posts.slice(repBefore).find((p) => p.__url === 'pay.php' && p.action === 'update_card');
+  const repCharge = posts.slice(repBefore).find((p) => p.__url === 'pay.php' && p.action === 'charge');
+  ok(!!repPost && repPost.source_id === 'tok_test_1' && String(repPost.booking_id) === '13' && !!repPost.token,
+    `saving posts update_card with the tokenised source (${repPost && repPost.source_id})`);
+  ok(!repCharge, '…and NO charge — nothing is paid by saving a card');
+  const repDone = await page.evaluate(() => ({
+    cap: (document.getElementById('pay-rep-cap') || {}).textContent || '',
+    body: (document.querySelector('.pay-rep-body') || {}).textContent || '',
+  }));
+  ok(/All sorted/.test(repDone.cap) && /nothing was charged today/.test(repDone.body),
+    `…and the card replaces itself with the confirmation (${repDone.body.slice(0, 60)}…)`);
   // Back to the offered booking for the rest of the section.
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);

@@ -1053,6 +1053,30 @@ $nSingle = autopay_notice_body($ap([
     'autopay_amount' => 600.0, 'autopay_due' => '2026-10-28',
 ]), 'https://example.test/pay');
 chk('a single collection keeps its original wording', strpos($nSingle['text'], "we'll collect the remaining £600.00") !== false && strpos($nSingle['subject'], 'payment') === false);
+// THE FAILURE EMAIL — the one email in the plan's life carrying bad news, so
+// its jobs are gated in order: the booking is safe, the plan's exact state
+// (the declined row says so in place), the one-minute fix. The retry and the
+// stop must never blur: one promises a charge, the other its absence.
+$fRow = $ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
+    'autopay_instalments' => 3, 'autopay_next_at' => '2026-09-28',
+]);
+$fRetry = autopay_failure_body($fRow, 'The card was declined.', false, '2026-08-28', 175.0, 'https://example.test/pay');
+chk('a failed instalment names its position and the retry day', strpos($fRetry['subject'], "Payment 2 of 3 didn't go through") !== false && strpos($fRetry['subject'], '29/08/2026') !== false);
+chk('…leads with the booking being safe', strpos($fRetry['text'], 'Your booking is completely safe') !== false && strpos($fRetry['html'], 'Your booking is safe') !== false);
+chk('…shows the plan with the declined row saying so IN PLACE',
+    strpos($fRetry['html'], 'paid ✓') !== false && strpos($fRetry['html'], '£175.00 — declined, retrying 29/08/2026') !== false && strpos($fRetry['html'], '· final') !== false);
+chk('…offers the fix and the way out, fee-free', strpos($fRetry['html'], 'Update your card') !== false && strpos($fRetry['text'], 'No fees either way') !== false);
+chk('…and says what happens if it keeps failing', strpos($fRetry['text'], 'ordinary balance reminders take over') !== false);
+$fStop = autopay_failure_body($fRow, 'The card has expired.', true, '2026-08-28', 175.0, 'https://example.test/pay');
+chk('a STOPPED plan promises no further charge', strpos($fStop['subject'], "let's sort the card") !== false && strpos($fStop['text'], "We've stopped trying") !== false);
+chk('…and its declined row carries no retry date', strpos($fStop['html'], 'retrying') === false);
+$fSingle = autopay_failure_body($ap([
+    'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
+    'autopay_amount' => 600.0, 'autopay_due' => '2026-10-28',
+]), 'The card was declined.', false, '2026-08-28', 600.0, 'https://example.test/pay');
+chk('a single collection failure carries no schedule rows', strpos($fSingle['subject'], "Your automatic payment didn't go through") !== false && strpos($fSingle['html'], 'Payment 1 —') === false);
 // The summary sends the offer the consent card renders from.
 chk('the pay summary sends the monthly offer',
     strpos((string) file_get_contents(__DIR__ . '/pay.php'), "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);

@@ -3256,6 +3256,61 @@ a.card {
   font-size: 0.76rem;
   color: var(--text-muted);
 }
+/* THE PLAN IN TROUBLE (My Stays) — warn, never danger: the booking is safe
+   and the fix is a minute. The fix button is the block's one loud control. */
+.hub-plan-trouble {
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+}
+.hub-plan-sum-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.hub-plan-why {
+  margin: 8px 0 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-light);
+}
+.ap-note-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.hub-plan-fix {
+  width: 100%;
+  margin-top: 10px;
+  font-weight: 600;
+}
+/* THE REPAIR CARD (pay screen) — stores a card, touches no money. */
+.pay-repair {
+  margin: 0 0 14px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 34%, transparent);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+.pay-repair .pay-sec-cap {
+  color: var(--warn-text);
+}
+.pay-repair .pay-rep-ok {
+  color: var(--ok-text);
+}
+.pay-rep-body {
+  margin: 6px 0 10px;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-light);
+}
+.pay-rep-btn {
+  width: 100%;
+  padding: 12px;
+  font-weight: 600;
+}
+.pay-rep-fine {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
 .pay-done,
 .pay-error {
   text-align: center;
