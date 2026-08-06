@@ -2216,6 +2216,38 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('…with the timing in the sub, where the dates already are', /^Arriving in \d+ days · /.test(bal[0].sub), bal[0].sub);
         check('…and leave the one 60 days out alone (the 21-day window)', !bal.some((d) => /Later Guest/.test(d.label)));
 
+        // A2) THE PLAN DECIDES, NOT THE CALENDAR ALONE (owner screenshots, 06
+        // Aug: Today said "£340.00 to collect — CHASE" of a guest whose custom
+        // plan put the balance a week away and whose own hub was asking £47.50
+        // of deposit). Three cases, each impossible under the old flat rule.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[
+              {id:73,dbId:73,name:'Custom Ahead',email:'ca@x.co',checkIn:'${dFut(21)}',checkOut:'${dFut(24)}',adults:2,children:0,payment:'deposit',depositPaid:100,holdStatus:'none',damagesDeposit:50,balanceDueDate:'${dFut(8)}',
+               agreedPrice:{total:390,perNight:376.25,nights:3,txnFee:13.75,damagesDeposit:50}},
+              {id:74,dbId:74,name:'Custom Missed',email:'cm@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:200,balanceDueDate:'${dFut(-2)}',
+               agreedPrice:{total:600,perNight:580,nights:4,txnFee:20}}];`, ctx);
+        const balPlan = ctx.chbDuties().filter((d) => d.kind === 'balance');
+        check('a custom date still AHEAD chases the deposit stage — the figure the button would send',
+            balPlan.some((d) => d.label === '£47.50 deposit to collect from Custom Ahead'),
+            balPlan.map((d) => d.label).join(' | '));
+        const caSub = (balPlan.find((d) => /Custom Ahead/.test(d.label)) || { sub: '' }).sub;
+        check('…with the balance and ITS OWN due date as trailing context',
+            /· balance £292\.50 due \d{2}\/\d{2}\/\d{4}$/.test(caSub), caSub);
+        check('a custom date already MISSED is overdue even 60 days from arrival',
+            balPlan.some((d) => d.label === '£400.00 overdue from Custom Missed'),
+            balPlan.map((d) => d.label).join(' | '));
+        check('…and reads as red', (balPlan.find((d) => /Custom Missed/.test(d.label)) || {}).sev === 'danger');
+        // A settled deposit whose custom balance date is still ahead is due
+        // NOTHING today — 10 days out, squarely inside the old 21-day gate, it
+        // must be the quiet owed-later line and never a chase.
+        vm.runInContext(`dbBookings.jollyboat=[
+              {id:75,dbId:75,name:'Settled Ahead',email:'sa@x.co',checkIn:'${dFut(10)}',checkOut:'${dFut(13)}',adults:2,children:0,payment:'deposit',depositPaid:200,holdStatus:'charged',damagesDeposit:50,balanceDueDate:'${dFut(5)}',
+               agreedPrice:{total:500,perNight:480,nights:3,txnFee:20,damagesDeposit:50}}];`, ctx);
+        const dutyAll = ctx.chbDuties().map((d) => d.label).join(' | ');
+        check('a settled deposit with the balance not yet due is NOT chased at 10 days out', !/Settled Ahead/.test(dutyAll), dutyAll);
+        const laterPlan = ctx.chbOwedLater();
+        check('…the quiet owed-later line holds it instead', laterPlan.n === 1 && Math.abs(laterPlan.total - 300) < 0.005, `${laterPlan.n} · ${laterPlan.total}`);
+
         // B) WHAT IS OWED INCLUDES THE DEPOSIT THAT HAS NOT BEEN TAKEN YET.
         // Reported from the live back office: the booking's own row said "£340.00
         // due" while Today's header and the bookings summary both said "£290 to
