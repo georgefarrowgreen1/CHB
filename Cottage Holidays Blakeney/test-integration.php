@@ -257,9 +257,18 @@ it_check('public enquiry submit succeeds', $r['code'] === 200 && !empty($r['json
 // Book by the night before, as a minimum: a same-day check-in is refused for
 // guest submissions. The picker enforces this client-side; the endpoint is the
 // gate that matters — a stale tab or a direct POST is exactly what it is for.
+//
+// TODAY MEANS THE APP'S TODAY, NOT THE HARNESS'S. This CLI runs on UTC while
+// the server runs Europe/London, so a bare date('Y-m-d') here is the server's
+// YESTERDAY between 23:00 and midnight UTC — the enquiry then trips the
+// past-date guard first and this check reads a refusal it never meant to test.
+// Right all day and wrong for one hour a night, the ukShiftDays defect exactly;
+// caught by running in that hour. Ask the same clock the server asks.
+$ukToday = (new DateTime('now', new DateTimeZone('Europe/London')))->format('Y-m-d');
+$ukPlus = fn($n) => (new DateTime($ukToday, new DateTimeZone('Europe/London')))->modify("+$n days")->format('Y-m-d');
 $r = http($guest, 'POST', '/enquiries.php', [
     'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Sam Sameday',
-    'check_in' => date('Y-m-d'), 'check_out' => date('Y-m-d', strtotime('+3 days')),
+    'check_in' => $ukToday, 'check_out' => $ukPlus(3),
     'adults' => 2, 'children' => 0, 'email' => 'sam.sameday@gmail.com',
     'message' => 'Tonight please.', 'terms_accepted' => 1, 'no_dogs' => 1,
 ]);
@@ -768,7 +777,10 @@ it_check('a different date range is still a separate waitlist entry', $wcount2 =
 // Book by the night before: a dated join starting today can only ever notify
 // the guest about dates the enquiry form refuses, so it is refused up front.
 // An OPEN-date join ("any time") carries no check-in and stays allowed.
-$r = http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => date('Y-m-d'), 'check_out' => date('Y-m-d', strtotime('+3 days'))]));
+// The app's today, not the harness's — see the $ukToday note in §5. (This one
+// survived the mismatch by luck: waitlist's guard is `<=`, so the server's
+// yesterday was refused too — by the wrong branch of the same rule.)
+$r = http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => $ukToday, 'check_out' => $ukPlus(3)]));
 it_check(
     'a same-day dated waitlist join is refused with the notice rule',
     $r['code'] === 400 && str_contains((string) ($r['json']['error'] ?? ''), 'earliest check-in is tomorrow'),

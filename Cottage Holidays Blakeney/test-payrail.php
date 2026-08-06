@@ -1538,6 +1538,45 @@ chk('the email is told what really went back', strpos($bkSrc3, "'deposit_refunde
 chk('the owner gets an alert, not a toast', preg_match('/r\.deposit_owed > 0\) \{\s*await glassAlert/s', $admSrc3) === 1);
 chk('...that names the figure', strpos($admSrc3, 'refundable deposit could NOT be returned automatically') !== false);
 
+// THE PLAN IS IN THE ASK, ON BOTH RAILS (owner's ask, 06 Aug: "it should still
+// send emails regarding the payment plan selected, just not ask for payment via
+// card"). The deposit request said what to pay now and what the stay costs and
+// never WHEN the rest was wanted — worst on the bank rail, where the monthly
+// offer is deliberately suppressed, so a transfer guest was the one party to the
+// arrangement never told its date. Driven through the REAL composer.
+$planB = [
+    'name' => 'Cash Plan', 'email' => 'cp@x.co', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'check_in' => '2026-09-10', 'check_out' => '2026-09-13', 'kind' => 'deposit',
+    'amount' => 147.50, 'total' => 440.00, 'damages' => 50.00, 'deposit_charged' => 0, 'paid' => 0,
+    'payment_method' => 'Bank transfer', 'balance_due_date' => '2026-08-14', 'instalment_offer' => null,
+];
+$planM = payment_request_body($planB, 'https://x/pay', '#b08d57', "Barclays\n20-00-00\n12345678");
+chk('a bank-rail deposit ask states when the rest is due',
+    strpos($planM['text'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
+chk('...in the HTML half too', strpos($planM['html'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
+chk('...while still asking by BANK TRANSFER, never a card link',
+    strpos($planM['text'], 'bank transfer') !== false && strpos($planM['text'], 'securely by card') === false);
+// The CARD rail gets the same plan sentence — the schedule is the booking's, not
+// the payment method's; only the how-to-pay half follows the rail.
+$planCard = payment_request_body(['payment_method' => 'card'] + $planB, 'https://x/pay', '#b08d57', '');
+chk('the card rail states the same plan sentence',
+    strpos($planCard['text'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
+chk('...and still offers the card link', strpos($planCard['text'], 'securely by card') !== false);
+// Refusals: nothing left after this payment (a balance ask settles the stay), and
+// no date on file — a sentence with a blank date is worse than no sentence.
+$planBal = ['kind' => 'balance', 'amount' => 292.50, 'damages' => 0, 'paid' => 147.50] + $planB;
+chk('a balance ask claims no remainder (that payment settles it)',
+    strpos(payment_request_body($planBal, 'https://x/pay', '#b08d57', '')['text'], 'The remaining') === false);
+$planNoDate = ['balance_due_date' => ''] + array_diff_key($planB, ['balance_due_date' => 1]);
+chk('no date on file → no half-finished sentence',
+    strpos(payment_request_body($planNoDate, 'https://x/pay', '#b08d57', '')['text'], 'is due by') === false);
+// THE WIRING: the composers above are handed a date by the test itself, so the
+// payload simply not carrying one would leave every check above green while the
+// real emails stayed silent — the helper-tested-alone trap this file exists for.
+$mailPlanW = (string) file_get_contents(__DIR__ . '/mailer.php');
+chk('request_booking_payment sends the booking-derived due date',
+    preg_match("/'balance_due_date' => function_exists\('booking_balance_due_date'\) \? booking_balance_due_date\(\\\$b\)/", $mailPlanW) === 1);
+
 // OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug): the weekly
 // digest's "Balances owed" line must skip the cash/bank rail exactly as
 // Today's strip does. A wiring scan, because owner-digest is a request script

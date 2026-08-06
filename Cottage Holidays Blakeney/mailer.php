@@ -1833,6 +1833,9 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     // The CTA quotes the SUM THE GUEST SENDS, not the rental half of it — the
     // deposit sentence beneath explains the split.
     $cta = payment_cta($rail, $payUrl, $bacs, 'To secure your stay, please pay ' . $money($f['chargedNow']));
+    // …and WHEN the rest is wanted (payment_plan_line — see its note: the
+    // schedule is the booking's, so this is stated on both rails).
+    $planLine = payment_plan_line($f['restAfter'], $b['balance_due_date'] ?? '', $money);
 
     // THE MONTHLY OPTION, previewed as the SCHEDULE the checkout will offer —
     // guests deciding whether they can afford to book learn it exists here,
@@ -1874,6 +1877,7 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
         // What they have ALREADY put down — a balance request that never says so
         // leaves the guest to work it out from two other numbers.
         ($f['paidLine'] !== '' ? ' ' . $f['paidLine'] : '') .
+        ($planLine !== '' ? ' ' . $planLine : '') .
         $offerText .
         "\n\nYou can reply to this email with any questions.\n\n" .
         'Cottage Holidays Blakeney';
@@ -1903,6 +1907,7 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
             )
             : '') .
         $cta['html'] .
+        ($planLine !== '' ? email_p($esc($planLine), true) : '') .
         $offerHtml .
         email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Pay your ' . $what . ' for ' . $prop, $inner, $accent);
@@ -1986,6 +1991,11 @@ function request_booking_payment($b, $kind, $reminder = false)
         // Carried so the email can pick the guest's rail (payment_rail): someone
         // who paid their deposit in cash gets bank details, not a card link.
         'payment_method' => $b['payment_method'] ?? '',
+        // WHEN the rest is wanted — the booking's own derived date, the same one
+        // the confirmation and the hub quote, so the deposit ask states the plan
+        // the owner agreed rather than leaving it in the back office. Read by
+        // payment_plan_line; rail-agnostic (see its note).
+        'balance_due_date' => function_exists('booking_balance_due_date') ? booking_balance_due_date($b) : ($b['balance_due_date'] ?? ''),
         // THE MONTHLY OPTION IS MENTIONED BEFORE CHECKOUT — derived from the
         // same booking_instalment_offer the pay screen shows, so the email can
         // never promise a plan the checkout won't offer, and the owner's floor
@@ -2075,7 +2085,32 @@ function payment_money_facts($b, $whatLabel = 'balance')
                 . ($depCharged > 0.005 ? ' (including your ' . $money($depCharged) . ' refundable deposit)' : '')
                 . '.'
             : '',
+        // What is STILL to come after this payment — the rental remainder, which
+        // is what the booking's plan puts a date on. Zero on a balance ask (that
+        // payment settles the stay), positive on a deposit ask.
+        'restAfter' => round($rentalTotal - $paidRental - $due, 2),
     ];
+}
+
+// THE PLAN, SAID IN THE EMAIL THAT ASKS FOR THE DEPOSIT. The ask told the guest
+// what to pay now and what the stay costs, and never when the rest was wanted —
+// so a plan the owner had agreed lived only in the back office, exactly the gap
+// the confirmation's own due-by line closed (mailer 1523). It matters most on
+// the BANK rail: a card guest is at least offered the monthly schedule at
+// checkout, while the offer is deliberately suppressed for a guest paying by
+// transfer, so without this they were the one party to the arrangement never
+// told its date. Rail-agnostic by design — the schedule is the booking's, not
+// the payment method's; only the HOW-TO-PAY half follows the rail.
+// The date is the booking's own (custom date, else check-in minus the window),
+// so this can never quote a different day from the chaser that follows it.
+function payment_plan_line($restAfter, $dueDate, $money)
+{
+    $rest = round((float) $restAfter, 2);
+    $due = substr((string) $dueDate, 0, 10);
+    if ($rest <= 0.005 || $due === '') {
+        return '';
+    }
+    return 'The remaining ' . $money($rest) . ' is due by ' . uk_date($due) . '.';
 }
 
 // A gentler nudge for a balance that's been requested but not yet paid, sent in
