@@ -16295,14 +16295,11 @@ function renderPricing() {
 // asking £47.50 of deposit (owner's screenshots, 06 Aug). The flat
 // 21-days-to-arrival gate also hid a custom date already missed on a far-off
 // stay. Null when nothing is owed or the stay is ancient.
-// A booking whose money the owner manages PERSONALLY — a recorded off-card
-// payment method (cash, bank transfer, cheque…). The owner's ask (06 Aug):
-// deposits and pricing for these guests are discussed externally, so the app
-// must not VOLUNTEER what they owe — no chase duty, no owed-later line, no
-// share of the "to collect" figures. The records stay: the hub, the Payments
-// screens and a direct "who owes me money" question still show the full money
-// state. Mirrors payment_rail (db.php), including its one load-bearing edge:
-// EMPTY means card — a guest who has paid nothing yet keeps the ordinary chase.
+// Money the owner manages PERSONALLY — a recorded off-card method (cash,
+// bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
+// volunteer what they owe — no duty, no owed-later, no "to collect" share).
+// Records and direct answers keep the full state. Mirrors payment_rail incl.
+// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase.
 function bookingOwnerArranged(b) {
     const m = String((b && b.paymentMethod) || '').trim();
     return m !== '' && !/card|square/i.test(m);
@@ -16677,8 +16674,8 @@ function todayOpsLine() {
             }
             if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
                 // THE HEADER LINE the owner reads first — deposit-aware, so it agrees
-                // with the bookings summary below it and with each booking's own row.
-                // Owner-arranged (cash/bank) money is never volunteered here.
+                // with the bookings summary below it and with each booking's own row;
+                // owner-arranged money is never volunteered.
                 const ps = bookingDue(k, b);
                 if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
             }
