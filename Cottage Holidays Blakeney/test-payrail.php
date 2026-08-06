@@ -1538,6 +1538,26 @@ chk('the email is told what really went back', strpos($bkSrc3, "'deposit_refunde
 chk('the owner gets an alert, not a toast', preg_match('/r\.deposit_owed > 0\) \{\s*await glassAlert/s', $admSrc3) === 1);
 chk('...that names the figure', strpos($admSrc3, 'refundable deposit could NOT be returned automatically') !== false);
 
+// OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug): the weekly
+// digest's "Balances owed" line must skip the cash/bank rail exactly as
+// Today's strip does. A wiring scan, because owner-digest is a request script
+// (auth + send inline) that no pure-function test can drive: the guard has to
+// sit INSIDE the owed loop, between the fetch and the sum.
+$digW = (string) file_get_contents(__DIR__ . '/owner-digest.php');
+chk('the digest owed query fetches the payment method',
+    strpos($digW, 'SELECT $totalExpr AS total, deposit_paid, payment_method FROM bookings') !== false);
+chk('...and skips the cash/bank rail before summing',
+    preg_match('/foreach \(\$s->fetchAll\(\) as \$b\) \{[\s\S]{0,600}payment_rail\(\$b\) !== .card.[\s\S]{0,120}continue;[\s\S]{0,600}\$owedSum \+= \$out;/', $digW) === 1);
+// And the CLIENT mirror (bookingOwnerArranged, admin.js — the duty strip, the
+// header line, the filter) matches payment_rail's card pattern BYTE FOR BYTE:
+// a hand-typed "Visa" must not read as card on the server and cash in the app.
+$dbRail = (string) file_get_contents(__DIR__ . '/db.php');
+preg_match('#function payment_rail[\s\S]{0,400}preg_match\(\'/(.+?)/\', \$m\)#', $dbRail, $mSrv);
+$admRail = (string) file_get_contents(__DIR__ . '/admin.js');
+preg_match('#function bookingOwnerArranged[\s\S]{0,700}!/(.+?)/i\.test\(m\)#', $admRail, $mCli);
+chk('payment_rail and bookingOwnerArranged share ONE card pattern',
+    !empty($mSrv[1]) && !empty($mCli[1]) && $mSrv[1] === $mCli[1]);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

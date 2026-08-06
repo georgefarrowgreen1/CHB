@@ -16299,10 +16299,12 @@ function renderPricing() {
 // bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
 // volunteer what they owe — no duty, no owed-later, no "to collect" share).
 // Records and direct answers keep the full state. Mirrors payment_rail incl.
-// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase.
+// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase. The
+// card pattern is payment_rail's, byte for byte (test-payrail holds them in
+// step): a hand-typed "Visa" must not read as card on the server and cash here.
 function bookingOwnerArranged(b) {
     const m = String((b && b.paymentMethod) || '').trim();
-    return m !== '' && !/card|square/i.test(m);
+    return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
 }
 function chbChaseInfo(k, b) {
     if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
