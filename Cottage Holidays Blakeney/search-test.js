@@ -2248,6 +2248,27 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const laterPlan = ctx.chbOwedLater();
         check('…the quiet owed-later line holds it instead', laterPlan.n === 1 && Math.abs(laterPlan.total - 300) < 0.005, `${laterPlan.n} · ${laterPlan.total}`);
 
+        // A3) OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug:
+        // "if someone pays cash deposit don't show notification or owes — we
+        // will have discussed with them externally"). A recorded off-card
+        // method means the owner runs that guest's money personally: no chase,
+        // no owed-later line, no share of the greeting's "to collect". An
+        // EMPTY method stays card (nothing paid yet) and keeps the chase —
+        // payment_rail's one load-bearing edge, mirrored.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[{id:76,dbId:76,name:'Cash Guest',email:'cg@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(8)}',adults:2,children:0,payment:'deposit',depositPaid:100,paymentMethod:'Bank transfer',
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        check('a cash/bank-rail guest owing money is never a chase duty',
+            !ctx.chbDuties().some((d) => d.kind === 'balance'),
+            ctx.chbDuties().filter((d) => d.kind === 'balance').map((d) => d.label).join(' | '));
+        check('…and never in the quiet owed-later count', ctx.chbOwedLater().n === 0, JSON.stringify(ctx.chbOwedLater()));
+        check('…and out of the greeting\'s "to collect"', !/to collect/.test(ctx.chbNlgBrief() || ''), ctx.chbNlgBrief());
+        // The SAME booking with the method cleared: nothing recorded means the
+        // card rail — the guest simply hasn't paid yet — so the chase stays.
+        vm.runInContext(`dbBookings.jollyboat[0].paymentMethod='';`, ctx);
+        check('…while an EMPTY method keeps the ordinary chase',
+            ctx.chbDuties().some((d) => d.kind === 'balance' && /Cash Guest/.test(d.label)));
+
         // B) WHAT IS OWED INCLUDES THE DEPOSIT THAT HAS NOT BEEN TAKEN YET.
         // Reported from the live back office: the booking's own row said "£340.00
         // due" while Today's header and the bookings summary both said "£290 to

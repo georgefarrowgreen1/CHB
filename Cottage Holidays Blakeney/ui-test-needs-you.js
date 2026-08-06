@@ -44,6 +44,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         mkB(1, '21a', 'Sarah Pemberton', 3, 7, 'deposit', 120),      // chase: arrives in 3 days
         mkB(2, 'jollyboat', 'Emma Clarke', -6, -2, 'paid', 0, 'charged'), // deposit to return
         mkB(3, 'pimpernel', 'Tom Hardy', 40, 44, 'unpaid', 0),        // too far out — no row
+        // Owner-arranged: a recorded off-card method means the money is
+        // discussed personally — owing, arriving soon, and NEVER nagged.
+        { ...mkB(4, 'jollyboat', 'Cash Colin', 5, 9, 'deposit', 100), payment_method: 'Bank transfer' },
       ] });
     }
     if (url.includes('enquiries.php')) return json({ enquiries: [
@@ -101,27 +104,37 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // the deposit-aware figures, and must exceed the rental-only sum — otherwise a
   // fixture change silently re-pins whichever total happens to print.
   const sums = await page.evaluate(() => {
-    let due = 0, rent = 0;
+    let due = 0, rent = 0, withCash = 0;
     const today = todayDashed();
     Object.keys(dbBookings).forEach((k) => (dbBookings[k] || []).forEach((b) => {
       if ((b.checkOut || '') < today) return;
       const d = bookingDue(k, b), r = paymentSummary(k, b);
+      if (!d.fullyPaid) withCash += Math.max(0, d.balance || 0);
+      // Owner-arranged (off-card) money is never volunteered — the expected
+      // sums mirror that rule, and the withCash figure above proves the line
+      // is EXCLUDING rather than the fixture carrying nothing to exclude.
+      if (bookingOwnerArranged(b)) return;
       if (!d.fullyPaid) due += Math.max(0, d.balance || 0);
       if (!r.fullyPaid) rent += Math.max(0, r.balance || 0);
     }));
-    return { due: Math.round(due), rent: Math.round(rent) };
+    return { due: Math.round(due), rent: Math.round(rent), withCash: Math.round(withCash) };
   });
   ok(sums.due > sums.rent, `the fixture really has an untaken deposit to find (due ${sums.due} > rental ${sums.rent})`);
+  ok(sums.withCash > sums.due, `…and owner-arranged money to exclude (all ${sums.withCash} > counted ${sums.due})`);
   ok(ops.includes('£' + sums.due.toLocaleString('en-GB') + ' to collect'),
     `the day line quotes the deposit-aware total (${ops})`);
   ok(!ops.includes('£' + sums.rent.toLocaleString('en-GB') + ' to collect'),
     '…and not the rental-only one it used to');
+  ok(!ops.includes('£' + sums.withCash.toLocaleString('en-GB') + ' to collect'),
+    '…and never the owner-arranged money (Cash Colin pays how you agreed with him)');
   const needsPay = await page.evaluate(() => {
     try { openBookings(); bookingsSetFilter('needspay'); } catch (e) {}
-    return document.querySelectorAll('#bookings-list .bk-row').length;
+    return [...document.querySelectorAll('#bookings-list .bk-row')].map((r) => r.textContent || '');
   });
-  ok(needsPay >= 1, `…and the list its button opens contains that booking (${needsPay} rows)`);
+  ok(needsPay.length >= 1 && needsPay.some((t) => /Sarah Pemberton/.test(t)), `…and the list its button opens contains that booking (${needsPay.length} rows)`);
+  ok(!needsPay.some((t) => /Cash Colin/.test(t)), 'the owner-arranged booking sits the needs-payment filter out');
   ok(!s.labels.some((l) => /Tom Hardy/.test(l)), 'far-future unpaid booking not nagged');
+  ok(!s.labels.some((l) => /Cash Colin/.test(l)), 'owner-arranged (bank/cash) guest owing money is not nagged');
   ok(s.sevs[0] === 'danger' && s.sevs[1] === 'danger', 'severities: automation + 2-day-old enquiry are danger');
 
   console.log('2. capped at 4 + expand');

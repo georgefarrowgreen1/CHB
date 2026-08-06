@@ -3177,7 +3177,7 @@ function chbNlgBrief() {
             // A throw here would drop this booking's balance from the day's "to
             // collect" total — the owner would read a figure that's quietly too
             // low — so record it instead of losing it.
-            try { const ps = bookingDue(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
+            try { const ps = bookingDue(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today && !bookingOwnerArranged(b)) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
         }));
         Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
             if (isOtaBlock(bl)) { if (bl.checkIn === today) arr++; if (bl.checkOut === today) dep++; }
@@ -9301,8 +9301,9 @@ function renderBookings() {
         if (f === 'upcoming') return (b.checkOut || '') >= today;
         if (f === 'past') return (b.checkOut || '') < today;
         // Deposit-aware, so this list holds exactly the bookings the header's
-        // "£X to collect" button just counted — it links straight here.
-        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && (b.checkOut || '') >= today;
+        // "£X to collect" button just counted — it links straight here, which
+        // is why owner-arranged (cash/bank) bookings sit this filter out too.
+        if (f === 'needspay') return !bookingDue(propKey, b).fullyPaid && !bookingOwnerArranged(b) && (b.checkOut || '') >= today;
         // WHICH BOOKINGS ARE NOT ON THE STANDARD SCHEDULE? The override columns
         // were read only inside the hub's own plan panel, so a mistyped plan was
         // invisible until the money came out wrong. Same test the panel uses to
@@ -9322,9 +9323,10 @@ function renderBookings() {
         // The summary carries the money too: what these rows still owe.
         let owed = 0;
         rows.forEach(({ propKey, b }) => {
-            if ((b.checkOut || '') >= today) {
+            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
                 // The deposit-aware figure, so this agrees with each row's own
-                // "£X due" chip instead of quoting the rental balance alone.
+                // "£X due" chip instead of quoting the rental balance alone —
+                // and skips owner-arranged money like the header line above it.
                 const due = bookingDue(propKey, b);
                 if (!due.fullyPaid) owed += Math.max(0, due.balance || 0);
             }
@@ -10427,8 +10429,7 @@ function renderBookingHub() {
 // whether they asked for texts (sms_opt_in — stored since the enquiry form
 // gained the box, and shown nowhere until this row). Read-only by design.
 function hubChipsHtml(b) {
-    const method = (b.paymentMethod || '').trim();
-    const rail = method === '' || /card|square/i.test(method) ? '💳 Card rail' : '🏦 Bank/cash rail';
+    const rail = bookingOwnerArranged(b) ? '🏦 Bank/cash rail' : '💳 Card rail';
     // Status reads as a DOT — green done, red outstanding (owner's ask) — with
     // the words still carrying the state, so colour reinforces rather than
     // being the sole channel. The rail chip is a category, not a status: no dot.
@@ -16294,7 +16295,20 @@ function renderPricing() {
 // asking £47.50 of deposit (owner's screenshots, 06 Aug). The flat
 // 21-days-to-arrival gate also hid a custom date already missed on a far-off
 // stay. Null when nothing is owed or the stay is ancient.
+// A booking whose money the owner manages PERSONALLY — a recorded off-card
+// payment method (cash, bank transfer, cheque…). The owner's ask (06 Aug):
+// deposits and pricing for these guests are discussed externally, so the app
+// must not VOLUNTEER what they owe — no chase duty, no owed-later line, no
+// share of the "to collect" figures. The records stay: the hub, the Payments
+// screens and a direct "who owes me money" question still show the full money
+// state. Mirrors payment_rail (db.php), including its one load-bearing edge:
+// EMPTY means card — a guest who has paid nothing yet keeps the ordinary chase.
+function bookingOwnerArranged(b) {
+    const m = String((b && b.paymentMethod) || '').trim();
+    return m !== '' && !/card|square/i.test(m);
+}
 function chbChaseInfo(k, b) {
+    if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
     const gt = bookingDue(k, b);
     if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
     const today = todayDashed();
@@ -16661,9 +16675,10 @@ function todayOpsLine() {
                 departures++;
                 outToday = true;
             }
-            if ((b.checkOut || '') >= today) {
+            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
                 // THE HEADER LINE the owner reads first — deposit-aware, so it agrees
                 // with the bookings summary below it and with each booking's own row.
+                // Owner-arranged (cash/bank) money is never volunteered here.
                 const ps = bookingDue(k, b);
                 if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
             }
