@@ -100,9 +100,16 @@ try {
 $owedCount = 0;
 $owedSum = 0.0;
 try {
-    $s = db()->query("SELECT $totalExpr AS total, deposit_paid FROM bookings
+    $s = db()->query("SELECT $totalExpr AS total, deposit_paid, payment_method FROM bookings
                       WHERE payment <> 'paid' AND check_in >= CURDATE()");
     foreach ($s->fetchAll() as $b) {
+        // Owner-arranged money (the cash/bank rail) is never volunteered — the
+        // same rule Today's strip and header follow (owner's ask, 06 Aug):
+        // those deposits and prices are discussed personally, so the digest's
+        // "Balances owed" line must not count them either.
+        if (payment_rail($b) !== 'card') {
+            continue;
+        }
         $out = round((float) $b['total'] - (float) $b['deposit_paid'], 2);
         if ($out > 0.009) {
             $owedCount++;
