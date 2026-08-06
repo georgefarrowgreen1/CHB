@@ -16286,6 +16286,40 @@ function renderPricing() {
 //  "O'Brien" would have arrived pre-escaped in a context that escapes again. Escaping
 //  belongs at the render boundary, and now happens there.
 // ============================================================
+// ONE decision about a booking's chase — is money due NOW under its OWN plan,
+// at which stage, for how much. chbDuties and chbOwedLater both read it, so
+// the two surfaces cannot disagree. PLAN-AWARE via the hub's payask
+// (hubAskKind/hubAskAmount): Today said "£340.00 to collect — CHASE" of a
+// guest whose custom plan put the balance a week away and whose own hub was
+// asking £47.50 of deposit (owner's screenshots, 06 Aug). The flat
+// 21-days-to-arrival gate also hid a custom date already missed on a far-off
+// stay. Null when nothing is owed or the stay is ancient.
+function chbChaseInfo(k, b) {
+    const gt = bookingDue(k, b);
+    if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
+    const today = todayDashed();
+    const t0 = dpParse(today).getTime();
+    const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
+    const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / 86400e3) : 0;
+    if (outAgo > 14) return null; // an ancient never-reconciled booking must not nag forever
+    const past = !!b.checkOut && b.checkOut <= today;
+    const rps = paymentSummary(k, b);
+    const kind = hubAskKind(gt, past, b, rps);
+    const amount = kind === 'deposit' ? hubAskAmount(b, rps, gt, 'deposit') : gt.balance;
+    // Due NOW: the balance once its own window opens (or the stay is over);
+    // the deposit remainder from booking day. NB hubAskKind answers 'balance'
+    // for a settled deposit OUTSIDE the window too — real money, NOT yet due:
+    // exactly the distinction the strip was missing.
+    const due = kind === 'balance' ? bookingInBalanceWindow(b) || past : amount > 0.5;
+    // A CUSTOM date passed is overdue however far off the stay; the standard
+    // schedule keeps its original meaning (stay begun or over, still owing).
+    const late = past || days < 0
+        || !!(b.balanceDueDate && kind === 'balance' && due && today > b.balanceDueDate);
+    // Chased when due now AND near arrival (the considered 21-day rule) — or
+    // the custom date has arrived, which the arrival window cannot see.
+    const chase = due && (days <= 21 || !!(b.balanceDueDate && bookingInBalanceWindow(b)));
+    return { chase, due, kind, amount, days, late, dueDate: bookingPlanDueDate(b), gt, k, b };
+}
 function chbDuties() {
     const out = [];
     const today = todayDashed();
@@ -16415,21 +16449,16 @@ function chbDuties() {
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
-            // Balances: ≤21 days before arrival AND — the worst case the old
-            // `checkIn >= today` guard silently dropped — a guest already arrived
-            // (or gone up to 14 days) still owing. Bounded so an ancient
-            // never-reconciled booking can't nag forever; floored like family 0g.
-            const ps = bookingDue(k, b);
-            if (!ps.fullyPaid && ps.balance > 0.5 && b.checkIn) {
-                const days = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
-                const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / dayMs) : 0;
-                if (days <= 21 && outAgo <= 14) chase.push({ days, b, k, ps });
-            }
+            // Balances: what the booking's OWN plan says is due now
+            // (chbChaseInfo). The old rule was date-only (≤21 days to arrival)
+            // and quoted the whole outstanding whatever the plan said.
+            const info = chbChaseInfo(k, b);
+            if (info && info.chase) chase.push(info);
         }),
     );
     chase
         .sort((a, b) => a.days - b.days)
-        .forEach(({ days, b, k, ps }) => {
+        .forEach(({ days, b, k, kind: stage, amount, late, dueDate, gt }) => {
             const gone = (b.checkOut || '') < today;
             // THE MONEY LEADS. This row used to open with the arrival — "Bob Carter
             // arrives today — £400.00 to collect" — which put the figure last on a card
@@ -16443,17 +16472,25 @@ function chbDuties() {
             // The label still runs to two lines at 390px with a full name on it, which
             // is within the design (.cmdk-row-label clamps at two) and beats saving
             // 21px: "from Sarah" is not a row you can act on if you have two Sarahs.
-            const late = gone || days < 0;
             const when = days === 0 ? 'Arriving today' : days === 1 ? 'Arriving tomorrow'
                 : days > 1 ? `Arriving in ${days} days` : gone ? `Left ${fmtDate(b.checkOut)}` : 'Here now';
             // The FULL name, not chbSayFirst's first name. This is a work item, not
             // prose: two guests called Sarah make "from Sarah" a row you cannot act on
             // without opening it, and the surname costs nothing the label cannot afford.
             const who = b.name || 'a guest';
+            // The DEPOSIT stage quotes what a chase would actually send — the
+            // payask figure-follows-the-stage rule, on the strip; the balance
+            // still to come rides the sub with ITS OWN due date (may clip).
+            const label = late ? `${gbp(amount)} overdue from ${who}`
+                : stage === 'deposit' ? `${gbp(amount)} deposit to collect from ${who}`
+                    : `${gbp(amount)} to collect from ${who}`;
+            const balLater = stage === 'deposit' && dueDate && gt.balance - amount > 0.5
+                ? ` · balance ${gbp(Math.round((gt.balance - amount) * 100) / 100)} due ${fmtDate(dueDate)}`
+                : '';
             out.push({
-                kind: 'balance', sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
-                label: late ? `${gbp(ps.balance)} overdue from ${who}` : `${gbp(ps.balance)} to collect from ${who}`,
-                sub: `${when} · ${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}`,
+                kind: 'balance', sev: late || days <= 7 ? 'danger' : 'warn', ic: 'money',
+                label,
+                sub: `${when} · ${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}${balLater}`,
                 act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
                 board: 'money', scope: 'money',
                 run: () => { closeCmdK(); openBookingHub(b.id); },
@@ -16512,21 +16549,19 @@ function chbDuties() {
     });
     return out;
 }
-// Money owed that is NOT yet a duty — outside the 21-day window Today chases in.
-// The pop-out used to total this in with everything else, which is where its £955
-// came from against Today's £440. It does not vanish now, it stops shouting: one
-// quiet line saying what is owed but not yet due.
+// Money owed that is NOT yet a duty — outside the 21-day window, or not yet
+// due under the booking's OWN plan (custom date ahead, deposit settled). The
+// pop-out used to total this in with everything else (its £955 against
+// Today's £440); it stops shouting, not existing. Deliberately the COMPLEMENT
+// of the chase list, read off the same chbChaseInfo decision, so a booking
+// cannot fall between the two.
 function chbOwedLater() {
-    const today = todayDashed();
-    const t0 = dpParse(today).getTime();
     let total = 0, n = 0;
     try {
         Object.keys(dbBookings || {}).forEach((k) =>
             (dbBookings[k] || []).forEach((b) => {
-                const ps = bookingDue(k, b);
-                if (ps.fullyPaid || !(ps.balance > 0.5) || !b.checkIn) return;
-                const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
-                if (days > 21) { total += ps.balance; n++; }
+                const info = chbChaseInfo(k, b);
+                if (info && !info.chase) { total += info.gt.balance; n++; }
             }),
         );
     } catch (e) { chbSwallow(e, 'owed-later'); }
