@@ -2045,6 +2045,7 @@ function openLightbox(i) {
     if (!imgs.length || !imgs[i]) return; // ignore empty placeholder slides
     lightboxIndex = i;
     renderLightbox();
+    overlayHistPush(); // Back closes this overlay
     document.getElementById('lightbox').classList.add('open');
 }
 function renderLightbox() {
@@ -2061,6 +2062,7 @@ function lightboxNav(dir) {
     renderLightbox();
 }
 function closeLightbox() {
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     document.getElementById('lightbox').classList.remove('open');
 }
 // Swipe left/right on touch devices.
@@ -2844,6 +2846,7 @@ function openGuestDetailsModal() {
     if (msg) msg.style.display = 'none';
     const m = document.getElementById('guest-details-modal');
     if (m) {
+        overlayHistPush(); // Back closes this overlay
         m.classList.remove('closing');
         m.classList.add('open');
     }
@@ -2854,6 +2857,7 @@ function openGuestDetailsModal() {
 function closeGuestDetailsModal() {
     const m = document.getElementById('guest-details-modal');
     if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
     m.classList.add('closing');
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
@@ -2874,6 +2878,7 @@ function openGuestSecurityModal() {
     loadPasskeys();
     const m = document.getElementById('guest-security-modal');
     if (m) {
+        overlayHistPush(); // Back closes this overlay
         m.classList.remove('closing');
         m.classList.add('open');
     }
@@ -2884,6 +2889,7 @@ function openGuestSecurityModal() {
 function closeGuestSecurityModal() {
     const m = document.getElementById('guest-security-modal');
     if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
     m.classList.add('closing');
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
@@ -5233,6 +5239,7 @@ async function openWelcomeBook(propKey) {
     if (bodyEl)
         bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>`;
     const m = document.getElementById('welcome-modal');
+    overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
     let sections = [];
     try {
@@ -5262,6 +5269,7 @@ async function openWelcomeBook(propKey) {
         .join('');
 }
 function closeWelcomeModal() {
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     const m = document.getElementById('welcome-modal');
     if (m) m.classList.remove('open');
 }
@@ -5281,9 +5289,11 @@ function openPhotoUpload(propKey) {
         msg.textContent = '';
     }
     const m = document.getElementById('photo-upload-modal');
+    overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
 }
 function closePhotoUpload() {
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     const m = document.getElementById('photo-upload-modal');
     if (m) m.classList.remove('open');
 }
@@ -9931,9 +9941,11 @@ function openFaqModal(propKey) {
                 </div>`;
         })
         .join('');
+    overlayHistPush(); // Back closes this overlay
     m.classList.add('open');
 }
 function closeFaqModal() {
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     const m = document.getElementById('faq-modal');
     if (m) m.classList.remove('open');
 }
@@ -9992,6 +10004,7 @@ function openAllReviews(propKey) {
     let list = allReviews();
     if (propKey) list = list.filter((r) => r.prop === propKey);
     body.innerHTML = list.map(reviewCardHtml).join('');
+    overlayHistPush(); // Back closes this overlay
     m.classList.add('open');
 }
 // Per-cottage reviews on the property page (Airbnb-style: score + count + cards).
@@ -10026,6 +10039,7 @@ function renderPropReviews(propKey) {
                 ${more}`;
 }
 function closeAllReviews() {
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     const m = document.getElementById('reviews-modal');
     if (m) m.classList.remove('open');
 }
@@ -12817,10 +12831,26 @@ function closeTopOverlay() {
         const el = document.getElementById(id);
         return el && el.classList.contains('open');
     };
+    // ORDER IS TOPMOST-FIRST, because two can be open at once: the terms are
+    // opened FROM the enquiry form and now paint above it (#terms-modal, z 2200),
+    // so Back must close the terms and leave the form up.
+    if (open('terms-modal')) { closeTermsModal(); return true; }
     if (open('enquire-modal')) { closeEnquireModal(); return true; }
     if (open('waitlist-modal')) { closeWaitlistModal(); return true; }
     if (open('guest-auth-modal')) { closeGuestAuthModal(); return true; }
-    if (open('terms-modal')) { closeTermsModal(); return true; }
+    // THE SHEETS THAT NEVER GOT THE TREATMENT. Back on a phone left these up and
+    // silently switched the page underneath to the homepage — including the photo
+    // lightbox, the highest-traffic guest tap on the site. Each now pushes an
+    // entry when it opens and consumes it when it closes, exactly as the four
+    // above do; this is the list Back consults.
+    if (open('lightbox')) { closeLightbox(); return true; }
+    if (open('photo-upload-modal')) { closePhotoUpload(); return true; }
+    if (open('exp-suggest-modal')) { closeExperienceSuggest(); return true; }
+    if (open('guest-security-modal')) { closeGuestSecurityModal(); return true; }
+    if (open('guest-details-modal')) { closeGuestDetailsModal(); return true; }
+    if (open('welcome-modal')) { closeWelcomeModal(); return true; }
+    if (open('faq-modal')) { closeFaqModal(); return true; }
+    if (open('reviews-modal')) { closeAllReviews(); return true; }
     if (open('chat-widget')) { closeChat(); return true; }
     return false;
 }
@@ -14891,6 +14921,7 @@ function openExperienceSuggest() {
     if (msg) msg.style.display = 'none';
     const m = document.getElementById('exp-suggest-modal');
     if (m) {
+        overlayHistPush(); // Back closes this overlay
         m.classList.remove('closing');
         m.classList.add('open');
     }
@@ -14898,6 +14929,7 @@ function openExperienceSuggest() {
 function closeExperienceSuggest() {
     const m = document.getElementById('exp-suggest-modal');
     if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
     m.classList.add('closing');
     setTimeout(() => m.classList.remove('open', 'closing'), 350);
 }
@@ -14959,7 +14991,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'askstage1';
+    const BUILD = 'backsheet1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
