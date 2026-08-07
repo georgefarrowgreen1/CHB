@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 422;
+const ADMIN_BUNDLE_V = 423;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3639,7 +3639,7 @@ async function renderGuestBookings() {
                             </div>
                             ${upcoming ? guestFlowHtml(propKey, b, payToken) : ''}
                             <div class="card-actions">
-                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button>` : ''}
+                                ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button>` : ''}
                                 <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
                                 <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
                                 <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -3789,7 +3789,13 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const head = days === 1 ? 'Tomorrow' : `${days} days`;
     // The one outstanding thing before arrival (balance beats details), else all set.
     let ready, cta = '';
-    if (gt && !gt.fullyPaid && gt.balance > 0) {
+    // AN OWNER-ARRANGED STAY HAS NO ONLINE TASK. Its money is settled by hand
+    // (bookingOwnerArranged), so an honestly-outstanding refundable deposit must
+    // not turn into "Pay £50" with a card button on the guest's own hub — the
+    // arrangement is the owner's, made off this site. It is not hidden from them:
+    // the money card above still states the total, the paid figure and the
+    // balance. Only the CTA stands down.
+    if (gt && !gt.fullyPaid && gt.balance > 0 && !bookingOwnerArranged(b)) {
         // …and WHEN: a deadline is the actionable half of "the one outstanding
         // thing before you arrive", and the pay screen this button leads to has
         // named the date since #969. The LINE names the same stage as the button
@@ -7702,6 +7708,20 @@ function displayGrandTotal(rentalTotal, p, holdStatus) {
 // A manually-recorded cash/bank payment leaves hold_status 'none', so the deposit
 // is NOT counted as paid — otherwise a £100 cash deposit would show as £150 paid.
 // `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
+// Money the owner manages PERSONALLY — a recorded off-card method (cash,
+// bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
+// volunteer what they owe — no duty, no owed-later, no "to collect" share).
+// Records and direct answers keep the full state. Mirrors payment_rail incl.
+// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase. The
+// card pattern is payment_rail's, byte for byte (test-payrail holds them in
+// step): a hand-typed "Visa" must not read as card on the server and cash here.
+// Lives in app.js, not admin.js, because the GUEST's own booking card asks it
+// too — an arranged-by-hand stay must not sprout a card-pay button the moment
+// its refundable deposit reads as honestly outstanding.
+function bookingOwnerArranged(b) {
+    const m = String((b && b.paymentMethod) || '').trim();
+    return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
+}
 function displayGrand(p, ps, holdStatus, b) {
     const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
@@ -7715,12 +7735,35 @@ function displayGrand(p, ps, holdStatus, b) {
     // hand and returnable. Zero for a legacy folded-total booking (paid never
     // exceeds the total there) and zero once the deposit is charged/settled on
     // the card rail (holdStatus leaves 'none').
+    // ONE RENTAL FRAME, the same one damageHeld uses. This measured the cash
+    // deposit against `ps.total` while damageHeld measures it against the RENTAL
+    // (priceOverride, else rentalTotal), and the two disagreed on exactly the
+    // rows where they differ: a LEGACY booking whose agreed total already folded
+    // the deposit in had damageHeld calling the deposit collected while this
+    // called it outstanding, so the card showed a balance for money the guest had
+    // handed over — which is what the `ps.fullyPaid ||` short-circuit below was
+    // papering over. Deriving both from the rental settles it, and lets fullyPaid
+    // be honest on the rail where the deposit really is still to collect.
+    const rentalBasis = b && b.priceOverride != null
+        ? Number(b.priceOverride)
+        : (p && p.rentalTotal != null ? Number(p.rentalTotal) : ps.total);
     const cashDep = holdStatus === 'none' && b
-        ? Math.min(dep, Math.max(0, Math.round(((Number(b.depositPaid) || 0) - ps.total) * 100) / 100))
+        ? Math.min(dep, Math.max(0, Math.round(((Number(b.depositPaid) || 0) - rentalBasis) * 100) / 100))
         : 0;
     const paid = Math.round((ps.deposit + chargedDep + cashDep) * 100) / 100;
     const balance = Math.round((total - paid) * 100) / 100;
-    return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
+    // FULLY PAID MEANS NOTHING IS LEFT IN THE FRAME THIS CARD STATES. It used to
+    // read `ps.fullyPaid || balance <= 0.001`, and ps.fullyPaid is the RENTAL
+    // rail's answer — true the moment the rental settles. On the one rail where
+    // the refundable deposit is genuinely still to collect (cash/bank, where
+    // hold_status never leaves 'none') that short-circuited a £50 balance into
+    // "Paid in full": measured, My Stays printed "Paid in full £750.00" directly
+    // under "Paid − £700.00", the hub payline said "Paid in full · incl. £50.00
+    // damages deposit" over £390 received, and invoice.php — deriving it
+    // server-side — said "Balance due £50.00" about the same booking. A card may
+    // not contradict its own arithmetic; the legacy fold that made the
+    // short-circuit look necessary is handled by depositOutsideTotal above.
+    return { dep, total, paid, balance, fullyPaid: balance <= 0.001 };
 }
 
 
@@ -14908,7 +14951,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cashquiet3';
+    const BUILD = 'cashcoh1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

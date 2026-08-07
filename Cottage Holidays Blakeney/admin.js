@@ -4668,11 +4668,12 @@ function cmdkIntent(q) {
             }
         }
     }
-    // 0f) Damage deposits to return — charged, and the guest has checked out.
+    // 0f) Damage deposits to return — still HELD, and the guest has checked out.
     if (/deposit/.test(q) && /return|give back|owed back|hand back|refund|\bback\b/.test(q)) {
         // hasCheckedOut (time-aware) — from midnight on checkout day the guest is
         // still in until the checkout time; the WHEN answer already says so.
-        const rows = flat.filter((x) => (x.b.holdStatus || 'none') === 'charged' && hasCheckedOut(x.b)).sort(byOut);
+        // damageHeld, not hold_status: a cash-taken deposit is held too (see chbDuties).
+        const rows = flat.filter((x) => damageHeld(x.pk, x.b).held > 0.005 && hasCheckedOut(x.b)).sort(byOut);
         const n = rows.length;
         const lead = n ? chbSayFirst(rows[0].b.name) : '';
         const dHead = !n ? nlgPick('dret0' + q, ['No deposits to hand back right now.', 'Nothing to refund at the moment.'])
@@ -16295,17 +16296,11 @@ function renderPricing() {
 // asking £47.50 of deposit (owner's screenshots, 06 Aug). The flat
 // 21-days-to-arrival gate also hid a custom date already missed on a far-off
 // stay. Null when nothing is owed or the stay is ancient.
-// Money the owner manages PERSONALLY — a recorded off-card method (cash,
-// bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
-// volunteer what they owe — no duty, no owed-later, no "to collect" share).
-// Records and direct answers keep the full state. Mirrors payment_rail incl.
-// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase. The
-// card pattern is payment_rail's, byte for byte (test-payrail holds them in
-// step): a hand-typed "Visa" must not read as card on the server and cash here.
-function bookingOwnerArranged(b) {
-    const m = String((b && b.paymentMethod) || '').trim();
-    return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
-}
+// bookingOwnerArranged now lives in APP.JS — the guest's own booking card has to
+// ask the same question (an owner-arranged stay must not sprout a card-pay
+// button when its deposit is honestly outstanding), and admin.js may use any
+// app.js global. ONE definition; test-payrail holds its card pattern in step
+// with payment_rail's, byte for byte.
 function chbChaseInfo(k, b) {
     if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
     const gt = bookingDue(k, b);
@@ -16452,7 +16447,14 @@ function chbDuties() {
             // Time-aware, not date-only: from midnight on checkout day the guest
             // is still IN the cottage until the checkout time — don't nudge a
             // refund before they've left (and before any damage inspection).
-            if ((b.holdStatus || 'none') === 'charged' && hasCheckedOut(b)) {
+            // A DEPOSIT IN HAND IS A DEPOSIT TO RETURN, WHICHEVER RAIL TOOK IT.
+            // This gated on hold_status === 'charged', which is a CARD-rail fact
+            // that cash never sets — so a deposit handed over in cash was in
+            // damageHeld().held, listed by Payments as returnable, shown by the
+            // hub's own banner, and never a duty. Measured: Payments said two to
+            // return, Today said one, the assistant said none. damageHeld is the
+            // one definition of what is actually held.
+            if (damageHeld(k, b).held > 0.005 && hasCheckedOut(b)) {
                 out.push({
                     kind: 'deposit', sev: 'warn', ic: 'deposit',
                     label: `Return ${b.name || 'the guest'}’s damages deposit`,

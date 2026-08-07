@@ -135,6 +135,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!needsPay.some((t) => /Cash Colin/.test(t)), 'the owner-arranged booking sits the needs-payment filter out');
   ok(!s.labels.some((l) => /Tom Hardy/.test(l)), 'far-future unpaid booking not nagged');
   ok(!s.labels.some((l) => /Cash Colin/.test(l)), 'owner-arranged (bank/cash) guest owing money is not nagged');
+  // A DEPOSIT TAKEN IN CASH IS STILL A DEPOSIT TO RETURN. The duty gated on
+  // hold_status === 'charged', a CARD-rail fact cash never sets — so a deposit
+  // handed over in cash sat in damageHeld().held, was listed by Payments as
+  // returnable and shown by the hub's own banner, and was never a duty:
+  // measured, Payments said two to return, Today said one, the assistant none.
+  // INJECTED and then removed rather than added to the workload above: the
+  // counts, the cap and the header sums are all asserted exactly (the shared
+  // mutable fixture lesson — dbBookings is a const, so mutate, never reassign).
+  const dep = await page.evaluate((iso) => {
+    const b = {
+      id: 'b91', dbId: 91, name: 'Cash Departed', email: 'cd@e.com', propKey: 'pimpernel',
+      checkIn: iso.in, checkOut: iso.out, checkInTime: '15:00', checkOutTime: '10:00',
+      adults: 2, children: 0, payment: 'paid', depositPaid: 700, holdStatus: 'none',
+      agreedPrice: { total: 640, rentalTotal: 640, nights: 4, perNight: 160, txnFee: 0, damagesDeposit: 60 },
+    };
+    dbBookings.pimpernel.push(b);
+    const held = damageHeld('pimpernel', b).held;
+    const labels = needsYouItems().map((x) => x.label);
+    dbBookings.pimpernel.pop(); // put the fixture back
+    return { held, labels };
+  }, { in: d(-5), out: d(-1) });
+  ok(Math.abs(dep.held - 60) < 0.006, `the injected booking really holds a £60 cash deposit (${dep.held})`);
+  ok(dep.labels.some((l) => /Cash Departed/.test(l) && /damages deposit/.test(l)),
+    `a cash-taken deposit becomes a duty (${dep.labels.filter((l) => /deposit/.test(l)).join(' | ') || 'none'})`);
   ok(s.sevs[0] === 'danger' && s.sevs[1] === 'danger', 'severities: automation + 2-day-old enquiry are danger');
 
   console.log('2. capped at 4 + expand');

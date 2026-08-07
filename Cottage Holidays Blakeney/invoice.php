@@ -45,7 +45,13 @@ function render_invoice_html($d)
         '<tr><td colspan="2" style="border-top:1px solid #e6ddca;font-size:0;line-height:0;padding:0;">&nbsp;</td></tr>' .
         $row('Total', $money($d['grand_total'] ?? 0), true) .
         ($paid > 0 ? $row('Paid', '− ' . $money($paid)) : '') .
-        ($balance > 0.001 ? $row('Balance due', $money($balance), true) : ($paid > 0 ? $row('Balance', 'Paid in full', true) : ''));
+        ($balance > 0.001
+            // WHEN, not just how much. Every sibling surface names the date — the
+            // confirmation, the pay screen, the hub, and now the deposit ask —
+            // and this is the document the guest files. The date is the booking's
+            // own derivation, so it cannot quote a different day from those.
+            ? $row('Balance due' . (!empty($d['balance_due_date']) ? ' by ' . $e($d['balance_due_date']) : ''), $money($balance), true)
+            : ($paid > 0 ? $row('Balance', 'Paid in full', true) : ''));
 
     $depositNote = $damages > 0
         ? '<p style="font-size:12px;color:#8a8378;margin:14px 0 0;line-height:1.5;">The refundable damages deposit of ' . $e($money($damages)) .
@@ -196,7 +202,9 @@ echo render_invoice_html([
     'ref' => $ref,
     'guest_name' => $b['name'],
     'guest_email' => $b['email'],
-    'issued' => date('j M Y'),
+    // The house form, DD/MM/YYYY, like every other date on this document —
+    // it printed '7 Aug 2026' directly above a uk_date() check-in.
+    'issued' => uk_date(date('Y-m-d')),
     'prop_name' => $disp['name'] ?? ($rate['name'] ?? $b['prop_key']),
     'address' => $rate['address'] ?? '',
     'check_in' => uk_date($b['check_in']),
@@ -213,6 +221,9 @@ echo render_invoice_html([
     'total' => $total,
     'grand_total' => $grand,
     'paid' => $paid,
+    // booking_balance_due_date is the ONE derivation (custom date, else check-in
+    // minus the window) the confirmation and the deposit ask both read.
+    'balance_due_date' => $balance > 0.001 ? uk_date(booking_balance_due_date($b)) : '',
     'balance' => $balance,
     'accent' => $disp['accent'] ?? '#8FB3C7',
 ]);

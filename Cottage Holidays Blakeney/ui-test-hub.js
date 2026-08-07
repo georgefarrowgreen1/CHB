@@ -611,7 +611,19 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(foldPart.rows === 1 && /Received so far/.test(foldPart.line) && /£100\.00 of £490\.00/.test(foldPart.line), `part-paid money folds to one payline (${foldPart.line.trim()})`);
   // Settled money folds to one line; the breakdown stays one tap away.
   // (Settle b1 for this check, restore its part-paid state afterwards.)
-  await page.evaluate(() => { findBookingById('b1').payment = 'paid'; openBookingHub('b1', true); });
+  // SETTLED MEANS THE DEPOSIT TOO. Setting payment='paid' alone leaves the £50
+  // refundable deposit uncollected — hold_status stays 'none' and nothing was
+  // charged — and that is no longer "Paid in full": displayGrand's fullyPaid used
+  // to short-circuit on the RENTAL rail's answer and printed paid-in-full over a
+  // real £50 balance (the whole point of this batch). A card-rail settled booking
+  // has the deposit charged with the payment, so the fixture says so.
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.payment = 'paid';
+    b.holdStatus = 'charged';
+    b.holdAmount = 50;
+    openBookingHub('b1', true);
+  });
   await page.waitForTimeout(400);
   const fold = await page.evaluate(() => {
     const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');
@@ -635,7 +647,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.evaluate(() => closeBreakdownModal());
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => !document.getElementById('breakdown-modal').classList.contains('open')), 'breakdown window closes');
-  await page.evaluate(() => { findBookingById('b1').payment = 'deposit'; openBookingHub('b1', true); });
+  // Put the whole part-paid state back, deposit included (the shared-fixture rule).
+  await page.evaluate(() => {
+    const b = findBookingById('b1');
+    b.payment = 'deposit';
+    b.holdStatus = 'none';
+    b.holdAmount = 0;
+    openBookingHub('b1', true);
+  });
   await page.waitForTimeout(400);
   const em2 = await page.evaluate(() => ({
     inEmails: !!document.querySelector('#booking-hub-content .bhub-card:nth-of-type(2) [data-act="offerUpdatedConfirmationEmail"]') ||
@@ -763,10 +782,16 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     // only reachable on a settled booking — pay it off to read that sentence.
     // …and the branch is gated on flow.hasReg, i.e. the booking actually having
     // a register link, which this fixture otherwise does without.
-    const keepPay = b.payment, keepUrl = b.regUrl;
-    b.payment = 'paid'; b.regUrl = 'guest-details.php?b=1&token=z'; renderBookingHub();
+    // PAYING IT OFF NOW MEANS THE DEPOSIT TOO: payment='paid' alone leaves the
+    // refundable deposit uncollected on this rail, which is a real balance and
+    // keeps the money ask in front (displayGrand no longer short-circuits a
+    // settled RENTAL into "nothing outstanding").
+    const keepPay = b.payment, keepUrl = b.regUrl, keepHold = b.holdStatus, keepHeld = b.holdAmount;
+    b.payment = 'paid'; b.holdStatus = 'charged'; b.holdAmount = 50;
+    b.regUrl = 'guest-details.php?b=1&token=z'; renderBookingHub();
     const shortNext = ((document.querySelector('.bhub-next') || {}).textContent || '').trim();
-    b.payment = keepPay; b.regUrl = keepUrl; renderBookingHub();
+    b.payment = keepPay; b.holdStatus = keepHold; b.holdAmount = keepHeld;
+    b.regUrl = keepUrl; renderBookingHub();
     const shortChip = [...document.querySelectorAll('#booking-hub-content .bhub-chip')]
       .map((c) => ({ t: c.textContent.trim(), warn: c.classList.contains('is-warn'), ok: c.classList.contains('is-ok') }))
       .find((c) => /Register/i.test(c.t)) || { t: '', warn: false, ok: false };

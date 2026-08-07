@@ -749,12 +749,28 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
         const partGt = gt(cashPart.agreedPrice, get('paymentSummary')('21a', cashPart), 'none', cashPart);
         check('rental-only cash → the £50 deposit stays outstanding',
             partGt.paid === 700 && partGt.balance === 50);
+        // …AND THE CARD MUST NOT CALL THAT SETTLED. `fullyPaid` read
+        // `ps.fullyPaid || balance <= 0.001`, and ps.fullyPaid is the RENTAL
+        // rail's answer — true the moment the rental settles — so this era
+        // printed "Paid in full £750.00" over "Paid − £700.00" on My Stays and
+        // "Paid in full · incl. £50.00 damages deposit" on the hub, while
+        // invoice.php said "Balance due £50.00" about the same booking. The
+        // matrix below already states the invariant; nothing tested it here.
+        check('…and is NOT reported as paid in full (the £50 is really outstanding)',
+            partGt.fullyPaid === false);
         // A LEGACY booking (deposit folded INTO the total) must not double-credit:
         // paid equals the folded total, so nothing sits above the rental.
         const legB = { agreedPrice: { total: 555, rentalTotal: 480, damagesDeposit: 75 }, depositPaid: 555, payment: 'paid', holdStatus: 'none', dbId: 10 };
         const legGt = gt(legB.agreedPrice, get('paymentSummary')('21a', legB), 'none', legB);
-        check('legacy folded-total booking is unchanged by the cash credit',
-            Math.abs(legGt.paid - legGt.total) < 0.006 || legGt.paid === 555);
+        // A LEGACY TOTAL ALREADY CONTAINS THE DEPOSIT, and damageHeld has always
+        // said so — it measures against the RENTAL (480), so it calls that £75
+        // collected. displayGrand measured against the agreed TOTAL (555) and
+        // called it outstanding, so the card showed a balance for money already
+        // handed over; the fullyPaid short-circuit hid it, and the escape hatch
+        // this check used to carry ('|| paid === 555') existed because the
+        // arithmetic did not add up. One rental frame now, so it does.
+        check('legacy folded-total booking: the deposit inside the total counts as paid',
+            legGt.total === 630 && legGt.paid === 630 && legGt.balance === 0 && legGt.fullyPaid === true);
 
         // THE ERA MATRIX, as INVARIANTS (the stage-4 overhaul sweep). Every era a
         // booking can be in, driven through the same helpers every owner surface
@@ -771,6 +787,11 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
             ['deposit RETURNED after the stay', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'returned', dbId: 14 }, true],
             ['deposit KEPT for damage', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'kept', holdAmount: 50, dbId: 15 }, true],
             ['discounted override, card deposit charged', { agreedPrice: { total: 620, rentalTotal: 910, damagesDeposit: 50, isOverride: true }, priceOverride: 620, depositPaid: 155, payment: 'deposit', holdStatus: 'charged', holdAmount: 50, dbId: 16 }, false],
+            // THE ERA THE MATRIX NEVER HAD: rental settled in cash, the
+            // refundable deposit still to collect. hold_status never leaves
+            // 'none' on this rail, so it is the one era where the rental being
+            // square does NOT mean the stay is.
+            ['cash rental settled, deposit still to collect', { agreedPrice: { total: 700, rentalTotal: 700, damagesDeposit: 50 }, depositPaid: 700, payment: 'paid', holdStatus: 'none', dbId: 17 }, false],
         ];
         eras.forEach(([name, b, settled]) => {
             const g = gt(b.agreedPrice, psFn('21a', b), b.holdStatus, b);
