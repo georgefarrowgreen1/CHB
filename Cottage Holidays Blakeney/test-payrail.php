@@ -1592,10 +1592,25 @@ chk('...and skips the cash/bank rail before summing',
 // a hand-typed "Visa" must not read as card on the server and cash in the app.
 $dbRail = (string) file_get_contents(__DIR__ . '/db.php');
 preg_match('#function payment_rail[\s\S]{0,400}preg_match\(\'/(.+?)/\', \$m\)#', $dbRail, $mSrv);
-$admRail = (string) file_get_contents(__DIR__ . '/admin.js');
-preg_match('#function bookingOwnerArranged[\s\S]{0,700}!/(.+?)/i\.test\(m\)#', $admRail, $mCli);
+// bookingOwnerArranged lives in APP.JS now — the guest's own booking card asks
+// the same question, and app.js loads first (admin.js may use its globals).
+$admRail = (string) file_get_contents(__DIR__ . '/app.js');
+preg_match('#function bookingOwnerArranged[\s\S]{0,900}!/(.+?)/i\.test\(m\)#', $admRail, $mCli);
 chk('payment_rail and bookingOwnerArranged share ONE card pattern',
     !empty($mSrv[1]) && !empty($mCli[1]) && $mSrv[1] === $mCli[1]);
+
+// THE INVOICE IS A DOCUMENT THE GUEST FILES, so it states the balance's DATE
+// like every sibling surface, and every date on it is the house form. It printed
+// '7 Aug 2026' immediately above a uk_date() check-in, and named a balance with
+// no deadline at all.
+$invW = (string) file_get_contents(__DIR__ . '/invoice.php');
+chk('the invoice issues its date in the house form, not date(\'j M Y\')',
+    strpos($invW, "'issued' => uk_date(date('Y-m-d')),") !== false
+    && strpos($invW, "date('j M Y')") === false);
+chk('...carries the booking-derived balance due date',
+    preg_match("/'balance_due_date' => \\\$balance > 0\\.001 \\? uk_date\\(booking_balance_due_date\\(\\\$b\\)\\)/", $invW) === 1);
+chk('...and renders it on the Balance due row',
+    preg_match("/'Balance due' \\. \\(!empty\\(\\\$d\\['balance_due_date'\\]\\) \\? ' by ' \\. \\\$e\\(\\\$d\\['balance_due_date'\\]\\)/", $invW) === 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -101,7 +101,11 @@ const FIX = {
             // Cara: arrives in 2 days, nothing paid → £600 to chase.
             mkB(3, 'Cara Dunn', d(2), d(5), { agreedPrice: { total: 600 } }),
             // Dan: checked out 7 days ago, paid, deposit still charged → THE deposit to return.
-            mkB(4, 'Dan Epps', d(-10), d(-7), { payment: 'paid', agreedPrice: { total: 390 }, holdStatus: 'charged' }),
+            // A DEPOSIT TO RETURN NEEDS AN ACTUAL DEPOSIT. hold_status 'charged' with
+            // no damagesDeposit is a booking with nothing to hand back, and the
+            // answer now gates on damageHeld().held (so a CASH-taken deposit
+            // counts too) rather than on hold_status alone.
+            mkB(4, 'Dan Epps', d(-10), d(-7), { payment: 'paid', agreedPrice: { total: 390, damagesDeposit: 75 }, holdStatus: 'charged', holdAmount: 75 }),
         ],
         pimpernel: [
             // Eve: checks out TODAY (leaving-today case). checkOutTime 00:00 so
