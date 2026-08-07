@@ -3,10 +3,25 @@
 // Centered crown logo for the top of customer emails. The image is embedded
 // as a base64 data URI so it travels inside the email — no external URL to
 // break and no dependence on the site domain. Works on a light background.
+//
+// A data URI cannot be stripped by the image blocking most clients apply by default,
+// which is worth its bytes — it is the one thing that makes these emails look like
+// they came from somewhere. But it was stored at 240x240 and DISPLAYED at 72, so it
+// is now 144: 2x for a retina screen, which is all the <img> width/height can ever
+// ask for. 14,026 base64 bytes down to 8,864 — every email about 5KB lighter, for no
+// visible change at all.
+//
+// DO NOT QUANTISE IT to shave the rest. Measured: a 64-colour palette reaches 2,476
+// bytes and the per-pixel arithmetic calls it fine — composited on this header, five
+// pixels of 5,184 differ by more than 8/255. It still BANDS, visibly: the rose-gold
+// gradient becomes stripes, because banding is a STRUCTURED artifact that a mean
+// per-pixel delta underweights. Octree at 128 and 256 colours bands identically and
+// is barely smaller, and Pillow will not run a better quantiser on RGBA. The
+// arithmetic passed and looking at it did not, which is the whole reason to look.
 function email_crown_header($bg)
 {
     $src =
-        'data:image/png;base64,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';
+        'data:image/png;base64,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';
     return '<tr><td align="center" style="padding:30px 40px 0;background:' .
         $bg .
         ';">' .
@@ -560,7 +575,7 @@ function owner_alert_text_html($subject, $text)
         $safe = nl2br(email_esc($para));
         $safe = preg_replace(
             '~(https?://[^\s<]+)~',
-            '<a href="$1" style="color:#B07A3F;text-decoration:underline;">$1</a>',
+            '<a href="$1" style="color:' . email_accent_ink() . ';text-decoration:underline;">$1</a>',
             $safe,
         );
         $inner .= email_p($safe);
@@ -674,6 +689,38 @@ function build_booking_ics($b)
 //  accent, and Playfair/Montserrat (Georgia/Arial fallbacks). All inline,
 //  table-based and Outlook-safe (bgcolor fallbacks + VML buttons).
 // ============================================================
+// ── INK vs FILL, the email half of the app's own --accent / --accent-text split ──
+// The screens learned this once already: the rose-gold is fine for a button, a rule
+// or a swatch, which only have to clear the 3:1 non-text bar, and fails AA outright
+// as WORDS. That fix stopped at the edge of the browser — measured on the rendered
+// HTML of all 21 templates, sixteen ink/ground/size combinations sat below AA, the
+// worst of them email_amount's 34px figure at 2.00:1, i.e. the one number a refund
+// email exists to state.
+//
+// Two tokens, so a new email cannot reintroduce the problem by picking a hex that
+// looks right on a white background it does not actually sit on:
+//
+//   email_muted_ink()  — every label and every piece of secondary prose. It replaces
+//     FOUR near-identical inks (#8E877A #9A927F #A0987F #A79E8A, spanning 2.12–3.56:1)
+//     that differed by a few hex points, served no hierarchy the size and letter-
+//     spacing were not already carrying, and all failed. One ink now, comfortably
+//     past the bar on all three grounds: 6.49:1 white, 6.02:1 tinted panel,
+//     5.18:1 the outer ground.
+//   email_accent_ink() — the accent when it is TEXT: a figure, a link, a status word.
+//     5.87 / 5.44 / 4.68:1 on the same three grounds.
+//
+// Deliberately a shade PAST the pass mark rather than on it, the same discipline the
+// screen tokens follow — 4.5 is the floor to clear, not to land on. test-payrail's
+// contrast section measures both against every ground in the rendered output, so
+// the prose here cannot drift from what ships.
+function email_muted_ink()
+{
+    return '#655D50';
+}
+function email_accent_ink()
+{
+    return '#8A5A2B';
+}
 function email_sans()
 {
     return "'Montserrat','Helvetica Neue',Arial,sans-serif";
@@ -693,7 +740,8 @@ function email_esc($s)
 //  rose-gold accents, generous air. Table-based + Outlook-safe (bgcolor
 //  fallbacks + VML buttons). Palette:
 //    sand backdrop  #ECE5D7   card #FFFFFF   hairline/panel #F3EEE4 / border #E7DFCF
-//    ink #262320    body #57524A   muted #8E877A    accent (rose-gold) #C79A64
+//    ink #262320    body #57524A   muted email_muted_ink()    accent (rose-gold) #C79A64
+//    the accent AS TEXT email_accent_ink() — see the note above those two
 // ============================================================
 
 // Bulletproof rose-gold button (rounded in Outlook too, via VML). Warm tan fill
@@ -737,7 +785,7 @@ function email_amount($label, $amount, $sub = '', $valueColor = '#2A2622')
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;"><tr><td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-radius:16px;padding:20px;text-align:center;">' .
         '<div style="font-family:' .
         $sans .
-        ';font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#A0987F;">' .
+        ';font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:' . email_muted_ink() . ';">' .
         email_esc($label) .
         '</div>' .
         '<div style="font-family:' .
@@ -747,7 +795,7 @@ function email_amount($label, $amount, $sub = '', $valueColor = '#2A2622')
         ';padding:7px 0 2px;">' .
         $amount .
         '</div>' .
-        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:12px;color:#A0987F;">' . $sub . '</div>' : '') .
+        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:12px;color:' . email_muted_ink() . ';">' . $sub . '</div>' : '') .
         '</td></tr></table>';
 }
 
@@ -766,7 +814,7 @@ function email_rows($rows)
             $bd .
             'font-family:' .
             $sans .
-            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#9A927F;vertical-align:top;width:40%;">' .
+            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:' . email_muted_ink() . ';vertical-align:top;width:40%;">' .
             $r[0] .
             '</td>' .
             '<td align="right" style="padding:12px 0;' .
@@ -818,7 +866,7 @@ function email_p($html, $muted = false)
     return '<p style="font-family:' .
         email_sans() .
         ';font-size:15px;color:' .
-        ($muted ? '#8E877A' : '#57524A') .
+        ($muted ? email_muted_ink() : '#57524A') .
         ';line-height:1.75;margin:13px 0 0;">' .
         $html .
         '</p>';
@@ -875,7 +923,7 @@ function email_address_block($addr)
     }
     $sans = email_sans();
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 2px;"><tr><td style="padding:12px 0;border-top:1px solid #EDE6D8;">' .
-        '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#9A927F;padding-bottom:5px;">Address</div>' .
+        '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:' . email_muted_ink() . ';padding-bottom:5px;">Address</div>' .
         '<div style="font-family:' . $sans . ';font-size:14px;font-weight:600;color:#2E2A25;line-height:1.55;">' . email_esc($addr) . '</div>' .
         '<div style="padding-top:6px;"><a href="' . email_esc(email_maplink($addr)) . '" style="font-family:' . $sans . ';font-size:13px;font-weight:600;color:#8A5A2B;text-decoration:none;">Open in Maps &rsaquo;</a></div>' .
         '</td></tr></table>';
@@ -898,7 +946,7 @@ function email_btn2($href, $label)
 function email_footnote($html)
 {
     return '<p style="font-family:' . email_sans() .
-        ';font-size:12px;line-height:1.7;color:#8E877A;margin:10px 2px 0;">' . $html . '</p>';
+        ';font-size:12px;line-height:1.7;color:' . email_muted_ink() . ';margin:10px 2px 0;">' . $html . '</p>';
 }
 // MONEY ROWS IN SENTENCE CASE. email_rows() uppercases its label column, which is right
 // for a field NAME (ARRIVE, PARTY) and wrong for a price line — "£130.00 × 3 NIGHTS"
@@ -939,7 +987,7 @@ function email_ownernote($who, $text)
     $who = trim((string) $who) !== '' ? $who : 'us';
     return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr>' .
         '<td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-left:3px solid #C79A64;border-radius:10px;padding:14px 17px;">' .
-        '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#9A927F;padding-bottom:5px;">A note from ' .
+        '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:' . email_muted_ink() . ';padding-bottom:5px;">A note from ' .
         email_esc($who) . '</div>' .
         '<div style="font-family:' . $sans . ';font-size:13px;color:#5A554C;line-height:1.7;">' .
         email_esc($text) . '</div></td></tr></table>';
@@ -984,7 +1032,7 @@ function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
         ';font-size:22px;color:#2A2622;letter-spacing:0.4px;">Cottage Holidays Blakeney</div>' .
         '<div style="font-family:' .
         $sans .
-        ';font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:#A79E8A;padding-top:5px;">North Norfolk Coast</div></td></tr>' .
+        ';font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:' . email_muted_ink() . ';padding-top:5px;">North Norfolk Coast</div></td></tr>' .
         '<tr><td class="ec-pad" bgcolor="#FFFFFF" style="background:#FFFFFF;border:1px solid #E7DFCF;border-top:3px solid ' .
         $accentBar .
         ';border-radius:22px;padding:34px 36px;">' .
@@ -992,11 +1040,11 @@ function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
         '</td></tr>' .
         '<tr><td align="center" style="padding:24px 24px 8px;font-family:' .
         $sans .
-        ';font-size:11px;color:#A79E8A;line-height:1.8;">' .
+        ';font-size:11px;color:' . email_muted_ink() . ';line-height:1.8;">' .
         'Self-catering holiday cottages in Blakeney, North Norfolk &middot; NR25<br>' .
         ($footerExtra !== '' ? $footerExtra . '<br>' : '') .
         ($unsub !== ''
-            ? '<a href="' . email_esc($unsub) . '" style="color:#A79E8A;text-decoration:underline;">Unsubscribe</a>'
+            ? '<a href="' . email_esc($unsub) . '" style="color:' . email_muted_ink() . ';text-decoration:underline;">Unsubscribe</a>'
             : '') .
         '</td></tr>' .
         '</table></td></tr></table></body></html>';
@@ -1259,12 +1307,12 @@ function send_direct_followup_email($lead)
         : '';
     $tag =
         '<p style="font-family:' . $sans . ';text-align:center;font-size:11px;font-weight:700;letter-spacing:2.6px;' .
-        'text-transform:uppercase;color:#C79A64;margin:16px 0 0;">Book direct &middot; Best price</p>';
+        'text-transform:uppercase;color:' . email_accent_ink() . ';margin:16px 0 0;">Book direct &middot; Best price</p>';
     $head =
         '<h1 style="font-family:' . $serif . ';text-align:center;font-size:30px;font-weight:700;color:#262320;' .
         'margin:6px 0 2px;line-height:1.25;">The coast is calling you back</h1>';
     $highlights =
-        '<p style="font-family:' . $sans . ';text-align:center;font-size:12px;letter-spacing:1px;color:#8E877A;' .
+        '<p style="font-family:' . $sans . ';text-align:center;font-size:12px;letter-spacing:1px;color:' . email_muted_ink() . ';' .
         'margin:22px 0 2px;">Blakeney Quay &nbsp;&middot;&nbsp; The Coastal Path &nbsp;&middot;&nbsp; Seal trips to the Point</p>';
 
     $inner =
@@ -1793,7 +1841,11 @@ function send_booking_emails($b)
         }
         $payCta .= email_btn2($stayUrl, 'View my booking');
         // HTML version — "Midnight Glass" shell + the booking "stay ticket".
-        $paymentColor = ($b['payment'] ?? 'unpaid') === 'paid' ? '#7bd687' : '#e0a06a';
+        // NB the payment colour is NOT re-derived here. It was, with the greens and
+        // ambers from the dark UPCOMING chip below — which are right on #22321f and
+        // were then used as text on a WHITE row, measuring 2.23:1 for the word
+        // "Unpaid". The pair derived for the text half twelve lines up is the
+        // correct one and is still in scope, so this shadow is simply gone.
         $sans = email_sans();
         $serif = email_serif();
         $statusBadge =
@@ -1814,14 +1866,14 @@ function send_booking_emails($b)
             // Same branch as the plain-text body above — a custom price is one
             // coherent line, not standard-rate maths beside a total it can't reach.
             ($customPrice
-                ? $pr('Agreed price for your stay <span style="color:#A0987F;">(' . $nightsTxt . ')</span>', $money($b['total']))
+                ? $pr('Agreed price for your stay <span style="color:' . email_muted_ink() . ';">(' . $nightsTxt . ')</span>', $money($b['total']))
                 : $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
                   $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee']))) .
             ($depAmt > 0 ? $pr('Refundable damages deposit', $money($depAmt)) : '') .
             '<tr><td colspan="2" style="border-top:1px solid #ECE4D3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
             '<tr><td style="padding:12px 0 4px;font-family:' .
             $serif .
-            ';font-size:19px;font-weight:700;color:#2A2622;">Total' . ($depAmt > 0 ? ' <span style="font-size:12px;font-weight:400;color:#A0987F;">(incl. deposit)</span>' : '') . '</td><td align="right" style="padding:12px 0 4px;font-family:' .
+            ';font-size:19px;font-weight:700;color:#2A2622;">Total' . ($depAmt > 0 ? ' <span style="font-size:12px;font-weight:400;color:' . email_muted_ink() . ';">(incl. deposit)</span>' : '') . '</td><td align="right" style="padding:12px 0 4px;font-family:' .
             $serif .
             ';font-size:21px;font-weight:700;color:#2A2622;">' .
             $money($grandTotal) .
@@ -1843,7 +1895,7 @@ function send_booking_emails($b)
             email_h($b['prop_name'], $accent) .
             '<div style="font-family:' .
             $sans .
-            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#A0987F;margin:2px 0 16px;">Booking ref ' .
+            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:' . email_muted_ink() . ';margin:2px 0 16px;">Booking ref ' .
             $esc($b['ref']) .
             ' &nbsp;&middot;&nbsp; ' .
             $statusBadge .
@@ -2013,7 +2065,7 @@ function send_arrival_email($b)
     $rows = [
         [
             'Arrive',
-            '<strong>' . $inDate . '</strong><br><span style="font-weight:400;color:#8E877A;">any time from ' . $time . '</span>',
+            '<strong>' . $inDate . '</strong><br><span style="font-weight:400;color:' . email_muted_ink() . ';">any time from ' . $time . '</span>',
         ],
     ];
     // Check-out was absent from this email entirely, and it is the second thing guests
@@ -2021,7 +2073,7 @@ function send_arrival_email($b)
     if ($outDate !== '') {
         $rows[] = [
             'Leave',
-            '<strong>' . $outDate . '</strong><br><span style="font-weight:400;color:#8E877A;">by ' . $outTime . '</span>',
+            '<strong>' . $outDate . '</strong><br><span style="font-weight:400;color:' . email_muted_ink() . ';">by ' . $outTime . '</span>',
         ];
     }
     $inner =
@@ -2712,7 +2764,7 @@ function send_hold_released($b)
                 $esc($prop) .
                 '</strong>. We\'ve released your refundable security hold.',
         ) .
-        email_amount('Hold released', $money($b['amount']), '', '#D6A785') .
+        email_amount('Hold released', $money($b['amount']), '', email_accent_ink()) .
         // A NUMBER, NOT "A FEW". This email exists to stop the guest wondering, and
         // "a few working days" is exactly vague enough to leave them checking their
         // statement daily and then emailing to ask. 3-5 working days is the honest
@@ -2762,7 +2814,7 @@ function send_refund_email($b)
                 (!empty($b['check_in']) ? ' (' . $esc(email_date($b['check_in'])) . ' to ' . $esc(email_date($b['check_out'])) . ')' : '') .
                 '.',
         ) .
-        email_amount('Refund', $money($b['amount']), '', '#D6A785') .
+        email_amount('Refund', $money($b['amount']), '', email_accent_ink()) .
         // "REASON:" IS A FORM FIELD, NOT A SENTENCE. That box is a note the owner
         // wrote for their own records, and rendering it under a bold "Reason:" made
         // the SITE appear to be justifying itself to the guest — in the register of
@@ -2816,7 +2868,7 @@ function send_deposit_return_email($b)
                 $esc($prop) .
                 '</strong>. We\'re returning your refundable damage deposit.',
         ) .
-        email_amount('Deposit returned', $money($b['amount']), $esc('Sent ' . $how), '#D6A785') .
+        email_amount('Deposit returned', $money($b['amount']), $esc('Sent ' . $how), email_accent_ink()) .
         // A PART-RETURN HAS TO SHOW ITS ARITHMETIC. "Amount retained: £25.00" told
         // the guest a figure and left them to work out what it was a share of — on
         // the one email most likely to be queried. The rows state held, retained and

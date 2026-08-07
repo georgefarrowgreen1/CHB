@@ -124,6 +124,69 @@ table and looked like a different product from the confirmation that follows the
   absence ("no `pay_url` on the autopay receipt", "no longer says 'a few working days'")
   and BOTH first failed against the comment stating exactly that, three lines above the
   code they guard. test-payrail strips `//` lines before any such assertion.
+- **INK vs FILL, in the emails too — and `test-emails-render.php` is the gate.** The
+  screens learned this once (`--accent-text` exists because the rose-gold measures
+  2.60–2.96:1 and fails AA as WORDS while being fine as a button or a rule) and the fix
+  stopped at the edge of the browser. Measured on the rendered HTML of all 21 templates,
+  **sixteen ink/ground/size combinations sat below AA** — the worst `email_amount`'s
+  34px figure at **2.00:1**, i.e. the one number a refund email exists to state, and an
+  **unsubscribe link at 2.12:1**, the one element in a marketing email with a legal
+  expectation attached. Two tokens now: **`email_muted_ink()`** `#655D50` (6.49 white /
+  6.02 tinted panel / 5.18 outer ground) replacing FOUR near-identical failing inks
+  (`#8E877A #9A927F #A0987F #A79E8A`, 2.12–3.56:1) that differed by a few hex points and
+  served no hierarchy the size and letter-spacing weren't already carrying; and
+  **`email_accent_ink()`** `#8A5A2B` (5.87 / 5.44 / 4.68) for the accent as TEXT — a
+  figure, a link, a status word. `#C79A64` stays the FILL. A shade past the mark, not on
+  it, the same discipline the screen tokens follow.
+  Found in the same pass: the confirmation's HTML half **re-derived the payment colour**
+  twelve lines below the text half's correct derivation, using the greens and ambers from
+  the dark UPCOMING chip — right on `#22321f`, and then used as text on a WHITE row at
+  2.23:1 for the word "Unpaid". Two definitions of one fact, and the shadow was the wrong
+  one. Deleted; the outer derivation is still in scope.
+- **`test-emails-render.php` — every composer runs, and no colour is illegible.**
+  test-payrail drives the ten PURE composers hard; the other eighteen could only be
+  proved to PARSE, so a fatal in `send_hold_request` or `send_refund_email` would have
+  shipped and a guest would have been the one to find out. It splices a capture into
+  BOTH `smtp_send` and `smtp_send_batch` (send_owner posts through the batch one — patch
+  only the first and every owner email renders as "nothing captured"), stubs the db.php
+  helpers, and lets `db()` THROW: a composer that grows a `content_value()` call fails
+  loudly rather than quietly needing a database. Four sections: §0 every `test-*.php` is
+  stripped from BOTH deploy passes (production AND staging — `test-auth-posture.php`'s
+  header demands dev files be excluded and then filters `test-*` out of its own registry,
+  so the class the rule was written for was the class nothing checked); §1 all 21 render
+  with a subject, a text half and a full HTML document, plus a coverage check that no
+  composer in mailer.php is left unreached; §2 contrast by arithmetic on the rendered
+  output, walking a background stack because an ink is only legible against the ground it
+  ACTUALLY sits on (measuring everything against white reported the tinted panels as
+  fine); and the preview-registry check below. Vacuity-guarded at ≥250 coloured nodes.
+- **THE OWNER CAN PREVIEW EVERY EMAIL, and a gate keeps that true.**
+  `email-samples.php` had drifted to 13 of the 19 real senders — omitting BOTH
+  automatic-payment emails (the newest, most complex money emails, and the two where a
+  wrong figure is least recoverable), the enquiry acknowledgement, and the owner's own
+  new-enquiry notification. It looked decided and was accidental, which is what a
+  registry does when nothing checks it. NB the coverage check's exclusion list is written
+  out IN FULL and must not be derived from §1's: deriving it was vacuous, because §1
+  legitimately excludes the two autopay senders (thin wrappers over their pure builders)
+  and those were exactly the previews that were missing.
+- **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
+  72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
+  8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A
+  64-colour palette reaches 2,476 bytes and the per-pixel arithmetic calls it fine (five
+  pixels of 5,184 differ by >8/255 composited on the header) — **it still BANDS**, the
+  gradient becoming visible stripes, because banding is a STRUCTURED artifact a mean
+  per-pixel delta underweights. Octree at 128 and 256 bands identically and is barely
+  smaller. The arithmetic passed and looking at it did not, which is the whole reason to
+  look. The data URI itself stays: an inlined image cannot be stripped by the image
+  blocking most clients apply by default.
+- **AN EDIT THAT CHANGES NOTHING THE GUEST WOULD NOTICE MUST NOT ASK.**
+  `offerUpdatedConfirmationEmail` (which already existed, correctly, and re-sends via a
+  preview — the arrival email is separately handled by clearing `pre_arrival_sent` so the
+  cron re-sends) fired after EVERY save, so correcting a phone-number typo raised a dialog
+  asking whether to re-send the guest their whole booking confirmation. `bookings.php`'s
+  update tail now returns **`material`** — dates, cottage, party or price, i.e. what the
+  confirmation actually STATES — derived server-side because the client no longer holds
+  the old row. An ask that appears for nothing teaches the owner to dismiss the one that
+  counts.
 - **A GATE THAT SCANS FOR A PHRASE PRESENT IN BOTH HALVES IS VACUOUS.** Three of the new
   checks passed with the HTML half deleted, because the plain-text half carried the same
   sentence — and one passed with the whole amount block gone, because `email_h()` renders

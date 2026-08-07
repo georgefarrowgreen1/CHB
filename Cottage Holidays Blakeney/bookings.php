@@ -985,7 +985,25 @@ if ($action === 'update') {
         'Booking edited' . ($changes ? ' — ' . mb_substr(implode('; ', $changes), 0, 200) : '') . ' — ' . ($b['name'] ?? ''),
         ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $id],
     );
-    json_out(['ok' => true]);
+    // WHICH EDITS CHANGE THE AGREEMENT. The client offers to email an updated
+    // confirmation after a save (offerUpdatedConfirmationEmail), and it offered
+    // after EVERY save — so correcting a typo in a phone number raised a dialog
+    // asking whether to re-send the guest their booking confirmation. An ask that
+    // appears when nothing the guest would notice has changed teaches the owner to
+    // dismiss it, which is how the one that matters gets dismissed too.
+    //
+    // Material = what the confirmation actually STATES and the guest acts on: the
+    // dates, the cottage, the party, and the price. Contact details, notes and the
+    // payment-method label are not — the guest already knows their own phone number.
+    // Derived here rather than in the client because the client does not hold the
+    // OLD row; it has already overwritten its copy.
+    $material = $checkIn !== ($b['check_in'] ?? '')
+        || $checkOut !== ($b['check_out'] ?? '')
+        || $propKey !== ($b['prop_key'] ?? '')
+        || (int) $adults !== (int) ($b['adults'] ?? 0)
+        || (int) $children !== (int) ($b['children'] ?? 0)
+        || $priceOverride !== $oldOverride;
+    json_out(['ok' => true, 'material' => $material]);
 }
 
 // Lightweight save of the owner-only staff note (from the booking details modal).

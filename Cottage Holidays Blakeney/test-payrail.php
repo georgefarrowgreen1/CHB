@@ -1798,7 +1798,7 @@ chk('a receipt with money owing dates it and offers the link',
 // deleted (break-tested). The uppercase label style is email_amount's own, and the
 // serif 34px figure beside it is what "headline" actually means here.
 chk('...and the figure is the headline, not a clause',
-    preg_match('/text-transform:uppercase;color:#A0987F;">Payment received<\/div>[\s\S]{0,200}font-size:34px[\s\S]{0,120}£175\.43/', $eRcM['html']) === 1);
+    preg_match('/text-transform:uppercase;color:' . preg_quote(email_muted_ink(), '/') . ';">Payment received<\/div>[\s\S]{0,200}font-size:34px[\s\S]{0,120}£175\.43/', $eRcM['html']) === 1);
 chk('...labelled for the state it is in (a slice is not its stage)',
     strpos(payment_receipt_body(['partial' => true] + $eRc)['html'], '>Part payment received<') !== false
     && strpos(payment_receipt_body(['automatic' => true] + $eRc)['html'], '>Collected<') !== false);
