@@ -227,7 +227,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(200);
   const sr = await page.evaluate(() => document.querySelectorAll('#mailbox-body .bk-row').length);
   ok(sr === 1, `search filters the list (${sr} match)`);
+  // A SEARCH THAT ONLY SEARCHED WHAT WAS LOADED. The list holds one fetched page, so
+  // filtering it makes "nothing matched" a confident negative about mail still on the
+  // server — worse than a short list. The fixture reports hasMore, so the note and the
+  // way to widen it must both be on screen while a search is active.
+  const capNote = await page.evaluate(() => ({
+    hasMore: __mbxHasMore,
+    text: (document.getElementById('mailbox-body') || {}).innerText || '',
+    older: [...document.querySelectorAll('#mailbox-body [data-act="mailboxOlder"]')].map((b) => b.textContent.trim()),
+  }));
+  ok(capNote.hasMore, 'the fixture really has older mail on the server (else this proves nothing)');
+  ok(/Searched the \d+ email/i.test(capNote.text) && /older mail on the server/i.test(capNote.text),
+    `SEARCH-CAP: a search says what it actually searched (${(capNote.text.match(/Searched[^\n]*/) || [''])[0]})`);
+  ok(capNote.older.some((t) => /search again/i.test(t)),
+    `SEARCH-CAP: …and offers to widen it (${capNote.older.join(' | ')})`);
   await page.evaluate(() => mailboxSearch(''));
+  await page.waitForTimeout(200);
+  const noCap = await page.evaluate(() => ({
+    text: (document.getElementById('mailbox-body') || {}).innerText || '',
+    older: [...document.querySelectorAll('#mailbox-body [data-act="mailboxOlder"]')].map((b) => b.textContent.trim()),
+  }));
+  ok(!/Searched the/i.test(noCap.text) && noCap.older.some((t) => /Load older messages/.test(t)),
+    'SEARCH-CAP: with no search it is the plain "Load older messages" again, not the note');
   await page.waitForTimeout(200);
   await page.evaluate(() => mailboxMarkUnread('u1'));
   await page.waitForTimeout(400);

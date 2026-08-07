@@ -219,6 +219,116 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     });
     ok(st === true, 'saveContent REPORTS a failed write to its caller, not just to the screen');
 
+    // ── 9b. …AND THE TWO CALLERS THAT MAKE A CLAIM MUST WAIT FOR IT. saveContent
+    //      rethrows (above), but these two opted out with `.catch(() => {})` — the
+    //      fire-and-forget idiom, on paths that then print "Saved." and flash a green
+    //      border. So the owner was told their host bio and their website text were on
+    //      the site while the server had rejected both, and navigated away believing it.
+    const claims = await page.evaluate(async () => {
+        const out = {};
+        // Host bio: the message element is the whole claim.
+        const msg = document.getElementById('host-save-msg');
+        if (msg) msg.textContent = '';
+        await saveHostText('host-bio', 'A sentence that will not save.');
+        out.host = msg ? msg.textContent : '(no element)';
+        // Website content: the border colour is the claim.
+        const el = document.createElement('textarea');
+        el.id = 'ce-hero-title';
+        el.value = 'Also will not save.';
+        document.body.appendChild(el);
+        await contentEditSave('hero-title');
+        out.border = getComputedStyle(el).borderColor;
+        // Resolve the tokens through a probe rather than guessing RGB, so the check
+        // cannot drift when the palette is retuned.
+        const probe = document.createElement('div');
+        document.body.appendChild(probe);
+        probe.style.color = 'var(--ok)';
+        out.ok = getComputedStyle(probe).color;
+        probe.style.color = 'var(--danger)';
+        out.danger = getComputedStyle(probe).color;
+        probe.remove();
+        el.remove();
+        return out;
+    });
+    ok(!/^Saved\.$/.test(claims.host) && /not saved|didn/i.test(claims.host),
+        `a rejected host-text save does NOT claim "Saved." (${claims.host})`);
+    ok(claims.border !== claims.ok,
+        `…and a rejected content save does not flash the success border (${claims.border} vs ok ${claims.ok})`);
+    ok(claims.border === claims.danger,
+        `…it says the opposite, in the danger colour (${claims.border})`);
+
+    // ── 9c. "SAVE ALL COTTAGES" REPORTS PER COTTAGE. It ran one save per cottage
+    //      inside a SINGLE try, so cottage 2 failing meant cottage 1 was already
+    //      saved and cottage 3 never attempted — and the catch then said "Couldn't
+    //      save": total failure about a partial write. Driven with the middle cottage
+    //      refusing, so the honest report is the only one that can pass.
+    const partial = await page.evaluate(async () => {
+        // TWO cottages, or "one failed and the rest didn't" has nothing to be about.
+        // INJECT-AND-POP on the shared fixture (the documented rule): propertyList is
+        // what liveCottageKeys reads, and later checks assert counts off it.
+        // The grid only exists once its own section is open — and openArea REFRESHES
+        // propertyList from the endpoint, so the probe cottage has to be added AFTER
+        // it or the reload throws it away (measured: keys stayed at 1).
+        await openArea();
+        settingsOpen('seasongrid');
+        await new Promise((r) => setTimeout(r, 400));
+        const addedIdx = propertyList.length;
+        propertyList.push({ prop_key: 'zz-probe', name: 'Probe Cottage', archived: false, unlisted: false });
+        propertyMeta['zz-probe'] = { name: 'Probe Cottage', short: 'PC' };
+        const keys = liveCottageKeys();
+        const realPost = window.apiPost;
+        const seen = [];
+        window.apiPost = async (url, body) => {
+            if (String(url).includes('rates.php') && body.action === 'seasons_save') {
+                seen.push(body.prop_key);
+                if (body.prop_key === keys[1]) throw new Error('offline');
+                return { ok: true };
+            }
+            return realPost(url, body);
+        };
+        let said = '';
+        const realAlert = window.glassAlert;
+        window.glassAlert = (m) => { said = m; return Promise.resolve(true); };
+        // A grid with one real row, so there is something to save for every cottage.
+        const body = document.getElementById('season-grid-body');
+        if (body) {
+            const cells = keys.map((k) => `<td><input data-sg-prop="${k}" value="150"></td>`).join('');
+            body.innerHTML = `<tr><td><input data-sg="label" value="Test"></td><td><input data-sg="start" value="2027-06-01"></td><td><input data-sg="end" value="2027-06-30"></td>${cells}</tr>`;
+        }
+        await saveSeasonGrid();
+        window.apiPost = realPost;
+        window.glassAlert = realAlert;
+        const out = { said: said, tried: seen.length, keys: keys, grid: !!document.getElementById('season-grid-body'), msg: (document.getElementById('season-grid-msg') || {}).textContent || '' };
+        propertyList.splice(addedIdx, 1);
+        delete propertyMeta['zz-probe'];
+        return out;
+    });
+    ok(partial.grid && partial.keys.length >= 2,
+        `PARTIAL: the grid is open with ${partial.keys.length} cottages (a one-cottage fixture proves nothing here)`);
+    ok(partial.tried === partial.keys.length,
+        `PARTIAL: one cottage failing does not stop the others (${partial.tried} of ${partial.keys.length} attempted)`);
+    ok(!/^Couldn't save:/.test(partial.said) && /but not|Saved for/.test(partial.said),
+        `PARTIAL: …and the report names who was saved and who was not ("${partial.said}")`);
+    ok(/try again to finish/i.test(partial.said), 'PARTIAL: …with what to do about it');
+    ok(partial.msg === partial.said, 'PARTIAL: …and the on-screen line says the same thing as the alert');
+
+    // ── 9d. THE PRIVATE/PUBLIC CONTROL WAS BUILT AND NEVER RENDERED. `privateRow`
+    //      was composed in settingsOpenAccom and left out of the innerHTML — a
+    //      working action, a migrated column and a public site honouring it, with no
+    //      way in. Third time this shape has appeared (the mailbox's Sent list, the
+    //      status page), so it is gated now.
+    const priv = await page.evaluate(async () => {
+        const k = liveCottageKeys()[0];
+        await openArea();
+        settingsOpen('accommodations');
+        settingsOpenAccom(k);
+        await new Promise((r) => setTimeout(r, 300));
+        const btn = document.querySelector('#accom-detail [data-act="setAccommodationPrivate"]');
+        return { there: !!btn, label: btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '' };
+    });
+    ok(priv.there, 'PRIVATE: the make-private control is actually on the screen');
+    ok(/private|website/i.test(priv.label), `PRIVATE: …and says what it does (${priv.label.slice(0, 60)})`);
+
     // ── 10. The private-content cache had the same shape as loadData's stores,
     //      and the sharpest edge of any of them. openSettings() refreshes
     //      adminPrivateContent on every open and used to EMPTY it in the catch —

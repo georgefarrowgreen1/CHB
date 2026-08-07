@@ -434,6 +434,20 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['admin-inbox-email', "(async()=>{inboxFolder('email');await new Promise(r=>setTimeout(r,700));})()"],
         ['admin-pricing', "(async()=>{await openArea();settingsOpen('pricing');await new Promise(r=>setTimeout(r,600));})()"],
         ['admin-learning', "(async()=>{await openArea();settingsOpen('search-learning');await new Promise(r=>setTimeout(r,600));})()"],
+        // THE TWO HUBS AND THE LOG — the screens the owner spends most of the day on,
+        // and the three richest in headings, controls and dates. They were absent, so
+        // the booking hub's ~40 controls, the enquiry hub's action row and the log's
+        // filter chips had never been measured for a name, a size or an outline. The
+        // hubs are opened by id off the seeded fixture; if it ever stops seeding one
+        // the scene simply contributes nothing rather than failing for the wrong
+        // reason, which is why §1b/§6's vacuity guards are the real backstop.
+        ['admin-booking-hub', "(async()=>{const b=(dbBookings[Object.keys(dbBookings)[0]]||[])[0];if(b)await openBookingHub(b.id);await new Promise(r=>setTimeout(r,800));})()"],
+        // SEEDED, not hoped for: with no enquiry in the fixture this scene silently
+        // stayed on the booking hub and measured it a SECOND time, double-counting
+        // every finding there. A scene that cannot open its own screen is worse than
+        // no scene, because the numbers look like coverage.
+        ['admin-enquiry-hub', "(async()=>{enquiries.length=0;enquiries.push({id:901,propKey:'21a',name:'Nina Salt',email:'nina@x.co',phone:'',checkIn:'2027-04-10',checkOut:'2027-04-14',adults:2,children:0,message:'Any chance of a late checkout?',received:'2027-01-04',receivedAt:'2027-01-04 09:00:00',status:'new'});await openEnquiryHub(901);await new Promise(r=>setTimeout(r,900));})()"],
+        ['admin-activity-log', "(async()=>{nav('view-activity-log');await new Promise(r=>setTimeout(r,800));})()"],
     ];
     const totals = { unnamed: new Set(), tiny: new Set(), small: new Set() };
     const outlines = [];
