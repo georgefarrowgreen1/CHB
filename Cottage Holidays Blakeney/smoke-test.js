@@ -1171,6 +1171,26 @@ console.log('\n== 12. The clash guard has exactly one bypass, and it is a human 
     );
 }
 
+// ============================================================
+//  §13 — NO SILENT CAPS, and the number is stated ONCE.
+//  The activity log asks for 250 rows and rendered them with nothing saying so,
+//  so a full page read exactly like a complete history. The sentence and the
+//  request must read the same constant, or one can drift from the other.
+// ============================================================
+console.log('\n§13 The activity log declares its own cap');
+{
+    const adm = adminScript;
+    check('ACT_LOG_LIMIT is the one definition', /const ACT_LOG_LIMIT = \d+;/.test(adm));
+    check('...the request asks for it', /limit: ACT_LOG_LIMIT,/.test(adm));
+    check('...no bare 250 left in the log renderer', !/limit: 250/.test(adm));
+    check(
+        '...a full page SAYS it is capped, and names the remedy already on screen',
+        /events\.length >= ACT_LOG_LIMIT/.test(adm) &&
+            /Showing the \$\{ACT_LOG_LIMIT\} most recent/.test(adm) &&
+            /search or filter above/.test(adm),
+    );
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

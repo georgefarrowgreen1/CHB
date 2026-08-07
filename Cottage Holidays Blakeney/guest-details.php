@@ -221,8 +221,11 @@ header('X-Robots-Tag: noindex');
 $id = (int) ($_GET['b'] ?? $_POST['b'] ?? 0);
 $token = (string) ($_GET['token'] ?? $_POST['token'] ?? '');
 if ($id <= 0 || !hash_equals(guest_reg_token($id), $token)) {
-    http_response_code(403);
-    echo '<!doctype html><meta charset="utf-8"><title>Guest details</title><p style="font-family:sans-serif;padding:40px;">Sorry — this guest-details link is invalid.</p>';
+    echo token_link_error_page(
+        'Guest details',
+        'Sorry — this guest-details link doesn’t work any more.',
+        403,
+    );
     exit();
 }
 
@@ -234,8 +237,11 @@ try {
     $b = null;
 }
 if (!$b) {
-    http_response_code(404);
-    echo '<!doctype html><meta charset="utf-8"><title>Guest details</title><p style="font-family:sans-serif;padding:40px;">Sorry — we couldn’t find that booking.</p>';
+    echo token_link_error_page(
+        'Guest details',
+        'Sorry — we couldn’t find that booking. It may have been cancelled.',
+        404,
+    );
     exit();
 }
 

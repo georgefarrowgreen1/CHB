@@ -300,6 +300,26 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(Math.abs(rm.after - rm.before) > 250, `MOTION: …but the ring still TRAVELS — it is the pointer (${rm.before} → ${rm.after})`);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
+  // 15) A WALK NAMES BUTTONS THAT EXIST. block-dates' one step said "then tap
+  // Block" while the glass dialog's OK button said the default "OK" — so the guide
+  // that exists to help all the way through a task pointed at a control by a name
+  // nothing on screen had. The invariant is the pair, not either string: read the
+  // dialog's REAL OK label out of the DOM and require the sentence to quote it.
+  await clearToasts();
+  await page.evaluate(() => coachWalk('block-dates'));
+  await page.waitForTimeout(700);
+  const blk = await page.evaluate(() => ({
+    say: document.querySelector('.coach-ov-seq .coach-tip-text')?.textContent || '',
+    ok: (document.getElementById('glass-dialog-ok') || {}).textContent || '',
+    dlgOpen: !!document.querySelector('#glass-dialog.open, #glass-dialog-overlay.open'),
+  }));
+  ok(!!blk.ok.trim() && blk.ok.trim() !== 'OK',
+    `WALK: the Block-dates dialog's OK button says what it does (${blk.ok.trim() || '(empty)'})`);
+  ok(blk.say.includes(blk.ok.trim()),
+    `WALK: …and the walkthrough step quotes that exact label (say="${blk.say.slice(0, 90)}")`);
+  await page.evaluate(() => { try { coachSeqStop(); } catch (e) {} try { __glassDlgResolve && __glassDlgResolve(false); } catch (e) {} });
+  await page.waitForTimeout(150);
+
   console.log(fails ? `\n  ${fails} CHECK(S) FAILED ❌` : '\n  GUIDED WALKTHROUGH SUITE PASSED ✅');
   await done(fails);
 })();

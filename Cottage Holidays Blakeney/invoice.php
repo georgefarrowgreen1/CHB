@@ -121,8 +121,11 @@ header('X-Robots-Tag: noindex');
 $id = (int) ($_GET['b'] ?? 0);
 $token = (string) ($_GET['token'] ?? '');
 if ($id <= 0 || !hash_equals(invoice_token($id), $token)) {
-    http_response_code(403);
-    echo '<!doctype html><meta charset="utf-8"><title>Invoice</title><p style="font-family:sans-serif;padding:40px;">Sorry — this invoice link is invalid.</p>';
+    echo token_link_error_page(
+        'Invoice',
+        'Sorry — this invoice link doesn’t work any more.',
+        403,
+    );
     exit();
 }
 
@@ -134,8 +137,11 @@ try {
     $b = null;
 }
 if (!$b) {
-    http_response_code(404);
-    echo '<!doctype html><meta charset="utf-8"><title>Invoice</title><p style="font-family:sans-serif;padding:40px;">Sorry — we couldn’t find that booking.</p>';
+    echo token_link_error_page(
+        'Invoice',
+        'Sorry — we couldn’t find that booking. It may have been cancelled.',
+        404,
+    );
     exit();
 }
 

@@ -1612,6 +1612,74 @@ chk('...carries the booking-derived balance due date',
 chk('...and renders it on the Balance due row',
     preg_match("/'Balance due' \\. \\(!empty\\(\\\$d\\['balance_due_date'\\]\\) \\? ' by ' \\. \\\$e\\(\\\$d\\['balance_due_date'\\]\\)/", $invW) === 1);
 
+// ============================================================
+//  A DEAD END AT THE END OF AN EMAILED LINK.
+//  invoice.php and guest-details.php each hand-rolled two error pages, and all
+//  four shared the same two defects: no viewport meta — so a phone laid the page
+//  out at 980px and scaled the one sentence down to ~6.4px — and no way forward,
+//  on the ONLY page a guest reaches from an email.
+// ============================================================
+$_SERVER['HTTP_HOST'] = 'cottageholidaysblakeney.co.uk';
+$_SERVER['SCRIPT_NAME'] = '/invoice.php';
+$errPage = token_link_error_page('Invoice', 'Sorry — this invoice link doesn’t work any more.', 403);
+chk('the token-link error page declares a viewport', strpos($errPage, 'name="viewport"') !== false);
+chk('...at device width, so a phone does not scale its type down',
+    strpos($errPage, 'width=device-width, initial-scale=1') !== false);
+chk('...states the situation', strpos($errPage, 'doesn’t work any more') !== false);
+chk('...names a way forward rather than stopping',
+    stripos($errPage, 'reply to that email') !== false);
+// Scheme-agnostic: site_base_url() is http:// off a CLI request (request_is_https
+// is false there) and https:// in production — the point is the LINK, not the scheme.
+chk('...and links to the site',
+    preg_match('~<a href="https?://cottageholidaysblakeney\.co\.uk/"~', $errPage) === 1);
+chk('...is noindex, like every other token-reached page', strpos($errPage, 'name="robots"') !== false);
+chk('...and escapes what it is handed', strpos(token_link_error_page('<b>x</b>', 'a & b'), '&lt;b&gt;') !== false);
+// The WIRING, not just the helper: both files must be through it, or two of the
+// four pages stay 6.4px and this section passes on the two that moved.
+foreach (['invoice.php' => 2, 'guest-details.php' => 2] as $f => $n) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    chk("$f raises both of its link errors through the shared page",
+        substr_count($src, 'token_link_error_page(') === $n);
+    chk("$f has no hand-rolled viewport-less error page left",
+        strpos($src, '<!doctype html><meta charset="utf-8"><title>') === false);
+}
+
+// A GUEST IS NEVER TOLD TO RUN A DATABASE MIGRATION. Three guest-facing saves —
+// a review, a photo, a suggested experience — answered a failed INSERT with
+// "run migration-guest-reviews.sql first" / "has migrate.php been run?", which
+// is an instruction to somebody else on a screen the customer cannot act from.
+foreach (['reviews.php', 'photos.php', 'experiences.php'] as $f) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $f);
+    chk("$f never puts a migration instruction in front of a guest",
+        stripos($src, 'has migrate.php been run') === false
+        && stripos($src, 'run migration-') === false);
+    chk("$f raises it through guest_save_failed instead",
+        strpos($src, 'guest_save_failed(') !== false);
+}
+// …and the OWNER is told, since they are the only one who can fix it. These
+// throws are CAUGHT, so db.php's exception handler never sees them.
+$dbW = (string) file_get_contents(__DIR__ . '/db.php');
+chk('guest_save_failed logs a warning for the owner',
+    preg_match("/function guest_save_failed.*?log_activity\(.*?'severity' => 'warn'/s", $dbW) === 1);
+chk('...and answers the guest with a 500, not a silent 200',
+    preg_match("/function guest_save_failed.*?json_out\(.*?500,/s", $dbW) === 1);
+// Single-quoted patterns: the sentence contains a literal $what, and in a
+// double-quoted PHP string that interpolates away to nothing.
+chk('...naming what they were saving and offering another route',
+    preg_match('/function guest_save_failed.*?couldn’t save your \x27 \. \$what/s', $dbW) === 1
+    && strpos($dbW, 'send it to us in a message') !== false);
+
+// THE WELCOME BOOK'S LOCK OFFERS THE WAY THROUGH. The gate is deliberate, and the
+// server is its only authority (it allows ANY settled booking at the cottage), so
+// the client must be able to recognise the refusal to attach a Pay button to it.
+$welW = (string) file_get_contents(__DIR__ . '/welcome.php');
+chk('the welcome-book payment gate carries a machine-readable code',
+    preg_match("/'reason' => 'unpaid', 'code' => 'unpaid'/", $welW) === 1);
+$appW = (string) file_get_contents(__DIR__ . '/app.js');
+chk('...and the client reads it to offer paying rather than only stating the lock',
+    preg_match("/e\.code === 'unpaid'/", $appW) === 1
+    && preg_match("/Pay the balance</", $appW) === 1);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

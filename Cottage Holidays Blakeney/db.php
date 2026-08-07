@@ -1698,6 +1698,57 @@ function site_base_url()
     $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
     return $scheme . '://' . $host . $dir . '/';
 }
+// A GUEST MUST NEVER BE TOLD TO RUN A DATABASE MIGRATION. Three guest-facing
+// endpoints — a review, a photo, a suggested experience — answered a failed INSERT
+// with "run migration-guest-reviews.sql first" / "has migrate.php been run?", which
+// is an instruction to somebody else, on a screen the customer cannot act from. Say
+// what it means for THEM, and tell the OWNER, who is the only one who can fix it:
+// these throws are CAUGHT, so db.php's exception handler never sees them and nothing
+// reached the activity log. $what names the thing they were trying to save.
+function guest_save_failed($what, \Throwable $e)
+{
+    log_activity('system', 'guest_save_failed', 'A guest could not save their ' . $what, [
+        'severity' => 'warn',
+        'actor' => 'system',
+        'meta' => ['what' => $what, 'error' => mb_substr($e->getMessage(), 0, 300)],
+    ]);
+    json_out(
+        ['error' => 'Sorry — we couldn’t save your ' . $what . ' just now. Please try again in a few minutes, or send it to us in a message and we’ll add it for you.'],
+        500,
+    );
+}
+// THE ERROR PAGE AT THE END OF AN EMAILED LINK, stated once.
+// invoice.php and guest-details.php each hand-rolled two of these, and all four
+// were the same two defects: no viewport meta — so a phone laid the page out at
+// 980px and scaled it down, rendering the one sentence at ~6.4px — and no way
+// forward, which on the ONLY page a guest reaches from an email is a dead end.
+// A link that has stopped working is nearly always a stale email or a changed
+// booking, so the remedy is the same in every case: the newest email, a reply to
+// it, or the site itself. $what names the thing ("invoice"), $why the situation.
+function token_link_error_page($what, $why, $code = 403)
+{
+    // Guarded so this stays callable from a test harness that has already echoed
+    // (the status is the page's own business, not the sentence's).
+    if (!headers_sent()) {
+        http_response_code($code);
+    }
+    $home = htmlspecialchars(site_base_url(), ENT_QUOTES, 'UTF-8');
+    $t = htmlspecialchars($what, ENT_QUOTES, 'UTF-8');
+    $w = htmlspecialchars($why, ENT_QUOTES, 'UTF-8');
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8">' .
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' .
+        '<meta name="robots" content="noindex"><title>' . $t . '</title></head>' .
+        '<body style="margin:0;padding:40px 22px;font-family:system-ui,-apple-system,\'Segoe UI\',sans-serif;' .
+        'font-size:17px;line-height:1.6;color:#2c2c2c;background:#faf7f2;">' .
+        '<div style="max-width:34em;margin:0 auto;">' .
+        '<h1 style="font-size:1.3rem;margin:0 0 12px;">' . $t . '</h1>' .
+        '<p style="margin:0 0 14px;">' . $w . '</p>' .
+        '<p style="margin:0 0 20px;">Links like this one are personal to a booking, and a new one is sent ' .
+        'whenever the booking changes — so the newest email you have from us should work. ' .
+        'If it doesn&rsquo;t, just reply to that email and we&rsquo;ll sort it out.</p>' .
+        '<p style="margin:0;"><a href="' . $home . '" style="color:#0b5f74;">Go to Cottage Holidays Blakeney</a></p>' .
+        '</div></body></html>';
+}
 // Minimal Square REST call over cURL (no Composer/SDK needed on shared hosting,
 // matching the raw SMTP/webpush approach). Returns ['status'=>int,'body'=>array].
 // Never throws; a transport failure comes back as status 0 with an 'error' body.

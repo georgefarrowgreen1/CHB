@@ -136,7 +136,7 @@ if ($action === 'suggest') {
             )
             ->execute([$title, $bodyTxt, $image, $linkUrl, $phone, $category, $guest['name'], $guest['email']]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Experiences not ready — has migrate.php been run? (migration-experiences.sql)'], 500);
+        guest_save_failed('suggestion', $e);
     }
 
     // Best-effort heads-up to the owner: push to their devices + email.

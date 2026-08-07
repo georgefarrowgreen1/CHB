@@ -325,6 +325,84 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(drop.calls >= 2, `WATCH-DROP: so it really re-asks the server (${drop.calls} calls)`);
   ok(/Jollyboat/.test(drop.recovered), `WATCH-DROP: and the watcher comes back (${drop.recovered})`);
 
+  // "WHAT AM I WATCHING" USED TO HANG THERE FOR EVER. The branch above accepts that
+  // exact phrasing, but the callback that re-renders once the fetch lands guarded on
+  // a regex that did NOT include it — so the panel rendered "Checking what you're
+  // watching… One moment" and stayed. Driven through the REAL pop-out and the REAL
+  // field, because calling cmdkCommand() never reaches that callback (which is how
+  // the branch above passes while this one fails).
+  const hang = await page.evaluate(async () => {
+    const realPost = window.apiPost;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('watchers.php') && body.action === 'list') {
+        return { watchers: [{ id: 'wLIVE', kind: 'gap-unsold', pk: 'jollyboat', from: '2027-03-10', to: '2027-03-13', tell: '2027-03-03', say: 'Watching Jollyboat 10–13 Mar' }] };
+      }
+      return realPost(url, body);
+    };
+    __chbWatchers = null;
+    __chbWatchersErr = false;
+    openCmdK();
+    const inp = document.getElementById('cmdk-input');
+    inp.value = 'what am i watching';
+    cmdkSearchCore('what am i watching', false);
+    // Read the WHOLE results area, not the first .cmdk-row-label: an `answer` row
+    // leads as the HERO layout, so a label query returns the second row (which made
+    // the first version of this check pass while reading an unrelated help topic).
+    const read = () => (document.getElementById('cmdk-results') || {}).textContent || '';
+    const settled = async () => {
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 60));
+        const t = read();
+        if (t && !/Checking what/i.test(t)) return t;
+      }
+      return read();
+    };
+    const label = await settled();
+    window.apiPost = realPost;
+    closeCmdK();
+    return { label };
+  });
+  ok(!/Checking what/i.test(hang.label),
+    `WATCH-PHRASE: "what am i watching" reaches an ANSWER instead of hanging on "Checking…" (${hang.label.slice(0, 70)})`);
+  ok(/Jollyboat/.test(hang.label), `WATCH-PHRASE: …and it is the watcher itself (${hang.label.slice(0, 70)})`);
+
+  // A FAILED "SEARCH EVERYTHING" NAMED A REMEDY IT DID NOT OFFER. Its copy said
+  // "try that again" with only Back on screen. The retry is a real control now, and
+  // re-running has to clear the error flag first or the pending render short-circuits
+  // straight back into the same frame.
+  const deep = await page.evaluate(async () => {
+    openCmdK();
+    const inp = document.getElementById('cmdk-input');
+    inp.value = 'boiler';
+    const realPost = window.apiPost;
+    let calls = 0;
+    window.apiPost = (url, body) => {
+      if (String(url).includes('search.php')) { calls++; return Promise.reject(new Error('offline')); }
+      return realPost(url, body);
+    };
+    cmdkDeepFetch('boiler', '');
+    for (let i = 0; i < 40 && !__cmdkDeepErr; i++) await new Promise((r) => setTimeout(r, 60));
+    const errFrame = {
+      says: (document.querySelector('#cmdk-results .cmdk-none') || {}).textContent || '',
+      retry: !!document.querySelector('#cmdk-results [data-act="cmdkDeepRetry"]'),
+    };
+    const btn = document.querySelector('#cmdk-results [data-act="cmdkDeepRetry"]');
+    if (btn) btn.click();
+    await new Promise((r) => setTimeout(r, 120));
+    const asked = calls;
+    const still = (document.querySelector('#cmdk-results .cmdk-none') || {}).textContent || '';
+    window.apiPost = realPost;
+    cmdkDeepClose();
+    closeCmdK();
+    return { errFrame, asked, still };
+  });
+  ok(/Couldn’t search everything|Couldn't search everything/.test(deep.errFrame.says),
+    `DEEP-ERR: a failed deep search says so (${deep.errFrame.says.slice(0, 60)})`);
+  ok(deep.errFrame.retry, 'DEEP-ERR: …and offers a real Try-again control, not just the word');
+  ok(deep.asked >= 2, `DEEP-ERR: …which really re-asks the server (${deep.asked} calls)`);
+  ok(/Searching everything|Couldn’t search everything|Couldn't search everything/.test(deep.still),
+    'DEEP-ERR: …and the retry gets past the error frame rather than re-rendering it unchanged');
+
   // ---- STEP 3: BULK — chase them all, in one tap ----
   // Driven the way the owner does it: search, look at the answer, TAP the action,
   // read the real confirm, press the real button. Nothing is called directly —

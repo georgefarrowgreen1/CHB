@@ -98,7 +98,7 @@ if ($action === 'submit') {
             )
             ->execute([$prop, $guestId, $guest['name'] ?? '', $res['url'], $caption]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not save your photo — has migrate.php been run?'], 500);
+        guest_save_failed('photo', $e);
     }
     json_out(['ok' => true]);
 }
