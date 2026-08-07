@@ -93,6 +93,63 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(dpad < 60, `desktop modal-box keeps its normal padding (${dpad}px)`);
 
+  // ── BACK CLOSES THE SHEET, IT DOES NOT LEAVE THE PAGE ──────────────────────
+  // On a phone, Back is how people close things. Four guest overlays pushed a
+  // history entry and consumed it; eight full-page sheets never got the
+  // treatment — so Back left the sheet up AND silently switched the page
+  // underneath to the homepage, including the photo lightbox (the highest-traffic
+  // guest tap on the site). NOTHING in the whole suite drove page.goBack() before
+  // this, which is why eight of them could sit broken.
+  console.log('\n4. Back closes the top sheet and stays put');
+  const sheets = ['lightbox', 'faq-modal', 'reviews-modal', 'welcome-modal',
+    'guest-details-modal', 'guest-security-modal', 'exp-suggest-modal', 'photo-upload-modal'];
+  for (const id of sheets) {
+    // A previous iteration's Back can still be settling, and app.js is re-evaluated
+    // on any load — wait for the globals rather than guessing at a delay.
+    // Reload to a known state each time: Back has just moved history, and app.js
+    // is re-evaluated on load, so wait for its globals rather than guessing.
+    await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof openProperty === 'function' && typeof nav === 'function');
+    await page.waitForTimeout(500);
+    await page.evaluate(async (i) => {
+      currentGuest = { email: 'g@e.com', name: 'G', phone: '', address: '', postcode: '' };
+      if (i === 'lightbox') { openProperty('jollyboat'); openLightbox(0); }
+      else if (i === 'faq-modal') openFaqModal('jollyboat');
+      else if (i === 'reviews-modal') openAllReviews('jollyboat');
+      else if (i === 'welcome-modal') await openWelcomeBook('jollyboat');
+      else if (i === 'guest-details-modal') openGuestDetailsModal();
+      else if (i === 'guest-security-modal') openGuestSecurityModal();
+      else if (i === 'exp-suggest-modal') openExperienceSuggest();
+      else if (i === 'photo-upload-modal') openPhotoUpload('jollyboat');
+    }, id);
+    await page.waitForTimeout(450);
+    const before = await page.evaluate((i) => ({
+      up: !!(document.getElementById(i) || {}).classList?.contains('open'),
+      view: (document.querySelector('.page-view.active') || {}).id || '',
+    }), id);
+    if (!before.up) { ok(false, `${id} did not open — fixture problem, not a Back problem`); continue; }
+    // A MARKER A RELOAD WOULD WIPE. Without this the check is VACUOUS: with the
+    // history entry missing, Back leaves index.html entirely, the page comes back
+    // fresh with the sheet shut and the view restored, and both assertions below
+    // pass while the guest has actually been thrown off the page. Break-tested.
+    await page.evaluate(() => { window.__backProbe = 'alive'; });
+    await page.goBack();
+    await page.waitForTimeout(500);
+    const after = await page.evaluate((i) => ({
+      stillOpen: !!(document.getElementById(i) || {}).classList?.contains('open'),
+      view: (document.querySelector('.page-view.active') || {}).id || '',
+      sameDocument: window.__backProbe === 'alive',
+    }), id);
+    ok(after.sameDocument, `…without navigating away from the page (#${id})`);
+    ok(!after.stillOpen, `Back closes #${id}`);
+    // The invariant is that the page UNDERNEATH does not move — asserted against
+    // the view that was up, not a literal, because a reload legitimately restores
+    // the screen the guest was on (the chb-nav resume feature).
+    ok(after.view === before.view, `…and leaves the page beneath alone (${before.view} → ${after.view})`);
+    await page.evaluate(() => { try { closeTopOverlay(); } catch (e) {} });
+    await page.waitForTimeout(250);
+  }
+
   console.log(fails ? `GUEST-MODAL TEST FAILED ❌ (${fails})` : 'GUEST-MODAL TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
