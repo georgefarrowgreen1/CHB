@@ -615,6 +615,10 @@ function autopay_send_receipt($b, $sqId, $rental, $damages)
             'total' => $total,
             'paid_so_far' => $paid,
             'balance' => round(max(0, $total - $paid), 2),
+            // The date the plan is working towards. NB no 'pay_url' on this path,
+            // deliberately: the rest is collected automatically, so a "pay the
+            // rest now" button beside "nothing to do" would contradict it.
+            'balance_due_date' => (string) ($b['balance_due_date'] ?? ''),
             'fully_paid' => $total > 0 && $paid >= $total - 0.001,
             'deposit_charged' => $damages,
             'invoice_url' => site_base_url() . 'invoice.php?b=' . $bookingId . '&token=' . invoice_token($bookingId),

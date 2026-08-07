@@ -53,6 +53,83 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   (sw.js CORE ?v= == index.html ?v=, BUILD well-formed ≥6 chars).
 - Then run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
 
+## The emails are a design system, and mailer.php is it
+
+Twenty-one templates, one look. Every one is composed from the helpers at the top of
+`mailer.php` — never hand-rolled table markup, which is how the enquiry reply and the
+owner's new-enquiry notification each ended up with their own 13px/14px label-value
+table and looked like a different product from the confirmation that follows them.
+- **Blocks**: `email_shell` (document + preheader + footer), `email_crown_header`,
+  `email_h`, `email_p`, `email_note` (tinted callout), `email_rows` (label + right-rail
+  value, the house summary), `email_money_rows` (sentence-case tinted money panel),
+  `email_amount` (the one big figure), `email_ownernote`, `email_footnote` (12px prose),
+  `email_address_block`, `email_btn` (primary, VML-safe) and `email_btn2` (outlined
+  secondary, same 44px target).
+- **ESCAPING IS ASYMMETRIC AND IT BITES.** `email_h`, `email_btn`, `email_amount`'s
+  LABEL, `email_ownernote` and **`email_shell`'s PREHEADER** all run `email_esc()` on
+  what you give them — so passing `&mdash;` or a pre-escaped name prints the entity
+  literally in the inbox. `email_p`, `email_note`, `email_rows`, `email_money_rows` and
+  `email_footnote` expect PRE-ESCAPED HTML. The preheader one shipped: the enquiry
+  acknowledgement's inbox preview read "We&rsquo;ll confirm your dates". test-payrail
+  sweeps every `email_shell` call for an entity in its first argument.
+- **DATES ARE SPOKEN, TIMES LOSE THEIR DEAD :00.** `email_date('2026-09-06')` →
+  "Sun 6 Sep 2026" (`, false` drops the year, for subjects); `email_time('15:00')` →
+  "3pm", `'10:30'` → "10:30am". This is a deliberate DEPARTURE from the DD/MM/YYYY house
+  rule, which governs SCREENS: a screen date is scanned against other dates, an email
+  date is read once and acted on, so it names the weekday. **The exception is a SCHEDULE
+  COLUMN** — the instalment offer's and the failure email's payment tables keep
+  `uk_date()`, because four dates stacked in one column are compared to each other and
+  DD/MM/YYYY is fixed-width. The retry date therefore exists in both forms (`$retry`
+  spoken for the sentence, `$retryNum` numeric for the row). NB `email_time('')` returns
+  `''`: `strtotime('2000-01-01 ')` parses happily to midnight, so an unset check-in time
+  rendered "from 12am" — a stated fact, wrong, and its gate caught it.
+- **A MONEY EMAIL LEADS WITH THE FIGURE, THEN THE BUTTON, THEN THE ARITHMETIC.** The
+  ask, the reminder and the receipt share `payment_money_facts()` (one derivation) but
+  each renders its own row set, because a reminder has no "still to come" — the balance
+  IS the remainder. The three now reconcile: £175.43 to pay (100.43 deposit + 75
+  refundable), £476.70 stay total, £301.27 remaining, and the receipt's rental rail
+  £100.43 of £401.70 against the same £301.27.
+- **A DEADLINE SITS BESIDE ITS OWN FIGURE.** `payment_plan_line()` answers a different
+  question (when the REMAINDER is wanted), and on a balance ask there is no remainder —
+  so it returns `''` and the one email whose whole job is "settle by then" named no date
+  at all. A balance ask and its reminder carry `Due by <spoken date>` in the amount
+  block; a DEPOSIT ask must NOT, because its own money is due now.
+- **THE COMPOSERS THAT ARE PURE MUST STAY PURE.** `payment_request_body`,
+  `payment_reminder_body`, `payment_receipt_body`, `autopay_notice_body`,
+  `autopay_failure_body`, `owner_payment_notice_body` and
+  `send_cancellation_email_body` take everything they need as arguments (accent, bank
+  details, and now `host_name`) so test-payrail drives the REAL composer with no DB and
+  no SMTP. A `content_value()` call inside one breaks the whole gate — that is why
+  `email_host_name()` is resolved by the SENDER and passed down.
+- **`content_value($key)` TAKES ONE ARGUMENT** and already returns `''` for a missing
+  key. A second "default" is accepted at runtime and silently ignored, so only PHPStan
+  catches it — which it did, in the two helpers added here.
+- **"Reason:" is a form field, not a sentence.** The refund, cancellation and
+  deposit-return emails printed the owner's private note under a bold "Reason:", making
+  the SITE appear to justify itself to the guest in the register of a rejection letter.
+  `email_ownernote($who, $text)` attributes it ("A note from George") and returns `''`
+  for an empty note. Every refund now states **3–5 working days** rather than "a few".
+- **What was found DEAD or WRONG on the way through** (all fixed, all gated):
+  the confirmation's pay-balance link is guarded on `$b['id']` and **neither real caller
+  passed one**, so it could never render (the enquiry PREVIEW still omits it on purpose —
+  no booking exists there and a token signed for a guessed id is worse than no button);
+  the owner's payment notice could only answer "is that the lot?" by the ABSENCE of "now
+  paid in full", while `pay.php` held the figure in the same closure; the receipt told
+  the guest "we'll be in touch about settling it" with no date and no link, and said it
+  even on the AUTOMATIC path where nothing is needed from them; and **`email-samples.php`
+  — the owner's own preview screen — handed the money composers a BOOKING ROW where they
+  expect a DERIVED payload**, so it showed the card taking £119.18 where the live path
+  takes £175.43. The live path was correct throughout; only the preview lied.
+- **A NEGATIVE SOURCE SCAN MUST NOT SEE ITS OWN EXPLANATION.** Two gates here assert an
+  absence ("no `pay_url` on the autopay receipt", "no longer says 'a few working days'")
+  and BOTH first failed against the comment stating exactly that, three lines above the
+  code they guard. test-payrail strips `//` lines before any such assertion.
+- **A GATE THAT SCANS FOR A PHRASE PRESENT IN BOTH HALVES IS VACUOUS.** Three of the new
+  checks passed with the HTML half deleted, because the plain-text half carried the same
+  sentence — and one passed with the whole amount block gone, because `email_h()` renders
+  the same words as the heading. Assert the halves separately, and target the BLOCK
+  (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

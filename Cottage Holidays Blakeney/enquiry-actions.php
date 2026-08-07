@@ -323,6 +323,11 @@ function enquiry_approve($id, $priceOverride = null, $plan = [])
             'damages_deposit' => $p['damagesDeposit'] ?? 0,
             'payment' => 'unpaid',
             'ref' => $ref,
+            // See bookings.php's note: the pay link and the owner copy's hub link
+            // both need this. NB the PREVIEW call earlier in this file deliberately
+            // omits it — no booking exists yet there, and signing a token for a
+            // guessed id would be worse than a preview without the button.
+            'id' => (int) $bookingId,
             // The approval page reports the GUEST result; the owner copy goes
             // out after the response instead of blocking the confirmation page.
             'defer_owner' => true,

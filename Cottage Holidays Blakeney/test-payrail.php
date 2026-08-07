@@ -256,8 +256,14 @@ chk('the confirmation payload carries the booking-derived due date',
     preg_match("/'balance_due_date' => booking_balance_due_date\(\\\$b\)/", $bkW) === 1);
 chk('…and the composer renders it only when something is actually outstanding',
     preg_match('/\$balNow > 0\.001 && !empty\(\$b\[.balance_due_date.\]\)/', $mlW) === 1);
+// SPOKEN, never a raw SQL stamp. The guest reads this deadline once and has to
+// act on it, so it says which DAY of the week it falls on — but the invariant the
+// original check protected still holds and is asserted directly below it: whatever
+// email_date returns, it is not the ISO stamp the column stores.
 chk('…in the house date form, never a raw SQL stamp',
-    preg_match("/due by ' \. uk_date\(\(string\) \\\$b\['balance_due_date'\]\)/", $mlW) === 1);
+    preg_match("/due by ' \. email_date\(\(string\) \\\$b\['balance_due_date'\]\)/", $mlW) === 1
+    && email_date('2026-08-23') === 'Sun 23 Aug 2026'
+    && strpos(email_date('2026-08-23'), '2026-08-23') === false);
 chk('…and an unpaid booking still gets the date (this email lands before any ask)',
     preg_match('/elseif \(\$balNow > 0\.001 && \$dueByLine !== ..\)/', $mlW) === 1);
 
@@ -1061,9 +1067,9 @@ $apMonthlyRow = $ap([
 ]);
 $nMail = autopay_notice_body($apMonthlyRow, 'https://example.test/pay');
 chk('a monthly notice names its position', strpos($nMail['subject'], 'payment 1 of 3') !== false);
-chk('…and warns about the NEXT collection, not the final date', strpos($nMail['subject'], '28/08/2026') !== false);
+chk('…and warns about the NEXT collection, not the final date', strpos($nMail['subject'], 'Fri 28 Aug 2026') !== false && strpos($nMail['subject'], 'Oct') === false);
 chk('…names the position in the body too', strpos($nMail['text'], 'payment 1 of 3') !== false);
-chk('…and says what follows', strpos($nMail['text'], '2 more monthly payments follow, the last on 28/10/2026') !== false);
+chk('…and says what follows', strpos($nMail['text'], '2 more monthly payments follow, the last on Wed 28 Oct 2026') !== false);
 $nFinal = autopay_notice_body($ap([
     'id' => 42, 'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat',
     'autopay_amount' => 175.0, 'autopay_due' => '2026-10-28',
@@ -1085,8 +1091,14 @@ $fRow = $ap([
     'autopay_instalments' => 3, 'autopay_next_at' => '2026-09-28',
 ]);
 $fRetry = autopay_failure_body($fRow, 'The card was declined.', false, '2026-08-28', 175.0, 'https://example.test/pay');
-chk('a failed instalment names its position and the retry day', strpos($fRetry['subject'], "Payment 2 of 3 didn't go through") !== false && strpos($fRetry['subject'], '29/08/2026') !== false);
-chk('…leads with the booking being safe', strpos($fRetry['text'], 'Your booking is completely safe') !== false && strpos($fRetry['html'], 'Your booking is safe') !== false);
+chk('a failed instalment names its position and the retry day', strpos($fRetry['subject'], "Payment 2 of 3 didn't go through") !== false && strpos($fRetry['subject'], 'Sat 29 Aug 2026') !== false);
+// It leads with the booking being safe AND with the fact that answers the guest's
+// first fear on a failed payment — that the card was hit anyway. Both, in that
+// order, in the sentence before anything else: the money fact then the booking.
+chk('…leads with the booking being safe',
+    strpos($fRetry['text'], 'Nothing has been taken from your card, and your booking is completely safe') !== false
+    && strpos($fRetry['html'], 'Nothing has been taken from your card') !== false
+    && strpos($fRetry['html'], 'Your booking is safe') !== false);
 chk('…shows the plan with the declined row saying so IN PLACE',
     strpos($fRetry['html'], 'paid ✓') !== false && strpos($fRetry['html'], '£175.00 — declined, retrying 29/08/2026') !== false && strpos($fRetry['html'], '· final') !== false);
 chk('…offers the fix and the way out, fee-free', strpos($fRetry['html'], 'Update your card') !== false && strpos($fRetry['text'], 'No fees either way') !== false);
@@ -1311,8 +1323,8 @@ echo "\n-- the notice that goes out before the money moves --\n";
 $nb = ['id' => 42, 'name' => 'Cara Lyon', 'email' => 'c@example.com', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'autopay_amount' => 300.0, 'autopay_due' => '2026-08-20'];
 $nt = autopay_notice_body($nb, 'https://example.test/index.html?pay=t&b=42');
 chk('it states the sum', strpos($nt['text'], '£300.00') !== false && strpos($nt['html'], '£300.00') !== false);
-chk('...and the day, in the house date form', strpos($nt['text'], '20/08/2026') !== false);
-chk('...both of them in the subject, which may be all they read', strpos($nt['subject'], '£300.00') !== false && strpos($nt['subject'], '20/08/2026') !== false);
+chk('...and the day, spoken (read once, acted on)', strpos($nt['text'], 'Thu 20 Aug 2026') !== false && strpos($nt['text'], '2026-08-20') === false);
+chk('...both of them in the subject, which may be all they read', strpos($nt['subject'], '£300.00') !== false && strpos($nt['subject'], 'Thu 20 Aug 2026') !== false);
 chk('...and the cottage', strpos($nt['html'], 'Jollyboat') !== false);
 // NOT A PAYMENT REQUEST. There is nothing for the guest to do, so it must not
 // read like a chase — no balance owing, no urgency, no "pay now".
@@ -1552,15 +1564,15 @@ $planB = [
 ];
 $planM = payment_request_body($planB, 'https://x/pay', '#b08d57', "Barclays\n20-00-00\n12345678");
 chk('a bank-rail deposit ask states when the rest is due',
-    strpos($planM['text'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
-chk('...in the HTML half too', strpos($planM['html'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
+    strpos($planM['text'], 'The remaining £292.50 is due by Fri 14 Aug 2026.') !== false);
+chk('...in the HTML half too', strpos($planM['html'], 'The remaining £292.50 is due by Fri 14 Aug 2026.') !== false);
 chk('...while still asking by BANK TRANSFER, never a card link',
     strpos($planM['text'], 'bank transfer') !== false && strpos($planM['text'], 'securely by card') === false);
 // The CARD rail gets the same plan sentence — the schedule is the booking's, not
 // the payment method's; only the how-to-pay half follows the rail.
 $planCard = payment_request_body(['payment_method' => 'card'] + $planB, 'https://x/pay', '#b08d57', '');
 chk('the card rail states the same plan sentence',
-    strpos($planCard['text'], 'The remaining £292.50 is due by 14/08/2026.') !== false);
+    strpos($planCard['text'], 'The remaining £292.50 is due by Fri 14 Aug 2026.') !== false);
 chk('...and still offers the card link', strpos($planCard['text'], 'securely by card') !== false);
 // Refusals: nothing left after this payment (a balance ask settles the stay), and
 // no date on file — a sentence with a blank date is worse than no sentence.
@@ -1679,6 +1691,267 @@ $appW = (string) file_get_contents(__DIR__ . '/app.js');
 chk('...and the client reads it to offer paying rather than only stating the lock',
     preg_match("/e\.code === 'unpaid'/", $appW) === 1
     && preg_match("/Pay the balance</", $appW) === 1);
+
+
+// ---------------------------------------------------------------------------
+//  THE EMAIL REBUILD — the invariants the redesign added. Everything here is
+//  either DRIVEN through a real composer or, where the composer needs the
+//  database (content_value for the host's name, prop_display for the accent), a
+//  WIRING scan of the call site — because the recurring trap in this file is a
+//  helper that tests green with its only caller reverted.
+// ---------------------------------------------------------------------------
+echo "\n-- the email rebuild --\n";
+$mlE = (string) file_get_contents(__DIR__ . '/mailer.php');
+// A NEGATIVE SOURCE SCAN MUST NOT SEE THE COMMENT THAT EXPLAINS THE DECISION.
+// Two checks below assert an ABSENCE ("no 'pay_url' on the autopay receipt", "the
+// released-hold email no longer says 'a few working days'") and both first failed
+// against the prose stating exactly that, three lines above the code they guard.
+// Strip line comments before asserting a phrase is gone; the positive scans read
+// the real source and are unaffected.
+$noCmt = fn($t) => (string) preg_replace('#^\s*//.*$#m', '', (string) $t);
+$mlEc = $noCmt($mlE);
+
+// SPOKEN DATES AND TIMES. The house form on screen is DD/MM/YYYY; in an email a
+// date is read once and acted on, so it names the day. Asserted on the helpers
+// (they are pure) plus the property that matters: never an ISO stamp.
+chk('a date is spoken, with its weekday', email_date('2026-09-06') === 'Sun 6 Sep 2026');
+chk('...and can drop the year for a subject line', email_date('2026-09-06', false) === 'Sun 6 Sep');
+chk('...and is never the raw stamp', strpos(email_date('2026-09-06'), '2026-09-06') === false);
+chk('a time loses its dead :00', email_time('15:00') === '3pm' && email_time('10:00') === '10am');
+chk('...but keeps real minutes', email_time('10:30') === '10:30am');
+chk('midnight and noon are named, not 12am/12pm arithmetic', email_time('00:00') === '12am' && email_time('12:00') === '12pm');
+chk('an empty time renders nothing rather than a stray "am"', email_time('') === '' && email_date('') === '');
+
+// A SCHEDULE COLUMN STAYS NUMERIC — the deliberate exception, so a stack of
+// payment dates aligns. Both schedule builders, and the retry date that sits in
+// one of those rows while its own sentence stays spoken.
+chk('the instalment offer schedule stays numeric (a column is compared, not read)',
+    preg_match("/\\\$oRows\\[\\] = \\['Payment ' \\. \\(\\\$i \\+ 1\\) \\. ' — ' \\. uk_date\\(\\\$d\\)/", $mlE) === 1);
+chk('...as does the failure email\u{2019}s plan',
+    preg_match("/'Payment ' \\. \\(\\\$i \\+ 1\\) \\. ' — ' \\. uk_date\\(\\\$d\\),/", $mlE) === 1);
+chk('...while the retry SENTENCE is spoken and the retry ROW is not',
+    preg_match('/\\$retry = email_date\\(\\$retryIso\\);/', $mlE) === 1
+    && preg_match('/\\$retryNum = uk_date\\(\\$retryIso\\);/', $mlE) === 1
+    && preg_match("/, retrying ' \\. \\\$retryNum/", $mlE) === 1);
+
+// A MONEY ASK STATES ITS OWN DEADLINE, BESIDE THE FIGURE. payment_plan_line
+// answers a different question (when the REMAINDER is wanted), and on a balance
+// ask there is no remainder — so it returns '' and the one email whose job is
+// "settle up by then" used to name no date at all.
+$eRental = 401.70;
+$eAsk = [
+    'name' => 'Test Guest', 'email' => 't@x.co', 'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat',
+    'check_in' => '2026-09-06', 'check_out' => '2026-09-09', 'kind' => 'deposit',
+    'amount' => 100.43, 'total' => $eRental, 'damages' => 75.0, 'deposit_charged' => 0, 'paid' => 0,
+    'payment_method' => 'Square card', 'balance_due_date' => '2026-08-07', 'instalment_offer' => null,
+];
+$eBal = ['kind' => 'balance', 'amount' => 301.27, 'damages' => 0.0, 'paid' => 100.43, 'deposit_charged' => 75.0] + $eAsk;
+$eAskM = payment_request_body($eAsk, 'https://x/pay', '#b08d57', '');
+$eBalM = payment_request_body($eBal, 'https://x/pay', '#b08d57', '');
+$eRemM = payment_reminder_body($eBal, 'https://x/pay', '#b08d57', '');
+chk('a BALANCE ask names its deadline in both halves',
+    strpos($eBalM['text'], 'Due by Fri 7 Aug 2026.') !== false && strpos($eBalM['html'], 'Due by Fri 7 Aug 2026') !== false);
+chk('...and so does the reminder that chases it',
+    strpos($eRemM['text'], 'Due by Fri 7 Aug 2026.') !== false && strpos($eRemM['html'], 'Due by Fri 7 Aug 2026') !== false);
+// A DEPOSIT ask must NOT wear that line: its own money is due now, and the
+// booking's balance_due_date is the date for the REST, which payment_plan_line
+// already states in the words that say so.
+chk('a DEPOSIT ask does not claim the balance date as its own',
+    strpos($eAskM['text'], 'Due by Fri 7 Aug 2026.') === false
+    && strpos($eAskM['text'], 'The remaining £301.27 is due by Fri 7 Aug 2026.') !== false);
+chk('no date on file means no sentence, never a blank one',
+    strpos(payment_reminder_body(['balance_due_date' => ''] + $eBal, 'https://x/pay', '#b08d57', '')['text'], 'Due by') === false);
+
+// THE MONEY PANEL. Three figures that have to reconcile were one run-on
+// paragraph. The check is that the ROWS are there AND that they add up, which is
+// the only version of it that catches a wrong row rather than a missing one.
+chk('the ask shows the whole picture as rows',
+    strpos($eAskM['html'], 'Stay total') !== false
+    && strpos($eAskM['html'], 'Paying now (including the deposit)') !== false
+    && strpos($eAskM['html'], 'Still to come, by Fri 7 Aug 2026') !== false);
+chk('...and the rows reconcile (total = paid + now + to come)',
+    strpos($eAskM['html'], '£476.70') !== false && strpos($eAskM['html'], '£175.43') !== false
+    && strpos($eAskM['html'], '£301.27') !== false
+    && abs((0 + 175.43 + 301.27) - 476.70) < 0.005);
+chk('...the reminder shows its own set, with no phantom remainder',
+    strpos($eRemM['html'], 'Still to pay') !== false && strpos($eRemM['html'], 'Still to come') === false);
+chk('...and names what is already down, deposit included',
+    strpos($eRemM['html'], 'Already paid') !== false && strpos($eRemM['text'], 'including your £75.00 refundable deposit') !== false);
+// THE ACTION COMES BEFORE THE ARITHMETIC — the pay button above the panel and
+// the small print, not below them.
+chk('the pay button leads the money block', strpos($eAskM['html'], 'Pay securely by card') < strpos($eAskM['html'], 'Stay total'));
+
+// THE RECEIPT SAYS WHAT HAPPENS NEXT, WITH A DATE AND A WAY TO DO IT.
+$eRc = [
+    'name' => 'Test Guest', 'prop_name' => 'Jollyboat', 'ref' => 'CHB-000042', 'kind' => 'deposit',
+    'amount' => 100.43, 'total' => $eRental, 'paid_so_far' => 100.43, 'balance' => 301.27,
+    'deposit_charged' => 75.0, 'fully_paid' => false, 'balance_due_date' => '2026-08-07',
+    'pay_url' => 'https://x/pay', 'invoice_url' => 'https://x/inv',
+];
+$eRcM = payment_receipt_body($eRc);
+chk('a receipt with money owing dates it and offers the link',
+    strpos($eRcM['text'], 'You can settle it any time by Fri 7 Aug 2026.') !== false
+    && strpos($eRcM['text'], 'Pay the rest here: https://x/pay') !== false
+    && strpos($eRcM['html'], 'Pay the rest now') !== false);
+// NB target the AMOUNT BLOCK, not the words: email_h() renders the same phrase as
+// the page heading, so 'Payment received' alone passed with the figure block
+// deleted (break-tested). The uppercase label style is email_amount's own, and the
+// serif 34px figure beside it is what "headline" actually means here.
+chk('...and the figure is the headline, not a clause',
+    preg_match('/text-transform:uppercase;color:#A0987F;">Payment received<\/div>[\s\S]{0,200}font-size:34px[\s\S]{0,120}£175\.43/', $eRcM['html']) === 1);
+chk('...labelled for the state it is in (a slice is not its stage)',
+    strpos(payment_receipt_body(['partial' => true] + $eRc)['html'], '>Part payment received<') !== false
+    && strpos(payment_receipt_body(['automatic' => true] + $eRc)['html'], '>Collected<') !== false);
+chk('...with the invoice demoted to the second action',
+    strpos($eRcM['html'], 'Pay the rest now') < strpos($eRcM['html'], 'View your invoice'));
+// THE AUTOMATIC PATH SAYS NOTHING IS NEEDED. "We'll be in touch about settling
+// it" is simply false of a plan that collects on its own — and it must not carry
+// a pay button beside a sentence saying there is nothing to do.
+$eRcAuto = payment_receipt_body(['automatic' => true, 'pay_url' => ''] + $eRc);
+chk('an automatic collection promises to take the rest itself',
+    strpos($eRcAuto['text'], "We'll collect it automatically by Fri 7 Aug 2026 — nothing to do.") !== false
+    && strpos($eRcAuto['html'], 'Pay the rest now') === false);
+chk('...and a settled booking still just says so',
+    strpos(payment_receipt_body(['fully_paid' => true] + $eRc)['text'], 'now paid in full') !== false);
+// The WIRING for all of that — three facts that were already known at the call
+// sites and reached no email.
+$payW = (string) file_get_contents(__DIR__ . '/pay.php');
+$apW = (string) file_get_contents(__DIR__ . '/autopay-lib.php');
+chk('pay.php gives its receipt the due date and the pay link',
+    preg_match("/'balance_due_date' => booking_balance_due_date\\(\\\$b\\),\\s*\\n\\s*'pay_url' =>/", $payW) === 1);
+chk('...and the autopay receipt gets the date but NO link (nothing to do)',
+    preg_match("/'balance_due_date' => \\(string\\) \\(\\\$b\\['balance_due_date'\\] \\?\\? ''\\),/", $apW) === 1
+    && strpos($noCmt($apW), 'pay_url') === false);
+
+// THE CONFIRMATION'S PAY LINK IS REACHABLE. It is guarded on $b['id'], and
+// neither real caller passed one — so the button was dead code the day it was
+// written. (The enquiry PREVIEW deliberately still omits it: no booking exists
+// there and a token signed for a guessed id would be worse than no button.)
+$bkE = (string) file_get_contents(__DIR__ . '/bookings.php');
+$enqE = (string) file_get_contents(__DIR__ . '/enquiry-actions.php');
+chk('the confirmation payload carries the booking id (or its pay link is dead)',
+    preg_match("/'id' => \\(int\\) \\\$bookingId,/", $bkE) === 1
+    && preg_match("/'id' => \\(int\\) \\\$bookingId,/", $enqE) === 1);
+chk('...and the composer only signs a link when it has one, on the card rail',
+    preg_match("/!empty\\(\\\$b\\['id'\\]\\) &&\\s*\\n?\\s*payment_rail\\(\\\$b\\) === 'card'/", $mlE) === 1);
+
+// THE OWNER'S FIRST QUESTION ON MONEY LANDING IS "IS THAT THE LOT?"
+$oPaid = owner_payment_notice_body(['name' => 'Cara', 'prop_name' => 'Jollyboat', 'kind' => 'deposit', 'amount' => 175.43, 'status' => 'deposit', 'balance' => 301.27]);
+chk('a part-settled payment names what is still to collect, subject included',
+    strpos($oPaid['text'], 'Still to collect: £301.27') !== false
+    && strpos($oPaid['subject'], '£301.27 still to collect') !== false);
+$oFull = owner_payment_notice_body(['name' => 'Cara', 'prop_name' => 'Jollyboat', 'kind' => 'balance', 'amount' => 301.27, 'status' => 'paid', 'balance' => 0]);
+chk('...and a settled one says so instead of both', strpos($oFull['subject'], '(paid in full)') !== false && strpos($oFull['text'], 'Still to collect') === false);
+chk('...with pay.php passing the figure that makes it possible',
+    preg_match("/send_owner_payment_notice\\(\\[[\\s\\S]{0,600}?'balance' => round\\(max\\(0, \\\$total - \\\$newPaid\\), 2\\),/", $payW) === 1);
+
+// THE OWNER'S NOTE IS ATTRIBUTED, NOT PRESENTED AS THE SITE'S RULING.
+chk('an owner note is headed by the person who wrote it',
+    strpos(email_ownernote('George', 'Guest changed their mind'), 'A note from George') !== false
+    && strpos(email_ownernote('George', 'Guest changed their mind'), 'Reason:') === false);
+chk('...an empty note renders nothing at all', email_ownernote('George', '   ') === '');
+chk('...and an unnamed host still reads as a sentence', strpos(email_ownernote('', 'x'), 'A note from us') !== false);
+$cxE = send_cancellation_email_body([
+    'name' => 'Cara Nunn', 'prop_name' => 'Jollyboat', 'check_in' => '2026-09-06', 'check_out' => '2026-09-09',
+    'reason' => 'Guest changed their mind', 'refund' => 300.0, 'card' => true, 'host_name' => 'George',
+]);
+chk('the cancellation attributes the reason rather than heading it',
+    strpos($cxE['html'], 'A note from George') !== false && strpos($cxE['html'], '<strong style="color:#2A2622;">Reason:</strong>') === false
+    && strpos($cxE['text'], 'A note from George: Guest changed their mind') !== false);
+chk('...and money going back states how long it takes',
+    strpos($cxE['html'], '3&ndash;5 working days') !== false && strpos($cxE['text'], '3-5 working days') !== false);
+chk('...but says nothing about refunds when none is coming',
+    strpos(send_cancellation_email_body(['name' => 'C', 'prop_name' => 'J', 'refund' => 0.0, 'host_name' => 'George'])['text'], 'working days') === false);
+// The builder stays PURE — the host name arrives on the payload, resolved by the
+// sender. A content_value() call in there would need a database and this gate has
+// none, which is the same reason payment_request_body takes $bacs as an argument.
+chk('the cancellation sender resolves the host name for it',
+    preg_match("/send_cancellation_email_body\\(\\\$b \\+ \\['host_name' => email_host_name\\(\\)\\]\\)/", $mlE) === 1);
+// The other three outcome emails are DB-touching senders, so these are wiring
+// scans — but of the decision, not the ingredient.
+chk('the refund email attributes its note and dates the money',
+    preg_match('/function send_refund_email[\s\S]{0,2600}email_ownernote\(email_host_name\(\), \$reason\)/', $mlE) === 1
+    && preg_match('/function send_refund_email[\s\S]{0,2900}3&ndash;5 working days/', $mlE) === 1);
+chk('a part-returned deposit shows its arithmetic instead of a bare figure',
+    preg_match('/function send_deposit_return_email[\s\S]{0,3400}Deposit held[\s\S]{0,300}Retained[\s\S]{0,300}Returned to you/', $mlE) === 1);
+chk('a released hold names a number of days, not "a few"',
+    preg_match('/function send_hold_released[\s\S]{0,1800}3&ndash;5 working days/', $mlE) === 1
+    && preg_match('/function send_hold_released[\s\S]{0,1800}a few working days/', $mlEc) !== 1);
+
+// A SIGN-IN LINK IS PASTE-ABLE AND SAYS IT WORKS ONCE. This is the one email most
+// likely to be opened on a different device from the one signing in, and the one
+// most likely to be read in a client that strips the button.
+chk('the magic link prints the URL as well as wrapping it in a button',
+    preg_match('/function send_magic_link_email[\s\S]{0,1800}Copy this link into your browser/', $mlE) === 1
+    && preg_match('/function send_magic_link_email[\s\S]{0,2000}word-break:break-all/', $mlE) === 1);
+// BOTH HALVES, ASSERTED SEPARATELY. The text and HTML halves both carry this
+// sentence, so one scan for the phrase passed with the HTML footnote deleted
+// (break-tested) — the plain-text copy was satisfying it.
+chk('...and says it is single-use before they tap it, in both halves',
+    preg_match('/function send_magic_link_email[\s\S]{0,1200}"It works once and expires in 30 minutes/', $mlE) === 1
+    && preg_match("/function send_magic_link_email[\s\S]{0,2600}email_footnote\(\s*\n?\s*'It works once and expires in 30 minutes/", $mlE) === 1);
+
+// THE ENQUIRY ACKNOWLEDGEMENT ANSWERS "WHEN DO I HEAR BACK?"
+// Both halves again, for the reason above (break-tested: deleting the HTML one
+// left the plain-text copy answering the scan).
+chk('the acknowledgement gives a timeframe, twice bounded, in both halves',
+    preg_match('/function send_enquiry_ack[\s\S]{0,2000}"usually within a few hours, and always by the end of the next day\./', $mlE) === 1
+    && preg_match("/function send_enquiry_ack[\s\S]{0,3200}'usually within a few hours, and always by the end of the next day\.',/", $mlE) === 1);
+chk('...and its preheader is PLAIN text (email_shell escapes it)',
+    preg_match('/\$pre = "We\x27ll confirm your dates and price"/', $mlE) === 1
+    && preg_match('/\$pre = .{0,120}&rsquo;/', $mlE) !== 1);
+
+// THE HOLD REQUEST SAYS IT ISN'T A CHARGE BEFORE IT IS OPENED, and explains
+// itself before the button that does it.
+chk('the hold subject leads with nothing to pay',
+    preg_match('/\$subject = "Nothing to pay — a refundable card hold for \{\$prop\}";/', $mlE) === 1);
+chk('...and the explanation sits ABOVE the button',
+    preg_match('/hold, not a charge<\/strong>[\s\S]{0,400}email_btn\(\$url, \x27Place the card hold\x27\)/', $mlE) === 1);
+
+// THE REVIEW REQUEST'S TEXT HALF NO LONGER BEGINS A SENTENCE WITH A DANGLING "Or".
+chk('the on-site review line only says "Or" when there is something before it',
+    preg_match("/\\(\\\$googleUrl \\? 'Or review us on our site' : 'Review us on our site'\\)/", $mlE) === 1);
+chk('...and the alternative is a real button, not a 13px link',
+    preg_match("/email_btn2\\(\\\$url, 'Or review us on our site'\\)/", $mlE) === 1
+    && strpos($mlE, '…or leave one on our site') === false);
+
+// A "COME BACK" EMAIL LANDS ON THE COTTAGE IT IS ABOUT.
+chk('the cottage URL helper uses the deployed /cottages/<slug> route',
+    preg_match("#'/cottages/' \\. rawurlencode\\(\\\$slug\\)#", $mlE) === 1);
+chk('...and both re-invites use it rather than the homepage',
+    preg_match('/function send_anniversary_email[\s\S]{0,1200}\$bookUrl = email_cottage_url/', $mlE) === 1
+    && preg_match('/function send_direct_followup_email[\s\S]{0,3400}\$bookUrl = email_cottage_url/', $mlE) === 1);
+chk('...and their unsubscribe goes in the shell footer, which has a slot for it',
+    preg_match("/email_shell\\(\\\$month \\. ' at ' \\. \\\$prop, \\\$inner, \\\$accent, \\\$unsub !== '' \\? \\['unsubscribe' => \\\$unsub\\] : \\[\\]\\)/", $mlE) === 1
+    && strpos($mlE, 'Unsubscribe in one tap</a>') === false);
+
+// THE OWNER'S NEW-BOOKING NOTIFICATION IS READ ON A PHONE.
+chk('it has an HTML half at all (it was text-only)',
+    preg_match('/\$out\[.owner.\] = send_owner\(\$subject, \$body, \$oHtml\);/', $mlE) === 1
+    && preg_match('/send_owner\(\$subject, \$body, \$oHtml\);\s*\n\s*\}\);/', $mlE) === 1);
+chk('...with the guest\u{2019}s number and address tappable',
+    preg_match('/\$oRows\[\] = \[\s*\n?\s*.Phone.,\s*\n?\s*.<a href="tel:/', $mlE) === 1
+    && preg_match("/mailto:' \\. email_esc\\(\\\$oGuestEmail\\)/", $mlE) === 1);
+chk('...and the record one tap away, in the notification deep-link vocabulary',
+    preg_match("/\\\$hubUrl = !empty\\(\\\$b\\['id'\\]\\) \\? site_base_url\\(\\) \\. '\\?open=booking-'/", $mlE) === 1);
+chk('the owner enquiry email offers BOTH outcomes at a real tap size',
+    preg_match("/email_btn\\(\\\$e\\['approve_url'\\], 'Review & approve'\\) \\.\\s*\\n\\s*email_btn2\\(\\\$e\\['decline_url'\\], 'Decline this enquiry'\\)/", $mlE) === 1);
+
+// A FAILED AUTOMATIC PAYMENT ANSWERS THE MONEY FEAR FIRST.
+chk('nothing-taken is stated before anything else',
+    preg_match('/Nothing has been taken from your card, and your booking is completely safe/', $mlE) === 1);
+
+// EVERY EMAIL SHELL PREHEADER IS PLAIN TEXT. email_shell escapes it, so an entity
+// ships to the inbox as the literal characters — the enquiry ack did exactly that.
+$preBad = [];
+if (preg_match_all('/email_shell\(\s*([^,]{0,200}?),/s', $mlE, $mm)) {
+    foreach ($mm[1] as $arg) {
+        if (preg_match('/&(?:[a-z]{2,8}|#\d{2,5});/', $arg)) {
+            $preBad[] = trim($arg);
+        }
+    }
+}
+chk('no preheader carries an HTML entity (' . count($preBad) . ' found)', $preBad === []);
 
 echo "\n== Summary ==\n";
 if ($fail) {

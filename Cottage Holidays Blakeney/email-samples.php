@@ -82,13 +82,63 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
     $payUrl = $base . 'index.html?pay=SAMPLE&b=0';
     $magicUrl = $base . 'index.html?magic=SAMPLE';
 
+    // THE MONEY EMAILS TAKE A DERIVED PAYLOAD, NOT A BOOKING ROW — and this file
+    // was handing them the booking above, whose keys mean different things.
+    // request_booking_payment() derives what it passes to send_payment_request():
+    // 'total' is the RENTAL total, the refundable deposit rides as 'damages', and
+    // 'amount' is the stage's own figure. The booking fixture's 'total' is the
+    // GRAND total (rental + deposit) and it carries no 'damages' at all, so the
+    // owner's preview showed the card taking £119.18 where the live path would
+    // take £175.43, and a remainder computed against the grand total — i.e. the
+    // one screen whose whole job is showing the owner what the guest will get was
+    // the screen quoting figures no guest would ever see. (The live path was and
+    // is correct; only the preview was wrong.) Rental here is 390.00 + 11.70 fee.
+    $rentalTotal = 401.70;
+    $depositAsk = 100.43; // 25% of the rental, the site standard
+    $askPayload = [
+        'name' => $b['name'],
+        'email' => $b['email'],
+        'prop_key' => $propKey,
+        'prop_name' => $propName,
+        'check_in' => $ci,
+        'check_out' => $co,
+        'kind' => 'deposit',
+        'amount' => $depositAsk,
+        'total' => $rentalTotal,
+        'damages' => 75.0,
+        'deposit_charged' => 0,
+        'paid' => 0,
+        'payment_method' => 'Square card',
+        // So the preview shows the deadline the real ask states.
+        'balance_due_date' => date('Y-m-d', strtotime($ci . ' -30 days')),
+        'instalment_offer' => null,
+    ];
+    // The BALANCE stage of the same booking, for the reminder — a reminder chases
+    // what is left, so previewing it against a deposit-stage payload showed the
+    // deposit figure under a "balance due" heading.
+    $remindPayload = ['kind' => 'balance', 'amount' => round($rentalTotal - $depositAsk, 2), 'damages' => 0.0, 'paid' => $depositAsk, 'deposit_charged' => 75.0] + $askPayload;
+    // The receipt reads the RENTAL rail too ("Rental paid so far £X of £Y"), plus
+    // the links and the date its new next-step line needs.
+    $receiptPayload = [
+        'kind' => 'deposit',
+        'amount' => $depositAsk,
+        'total' => $rentalTotal,
+        'paid_so_far' => $depositAsk,
+        'balance' => round($rentalTotal - $depositAsk, 2),
+        'deposit_charged' => 75.0,
+        'fully_paid' => false,
+        'balance_due_date' => $askPayload['balance_due_date'],
+        'pay_url' => $payUrl,
+        'invoice_url' => $base . 'invoice.php?b=0&token=SAMPLE',
+    ] + $b;
+
     // which => [human label, sender closure]
     $senders = [
         'confirmation' => ['Booking confirmation', fn() => send_booking_emails($b)],
         'arrival' => ['Arrival information', fn() => send_arrival_email($b)],
-        'payment_request' => ['Payment request', fn() => send_payment_request($b, $payUrl)],
-        'payment_reminder' => ['Balance reminder', fn() => send_payment_reminder($b, $payUrl)],
-        'payment_receipt' => ['Payment receipt', fn() => send_payment_receipt($b)],
+        'payment_request' => ['Payment request', fn() => send_payment_request($askPayload, $payUrl)],
+        'payment_reminder' => ['Balance reminder', fn() => send_payment_reminder($remindPayload, $payUrl)],
+        'payment_receipt' => ['Payment receipt', fn() => send_payment_receipt($receiptPayload)],
         'review_request' => ['Review request', fn() => send_review_request_email($b)],
         'magic_link' => ['Sign-in (magic) link', fn() => send_magic_link_email($g, $magicUrl)],
         'refund' => ['Refund notice', fn() => send_refund_email($b)],
@@ -98,7 +148,13 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'direct_followup' => ['Book-direct re-invite (external reviewer)', fn() => send_direct_followup_email($b)],
         'owner_notice' => [
             'Owner: payment received',
-            fn() => send_owner_payment_notice(array_merge($b, ['status' => 'deposit'])),
+            fn() => send_owner_payment_notice(array_merge($b, [
+                'status' => 'deposit',
+                'amount' => $depositAsk,
+                // So the preview shows the still-to-collect line the live notice
+                // now carries (pay.php passes this).
+                'balance' => round($rentalTotal - $depositAsk, 2),
+            ])),
         ],
     ];
 

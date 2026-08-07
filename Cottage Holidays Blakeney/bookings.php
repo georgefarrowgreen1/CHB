@@ -444,6 +444,10 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             'damages_deposit' => $deposit,
             'payment' => $b['payment'],
             'ref' => $ref,
+            // The booking's own id, so the confirmation can sign a pay link and
+            // the owner copy can link straight to the hub. Without it both
+            // features are dead code guarded on a key nobody passed.
+            'id' => (int) $bookingId,
             // Payment state so the confirmation reflects money received (shown only
             // when something has been paid; a fresh unpaid booking omits it).
             'paid_so_far' => $paidSoFar,
