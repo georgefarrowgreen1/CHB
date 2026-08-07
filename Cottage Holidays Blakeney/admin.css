@@ -4219,7 +4219,10 @@ body.cmdk-open {
 .bhub-plan-tag {
     display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 8px;
     border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-    border-radius: 999px; font-size: 0.62rem; letter-spacing: 0.1em;
+    /* 0.62rem measured 9.9px — under the app's own 10px floor, on the badge that
+       says whether a booking's money follows the standard plan or a custom one.
+       a11y-test §4 caught it once the booking hub became a scene there. */
+    border-radius: 999px; font-size: 0.65rem; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--accent-text);
 }
 /* The standard badge is QUIET — custom stays the one that draws the eye. */
@@ -4295,7 +4298,12 @@ body.cmdk-open {
 /* A kv value that ACTS (the guest's email opens the site's composer): text
    styled as the link it is, wrapping like any value, still a real button. */
 .bhub-kv-act {
-    background: none; border: none; padding: 0; font-family: inherit;
+    /* WCAG 2.2 2.5.8 wants 24×24 on a standalone control; measured 50×18, so the
+       box gets the height WITHOUT loosening the grouped row's rhythm — vertical
+       padding on an inline-flex box rather than a taller line. The underline still
+       hugs the words, so it reads as a text action, not a button. */
+    display: inline-flex; align-items: center; min-height: 24px; padding: 3px 0;
+    background: none; border: none; font-family: inherit;
     font-size: inherit; color: var(--text-light); text-decoration: underline;
     text-underline-offset: 2px; cursor: pointer; text-align: left;
     min-width: 0; overflow-wrap: anywhere;

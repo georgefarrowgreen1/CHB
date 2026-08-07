@@ -10079,7 +10079,7 @@ function hubIntelCardHtml(intel) {
     if (intel.lastStay) line2.push(`last stayed ${escapeHtml(intel.lastStay)}`);
     return `
         <section class="bhub-card glass-panel" id="hub-intel-card">
-            <h3 class="bhub-card-title">Knows your guest <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· from your own records</span></h3>
+            <h2 class="bhub-card-title">Knows your guest <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· from your own records</span></h2>
             ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
             ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
             <div id="hub-intel-mentions">${hubIntelMentionRowsHtml(intel.mentions)}</div>
@@ -10344,7 +10344,7 @@ function renderBookingHub() {
     // ---- Emails card ----
     const emailsCard = `
         <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">Emails</h3>
+            <h2 class="bhub-card-title">Emails</h2>
             ${
                 b.email
                     ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:0;">
@@ -10411,7 +10411,7 @@ function renderBookingHub() {
             : '';
     const guestCard = `
         <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">Guest</h3>
+            <h2 class="bhub-card-title">Guest</h2>
             ${noContact}
             <div class="bhub-kvs">
                 ${/* The address opens the SITE'S composer (draft reply, preview,
@@ -10457,7 +10457,7 @@ function renderBookingHub() {
     // keeps class sq-pay-history because it now IS the ledger's home. ----
     const historyCard = `
         <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">Activity <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· the story of this booking</span></h3>
+            <h2 class="bhub-card-title">Activity <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· the story of this booking</span></h2>
             <div id="hub-history" class="sq-pay-history"><div class="bhub-empty">Loading activity…</div></div>
         </section>`;
 
@@ -11257,15 +11257,25 @@ function loadContentEditor() {
     });
     wrap.innerHTML = html;
 }
-function contentEditSave(key) {
+// The green border is a CLAIM, so it waits for the save. It used to flash on a
+// rejected write (saveContent rethrows; the catch swallowed it) — the same defect
+// as saveHostText's "Saved.", on a field the owner then navigates away from
+// believing their text is on the site.
+async function contentEditSave(key) {
     const el = document.getElementById('ce-' + key);
     if (!el) return;
     const val = el.value;
-    saveContent(key, val).catch(() => {}); // alerted inside; nothing further to do
     siteContent[key] = val;
     document.querySelectorAll('[data-edit-text="' + key + '"]').forEach((t) => {
         t.textContent = val;
     });
+    try {
+        await saveContent(key, val);
+    } catch (e) {
+        el.style.borderColor = 'var(--danger)';
+        setTimeout(() => { el.style.borderColor = ''; }, 2400);
+        return;
+    }
     el.style.borderColor = 'var(--ok)';
     setTimeout(() => {
         el.style.borderColor = '';
@@ -11739,7 +11749,11 @@ function settingsOpenAccom(k) {
                         <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.ic}</svg></span>
                         <span class="settings-row-main"><span class="settings-row-label">${s.label}</span><span class="settings-row-sub">${s.sub}</span></span><span class="settings-row-chev">›</span>
                     </button>`,
-        ).join('')}</div>${removeRow}`;
+        // privateRow was BUILT AND NEVER INTERPOLATED — the whole make-private control
+        // (a working setAccommodationPrivate, the `unlisted` column, the public site
+        // honouring it) had no way in. Third time this shape has been found here: see
+        // the mailbox's Sent list and the status page. The affordance IS the fix.
+        ).join('')}</div>${privateRow}${removeRow}`;
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
@@ -14148,7 +14162,8 @@ async function renderMoneyFeed() {
                 !isReturn && fee != null && fee > 0
                     ? ` · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}`
                     : '';
-            const date = (p.created_at || '').slice(0, 10) || '—';
+            // DD/MM/YYYY like every other date on an owner screen — this was raw SQL.
+            const date = fmtDate((p.created_at || '').slice(0, 10)) || '—';
             const propName = propertyMeta[p.prop_key]
                 ? propertyMeta[p.prop_key].name
                 : p.prop_key || '';
@@ -14555,7 +14570,7 @@ async function loadAdminPasskeys() {
                 (
                     k,
                 ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
-                    <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${(k.created_at || '').split(' ')[0]}</span></span>
+                    <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
                 </div>`,
             )
@@ -14964,19 +14979,31 @@ async function saveContent(key, value) {
     }
 }
 // Admin: open the Host profile editor and load the current values.
-function saveHostText(key, value) {
+// "Saved." WHEN IT HAS BEEN SAVED, not when it was sent. saveContent RETHROWS (it
+// shows the owner its own alert either way), and this swallowed that with
+// `.catch(() => {})` while printing "Saved." unconditionally — the fire-and-forget
+// opt-out used on a path that makes a CLAIM. The mirror is still written first so
+// the field keeps what was typed; only the claim waits for the answer.
+async function saveHostText(key, value) {
     const v = (value || '').trim();
     siteContent[key] = v;
-    saveContent(key, v).catch(() => {});
-    renderHost();
     const msg = document.getElementById('host-save-msg');
-    if (msg) {
-        msg.textContent = 'Saved.';
+    const say = (t, ok) => {
+        if (!msg) return;
+        msg.textContent = t;
+        msg.style.color = ok ? '' : 'var(--warn-text)';
         clearTimeout(msg.__t);
-        msg.__t = setTimeout(() => {
-            msg.textContent = '';
-        }, 1500);
+        if (ok) msg.__t = setTimeout(() => { msg.textContent = ''; }, 1500);
+    };
+    say('Saving…', true);
+    try {
+        await saveContent(key, v);
+    } catch (e) {
+        say("Not saved — that didn't reach the server.", false);
+        return;
     }
+    renderHost();
+    say('Saved.', true);
 }
 function uploadHostPhoto() {
     pickAndUpload('host-photo', async (url) => {
@@ -15677,7 +15704,7 @@ async function editPaymentPlan(bookingId) {
         'Every email, pay link and the automatic chaser follow this plan.',
         [
             { id: 'dep', label: 'Deposit %', value: curDep, type: 'number', min: 1, step: 'any', placeholder: 'e.g. 30', hint: depHint },
-            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: b.balanceDueDate ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
+            { id: 'due', label: 'Balance due by', type: 'date', value: b.balanceDueDate || stdDue || '', hint: planDueHint(!!b.balanceDueDate, stdDue) },
             // The OWNER'S SAY over the monthly offer — this only shapes what
             // the deposit screen offers; nothing collects until the guest
             // agrees there and saves a card. You can't switch it on for them.
@@ -19791,8 +19818,15 @@ async function saveSeasonGrid() {
         });
     }
     const msg = document.getElementById('season-grid-msg');
-    try {
-        for (const k of keys) {
+    // ONE SAVE PER COTTAGE, so the report has to be per cottage too. This used to
+    // run the loop inside a single try: the second cottage failing meant the FIRST
+    // was already saved and the third never attempted, and the catch then said
+    // "Couldn't save" — total failure about a partial write. Same discipline as the
+    // bulk chase: attempt them all, name who did not make it, never a bare "Done".
+    const savedKeys = [];
+    const failedKeys = [];
+    for (const k of keys) {
+        try {
             await apiPost('rates.php', {
                 action: 'seasons_save',
                 prop_key: k,
@@ -19813,9 +19847,18 @@ async function saveSeasonGrid() {
                     couple_rate: s.rate,
                 }))
                 .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0));
+            savedKeys.push(k);
+        } catch (e) {
+            // The client mirror is written AFTER the await, so a cottage that failed
+            // keeps its last known-good seasons — screen and server stay in step.
+            failedKeys.push(k);
         }
-        renderCardPrices();
-        updatePropPriceHeading();
+    }
+    renderCardPrices();
+    updatePropPriceHeading();
+    const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k;
+    const list = (ks) => ks.map(nm).join(', ');
+    if (!failedKeys.length) {
         if (msg) {
             msg.textContent = 'Saved for all cottages ✓';
             msg.style.color = 'var(--ok-text)';
@@ -19824,9 +19867,16 @@ async function saveSeasonGrid() {
             }, 4000);
         }
         toast('Seasonal rates saved for all cottages.');
-    } catch (e) {
-        glassAlert("Couldn't save: " + e.message);
+        return;
     }
+    const part = savedKeys.length
+        ? `Saved for ${list(savedKeys)}, but not ${list(failedKeys)} — try again to finish.`
+        : `Couldn't save any of them — ${list(failedKeys)} are unchanged.`;
+    if (msg) {
+        msg.textContent = part;
+        msg.style.color = 'var(--warn-text)';
+    }
+    glassAlert(part);
 }
 // ---- Dashboard: warn the owner if the daily automation has stopped ----
 // Reads cron-status.php (stamped by cron.php on every real run). Only the
@@ -20965,7 +21015,7 @@ function renderEnquiryHub() {
         </div>
         <div class="bhub-grid">
             <section class="bhub-card glass-panel">
-                <h3 class="bhub-card-title">Message &amp; contact</h3>
+                <h2 class="bhub-card-title">Message &amp; contact</h2>
                 ${e.message ? `<div class="enq-ctx-quote" style="margin:0 0 14px;">“${escapeHtml(e.message)}”</div>` : '<div class="bhub-mut" style="margin:0 0 14px;">No message left.</div>'}
                 <div class="detail-grid" style="margin-top:0;">
                     ${contact('Email', e.email ? `<button class="bhub-kv-act" ${chbAttrs('openEnquiryEmail', String(e.id))} title="Email the guest — opens the site's composer">${escapeHtml(e.email)}</button>` : '')}
@@ -20975,7 +21025,7 @@ function renderEnquiryHub() {
                 </div>
             </section>
             <section class="bhub-card glass-panel">
-                <h3 class="bhub-card-title">Price &amp; history</h3>
+                <h2 class="bhub-card-title">Price &amp; history</h2>
                 <div style="font-size:0.95rem;">${priceLine}</div>
                 <div class="bhub-btn-row" style="margin-top:10px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
@@ -21426,6 +21476,18 @@ async function setEnquiryPrice(enqId) {
 // booking AND emails the request in one step, so a plan set afterwards always
 // arrives second, with the guest already holding the site-standard figure. Same
 // fields the Add form sends, validated by the same payment_plan_parse.
+// THE BALANCE-DATE HINT, stated once for the two dialogs that show it. Both read
+// "Custom — the standard date is ${fmtDate(stdDue)}", and stdDue is '' whenever the
+// record has no check-in — so the sentence trailed off mid-clause with nothing after
+// "is". It now says what it actually knows.
+function planDueHint(isCustom, stdDue) {
+    if (!isCustom) {
+        return stdDue
+            ? 'Showing the standard date — pick a different day to make it custom'
+            : 'Pick the day the balance is due';
+    }
+    return stdDue ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Custom';
+}
 function enquiryHasPlan(e) {
     return !!(e && (e.planPct > 0 || e.planDue));
 }
@@ -21448,7 +21510,7 @@ async function setEnquiryPlan(enqId) {
               hint: `Blank = the site standard (${paymentTerms.depositPct || 25}% of the rental)` },
             { id: 'due', label: 'Balance due by', type: 'date',
               value: enq.planDue || stdDue || '',
-              hint: enq.planDue ? `Custom — the standard date is ${fmtDate(stdDue)}` : 'Showing the standard date — pick a different day to make it custom' },
+              hint: planDueHint(!!enq.planDue, stdDue) },
         ],
         { title: `Payment plan — ${enq.name || 'this enquiry'}`, okLabel: 'Save plan' },
     );
@@ -22097,6 +22159,11 @@ function renderMailboxList(keepSearchFocus) {
         mbxChip.textContent = u > 0 ? u : '';
     }
     const q = __mbxQuery;
+    // NO SILENT CAP ON A SEARCH. The list holds only what has been FETCHED (one page,
+    // plus any the owner loaded), so a search over it can answer "nothing" about mail
+    // that is simply still on the server — worse than a short list, because the reply
+    // is a confident negative. Said below the results, with the way to widen it.
+    const capped = q && __mbxHasMore && __mbxTab === 'inbox';
     // Shared matcher (multi-term + synonyms), so the mailbox search behaves like ⌘K.
     let rows = '';
     if (__mbxTab === 'inbox') {
@@ -22132,6 +22199,14 @@ function renderMailboxList(keepSearchFocus) {
             .join('');
         if (__mbxHasMore && !q) {
             rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" data-act="mailboxOlder">Load older messages</button></div>';
+        } else if (capped) {
+            // A SEARCH THAT ONLY SEARCHED WHAT WAS LOADED. Filtering the fetched page
+            // makes "nothing matched" a confident negative about mail still on the
+            // server. Say what was searched and offer both ways to widen it — older
+            // mail here, or the assistant, whose deep search covers ALL history.
+            rows +=
+                `<div class="accounts-empty" style="margin-top:6px;">Searched the ${__mbxMessages.length} email${__mbxMessages.length === 1 ? '' : 's'} loaded so far — there is older mail on the server.</div>
+                <div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" data-act="mailboxOlder">Load older mail and search again</button></div>`;
         }
     } else {
         rows = __mbxSent
@@ -22400,7 +22475,7 @@ function mailboxCompose(presetTo) {
     const pane = dock || document.getElementById('mbx-reader');
     if (!pane) return;
     pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
-        <h3 class="bhub-card-title">New email</h3><div id="mbx-compose"></div></section>`;
+        <h2 class="bhub-card-title">New email</h2><div id="mbx-compose"></div></section>`;
     mailboxComposeForm(document.getElementById('mbx-compose'), presetTo || '');
     pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
