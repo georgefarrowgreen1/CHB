@@ -1167,18 +1167,48 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   sqLocation = '';
   await page.evaluate(async () => { await openArea(); settingsOpen('payments'); });
   await page.waitForTimeout(1000);
-  const pick = await page.evaluate(() => {
-    const card = document.getElementById('sq-loc-card');
-    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('sq-location'));
+  // MEASURE WHAT IS ON SCREEN, NOT THE FLAG. This read `!card.hidden`, and a
+  // missing `>` on the card's own tag (`… id="sq-loc-card" hidden` then straight
+  // into its first child) meant the browser swallowed the attribute into the tag
+  // and `hidden` was never applied — so EVERY owner, including one with no Square
+  // at all, met "Your Square account has more than one location" over an empty
+  // dropdown and a live Save that wrote an empty location and reported success.
+  // Asserting the flag is precisely what let that ship: the flag said hidden while
+  // the card painted. Ask the CONTROLS whether they are rendered.
+  const vis = () => page.evaluate(() => {
+    const on = (el) => !!el && el.getClientRects().length > 0;
+    const sel = document.getElementById('sq-location');
+    const save = document.querySelector('[data-act="saveSquareLocation"]');
     return {
-      shown: !!card && !card.hidden,
-      opts: sel ? [...sel.options].map((o) => o.textContent.trim()) : [],
+      shown: on(sel) && on(save),
+      opts: sel ? [...(/** @type {HTMLSelectElement} */ (sel)).options].map((o) => o.textContent.trim()) : [],
     };
   });
+  const pick = await vis();
   ok(pick.shown, 'with two locations the picker is ON SCREEN in Manage → Payments');
   ok(pick.opts.some((t) => /Online CHB/.test(t)) && pick.opts.some((t) => /The Shop/.test(t)),
     `…listing every location (${pick.opts.join(' | ')})`);
   ok(pick.opts.some((t) => /main location/i.test(t)), '…plus the unset option, which is what Square does today');
+
+  // …AND WITH NOTHING TO CHOOSE BETWEEN, IT IS NOT THERE AT ALL. One location
+  // cannot be the wrong one, so a picker would be a question with one answer —
+  // and the card's prose asserts "more than one location", which would be false.
+  // This negative is the case the unclosed tag broke and nothing tested.
+  sqLocations = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }];
+  sqLocation = '';
+  await page.evaluate(async () => { await openArea(); settingsOpen('payments'); });
+  await page.waitForTimeout(1000);
+  const one = await vis();
+  ok(!one.shown, 'a single-location seller is shown no picker at all');
+  // And with Square off entirely there is nothing to say either.
+  sqLocations = [];
+  await page.evaluate(async () => { await openArea(); settingsOpen('payments'); });
+  await page.waitForTimeout(1000);
+  const none = await vis();
+  ok(!none.shown, '…nor is an owner with no Square locations reported at all');
+  sqLocations = [{ id: 'L1', name: 'Online CHB', status: 'ACTIVE' }, { id: 'L2', name: 'The Shop', status: 'ACTIVE' }];
+  await page.evaluate(async () => { await openArea(); settingsOpen('payments'); });
+  await page.waitForTimeout(1000);
 
   // Choosing one saves it and re-reads, so the money screens stop describing the old shop.
   sqLocation = 'L1';

@@ -1331,6 +1331,11 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .terms-accept a:hover {
   color: var(--text-light);
 }
+/* Over #enquire-modal, which opens it: both are .modal-overlay at 2000 and the
+   enquiry modal is appended last, so it painted over the terms (ui-test-terms §8). */
+#terms-modal {
+  z-index: 2200;
+}
 /* Terms modal (scrollable document) — matches the site's serif/glass styling */
 .terms-modal-box {
   width: 100%;
