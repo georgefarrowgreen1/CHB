@@ -39,6 +39,11 @@ const RANGES = [
   { start: '2026-08-19', end: '2026-08-24' },
   { start: '2026-08-28', end: '2026-08-31' },
 ];
+// What the availability endpoint serves. A test that needs a DIFFERENT calendar has
+// to swap this, not propertyAvailability: every opener re-fetches and overwrites the
+// store, so a hand-seeded array is silently undone a moment later (the trap the route
+// comment below records — it cost a whole draft of §12).
+let AVAIL = RANGES;
 const BOOKED = [1, 2, 3, 7, 8, 9, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30];
 const TOO_SHORT = [6, 11, 18, 27];
 // THE FIXTURE MONTH HAS TO STAY IN THE FUTURE, so the clock is pinned to a July
@@ -65,9 +70,9 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     // fixture has to come through the ENDPOINT — seeding propertyAvailability by
     // hand is silently undone a moment later, which made the first version of this
     // suite measure an empty month and report bugs the app does not have.
-    if (url.includes('availability.php')) return json({ ok: true, ranges: RANGES, props: { jollyboat: RANGES } });
+    if (url.includes('availability.php')) return json({ ok: true, ranges: AVAIL, props: { jollyboat: AVAIL } });
     if (url.includes('rates.php')) return json({
-      properties: [{ prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }],
+      properties: [{ prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, transaction_pct: 0, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }],
       seasons: {}, occupancy: {},
     });
     return json({ ok: true, bookings: [], enquiries: [], reviews: [], photos: [], props: {}, events: [], value: null });
@@ -268,7 +273,10 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     return el.evaluate((n) => getComputedStyle(n).transform);
   };
   const deadLift = await liftOf(31);
-  const liveLift = await liftOf(25);
+  // 26, not 25: with the check-in on 24 and a 2-night minimum, the 25th is a
+  // ONE-night stay and the picker now refuses it (it used to be offered and then
+  // rejected on the review step). 26 is the first legitimate checkout.
+  const liveLift = await liftOf(26);
   ok(deadLift === 'none' || /matrix\(1, 0, 0, 1, 0, 0\)/.test(deadLift),
     `an unpickable day does not lift under the pointer (${deadLift})`);
   ok(liveLift !== deadLift, `…while a pickable one still does (${liveLift})`);
@@ -277,6 +285,23 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   const hint = await page.evaluate(() => document.getElementById('dp-hint').innerText);
   ok(/check-out/.test(hint) && /28 Aug 2026/.test(hint),
     `it names the latest possible checkout rather than leaving them to find it (${hint})`);
+  // …and once both ends are in, it counts the nights in words a person writes —
+  // "night(s)" was a placeholder that shipped, on the one line confirming the stay
+  // the guest is about to enquire about.
+  const nightsHint = await page.evaluate(async () => {
+    const read = () => document.getElementById('dp-hint').innerText;
+    const out = {};
+    dpPick('2026-08-24');
+    dpPick('2026-08-25');
+    out.one = read();
+    dpPick('2026-08-24');
+    dpPick('2026-08-26');
+    out.two = read();
+    return out;
+  });
+  ok(/·\s*1 night$/.test(nightsHint.one), `one night reads "1 night" (${nightsHint.one})`);
+  ok(/·\s*2 nights$/.test(nightsHint.two), `two read "2 nights" (${nightsHint.two})`);
+  ok(!/night\(s\)/.test(nightsHint.one + nightsHint.two), 'and neither shows the "night(s)" placeholder');
 
   console.log('8. a seeded range that DOES cross a booking keeps its marks');
   // The picker's own rules can never produce an overlapping range — but the hero
@@ -364,6 +389,174 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   });
   ok(/day’s notice/.test(chatToday) && !/Good news/.test(chatToday),
     'the chat refuses a same-day stay with the notice rule');
+
+  console.log('11. the picker refuses exactly what the form refuses');
+  // The checkout branch tested only for booked nights, so a checkout that made the
+  // stay shorter than the minimum — or longer than the maximum — was offered,
+  // accepted, and then rejected by checkBookingRules on the review step, AFTER the
+  // guest had chosen. Same for a check-in on a day the cottage takes no arrivals.
+  // Each refusal must also name ITSELF: dp-out's "a booking falls before this date"
+  // is a lie about a stay that is merely too short, and replacing an invisible
+  // refusal with a misleading one is no fix.
+  const cellsNow = () => page.evaluate(() => {
+    const out = {};
+    document.querySelectorAll('#dp-grid .dp-day').forEach((el) => {
+      const n = parseInt(el.textContent.trim(), 10);
+      if (!n) return;
+      out[n] = {
+        clickable: el.getAttribute('data-act') === 'dpPick',
+        title: el.getAttribute('title') || '',
+        aria: el.getAttribute('aria-label') || '',
+      };
+    });
+    return out;
+  });
+  const rules = async (r) => {
+    await page.evaluate((rr) => {
+      Object.assign(propertyRates['jollyboat'], rr);
+      dpState.start = null;
+      dpState.end = null;
+      renderDatePicker();
+    }, r);
+    await page.waitForTimeout(80);
+  };
+
+  // (a) MIN/MAX on the checkout branch. 24–27 are free with 28 booked, so 28 is a
+  // legitimate turnover checkout — which is what makes it the honest maximum case.
+  await openAt();
+  await rules({ minNights: 2, maxNights: 3, arrivalDays: [] });
+  await tap(24);
+  let c = await cellsNow();
+  ok(!c[25].clickable && /[Mm]inimum stay is 2 nights/.test(c[25].title),
+    `a 1-night checkout is refused, naming the minimum (${c[25].title || '(no title)'})`);
+  ok(/minimum stay is 2 nights/.test(c[25].aria), '…and the announced name says the same');
+  ok(c[26].clickable && c[27].clickable, 'the 2- and 3-night checkouts are open');
+  ok(!/booking falls before/.test(c[25].aria), 'and does not blame a booking that has nothing to do with it');
+  // The maximum, on a FREE day so nothing else can be the reason: 24–27 are free
+  // with 28 booked, so a 2-night maximum puts the boundary on the free 27.
+  await rules({ minNights: 1, maxNights: 2, arrivalDays: [] });
+  await tap(24);
+  c = await cellsNow();
+  ok(c[26].clickable, 'the checkout at the maximum is open');
+  ok(!c[27].clickable && /[Mm]aximum stay is 2 nights/.test(c[27].title),
+    `one night over it is refused, naming the maximum (${c[27].title || '(no title)'})`);
+  ok(/maximum stay is 2 nights/.test(c[27].aria), '…and the announced name says the same');
+  // 28 is the first night of the next booking — a legitimate TURNOVER checkout — so
+  // over the maximum it must cite the length, not "Booked", which would send the
+  // guest hunting for another date when what they must change is the stay.
+  ok(!c[28].clickable && /[Mm]aximum stay/.test(c[28].title),
+    `a turnover day over the maximum cites the length, not the booking (${c[28].title || '(no title)'})`);
+  // Break-test the maximum: with none set, both come back.
+  await rules({ minNights: 1, maxNights: 0 });
+  await tap(24);
+  c = await cellsNow();
+  ok(c[27].clickable && c[28].clickable, 'with no maximum, both checkouts are open again');
+
+  // (b) ARRIVAL DAYS on the check-in branch. Saturdays only: 1, 8, 15, 22, 29.
+  await rules({ minNights: 2, maxNights: 0, arrivalDays: [6] });
+  c = await cellsNow();
+  ok(c[15].clickable, 'a free Saturday can start a stay');
+  ok(!c[4].clickable && /No arrivals on this day/.test(c[4].title),
+    `a free Tuesday cannot, and says why (${c[4].title || '(no title)'})`);
+  ok(/does not take arrivals/.test(c[4].aria), '…in its announced name too');
+  // The arrival rule is a question about a CHECK-IN. A departure day is not one, so
+  // it must not be refused for falling on the wrong weekday.
+  await tap(15);
+  c = await cellsNow();
+  ok(c[17].clickable, 'a Monday CHECKOUT is unaffected by the arrival-day rule');
+  // …and a tap on/before the check-in RESTARTS, which is picking a check-in again —
+  // so it is refused for the arrival rule and must say so, not blame a booking.
+  ok(!c[4].clickable && /No arrivals on this day/.test(c[4].title),
+    'restarting on a no-arrivals day is refused with the arrival reason');
+  ok(!/booking before/.test(c[4].title), '…not "there\'s a booking before this date"');
+  await rules({ minNights: 2, maxNights: 0, arrivalDays: [] });
+
+  console.log('12. an empty flex month names its own reason');
+  // "Try another month" is right for a booked-up month and wrong for the other two:
+  // a month that has finished needs a LATER one, and a stay the cottage's own rules
+  // refuse won't fit ANY month — so the rule itself is the answer.
+  const flex = await page.evaluate(async () => {
+    const read = () => ({
+      title: (document.getElementById('hs-results-title') || {}).innerText || '',
+      grid: (document.getElementById('hs-results-grid') || {}).innerText || '',
+      waitlist: !!document.querySelector('#hs-results-grid [data-act="openWaitlistModal"]'),
+    });
+    const out = {};
+    heroSearch.mode = 'flex';
+    heroSearch.adults = 2;
+    heroSearch.children = 0;
+    // A 3-night search at a cottage with a 9-night minimum: every candidate day in
+    // the month is refused by the RULE, nothing is taken.
+    propertyRates['jollyboat'] = Object.assign({}, propertyRates['jollyboat'], { minNights: 9, maxNights: 0, arrivalDays: [] });
+    heroSearch.nights = 3;
+    heroSearch.month = '2026-08';
+    await runFlexSearch();
+    out.rule = read();
+    // A month already gone: nothing to wait for, and a later month is the advice.
+    propertyRates['jollyboat'].minNights = 2;
+    heroSearch.month = '2026-01';
+    await runFlexSearch();
+    out.past = read();
+    propertyRates['jollyboat'].minNights = 2;
+    return out;
+  });
+  // Booked up: the original wording, still correct. Served through the ENDPOINT —
+  // the fixture month leaves 31 Aug and an empty September, so without walling the
+  // tail off a 6-night window really is free there and this case would be measuring
+  // something else entirely.
+  AVAIL = RANGES.concat([{ start: '2026-08-31', end: '2026-10-01' }]);
+  flex.booked = await page.evaluate(async () => {
+    heroSearch.nights = 6;
+    heroSearch.month = '2026-08';
+    await runFlexSearch();
+    return {
+      title: (document.getElementById('hs-results-title') || {}).innerText || '',
+      grid: (document.getElementById('hs-results-grid') || {}).innerText || '',
+      waitlist: !!document.querySelector('#hs-results-grid [data-act="openWaitlistModal"]'),
+    };
+  });
+  AVAIL = RANGES;
+  ok(/minimum stay of 9 nights/i.test(flex.rule.grid),
+    `a stay the rules refuse names the rule (${flex.rule.grid.replace(/\s+/g, ' ').slice(0, 80)})`);
+  ok(!/try another month/i.test(flex.rule.grid), '…and does not send them to a month that cannot help');
+  ok(/already finished/i.test(flex.past.grid) && /later month/i.test(flex.past.grid),
+    `a finished month asks for a LATER one (${flex.past.grid.replace(/\s+/g, ' ').slice(0, 70)})`);
+  ok(/already finished/i.test(flex.past.title), '…and the heading says so rather than "no stays free"');
+  ok(!flex.past.waitlist, '…with no waitlist offer, which could never fire for a past month');
+  ok(/try another month/i.test(flex.booked.grid) && flex.booked.waitlist,
+    'a booked-up month keeps "try another month" and its waitlist offer');
+
+  console.log('13. a fully-booked cottage says so, rather than showing nothing');
+  // An empty chip read identically to a cottage whose availability hadn't loaded,
+  // so the guest could not tell "nothing free for two months" from "we don't know".
+  const chip = await page.evaluate(() => {
+    const out = {};
+    const cell = () => (document.getElementById('home-card-avail-jollyboat') || document.getElementById('card-avail-jollyboat') || {}).innerHTML || '';
+    const saved = publicAllAvailability;
+    // Solid wall of bookings for the whole scan window.
+    publicAllAvailability = { jollyboat: [{ start: todayDashed(), end: ukShiftDays(todayDashed(), 200) }] };
+    renderCardAvailability();
+    out.full = cell();
+    publicAllAvailability = { jollyboat: [] };
+    renderCardAvailability();
+    out.free = cell();
+    // Genuinely unknown: renderCardAvailability returns before touching anything,
+    // so measure from an EMPTY cell — which is the real boot order (null, then
+    // loaded), not from whatever the previous case painted.
+    ['card-avail-jollyboat', 'home-card-avail-jollyboat'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    publicAllAvailability = null;
+    renderCardAvailability();
+    out.unknown = cell();
+    publicAllAvailability = saved;
+    return out;
+  });
+  ok(/No stays free in the next \d+ days/.test(chip.full),
+    `fully booked states the fact and its window (${chip.full.replace(/<[^>]*>/g, '').slice(0, 60)})`);
+  ok(/Available from tomorrow/.test(chip.free), 'a wide-open cottage still leads with the strongest claim');
+  ok(chip.unknown === '', 'and an unloaded cottage stays silent — unknown is not a claim');
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

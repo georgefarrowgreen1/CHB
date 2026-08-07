@@ -10558,10 +10558,19 @@ function freeGaps(ranges, days, minNights) {
     if (run && run.nights >= minNights) gaps.push(run);
     return gaps;
 }
+// How far ahead the homepage chip looks. The "nothing free" wording names the
+// same window, so the claim can never overstate what was actually scanned.
+const AVAIL_SCAN_DAYS = 60;
 // The chip's strongest claim is "Available from tomorrow" — the earliest
 // bookable check-in (freeGaps scans from there). "Available now" promised a
 // night the enquiry form then refused, the old 2-day-grace defect mirrored.
+// NO GAP IS ITS OWN ANSWER, not silence: an empty chip read identically to a
+// cottage whose availability hasn't loaded, so the guest couldn't tell "nothing
+// free for two months" from "we don't know". Silence is kept for genuinely
+// unknown — the two early returns in renderCardAvailability.
 function availChipHtml(gapStart, tomorrow) {
+    if (!gapStart)
+        return `<span class="avail-chip"><span class="dot"></span>No stays free in the next ${AVAIL_SCAN_DAYS} days</span>`;
     return gapStart <= tomorrow
         ? `<span class="avail-chip now"><span class="dot"></span>Available from tomorrow</span>`
         : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(gapStart)}</span>`;
@@ -10572,11 +10581,8 @@ function renderCardAvailability() {
     liveCottageKeys().forEach((k) => {
         if (!(k in publicAllAvailability)) return;
         const minN = Math.max(1, (propertyRates[k] && propertyRates[k].minNights) || 1);
-        const gaps = freeGaps(publicAllAvailability[k], 60, minN);
-        let html = '';
-        if (gaps.length) {
-            html = availChipHtml(gaps[0].start, tomorrow);
-        }
+        const gaps = freeGaps(publicAllAvailability[k], AVAIL_SCAN_DAYS, minN);
+        const html = availChipHtml(gaps.length ? gaps[0].start : '', tomorrow);
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = html;
@@ -11607,8 +11613,10 @@ function renderDatePicker() {
         // a guest who turns the page has no way to know why the month went quiet.
         const stop = dpNextBookedStart(dpState.start);
         hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
-    } else
-        hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${nightsBetween(dpState.start, dpState.end)} night(s)`;
+    } else {
+        const n = nightsBetween(dpState.start, dpState.end);
+        hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+    }
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
     if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
@@ -11629,9 +11637,17 @@ function renderDatePicker() {
     // Guest check-in picker only: block a free night that can't fit the cottage's
     // minimum stay (a 1-night hole between bookings) — see dpCheckinFits.
     const guestPick = dpMode !== 'admin' && dpMode !== 'search';
-    const minNights = guestPick
-        ? Math.max(1, parseInt((propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {}).minNights, 10) || 1)
-        : 1;
+    const gRules = guestPick
+        ? propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {}
+        : {};
+    const minNights = guestPick ? Math.max(1, parseInt(gRules.minNights, 10) || 1) : 1;
+    // THE PICKER MUST REFUSE WHAT THE FORM REFUSES. The checkout branch tested only
+    // for booked nights, so a stay under the minimum (or over the maximum) was
+    // offered, accepted, then rejected by checkBookingRules on the review step —
+    // after the guest had chosen; same for a check-in on a no-arrivals day. The
+    // picker is the friendly layer over those three rules, so it must know them.
+    const maxNights = guestPick ? Math.max(0, parseInt(gRules.maxNights, 10) || 0) : 0;
+    const arrivalDays = guestPick && Array.isArray(gRules.arrivalDays) ? gRules.arrivalDays : [];
     const todayDs = formatDashed(today);
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
@@ -11665,15 +11681,27 @@ function renderDatePicker() {
         //  - admin mode: EVERYTHING is pickable (back-dating and deliberate
         //    overlaps are the owner's call; taken nights stay shaded as a cue
         //    and the availability strip + server clash confirm guard the save).
+        // The guest is owed the reason that APPLIES — dp-out's "there's a booking
+        // before this date" is a lie about a stay that is merely too short.
+        const stayN = pickingEnd && ds > dpState.start ? nightsBetween(dpState.start, ds) : 0;
+        // Arrival day is a question about a CHECK-IN, so it applies only on the branches
+        // that pick one: the first tap, or a tap on/before the check-in, which restarts.
+        // Unscoped it refused legitimate DEPARTURE days; scoped but worded `!pickingEnd`
+        // it let the restart tap fall through to that same false booking claim.
+        const arrivalBranch = !pickingEnd || ds <= dpState.start;
+        const badArrival =
+            arrivalBranch && arrivalDays.length > 0 && !arrivalDays.includes(date.getDay());
+        const tooFew = stayN > 0 && stayN < minNights;
+        const tooMany = stayN > 0 && maxNights > 0 && stayN > maxNights;
         let clickable;
         if (dpMode === 'admin') clickable = true;
         else if (isPast || tooSoon) clickable = false;
         else if (dpMode === 'search')
             clickable = true; // hero search: any future date
-        else if (!pickingEnd) clickable = !booked && !tooShort;
+        else if (!pickingEnd) clickable = !booked && !tooShort && !badArrival;
         else if (ds <= dpState.start)
-            clickable = !booked && !tooShort; // restart selection — a NEW check-in
-        else clickable = !rangeCrossesBooked(dpState.start, ds); // valid checkout
+            clickable = !booked && !tooShort && !badArrival; // restart selection — a NEW check-in
+        else clickable = !rangeCrossesBooked(dpState.start, ds) && !tooFew && !tooMany; // valid checkout
         const classes = ['dp-day'];
         if ((isPast || tooSoon) && dpMode !== 'admin') classes.push('dp-disabled');
         // A cross means "cannot be used", so it is wrong on a cell that IS being used:
@@ -11709,24 +11737,41 @@ function renderDatePicker() {
         // only path through the entire booking/enquiry funnel.
         // The announced state is the PAINTED one — `booked` alone drove it, so a
         // turnover day offered as a checkout was read out as "booked".
-        const unavailNote = booked
-            ? ' — booked, unavailable'
-            : tooSoon
-              ? ' — same-day stays need a day’s notice, unavailable'
-              : tooShort
-                ? ` — minimum stay ${minNights} nights, unavailable`
-                : outOfReach
-                  ? ' — too late, a booking falls before this date'
-                  : '';
+        // EACH REFUSAL NAMES ITSELF, or an invisible refusal is merely replaced by a
+        // misleading one. Stay LENGTH leads: tooFew/tooMany exist only while a checkout
+        // is being picked and are then the operative reason — the next booking's first
+        // day IS an offerable turnover, so "booked" would send that guest hunting for
+        // another date when what they must change is the length.
+        const unavailNote = tooFew
+            ? ` — too soon, the minimum stay is ${minNights} nights`
+            : tooMany
+              ? ` — too long, the maximum stay is ${maxNights} nights`
+              : booked
+                ? ' — booked, unavailable'
+                : tooSoon
+                  ? ' — same-day stays need a day’s notice, unavailable'
+                  : tooShort
+                    ? ` — minimum stay ${minNights} nights, unavailable`
+                    : badArrival
+                      ? ' — this cottage does not take arrivals on this day'
+                      : outOfReach
+                        ? ' — too late, a booking falls before this date'
+                        : '';
         const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
-        const title = crossed && !clickable
-            ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
-            : tooSoon
-              ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
-              : outOfReach
-                ? ' title="There\'s a booking before this date"'
-                : '';
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach || tooFew || tooMany ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
+        const title = tooFew
+            ? ` title="Minimum stay is ${minNights} nights"`
+            : tooMany
+              ? ` title="Maximum stay is ${maxNights} nights"`
+              : crossed && !clickable
+                ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
+                : tooSoon
+                  ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
+                  : badArrival && !clickable
+                    ? ' title="No arrivals on this day"'
+                    : outOfReach
+                      ? ' title="There\'s a booking before this date"'
+                      : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
     grid.innerHTML = cells;
@@ -12049,17 +12094,34 @@ function findFlexWindows(key, ym, nights, adults, children, max) {
     const today = formatDashed(dpToday0());
     const daysInMonth = new Date(y, m, 0).getDate();
     const windows = [];
+    // WHY there is nothing, so an empty month can name its own reason instead of
+    // "try another month" — wrong advice when the month is simply over, and no advice
+    // at all when the cottage's own rules are doing the refusing.
+    let tried = 0,
+        clashed = 0,
+        ruleMsg = '';
     for (let d = 1; d <= daysInMonth; d++) {
         const ci = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         if (ci < today) continue; // never suggest a past check-in
+        tried++;
         const co = shiftDate(ci, nights); // same length stay (may spill into next month)
-        if (checkBookingRules(key, ci, co)) continue; // min-stay / arrival-day rules
-        if (rangeClashes(key, ci, co)) continue; // authoritative: bookings + iCal blocks
+        const rule = checkBookingRules(key, ci, co); // min-stay / arrival-day / notice
+        if (rule) {
+            if (!ruleMsg) ruleMsg = rule;
+            continue;
+        }
+        if (rangeClashes(key, ci, co)) {
+            clashed++;
+            continue; // authoritative: bookings + iCal blocks
+        }
         windows.push({ ci, co, price: priceBreakdown(key, adults, children, ci, co) });
         if (windows.length >= max) break;
         d += nights - 1; // jump past this window so options are spread out
     }
-    return { fits: true, windows };
+    // A rule is only THE reason when nothing was taken: a month both booked up and
+    // partly refused is honestly described as booked up.
+    const why = windows.length ? '' : !tried ? 'past' : !clashed && ruleMsg ? ruleMsg : 'booked';
+    return { fits: true, windows, why };
 }
 async function runFlexSearch() {
     const msg = document.getElementById('hs-msg');
@@ -12132,6 +12194,14 @@ function renderFlexResults(results, tooSmall, nights, ym) {
         year: 'numeric',
     });
     const nightsLbl = `${nights} night${nights === 1 ? '' : 's'}`;
+    // A finished month needs a LATER one, and a stay the rules refuse won't fit ANY
+    // month — so "try another month" is only right for the booked-up case.
+    const whyLine = (w) =>
+        w === 'past'
+            ? `${escapeHtml(monthName)} has already finished — try a later month.`
+            : !w || w === 'booked'
+              ? `No ${nightsLbl} gap in ${escapeHtml(monthName)} — try another month.`
+              : escapeHtml(w);
     const optRow = (key, w) => {
         const nn = nightsBetween(w.ci, w.co);
         return `<button type="button" class="flex-opt" ${chbAttrs('startBooking', String(key), String(w.ci), String(w.co))}>
@@ -12139,21 +12209,30 @@ function renderFlexResults(results, tooSmall, nights, ym) {
                     <span class="fo-price">From ${gbp(w.price.total)}</span>
                 </button>`;
     };
-    const card = (key, windows) => `<div class="card glass-panel">
+    const card = (key, windows) => {
+        const why = (results[key] || {}).why || '';
+        return `<div class="card glass-panel">
                 <div class="card-img" role="img" aria-label="Photo of ${escapeHtml(propertyMeta[key].name)}" style="background-image:url('${propImg(key)}');"></div>
                 <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                 ${
                     windows.length
                         ? `<div class="card-meta">${windows.length} free option${windows.length === 1 ? '' : 's'} in ${escapeHtml(monthName)}</div><div class="flex-opts">${windows.map((w) => optRow(key, w)).join('')}</div>`
-                        : `<div class="card-meta">No ${nightsLbl} gap in ${escapeHtml(monthName)} — try another month.</div>
-                       <button class="btn-glass" style="width:100%;margin-top:10px;" ${chbAttrs('openWaitlistModal', { prop: key, checkIn: '', checkOut: '' })}>Notify me if dates become available</button>`
+                        : `<div class="card-meta">${whyLine(why)}</div>
+                       ${
+                           why === 'past'
+                               ? ''
+                               : `<button class="btn-glass" style="width:100%;margin-top:10px;" ${chbAttrs('openWaitlistModal', { prop: key, checkIn: '', checkOut: '' })}>Notify me if dates become available</button>`
+                       }`
                 }
             </div>`;
+    };
     const fitKeys = Object.keys(results);
     const withOpts = fitKeys.filter((k) => results[k].windows.length);
     title.innerText = withOpts.length
         ? `${nightsLbl} in ${monthName}`
-        : `No ${nightsLbl} stays free in ${monthName}`;
+        : fitKeys.length && fitKeys.every((k) => results[k].why === 'past')
+          ? `${monthName} has already finished`
+          : `No ${nightsLbl} stays free in ${monthName}`;
     let html = withOpts.map((k) => card(k, results[k].windows)).join('');
     html += fitKeys
         .filter((k) => !results[k].windows.length)
@@ -14991,7 +15070,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'backsheet1';
+    const BUILD = 'enqjrny1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
