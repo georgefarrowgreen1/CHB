@@ -608,6 +608,14 @@ if ($action === 'charge') {
                 'total' => $total,
                 'paid_so_far' => $newPaid,
                 'balance' => round(max(0, $total - $newPaid), 2),
+                // WHEN the rest is wanted, and HOW to pay it. Both were already
+                // known here and neither reached the receipt, so it could only
+                // say "we'll be in touch". The date is the booking's own
+                // (booking_balance_due_date — custom date, else check-in minus
+                // the window), so the receipt cannot quote a different day from
+                // the chaser that follows it.
+                'balance_due_date' => booking_balance_due_date($b),
+                'pay_url' => site_base_url() . 'index.html?pay=' . pay_token((int) $bookingId) . '&b=' . (int) $bookingId,
                 // A slice at the max bound settles the RENTAL while the
                 // refundable deposit it displaced is still to take — "paid in
                 // full" above "towards your balance" would be the receipt
@@ -640,6 +648,10 @@ if ($action === 'charge') {
                 'partial' => $partial,
                 'amount' => $amountDue,
                 'status' => $newStatus,
+                // What is LEFT after this payment — the owner's first question on
+                // seeing money land, and the notice could not answer it without
+                // this (see owner_payment_notice_body).
+                'balance' => round(max(0, $total - $newPaid), 2),
             ]);
         } catch (\Throwable $e) {
         }
