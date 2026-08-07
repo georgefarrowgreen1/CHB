@@ -214,6 +214,46 @@ const clause = (text, n) => {
   ok(!/collected automatically/.test(clause((await termsText(apOld)).text, 5)),
     'an older server (no autopay field) promises nothing');
 
+  // ── THE TERMS MUST BE READABLE FROM THE FORM THAT ASKS FOR THEM ────────────
+  // Both #terms-modal and #enquire-modal are .modal-overlay, so both sat at
+  // z-index 2000 — and the enquiry modal is appended to the END of <body> on
+  // boot (its overlay is fixed and a transformed .page-view ancestor would trap
+  // it), so it won the DOM-order tie and painted OVER the terms. The one
+  // document the guest is legally asked to accept was unreadable at the moment
+  // of accepting it. Every check above opens the terms with NO enquiry modal up,
+  // which is why the suite passed with this live: the state has to be the real
+  // one. Hit-tested at the viewport centre, because a z-index comparison would
+  // not notice a third overlay arriving between them.
+  console.log('\n8. the terms are readable from the enquiry form');
+  const layered = await openSite(browser, base, {});
+  await layered.evaluate(() => { openProperty('jollyboat'); });
+  await layered.waitForTimeout(400);
+  await layered.evaluate(() => { openEnquireModal(); });
+  await layered.waitForTimeout(400);
+  const bothOpen = await layered.evaluate(() => ({
+    enq: !!document.getElementById('enquire-modal').classList.contains('open'),
+  }));
+  ok(bothOpen.enq, 'the enquiry modal is up (the state a guest is actually in)');
+  await layered.evaluate(() => {
+    const a = document.querySelector('label:has(#enq-terms) a[data-act="openTerms"]');
+    if (!a) throw new Error('no terms link beside the acceptance box');
+    /** @type {HTMLElement} */ (a).click();
+  });
+  await layered.waitForTimeout(400);
+  const top = await layered.evaluate(() => {
+    const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    const owner = (node, id) => { for (let n = node; n; n = n.parentElement) if (n.id === id) return true; return false; };
+    return {
+      inTerms: owner(el, 'terms-modal'),
+      inEnq: owner(el, 'enquire-modal'),
+      tag: el ? el.tagName + (el.className ? '.' + String(el.className).split(' ')[0] : '') : 'none',
+      readable: (document.getElementById('terms-modal-body') || { innerText: '' }).innerText.length > 200,
+    };
+  });
+  ok(top.inTerms && !top.inEnq,
+    `the terms document is what the guest touches, not the form behind it (topmost: ${top.tag})`);
+  ok(top.readable, '…and its text is actually rendered');
+
   console.log(fails ? `\n  TERMS SUITE FAILED ❌ (${fails})` : '\n  TERMS SUITE PASSED ✅');
   await done(fails);
 })();
