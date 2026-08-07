@@ -1494,6 +1494,34 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     name: (document.querySelector('#view-enquiry-hub .bhub-name') || {}).textContent || '',
   }));
   ok(j3.active === 'view-enquiry-hub' && j3.name === 'Enq Beta', `standalone enquiry hub on narrow (${j3.name})`);
+
+  // THE APPROVAL BANNER NAMES WHAT APPROVAL WILL ACTUALLY ASK FOR. It said
+  // "requests the deposit by card" on both sides of the balance window and
+  // whether or not Square was configured — but enquiry-actions.php derives the
+  // kind from booking_payment_kind, so an enquiry approved INSIDE the window
+  // correctly asks for the WHOLE amount. That is the hubAskKind fix, which never
+  // came along to the enquiry side. Driven by moving the enquiry's own dates.
+  // Driven by the PLAN's own due date, not by moving the stay: shifting checkIn
+  // near enough to enter the window also walks it into another fixture booking,
+  // and the clash banner (correctly) wins the slot.
+  const apprSay = async (due, sqOn) => page.evaluate(async (a) => {
+    const e = (enquiries || []).find((x) => String(x.id) === '7' || x.id === 7 || x.id === 'e7');
+    if (e) e.balanceDueDate = a.due;
+    // eslint-disable-next-line no-global-assign
+    squareAdminEnabled = a.sqOn;
+    await window.openEnquiryHub('e7');
+    await new Promise((r) => setTimeout(r, 350));
+    return ((document.querySelector('#view-enquiry-hub .bhub-next') || {}).textContent || '').trim();
+  }, { due, sqOn });
+  const far = await apprSay(d(60), true);
+  ok(/requests the deposit by card/.test(far), `before the balance falls due, approval asks for the DEPOSIT by card (${far.slice(0, 90)})`);
+  const near = await apprSay(d(-1), true);
+  ok(/requests the full amount by card/.test(near) && !/the deposit/.test(near),
+    `once it is due it asks for the FULL amount, as the server will (${near.slice(0, 90)})`);
+  const noSq = await apprSay(d(60), false);
+  ok(/requests the deposit\./.test(noSq) && !/by card/.test(noSq),
+    `with Square off it never promises a card link (${noSq.slice(0, 90)})`);
+  await page.evaluate(() => { /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = true; });
   const dec = page.evaluate(() => declineEnquiry('e7'));
   await page.waitForTimeout(500);
   await page.evaluate(() => glassDialogResolve(true));
