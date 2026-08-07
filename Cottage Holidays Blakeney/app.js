@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 424;
+const ADMIN_BUNDLE_V = 425;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -7923,7 +7923,15 @@ function guestFlowHtml(propKey, b, payToken) {
     if (flow.hasReg && !b.regSubmitted && b.regUrl) {
         next = `<div class="bkflow-next"><span>Add your guest details before you arrive — UK law asks for the name &amp; nationality of everyone 16 or over.</span><a class="btn-glass btn-sm bkflow-cta" href="${escapeHtml(b.regUrl)}" target="_blank" rel="noopener">Add your details</a></div>`;
     } else if (!gt.fullyPaid) {
-        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${payToken ? ' — use “Pay balance” below.' : '.'}</span></div>`;
+        // NAME THE BUTTON THAT IS ACTUALLY THERE. This said «use "Pay balance"
+        // below» over a control the staged-ask work relabels from
+        // booking_next_payment — measured as "use “Pay balance” below" above a
+        // button reading "Pay deposit £175.00". guestPayCta is the one place that
+        // decides that label, so the sentence reads it instead of restating it.
+        // And an owner-arranged stay has no button at all to point at.
+        const strip = guestPayCta(b, gt);
+        const stripCta = payToken && !bookingOwnerArranged(b) ? ` — use “Pay ${strip.word}” below.` : '.';
+        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${stripCta}</span></div>`;
     } else if (!b.preArrivalSent) {
         next = `<div class="bkflow-next is-clear"><span>You’re paid up. We’ll send your arrival info (directions &amp; key) nearer the time.</span></div>`;
     } else {
@@ -14951,7 +14959,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'uxfix2';
+    const BUILD = 'askstage1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

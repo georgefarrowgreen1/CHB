@@ -1559,6 +1559,16 @@ function chbBulkNames(list) {
     if (names.length <= 2) return names.join(' and ');
     return `${names[0]} and ${names.length - 1} others`;
 }
+// WHICH WAY EACH GUEST IS ASKED TO PAY, in the confirm's own words. Mirrors
+// payment_cta's branch (card link vs bank details), read off the rail the same
+// bookingOwnerArranged/payment_rail pattern decides.
+function chbBulkMechanism(send) {
+    const card = (send || []).filter((x) => !bookingOwnerArranged(x.b)).length;
+    const bank = (send || []).length - card;
+    if (bank && !card) return 'Each guest gets the standard balance-request email with your bank transfer details.';
+    if (card && !bank) return 'Each guest gets the standard balance-request email with their own secure pay link.';
+    return `Each guest gets the standard balance-request email — a secure pay link for ${chbSayN(card)} of them, your bank details for the ${bank === 1 ? 'other' : 'other ' + chbSayN(bank)}.`;
+}
 async function chbBulkConfirm(rows, opts) {
     const o = opts || {};
     const { send, skip } = chbBulkSplit(rows, o.skipIf);
@@ -1570,7 +1580,11 @@ async function chbBulkConfirm(rows, opts) {
             skip.length
                 ? (skip.every((x) => x.skipWhy === 'no email address')
                     ? `No email addresses on ${skip.length === 1 ? 'this booking' : 'these bookings'} — add one to ${chbBulkNames(skip)} first.`
-                    : `Nothing to send — ${chbBulkNames(skip)} already had ${skip.length === 1 ? 'theirs' : 'theirs'}.`)
+                    // NAME THE REAL REASON. This assumed the only other skip was
+                    // "already had theirs", so a set of guests whose money the owner
+                    // settles by hand was told they had already been emailed. The
+                    // reasons are one per row already; say the one that applies.
+                    : `Nothing to send — ${chbBulkNames(skip)}: ${skip[0].skipWhy}.`)
                 : (o.emptySay || 'Nothing to chase — those balances are settled.'),
         );
         return false;
@@ -1587,7 +1601,13 @@ async function chbBulkConfirm(rows, opts) {
         '',
         `Total to chase: ${gbp(total)}`,
         '',
-        o.blurb || 'Each guest gets the standard balance-request email with their own secure pay link.',
+        // THE CONFIRM PROMISES WHAT WILL ACTUALLY BE SENT. This said "their own
+        // secure pay link" unconditionally, and payment_cta sends BANK DETAILS to
+        // a guest on the cash/bank rail — so the one sentence describing the
+        // outgoing email named the wrong mechanism for exactly the guests whose
+        // arrangement the owner is most careful about. Derived from the set, and
+        // mixed sets say so rather than picking a side.
+        o.blurb || chbBulkMechanism(send),
     ].join('\n');
     // The button states the count that will actually send, not the number of rows
     // listed — a "Send 3" over a list containing a skipped guest is a lie in the label.
@@ -1684,6 +1704,23 @@ function chbBulkArrivalAction(rows) {
 function chbBulkBalanceAction(rows) {
     const list = (rows || []).filter((x) => x && x.b && x.ps && !x.ps.fullyPaid && x.ps.balance > 0.5);
     if (list.length < 2) return null;
+    // MONEY THE OWNER ARRANGED BY HAND IS NOT CHASED. bookingOwnerArranged is
+    // honoured by every other money surface and was not honoured here, so the one
+    // guest the owner explicitly said never to chase got the chase — from the
+    // answer that (correctly, and by design) still counts their money in its
+    // total. SKIPPED, not filtered out: dropping them would shrink a set the
+    // sentence above the button still lists, and the confirm would stop naming
+    // everyone it was asked about. Same machinery a missing address uses, so the
+    // confirm and the report cannot disagree about who is in the batch.
+    const skipArranged = (x) => (bookingOwnerArranged(x.b) ? 'you settle this one yourself' : '');
+    // The LABEL names the set the answer above it lists; the CONFIRM names what
+    // will really send ("Send 2 requests" over 3 listed rows) and the report says
+    // who was skipped. That two-step is deliberate and documented — do not move
+    // the truth-telling up into the label. What the skip DOES change is whether
+    // the action is worth offering: under two real sends it is one guest's own
+    // action wearing a worse label, the same judgement the two-ower rule makes.
+    const sendable = chbBulkSplit(list, skipArranged).send;
+    if (sendable.length < 2) return null;
     return chbBulkAction('balance', {
         key: 'balance-all',
         label: `Request all ${list.length} balances`,
@@ -1693,9 +1730,9 @@ function chbBulkBalanceAction(rows) {
         // inline path it lands on the screen that does the job by hand.
         run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
         inline: async () => {
-            const go = await chbBulkConfirm(list);
+            const go = await chbBulkConfirm(list, { skipIf: skipArranged });
             if (!go) return null; // backing out claims NOTHING — no strip, no undo
-            return await chbBulkRun(list);
+            return await chbBulkRun(list, { skipIf: skipArranged });
         },
     });
 }
@@ -4986,9 +5023,22 @@ function cmdkIntent(q) {
                     `You’re owed ${gbp(total)} across ${n} guests, ${lead} leading at ${gbp(big.ps.balance)}.`,
                     `Looks like ${gbp(total)} still to come in — ${lead}’s the big one (${gbp(big.ps.balance)}), then ${chbSayN(n - 1)} more.`,
                 ]);
+        // …AND THE SUB MUST NOT PROMISE A LIST THAT OMITS WHO THE SENTENCE NAMED.
+        // This answer counts owner-arranged money by design ("records and direct
+        // answers keep the full state"), while Bookings ▸ Needs payment excludes
+        // it by design — so the owner read a total, tapped through, and met a list
+        // missing the guest just called the biggest. Both rules stay; the sub now
+        // says how much of the figure is settled by hand, so the shorter list is
+        // expected rather than a contradiction.
+        const arranged = rows.filter((x) => bookingOwnerArranged(x.b));
+        const armTotal = arranged.reduce((s, x) => s + Math.max(0, x.ps.balance || 0), 0);
         const head = ans(
             owedHead,
-            n ? 'Tap to chase them — Bookings ▸ Needs payment' : 'No balances outstanding',
+            n
+                ? (armTotal > 0.005
+                    ? `${gbp(armTotal)} of it you settle yourself · tap for the rest — Bookings ▸ Needs payment`
+                    : 'Tap to chase them — Bookings ▸ Needs payment')
+                : 'No balances outstanding',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
             n ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
         );
@@ -20819,10 +20869,25 @@ function renderEnquiryHub() {
     const chips =
         (av ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}</span>` : '') +
         (stale ? `<span class="bk-chip warn" style="margin-left:6px;"><span class="bk-dot"></span>${days}d waiting</span>` : '');
+    // WHAT APPROVAL WILL ACTUALLY ASK FOR. This said "requests the deposit by
+    // card" whichever side of the balance window the enquiry sat, and whether or
+    // not Square is configured — but enquiry-actions.php derives the kind from
+    // booking_payment_kind, so an enquiry approved INSIDE the window correctly
+    // asks for the WHOLE amount. That is the hubAskKind fix, which never came
+    // along to the enquiry side. bookingInBalanceWindow takes a mapped booking
+    // and an enquiry carries the same two fields it reads.
+    const apprAsk = () => {
+        const inWindow = (() => { try { return bookingInBalanceWindow(e); } catch (err) { return false; } })();
+        const stage = inWindow ? 'the full amount' : 'the deposit';
+        // With Square off there is no card link to send — the chase rides the
+        // bank-transfer rail (payment_cta), so promising "by card" is wrong twice.
+        const how = squareAdminEnabled ? ' by card' : '';
+        return `requests ${stage}${how}`;
+    };
     // The one next step, spelled out like the booking hub's next-action box.
     const next = av && !av.free
         ? { text: 'These dates now clash with another booking — adjust the dates (Edit) or decline.', cls: '' }
-        : { text: `Free to approve — this creates the booking, emails the confirmation${e.email ? ' and requests the deposit by card' : ''}.`, cls: ' is-clear' };
+        : { text: `Free to approve — this creates the booking, emails the confirmation${e.email ? ' and ' + apprAsk() : ''}.`, cls: ' is-clear' };
     const contact = (label, val) =>
         `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val || '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>`;
     el.innerHTML = `

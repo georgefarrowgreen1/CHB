@@ -2269,6 +2269,55 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('…while an EMPTY method keeps the ordinary chase',
             ctx.chbDuties().some((d) => d.kind === 'balance' && /Cash Guest/.test(d.label)));
 
+        // A4) THE BULK CHASE OBEYS THE SAME RULE, AND ITS CONFIRM PROMISES WHAT
+        // WILL REALLY BE SENT. bookingOwnerArranged was honoured by six surfaces
+        // and not by chbBulkBalanceAction, so the one guest the owner said never
+        // to chase got the chase — from the answer that (by design) still counts
+        // their money. SKIPPED, not filtered: dropping them would shrink a set the
+        // sentence above the button still lists.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[
+              {id:77,dbId:77,name:'Card One',email:'c1@x.co',checkIn:'${dFut(6)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,paymentMethod:'card',
+               agreedPrice:{total:540,rentalTotal:540,perNight:520,nights:3,txnFee:20}},
+              {id:78,dbId:78,name:'Card Two',email:'c2@x.co',checkIn:'${dFut(7)}',checkOut:'${dFut(10)}',adults:2,children:0,payment:'deposit',depositPaid:100,paymentMethod:'card',
+               agreedPrice:{total:540,rentalTotal:540,perNight:520,nights:3,txnFee:20}},
+              {id:79,dbId:79,name:'Cash Three',email:'c3@x.co',checkIn:'${dFut(8)}',checkOut:'${dFut(11)}',adults:2,children:0,payment:'deposit',depositPaid:100,paymentMethod:'Bank transfer',
+               agreedPrice:{total:540,rentalTotal:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        const bulkRows = vm.runInContext(`(function(){
+            const out = [];
+            Object.keys(dbBookings).forEach((pk) => (dbBookings[pk]||[]).forEach((b) => out.push({ pk, b, ps: bookingDue(pk, b) })));
+            return out;
+        })()`, ctx);
+        const bulkAct = ctx.chbBulkBalanceAction(bulkRows);
+        // The LABEL names the set (the confirm names the real sends — documented,
+        // and §38 pins it); what the arranged guest changes is the SKIP.
+        check('the bulk chase still offers itself over the set it was given',
+            !!bulkAct && /Request all 3 balances/.test(bulkAct.label), bulkAct && bulkAct.label);
+        const split = ctx.chbBulkSplit(bulkRows, (x) => (ctx.bookingOwnerArranged(x.b) ? 'you settle this one yourself' : ''));
+        check('…and the owner-arranged guest is SKIPPED, still named, not dropped',
+            split.skip.length === 1 && /Cash Three/.test(split.skip[0].b.name) && /settle this one yourself/.test(split.skip[0].skipWhy),
+            JSON.stringify(split.skip.map((x) => x.b.name + ':' + x.skipWhy)));
+        check('…so the confirm still lists everyone the answer did',
+            split.send.length + split.skip.length === 3);
+        // The mechanism sentence follows the rail, because payment_cta does.
+        check('an all-card set is promised a pay link',
+            /secure pay link/.test(ctx.chbBulkMechanism(split.send)), ctx.chbBulkMechanism(split.send));
+        check('an all-bank set is promised BANK DETAILS, not a card link',
+            /bank transfer details/.test(ctx.chbBulkMechanism(split.skip)) && !/pay link/.test(ctx.chbBulkMechanism(split.skip)),
+            ctx.chbBulkMechanism(split.skip));
+        check('a mixed set says so rather than picking a side',
+            /secure pay link for/.test(ctx.chbBulkMechanism(bulkRows)) && /bank details/.test(ctx.chbBulkMechanism(bulkRows)),
+            ctx.chbBulkMechanism(bulkRows));
+        // Under two REAL sends the row's own action is the better label.
+        vm.runInContext(`dbBookings.jollyboat[1].paymentMethod='Bank transfer';`, ctx);
+        const bulkRows2 = vm.runInContext(`(function(){
+            const out = [];
+            Object.keys(dbBookings).forEach((pk) => (dbBookings[pk]||[]).forEach((b) => out.push({ pk, b, ps: bookingDue(pk, b) })));
+            return out;
+        })()`, ctx);
+        check('with only one chaseable guest there is no bulk action at all',
+            ctx.chbBulkBalanceAction(bulkRows2) === null);
+
         // B) WHAT IS OWED INCLUDES THE DEPOSIT THAT HAS NOT BEEN TAKEN YET.
         // Reported from the live back office: the booking's own row said "£340.00
         // due" while Today's header and the bookings summary both said "£290 to
