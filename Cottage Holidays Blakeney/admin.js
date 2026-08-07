@@ -1083,7 +1083,12 @@ function cmdkCommand(q, today) {
     if (/^(watching|watchers|what am i watching|reminders?)$/.test(q.trim())) {
         const list = __chbWatchers;
         if (list === null) {
-            const reask = () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); };
+            // RE-RUN WHAT IS IN THE FIELD, unconditionally. The old guard was a regex
+            // WITHOUT "what am i watching" — the phrasing the branch above accepts — so
+            // that query hung on "Checking…" for ever: the fetch landed, this ran, the
+            // guard failed, nothing re-rendered. Re-running the CURRENT value is right
+            // however it now reads, so only "is the pop-out open" is left to ask.
+            const reask = () => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && cmdkIsOpen()) cmdkSearchCore(el.value, false); };
             // A DROPPED REQUEST SAYS SO. It used to be swallowed into an empty
             // list, i.e. "you aren't watching anything" — the one wrong answer
             // this screen must never give, because a watcher you cannot find is
@@ -5854,6 +5859,11 @@ const coachBlockN = () => { try { return Object.keys(dbBlocks || {}).reduce((n, 
 // A flow that cannot observe its own outcome cheaply declares neither and keeps the
 // neutral sign-off — take-payment ends in an email, and a shaky check telling someone
 // who did save that they didn't is worse than no check. Gated pairwise by search-test.
+// The Block-dates dialog's OK label, stated ONCE: the walkthrough step below quotes
+// it, so two copies would let the guide and the button drift apart. Declared ABOVE
+// CHB_WALK because that object literal is evaluated eagerly at parse time — left
+// beside openBlockDates it sat in the temporal dead zone and threw on load.
+const BLOCK_DATES_OK = 'Block these dates';
 const CHB_WALK = {
     'add-booking': {
         mark: () => coachBookingN(),
@@ -5874,7 +5884,7 @@ const CHB_WALK = {
         mark: () => coachBlockN(),
         done: (m) => ({ ok: coachBlockN() > m, say: 'Blocked — those nights are closed off.', miss: 'Stopped before blocking — the dates are still open.' }),
         start: () => openBlockDates(), steps: [
-        { sel: '#glass-dialog-fields', say: 'Pick the cottage and the first & last nights to close off, then tap Block.' },
+        { sel: '#glass-dialog-fields', say: 'Pick the cottage and the first & last nights to close off, then tap ' + BLOCK_DATES_OK + '.' },
     ] },
     'take-payment': { start: () => { Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} }); }, steps: [
         { sel: '#bookings-list .bk-row', say: 'Open a booking that still owes money.', until: () => coachHas('[data-act="requestPayment"]') },
@@ -8354,6 +8364,15 @@ function cmdkDeepFetch(q, typo) {
             cmdkRender();
         });
 }
+// Re-run the deep search that failed. The failed query is the one thing this state
+// still holds, and clearing the flag before re-fetching is what stops the pending
+// render from short-circuiting straight back into the error frame.
+function cmdkDeepRetry() {
+    const q = __cmdkDeepErr;
+    if (!q) return;
+    __cmdkDeepErr = null;
+    cmdkDeepFetch(q, '');
+}
 function cmdkDeepClose() {
     cmdkDeepReset();
     __cmdkDeepStamp++;
@@ -8423,8 +8442,10 @@ function cmdkRenderDeepWait(box) {
         <span class="cmdk-deep-title">Everything · “${escapeHtml(q)}”</span>
     </div>`;
     if (__cmdkDeepErr) {
+        // "Try that again" named no way to — Back was the only control here.
         box.innerHTML = head + cmdkNoneHtml('Couldn’t search everything',
-            'Something got in the way of reaching your history. Try that again.');
+            'Something got in the way of reaching your history.')
+            + `<div class="cmdk-none-act"><button type="button" class="cmdk-qa-row" data-act="cmdkDeepRetry">Try again</button></div>`;
         return;
     }
     // role=status, because the sweep bar above the field is aria-hidden decoration —
@@ -9707,7 +9728,9 @@ async function openBookingHub(bookingId, quiet) {
             })
             .catch(() => {
                 const el2 = document.getElementById('hub-history');
-                if (el2 && __hubBookingId === bookingId) el2.innerHTML = '<div class="bhub-empty">Couldn’t load the activity.</div>';
+                // A dropped bundle left the card saying only that it had failed. The
+                // whole hub comes from ONE round trip, so re-opening it is the retry.
+                if (el2 && __hubBookingId === bookingId) el2.innerHTML = '<div class="bhub-empty">Couldn’t load the activity — the connection dropped. <button type="button" class="bhub-actlink" ' + chbAttrs('openBookingHub', bookingId) + '>Try again</button></div>';
             });
     }
     // Guest-intel mentions ride the history corpus index: if it isn't built yet,
@@ -10281,8 +10304,11 @@ function renderBookingHub() {
                             // After the guest arrives the stay is committed — no
                             // Cancel & refund (only the damages deposit can go back,
                             // handled in the payments block below).
+                            // A REMOVED ACTION SAYS WHY: both used to simply VANISH, so
+                            // an owner hunting for Cancel found neither it nor a reason.
+                            // role="none" keeps the tree valid — not a menuitem.
                             arrived
-                                ? ''
+                                ? `<p role="none" class="bhub-menu-note">Cancelling isn’t possible once the guest has arrived — the stay has happened. The damage deposit can still go back, from the Payments section above.</p>`
                                 : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubCancel" data-arg="${b.id}">Cancel &amp; refund</button>`
                         }
                         ${
@@ -10290,7 +10316,7 @@ function renderBookingHub() {
                             // rule the server enforces): once anything has been paid or
                             // a card hold is live, Cancel & refund is the only way out.
                             bookingHasMoney(b)
-                                ? ''
+                                ? (arrived ? '' : `<p role="none" class="bhub-menu-note">Deleting isn’t possible once money is on the booking — use Cancel &amp; refund, so the guest gets their money back and there’s a record of it.</p>`)
                                 : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubDelete" data-arg="${b.id}" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
                         }
                     </div>
@@ -16797,6 +16823,10 @@ async function openBlockDates(prefill) {
     const pf = prefill && typeof prefill === 'object' ? prefill : {};
     // ONE dialog: pick the cottage from a dropdown (no typed keys) and the
     // dates from native pickers.
+    // THE OK BUTTON NAMES WHAT IT DOES — the house convention for a glass dialog,
+    // and here it is load-bearing: the guided walkthrough's one step says "tap
+    // Block", and against the default "OK" that instruction named a button the
+    // dialog did not have. ui-test-coach holds the two in step.
     const vals = await glassForm('Block out dates', [
         {
             id: 'prop',
@@ -16807,7 +16837,7 @@ async function openBlockDates(prefill) {
         },
         { id: 'from', label: 'First blocked night', type: 'date', value: pf.from || todayDashed() },
         { id: 'to', label: 'Free again from (checkout morning)', type: 'date', value: pf.to || undefined },
-    ]);
+    ], { okLabel: BLOCK_DATES_OK });
     if (vals === null) return;
     const key = (vals.prop || '').trim();
     const from = (vals.from || '').trim();
@@ -16834,7 +16864,20 @@ async function openBlockDates(prefill) {
         toast('Dates blocked.');
         await initBackOffice();
     } catch (e) {
-        glassAlert("Couldn't block those dates: " + e.message);
+        // THE COMMON REFUSAL IS A CLASH, and its next move is obvious: change the
+        // dates. This used to concatenate the raw server message onto a bare alert —
+        // no way back to the form just filled in, and (the chbActErrSay rule) a 500
+        // printed a PHP fatal at the owner.
+        const clash = e && (e.status === 409 || /overlap/i.test(String(e.message || '')));
+        if (clash) {
+            const again = await glassConfirm(
+                'Those dates overlap a booking or another block, so nothing was blocked. Adjust the dates and try again?',
+                'Change the dates',
+            );
+            if (again) return openBlockDates({ prop: key, from: from, to: to });
+            return;
+        }
+        glassAlert(chbActErrSay(e, { label: 'block those dates' }));
     }
 }
 
@@ -19927,6 +19970,9 @@ const ACTIVITY_ICONS = {
     other: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
 };
 // ---- Full activity log page (view-activity-log) ----
+// One page of the log. Named because the cap is STATED ON SCREEN when a page comes
+// back full — two copies of the number would let sentence and request drift.
+const ACT_LOG_LIMIT = 250;
 const ACT_LOG_CATS = [
     ['all', 'All'],
     ['attention', '⚠ Needs attention'],
@@ -19968,7 +20014,7 @@ async function renderActivityLog() {
             action: 'list',
             category: activityLogState.category,
             q: activityLogState.q,
-            limit: 250,
+            limit: ACT_LOG_LIMIT,
         });
         events = r.events || [];
     } catch (e) {
@@ -19979,6 +20025,11 @@ async function renderActivityLog() {
         list.innerHTML = `<div class="act-log-empty">No matching activity yet.</div>`;
         return;
     }
+    // NO SILENT CAPS. A full page reads like a complete history, so say what was
+    // shown and how to reach the rest — the search box and filters are already up.
+    const capped = events.length >= ACT_LOG_LIMIT
+        ? `<p class="act-log-empty" style="margin-top:2px;">Showing the ${ACT_LOG_LIMIT} most recent${activityLogState.q || activityLogState.category !== 'all' ? ' that match' : ''} — search or filter above to reach older activity.</p>`
+        : '';
     list.innerHTML = `
                 <div class="feed-list glass-panel" style="padding:6px 16px;">
                     ${events
@@ -20009,7 +20060,7 @@ async function renderActivityLog() {
                     </div>`;
                         })
                         .join('')}
-                </div>`;
+                </div>${capped}`;
 }
 function activityLogFilter(cat) {
     activityLogState.category = cat;

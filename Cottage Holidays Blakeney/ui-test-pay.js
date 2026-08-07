@@ -1076,6 +1076,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(done.circleAnim === 'payDraw' && done.checkAnim === 'payDraw',
     `the tick draws itself, ring then check (${done.circleAnim}/${done.checkAnim})`);
 
+  // A DROPPED CONNECTION IS NOT THE END OF THE PAYMENT. This screen is the guest's
+  // only way to pay, reached from an emailed link, and its failure panel's one
+  // control was "Back to the site" — so a Square SDK that failed to load ended the
+  // journey. Try again is OPTIONAL and must stay so: the same panel serves genuinely
+  // TERMINAL states ("already settled — nothing left to pay"), where a retry invites
+  // tapping at something that cannot change. Both halves are asserted.
+  const errStates = await page.evaluate(() => {
+    const read = () => {
+      const b = document.getElementById('pay-error-retry');
+      return {
+        shown: !!b && getComputedStyle(b).display !== 'none',
+        msg: (document.getElementById('pay-error-msg') || {}).textContent || '',
+      };
+    };
+    showPayError('Could not load the payment form.', () => { window.__payRetried = 1; });
+    const transient = read();
+    showPayError("This booking is already settled — there's nothing left to pay.");
+    const terminal = read();
+    // …and the one that IS offered really runs.
+    showPayError('Could not load the payment form.', () => { window.__payRetried = 1; });
+    window.__payRetried = 0;
+    document.getElementById('pay-error-retry').click();
+    return { transient: transient, terminal: terminal, ran: window.__payRetried };
+  });
+  ok(errStates.transient.shown, 'PAY-ERR: a failure that might pass offers Try again');
+  ok(errStates.ran === 1, 'PAY-ERR: …and the button really runs the remedy it was given');
+  ok(!errStates.terminal.shown,
+    `PAY-ERR: a TERMINAL state does not (${errStates.terminal.msg.slice(0, 50)})`);
+
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);
 })();

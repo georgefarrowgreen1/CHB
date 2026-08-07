@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 425;
+const ADMIN_BUNDLE_V = 426;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 151;
+const ADMIN_CSS_V = 152;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3468,7 +3468,13 @@ async function renderGuestBookings() {
         enqRows = res.enquiries || [];
         completedStays = res.completed_stays || 0;
     } catch (e) {
-        list.innerHTML = `<div class="glass-panel guest-empty"><p>Couldn't load your bookings right now. Please try again.</p></div>`;
+        // "Please try again" named no way to try: this screen is reached from a
+        // signed-in guest's own account and its only recovery was a page reload
+        // they had to think of. Say what happened and offer the retry.
+        list.innerHTML = `<div class="glass-panel guest-empty">
+                <p>We couldn't load your stays just now — it looks like the connection dropped.</p>
+                <button type="button" class="btn-primary" style="margin-top:14px;padding:11px 24px;" data-act="renderGuestBookings">Try again</button>
+            </div>`;
         return;
     }
     const mine = rows.map((row) => ({
@@ -4013,17 +4019,33 @@ function setPayMsg(text) {
     el.textContent = text || '';
     el.classList.toggle('show', !!text);
 }
-function showPayError(text) {
+// `retry` is OPTIONAL and must stay so: this panel also serves genuinely TERMINAL
+// states ("already settled — nothing left to pay"), where a Try-again button would
+// invite the guest to keep tapping at something that will never change. It is
+// passed only where the failure really might be transient — the form not loading.
+function showPayError(text, retry) {
     ['pay-loading', 'pay-body', 'pay-done'].forEach((id) => {
         const e = document.getElementById(id);
         if (e) e.style.display = 'none';
     });
     const err = document.getElementById('pay-error'),
-        msg = document.getElementById('pay-error-msg');
+        msg = document.getElementById('pay-error-msg'),
+        again = document.getElementById('pay-error-retry');
+    if (again) {
+        again.style.display = typeof retry === 'function' ? '' : 'none';
+        __payRetry = typeof retry === 'function' ? retry : null;
+    }
     // #pay-error is role=alert — reveal it before the message lands so the alert
     // fires on visible content rather than into a hidden node.
     if (err) err.style.display = '';
     if (msg) msg.textContent = text || 'Something went wrong.';
+}
+// Held rather than closed over by the button, so re-showing the panel with a
+// different (or no) remedy can never leave the last one wired up.
+let __payRetry = null;
+function payErrorRetry() {
+    const fn = __payRetry;
+    if (fn) fn();
 }
 // Opened from a secure pay link (?pay=<token>&b=<id>) parsed at boot.
 // TURNING OFF THE ARRANGEMENT, from the guest's own screen. Confirmed in terms
@@ -4311,7 +4333,12 @@ async function openPayView(token, bookingId, kind) {
         if (ld) ld.style.display = 'none';
         document.getElementById('pay-body').style.display = '';
     } catch (e) {
-        showPayError(e.message || 'Could not load the payment form.');
+        // A DROPPED CONNECTION IS NOT THE END OF THE JOURNEY. This is the guest's
+        // only way to pay, reached from an emailed link, and the panel's one control
+        // was "Back to the site" — so a failed Square SDK load ended the payment.
+        showPayError(e.message || 'Could not load the payment form.', () =>
+            openPayView(token, bookingId, kind),
+        );
     }
 }
 // Charge a Square token (from the card field OR an Apple/Google Pay wallet)
@@ -5247,10 +5274,22 @@ async function openWelcomeBook(propKey) {
         sections = (r && r.sections) || [];
     } catch (e) {
         // Show the server's message directly (e.g. the payment-gate notice
-        // "Your welcome book unlocks once your holiday balance is paid.").
+        // "Your welcome book unlocks once your holiday balance is paid.") — and
+        // OFFER THE WAY THROUGH. The lock is deliberate, but stating it and stopping
+        // left the guest on a sheet naming a condition with nothing to act on. The
+        // SERVER stays the only authority on whether it is locked (it allows any
+        // settled booking at the cottage, which the client cannot see), so the tile
+        // is never pre-marked — the remedy is attached to the refusal itself.
         const msg = e && e.message ? escapeHtml(e.message) : '';
+        let way = '';
+        if (e && e.code === 'unpaid') {
+            const own = (guestBookingsCache || []).find((x) => x.propKey === propKey && x.payToken);
+            way = own
+                ? `<button type="button" class="btn-primary" style="padding:11px 24px;" ${chbAttrs('openPayView', String(own.payToken), own.booking.dbId)}>Pay the balance</button>`
+                : `<button type="button" class="btn-primary" style="padding:11px 24px;" data-act="toggleChat">Message us about paying</button>`;
+        }
         if (bodyEl)
-            bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">${msg || "Couldn't load the welcome book — please try again."}</p>`;
+            bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">${msg || "Couldn't load the welcome book — please try again."}</p>${way}`;
         return;
     }
     if (!bodyEl) return;
@@ -9929,6 +9968,16 @@ function openFaqModal(propKey) {
     ).filter((f) => (f.q || '').trim() && (f.a || '').trim());
     const meta = propertyMeta[propKey] || { name: propKey };
     if (title) title.innerText = 'Good to Know — ' + meta.name;
+    // A cottage with no FAQs opened a sheet with a heading and NOTHING under it —
+    // which reads as broken rather than as empty, on a guest surface whose whole
+    // job is answering questions. Name the alternative instead: a person.
+    if (!faqs.length) {
+        body.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;margin:6px 2px 14px;">There's nothing here yet for ${escapeHtml(meta.name)} — but ask us anything and we'll answer.</p>
+            <button type="button" class="btn-primary" style="padding:11px 24px;" data-act="toggleChat">Message us</button>`;
+        overlayHistPush();
+        m.classList.add('open');
+        return;
+    }
     body.innerHTML = faqs
         .map((f) => {
             const id = 'faq-' + ++__faqUid;
@@ -15070,7 +15119,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'enqjrny1';
+    const BUILD = 'deadend1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

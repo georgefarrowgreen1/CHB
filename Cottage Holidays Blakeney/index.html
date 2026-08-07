@@ -933,6 +933,9 @@
                 </div>
                 <div id="pay-error" class="pay-error" role="alert" style="display:none;">
                     <p id="pay-error-msg" style="color:var(--text-muted);"></p>
+                    <!-- Revealed only when showPayError is given a remedy: this panel
+                         also serves terminal states, where a retry misleads. -->
+                    <button type="button" id="pay-error-retry" class="btn-primary" style="margin-top:14px;padding:12px 26px;display:none;" data-act="payErrorRetry">Try again</button>
                     <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
             </div>
@@ -1822,7 +1825,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=728"></script>
+    <script defer src="app.js?v=729"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

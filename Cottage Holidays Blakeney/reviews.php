@@ -112,7 +112,7 @@ if ($action === 'submit') {
             )
             ->execute([$_SESSION['guest_id'], $propKey, $stars, $text]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Reviews table missing — run migration-guest-reviews.sql first'], 500);
+        guest_save_failed('review', $e);
     }
 
     // Best-effort heads-up to the owner (never blocks the submission)

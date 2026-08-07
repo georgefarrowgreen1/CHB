@@ -1267,6 +1267,23 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   await page.waitForTimeout(500);
   const delBtnPaid = await page.evaluate(() => !!document.querySelector('.bhub-actions [data-act="bhubDelete"]'));
   ok(!delBtnPaid, 'Delete button hidden on a booking that has taken money');
+  // A REMOVED ACTION SAYS WHY. Both withdrawals — Delete once money is on the booking,
+  // Cancel once the guest has arrived — used to simply VANISH, so an owner looking for
+  // how to cancel found no Cancel and no reason: the rule was written for whoever read
+  // the source. The note must NOT be a menuitem (role="none"), or arrow keys land on
+  // a line that does nothing.
+  const delWhy = await page.evaluate(() => {
+    const notes = [...document.querySelectorAll('.bhub-menu .bhub-menu-note')];
+    return {
+      says: notes.map((n) => n.textContent.trim()).join(' | '),
+      roles: notes.map((n) => n.getAttribute('role')).join(','),
+      menuitems: document.querySelectorAll('.bhub-menu [role="menuitem"]').length,
+    };
+  });
+  ok(/Deleting isn’t possible/.test(delWhy.says) && /Cancel & refund/.test(delWhy.says),
+    `WHY: the withdrawn Delete explains itself and names what to use (${delWhy.says.slice(0, 70)})`);
+  ok(delWhy.roles === 'none', `WHY: …as a note, not a menuitem (role=${delWhy.roles})`);
+  ok(delWhy.menuitems >= 3, `WHY: …and the real menu items are still there (${delWhy.menuitems})`);
   // Header declutter: secondary + destructive actions live in ONE ⋯ menu.
   const menu1 = await page.evaluate(() => {
     const menu = document.querySelector('.bhub-menu');

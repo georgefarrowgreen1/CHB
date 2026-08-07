@@ -54,7 +54,10 @@ foreach ($bookings as $b) {
     }
 }
 if (!$paid) {
-    json_out(['error' => 'Your welcome book unlocks once your holiday balance is paid.', 'reason' => 'unpaid'], 402);
+    // `code` as well as `reason`: apiErr carries `code` as part of the error type, so
+    // the client can OFFER THE WAY THROUGH (a Pay button) rather than printing the
+    // refusal and stopping. `reason` stays for anything already reading it.
+    json_out(['error' => 'Your welcome book unlocks once your holiday balance is paid.', 'reason' => 'unpaid', 'code' => 'unpaid'], 402);
 }
 
 // Read + decrypt the stored welcome book (a JSON array of {title, body}).
