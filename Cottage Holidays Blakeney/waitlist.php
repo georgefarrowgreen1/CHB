@@ -40,6 +40,23 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
         if ($ci && $co && $co <= $ci) {
             json_out(['error' => 'Check-out must be after check-in.'], 400);
         }
+        // HALF A RANGE IS NOT A RANGE, and it does not mean what it looks like.
+        // waitlist_notify_freed matches `check_in IS NULL OR check_out IS NULL OR
+        // (overlap)`, so ONE date stored alone is an OPEN-DATED wait — notified about
+        // every future cancellation — while the guest who entered it believes they are
+        // waiting for that day, and the email's date clause is gated on both being set
+        // so it names no dates at all. Two valid states only: a complete range, or
+        // none. The client refuses first; this is the authority, because a stale tab
+        // or a crafted request reaches here without it.
+        if (($ci && !$co) || ($co && !$ci)) {
+            json_out(
+                [
+                    'error' =>
+                        'Please add both dates, or leave them empty to be told whenever anything frees up.',
+                ],
+                400,
+            );
+        }
         // Book by the night before, as a minimum (the enquiries.php rule): a
         // dated wait for a stay starting today or earlier could only ever
         // notify the guest about dates the booking form refuses. Open-date

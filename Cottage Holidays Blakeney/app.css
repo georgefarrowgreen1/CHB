@@ -1308,7 +1308,8 @@ body.light-mode ::-webkit-scrollbar-thumb {
   flex: 1;
 }
 /* Make the date-picker "Clear" obvious: dims when there are no dates to clear. */
-.dp-clear.is-empty {
+.dp-clear.is-empty,
+.dp-nav-btn[disabled] {
   opacity: 0.4;
   pointer-events: none;
 }

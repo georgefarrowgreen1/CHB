@@ -788,6 +788,30 @@ it_check(
 );
 $r = http($guest, 'POST', '/waitlist.php', ['action' => 'join', 'prop' => $propKey, 'name' => 'Open Wait', 'email' => 'openwait@x.co']);
 it_check('an open-date waitlist join is still welcome', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+// HALF A RANGE IS THE ONE STATE THAT LIES. waitlist_notify_freed matches
+// `check_in IS NULL OR check_out IS NULL OR (overlap)`, so one date stored alone is an
+// OPEN-DATED wait — emailed about every future cancellation — while the guest who
+// entered it believes they are waiting for that day, and the email's date clause is
+// gated on both being set so it names no dates at all. The client refuses first; this
+// is the authority, and it is what a stale tab or a crafted request meets.
+foreach ([['check_in' => $ukPlus(10)], ['check_out' => $ukPlus(14)]] as $half) {
+    $which = isset($half['check_in']) ? 'check-in' : 'check-out';
+    $r = http(
+        $guest,
+        'POST',
+        '/waitlist.php',
+        array_merge(['action' => 'join', 'prop' => $propKey, 'name' => 'Half Wait', 'email' => 'half@x.co'], $half),
+    );
+    it_check(
+        "a waitlist join with only a $which is refused, naming both ways out",
+        $r['code'] === 400 &&
+            str_contains((string) ($r['json']['error'] ?? ''), 'both dates') &&
+            str_contains((string) ($r['json']['error'] ?? ''), 'leave them empty'),
+        $r['raw'],
+    );
+}
+$halfRows = (int) $rootDb->query("SELECT COUNT(*) FROM waitlist WHERE email='half@x.co'")->fetchColumn();
+it_check('…and no half-dated row reached the table', $halfRows === 0, 'rows=' . $halfRows);
 
 // A SOFT report (chbSwallow) is a diagnostic, not breakage: the front end caught the
 // error and carried on by design. It must be recorded so someone can find out why
