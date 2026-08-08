@@ -1711,6 +1711,49 @@ tested for an overlap and nothing else, so a stay under the minimum got "Good ne
 looks free" plus an Enquire button, and the enquiry was then refused by the rule it never
 consulted. `checkBookingRules` is the same helper the enquiry form and hero search already
 call — it was the one availability answer not using it. Gated by ui-test-datepicker §9.
+**EVERY GUEST DATE FIELD IS THE BUILT-IN CALENDAR** (`openFieldDatePicker`, `dpMode
+'fields'`, `dpProp`/`dpPropKey`; gated by ui-test-datepicker §14, 30 checks). Reported
+from a phone: the waitlist "Notify me" modal showed iOS's own date control. Two guest
+surfaces were still on a native `<input type="date">` — the waitlist join and the chat
+availability check — and the native control cannot do the one thing those screens exist
+for: **it offers every date as equally free**, so the guest picks blind and is told
+afterwards that the nights are taken. `openDatePicker`/`openBookingDatePicker`/
+`openHeroDatePicker` each hardcode the ids they read and write, which is why a new
+surface meant a fourth branch and got a native field instead; `openFieldDatePicker({ci,
+co, display, trigger, prop, empty, onDone})` takes its targets as DATA, so the ids stay
+exactly the ones `chatAvailRun` and waitlist.php already read — they are simply
+`type="hidden"` behind a `.date-range-trigger` now. Four things it had to get right, each
+break-tested:
+- **WHICH COTTAGE.** The picker read `activeFrontProperty` everywhere — right for the
+  enquiry form and the hero search, which are already about the cottage you are looking
+  at, and wrong for both of these, which carry their OWN cottage select. `dpProp` (null =
+  the page's cottage, so every existing caller is unchanged) is read through
+  `dpPropKey()` by `isBookedNight`, `dpNextBookedStart` and the rate lookup.
+  **`closeDatePicker` resets it**, or a CANCELLED waitlist pick leaves the enquiry form
+  shading someone else's bookings while looking perfectly normal.
+- **A WAITLIST IS FOR THE TAKEN NIGHTS.** `'fields'` joins `'search'` in the
+  any-future-date branch — refusing booked nights would refuse the feature — while
+  `isPast || tooSoon` is still tested FIRST, so the night-before floor holds. And
+  `tooShort` does NOT cross in this mode: it is a CONSEQUENCE of a booking (the 6th
+  starts no 2-night stay only because the 7th is taken), i.e. the very thing the guest is
+  asking us to watch for, so marking it unavailable on a waitlist is marking a free night
+  unavailable. Booked nights still cross — that is the fact they are waiting on.
+- **THE LEGEND FOLLOWS THE PICKABILITY RULE.** "Crossed-out dates aren't available" was
+  static, and false on three of the four modes: only the enquiry form REFUSES a crossed
+  night. It now says "already booked — you can still pick them" on the hero search, the
+  waitlist, the chat check and admin. Same defect class as the legend that used to call
+  every too-short night "already booked"; the hint's `— up to <date>` ceiling is likewise
+  now stated only in the mode that enforces it.
+- **ESCAPE ANSWERS THE THING ON TOP.** `topOpenDialog` took the last `.modal-overlay`
+  before it ever looked at the picker — which is z **2100** against the overlay's **2000**
+  and is RAISED from one — so Escape closed the modal UNDERNEATH while the calendar stayed
+  on screen, and Tab trapped focus in a form the guest could no longer see. Ordered by
+  what is actually on top now (lightbox 5000 → `.reviews-modal` 6000 → picker → overlay).
+NB `#modal-payment-date`/`#modal-plan-due` stay native by design — owner fields in the
+Add/Edit Booking form, not a guest surface — and §14's native-field ratchet excludes
+`#edit-modal` for exactly that reason. The eight `.value` reads this added went through
+two typed helpers (`dpVal`/`dpSetVal`), because the typecheck ratchet counts every
+`HTMLElement.value` in the long tail and the budget only falls.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

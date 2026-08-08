@@ -44,6 +44,11 @@ const RANGES = [
 // store, so a hand-seeded array is silently undone a moment later (the trap the route
 // comment below records — it cost a whole draft of §12).
 let AVAIL = RANGES;
+// A SECOND cottage, booked on a DELIBERATELY DISJOINT week, so "which cottage is the
+// calendar shading?" has an answer that cannot be produced by accident (§14). 15-17
+// Aug are free at Jollyboat and taken here; 1-3 the other way round.
+const PIMPERNEL = [{ start: '2026-08-15', end: '2026-08-18' }];
+const PER_PROP = { jollyboat: RANGES, pimpernel: PIMPERNEL };
 const BOOKED = [1, 2, 3, 7, 8, 9, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30];
 const TOO_SHORT = [6, 11, 18, 27];
 // THE FIXTURE MONTH HAS TO STAY IN THE FUTURE, so the clock is pinned to a July
@@ -70,7 +75,15 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     // fixture has to come through the ENDPOINT — seeding propertyAvailability by
     // hand is silently undone a moment later, which made the first version of this
     // suite measure an empty month and report bugs the app does not have.
-    if (url.includes('availability.php')) return json({ ok: true, ranges: AVAIL, props: { jollyboat: AVAIL } });
+    // PER COTTAGE, because §14 asks WHICH cottage the picker is shading. `props` stays
+    // jollyboat-only on purpose: loadAvailabilityAll assigns only the keys it finds
+    // there, so the flex-search and card-chip sections keep the fleet they were
+    // written against and only an explicit ?prop= can reach the second fixture.
+    if (url.includes('availability.php')) {
+      const m = /[?&]prop=([^&]+)/.exec(url);
+      const key = m ? decodeURIComponent(m[1]) : '';
+      return json({ ok: true, ranges: (key && PER_PROP[key]) || AVAIL, props: { jollyboat: AVAIL } });
+    }
     if (url.includes('rates.php')) return json({
       properties: [{ prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, transaction_pct: 0, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }],
       seasons: {}, occupancy: {},
@@ -557,6 +570,210 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     `fully booked states the fact and its window (${chip.full.replace(/<[^>]*>/g, '').slice(0, 60)})`);
   ok(/Available from tomorrow/.test(chip.free), 'a wide-open cottage still leads with the strongest claim');
   ok(chip.unknown === '', 'and an unloaded cottage stays silent — unknown is not a claim');
+
+  console.log('14. every guest date field IS the built-in calendar');
+  // Reported from a phone: the waitlist modal showed iOS's own date control. Two guest
+  // surfaces were still on a native <input type="date"> — the waitlist join and the
+  // chat availability check — and the native control cannot do the one thing these
+  // screens are for: it offers every date as equally free, so the guest picks blind
+  // and is told AFTERWARDS that the nights are taken. Both now raise the shared
+  // picker through openFieldDatePicker, which is also why it grew a cottage override
+  // (each of these surfaces has its OWN cottage select, so shading whatever page
+  // happens to be behind the modal would shade the wrong calendar).
+  await page.evaluate(() => {
+    closeDatePicker();
+    // A second cottage the waitlist's own select can actually offer. propertyList is
+    // what liveCottageKeys reads once rates have loaded, so propertyMeta alone is not
+    // enough — and the pair is restored at the end of this section.
+    propertyMeta['pimpernel'] = Object.assign({}, propertyMeta['jollyboat'], { name: 'Pimpernel' });
+    propertyRates['pimpernel'] = Object.assign({}, propertyRates['jollyboat'] || {}, { minNights: 2 });
+    propertyList.push({ prop_key: 'pimpernel', name: 'Pimpernel', archived: 0, unlisted: 0 });
+    activeFrontProperty = 'jollyboat';
+  });
+
+  // A NATIVE DATE FIELD IS THE DEFECT, so the scan is the ratchet: anything a guest can
+  // reach must not be one. #edit-modal is the owner's Add/Edit Booking form, which
+  // lives in index.html and is deliberately out of scope (it is not a guest surface).
+  const natives = () => page.evaluate(() => Array.from(document.querySelectorAll('input[type="date"]'))
+    .filter((el) => !el.closest('#edit-modal'))
+    .map((el) => el.id || el.getAttribute('aria-label') || el.outerHTML.slice(0, 50)));
+  ok((await natives()).length === 0, 'no guest surface ships a native date field at rest');
+
+  await page.evaluate(() => openWaitlistModal({ prop: 'jollyboat' }));
+  await page.waitForTimeout(150);
+  const wlTrig = await page.evaluate(() => {
+    const t = document.getElementById('wl-date-trigger');
+    return { there: !!t, act: t && t.getAttribute('data-act'), label: t ? t.innerText.trim() : '' };
+  });
+  ok(wlTrig.there && wlTrig.act === 'openWaitlistDatePicker',
+    'the waitlist join asks for dates with the shared trigger');
+  ok(/optional/i.test(wlTrig.label),
+    `…and its empty label still says the dates are optional ("${wlTrig.label}")`);
+
+  await page.click('#wl-date-trigger');
+  await page.waitForTimeout(450); // let loadAvailability land and repaint
+  await page.evaluate(() => { dpState.view = new Date(2026, 7, 1); renderDatePicker(); });
+  await page.waitForTimeout(120);
+  const wlOpen = await page.evaluate(() => ({
+    open: document.getElementById('date-picker').classList.contains('open'),
+    mode: dpMode,
+    key: dpPropKey(),
+    admin: document.getElementById('date-picker').classList.contains('dp-admin'),
+  }));
+  ok(wlOpen.open && wlOpen.mode === 'fields', 'tapping it opens the built-in calendar in fields mode');
+  ok(!wlOpen.admin, '…as a guest picker, not the owner\'s everything-goes variant');
+  ok(wlOpen.key === 'jollyboat', '…shading the cottage the modal is about');
+
+  // A WAITLIST IS FOR THE TAKEN NIGHTS, so booked ones stay pickable here (they render
+  // crossed, which is how the guest sees which nights they are waiting on) — but the
+  // night-before floor is checked BEFORE the per-mode branch, so today never is.
+  let wg = await grid();
+  ok(wg[19] && wg[19].crossed && wg[19].clickable,
+    'a booked night is still crossed but PICKABLE — that is what a waitlist is for');
+  // …and the legend has to agree with that, or the screen contradicts itself: the
+  // static "Crossed-out dates aren't available" was false on every mode but the
+  // enquiry form. Read the WORDS, since that is what the guest acts on.
+  const legendText = () => page.evaluate(() => document.getElementById('dp-legend').innerText.trim());
+  ok(/you can still pick them/i.test(await legendText()),
+    `the legend says the crossed dates are pickable here ("${await legendText()}")`);
+  // A too-short night is a CONSEQUENCE of a booking, and the waitlist premise is that
+  // the booking may go — so 6/11/18/27 (free nights that can start no 2-night stay
+  // only because the next night is taken) must not be marked unavailable here.
+  ok(TOO_SHORT.every((n) => wg[n] && !wg[n].crossed),
+    `a free night blocked only by the booking beside it is NOT crossed on a waitlist (${TOO_SHORT.join(', ')})`);
+  const floor = await page.evaluate(() => {
+    dpState.view = chbNow();
+    renderDatePicker();
+    const today = document.querySelector('#dp-grid .dp-day.dp-today');
+    return { has: !!today, pickable: today ? today.getAttribute('data-act') === 'dpPick' : null };
+  });
+  ok(floor.has && floor.pickable === false,
+    'and today is refused, so the night-before rule holds in fields mode too');
+
+  // WHICH cottage — answered against a disjoint fixture, so the right answer cannot
+  // come out of the wrong lookup. 15-17 Aug are FREE at Jollyboat and taken here.
+  await page.evaluate(() => {
+    closeDatePicker();
+    document.getElementById('wl-prop').value = 'pimpernel';
+    openWaitlistDatePicker();
+  });
+  await page.waitForTimeout(450);
+  await page.evaluate(() => { dpState.view = new Date(2026, 7, 1); renderDatePicker(); });
+  await page.waitForTimeout(120);
+  wg = await grid();
+  const pimpKey = await page.evaluate(() => dpPropKey());
+  ok(pimpKey === 'pimpernel', 'changing the cottage changes the calendar it shades');
+  ok([15, 16, 17].every((n) => wg[n] && wg[n].crossed),
+    'the second cottage\'s own booked nights are the ones crossed (15-17 Aug)');
+  ok([1, 2, 3].every((n) => wg[n] && !wg[n].crossed),
+    '…and the FIRST cottage\'s bookings are not (1-3 Aug free here)');
+
+  // The pick lands in the hidden inputs the form reads, and the trigger says so.
+  await page.evaluate(() => { dpPick('2026-08-04'); dpPick('2026-08-07'); dpDone(); });
+  await page.waitForTimeout(150);
+  const wlPicked = await page.evaluate(() => ({
+    ci: document.getElementById('wl-checkin').value,
+    co: document.getElementById('wl-checkout').value,
+    label: document.getElementById('wl-date-display').innerText.trim(),
+    marked: document.getElementById('wl-date-trigger').classList.contains('has-dates'),
+    closed: !document.getElementById('date-picker').classList.contains('open'),
+    stillOpen: document.getElementById('waitlist-modal').classList.contains('open'),
+    leaked: dpProp,
+  }));
+  ok(wlPicked.ci === '2026-08-04' && wlPicked.co === '2026-08-07',
+    `Done writes the hidden inputs the form posts (${wlPicked.ci} → ${wlPicked.co})`);
+  ok(/4 Aug/.test(wlPicked.label) && /7 Aug/.test(wlPicked.label) && wlPicked.marked,
+    `…and the trigger reads them back ("${wlPicked.label}")`);
+  ok(wlPicked.closed && wlPicked.stillOpen, 'the calendar closes and the modal beneath stays open');
+  ok(wlPicked.leaked === null,
+    'the cottage override is handed back, so the next surface is not shaded by this one');
+
+  // ESCAPE ANSWERS THE THING ON TOP. topOpenDialog took the last .modal-overlay before
+  // it ever looked at the picker, so Escape closed the modal UNDERNEATH while the
+  // calendar stayed on screen — and Tab trapped focus in a form the guest could no
+  // longer see. The picker is z 2100 against the overlay's 2000.
+  await page.evaluate(() => openWaitlistDatePicker());
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const esc = await page.evaluate(() => ({
+    dp: document.getElementById('date-picker').classList.contains('open'),
+    modal: document.getElementById('waitlist-modal').classList.contains('open'),
+  }));
+  ok(!esc.dp && esc.modal, 'Escape closes the calendar, not the modal beneath it');
+  await page.evaluate(() => closeWaitlistModal());
+
+  // The enquiry form is the one mode that DOES refuse a crossed night, so it keeps the
+  // original sentence — the legend follows the rule, it is not simply reworded.
+  await openAt();
+  ok(/aren.t available/i.test(await legendText()) && !/still pick/i.test(await legendText()),
+    `…while the enquiry form, which really does refuse them, still says so ("${await legendText()}")`);
+  const eg = await grid();
+  ok(TOO_SHORT.every((n) => eg[n] && eg[n].crossed),
+    'and a too-short night is still crossed there, where a real stay is being planned');
+  await page.evaluate(() => closeDatePicker());
+
+  // THE CHAT'S LIVE AVAILABILITY CHECK — the other native pair, and the one where the
+  // native control was most misleading: this bubble exists to answer "are those nights
+  // free", and it was asking for them on a control that shows nothing.
+  // Open the chat and let loadChat's own render land FIRST — it rebuilds #chat-thread,
+  // so a bubble appended in the same tick is detached a moment later.
+  await page.evaluate(() => toggleChat());
+  await page.waitForTimeout(400);
+  const cav = await page.evaluate(() => {
+    chatAvailStart();
+    const uid = 'cav' + __chatAvailUid;
+    const t = document.getElementById(uid + '-trigger');
+    return {
+      uid,
+      trigger: !!t,
+      act: t && t.getAttribute('data-act'),
+      hidden: ['-ci', '-co'].every((s) => {
+        const el = document.getElementById(uid + s);
+        return el && el.type === 'hidden';
+      }),
+    };
+  });
+  ok(cav.trigger && cav.act === 'chatAvailDates',
+    'the chat availability check asks for dates with the shared trigger');
+  ok(cav.hidden, '…keeping the ids chatAvailRun already reads, now as hidden inputs');
+  ok((await natives()).length === 0,
+    'and still no native date field anywhere a guest can reach, chat bubble included');
+
+  await page.click(`#${cav.uid}-trigger`);
+  await page.waitForTimeout(450);
+  const cavKey = await page.evaluate(() => ({ open: document.getElementById('date-picker').classList.contains('open'), key: dpPropKey(), mode: dpMode }));
+  ok(cavKey.open && cavKey.mode === 'fields', 'tapping it opens the same built-in calendar');
+  ok(cavKey.key === 'jollyboat', '…shading the cottage selected in that bubble');
+  // End to end: the reader is untouched, so a real pick must satisfy it.
+  const ran = await page.evaluate(async (uid) => {
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    dpDone();
+    const vals = {
+      ci: document.getElementById(uid + '-ci').value,
+      co: document.getElementById(uid + '-co').value,
+      label: document.getElementById(uid + '-display').innerText.trim(),
+    };
+    await chatAvailRun(uid);
+    const bots = Array.from(document.querySelectorAll('#chat-thread .chat-bot'));
+    return Object.assign(vals, { last: bots.length ? bots[bots.length - 1].innerText : '' });
+  }, cav.uid);
+  ok(ran.ci === '2026-08-04' && ran.co === '2026-08-07',
+    `the pick fills the ids chatAvailRun reads (${ran.ci} → ${ran.co})`);
+  ok(/4 Aug/.test(ran.label), `…and the bubble's trigger reads them back ("${ran.label}")`);
+  ok(!/choose a cottage and both dates/i.test(ran.last),
+    'so "Check dates" answers instead of asking again for what was just picked');
+  ok(/free for/i.test(ran.last) || /isn.t available/i.test(ran.last) || /minimum/i.test(ran.last),
+    `…with a real answer about those nights ("${ran.last.replace(/\s+/g, ' ').slice(0, 70)}")`);
+
+  await page.evaluate(() => {
+    closeDatePicker();
+    delete propertyMeta['pimpernel'];
+    delete propertyRates['pimpernel'];
+    const i = propertyList.findIndex((p) => p.prop_key === 'pimpernel');
+    if (i >= 0) propertyList.splice(i, 1);
+  });
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
