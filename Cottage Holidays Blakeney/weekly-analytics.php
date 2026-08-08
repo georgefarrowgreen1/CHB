@@ -85,77 +85,15 @@ $noResult = (int) ($sd['noResult'] ?? 0);
 $siteUrl = function_exists('site_base_url') ? site_base_url() : '/';
 
 // ---- Subject + plain text ----
-$subject =
-    'Your Blakeney week online: ' .
-    $views .
-    ' visit' .
-    ($views === 1 ? '' : 's') .
-    ($deltaTxt !== '' ? ' (' . $deltaTxt . ')' : '') .
-    ', ' .
-    $bookings .
-    ' booking' .
-    ($bookings === 1 ? '' : 's');
-
-$text =
-    "Good evening,\n\n" .
-    "Here's how Cottage Holidays Blakeney did online this week.\n\n" .
-    "  • Visits: {$views}" .
-    ($deltaTxt !== '' ? " ({$deltaTxt} vs last week)" : '') .
-    "\n" .
-    "  • Unique visitors: {$uniq}\n" .
-    "  • Conversion: {$convPct}% ({$bookings} booking" .
-    ($bookings === 1 ? '' : 's') .
-    ", {$enquiries} enquir" .
-    ($enquiries === 1 ? 'y' : 'ies') .
-    ")\n" .
-    "  • Top source: {$topChannel}\n" .
-    "  • Most-viewed page: {$topPage}\n" .
-    ($noResult > 0 ? "  • Availability searches that found nothing: {$noResult}\n" : '') .
-    ($dropPct !== null && $dropPct <= -30 ? "\nHeads-up: visits are down " . abs($dropPct) . "% on last week.\n" : '') .
-    "\nSee the full picture in Manage → Analytics.\n\nyour website";
-
-// ---- HTML ----
-$alertHtml =
-    $dropPct !== null && $dropPct <= -30
-        ? email_note(
-            '<strong>Heads-up:</strong> visits are down ' .
-                abs($dropPct) .
-                '% on last week. Worth a look — refresh a listing photo, post an update, or check your search rankings.',
-            '#FFA726',
-        )
-        : '';
-
-$inner =
-    email_h('Your week online', '#D6A785') .
-    email_p(email_esc(date('l j F Y')), true) .
-    $alertHtml .
-    email_amount(
-        'Visits this week',
-        $views . ($deltaTxt !== '' ? ' <span style="font-size:15px;color:' . email_muted_ink() . ';">' . $deltaTxt . '</span>' : ''),
-        $uniq . ' unique visitors',
-    ) .
-    email_rows(
-        [
-            [
-                'Conversion',
-                $convPct .
-                '% <span style="color:' . email_muted_ink() . ';">(' .
-                $bookings .
-                ' booking' .
-                ($bookings === 1 ? '' : 's') .
-                ', ' .
-                $enquiries .
-                ' enquir' .
-                ($enquiries === 1 ? 'y' : 'ies') .
-                ')</span>',
-            ],
-            ['Top source', email_esc($topChannel)],
-            ['Most-viewed page', email_esc($topPage)],
-        ] + ($noResult > 0 ? [3 => ['Searches finding nothing', (string) $noResult]] : []),
-    ) .
-    email_btn($siteUrl, 'Open analytics') .
-    email_p('You can switch this weekly email off in Manage.', true);
-$html = email_shell('Your Blakeney week online', $inner, '#D6A785');
+// Composed by weekly_analytics_body() in mailer.php — one payload, so the template can
+// be previewed and render-gated instead of only existing inside this cron run.
+$m = weekly_analytics_body([
+    'views' => $views, 'uniq' => $uniq, 'convPct' => $convPct, 'bookings' => $bookings,
+    'enquiries' => $enquiries, 'topChannel' => $topChannel, 'topPage' => $topPage,
+    'noResult' => $noResult, 'dropPct' => $dropPct, 'deltaTxt' => $deltaTxt,
+    'siteUrl' => $siteUrl,
+]);
+[$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
 
 $res = send_owner($subject, $text, $html);
 

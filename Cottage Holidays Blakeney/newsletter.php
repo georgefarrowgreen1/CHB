@@ -113,25 +113,11 @@ if ($action === 'broadcast') {
     foreach ($subs as $s) {
         $name = $s['name'] ?: 'there';
         $unsub = $base . 'index.html?unsub=' . rawurlencode($s['token']);
-        $text =
-            $bodyText .
-            "\n\n—\nYou're receiving this because you signed up at Cottage Holidays Blakeney.\nUnsubscribe: " .
-            $unsub;
-        $inner = function_exists('email_p')
-            ? email_p($bodyHtml)
-            : '<p style="font-size:15px;color:#d7dae3;line-height:1.7;margin:0;">' . $bodyHtml . '</p>';
-        $html = function_exists('email_shell')
-            ? email_shell($subject, $inner, '#D6A785', [
-                'unsubscribe' => $unsub,
-                'footer' => "You're receiving this because you signed up at Cottage Holidays Blakeney.",
-            ])
-            : '<!DOCTYPE html><html><body style="margin:0;padding:0;">' .
-                $inner .
-                '<p style="font-size:11px;color:#999;">Unsubscribe: <a href="' .
-                $esc($unsub) .
-                '">' .
-                $esc($unsub) .
-                '</a></p></body></html>';
+        // Composed by newsletter_body() in mailer.php — previewable, gated, and the
+        // unsubscribe link stays PER RECIPIENT (their own token).
+        $m = newsletter_body($subject, $bodyText, $bodyHtml, $unsub);
+        $text = $m['text'];
+        $html = $m['html'];
         $msgs[] = [
             'to' => $s['email'],
             'name' => $name,

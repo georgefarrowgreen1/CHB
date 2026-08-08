@@ -233,12 +233,36 @@ table and looked like a different product from the confirmation that follows the
   floor was **8** and is now **4** — that drop IS the win, thirteen compositions leaving
   their routes — so the guard also asserts `mailer.php` BY NAME, since a bare count would
   pass on four files that happened not to include the real one.
-  **STILL NOT SAMPLABLE, and why**: three remain — the weekly owner digest, the weekly
-  analytics and the mailbox reply. The two weeklies compose at SCRIPT level from ~20 live
-  figures each, so a builder means a payload of twenty arguments and it is its own piece
-  of work; and both already have a **?force=1 button** (Manage → System check → More
-  tools) that sends the real email with real data, which beats a fixture. Their remaining
-  gap is render-gating only, which is a weaker case than the thirteen above had.
+  **AND NOW EVERY ONE OF THEM.** The last four were the weekly owner digest, the weekly
+  analytics, the mailbox reply and — which the note above MISSED — the **newsletter**, the
+  one email that goes to a whole list. email-samples.php is 38 entries and §1 renders all
+  38; the composer-discovery floor is 8 → 4 → **2**, its end state (mailer.php, plus
+  waitlist-lib.php whose `wl_send` is already a plain callable taking a row).
+  The two weeklies compose at SCRIPT level from a dozen live figures each, which is why
+  they outlasted the thirteen — the payload IS the work. `owner_digest_body($d)` and
+  `weekly_analytics_body($d)` take it; the four pure FORMATTERS (`$money`, `$nameOf`,
+  `$pretty`, `$accentOf`) moved INTO the builder, since they format rather than query,
+  while everything touching the database stayed in the cron script. `?force=1` still sends
+  the real weekly email with real data, which is the better check of the FIGURES; a sample
+  is how you check the TEMPLATE.
+  **AND RENDERING THE DIGEST FOUND A 1.73:1 INK.** Its needs-attention rows set the status
+  amber and red straight into 13px `color:` — **`#ffb74d` at 1.73:1** on white and
+  `#e57373` at 2.99 — on the one email that exists to say something has gone wrong. The
+  ink/fill split again: both are fine as FILLS. **`email_warn_ink()`** `#8A5000` (6.51
+  white / 6.09 tinted / 5.67 outer) and **`email_alert_ink()`** `#A3291C` (7.26 / 6.80 /
+  6.33) join the two existing ink tokens, measured on all three grounds.
+  **§5 COULD NOT SEE IT, AND NOW CAN.** The retired-ink scan matches `color:<hex>`
+  ADJACENTLY, and the digest wrote `';…color:' . ($sev === 'action' ? '#e57373' :
+  '#ffb74d') . ';…'` — the hex is a separate string literal, so §5 reported "no retired
+  ink" while a 1.73:1 amber shipped. **§2's measurement of the RENDERED output is what
+  caught it**; §5 now also matches the CONCATENATED form (a short window after `color:`
+  closes its own quote, so a FILL stays out of scope), break-tested against that exact
+  shape. General rule: a source scan sees what it was written to see — the rendered
+  measurement is the one that cannot be dodged by how the string was assembled.
+  **NB PHPStan caught two payload keys the template never asked for.** The extraction
+  passed `siteUrl` and `depositsDue` into `owner_digest_body`, both referencing variables
+  that do not exist in owner-digest.php at all — mine, not pre-existing, and invisible to
+  every other gate because an undefined variable there is just an empty string.
 - **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
   72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
   8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A
@@ -520,6 +544,24 @@ Single-operator holiday-let PWA. No framework, no build step.
   cottage names). It is revealed ONLY in the condensed state — at rest the page's
   own big heading is still on screen and showing both would say it twice. Home
   gets no title (the crown already says it).
+  **AND `.logo` MUST BE PINNED `flex: 0 0 auto`, for the SAME reason the owner side
+  is** (reported from a phone: "between experiences page and any other page the crown
+  logo changes size"). `#guest-head-title` beside it is `flex: 1 1 auto` and holds the
+  OWNER-EDITABLE screen name, while `.logo` was left at the shrinkable `0 1 auto`
+  default — so a long name took its share of the shortfall out of the BRAND: measured
+  at 390px, "21A Westgate Street" shrank the mark **49.9px → 38.5px** (23% smaller on
+  the page most guests land on) while Home, which deliberately has no title, stayed
+  full size. The sting is that the title is `opacity: 0` until the bar condenses, so an
+  element nobody could see was resizing the logo. The title already carries
+  `min-width: 0` + an ellipsis; it is the sibling that should absorb a squeeze. Gated
+  by **ui-test-topmenu §G**, which sweeps home / experiences / cottages / a cottage
+  page at rest AND condensed and asserts one box in one position — an OUTCOME, since a
+  `flex` declaration check would pass on any future layout that pins the logo another
+  way while still moving it. Compared WITHIN a state, never across: condensing scales
+  the mark 30 → 25px on purpose. A 57-character name is injected too (the real ones fit,
+  so the sweep alone could pass vacuously), and it asserts the name really arrived —
+  the first draft read `textContent` after restoring the short one and reported a
+  clipped 19-character title, passing while proving nothing.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
@@ -1884,6 +1926,44 @@ those two were never in disagreement.)
   search seeds any dates, so a seeded range can break the cottage's minimum.
 NB §4's plural check was anchored on `$` and the hint no longer ENDS with the night count,
 so it asserts the phrase now; the singular case is what proves the "s" is conditional.
+**"DIFFICULT TO SEE WHAT DATES YOU'VE COLLECTED" — TWO CAUSES, BOTH MEASURED ON PIXELS**
+(gated by ui-test-datepicker §18, 12 checks across both themes, each declaration
+break-tested). Reported from a phone with a September screenshot.
+- **The MIDDLE of the range was invisible.** `.dp-in-range` painted
+  `rgba(255,255,255,0.07)` — a raw white whatever the theme, while the two ENDS correctly
+  take `var(--text-light)` — so an in-range night measured **1.18:1 in dark and 1.03:1 in
+  light** against the unselected cells beside it. Two solid pills with three
+  perfectly-ordinary days between them. Selection is a UI STATE, so 1.4.11 asks 3:1 of the
+  band, and it must not cost the day number its AA — which is a real tension here, because
+  the light card grounds at 206 and a band strong enough to hit 3:1 by fill alone leaves NO
+  ink that reaches 4.5 (pure black tops out at 4.43). The answer is the ends' OWN pair at
+  **65%** (fill `--text-light`, ink `--dark-grey`) — one definition of the selection's
+  colour at three strengths — measuring band **7.66 / 4.01** and ink **7.47 / 5.61**
+  dark/light. The percentage is arithmetic: 60% clears both too but leaves light's ink 0.26
+  clear, and the house rule is a shade past the mark. The 4px grid gap is deliberately left
+  open — bridging it with a `box-shadow` from each neighbour paints every gap TWICE, and at
+  any alpha under 1 that makes the joins DARKER than the cells they join.
+- **The chosen CHECK-OUT was dimmed off the calendar.** `crossed` learned not to mark a
+  night inside the chosen stay and **`outOfReach` never did**, so the two marks disagreed
+  about one cell. A complete range makes every tap a RESTART, so the far end is judged as a
+  would-be check-in — and one with a booking two days later under a 2-night minimum starts
+  no stay. True, and nothing to do with the date just picked: `dp-out`'s `opacity: 0.3` took
+  it from the check-in's **17.59:1 to 2.61** (dark) and **9.35 to 1.78** (light), under a
+  hover title reading "There's a booking before this date" about the guest's own check-out.
+- **And the selection was carried in COLOUR ALONE.** Nothing in the DOM said which dates
+  were chosen, so a screen-reader user picked a range and heard the bare numbers back.
+  `selStage` names it ("your check-in" / "inside your stay" / "your check-out") in both the
+  label and the title. It is the PAINTED state, the rule these labels already follow, so it
+  outranks `offeredCheckout` (which exists only while no check-out is chosen, so no cell is
+  both) and the unavailable notes — "minimum stay 2 nights, unavailable" is true of STARTING
+  a stay there and a lie about the cell in front of them. `crossed` still wins: an admin
+  overlap is chosen AND booked, and booked is the operative fact there.
+- **The gate reads PIXELS, not `getComputedStyle`** — it screenshots the grid and samples it
+  back through a canvas. This surface is the worst case for a colour model: the card is
+  translucent glass over a scrim over the page, so `backgroundColor` reports only the top
+  layer and the card measures **pure white in BOTH themes**, which is how a 1.03:1 band
+  survived being looked at (twice, in this session, before the screenshot settled it). The
+  fifth false contrast reading this codebase has produced. Sample the paint.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

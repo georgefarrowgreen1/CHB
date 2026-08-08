@@ -335,6 +335,63 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                 return send_owner($m['subject'], $m['text']);
             },
         ],
+        // THE LAST FOUR. The two weeklies compose at SCRIPT level from a dozen live
+        // figures each, which is why they outlasted the thirteen — the payload IS the
+        // work. They have builders now, so the owner can see the TEMPLATE cold and the
+        // render gate can prove it builds. NB `?force=1` (Manage → System check → More
+        // tools) still sends the real weekly email with real data, which beats a fixture
+        // for checking the FIGURES; a sample is how you check the template.
+        'owner_digest' => [
+            'Weekly owner digest',
+            function () use ($propKey, $ci) {
+                $m = owner_digest_body([
+                    'newBookings' => 3, 'newValue' => 1290.0, 'received' => 870.5,
+                    'arrivals' => [['check_in' => $ci, 'name' => 'Test Guest', 'prop_key' => $propKey]],
+                    'owedCount' => 2, 'owedSum' => 440.0, 'pending' => 1, 'occPct' => 68,
+                    'misses' => [['t' => 'is there a hot tub', 'n' => 3]],
+                    'actTotal' => 12,
+                    'actAttention' => [['summary' => 'A calendar feed has not imported for 2 days', 'severity' => 'warn']],
+                ]);
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'weekly_analytics' => [
+            'Weekly analytics',
+            function () {
+                $m = weekly_analytics_body([
+                    'views' => 412, 'uniq' => 318, 'convPct' => 2.4, 'bookings' => 3,
+                    'enquiries' => 7, 'topChannel' => 'Google', 'topPage' => '/cottages/jollyboat',
+                    'noResult' => 4, 'dropPct' => -35, 'deltaTxt' => '+12%',
+                    'siteUrl' => site_base_url(),
+                ]);
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'mailbox_reply' => [
+            'Your reply from Manage → Email',
+            function () use ($owner) {
+                $m = mailbox_reply_body(
+                    'Re: your enquiry about Jollyboat',
+                    "Hello,\n\nYes, those dates are free and there is parking right outside.\n\n" .
+                        '(This is sample text — your own reply goes here.)',
+                );
+                return smtp_send($owner, 'Guest', $m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'newsletter' => [
+            'Newsletter',
+            function () use ($owner) {
+                // The unsubscribe link is per recipient, so the sample carries a token
+                // shaped like a real one — the footer and the RFC 8058 headers both use it.
+                $m = newsletter_body(
+                    'Autumn on the north Norfolk coast',
+                    "The seals are back at Blakeney Point, and we have a few autumn weeks left.",
+                    'The seals are back at Blakeney Point, and we have a few autumn weeks left.',
+                    site_base_url() . 'index.html?unsub=sample-token',
+                );
+                return smtp_send($owner, 'Subscriber', $m['subject'], $m['text'], $m['html']);
+            },
+        ],
         // "A space has opened up" — sent when a cancellation frees dates someone is
         // waiting on. wl_send() is already a plain function taking a row, so this
         // needed no extraction; it simply had no way in.

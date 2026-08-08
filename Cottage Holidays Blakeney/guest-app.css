@@ -157,6 +157,14 @@ body.guest-app:not(.owner-mode) header.header-condensed .logo-mark {
    here — a soft accent halo behind the mark rather than a second pill, so the
    bar keeps exactly one selection cue. */
 body.guest-app:not(.owner-mode) header .logo {
+  /* PINNED, so the mark is one size on every screen. #guest-head-title beside it is
+     `1 1 auto` and holds the OWNER-EDITABLE screen name, and `.logo` was left at the
+     shrinkable `0 1 auto` default — so a long name took its share out of the BRAND:
+     measured at 390px, "21A Westgate Street" shrank it 49.9px → 38.5px, and the title
+     is `opacity: 0` until the bar condenses, so an invisible element was resizing the
+     logo. The title has min-width: 0 + an ellipsis; it absorbs the squeeze. (Same pin
+     ui-test-crownsheet gates owner-side, where a long name crushed it to 20px.) */
+  flex: 0 0 auto;
   border-radius: var(--r-pill);
   padding: 2px 6px;
   transition:

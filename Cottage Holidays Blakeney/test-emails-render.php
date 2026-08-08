@@ -207,6 +207,39 @@ $JOBS = [
   ['owner-chat-new', 'owner', function () { $m = owner_note_chat_new('Test Guest', 'g@x.co', 'Parking for two cars?', true); return send_owner($m['subject'], $m['text']); }],
   ['owner-chat-reply', 'owner', function () { $m = owner_note_chat_reply('Test Guest', 'g@x.co', 'That works, thank you.', true, ' [#ab12]'); return send_owner($m['subject'], $m['text']); }],
   ['owner-push-fallback', 'owner', function () { $m = owner_note_push_fallback('Payment received — £175.43', 'Test Guest has paid their deposit.'); return send_owner($m['subject'], $m['text']); }],
+  // THE LAST FOUR — the two script-level weeklies, the mailbox reply and the newsletter.
+  // The weeklies get a fixture payload: the ?force=1 buttons already send the real thing
+  // with real data, so what a fixture is for is proving the TEMPLATE builds and that
+  // every colour in it clears AA.
+  ['owner-digest', 'owner', function () use ($B) {
+      return send_owner(...array_values(owner_digest_body([
+          'newBookings' => 3, 'newValue' => 1290.0, 'received' => 870.5,
+          'arrivals' => [['check_in' => $B['check_in'], 'name' => 'Wren Hollis', 'prop_key' => 'jollyboat']],
+          'owedCount' => 2, 'owedSum' => 440.0, 'pending' => 1, 'occPct' => 68,
+          'misses' => [['t' => 'is there a hot tub', 'n' => 3]],
+          'actTotal' => 12,
+          'actAttention' => [['summary' => 'A calendar feed has not imported for 2 days', 'severity' => 'warn']],
+      ])));
+  }],
+  ['weekly-analytics', 'owner', function () {
+      return send_owner(...array_values(weekly_analytics_body([
+          'views' => 412, 'uniq' => 318, 'convPct' => 2.4, 'bookings' => 3, 'enquiries' => 7,
+          'topChannel' => 'Google', 'topPage' => '/cottages/jollyboat', 'noResult' => 4,
+          'dropPct' => -35, 'deltaTxt' => '+12%', 'siteUrl' => site_base_url(),
+      ])));
+  }],
+  ['mailbox-reply', 'owner', function () {
+      $m = mailbox_reply_body(
+          'Re: your enquiry about Jollyboat',
+          "Hello,\n\nYes, those dates are free, and there is parking right outside the cottage.\n\n" .
+              'Just let us know roughly when to expect you.',
+      );
+      return smtp_send('g@x.co', 'Guest', $m['subject'], $m['text'], $m['html']);
+  }],
+  ['newsletter', 'guest', function () {
+      $m = newsletter_body('Autumn on the north Norfolk coast', 'The seals are back at Blakeney Point.', 'The seals are back at Blakeney Point.', site_base_url() . 'index.html?unsub=tok');
+      return smtp_send('g@x.co', 'Subscriber', $m['subject'], $m['text'], $m['html']);
+  }],
   ['autopay-notice', 'guest', fn() => send_autopay_notice($B, $PAYURL)],
   ['autopay-failure', 'guest', fn() => send_autopay_failure($B, 'card_declined', false, '2026-07-20')],
   ['refund', 'guest', fn() => send_refund_email($B)],
@@ -596,6 +629,8 @@ $RETIRED = [
     '#B07A3F' => '3.68:1 on white — use email_accent_ink()',
     '#C79A64' => 'the accent as TEXT is 2.55:1 — use email_accent_ink() (it stays fine as a FILL)',
     '#D6A785' => 'as TEXT it is 2.16:1 — use email_accent_ink() (it stays fine as a FILL)',
+    '#ffb74d' => '1.73:1 as 13px text — use email_warn_ink() (fine as a FILL)',
+    '#e57373' => '2.99:1 as text — use email_alert_ink() (fine as a FILL)',
 ];
 $composers = [];
 foreach (glob($APP . '/*.php') as $f) {
@@ -609,14 +644,15 @@ foreach (glob($APP . '/*.php') as $f) {
         $composers[$b] = $src;
     }
 }
-// Vacuity guard: if the discovery stops finding files, everything below passes. The
-// floor was 8 and is now 4, because THIS is the number the consolidation was for —
-// thirteen inline compositions moved into mailer.php's builders, so fewer files reach
-// for the design system directly. mailer.php is asserted BY NAME as well, since a
-// count alone would pass on four files that happened not to include the real one.
+// Vacuity guard: if the discovery stops finding files, everything below passes. The floor
+// went 8 → 4 → 2 as the compositions moved into mailer.php's builders, and 2 is the END
+// STATE: mailer.php, plus waitlist-lib.php, whose wl_send() is already a plain callable
+// taking a row (a builder that happens to live next to the waitlist rules). mailer.php is
+// asserted BY NAME too, since a count alone would pass on two files that happened not to
+// include the real one.
 chk(
     'found the files that compose emails (' . implode(', ', array_keys($composers)) . ')',
-    count($composers) >= 4 && isset($composers['mailer.php']),
+    count($composers) >= 2 && isset($composers['mailer.php']),
 );
 $offenders = [];
 foreach ($composers as $b => $src) {
@@ -628,6 +664,18 @@ foreach ($composers as $b => $src) {
         // Only as an ink: `color:<hex>`, never background/border/bgcolor.
         if (preg_match('/(?<!-)\bcolor\s*:\s*' . preg_quote($hex, '/') . '\b/i', $body)) {
             $offenders[] = "$b uses $hex as text — $why";
+            continue;
+        }
+        // …AND THE CONCATENATED FORM, which is how the real one was written. The digest
+        // set its needs-attention ink as `'…;color:' . ($sev === 'action' ? '#e57373' :
+        // '#ffb74d') . ';…'` — the hex is a separate string literal, so the adjacent
+        // match above could not see it and reported "no retired ink" while a 1.73:1 amber
+        // was shipping. §2's measurement of the RENDERED output is what actually caught
+        // it; this makes the source scan able to see the same shape. The window is short
+        // and anchored on `color:` closing its own quote, so a FILL (bgcolor=, background:)
+        // is still out of scope.
+        if (preg_match('/(?<!-)\bcolor\s*:[^;\'"]*\'\s*\.[^;]{0,240}' . preg_quote($hex, '/') . '/is', $body)) {
+            $offenders[] = "$b uses $hex as text, via concatenation — $why";
         }
     }
 }

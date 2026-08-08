@@ -1036,17 +1036,20 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     // On a SELECTED cell the ground flips dark, so the price must take the selection's
     // own ink (2.39:1 measured with --text-muted). Compared to the day NUMBER beside it
     // rather than by arithmetic: if the number is legible there, so is the price.
-    const start = at('04');
+    // BOTH tiers of the selection, because the in-range band gained a ground of its own
+    // (§18) and it is a different rule — the price would otherwise go back to muted on
+    // every night BETWEEN the two ends and nothing here would notice.
+    const inkOwn = (d) => { const c = at(d); return getComputedStyle(c.querySelector('.dp-price')).color === getComputedStyle(c.querySelector('.dp-num')).color; };
     return {
       checkin: priceOf('04'), mid: priceOf('05'), checkout: priceOf('06'),
-      inkMatches: getComputedStyle(start.querySelector('.dp-price')).color ===
-        getComputedStyle(start.querySelector('.dp-num')).color,
+      inkMatches: inkOwn('04'), inkMatchesMid: inkOwn('05'),
     };
   });
   ok(legs.checkin === '£130' && legs.mid === '£130',
     `the nights of the stay keep their prices (${legs.checkin} / ${legs.mid})`);
   ok(legs.checkout === null, 'the chosen CHECKOUT carries none — it is not a night paid for');
-  ok(legs.inkMatches, '…and a selected cell prices in its own ink, not the muted one');
+  ok(legs.inkMatches && legs.inkMatchesMid,
+    `…and a selected cell prices in its own ink, not the muted one (end ${legs.inkMatches}, in-range ${legs.inkMatchesMid})`);
 
   // ADMIN IS OUT. The owner is moving a booking, not shopping — and every cell there is
   // pickable, so a price would appear on nights that are already sold.
@@ -1201,6 +1204,129 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(!/£/.test(illegal), `a seeded stay under the minimum carries no price ("${illegal}")`);
   await page.evaluate(() => closeDatePicker());
   PER_PROP.jollyboat = RANGES;
+
+  // ─── §18 WHICH DATES YOU HAVE COLLECTED ──────────────────────────────────────────
+  // Reported from a phone: "difficult to see what dates you've collected". Two causes,
+  // and neither was a taste question — both are measurable on the pixels the guest is
+  // looking at.
+  //  (a) `.dp-in-range` painted `rgba(255,255,255,0.07)`, a raw white whatever the theme,
+  //      so the MIDDLE of the range lifted the card by almost nothing in dark and by
+  //      nothing at all in light. A 21→25 selection read as two filled pills with three
+  //      perfectly ordinary days between them.
+  //  (b) the chosen CHECK-OUT carried `dp-out` as well as `dp-end` — once a range is
+  //      complete every tap restarts it, so the far end is judged as a would-be check-in,
+  //      and one that starts no stay (a booking two days later, a 2-night minimum) was
+  //      dimmed to 30% and given the hover title "There's a booking before this date"
+  //      about the guest's own check-out. It faded off the calendar.
+  //
+  // MEASURED ON PIXELS, NOT ON A COLOUR MODEL. Every attempt in this codebase to judge
+  // contrast from getComputedStyle has produced a confident WRONG answer (four are
+  // recorded in CLAUDE.md), and this surface is the worst case for it: the picker card is
+  // translucent glass over a scrim over the page, so `backgroundColor` reports only the
+  // topmost layer and the card measures pure white in BOTH themes — which is exactly how
+  // a 1.03:1 band survived being looked at. So the grid is screenshotted and the real
+  // composited pixels are read back through a canvas. No stack to walk, nothing to model.
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return +((x + 0.05) / (y + 0.05)).toFixed(2); };
+  // For each day: `fill` is a pixel inset into the cell, clear of the glyph, and `ink` is
+  // whichever pixel inside it stands furthest from that fill — which lands on the day
+  // number's own colour without needing to know where the glyph is.
+  const cellPixels = async (days) => {
+    const gridEl = page.locator('#dp-grid');
+    const shot = (await gridEl.screenshot()).toString('base64');
+    const rects = await page.evaluate((ds) => {
+      const g = document.getElementById('dp-grid').getBoundingClientRect();
+      const out = { _w: g.width };
+      ds.forEach((d) => {
+        const el = document.querySelector(`#dp-grid .dp-day[data-day="${d}"]`);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        out[d] = { x: r.left - g.left, y: r.top - g.top, w: r.width, h: r.height };
+      });
+      return out;
+    }, days);
+    return page.evaluate(async ({ b64, rects }) => {
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/png;base64,' + b64; });
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const cx = c.getContext('2d');
+      cx.drawImage(img, 0, 0);
+      const s = img.width / rects._w; // device pixel ratio, whatever the runner uses
+      const px = (x, y) => { const d = cx.getImageData(Math.round(x * s), Math.round(y * s), 1, 1).data; return [d[0], d[1], d[2]]; };
+      const dist = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+      const out = {};
+      for (const d of Object.keys(rects)) {
+        if (d === '_w') continue;
+        const r = rects[d];
+        const fill = px(r.x + 4, r.y + 4);
+        let ink = fill;
+        for (let y = r.y + 6; y < r.y + r.h - 6; y += 1)
+          for (let x = r.x + 6; x < r.x + r.w - 6; x += 1) {
+            const p = px(x, y);
+            if (dist(p, fill) > dist(ink, fill)) ink = p;
+          }
+        out[d] = { fill, ink };
+      }
+      return out;
+    }, { b64: shot, rects });
+  };
+
+  // 24 Aug → 27 Aug is the reported shape exactly: 25 and 26 sit inside the stay, and the
+  // chosen check-out 27 is FREE but starts no stay of its own (28 is booked, minimum 2).
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((t) => { document.body.classList.toggle('light-mode', t === 'light'); }, theme);
+    await openAt();
+    const state = await page.evaluate(() => {
+      dpPick('2026-08-24'); dpPick('2026-08-27');
+      const read = (d) => {
+        const el = document.querySelector(`#dp-grid .dp-day[data-day="2026-08-${d}"]`);
+        return el && { cls: [...el.classList].filter((c) => c !== 'dp-day').join('+'), aria: el.getAttribute('aria-label') || '', title: el.getAttribute('title') || '' };
+      };
+      return { s: read('24'), a: read('25'), b: read('26'), e: read('27'), free: read('05') };
+    });
+    // Vacuity guard: this whole section measures a SELECTED range, so if the picks did
+    // not land there is nothing here to be legible and every check below would pass.
+    ok(
+      !!state.s && state.s.cls.includes('dp-start') && state.a.cls.includes('dp-in-range') &&
+        state.b.cls.includes('dp-in-range') && state.e.cls.includes('dp-end') && state.free.cls === '',
+      `[${theme}] the range under test is really selected (24 ${state.s && state.s.cls} · 25 ${state.a && state.a.cls} · 27 ${state.e && state.e.cls})`,
+    );
+    const p = await cellPixels(['2026-08-24', '2026-08-25', '2026-08-27', '2026-08-05']);
+    const ground = p['2026-08-05'].fill; // an unselected, bookable night — the cells beside it
+    const band = ratio(p['2026-08-25'].fill, ground);
+    const bandInk = ratio(p['2026-08-25'].ink, p['2026-08-25'].fill);
+    // Selecting is a UI state, so 1.4.11's 3:1 applies to the band; the number on it is
+    // text and owes AA. The band used to measure 1.18 (dark) and 1.03 (light) here.
+    ok(band >= 3, `[${theme}] an in-range night stands out from an unselected one (${band}:1, needs 3)`);
+    ok(bandInk >= 4.5, `[${theme}] its day number is legible on the band (${bandInk}:1, needs 4.5)`);
+    // The two ends are the same declaration, so they must be the same pixel. Before the
+    // fix the check-out measured 2.61 dark / 1.78 light against the check-in's 17.59/9.35.
+    const inFill = p['2026-08-24'].fill;
+    const outFill = p['2026-08-27'].fill;
+    const same = Math.max(...[0, 1, 2].map((k) => Math.abs(inFill[k] - outFill[k])));
+    ok(
+      !state.e.cls.includes('dp-out') && same <= 2,
+      `[${theme}] the chosen check-out is painted like the check-in, not dimmed (${outFill} vs ${inFill}, classes ${state.e.cls})`,
+    );
+    // THE SELECTION IS ANNOUNCED. It was carried in colour alone: every one of these three
+    // cells reported nothing but its own date, so a screen-reader user picked a range and
+    // heard the numbers back with no way to tell a chosen night from any other.
+    ok(
+      /your check-in$/.test(state.s.aria) && /inside your stay$/.test(state.a.aria) && /your check-out$/.test(state.e.aria),
+      `[${theme}] each chosen cell announces its stage ("${state.s.aria}" · "${state.a.aria}" · "${state.e.aria}")`,
+    );
+    // ...and the one that used to be dp-out no longer claims to be unavailable. Both of
+    // these were TRUE sentences about starting a stay on that night, and lies about the
+    // cell the guest had just chosen as their check-out.
+    ok(
+      !/unavailable|booking falls before/.test(state.e.aria + ' ' + state.e.title),
+      `[${theme}] and the check-out is never called unavailable ("${state.e.aria}" / "${state.e.title}")`,
+    );
+    await page.evaluate(() => closeDatePicker());
+  }
+  await page.evaluate(() => document.body.classList.remove('light-mode'));
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

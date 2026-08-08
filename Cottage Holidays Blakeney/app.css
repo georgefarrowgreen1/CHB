@@ -1264,7 +1264,8 @@ body.light-mode ::-webkit-scrollbar-thumb {
 /* A selected cell's ground flips dark and the muted ink measured 2.39:1 on it, so the
    price takes the selection's own ink; hierarchy comes from the size. */
 .dp-day.dp-start .dp-price,
-.dp-day.dp-end .dp-price {
+.dp-day.dp-end .dp-price,
+.dp-day.dp-in-range .dp-price {
   color: inherit;
 }
 .dp-day.dp-booked {
@@ -1302,8 +1303,18 @@ body.light-mode ::-webkit-scrollbar-thumb {
   border-color: var(--glass-border);
   font-weight: 600;
 }
+/* THE MIDDLE OF THE RANGE HAS TO BE VISIBLE. `rgba(255,255,255,0.07)` was a raw white
+   whatever the theme, so measured on rendered pixels an in-range night stood at 1.18:1
+   (dark) / 1.03:1 (light) against the unselected cells beside it — two pills with three
+   ordinary days between them. Selection is a state, so the band owes 1.4.11's 3:1 while its
+   number still owes AA: the ends' OWN pair at 65% measures band 7.71/3.89 and ink 7.47/5.44
+   (dark/light). Arithmetic, not taste — 60% clears both too but leaves light's ink 0.26
+   clear, and the house rule is a shade past the mark. The 4px gap is left open: bridging it
+   with a shadow from each neighbour paints every gap TWICE, making the joins darker than
+   the cells they join. Gated by ui-test-datepicker §18, on pixels. */
 .dp-day.dp-in-range {
-  background: rgba(255, 255, 255, 0.07);
+  background: color-mix(in srgb, var(--text-light) 65%, transparent);
+  color: var(--dark-grey);
   border-radius: 0;
 }
 .dp-day.dp-start {
