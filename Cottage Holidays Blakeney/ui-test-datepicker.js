@@ -1324,9 +1324,79 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
       !/unavailable|booking falls before/.test(state.e.aria + ' ' + state.e.title),
       `[${theme}] and the check-out is never called unavailable ("${state.e.aria}" / "${state.e.title}")`,
     );
+    // HOVER MUST NOT REPAINT A CHOSEN NIGHT — and this is the half the pixel checks above
+    // could not see, because they measure a grid nothing is pointing at. Reported on the
+    // second look at the same screen: "still difficult to see, is it because it's a touch
+    // element that still thinks it's being pressed?" — which is exactly right. On a phone
+    // the tap LEAVES `:hover` applied, so the cell the guest chose last keeps whatever the
+    // hover rules say, and two of them out-specified the selection:
+    //   `.dp-day:hover:not(.dp-disabled):not(.dp-empty)`      (0,4,0) beats (0,2,0)
+    //   `#date-picker .dp-day:not([data-act]):hover`          (1,3,0) beats (0,2,0)
+    // Measured before the fix: hovering the chosen check-out took it from rgb(27,42,52) to
+    // rgba(0,0,0,0) — the pill VANISHED — and hovering the chosen check-in turned it
+    // rgba(255,255,255,0.92), dropping near-white ink onto near-white. Both on a plain
+    // desktop pointer, so this was never an iOS-only defect; iOS only makes it stick.
+    const hoverKeeps = await (async () => {
+      const at = (d) => `#dp-grid .dp-day[data-day="2026-08-${d}"]`;
+      const bgOf = (d) => page.evaluate((s) => getComputedStyle(document.querySelector(s)).backgroundColor, at(d));
+      const rest = { 24: await bgOf('24'), 25: await bgOf('25'), 27: await bgOf('27') };
+      const after = {};
+      for (const d of ['24', '25', '27']) {
+        await page.locator(at(d)).hover();
+        await page.waitForTimeout(420); // the fill transitions over 0.35s
+        after[d] = await bgOf(d);
+      }
+      // ...and the tint must STILL work where it belongs, or this is a fix by deletion.
+      // 05 Aug is free, bookable and outside the chosen stay.
+      const freeRest = await bgOf('05');
+      await page.locator(at('05')).hover();
+      await page.waitForTimeout(420);
+      const freeHover = await bgOf('05');
+      return { rest, after, freeRest, freeHover };
+    })();
+    for (const [d, what] of [['24', 'check-in'], ['25', 'in-range night'], ['27', 'check-out']])
+      ok(
+        hoverKeeps.after[d] === hoverKeeps.rest[d],
+        `[${theme}] hovering the chosen ${what} does not repaint it (${hoverKeeps.rest[d]} → ${hoverKeeps.after[d]})`,
+      );
+    ok(
+      hoverKeeps.freeHover !== hoverKeeps.freeRest,
+      `[${theme}] …while an unselected bookable night still answers the pointer (${hoverKeeps.freeRest} → ${hoverKeeps.freeHover})`,
+    );
     await page.evaluate(() => closeDatePicker());
   }
   await page.evaluate(() => document.body.classList.remove('light-mode'));
+
+  // AND THE TINT IS GATED ON A REAL POINTER. A touch device has no pointer to move off the
+  // cell, so the tint it leaves behind is a stale tint, not a hover — the same call the
+  // shared lift in this stylesheet already makes. Asserted through the CSSOM because a
+  // computed read cannot distinguish our @media rule from the browser's own behaviour, and
+  // Chromium will not reproduce iOS's sticky hover for us to observe directly.
+  // NB the walk reads `selectorText` BEFORE recursing, and only recurses on a NON-EMPTY
+  // `cssRules`. Modern Chromium gives every CSSStyleRule a (usually empty) `cssRules` list
+  // for CSS nesting, so an `if (r.cssRules) { …; continue; }` branch skips every style rule
+  // in the document — the first version of this check reported ZERO day-cell hover rules of
+  // any kind, including the ones that have been there for months.
+  const gated = await page.evaluate(() => {
+    const want = '.dp-day:hover:not(.dp-disabled):not(.dp-empty)';
+    let insideHoverMedia = false;
+    let anywhere = false;
+    const walk = (rules, inMedia) => {
+      for (const r of rules) {
+        if (r.selectorText && r.selectorText.includes(want)) {
+          anywhere = true;
+          if (inMedia) insideHoverMedia = true;
+        }
+        const cond = r.conditionText || (r.media && r.media.mediaText) || '';
+        const next = inMedia || /hover\s*:\s*hover/.test(cond);
+        if (r.cssRules && r.cssRules.length) walk(r.cssRules, next);
+      }
+    };
+    for (const s of document.styleSheets) { try { walk(s.cssRules, false); } catch (e) {} }
+    return { anywhere, insideHoverMedia };
+  });
+  ok(gated.anywhere, 'the day-cell hover tint is still declared (guard: the selector was not simply deleted)');
+  ok(gated.insideHoverMedia, 'the day-cell hover tint sits inside @media (hover: hover), so a tap cannot leave it behind');
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
