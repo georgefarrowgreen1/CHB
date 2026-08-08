@@ -1857,9 +1857,33 @@ anchored on `/^26$/` matches nothing. §6's hover helper was exactly that and br
 `[data-day]` is the stable hook. And the overflow/clip check does NOT gate the stacked
 layout (break-tested: without `flex-direction: column` the flex row simply squeezes both
 and nothing clips), so §16 asserts the price's box sits BELOW the number's.
-**Still not done:** no stay TOTAL in the picker. The enquiry form already quotes the real
-one from `priceBreakdown` with the party size the picker does not know, and a second
-figure derived a second way is the two-definitions-of-one-fact trap this file is full of.
+**AND THE WHOLE STAY, ON THE ONE SCREEN THAT CAN KNOW IT** (`dpStayTotal`, `.dp-fig`;
+gated by ui-test-datepicker §17, 12 checks). This was recorded here as not-done on the
+grounds that a total means deriving the figure a second way — which is true of the SUM OF
+THE NIGHTS and false of the real one. `dpStayTotal` calls **`priceBreakdown`**, the same
+function `updateEnquiryPrice`'s box and `updateBookBar` already quote from, with the party
+read off the same `#enq-adults`/`#enq-children` those two read. Measured after: £401.70 in
+the picker, the price box AND the book bar for one stay, with the £75 deposit still on its
+own row. (`total` and `rentalTotal` are the same field — `const total = rentalTotal` — so
+those two were never in disagreement.)
+- **ENQUIRY MODE ONLY, and that is the constraint, not a nicety.** The hero search has no
+  party fields, the waitlist is about dates that are gone and the chat check answers
+  availability — so on those three the only computable total is the sum of the nights,
+  which omits extra adults, children and the card fee. Measured on a Jollyboat-shaped
+  fixture it runs **22–86% under** the real ask (£390 against £723.90 for four adults and
+  two children over three midweek nights). A figure that light is worse than no figure.
+- **It is `total`, not the deposit-inclusive ask.** A first draft used £476.70 on the
+  reasoning that the card takes the deposit with the first payment — true of the ASK, and
+  it would have put a THIRD framing of one stay on a screen whose other two agree.
+- **The money goes IN THE HINT**, which is already the one `role="status"` region, so it
+  is announced for free and the stay is not said twice; emphasis is WEIGHT at the
+  sentence's own size (`.dp-fig`), the lesson the search hero learned from a 1.7em figure
+  towering over its own words. The party is NAMED, because it stays editable after the
+  picker closes — the figure is a snapshot of a field, not a standalone promise.
+- **A stay the form will REFUSE is not priced** (`checkBookingRules` first): the hero
+  search seeds any dates, so a seeded range can break the cottage's minimum.
+NB §4's plural check was anchored on `$` and the hint no longer ENDS with the night count,
+so it asserts the phrase now; the singular case is what proves the "s" is conditional.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

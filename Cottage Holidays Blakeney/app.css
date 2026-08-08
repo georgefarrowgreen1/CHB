@@ -1250,6 +1250,13 @@ body.light-mode ::-webkit-scrollbar-thumb {
   text-decoration: line-through;
 }
 /* 0.7rem = 11.2px, matching .ac-price and clearing the 10px floor. */
+/* The stay total inside the hint's sentence: weight, not size. Tabular so it does not
+   jitter as the checkout moves. */
+.dp-fig {
+  font-weight: 700;
+  color: var(--text-light);
+  font-variant-numeric: tabular-nums;
+}
 .dp-price {
   font-size: 0.7rem;
   color: var(--text-muted);

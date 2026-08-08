@@ -11596,6 +11596,26 @@ function dpPropKey() {
 // modal. Same helper the read-only calendar uses (nightlyRateFor → season + weekend
 // uplift), read off the SAME cottage the shading follows, so the two calendars can
 // never quote different money for the same night.
+// WHAT THE STAY COSTS, through `priceBreakdown` — the SAME function the enquiry price
+// box and the book bar quote from, with the party off the same `#enq-adults`/
+// `#enq-children` they read. One derivation, so the picker cannot disagree with the
+// screen it sits on. ENQUIRY MODE ONLY: the other three have no party fields, so their
+// only computable total is the sum of the NIGHTS, measured 22-86% under the real ask
+// (£390 against £723.90 for four adults and two children over three midweek nights) —
+// worse than no figure, so they get the per-night prices and nothing more. And it is
+// `total` (rental + card fee), the figure those two already show: the refundable deposit
+// has its own row there and folding it in here would be a third framing of one stay.
+function dpStayTotal() {
+    if (dpMode !== 'enquiry' || !dpState.start || !dpState.end) return null;
+    const adults = Math.max(1, parseInt(dpVal('enq-adults'), 10) || 2);
+    const children = Math.max(0, parseInt(dpVal('enq-children'), 10) || 0);
+    // A seeded range (the hero search lets any dates through) can break the cottage's
+    // rules, and pricing a stay the form will refuse is worse than saying nothing.
+    if (checkBookingRules(dpPropKey(), dpState.start, dpState.end)) return null;
+    const p = priceBreakdown(dpPropKey(), adults, children, dpState.start, dpState.end);
+    if (!p || !(p.total > 0)) return null;
+    return { total: p.total, nights: p.nights, adults, children };
+}
 function dpNightPrice(ds) {
     const key = dpPropKey();
     const rate = propertyRates[key] || defaultRates[key];
@@ -11742,7 +11762,21 @@ function renderDatePicker() {
         hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
         const n = nightsBetween(dpState.start, dpState.end);
-        hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+        const span = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+        // IN THE HINT, not a line of its own: the hint is already the one role="status"
+        // region, so the figure is announced for free and the stay is not said twice.
+        // Emphasis is WEIGHT at the sentence's own size (the search hero's lesson), and
+        // the party is NAMED because the guest can still change it after this closes.
+        const t = dpStayTotal();
+        if (t) {
+            hint.innerHTML =
+                escapeHtml(span) +
+                ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
+                t.adults + ' adult' + (t.adults === 1 ? '' : 's') +
+                (t.children > 0 ? ', ' + t.children + ' child' + (t.children === 1 ? '' : 'ren') : '');
+        } else {
+            hint.innerText = span;
+        }
     }
     // THE LEGEND FOLLOWS THE PICKABILITY RULE, and was flatly false on three of the
     // four modes: only the enquiry form REFUSES a crossed night. The hero search, the
@@ -15415,7 +15449,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dpprice1';
+    const BUILD = 'dptotal1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
