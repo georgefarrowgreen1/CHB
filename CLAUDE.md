@@ -233,12 +233,36 @@ table and looked like a different product from the confirmation that follows the
   floor was **8** and is now **4** — that drop IS the win, thirteen compositions leaving
   their routes — so the guard also asserts `mailer.php` BY NAME, since a bare count would
   pass on four files that happened not to include the real one.
-  **STILL NOT SAMPLABLE, and why**: three remain — the weekly owner digest, the weekly
-  analytics and the mailbox reply. The two weeklies compose at SCRIPT level from ~20 live
-  figures each, so a builder means a payload of twenty arguments and it is its own piece
-  of work; and both already have a **?force=1 button** (Manage → System check → More
-  tools) that sends the real email with real data, which beats a fixture. Their remaining
-  gap is render-gating only, which is a weaker case than the thirteen above had.
+  **AND NOW EVERY ONE OF THEM.** The last four were the weekly owner digest, the weekly
+  analytics, the mailbox reply and — which the note above MISSED — the **newsletter**, the
+  one email that goes to a whole list. email-samples.php is 38 entries and §1 renders all
+  38; the composer-discovery floor is 8 → 4 → **2**, its end state (mailer.php, plus
+  waitlist-lib.php whose `wl_send` is already a plain callable taking a row).
+  The two weeklies compose at SCRIPT level from a dozen live figures each, which is why
+  they outlasted the thirteen — the payload IS the work. `owner_digest_body($d)` and
+  `weekly_analytics_body($d)` take it; the four pure FORMATTERS (`$money`, `$nameOf`,
+  `$pretty`, `$accentOf`) moved INTO the builder, since they format rather than query,
+  while everything touching the database stayed in the cron script. `?force=1` still sends
+  the real weekly email with real data, which is the better check of the FIGURES; a sample
+  is how you check the TEMPLATE.
+  **AND RENDERING THE DIGEST FOUND A 1.73:1 INK.** Its needs-attention rows set the status
+  amber and red straight into 13px `color:` — **`#ffb74d` at 1.73:1** on white and
+  `#e57373` at 2.99 — on the one email that exists to say something has gone wrong. The
+  ink/fill split again: both are fine as FILLS. **`email_warn_ink()`** `#8A5000` (6.51
+  white / 6.09 tinted / 5.67 outer) and **`email_alert_ink()`** `#A3291C` (7.26 / 6.80 /
+  6.33) join the two existing ink tokens, measured on all three grounds.
+  **§5 COULD NOT SEE IT, AND NOW CAN.** The retired-ink scan matches `color:<hex>`
+  ADJACENTLY, and the digest wrote `';…color:' . ($sev === 'action' ? '#e57373' :
+  '#ffb74d') . ';…'` — the hex is a separate string literal, so §5 reported "no retired
+  ink" while a 1.73:1 amber shipped. **§2's measurement of the RENDERED output is what
+  caught it**; §5 now also matches the CONCATENATED form (a short window after `color:`
+  closes its own quote, so a FILL stays out of scope), break-tested against that exact
+  shape. General rule: a source scan sees what it was written to see — the rendered
+  measurement is the one that cannot be dodged by how the string was assembled.
+  **NB PHPStan caught two payload keys the template never asked for.** The extraction
+  passed `siteUrl` and `depositsDue` into `owner_digest_body`, both referencing variables
+  that do not exist in owner-digest.php at all — mine, not pre-existing, and invisible to
+  every other gate because an undefined variable there is just an empty string.
 - **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
   72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
   8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A

@@ -562,6 +562,22 @@ function owner_recipients()
 // get, built automatically so every send_owner(subject, text) caller (new
 // payment, new message, new review, owner booking copies…) matches the guest
 // emails. Blank lines split paragraphs; bare URLs become links; all escaped.
+/**
+ * WARNING AND ALERT AS TEXT. The digest's needs-attention rows set the status amber and
+ * red straight into 13px `color:` — measured on the rendered output, **1.73:1** for the
+ * amber and 2.99 for the red, on the one email that exists to tell the owner something
+ * has gone wrong. Same ink-vs-fill split the screens and email_accent_ink already make:
+ * `#ffb74d` and `#e57373` are fine as FILLS (a chip, a rule), illegible as WORDS.
+ * Measured white / tinted panel / outer ground, a shade past AA rather than on it.
+ */
+function email_warn_ink()
+{
+    return '#8A5000'; // 6.51 / 6.09 / 5.67
+}
+function email_alert_ink()
+{
+    return '#A3291C'; // 7.26 / 6.80 / 6.33
+}
 function owner_alert_text_html($subject, $text)
 {
     // The shell already carries the brand — don't repeat it in the heading.
@@ -3675,4 +3691,290 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             $accent,
         ),
     ];
+}
+
+/**
+ * The owner's own reply from Manage → Email. Blank lines split paragraphs, exactly as
+ * `owner_alert_text_html` does for the plain notes — the owner types prose, not markup.
+ */
+function mailbox_reply_body($subject, $bodyText)
+{
+    $inner = '';
+    foreach (array_filter(array_map('trim', preg_split('/\n{2,}/', (string) $bodyText))) as $para) {
+        $inner .= email_p(nl2br(email_esc($para)));
+    }
+    return [
+        'subject' => $subject,
+        'text' => $bodyText,
+        'html' => email_shell($subject, $inner),
+    ];
+}
+
+/**
+ * One subscriber's copy of the newsletter. The unsubscribe link is PER RECIPIENT (their
+ * own token), so this is built inside the send loop rather than once — and it rides
+ * `email_shell`'s footer options so the link is in the document as well as the RFC 8058
+ * headers. `$bodyHtml` is PRE-ESCAPED owner-authored HTML, like every email_p caller.
+ */
+function newsletter_body($subject, $bodyText, $bodyHtml, $unsubUrl)
+{
+    $foot = "You're receiving this because you signed up at Cottage Holidays Blakeney.";
+    return [
+        'subject' => $subject,
+        'text' => $bodyText . "\n\n—\n" . $foot . "\nUnsubscribe: " . $unsubUrl,
+        'html' => email_shell($subject, email_p($bodyHtml), '#D6A785', [
+            'unsubscribe' => $unsubUrl,
+            'footer' => $foot,
+        ]),
+    ];
+}
+
+/**
+ * The weekly ANALYTICS email. Composed at script level from ~11 live figures, which is
+ * why it stayed inline while the other thirteen were extracted — the payload IS the
+ * work. It gets one now, so email-samples.php can preview it and the render gate can
+ * prove it builds and that every colour in it clears AA. `?force=1` (Manage → System
+ * check → More tools) still sends the REAL email with REAL data, which beats a fixture;
+ * this is about the template never shipping broken.
+ */
+function weekly_analytics_body($d)
+{
+    $subject =
+        'Your Blakeney week online: ' .
+        $d['views'] .
+        ' visit' .
+        ($d['views'] === 1 ? '' : 's') .
+        ($d['deltaTxt'] !== '' ? ' (' . $d['deltaTxt'] . ')' : '') .
+        ', ' .
+        $d['bookings'] .
+        ' booking' .
+        ($d['bookings'] === 1 ? '' : 's');
+
+    $text =
+        "Good evening,\n\n" .
+        "Here's how Cottage Holidays Blakeney did online this week.\n\n" .
+        "  • Visits: {$d['views']}" .
+        ($d['deltaTxt'] !== '' ? " ({$d['deltaTxt']} vs last week)" : '') .
+        "\n" .
+        "  • Unique visitors: {$d['uniq']}\n" .
+        "  • Conversion: {$d['convPct']}% ({$d['bookings']} booking" .
+        ($d['bookings'] === 1 ? '' : 's') .
+        ", {$d['enquiries']} enquir" .
+        ($d['enquiries'] === 1 ? 'y' : 'ies') .
+        ")\n" .
+        "  • Top source: {$d['topChannel']}\n" .
+        "  • Most-viewed page: {$d['topPage']}\n" .
+        ($d['noResult'] > 0 ? "  • Availability searches that found nothing: {$d['noResult']}\n" : '') .
+        ($d['dropPct'] !== null && $d['dropPct'] <= -30 ? "\nHeads-up: visits are down " . abs($d['dropPct']) . "% on last week.\n" : '') .
+        "\nSee the full picture in Manage → Analytics.\n\nyour website";
+
+    // ---- HTML ----
+    $alertHtml =
+        $d['dropPct'] !== null && $d['dropPct'] <= -30
+            ? email_note(
+                '<strong>Heads-up:</strong> visits are down ' .
+                    abs($d['dropPct']) .
+                    '% on last week. Worth a look — refresh a listing photo, post an update, or check your search rankings.',
+                '#FFA726',
+            )
+            : '';
+
+    $inner =
+        email_h('Your week online', '#D6A785') .
+        email_p(email_esc(date('l j F Y')), true) .
+        $alertHtml .
+        email_amount(
+            'Visits this week',
+            $d['views'] . ($d['deltaTxt'] !== '' ? ' <span style="font-size:15px;color:' . email_muted_ink() . ';">' . $d['deltaTxt'] . '</span>' : ''),
+            $d['uniq'] . ' unique visitors',
+        ) .
+        email_rows(
+            [
+                [
+                    'Conversion',
+                    $d['convPct'] .
+                    '% <span style="color:' . email_muted_ink() . ';">(' .
+                    $d['bookings'] .
+                    ' booking' .
+                    ($d['bookings'] === 1 ? '' : 's') .
+                    ', ' .
+                    $d['enquiries'] .
+                    ' enquir' .
+                    ($d['enquiries'] === 1 ? 'y' : 'ies') .
+                    ')</span>',
+                ],
+                ['Top source', email_esc($d['topChannel'])],
+                ['Most-viewed page', email_esc($d['topPage'])],
+            ] + ($d['noResult'] > 0 ? [3 => ['Searches finding nothing', (string) $d['noResult']]] : []),
+        ) .
+        email_btn($d['siteUrl'], 'Open analytics') .
+        email_p('You can switch this weekly email off in Manage.', true);
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week online', $inner, '#D6A785')];
+}
+
+/**
+ * The weekly OWNER DIGEST. Like weekly_analytics_body, it composed at script level from
+ * a dozen live figures — the payload is the work, which is why it outlasted the other
+ * thirteen. The four pure FORMATTERS move in here with the template (they format, they
+ * do not query); everything that touches the database stays in the cron script.
+ * `?force=1` still sends the real thing with real data; this is so the template can be
+ * previewed and can never ship broken.
+ */
+function owner_digest_body($d)
+{
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $nameOf = fn($k) => prop_display($k)['name'];
+    $pretty = fn($dt) => date('D j M', strtotime($dt));
+    $accentOf = fn($k) => prop_display($k)['accent'];
+    $subject =
+        'Your Blakeney week: ' .
+        $d['newBookings'] .
+        ' new booking' .
+        ($d['newBookings'] === 1 ? '' : 's') .
+        ', ' .
+        $money($d['received']) .
+        ' in';
+
+    $arrivalsTxt = $d['arrivals']
+        ? implode(
+            "\n",
+            array_map(
+                fn($a) => '  • ' . $pretty($a['check_in']) . ' — ' . $a['name'] . ' (' . $nameOf($a['prop_key']) . ')',
+                $d['arrivals'],
+            ),
+        )
+        : '  • No arrivals in the next 7 days.';
+
+    $text =
+        "Good morning,\n\n" .
+        "Here's how Cottage Holidays Blakeney is looking.\n\n" .
+        "THE WEEK JUST GONE\n" .
+        "  • New bookings: {$d['newBookings']} (" .
+        $money($d['newValue']) .
+        " of stays)\n" .
+        '  • Money received: ' .
+        $money($d['received']) .
+        "\n\n" .
+        "THE WEEK AHEAD — arrivals\n{$arrivalsTxt}\n\n" .
+        "TO KEEP AN EYE ON\n" .
+        "  • Balances owed: {$d['owedCount']} booking" .
+        ($d['owedCount'] === 1 ? '' : 's') .
+        ' (' .
+        $money($d['owedSum']) .
+        ")\n" .
+        "  • Pending enquiries: {$d['pending']}\n" .
+        ($d['occPct'] !== null ? "  • Occupancy (next 30 days): {$d['occPct']}%\n" : '') .
+        "\nACTIVITY THIS WEEK\n" .
+        "  • {$d['actTotal']} logged event" .
+        ($d['actTotal'] === 1 ? '' : 's') .
+        "\n" .
+        (count($d['actAttention'])
+            ? "  • Needs attention:\n" . implode("\n", array_map(fn($a) => '     - ' . $a['summary'], $d['actAttention'])) . "\n"
+            : "  • Nothing needs your attention.\n") .
+        (count($d['misses'])
+            ? "\nTEACH YOUR ASSISTANT\n  • " .
+                count($d['misses']) .
+                ' search' .
+                (count($d['misses']) === 1 ? '' : 'es') .
+                " found nothing this week:\n" .
+                implode(
+                    "\n",
+                    array_map(fn($m) => '     - "' . $m['t'] . '"' . ($m['n'] > 1 ? " (asked {$m['n']} times)" : ''), $d['misses']),
+                ) .
+                "\n  • Open Search and type \"teach the assistant\" — each fix takes one tap.\n"
+            : '') .
+        "\nHave a good week,\nyour website";
+
+    $sectionLabel = fn($t) => '<div style="font-family:' .
+        email_sans() .
+        ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:' . email_muted_ink() . ';margin:22px 0 2px;">' .
+        htmlspecialchars($t) .
+        '</div>';
+    $arrivalsHtml = $d['arrivals']
+        ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">' .
+            implode(
+                '',
+                array_map(
+                    fn($a) => '<tr><td style="padding:7px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                        email_sans() .
+                        ';font-size:14px;color:#57524A;">' .
+                        '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' .
+                        $accentOf($a['prop_key']) .
+                        ';margin-right:9px;"></span>' .
+                        htmlspecialchars($pretty($a['check_in'])) .
+                        ' — <strong style="color:#2A2622;">' .
+                        htmlspecialchars($a['name']) .
+                        '</strong> · ' .
+                        htmlspecialchars($nameOf($a['prop_key'])) .
+                        '</td></tr>',
+                    $d['arrivals'],
+                ),
+            ) .
+            '</table>'
+        : email_p('No arrivals in the next 7 days.', true);
+
+    $inner =
+        email_h('Your week at a glance', '#D6A785') .
+        email_p(htmlspecialchars(date('l j F Y')), true) .
+        $sectionLabel('The week just gone') .
+        email_rows([
+            ['New bookings', $d['newBookings'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['newValue']) . ')</span>'],
+            ['Money received', $money($d['received'])],
+        ]) .
+        $sectionLabel('The week ahead — arrivals') .
+        $arrivalsHtml .
+        $sectionLabel('To keep an eye on') .
+        email_rows(
+            array_filter([
+                ['Balances owed', $d['owedCount'] . ' <span style="color:' . email_muted_ink() . ';">(' . $money($d['owedSum']) . ')</span>'],
+                ['Pending enquiries', (string) $d['pending']],
+                $d['occPct'] !== null ? ['Occupancy (next 30 days)', $d['occPct'] . '%'] : null,
+            ]),
+        ) .
+        $sectionLabel('Activity this week') .
+        email_rows([['Logged events', (string) $d['actTotal']]]) .
+        (count($d['actAttention'])
+            ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">' .
+                implode(
+                    '',
+                    array_map(
+                        fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                            email_sans() .
+                            ';font-size:13px;color:' .
+                            ($a['severity'] === 'action' ? email_alert_ink() : email_warn_ink()) .
+                            ';">⚠ ' .
+                            htmlspecialchars($a['summary']) .
+                            '</td></tr>',
+                        $d['actAttention'],
+                    ),
+                ) .
+                '</table>'
+            : email_p('Nothing needs your attention.', true)) .
+        (count($d['misses'])
+            ? $sectionLabel('Teach your assistant') .
+                email_p(
+                    count($d['misses']) .
+                        ' search' .
+                        (count($d['misses']) === 1 ? '' : 'es') .
+                        ' found nothing this week — open Search and type <strong>"teach the assistant"</strong>; each fix takes one tap.',
+                    true,
+                ) .
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">' .
+                implode(
+                    '',
+                    array_map(
+                        fn($m) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                            email_sans() .
+                            ';font-size:13px;color:#57524A;">“' .
+                            htmlspecialchars($m['t']) .
+                            '”' .
+                            ($m['n'] > 1 ? ' <span style="color:' . email_muted_ink() . ';">· asked ' . $m['n'] . ' times</span>' : '') .
+                            '</td></tr>',
+                        $d['misses'],
+                    ),
+                ) .
+                '</table>'
+            : '') .
+        email_p('Have a good week.', true);
+    return ['subject' => $subject, 'text' => $text, 'html' => email_shell('Your Blakeney week at a glance', $inner, '#D6A785')];
 }

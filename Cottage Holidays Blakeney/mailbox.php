@@ -330,15 +330,11 @@ if ($action === 'send') {
     if (strlen($subject) > 300 || strlen($bodyText) > 20000) {
         json_out(['error' => 'That message is too long.'], 400);
     }
-    // The branded HTML part — same coastal shell as every site email.
-    $esc = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
-    $paras = array_filter(array_map('trim', preg_split('/\n{2,}/', $bodyText)));
-    $inner = '';
-    foreach ($paras as $p) {
-        $inner .= email_p(nl2br($esc($p)));
-    }
-    $html = email_shell($subject, $inner);
-    $r = smtp_send($to, '', $subject, $bodyText, $html);
+    // Composed by mailbox_reply_body() in mailer.php — previewable, and the render gate
+    // proves it builds.
+    $m = mailbox_reply_body($subject, $bodyText);
+    $html = $m['html'];
+    $r = smtp_send($to, '', $m['subject'], $m['text'], $html);
     if (empty($r['ok'])) {
         json_out(['error' => "Couldn't send: " . ($r['error'] ?? 'unknown error')], 502);
     }
