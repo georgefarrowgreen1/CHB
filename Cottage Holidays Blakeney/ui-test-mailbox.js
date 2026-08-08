@@ -500,6 +500,53 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/declined enquir/i.test(dec.subline), `the subline describes this screen ("${dec.subline}")`);
   ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);
 
+  // THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES. Reported from
+  // a phone. Two causes, both measured at 390px: .prop-tag is an inline-block pill built
+  // for a STACKED context and carries margin-bottom: 12px, which inside this centred
+  // flex row lifted it 6px above the chip (centres 523 vs 529); and "Put back in
+  // Waiting" is 165px of nowrap button, so the body got 150px and — the chip being
+  // flex-shrink: 0 — the cottage pill absorbed the whole squeeze and rendered 22px of
+  // its 91, "Pimpernel" as "Pl…", the one word that says which cottage.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(300);
+  const pills = await page.evaluate(() => {
+    const row = document.querySelector('.enq-declined-row');
+    const tag = row.querySelector('.prop-tag'), chip = row.querySelector('.bk-chip'),
+      btn = row.querySelector('.enq-declined-restore'), body = row.querySelector('.bk-row-body');
+    const mid = (el) => { const r = el.getBoundingClientRect(); return Math.round(r.y + r.height / 2); };
+    const t = tag.getBoundingClientRect(), c = chip.getBoundingClientRect();
+    return {
+      tagMid: mid(tag), chipMid: mid(chip),
+      clipped: tag.scrollWidth > tag.clientWidth + 1,
+      tagW: Math.round(t.width), tagNeeds: tag.scrollWidth,
+      gap: Math.round(c.x - t.right),
+      rowRight: Math.round(row.getBoundingClientRect().right),
+      chipRight: Math.round(c.right),
+      btnBelow: btn.getBoundingClientRect().top >= body.getBoundingClientRect().bottom - 1,
+    };
+  });
+  ok(pills.tagMid === pills.chipMid,
+    `the cottage pill and the Declined chip sit on one line (centres ${pills.tagMid} / ${pills.chipMid})`);
+  ok(!pills.clipped,
+    `the cottage name is not clipped (${pills.tagW}px for ${pills.tagNeeds}px of text)`);
+  ok(pills.gap > 0 && pills.gap < 40 && pills.rowRight - pills.chipRight > 40,
+    `…and they read as a pair rather than opposite corners (${pills.gap}px apart)`);
+  ok(pills.btnBelow, 'on a phone the restore button takes its own line, so the pills get the width');
+  // The wrap is CONDITIONAL, not a permanent stack: where the column can hold both, the
+  // button still sits beside the row rather than below it.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.waitForTimeout(300);
+  const wide = await page.evaluate(() => {
+    const row = document.querySelector('.enq-declined-row');
+    const btn = row.querySelector('.enq-declined-restore'), body = row.querySelector('.bk-row-body');
+    const tag = row.querySelector('.prop-tag');
+    return {
+      beside: btn.getBoundingClientRect().top < body.getBoundingClientRect().bottom - 1,
+      clipped: tag.scrollWidth > tag.clientWidth + 1,
+    };
+  });
+  ok(wide.beside && !wide.clipped, 'on a wide column the button is beside the row, still unclipped');
+
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

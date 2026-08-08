@@ -276,6 +276,20 @@ up — nothing needs a reply" directly above a list with a row in it.
   consistent with the app, and special-casing two elements would be wrong. a11y-test
   gates the status tints and `--accent-text`, not this one; fixing it means nudging one
   token across 215 elements and belongs in its own PR.
+- **THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES.** Reported from
+  a phone; two causes, both measured at 390px. `.prop-tag` is an inline-block pill built
+  for a STACKED context and carries `margin-bottom: 12px`, which inside this centred flex
+  row is part of its box and so lifted it 6px above the chip beside it (centres 523 vs
+  529) — fixed on **`.bk-row-top .prop-tag`**, so every `.bk-row` gains it, not just this
+  drawer. And "Put back in Waiting" is 165px of nowrap button, leaving the body 150px,
+  with the chip `flex-shrink: 0` — so the cottage pill absorbed the whole squeeze and
+  rendered **22px of its 91**, "Pimpernel" as "Pl…", the one word saying which cottage.
+  The row wraps on a basis (`flex: 1 1 240px`) rather than at a breakpoint, so it responds
+  to the COLUMN and not the window — which matters because the ≥1200px Inbox puts this
+  list in a ~340px middle pane, i.e. wider viewport, narrower row. `justify-content:
+  flex-start` on this row's `.bk-row-top` packs the two together; the general rule is
+  `space-between`, which is right for a row whose chip is a right-hand status rail and
+  would otherwise fling these to opposite corners (measured 88px apart).
 - Declined is a **DECISION, not a fault** — deliberately not the red `danger` chip. The
   guest's message shows on one clamped line so two declines can be told apart without
   restoring one, and the action says where it goes ("Put back in Waiting"), matching the
