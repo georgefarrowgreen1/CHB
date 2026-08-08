@@ -254,6 +254,57 @@ const clause = (text, n) => {
     `the terms document is what the guest touches, not the form behind it (topmost: ${top.tag})`);
   ok(top.readable, '…and its text is actually rendered');
 
+  // ---- "READ ALL REVIEWS" IS ON EVERY COTTAGE PAGE THAT HAS REVIEWS ----------
+  // Reported: the button showed on 21A (16 reviews) and on no other cottage. Two
+  // causes, and NO suite covered cottage-page reviews at all, which is how both
+  // shipped. renderPropReviews is driven directly per scenario: the button used to
+  // need count > 4, and a review saved with no cottage matches no page.
+  const rev = await page.evaluate(() => {
+    const mk = (n, prop) =>
+      Array.from({ length: n }, (_, i) => ({
+        name: 'Guest ' + (i + 1), stars: 5, text: 'A lovely stay, number ' + (i + 1), prop, source: 'Airbnb',
+      }));
+    const read = () => {
+      const wrap = document.getElementById('prop-reviews');
+      const btn = wrap
+        ? [...wrap.querySelectorAll('button')].find((b) => /Read all/i.test(b.textContent))
+        : null;
+      return {
+        shown: wrap ? getComputedStyle(wrap).display !== 'none' : false,
+        cards: wrap ? wrap.querySelectorAll('.review-card').length : 0,
+        count: wrap && wrap.querySelector('.prop-reviews-count')
+          ? wrap.querySelector('.prop-reviews-count').textContent : '',
+        btn: btn ? btn.textContent.trim() : '',
+      };
+    };
+    const run = (list) => { siteContent.reviews = list; renderPropReviews('jollyboat'); return read(); };
+    return {
+      many: run(mk(16, 'jollyboat')),
+      four: run(mk(4, 'jollyboat')),
+      two: run(mk(2, 'jollyboat')),
+      one: run(mk(1, 'jollyboat')),
+      // The count and average must come from THIS cottage's reviews only — an
+      // unassigned review silently deflated both (6 + 2 rendered as "2 reviews").
+      mixed: run(mk(6, '').concat(mk(2, 'jollyboat'))),
+    };
+  });
+  ok(/Read all 16 reviews/.test(rev.many.btn), `16 reviews: the button is there ("${rev.many.btn}")`);
+  ok(/Read all 4 reviews/.test(rev.four.btn), `4 reviews: the button is there too ("${rev.four.btn}")`);
+  ok(/Read all 2 reviews/.test(rev.two.btn), `2 reviews: still there ("${rev.two.btn}")`);
+  ok(rev.one.shown && rev.one.btn === '', 'one review: the card shows and no button claims there is more');
+  ok(rev.mixed.count === '2 reviews', `unassigned reviews never inflate a cottage's count ("${rev.mixed.count}")`);
+
+  // Fix 1's owner-side half: the option now states the CONSEQUENCE of leaving it
+  // blank, and saveReviews asks before stranding any. Source-scanned, because both
+  // live in the admin bundle behind a confirm.
+  const adminSrc = require('fs').readFileSync(__dirname + '/admin.js', 'utf8');
+  ok(/no cottage \\u2014 not shown on any cottage page|no cottage — not shown on any cottage page/.test(adminSrc),
+    'the "(no cottage)" option says what choosing it costs');
+  ok(/const stranded = reviews\.filter\(\(r\) => !r\.prop\)\.length;/.test(adminSrc),
+    'saveReviews counts the reviews left with no cottage');
+  ok(/if \(stranded\) \{[\s\S]{0,400}glassConfirm\(/.test(adminSrc),
+    '…and asks before saving them that way');
+
   console.log(fails ? `\n  TERMS SUITE FAILED ❌ (${fails})` : '\n  TERMS SUITE PASSED ✅');
   await done(fails);
 })();

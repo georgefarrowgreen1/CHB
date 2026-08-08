@@ -284,6 +284,32 @@ up — nothing needs a reply" directly above a list with a row in it.
   `[data-arg="declined"]` selector finds nothing — which is how the first draft of that
   gate silently tested an unclicked tab.
 
+## "Read all reviews" — two causes, one by design and one a real bug
+
+Reported: the button showed on 21A (16 reviews) and on no other cottage page. Measured by
+driving `renderPropReviews` per scenario — and **NO suite covered cottage-page reviews at
+all**, which is how both shipped.
+- **The button needed FIVE reviews.** It was gated on `count > show.length` with a 4-card
+  grid, so a cottage with 1–4 got the cards, the count and the star average but no
+  button — which reads as the page being broken rather than as there being nothing more
+  to read. `.review-text` does NOT clamp, so ≤4 really is all of it on screen; the modal
+  is nonetheless the canonical list, so it is offered **from two up**. At one review a
+  "read all 1" button is noise.
+- **A review saved with NO COTTAGE appears on no cottage page — and deflates the ones it
+  should have counted for.** `renderPropReviews` filters `r.prop === propKey`, so
+  `prop: ''` hides the whole "Guest reviews" section, while `renderGuestWords()` does NOT
+  filter and keeps rotating the same review on the homepage — reviews visible there and
+  nowhere else. Measured: **6 unassigned + 2 assigned rendered as "2 reviews"**, so the
+  per-cottage COUNT and STAR AVERAGE are wrong too, silently. **"(no cottage)" is the
+  FIRST option in both the per-review editor and the bulk importer**, i.e. what you get
+  by not choosing, which is how a whole import ends up stranded. The option now names the
+  consequence ("not shown on any cottage page") and `saveReviews` ASKS before saving any,
+  naming the count — deliberately an ask, not a refusal, since the cottage is a field the
+  owner may genuinely not know yet (the bulk-send confirm's posture).
+Gated in ui-test-terms (8 checks: the button at 16/4/2/1, the count never inflated by
+unassigned reviews, and the owner-side half source-scanned); the button threshold, the
+stranded count and the option label are each break-tested.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

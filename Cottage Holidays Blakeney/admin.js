@@ -17562,7 +17562,9 @@ function accomSectionHtml(k, sec) {
 }
 function reviewRowHtml(r) {
     r = r || { name: '', stars: 5, text: '', prop: '', source: '' };
-    const propOpts = ['<option value="">(no cottage)</option>']
+    // The label states the CONSEQUENCE: "(no cottage)" reads as a neutral choice, and
+    // it is the default, so nothing said it takes the review off every cottage page.
+    const propOpts = ['<option value="">(no cottage \u2014 not shown on any cottage page)</option>']
         .concat(
             Object.keys(propertyMeta).map(
                 (k) =>
@@ -19589,7 +19591,7 @@ function fillReviewImportControls() {
     const propSel = document.getElementById('bulk-rev-prop');
     if (propSel)
         propSel.innerHTML =
-            '<option value="">(no cottage)</option>' +
+            '<option value="">(no cottage \u2014 not shown on any cottage page)</option>' +
             Object.keys(propertyMeta)
                 .map((k) => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`)
                 .join('');
@@ -19717,11 +19719,34 @@ async function saveReviews() {
             source: get('source'),
         });
     }
+    // A REVIEW WITH NO COTTAGE APPEARS ON NO COTTAGE PAGE: renderPropReviews filters
+    // r.prop === propKey, so prop:'' hides the whole section, while renderGuestWords
+    // does not filter and keeps rotating it on the homepage. It also deflates that
+    // cottage's COUNT and AVERAGE (measured: 6 unassigned + 2 assigned read as "2").
+    // "(no cottage)" is the FIRST option in both editors, so it is what you get by not
+    // choosing. This ASKS rather than refusing — the bulk-send confirm's posture.
+    const stranded = reviews.filter((r) => !r.prop).length;
+    if (stranded) {
+        const ok = await glassConfirm(
+            (stranded === 1
+                ? 'One review has no cottage set.'
+                : `${stranded} reviews have no cottage set.`) +
+                '\n\nA review with no cottage does not appear on any cottage page, and it is left out of' +
+                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.' +
+                '\n\nOK = save anyway  ·  Cancel = go back and pick a cottage',
+            'Save anyway',
+        );
+        if (!ok) return;
+    }
     try {
         await saveContent('reviews', reviews);
         siteContent.reviews = reviews;
         renderReviews();
-        toast('Reviews saved.');
+        toast(
+            stranded
+                ? `Reviews saved — ${stranded} with no cottage, so not on any cottage page.`
+                : 'Reviews saved.',
+        );
     } catch (e) {
         glassAlert("Couldn't save reviews: " + e.message);
     }

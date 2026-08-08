@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 430;
+const ADMIN_BUNDLE_V = 431;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 154;
+const ADMIN_CSS_V = 155;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -10076,8 +10076,12 @@ function renderPropReviews(propKey) {
     const avg =
         list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count;
     const show = list.slice(0, 4);
+    // THE SAME AFFORDANCE ON EVERY COTTAGE PAGE. Was `count > show.length`, so the
+    // button needed five reviews — 21A (16) had it, a cottage with one to four did not,
+    // and that reads as broken rather than as nothing-more-to-read (reported). The modal
+    // is the canonical list, offered from two up; at one, "read all 1" is noise.
     const more =
-        count > show.length
+        count > 1
             ? `<button class="btn-glass" style="margin-top:18px;padding:12px 28px;" ${chbAttrs('openAllReviews', String(propKey))}>Read all ${count} reviews</button>`
             : '';
     wrap.style.display = '';
@@ -15128,7 +15132,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'declined1';
+    const BUILD = 'reviewbtn1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
