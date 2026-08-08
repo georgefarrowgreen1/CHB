@@ -1398,6 +1398,76 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(gated.anywhere, 'the day-cell hover tint is still declared (guard: the selector was not simply deleted)');
   ok(gated.insideHoverMedia, 'the day-cell hover tint sits inside @media (hover: hover), so a tap cannot leave it behind');
 
+  // ─── §19 EVERY NIGHT OF THE STAY CARRIES ITS PRICE, AND THEY ADD UP ──────────────
+  // Reported from a phone: "is it showing the pricing correctly?" — no. On a cottage with a
+  // 3-NIGHT MINIMUM, a 24→27 stay showed £175 · £175 · (blank) while the hint said £540.75.
+  // The 26th was unpriced because `dpCheckinFits(26, 3)` fails — the 28th is booked, so no
+  // three-night stay can BEGIN on the 26th — which is true, and nothing to do with a night
+  // the guest is already paying for. `clickable` answers "can a stay start here", a question
+  // about SELECTION; what a night costs is a question about the STAY.
+  //
+  // The fixture is derived by working BACKWARDS from the screenshot, and the derivation is
+  // the point: with a 3-night minimum, 11/12 and 20/21 are struck for being TOO SHORT (a
+  // booking within three nights) rather than booked, so only 9, 13-15, 22 and 28-31 are
+  // real bookings. That set reproduces every cell state in the report exactly.
+  const AUG_MIN3 = [
+    { start: '2026-08-09', end: '2026-08-10' },
+    { start: '2026-08-13', end: '2026-08-16' },
+    { start: '2026-08-22', end: '2026-08-23' },
+    { start: '2026-08-28', end: '2026-09-01' },
+  ];
+  PER_PROP.jollyboat = AUG_MIN3;
+  AVAIL = AUG_MIN3;
+  const coherent = await page.evaluate(async () => {
+    activeFrontProperty = 'jollyboat';
+    propertyRates['jollyboat'] = Object.assign({}, propertyRates['jollyboat'] || {}, { minNights: 3 });
+    closeDatePicker();
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    document.getElementById('enq-adults').value = '2';
+    document.getElementById('enq-children').value = '0';
+    openDatePicker();
+    await new Promise((r) => setTimeout(r, 450));
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-24');
+    dpPick('2026-08-27');
+    const cell = (d) => document.querySelector(`#dp-grid .dp-day[data-day="2026-08-${d}"]`);
+    const fig = (d) => { const p = cell(d).querySelector('.dp-price'); return p ? Number(p.textContent.replace(/[^\d.]/g, '')) : null; };
+    // The nights of a 24→27 stay are 24, 25 and 26. The 27th is the checkout.
+    const nights = ['24', '25', '26'].map(fig);
+    // NB the argument order is (propKey, adults, children, checkIn, checkOut) — and the
+    // field to compare against is `nightly`, the SUM OF THE PER-NIGHT RATES before the card
+    // fee. Reverse-engineering it out of `total` would mean hardcoding the fee percentage
+    // in the gate, which is the sort of second derivation this suite exists to prevent.
+    const bd = priceBreakdown('jollyboat', 2, 0, '2026-08-24', '2026-08-27');
+    return {
+      nights,
+      checkout: fig('27'),
+      minRefusesTheStart: !cell('26').hasAttribute('data-act'), // the very condition that hid it
+      nightly: bd ? Math.round(bd.nightly * 100) / 100 : null,
+      hint: document.getElementById('dp-hint').innerText.replace(/\s+/g, ' ').trim(),
+    };
+  });
+  ok(
+    coherent.minRefusesTheStart,
+    'the fixture really does refuse a stay STARTING on the last night (or this proves nothing)',
+  );
+  ok(
+    coherent.nights.every((n) => n && n > 0),
+    `every night of the stay carries a figure (${coherent.nights.join(' · ')})`,
+  );
+  ok(coherent.checkout === null, '…and the checkout still carries none — it is not a night paid for');
+  // THE COHERENCE PROPERTY, which no arithmetic can dodge: what the cells show for the
+  // nights must be what the stay is priced on. It read £350 of £525 before the fix.
+  const nightsSum = coherent.nights.reduce((a, b) => a + (b || 0), 0);
+  ok(
+    coherent.nightly != null && Math.abs(nightsSum - coherent.nightly) < 1,
+    `…and they add up to what the stay is priced on (cells £${nightsSum} vs nightly £${coherent.nightly}, hint "${coherent.hint}")`,
+  );
+  await page.evaluate(() => closeDatePicker());
+  PER_PROP.jollyboat = RANGES;
+  AVAIL = RANGES;
+
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
 })();

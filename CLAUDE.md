@@ -1987,6 +1987,28 @@ break-tested). Reported from a phone with a September screenshot.
   for CSS nesting, so an `if (r.cssRules) { …; continue; }` branch skips every style rule in
   the document** — the first version reported ZERO day-cell hover rules, including ones that
   had been there for months. Read `selectorText` first; recurse only on a non-empty list.
+- **AND A NIGHT INSIDE THE STAY WAS UNPRICED, because `clickable` is the wrong question**
+  (asked directly — "is it showing the pricing correctly?" — and no). Reported on a cottage
+  with a **3-NIGHT MINIMUM**: 24→27 chosen, and the cells read **£175 · £175 · blank** under
+  a hint saying £540.75. The 26th carried no figure because `dpCheckinFits(26, 3)` fails —
+  the 28th is booked, so no three-night stay can BEGIN on the 26th — which is true, and
+  nothing to do with a night the guest is already paying for. `clickable` answers "can a stay
+  START here", a question about SELECTION; what a night costs is a question about the STAY.
+  So the price gate is `(clickable || inChosenStay)`, and the four deliberate silences are
+  untouched (a refused cell, the chosen CHECKOUT, a waitlist night, all of admin) because
+  `inChosenStay` is guarded on `chosenClear` and the checkout is excluded by name.
+  **THE FIXTURE WAS DERIVED BACKWARDS FROM THE SCREENSHOT, AND THAT IS THE INTERESTING
+  PART**: a minNights sweep showed that only **3** leaves the 26th bare, and at 3 the days
+  11/12 and 20/21 are struck for being TOO SHORT rather than booked — so the real bookings
+  are just 9, 13–15, 22 and 28–31. That set reproduces every cell state in the report
+  exactly, which is how the mechanism was confirmed rather than guessed (a first fixture
+  built from "everything struck is booked" priced the 26th fine and proved nothing).
+  §19 gates it on the **coherence property**, which no arithmetic can dodge: the visible
+  per-night figures must SUM to `priceBreakdown`'s `nightly`. It read £260 of £390 before the
+  fix (break-tested). NB compare against `nightly`, not `total` — reverse-engineering the
+  card fee out of the total would hardcode the percentage in the gate, the second derivation
+  this suite exists to prevent — and `priceBreakdown`'s argument order is
+  `(propKey, adults, children, checkIn, checkOut)`.
 - **PAID FOR WITHOUT RAISING app.css's BUDGET**, which is what the previous entry's raise
   should have done. The comments went in, went over by 402 bytes gzipped, and were then paid
   for by trimming prose that restated CLAUDE.md at length: the `.glass-panel`-is-a-material

@@ -11590,21 +11590,17 @@ let dpProp = null;
 function dpPropKey() {
     return dpProp || activeFrontProperty;
 }
-// WHAT A NIGHT COSTS, on the picker's own cells. The cottage page's read-only calendar
-// has shown this for ages (`.ac-price`) and the picker did not, so a guest choosing
-// dates could not see that a Tuesday is £115 and the Saturday £160 without leaving the
-// modal. Same helper the read-only calendar uses (nightlyRateFor → season + weekend
-// uplift), read off the SAME cottage the shading follows, so the two calendars can
-// never quote different money for the same night.
-// WHAT THE STAY COSTS, through `priceBreakdown` — the SAME function the enquiry price
-// box and the book bar quote from, with the party off the same `#enq-adults`/
-// `#enq-children` they read. One derivation, so the picker cannot disagree with the
-// screen it sits on. ENQUIRY MODE ONLY: the other three have no party fields, so their
-// only computable total is the sum of the NIGHTS, measured 22-86% under the real ask
-// (£390 against £723.90 for four adults and two children over three midweek nights) —
-// worse than no figure, so they get the per-night prices and nothing more. And it is
-// `total` (rental + card fee), the figure those two already show: the refundable deposit
-// has its own row there and folding it in here would be a third framing of one stay.
+// WHAT A NIGHT COSTS, on the picker's own cells — the read-only calendar has shown this
+// for ages (`.ac-price`) and the picker did not, so a guest could not see that a Tuesday
+// is £115 and the Saturday £160 without leaving the modal. Same helper (nightlyRateFor →
+// season + weekend uplift), read off the SAME cottage the shading follows, so the two
+// calendars can never quote different money for one night.
+// WHAT THE STAY COSTS, through `priceBreakdown` — the same function the enquiry price box
+// and the book bar quote from, with the party off the same fields they read. ENQUIRY MODE
+// ONLY: the other three have no party fields, so their only computable total is the sum of
+// the NIGHTS, measured 22-86% under the real ask (£390 against £723.90 for four adults and
+// two children over three midweek nights) — worse than no figure. And it is `total`
+// (rental + card fee), the figure those two show; the deposit has its own row there.
 function dpStayTotal() {
     if (dpMode !== 'enquiry' || !dpState.start || !dpState.end) return null;
     const adults = Math.max(1, parseInt(dpVal('enq-adults'), 10) || 2);
@@ -11898,13 +11894,11 @@ function renderDatePicker() {
             (booked || (tooShort && dpMode !== 'fields')) &&
             (dpMode === 'admin' || !(offeredCheckout || inChosenStay));
         if (crossed) classes.push('dp-booked');
-        // A REFUSAL HAS TO BE VISIBLE. A checkout past a booked night is correctly
-        // refused — but the refusal rendered as a plain cell: full opacity, pointer
-        // cursor, no mark. Measured, after picking a check-in the whole of the next
-        // month came back 30 dead cells, indistinguishable from bookable ones, so the
-        // picker simply stopped responding with nothing to explain it. NOT a
-        // line-through, which would say "booked": these are free nights, out of reach
-        // from THIS check-in only, and another check-in brings them back.
+        // A REFUSAL HAS TO BE VISIBLE. A checkout past a booked night is correctly refused
+        // and used to render as a plain cell — full opacity, pointer cursor, no mark — so
+        // after picking a check-in the whole next month came back 30 dead cells, measured,
+        // indistinguishable from bookable ones. NOT a line-through, which would say
+        // "booked": these are free nights, out of reach from THIS check-in only.
         // ...BUT NOT ON A NIGHT ALREADY CHOSEN. `crossed` learned this and `outOfReach`
         // did not, so the two marks disagreed about one cell. A complete range makes every
         // tap a RESTART, so the chosen check-out is judged as a would-be check-in — and one
@@ -11995,13 +11989,19 @@ function renderDatePicker() {
                         : outOfReach
                           ? ' title="There\'s a booking before this date"'
                           : '';
-        // THE PRICE IS ON THE NIGHTS THAT ARE FOR SALE, AND NOWHERE ELSE. A figure on a
-        // cell the picker refuses would price something the guest cannot have, and the
-        // chosen CHECKOUT day is not a night they pay for — so both are silent. Admin is
-        // out too: the owner is moving a booking, not shopping, and every cell there is
-        // pickable, which would put a price on nights that are already sold.
+        // THE PRICE IS ON THE NIGHTS THAT ARE FOR SALE, AND NOWHERE ELSE. A cell the picker
+        // refuses would price something the guest cannot have, and the chosen CHECKOUT is
+        // not a night they pay for. Admin is out too — every cell there is pickable, so a
+        // price would land on nights already sold.
+        // ...BUT `clickable` IS THE WRONG QUESTION INSIDE THE CHOSEN STAY: it answers "can a
+        // stay START here" (selection), where a price is about the STAY. Reported on a
+        // 3-night minimum — 24→27 chosen, the 26th blank because `dpCheckinFits(26, 3)`
+        // fails (the 28th is booked), true and irrelevant to a night already being paid for.
+        // The cells read £175 + £175 + blank under a hint saying £540.75. `inChosenStay` is
+        // guarded on `chosenClear`, so a seeded range that really crosses a booking stays
+        // unpriced; the CHECKOUT and admin stay excluded as before.
         let priceTag = '';
-        if (guestPick && clickable && !crossed && !isPast && !tooSoon && ds !== dpState.end) {
+        if (guestPick && (clickable || inChosenStay) && !crossed && !isPast && !tooSoon && ds !== dpState.end) {
             const p = dpNightPrice(ds);
             if (p > 0) priceTag = `<span class="dp-price">£${Math.round(p)}</span>`;
         }
@@ -15480,7 +15480,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dphover1';
+    const BUILD = 'dpnight1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
