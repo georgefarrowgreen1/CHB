@@ -1964,6 +1964,36 @@ break-tested). Reported from a phone with a September screenshot.
   layer and the card measures **pure white in BOTH themes**, which is how a 1.03:1 band
   survived being looked at (twice, in this session, before the screenshot settled it). The
   fifth false contrast reading this codebase has produced. Sample the paint.
+- **AND THE FIX ABOVE STILL LOOKED BROKEN, BECAUSE `:hover` OUT-SPECIFIED THE SELECTION**
+  (reported on a second look at the same screen — *"is it because it's a touch element that
+  still thinks it's being pressed?"*, which is exactly the mechanism). Two rules older than
+  the band, both beating `.dp-day.dp-start`/`-end`/`-in-range` at (0,2,0), so a POINTED-AT
+  chosen night was repainted: `.dp-day:hover:not(.dp-disabled):not(.dp-empty)` at (0,4,0)
+  turned the pill `rgba(255,255,255,0.92)` — near-white ink on near-white — and
+  `#date-picker .dp-day:not([data-act]):hover` at (1,3,0) set `background: transparent`, so
+  the chosen CHECK-OUT **vanished entirely**. That second one lands almost every time,
+  because a check-out is so often not clickable (it starts no stay of its own), and it is
+  the September screenshot. **Measured on a plain desktop pointer, so this was never
+  iOS-specific — iOS only makes it STICK**, since a tap leaves `:hover` applied with no
+  pointer to move away. Three changes: both rules now exclude the three selected states
+  (hovering your own dates must not repaint them on any device); the dead-cell rule keeps
+  `transform/box-shadow: none` for everything but only blanks the FILL where there is no
+  selection to erase; and the tint moved inside `@media (hover: hover)`, the call the shared
+  lift lower in app.css already makes. Gated in §18 by hovering each chosen cell and
+  asserting the fill is unchanged — plus that an unselected bookable night STILL answers the
+  pointer, or it is a fix by deletion — and the media wrapper is asserted through the CSSOM,
+  because Chromium will not reproduce sticky hover for us to observe. **NB that CSSOM walk
+  has a trap: modern Chromium gives every `CSSStyleRule` a (usually empty) `cssRules` list
+  for CSS nesting, so an `if (r.cssRules) { …; continue; }` branch skips every style rule in
+  the document** — the first version reported ZERO day-cell hover rules, including ones that
+  had been there for months. Read `selectorText` first; recurse only on a non-empty list.
+- **PAID FOR WITHOUT RAISING app.css's BUDGET**, which is what the previous entry's raise
+  should have done. The comments went in, went over by 402 bytes gzipped, and were then paid
+  for by trimming prose that restated CLAUDE.md at length: the `.glass-panel`-is-a-material
+  note, the `env()` migration note, the Square-card framing note, and two comments about the
+  status-text retune where the second superseded the first (collapsed into one). Net 183
+  bytes of headroom under the existing budget. This is the order the rule intends — trim
+  first, raise only if the trade is still worth it.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

@@ -228,14 +228,12 @@ body.acct-preview-embedded {
   --safe-b: 0px;
   --safe-l: 0px;
 }
-/* This reaches EVERY inset now: all 36 raw env() sites were migrated onto these
-   tokens, so the four above are the only env() left and zeroing them zeroes the
-   lot. `header`/`.container` used to call env() directly and inset a SECOND time
-   in here. Restating them without the inset term was tried and REVERTED — the
-   override out-specified the guest shell's own `top` (header 10px→20px), so the
-   preview stopped matching what the customer sees. Migrating the declarations
-   adds no specificity, so that trap is gone. check-css-conventions keeps rawEnv
-   at 0: a new raw env() would silently opt its rule out again. */
+/* This reaches EVERY inset: all 36 raw env() sites were migrated onto these tokens,
+   so the four above are the only env() left and zeroing them zeroes the lot.
+   Restating `header`/`.container` without the inset term was tried and REVERTED — the
+   override out-specified the guest shell's own `top` (header 10→20px). Migrating the
+   DECLARATIONS adds no specificity, which is why that trap is gone.
+   check-css-conventions keeps rawEnv at 0. */
 
 /* ---- COASTAL FRESH (light): the guest default. Warm linen ground, white
            glass, ink-slate text, rose-gold + sea/sky secondary accents, soft
@@ -264,21 +262,15 @@ body.light-mode {
      surface would silently drop it back under AA. */
   --accent-text: #965c35;
   --accent-soft: rgba(198, 136, 94, 0.42);
-  /* Status TEXT retuned for the linen ground: the dark-theme tints (pale
-     green/amber/red) fail WCAG AA as text on white glass. The -text tokens are
-     text-only (fills use the base --ok/--warn/--danger), so darkening them here
-     is regression-free. */
-  /* Retuned AGAIN, against the status TINT rather than the bare surface. These
-     tokens almost always paint on a `color-mix(var(--<status>) 12–18%, transparent)`
-     background of their own — 13 such pairs across app.css + admin.css (act strips,
-     status pills, the health banners) — and that tint is DARKER than the surface it
-     sits on, so clearing AA on the surface does not mean clearing it in the place the
-     text actually appears. Measured on the worst light ground of the three these ride
-     (cmdk panel, glass-over-cream, the timeline's #f0f0f0 band): ok 4.23:1, warn
-     4.40:1, danger 4.30:1 — all three UNDER AA where they are really used, while each
-     passed the surface-only check. a11y-test §1b now measures the tinted pairing so
-     this can't come back. Darkening is monotonically safe here: every light-mode
-     ground is lighter than the text, so the surface-only ratios only improve. */
+  /* Status TEXT for the linen ground, tuned against the status TINT rather than the bare
+     surface. These are text-only (fills use the base --ok/--warn/--danger), and they
+     almost always paint on a `color-mix(var(--<status>) 12–18%, transparent)` ground of
+     their own — 13 such pairs across app.css + admin.css — which is DARKER than the
+     surface beneath, so clearing AA on the surface does not mean clearing it where the
+     text appears. Measured on the worst light ground (cmdk panel, glass-over-cream, the
+     timeline's #f0f0f0 band): ok 4.23, warn 4.40, danger 4.30 — all UNDER AA in use while
+     each passed the surface-only check. a11y-test §1b measures the tinted pairing now.
+     Darkening is monotonically safe: every light ground is lighter than the text. */
   --ok-text: #29712d; /* 4.66:1 on its own 15% tint (was #2c7830 → 4.23) */
   --warn-text: #9c5300; /* 4.62:1 on its own 15% tint (was #a15600 → 4.40) */
   --danger-text: #bc2626; /* 4.66:1 on its own 15% tint (was #c62828 → 4.30) */
@@ -486,24 +478,16 @@ select,
     transform: translateY(-5px);
     box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4), var(--glass-rim);
   }
-  /* …but .glass-panel is a MATERIAL, not an affordance, and the lift above is an
-     affordance: "this card responds to you". Modals, dialogs and the account-preview
-     shell carry the same material without being things you click, so the hover state
-     was wrong on them in two measurable ways.
-
-     It MOVES them. A dialog drifting 5px up as the pointer crosses its edge shifts
-     its own buttons under the cursor mid-reach — measured on the shared glass dialog:
-     top 377.3 → 372.3, the same dialog the bulk send uses to confirm who gets emailed.
-
-     And it makes them TRANSLUCENT: background jumps to --glass-hover (0.78 → 0.92
-     light, 0.018 → 0.06 dark). On .acct-preview-shell that undid the opaqueness the
-     shell specifically sets — the back office ghosted through behind the customer's
-     name, the exact bug its own comment says was fixed, because only the RESTING
-     state had been. It also broke the notch guarantee: the 5px lift put the bar at
-     55px against a 59px inset, i.e. back under the Dynamic Island.
-
-     Scoped deliberately to modals / dialogs / overlay shells — surfaces you read and
-     act in. Decorative page panels (hero, trust strip, host card) keep the lift. */
+  /* …but .glass-panel is a MATERIAL and the lift above is an AFFORDANCE ("this card
+     responds to you"), so on things you don't click it was wrong twice over. It MOVED
+     them — the shared glass dialog measured top 377.3 → 372.3 as the pointer crossed
+     its edge, shifting its own buttons mid-reach — and it made them TRANSLUCENT
+     (--glass-hover: 0.78 → 0.92 light, 0.018 → 0.06 dark), which on
+     .acct-preview-shell undid the opaqueness that shell sets for itself, ghosting the
+     back office through behind the customer's name; the 5px lift also put the bar at
+     55px against a 59px notch inset. Scoped to modals / dialogs / overlay shells —
+     surfaces you read and act in. Decorative page panels keep the lift. See CLAUDE.md
+     ("a MATERIAL, not an affordance") for the full account. */
   .modal-box:hover,
   .glass-dialog-box:hover,
   .reviews-modal-box:hover,
@@ -1236,9 +1220,16 @@ body.light-mode ::-webkit-scrollbar-thumb {
     border-color 0.2s;
   user-select: none;
 }
-.dp-day:hover:not(.dp-disabled):not(.dp-empty) {
-  background: var(--glass-hover);
-  border-color: var(--glass-highlight);
+/* HOVER MUST NOT ERASE THE SELECTION. This tint is (0,4,0) against `.dp-day.dp-start`'s
+   (0,2,0), so hovering your own check-in turned the pill `rgba(255,255,255,0.92)` and put
+   near-white ink on near-white. On a phone the tap LEAVES it applied, so the cell just
+   chosen sits there wearing it — a fixed selection still reading as invisible. Hence the
+   pointer gate (as on the shared lift below) AND the three exclusions. */
+@media (hover: hover) {
+  .dp-day:hover:not(.dp-disabled):not(.dp-empty):not(.dp-start):not(.dp-end):not(.dp-in-range) {
+    background: var(--glass-hover);
+    border-color: var(--glass-highlight);
+  }
 }
 .dp-day.dp-empty {
   cursor: default;
@@ -1290,6 +1281,13 @@ body.light-mode ::-webkit-scrollbar-thumb {
 #date-picker .dp-day:not([data-act]):hover {
   transform: none;
   box-shadow: none;
+}
+/* ...but blanking the FILL is only right where there is no selection to erase. A chosen
+   CHECK-OUT is often not clickable (it starts no stay of its own), and `transparent` on an
+   ID out-specifies `.dp-day.dp-end`, so hovering — or on a phone merely having TAPPED —
+   the far end made the pill VANISH. That is the September screenshot. */
+#date-picker
+  .dp-day:not([data-act]):not(.dp-start):not(.dp-end):not(.dp-in-range):hover {
   background: transparent;
   border-color: transparent;
 }
@@ -2928,14 +2926,12 @@ a.card {
 .pay-full-link:hover {
   text-decoration: underline;
 }
-/* DO NOT FRAME THIS. Square's card element draws its OWN bordered field inside
-   the iframe, and the iframe is TALLER than what it paints — it reserves room
-   below for an inline error. Wrapping it therefore does two visible things,
-   both measured on the owner's screenshot of the live SDK: a second edge around
-   Square's own field, and that reserved room turned into a large empty box.
-   A local stub cannot show either, because the stub renders only what it paints.
-   The space is Square's and stays; unboxed it is invisible whitespace before the
-   button rather than an empty container. */
+/* DO NOT FRAME THIS. Square's card element draws its own bordered field inside the
+   iframe, and the iframe is TALLER than what it paints (it reserves room for an inline
+   error) — so wrapping it gives a second edge around Square's field AND turns that
+   reserved room into a large empty box. Both measured on the live SDK; a local stub
+   shows neither, since it renders only what it paints. Unboxed, the space is invisible
+   whitespace before the button. */
 .sq-card {
   min-height: 56px;
   padding: 4px 0;
