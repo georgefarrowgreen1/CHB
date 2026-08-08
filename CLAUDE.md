@@ -184,6 +184,30 @@ table and looked like a different product from the confirmation that follows the
   it — asserting it on them would measure the harness, so both halves of the real
   mechanism are checked instead (the sender sets the global, the transport prepends it,
   and it is unset afterwards so a real send is never marked).
+  **THE TWO WEEKLY EMAILS NOW HAVE A BUTTON** (Manage → System check → More tools).
+  Both `owner-digest.php` and `weekly-analytics.php` have supported `?force=1` since
+  they were written — their own headers say so — and nothing in the back office ever
+  asked, so seeing your own digest meant waiting for Monday. `sendWeeklyEmailNow(which,
+  btn)` POSTs with the flag in the QUERY (the script reads `$_GET['force']`; the POST is
+  what makes `require_admin()` enforce the CSRF token). These send the REAL email with
+  REAL data, which beats a fixture. **The enquiry nudge deliberately gets NO button**
+  despite also supporting `?force=1`: it emails GUESTS, so forcing it is live marketing
+  to real enquirers, not a sample, and it does not belong beside "Email me samples".
+  **AND THE RETIRED INKS ARE RATCHETED ACROSS EVERY COMPOSING FILE** (§5). §2 measures
+  the RENDERED output, which is the strongest check available, but it can only see the
+  21 templates mailer.php builds — so the weekly digest and weekly analytics were still
+  setting `#8E877A` as TEXT (3.56:1) after that ink was retired, and the chat
+  notification's "View the photo" link was `#B07A3F` (3.68:1). Seven sites, all fixed.
+  §5 discovers every file that reaches for the design system's blocks and forbids a
+  retired ink used as `color:` — narrow on purpose, because the same hexes are still
+  correct as FILLS (email_shell's accent bar, email_h's swatch) and forbidding the value
+  outright would fail on correct code and get worked around.
+  **NB the gate's own scratch files live in the SYSTEM TEMP DIR, not beside the app.**
+  They were written into the app directory at first, and an aborted run left one behind
+  where `test-auth-posture.php` failed it as an unregistered web-reachable endpoint.
+  Moving them out means the copied email-samples.php needs its `__DIR__` pinned to the
+  real app path, or the waitlist sample's `require __DIR__ . '/waitlist-lib.php'`
+  resolves to `/tmp` — which the gate itself caught.
   **STILL NOT SAMPLABLE, and why**: roughly sixteen emails compose INLINE in a cron
   script or a route rather than in a callable function — the weekly owner digest and
   weekly analytics (both script-level, and both still using the retired `#8E877A`, which

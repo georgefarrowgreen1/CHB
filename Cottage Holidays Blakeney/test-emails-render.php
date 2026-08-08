@@ -114,7 +114,13 @@ $src = str_replace(
     $nb . "    foreach (\$messages as \$m) { \$GLOBALS['CAP'][] = ['to' => \$m['to'] ?? '', 'subject' => \$m['subject'] ?? '', 'html' => \$m['html'] ?? null, 'text' => \$m['text'] ?? '']; }\n    return array_map(fn(\$m) => ['ok' => true, 'captured' => true], \$messages);\n",
     $src,
 );
-$tmp = $APP . '/__mailer_capture_test.php';
+// The capture copies live in the system temp dir, NOT the app directory. They were
+// written beside the app at first, and an aborted run (a fatal, a Ctrl-C) left one
+// behind — where test-auth-posture.php promptly failed it as an unregistered
+// web-reachable endpoint. A test's scratch file has no business in the deploy tree.
+// Safe to move: mailer.php has no requires of its own, and this harness supplies
+// db.php's helpers itself.
+$tmp = tempnam(sys_get_temp_dir(), 'chb_mailer_') . '.php';
 file_put_contents($tmp, $src);
 
 require_once $APP . '/pricing.php';
@@ -475,7 +481,7 @@ chk('the accent works as a button fill under its own ink',
 // BELOW it), so it can be driven here. Its own requires are stripped: this harness
 // has already supplied db.php's helpers and the capture-spliced mailer.
 echo "\n-- \u{00A7}4 every sample actually sends --\n";
-$smpTmp = $APP . '/__samples_capture_test.php';
+$smpTmp = tempnam(sys_get_temp_dir(), 'chb_samples_') . '.php';
 // Strip its requires at ANY indentation: chb_send_sample_emails() re-requires
 // mailer.php from INSIDE the function body, and an anchored ^require_once missed it,
 // so the real mailer clashed with this harness's capture-spliced copy.
@@ -488,6 +494,11 @@ $smp = preg_replace(
 // `if (basename($_SERVER['SCRIPT_NAME']) === 'email-samples.php')`, so including the
 // file defines the function and does nothing else. (Cutting the tail by hand was the
 // first attempt and it sliced mid-block.)
+// The copy lives outside the app directory, so its own __DIR__ would resolve to the
+// temp dir — and the waitlist sample requires waitlist-lib.php relative to it. Pin
+// __DIR__ to the real app directory in the copy. (Found by the gate: "Failed opening
+// required '/tmp/waitlist-lib.php'".)
+$smp = str_replace('__DIR__', var_export($APP, true), $smp);
 file_put_contents($smpTmp, $smp);
 $before = count($GLOBALS['CAP']);
 $sampleRes = null;
@@ -540,7 +551,64 @@ if (is_array($sampleRes)) {
     chk('and addressed somewhere, never a blank recipient', $toOwner);
 }
 
-@unlink($APP . '/__mailer_capture_test.php');
+// ============================================================================
+//  §5  NO RETIRED INK ANYWHERE AN EMAIL IS COMPOSED
+// ============================================================================
+// §2 measures the RENDERED output, which is the strongest check there is — but it
+// can only see the 21 templates mailer.php composes. Eleven other files build emails
+// too, script-level in a cron or inline in a route, so nothing renders them and §2
+// is blind to them. Measured: the weekly owner digest and the weekly analytics email
+// were still setting #8E877A as TEXT (3.56:1) after that ink was retired from
+// mailer.php, and the chat notification's "View the photo" link was #B07A3F
+// (3.68:1) — i.e. the contrast fix was narrower than it looked, and nothing said so.
+//
+// This is a SOURCE ratchet, and deliberately narrow about what it forbids: a retired
+// ink used as `color:` (text). The same hexes are still legitimate as FILLS — the
+// accent bar email_shell draws, the swatch email_h puts beside a heading — so
+// forbidding the value outright would fail on correct code and get worked around.
+echo "\n-- \u{00A7}5 no retired ink used as text, in any email-composing file --\n";
+$RETIRED = [
+    '#8E877A' => '3.56:1 on white — use email_muted_ink()',
+    '#9A927F' => '3.09:1 on white — use email_muted_ink()',
+    '#A0987F' => '2.67:1 on the tinted panel — use email_muted_ink()',
+    '#A79E8A' => '2.12:1 on the outer ground — use email_muted_ink()',
+    '#B07A3F' => '3.68:1 on white — use email_accent_ink()',
+    '#C79A64' => 'the accent as TEXT is 2.55:1 — use email_accent_ink() (it stays fine as a FILL)',
+    '#D6A785' => 'as TEXT it is 2.16:1 — use email_accent_ink() (it stays fine as a FILL)',
+];
+$composers = [];
+foreach (glob($APP . '/*.php') as $f) {
+    $b = basename($f);
+    if (strpos($b, 'test-') === 0) {
+        continue;
+    }
+    $src = (string) file_get_contents($f);
+    // "Composes an email" = reaches for the design system's blocks.
+    if (preg_match('/(?<![a-z_])email_(shell|p|h|rows|note|btn|amount|footnote|money_rows)\s*\(/', $src)) {
+        $composers[$b] = $src;
+    }
+}
+// Vacuity guard: if the discovery stops finding files, everything below passes.
+chk('found the files that compose emails (' . count($composers) . ')', count($composers) >= 8);
+$offenders = [];
+foreach ($composers as $b => $src) {
+    // Strip line comments first — this file NAMES every retired ink in the table
+    // above, and the negative-scan-sees-its-own-explanation trap has already been
+    // walked into twice in test-payrail.
+    $body = (string) preg_replace('#^\s*//.*$#m', '', $src);
+    foreach ($RETIRED as $hex => $why) {
+        // Only as an ink: `color:<hex>`, never background/border/bgcolor.
+        if (preg_match('/(?<!-)\bcolor\s*:\s*' . preg_quote($hex, '/') . '\b/i', $body)) {
+            $offenders[] = "$b uses $hex as text — $why";
+        }
+    }
+}
+chk('no retired ink is set as text anywhere', $offenders === []);
+foreach (array_slice($offenders, 0, 10) as $o) {
+    echo "        $o\n";
+}
+
+@unlink($tmp);
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail EMAIL-RENDER CHECK(S) FAILED \u{274C}\n";

@@ -20122,6 +20122,48 @@ function activityLogSearch(v) {
     __actLogSearchTimer = setTimeout(renderActivityLog, 250);
 }
 // ---- Status page: email me a sample of every guest email ----
+// THE TWO WEEKLY EMAILS HAD NO BUTTON. Both have supported ?force=1 since they were
+// written (their own headers say so) and nothing ever asked for it, so seeing your own
+// digest meant waiting for Monday. The mailboxTab shape again. These send the REAL
+// email with REAL data — better than a fixture — and are safe as a button precisely
+// because both go to the OWNER. The enquiry nudge deliberately gets NO button despite
+// also supporting ?force=1: it emails GUESTS, so forcing it is live marketing to real
+// enquirers, not a sample.
+const CHB_WEEKLY_EMAILS = {
+    digest: { file: 'owner-digest.php', label: 'weekly digest' },
+    analytics: { file: 'weekly-analytics.php', label: 'weekly analytics email' },
+};
+async function sendWeeklyEmailNow(which, btn) {
+    const spec = CHB_WEEKLY_EMAILS[which];
+    if (!spec) return;
+    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`))) {
+        return;
+    }
+    const was = btn ? btn.textContent : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+    }
+    const out = document.getElementById('diag-samples');
+    try {
+        // ?force=1 in the query ($_GET); POST so require_admin() checks the CSRF token.
+        const r = await apiPost(spec.file + '?force=1', {});
+        if (!r || !r.ok) throw new Error((r && r.error) || 'Sending failed');
+        if (out) {
+            out.innerHTML =
+                `<div style="margin:10px 0 4px;color:var(--ok-text);">Sent your ${escapeHtml(spec.label)} — check your inbox.</div>`;
+        }
+    } catch (e) {
+        if (out) {
+            out.innerHTML = `<div style="color:var(--danger);margin:10px 0 4px;">Couldn't send it: ${escapeHtml(e.message)}</div>`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = was || 'Send it now';
+        }
+    }
+}
 async function sendSampleEmails(btn) {
     if (
         !(await glassConfirm(

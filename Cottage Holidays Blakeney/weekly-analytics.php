@@ -131,7 +131,7 @@ $inner =
     $alertHtml .
     email_amount(
         'Visits this week',
-        $views . ($deltaTxt !== '' ? ' <span style="font-size:15px;color:#8E877A;">' . $deltaTxt . '</span>' : ''),
+        $views . ($deltaTxt !== '' ? ' <span style="font-size:15px;color:' . email_muted_ink() . ';">' . $deltaTxt . '</span>' : ''),
         $uniq . ' unique visitors',
     ) .
     email_rows(
@@ -139,7 +139,7 @@ $inner =
             [
                 'Conversion',
                 $convPct .
-                '% <span style="color:#8E877A;">(' .
+                '% <span style="color:' . email_muted_ink() . ';">(' .
                 $bookings .
                 ' booking' .
                 ($bookings === 1 ? '' : 's') .
