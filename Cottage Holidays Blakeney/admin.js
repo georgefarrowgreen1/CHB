@@ -9286,6 +9286,15 @@ function inboxSubline() {
     if (enq) parts.push(enq === 1 ? '1 enquiry waiting' : `${enq} enquiries waiting`);
     if (msg) parts.push(msg === 1 ? '1 unread chat' : `${msg} unread chats`);
     if (mbx) parts.push(mbx === 1 ? '1 unread email' : `${mbx} unread emails`);
+    // It only ever counted WAITING work, so the Declined drawer was captioned
+    // "All caught up — nothing needs a reply" over a list of rows.
+    if (__inboxFolder === 'enquiries' && __inboxTab === 'declined') {
+        const n = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
+        el.textContent = n
+            ? (n === 1 ? '1 declined enquiry' : `${n} declined enquiries`) + ' — restore any of them.'
+            : 'Nothing declined.';
+        return;
+    }
     el.textContent = parts.length ? parts.join(' · ') : 'All caught up — nothing needs a reply.';
 }
 
@@ -17553,7 +17562,9 @@ function accomSectionHtml(k, sec) {
 }
 function reviewRowHtml(r) {
     r = r || { name: '', stars: 5, text: '', prop: '', source: '' };
-    const propOpts = ['<option value="">(no cottage)</option>']
+    // The label states the CONSEQUENCE: "(no cottage)" reads as a neutral choice, and
+    // it is the default, so nothing said it takes the review off every cottage page.
+    const propOpts = ['<option value="">(no cottage \u2014 not shown on any cottage page)</option>']
         .concat(
             Object.keys(propertyMeta).map(
                 (k) =>
@@ -19580,7 +19591,7 @@ function fillReviewImportControls() {
     const propSel = document.getElementById('bulk-rev-prop');
     if (propSel)
         propSel.innerHTML =
-            '<option value="">(no cottage)</option>' +
+            '<option value="">(no cottage \u2014 not shown on any cottage page)</option>' +
             Object.keys(propertyMeta)
                 .map((k) => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`)
                 .join('');
@@ -19708,11 +19719,34 @@ async function saveReviews() {
             source: get('source'),
         });
     }
+    // A REVIEW WITH NO COTTAGE APPEARS ON NO COTTAGE PAGE: renderPropReviews filters
+    // r.prop === propKey, so prop:'' hides the whole section, while renderGuestWords
+    // does not filter and keeps rotating it on the homepage. It also deflates that
+    // cottage's COUNT and AVERAGE (measured: 6 unassigned + 2 assigned read as "2").
+    // "(no cottage)" is the FIRST option in both editors, so it is what you get by not
+    // choosing. This ASKS rather than refusing — the bulk-send confirm's posture.
+    const stranded = reviews.filter((r) => !r.prop).length;
+    if (stranded) {
+        const ok = await glassConfirm(
+            (stranded === 1
+                ? 'One review has no cottage set.'
+                : `${stranded} reviews have no cottage set.`) +
+                '\n\nA review with no cottage does not appear on any cottage page, and it is left out of' +
+                ' that cottage\u2019s review count and star rating. It will still show in the homepage quotes.' +
+                '\n\nOK = save anyway  ·  Cancel = go back and pick a cottage',
+            'Save anyway',
+        );
+        if (!ok) return;
+    }
     try {
         await saveContent('reviews', reviews);
         siteContent.reviews = reviews;
         renderReviews();
-        toast('Reviews saved.');
+        toast(
+            stranded
+                ? `Reviews saved — ${stranded} with no cottage, so not on any cottage page.`
+                : 'Reviews saved.',
+        );
     } catch (e) {
         glassAlert("Couldn't save reviews: " + e.message);
     }
@@ -20122,6 +20156,48 @@ function activityLogSearch(v) {
     __actLogSearchTimer = setTimeout(renderActivityLog, 250);
 }
 // ---- Status page: email me a sample of every guest email ----
+// THE TWO WEEKLY EMAILS HAD NO BUTTON. Both have supported ?force=1 since they were
+// written (their own headers say so) and nothing ever asked for it, so seeing your own
+// digest meant waiting for Monday. The mailboxTab shape again. These send the REAL
+// email with REAL data — better than a fixture — and are safe as a button precisely
+// because both go to the OWNER. The enquiry nudge deliberately gets NO button despite
+// also supporting ?force=1: it emails GUESTS, so forcing it is live marketing to real
+// enquirers, not a sample.
+const CHB_WEEKLY_EMAILS = {
+    digest: { file: 'owner-digest.php', label: 'weekly digest' },
+    analytics: { file: 'weekly-analytics.php', label: 'weekly analytics email' },
+};
+async function sendWeeklyEmailNow(which, btn) {
+    const spec = CHB_WEEKLY_EMAILS[which];
+    if (!spec) return;
+    if (!(await glassConfirm(`Send yourself the ${spec.label} now, using this week's real figures?`))) {
+        return;
+    }
+    const was = btn ? btn.textContent : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+    }
+    const out = document.getElementById('diag-samples');
+    try {
+        // ?force=1 in the query ($_GET); POST so require_admin() checks the CSRF token.
+        const r = await apiPost(spec.file + '?force=1', {});
+        if (!r || !r.ok) throw new Error((r && r.error) || 'Sending failed');
+        if (out) {
+            out.innerHTML =
+                `<div style="margin:10px 0 4px;color:var(--ok-text);">Sent your ${escapeHtml(spec.label)} — check your inbox.</div>`;
+        }
+    } catch (e) {
+        if (out) {
+            out.innerHTML = `<div style="color:var(--danger);margin:10px 0 4px;">Couldn't send it: ${escapeHtml(e.message)}</div>`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = was || 'Send it now';
+        }
+    }
+}
 async function sendSampleEmails(btn) {
     if (
         !(await glassConfirm(
@@ -20711,24 +20787,48 @@ function declinedInboxHtml() {
     if (!__declinedEnq.length) {
         return '<div class="inbox-empty-inline">Nothing declined — anything you turn down shows up here.</div>';
     }
-    return __declinedEnq
-        .map((e) => {
-            const meta = propertyMeta[e.propKey];
-            const propName = meta ? meta.name : e.propKey;
-            return `
+    // A drawer of rows that look like enquiries but cannot be acted on like them needs
+    // a sentence, or it reads as a second inbox — and it states what they came to
+    // check: these are recoverable, and declining sent the guest nothing.
+    const lead =
+        '<p class="enq-declined-lead">Turned down, and kept. Restoring one puts it back in Waiting exactly as it arrived &mdash; nothing was sent to the guest when you declined.</p>';
+    return (
+        lead +
+        __declinedEnq
+            .map((e) => {
+                const meta = propertyMeta[e.propKey];
+                const propName = meta ? meta.name : e.propKey;
+                // WHEN it was declined — what tells one row from another here, and why
+                // declinedAt now survives the mapper. relTime is the inbox's own recency
+                // vocabulary; DD/MM/YYYY is for comparing dates, not "how long ago".
+                const when = e.declinedAt ? relTime(e.declinedAt) : '';
+                const msg = (e.message || '').trim();
+                return `
             <div class="bk-row glass-panel enq-declined-row">
                 <span class="bk-row-body">
                     <span class="bk-row-top">
                         <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
-                        <span class="bk-chip"><span class="bk-dot"></span>Declined</span>
+                        <span class="bk-chip declined"><span class="bk-dot"></span>Declined${
+                            when ? ' ' + escapeHtml(when) : ''
+                        }</span>
                     </span>
                     <strong class="bk-row-name">${escapeHtml(e.name || 'Guest')}</strong>
                     <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests || '')}</span>
+                    ${
+                        msg
+                            ? `<span class="enq-declined-msg" title="${escapeHtml(msg)}">&ldquo;${escapeHtml(msg)}&rdquo;</span>`
+                            : ''
+                    }
                 </span>
-                <button type="button" class="btn-sm btn-edit" ${chbAttrs('restoreDeclinedEnquiry', String(e.dbId), e.name || '')}>Restore</button>
+                <button type="button" class="btn-sm btn-edit enq-declined-restore" ${chbAttrs(
+                    'restoreDeclinedEnquiry',
+                    String(e.dbId),
+                    e.name || '',
+                )}>Put back in Waiting</button>
             </div>`;
-        })
-        .join('');
+            })
+            .join('')
+    );
 }
 // Put it back in the inbox, and take it out of the drawer in the same breath so
 // the two lists cannot both claim it.
@@ -20763,6 +20863,17 @@ function renderInbox() {
                 `<button type="button" class="inbox-sort-btn${__inboxTab === k ? ' is-on' : ''}" role="tab" aria-selected="${__inboxTab === k}" ${chbAttrs('inboxTab', String(k))}>${lbl}</button>`,
         )
         .join('')}</div>`;
+    // THE HEADING NAMES THE LIST BENEATH IT: "Enquiries" + the WAITING count put a
+    // green 0 above a non-empty declined list (owner's screenshot). The badge is hidden
+    // by CLASS, not emptied — refreshInboxBadge() is in app.js and runs from a dozen
+    // places, so it would write the number back. The TEXT is safe to set here:
+    // renderInbox is the only thing that switches tabs.
+    const enqFolder = document.getElementById('inbox-folder-enquiries');
+    if (enqFolder) enqFolder.classList.toggle('showing-declined', __inboxTab === 'declined');
+    const enqHead = enqFolder ? enqFolder.querySelector('.bo-sec-title') : null;
+    if (enqHead && enqHead.firstChild && enqHead.firstChild.nodeType === 3) {
+        enqHead.firstChild.nodeValue = __inboxTab === 'declined' ? 'Declined enquiries ' : 'Enquiries ';
+    }
     if (__inboxTab === 'declined') {
         list.innerHTML = tabBar + declinedInboxHtml();
         return;

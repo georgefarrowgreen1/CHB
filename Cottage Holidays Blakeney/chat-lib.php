@@ -224,7 +224,7 @@ if (!function_exists('chat_admin_reply')) {
                                 ? email_p(
                                     '<a href="' .
                                         email_esc($photoUrl) .
-                                        '" style="color:#B07A3F;text-decoration:underline;">View the photo</a>',
+                                        '" style="color:' . email_accent_ink() . ';text-decoration:underline;">View the photo</a>',
                                 )
                                 : '') .
                             email_p(

@@ -184,6 +184,30 @@ table and looked like a different product from the confirmation that follows the
   it — asserting it on them would measure the harness, so both halves of the real
   mechanism are checked instead (the sender sets the global, the transport prepends it,
   and it is unset afterwards so a real send is never marked).
+  **THE TWO WEEKLY EMAILS NOW HAVE A BUTTON** (Manage → System check → More tools).
+  Both `owner-digest.php` and `weekly-analytics.php` have supported `?force=1` since
+  they were written — their own headers say so — and nothing in the back office ever
+  asked, so seeing your own digest meant waiting for Monday. `sendWeeklyEmailNow(which,
+  btn)` POSTs with the flag in the QUERY (the script reads `$_GET['force']`; the POST is
+  what makes `require_admin()` enforce the CSRF token). These send the REAL email with
+  REAL data, which beats a fixture. **The enquiry nudge deliberately gets NO button**
+  despite also supporting `?force=1`: it emails GUESTS, so forcing it is live marketing
+  to real enquirers, not a sample, and it does not belong beside "Email me samples".
+  **AND THE RETIRED INKS ARE RATCHETED ACROSS EVERY COMPOSING FILE** (§5). §2 measures
+  the RENDERED output, which is the strongest check available, but it can only see the
+  21 templates mailer.php builds — so the weekly digest and weekly analytics were still
+  setting `#8E877A` as TEXT (3.56:1) after that ink was retired, and the chat
+  notification's "View the photo" link was `#B07A3F` (3.68:1). Seven sites, all fixed.
+  §5 discovers every file that reaches for the design system's blocks and forbids a
+  retired ink used as `color:` — narrow on purpose, because the same hexes are still
+  correct as FILLS (email_shell's accent bar, email_h's swatch) and forbidding the value
+  outright would fail on correct code and get worked around.
+  **NB the gate's own scratch files live in the SYSTEM TEMP DIR, not beside the app.**
+  They were written into the app directory at first, and an aborted run left one behind
+  where `test-auth-posture.php` failed it as an unregistered web-reachable endpoint.
+  Moving them out means the copied email-samples.php needs its `__DIR__` pinned to the
+  real app path, or the waitlist sample's `require __DIR__ . '/waitlist-lib.php'`
+  resolves to `/tmp` — which the gate itself caught.
   **STILL NOT SAMPLABLE, and why**: roughly sixteen emails compose INLINE in a cron
   script or a route rather than in a callable function — the weekly owner digest and
   weekly analytics (both script-level, and both still using the retired `#8E877A`, which
@@ -219,6 +243,72 @@ table and looked like a different product from the confirmation that follows the
   sentence — and one passed with the whole amount block gone, because `email_h()` renders
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
+
+## The declined drawer says what it is
+
+Reported from a phone (screenshot): the Declined tab showed a green **0** and "All caught
+up — nothing needs a reply" directly above a list with a row in it.
+- **`mapEnquiryFromApi` DROPPED `declined_at`.** enquiries.php's `declined` action
+  `SELECT *`s and `ORDER BY declined_at DESC` — so the server sends and sorts by the one
+  fact that identifies a decline, and the client threw it away. The row now leads with
+  it via `relTime` (the inbox's own recency vocabulary: "Yesterday", "5 Aug"). That is
+  NOT a breach of the DD/MM/YYYY screen rule — a numeric date is for comparing dates
+  against each other, and the question here is how long ago.
+- **THE HEADING NAMES THE LIST BENEATH IT.** The h2 is "Enquiries" + the WAITING count,
+  which on this tab described nothing on screen. It reads "Declined enquiries" while the
+  drawer is open, and the badge is hidden **by CLASS, not emptied** — `refreshInboxBadge()`
+  lives in app.js and runs from a dozen places, so an emptied badge is written straight
+  back. The heading TEXT is safe to set in `renderInbox`, which is the only thing that
+  switches tabs.
+- **`inboxSubline()` only ever counted WAITING work**, hence the "All caught up" caption
+  over a non-empty list. The drawer gets its own line.
+- **ARCHIVED WITHOUT DIMMING ANYTHING — two attempts measured as contrast failures
+  first.** `opacity: 0.72` on the row body composites every ink toward the ground: the
+  guest's quoted message fell to **3.05:1 dark / 2.75:1 light**. Tinting the ground with
+  `var(--text-muted)` — the ink's own hue — moved the ground toward the text and still
+  measured 4.34 / 3.86. Flat and unlifted reads as filed away and leaves every ink where
+  the tokens put it. **Container opacity is the blunt instrument to distrust here: it
+  dims text that was already muted, and no token audit can see it because the token is
+  unchanged.**
+- **`--text-muted` MEASURES 4.34:1 IN DARK MODE on `.glass-panel`, and that is
+  PRE-EXISTING** — checked before "fixing" it: **215** existing elements use that exact
+  colour on that exact ground and measure the identical ratio. So new muted text here is
+  consistent with the app, and special-casing two elements would be wrong. a11y-test
+  gates the status tints and `--accent-text`, not this one; fixing it means nudging one
+  token across 215 elements and belongs in its own PR.
+- Declined is a **DECISION, not a fault** — deliberately not the red `danger` chip. The
+  guest's message shows on one clamped line so two declines can be told apart without
+  restoring one, and the action says where it goes ("Put back in Waiting"), matching the
+  toast. Gated by ui-test-mailbox (9 checks; the mapper, the opacity and the heading each
+  break-tested). NB `chbAttrs` emits **`data-args`** (a JSON list), so a
+  `[data-arg="declined"]` selector finds nothing — which is how the first draft of that
+  gate silently tested an unclicked tab.
+
+## "Read all reviews" — two causes, one by design and one a real bug
+
+Reported: the button showed on 21A (16 reviews) and on no other cottage page. Measured by
+driving `renderPropReviews` per scenario — and **NO suite covered cottage-page reviews at
+all**, which is how both shipped.
+- **The button needed FIVE reviews.** It was gated on `count > show.length` with a 4-card
+  grid, so a cottage with 1–4 got the cards, the count and the star average but no
+  button — which reads as the page being broken rather than as there being nothing more
+  to read. `.review-text` does NOT clamp, so ≤4 really is all of it on screen; the modal
+  is nonetheless the canonical list, so it is offered **from two up**. At one review a
+  "read all 1" button is noise.
+- **A review saved with NO COTTAGE appears on no cottage page — and deflates the ones it
+  should have counted for.** `renderPropReviews` filters `r.prop === propKey`, so
+  `prop: ''` hides the whole "Guest reviews" section, while `renderGuestWords()` does NOT
+  filter and keeps rotating the same review on the homepage — reviews visible there and
+  nowhere else. Measured: **6 unassigned + 2 assigned rendered as "2 reviews"**, so the
+  per-cottage COUNT and STAR AVERAGE are wrong too, silently. **"(no cottage)" is the
+  FIRST option in both the per-review editor and the bulk importer**, i.e. what you get
+  by not choosing, which is how a whole import ends up stranded. The option now names the
+  consequence ("not shown on any cottage page") and `saveReviews` ASKS before saving any,
+  naming the count — deliberately an ask, not a refusal, since the cottage is a field the
+  owner may genuinely not know yet (the bulk-send confirm's posture).
+Gated in ui-test-terms (8 checks: the button at 16/4/2/1, the count never inflated by
+unassigned reviews, and the owner-side half source-scanned); the button threshold, the
+stranded count and the option label are each break-tested.
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav

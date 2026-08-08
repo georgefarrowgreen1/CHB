@@ -45,6 +45,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         if (b.action === 'send') return json({ ok: true });
         if (b.action === 'delete') return json({ ok: true });
       }
+      if (b.__url === 'enquiries.php' && b.action === 'declined') {
+        return json({ ok: true, enquiries: [{
+          id: 91, prop_key: '21a', name: 'Jem Beighton', email: 'j@x.co',
+          check_in: d(40), check_out: d(44), adults: 2, children: 1,
+          message: 'Is there space to park a small van, and can we arrive late on the Saturday?',
+          created_at: d(-20) + ' 09:00:00', declined_at: d(-3) + ' 11:20:00',
+        }] });
+      }
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
     if (url.includes('bookings.php')) return json({ bookings: bookingRows });
@@ -441,6 +449,56 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(!!m && m.dateH <= m.lineH + 4, `${tag}: the dates never fragment (${m ? m.dateH + 'px vs ' + m.lineH : '?'})`);
     ok(!!m && m.capAbove, `${tag}: "Known guest" stays above the box`);
   }
+
+  // ---- THE DECLINED DRAWER SAYS WHAT IT IS ---------------------------------
+  // Reported from a phone: a green 0 and "All caught up — nothing needs a reply"
+  // sat above a list with a declined enquiry in it, and the row never said WHEN it
+  // was turned down — mapEnquiryFromApi dropped declined_at, which enquiries.php
+  // both SELECTs and ORDERs BY. Driven by CLICKING the tab (chbAttrs emits
+  // data-args, a JSON list, so a [data-arg=…] selector finds nothing — which is
+  // how the first version of this silently tested an unclicked tab).
+  await page.evaluate(() => window.inboxFolder('enquiries'));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find(
+      (x) => x.textContent.trim() === 'Declined',
+    );
+    if (b) b.click();
+  });
+  await page.waitForTimeout(700);
+  const dec = await page.evaluate(() => {
+    const row = document.querySelector('.enq-declined-row');
+    const q = (sel) => (row ? row.querySelector(sel) : null);
+    const head = document.querySelector('#inbox-folder-enquiries .bo-sec-title');
+    const badge = document.getElementById('inbox-badge');
+    const btn = q('.enq-declined-restore');
+    return {
+      chip: q('.bk-chip.declined') ? q('.bk-chip.declined').textContent.trim() : '',
+      btn: btn ? btn.textContent.trim() : '',
+      btnHit: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
+      msg: q('.enq-declined-msg') ? q('.enq-declined-msg').textContent.trim() : '',
+      msgOneLine: q('.enq-declined-msg')
+        ? q('.enq-declined-msg').getBoundingClientRect().height <=
+          parseFloat(getComputedStyle(q('.enq-declined-msg')).lineHeight) + 2
+        : false,
+      lead: !!document.querySelector('.enq-declined-lead'),
+      heading: head ? head.textContent.replace(/\s+/g, ' ').trim() : '',
+      badgeShown: badge ? getComputedStyle(badge).display !== 'none' : true,
+      subline: (document.getElementById('inbox-subline') || {}).textContent || '',
+      // The archived read must NOT come from container opacity: that composites
+      // every ink toward the ground and took the quoted message to 3.05:1.
+      bodyOpacity: q('.bk-row-body') ? getComputedStyle(q('.bk-row-body')).opacity : '',
+    };
+  });
+  ok(/^Declined\s+\S/.test(dec.chip), `the row says WHEN it was declined ("${dec.chip}")`);
+  ok(dec.btn === 'Put back in Waiting', `the action says where it goes ("${dec.btn}")`);
+  ok(dec.btnHit >= 24, `...at a real tap size (${dec.btnHit}px)`);
+  ok(dec.msg.length > 4 && dec.msgOneLine, 'the guest\u2019s own words show, on one line');
+  ok(dec.lead, 'the drawer explains itself once, above the rows');
+  ok(/^Declined enquiries/.test(dec.heading), `the heading names the list beneath it ("${dec.heading}")`);
+  ok(!dec.badgeShown, 'the WAITING count is not shown over the declined list');
+  ok(/declined enquir/i.test(dec.subline), `the subline describes this screen ("${dec.subline}")`);
+  ok(dec.bodyOpacity === '1', `the row body is not dimmed by opacity (${dec.bodyOpacity})`);
 
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);

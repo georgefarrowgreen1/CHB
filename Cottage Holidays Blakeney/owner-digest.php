@@ -275,7 +275,7 @@ $text =
 
 $sectionLabel = fn($t) => '<div style="font-family:' .
     email_sans() .
-    ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A0987F;margin:22px 0 2px;">' .
+    ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:' . email_muted_ink() . ';margin:22px 0 2px;">' .
     htmlspecialchars($t) .
     '</div>';
 $arrivalsHtml = $arrivals
@@ -306,7 +306,7 @@ $inner =
     email_p(htmlspecialchars(date('l j F Y')), true) .
     $sectionLabel('The week just gone') .
     email_rows([
-        ['New bookings', $newBookings . ' <span style="color:#8E877A;">(' . $money($newValue) . ')</span>'],
+        ['New bookings', $newBookings . ' <span style="color:' . email_muted_ink() . ';">(' . $money($newValue) . ')</span>'],
         ['Money received', $money($received)],
     ]) .
     $sectionLabel('The week ahead — arrivals') .
@@ -314,7 +314,7 @@ $inner =
     $sectionLabel('To keep an eye on') .
     email_rows(
         array_filter([
-            ['Balances owed', $owedCount . ' <span style="color:#8E877A;">(' . $money($owedSum) . ')</span>'],
+            ['Balances owed', $owedCount . ' <span style="color:' . email_muted_ink() . ';">(' . $money($owedSum) . ')</span>'],
             ['Pending enquiries', (string) $pending],
             $occPct !== null ? ['Occupancy (next 30 days)', $occPct . '%'] : null,
         ]),
@@ -356,7 +356,7 @@ $inner =
                         ';font-size:13px;color:#57524A;">“' .
                         htmlspecialchars($m['t']) .
                         '”' .
-                        ($m['n'] > 1 ? ' <span style="color:#8E877A;">· asked ' . $m['n'] . ' times</span>' : '') .
+                        ($m['n'] > 1 ? ' <span style="color:' . email_muted_ink() . ';">· asked ' . $m['n'] . ' times</span>' : '') .
                         '</td></tr>',
                     $misses,
                 ),

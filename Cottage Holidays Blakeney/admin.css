@@ -162,6 +162,53 @@ body.light-mode {
 .enq-declined-row .btn-sm {
   flex: 0 0 auto;
 }
+/* ARCHIVED, WITHOUT DIMMING ANYTHING. Two attempts measured as contrast failures
+   first: `opacity: 0.72` on the body composites every ink toward the ground (quoted
+   message 3.05:1 dark / 2.75:1 light), and tinting the ground with var(--text-muted)
+   — the ink's own hue — moved the ground toward the text (4.34 / 3.86). Flat and
+   unlifted reads as filed away and leaves every ink where the tokens put it. */
+.enq-declined-row {
+  box-shadow: none;
+}
+/* .glass-panel's hover lift says "I respond to you"; this row does not — only its
+   Restore button does. (The same opt-out the modals take, for the same reason.) */
+@media (hover: hover) {
+  .enq-declined-row:hover {
+    transform: none;
+  }
+}
+/* Declined is a DECISION, not a fault — deliberately not the red `danger` chip, which
+   would read as something having gone wrong with a choice the owner made. */
+.bk-chip.declined {
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  color: var(--text-light);
+  border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
+}
+/* What the drawer is, said once above the rows. */
+.enq-declined-lead {
+  margin: 2px 0 14px;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 52ch;
+}
+/* The guest's own words, so two declines can be told apart without restoring one.
+   One line; the full text is on the title attribute. */
+.enq-declined-msg {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The waiting count described nothing on this tab. Hidden by CLASS so app.js's
+   refreshInboxBadge can keep writing the number without the two fighting. */
+#inbox-folder-enquiries.showing-declined #inbox-badge {
+  display: none;
+}
 .compose-attach-chip {
   display: inline-flex;
   align-items: center;
