@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=242">
+    <link rel="stylesheet" href="app.css?v=243">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1232,10 +1232,13 @@
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">Leave your details and we'll email you if these dates become available. Dates are optional.</p>
             <label class="modal-label">Cottage</label>
             <select class="input-glass" id="wl-prop" style="margin-bottom:12px;"></select>
-            <div class="wl-dates">
-                <div><label class="modal-label">Check-in</label><input type="date" class="input-glass" id="wl-checkin"></div>
-                <div><label class="modal-label">Check-out</label><input type="date" class="input-glass" id="wl-checkout"></div>
-            </div>
+            <!-- Built-in calendar (openWaitlistDatePicker), not native date fields — see app.js -->
+            <label class="modal-label">Dates</label>
+            <button type="button" class="date-range-trigger" id="wl-date-trigger" data-act="openWaitlistDatePicker" style="margin-bottom:12px;">
+                <span class="date-range-text" id="wl-date-display">Any dates (optional)</span>
+                <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+            </button>
+            <input type="hidden" id="wl-checkin"><input type="hidden" id="wl-checkout">
             <label class="modal-label">Your name</label>
             <input type="text" class="input-glass" id="wl-name" style="margin-bottom:12px;">
             <label class="modal-label">Email</label>
@@ -1825,7 +1828,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=735"></script>
+    <script defer src="app.js?v=736"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

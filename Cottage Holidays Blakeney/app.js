@@ -9164,13 +9164,29 @@ function chatAvailStart() {
                 `<option value="${k}"${k === activeFrontProperty ? ' selected' : ''}>${escapeHtml(propertyMeta[k].name)}</option>`,
         )
         .join('');
-    const today = todayDashed();
+    // THE BUILT-IN CALENDAR, not two native <input type="date">: this asks about the
+    // LIVE calendar and the native control shows none, so the guest picked blind and
+    // was told afterwards that the nights were taken.
     chatBot(
         "Pick a cottage and your dates — I'll check the live calendar right now." +
-            `<select id="${uid}-prop" class="input-glass field-sm">${opts}</select>` +
-            `<div style="display:flex;gap:8px;"><input type="date" id="${uid}-ci" class="input-glass field-sm" min="${today}" aria-label="Check-in"><input type="date" id="${uid}-co" class="input-glass field-sm" min="${today}" aria-label="Check-out"></div>` +
+            `<select id="${uid}-prop" class="input-glass field-sm" aria-label="Cottage">${opts}</select>` +
+            `<button type="button" class="date-range-trigger field-sm" id="${uid}-trigger" ${chbAttrs('chatAvailDates', String(uid))}>` +
+            `<span class="date-range-text" id="${uid}-display">Select your dates</span>` +
+            `<span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>` +
+            `</button>` +
+            `<input type="hidden" id="${uid}-ci"><input type="hidden" id="${uid}-co">` +
             `<div class="chat-bot-actions"><button type="button" class="btn-glass" ${chbAttrs('chatAvailRun', String(uid))}>Check dates</button></div>`,
     );
+}
+// The cottage comes from this bubble's own select, not the page behind the chat.
+function chatAvailDates(uid) {
+    openFieldDatePicker({
+        ci: uid + '-ci',
+        co: uid + '-co',
+        display: uid + '-display',
+        trigger: uid + '-trigger',
+        prop: dpVal(uid + '-prop') || activeFrontProperty,
+    });
 }
 async function chatAvailRun(uid) {
     const prop = (document.getElementById(uid + '-prop') || {}).value;
@@ -9338,15 +9354,10 @@ function openWaitlistModal(prefill) {
     };
     set('wl-checkin', prefill.checkIn);
     set('wl-checkout', prefill.checkOut);
-    // These are NATIVE date inputs (no shared picker), so the night-before
-    // floor has to be stated here — the server refuses a dated join starting
-    // today or earlier (waitlist.php), and min keeps the browser's own picker
-    // from offering what the submit would bounce.
-    const wlMin = ukShiftDays(todayDashed(), 1);
-    ['wl-checkin', 'wl-checkout'].forEach((id) => {
-        const e = document.getElementById(id);
-        if (e) e.setAttribute('min', wlMin);
-    });
+    // The night-before floor is the SHARED PICKER's now, not a `min` attribute: its
+    // clickable chain tests `isPast || tooSoon` before the per-mode branch, so today
+    // and earlier are refused in every mode (waitlist.php still refuses them too).
+    wlRefreshDateTrigger();
     set('wl-name', currentGuest ? currentGuest.name : '');
     set('wl-email', currentGuest ? currentGuest.email : '');
     const msg = document.getElementById('wl-msg');
@@ -11319,12 +11330,18 @@ const MODAL_CLOSERS = {
 function topOpenDialog() {
     const lb = document.getElementById('lightbox');
     if (lb && lb.classList.contains('open')) return lb;
-    // .reviews-modal covers the reviews/FAQ/email-composer family — include it
-    // so Tab stays trapped inside those dialogs too, not just .modal-overlay.
-    const open = Array.from(document.querySelectorAll('.modal-overlay.open, .reviews-modal.open'));
-    if (open.length) return open[open.length - 1];
+    // .reviews-modal (z 6000) covers the reviews/FAQ/email-composer family — include
+    // it so Tab stays trapped inside those dialogs too, not just .modal-overlay.
+    const rv = Array.from(document.querySelectorAll('.reviews-modal.open'));
+    if (rv.length) return rv[rv.length - 1];
+    // THE PICKER IS ASKED ABOUT BEFORE THE MODAL BENEATH IT — z 2100 against the
+    // overlay's 2000, and raised FROM one (waitlist, admin Add Booking). Answering with
+    // the modal closed the surface underneath while the calendar stayed on screen, and
+    // trapped Tab in a form the guest could no longer see. Ordered by what is on top.
     const dp = document.getElementById('date-picker');
     if (dp && dp.classList.contains('open')) return dp;
+    const open = Array.from(document.querySelectorAll('.modal-overlay.open'));
+    if (open.length) return open[open.length - 1];
     return null;
 }
 document.addEventListener('keydown', (e) => {
@@ -11550,15 +11567,23 @@ function renderAvailCal() {
     }
     grid.innerHTML = html;
 }
+// WHICH COTTAGE THE PICKER IS ABOUT. activeFrontProperty is right for the enquiry form
+// and the hero search and wrong for any surface with its OWN cottage select (the
+// waitlist, the chat check), which would shade the wrong cottage's bookings. Null =
+// the page's cottage, so every existing caller is unchanged.
+let dpProp = null;
+function dpPropKey() {
+    return dpProp || activeFrontProperty;
+}
 function isBookedNight(ds) {
-    const ranges = propertyAvailability[activeFrontProperty] || [];
+    const ranges = propertyAvailability[dpPropKey()] || [];
     return ranges.some((r) => ds >= r.start && ds < r.end);
 }
 // The start of the next booking after `from` — the LATEST date a stay beginning
 // there can check out on, since leaving on a turnover day takes nothing from the
 // next guest. Null when nothing is booked ahead, i.e. no limit.
 function dpNextBookedStart(from) {
-    const ranges = propertyAvailability[activeFrontProperty] || [];
+    const ranges = propertyAvailability[dpPropKey()] || [];
     let best = null;
     ranges.forEach((r) => {
         if (r.start > from && (!best || r.start < best)) best = r.start;
@@ -11649,6 +11674,10 @@ function refreshModalDateTrigger() {
 }
 function closeDatePicker() {
     document.getElementById('date-picker').classList.remove('open');
+    // Hand the picker back to the page's cottage: a CANCELLED waitlist pick would else
+    // leave the enquiry form shading someone else's bookings, looking perfectly normal.
+    dpProp = null;
+    dpTarget = null;
 }
 
 function dpChangeMonth(delta) {
@@ -11667,12 +11696,24 @@ function renderDatePicker() {
     else if (!dpState.end) {
         // SAY HOW FAR THEY CAN GO. Everything past the next booking is refused, and
         // a guest who turns the page has no way to know why the month went quiet.
-        const stop = dpNextBookedStart(dpState.start);
+        // ONLY IN THE MODES THAT ENFORCE IT — the other three let any future date
+        // through, so a ceiling there states a limit that is not applied.
+        const capped = dpMode === 'enquiry';
+        const stop = capped ? dpNextBookedStart(dpState.start) : null;
         hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
         const n = nightsBetween(dpState.start, dpState.end);
         hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
     }
+    // THE LEGEND FOLLOWS THE PICKABILITY RULE, and was flatly false on three of the
+    // four modes: only the enquiry form REFUSES a crossed night. The hero search, the
+    // waitlist and the chat check take any future date, and admin overlaps on purpose.
+    const legend = document.getElementById('dp-legend');
+    if (legend)
+        legend.innerText =
+            dpMode === 'enquiry'
+                ? 'Crossed-out dates aren’t available'
+                : 'Crossed-out dates are already booked — you can still pick them';
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
     if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
@@ -11694,7 +11735,7 @@ function renderDatePicker() {
     // minimum stay (a 1-night hole between bookings) — see dpCheckinFits.
     const guestPick = dpMode !== 'admin' && dpMode !== 'search';
     const gRules = guestPick
-        ? propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {}
+        ? propertyRates[dpPropKey()] || defaultRates[dpPropKey()] || {}
         : {};
     const minNights = guestPick ? Math.max(1, parseInt(gRules.minNights, 10) || 1) : 1;
     // THE PICKER MUST REFUSE WHAT THE FORM REFUSES. The checkout branch tested only
@@ -11752,8 +11793,8 @@ function renderDatePicker() {
         let clickable;
         if (dpMode === 'admin') clickable = true;
         else if (isPast || tooSoon) clickable = false;
-        else if (dpMode === 'search')
-            clickable = true; // hero search: any future date
+        else if (dpMode === 'search' || dpMode === 'fields')
+            clickable = true; // hero search / waitlist / chat check: any future date
         else if (!pickingEnd) clickable = !booked && !tooShort && !badArrival;
         else if (ds <= dpState.start)
             clickable = !booked && !tooShort && !badArrival; // restart selection — a NEW check-in
@@ -11770,7 +11811,13 @@ function renderDatePicker() {
         const chosenClear = !!(dpState.start && dpState.end && !rangeCrossesBooked(dpState.start, dpState.end));
         const inChosenStay = chosenClear && ds >= dpState.start && ds <= dpState.end;
         const offeredCheckout = pickingEnd && ds > dpState.start && clickable;
-        const crossed = (booked || tooShort) && (dpMode === 'admin' || !(offeredCheckout || inChosenStay));
+        // `tooShort` is a CONSEQUENCE of a booking, and these surfaces exist on the
+        // premise it may go — the 6th starts no 2-night stay only because the 7th is
+        // taken, which is the very thing the guest is asking us to watch. Booked nights
+        // still cross: that is the fact they are waiting on.
+        const crossed =
+            (booked || (tooShort && dpMode !== 'fields')) &&
+            (dpMode === 'admin' || !(offeredCheckout || inChosenStay));
         if (crossed) classes.push('dp-booked');
         // A REFUSAL HAS TO BE VISIBLE. A checkout past a booked night is correctly
         // refused — but the refusal rendered as a plain cell: full opacity, pointer
@@ -11865,6 +11912,22 @@ function dpDone() {
         try {
             updateModalPrice(); // also repaints the availability strip
         } catch (e) {}
+        return;
+    }
+    if (dpMode === 'fields') {
+        const t = dpTarget || {};
+        dpSetVal(t.ci, dpState.start || '');
+        dpSetVal(t.co, dpState.end || '');
+        const disp = t.display ? document.getElementById(t.display) : null;
+        if (disp) disp.innerText = dpFieldLabel(dpState.start, dpState.end, t.empty);
+        const trig = t.trigger ? document.getElementById(t.trigger) : null;
+        if (trig) trig.classList.toggle('has-dates', !!(dpState.start && dpState.end));
+        closeDatePicker(); // which hands dpProp/dpTarget back — one reset, both exits
+        if (typeof t.onDone === 'function') {
+            try {
+                t.onDone(dpState.start || '', dpState.end || '');
+            } catch (e) {}
+        }
         return;
     }
     if (dpMode === 'search') {
@@ -12009,6 +12072,70 @@ function hsRestore() {
     // so any saved cottage selection is normalised back to "any" — restoring a stale
     // (possibly archived) key would otherwise silently filter every search to zero.
     heroSearch.cottage = 'any';
+}
+// THE BUILT-IN CALENDAR FOR ANY PAIR OF FIELDS. openDatePicker/openBookingDatePicker/
+// openHeroDatePicker each hardcode their ids, so a new surface meant a fourth branch —
+// and until it got one it fell back to a native date field showing no availability
+// (reported: the waitlist modal on a phone). Targets as data:
+//   { ci, co, display, trigger, prop, empty, onDone }
+// Pickability follows the hero search — ANY future date — because a waitlist exists to
+// be told when a BOOKED date frees up; refusing them would refuse the feature.
+let dpTarget = null;
+/** @param {string} id */
+function dpVal(id) {
+    const el = /** @type {HTMLInputElement|HTMLSelectElement|null} */ (document.getElementById(id));
+    return (el && el.value) || '';
+}
+/** @param {string} id @param {string} v */
+function dpSetVal(id, v) {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (el) el.value = v;
+}
+// The waitlist's dates are OPTIONAL by design, so its empty label says so rather than
+// reading as an unfilled required field.
+function openWaitlistDatePicker() {
+    openFieldDatePicker({
+        ci: 'wl-checkin',
+        co: 'wl-checkout',
+        display: 'wl-date-display',
+        trigger: 'wl-date-trigger',
+        prop: dpVal('wl-prop') || activeFrontProperty,
+        empty: 'Any dates (optional)',
+    });
+}
+function wlRefreshDateTrigger() {
+    const disp = document.getElementById('wl-date-display');
+    if (!disp) return;
+    const ci = dpVal('wl-checkin'),
+        co = dpVal('wl-checkout');
+    disp.innerText = dpFieldLabel(ci, co, 'Any dates (optional)');
+    const trig = document.getElementById('wl-date-trigger');
+    if (trig) trig.classList.toggle('has-dates', !!(ci && co));
+}
+function openFieldDatePicker(target) {
+    dpTarget = target || null;
+    if (!dpTarget) return;
+    dpMode = 'fields';
+    dpProp = dpTarget.prop || null;
+    // Refresh THAT cottage's booked nights (renderDatePicker repaints when it lands).
+    if (dpProp) {
+        try {
+            loadAvailability(dpProp);
+        } catch (e) {}
+    }
+    dpState.start = dpVal(dpTarget.ci) || null;
+    dpState.end = dpVal(dpTarget.co) || null;
+    const seed = dpParse(dpState.start) || dpToday0();
+    dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
+    document.getElementById('date-picker').classList.remove('dp-admin');
+    renderDatePicker();
+    document.getElementById('date-picker').classList.add('open');
+}
+// One wording for every trigger's label.
+function dpFieldLabel(ci, co, empty) {
+    if (ci && co) return `${dpPretty(ci)}  →  ${dpPretty(co)}`;
+    if (ci) return `${dpPretty(ci)} — pick check-out`;
+    return empty || 'Select your dates';
 }
 function openHeroDatePicker() {
     dpMode = 'search';
@@ -15132,7 +15259,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'reviewbtn1';
+    const BUILD = 'guestcal1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

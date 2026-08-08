@@ -1123,6 +1123,15 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .date-range-trigger.has-dates {
   border-color: var(--glass-highlight);
 }
+/* Compact trigger for the chat bubble — matches .input-glass.field-sm on the select
+   above it. min-height holds the house 44px floor (the padding alone gives 36px). */
+.date-range-trigger.field-sm {
+  padding: 9px 12px;
+  min-height: 44px;
+  border-radius: 10px;
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+}
 .date-range-text {
   color: var(--text-muted);
 }
