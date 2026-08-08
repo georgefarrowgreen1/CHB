@@ -208,17 +208,37 @@ table and looked like a different product from the confirmation that follows the
   Moving them out means the copied email-samples.php needs its `__DIR__` pinned to the
   real app path, or the waitlist sample's `require __DIR__ . '/waitlist-lib.php'`
   resolves to `/tmp` — which the gate itself caught.
-  **STILL NOT SAMPLABLE, and why**: roughly sixteen emails compose INLINE in a cron
-  script or a route rather than in a callable function — the weekly owner digest and
-  weekly analytics (both script-level, and both still using the retired `#8E877A`, which
-  the contrast gate cannot see because it renders mailer.php only), the two enquiry
-  nudges, the guest chat notification, the chat auto-reply, the admin sign-in code
-  (inside `admin_complete_login`), the backup report, the newsletter, the mailbox reply,
-  and the four PLAIN-TEXT owner notes (`reviews.php`, `leads.php`, `experiences.php`,
-  webpush's email fallback) which have no HTML half at all. Each needs the same pure
-  `*_body()` extraction mailer.php's ten got. NB the digest, analytics and enquiry-nudge
-  scripts already support `?force=1` for an on-demand send and have NO BUTTON anywhere —
-  the mailboxTab shape again, and the cheapest way to make those three reachable.
+  **AND THE THIRTEEN THAT COMPOSED INLINE NOW HAVE BUILDERS TOO.** They lived in a route
+  or a cron script, so nothing could preview or render them: a fatal in one shipped and
+  the owner found out by NOT being told about a review. Each has a pure builder in
+  mailer.php taking its facts as arguments — `owner_mail_test_body`, `admin_code_body`,
+  `backup_report_body`, `guest_chat_body`, `guest_message_body`, `enquiry_nudge_body`,
+  `enquiry_rescue_body`, and the five plain notes `owner_note_review` / `_lead` /
+  `_experience` / `_chat_new` / `_chat_reply` / `_push_fallback`. email-samples.php is 34
+  entries and §1 renders all 34.
+  **THEIR LOOK WAS NEVER THE PROBLEM — an earlier note here said these four "have no HTML
+  half at all", and that was wrong about what SHIPS.** `send_owner()` wraps a plain-text
+  caller in `owner_alert_text_html()`, so they have carried the house shell all along;
+  what they lacked was a function a sample could call without the route. A plain builder
+  therefore returns `['subject','text']` only, and the gate drives it THROUGH send_owner
+  so §2 measures the document that shell produces.
+  **AND RENDERING THEM FOUND A REAL DEFECT IN THREE GUEST EMAILS.** The two enquiry
+  nudges and the abandoned-enquiry rescue were the only templates handing a PER-COTTAGE
+  accent to `email_btn`, with `'#ffffff'` as the ink: measured on Jollyboat's green,
+  **3.30:1** at 15px, and even the design system's dark `#3A2E1E` only reaches **4.00**.
+  A button carries WORDS, so it takes the house accent+ink pair every other template
+  uses; the cottage colour stays where it is a FILL (the shell's bar, `email_h`'s
+  swatch). Nothing could see this because nothing rendered these three.
+  **A CONSOLIDATION MOVES A VACUITY GUARD.** §5's "found the files that compose emails"
+  floor was **8** and is now **4** — that drop IS the win, thirteen compositions leaving
+  their routes — so the guard also asserts `mailer.php` BY NAME, since a bare count would
+  pass on four files that happened not to include the real one.
+  **STILL NOT SAMPLABLE, and why**: three remain — the weekly owner digest, the weekly
+  analytics and the mailbox reply. The two weeklies compose at SCRIPT level from ~20 live
+  figures each, so a builder means a payload of twenty arguments and it is its own piece
+  of work; and both already have a **?force=1 button** (Manage → System check → More
+  tools) that sends the real email with real data, which beats a fixture. Their remaining
+  gap is render-gating only, which is a weaker case than the thirteen above had.
 - **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
   72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
   8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A

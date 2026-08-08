@@ -131,20 +131,9 @@ function chat_maybe_autoreply($tid)
             require_once __DIR__ . '/mailer.php';
             if (function_exists('smtp_send')) {
                 $name = $th['name'] ?: 'there';
-                smtp_send(
-                    $th['email'],
-                    $name,
-                    'Cottage Holidays Blakeney',
-                    'Hello ' . $name . ",\n\n" . $msg . "\n\nCottage Holidays Blakeney",
-                    // Same coastal shell as every other guest email.
-                    email_shell(
-                        'A message from Cottage Holidays Blakeney',
-                        email_h('A message for you') .
-                            email_p('Hello ' . email_esc($name) . ',') .
-                            email_p(nl2br(email_esc($msg))) .
-                            email_p('Reply any time on our website chat.', true),
-                    ),
-                );
+                // Composed by guest_message_body() in mailer.php — previewable, gated.
+                $m = guest_message_body($th['name'] ?? '', $msg);
+                smtp_send($th['email'], $name, $m['subject'], $m['text'], $m['html']);
             }
         }
     } catch (\Throwable $e) {
@@ -207,33 +196,14 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
             // line tells the owner they can just reply.
             $replyAddr = $threadId > 0 && function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
             $msgId = $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
-            $replyHint = $replyAddr
-                ? "\nJust reply to this email and the guest gets it on the website and by email."
-                : '';
             // Zero-setup (POP3) route matches the token from headers/subject, so tag
             // the subject as a fallback; the webhook route uses the plus-address.
             $subjTag =
                 $replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag()
                     ? ' [#' . msg_reply_token($threadId) . ']'
                     : '';
-            $body =
-                "Someone has sent you a message via the website chat.\n\nFrom: " .
-                ($name ?: '—') .
-                ' (' .
-                ($email ?: 'no email') .
-                ")\n\n\"" .
-                $bodyTxt .
-                "\"\n" .
-                $replyHint .
-                "\nOr open the back office → Guest messages to reply.";
-            send_owner(
-                'New website message — Cottage Holidays Blakeney' . $subjTag,
-                $body,
-                null,
-                [],
-                $replyAddr ?: null,
-                $msgId,
-            );
+            $m = owner_note_chat_new($name, $email, $bodyTxt, $replyAddr !== '', $subjTag);
+            send_owner($m['subject'], $m['text'], null, [], $replyAddr ?: null, $msgId);
         }
     } catch (\Throwable $e) {
     }

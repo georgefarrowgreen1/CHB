@@ -26,20 +26,10 @@ if ($action === 'test_email') {
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         json_out(['ok' => false, 'error' => 'Email is switched off (MAIL_ENABLED is false).']);
     }
-    $res = smtp_send(
-        OWNER_NOTIFY_EMAIL,
-        'Owner',
-        'Cottage Holidays Blakeney — test email',
-        "This is a test email from your System check. If you're reading this, outgoing email works.",
-        // The branded shell doubles as a live preview: this is exactly how
-        // the site's emails look to guests.
-        email_shell(
-            'Test email',
-            email_h('It works! 🎉') .
-                email_p('This is a test email from your System check — outgoing email is set up correctly.') .
-                email_p('This is exactly how your emails look to guests.', true),
-        ),
-    );
+    // Composed by owner_mail_test_body() in mailer.php, so the owner can PREVIEW this
+    // one alongside every other template and the render gate can prove it builds.
+    $m = owner_mail_test_body();
+    $res = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html']);
     json_out(['ok' => !empty($res['ok']), 'error' => $res['error'] ?? null, 'to' => OWNER_NOTIFY_EMAIL]);
 }
 

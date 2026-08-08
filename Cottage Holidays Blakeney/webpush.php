@@ -507,7 +507,8 @@ function alert_owner($title, $body, $opts = [])
     if ($sent === 0 && !empty($opts['email'])) {
         try {
             require_once __DIR__ . '/mailer.php';
-            send_owner($title, $body . "\n\n(Sent by email because no device is currently receiving alerts — check Manage → Notifications.)");
+            $m = owner_note_push_fallback($title, $body);
+            send_owner($m['subject'], $m['text']);
         } catch (\Throwable $e) {
         }
     }

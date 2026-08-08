@@ -95,12 +95,8 @@ if ($action === 'submit') {
     // Heads-up to the owner (best-effort; never blocks the guest's submission).
     if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
         try {
-            send_owner(
-                'New guest review awaiting approval',
-                "{$name} left a {$stars}\xE2\x98\x85 review for {$prop['name']} via the review link:\n\n{$text}\n\n" .
-                    "Contact: {$email}" . ($phone ? " / {$phone}" : '') . "\n\n" .
-                    'Approve it (and privately rate the guest) in Manage → Guest reviews.',
-            );
+            $m = owner_note_lead($name, $prop['name'], $stars, $text, $email, $phone);
+            send_owner($m['subject'], $m['text']);
         } catch (\Throwable $e) {
         }
     }

@@ -64,43 +64,17 @@ foreach ($rows as $e) {
     $base = function_exists('site_base_url') ? site_base_url() : '';
     $slug = prop_display($e['prop_key'])['slug']; // pretty URL for any cottage, owner-added included
     $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
-    $subject = 'Still thinking about your Blakeney stay?';
-    // Honest status line: only claim a hold while the dates really are free.
-    $holdLine = $datesGone
-        ? "Those exact dates have since been booked, but we'd love to help you find another stay that suits."
-        : "We're still holding those dates for you.";
-    $ctaLabel = $datesGone ? 'See available dates' : 'Pick up where you left off';
-    $text =
-        'Hello ' .
-        $name .
-        ",\n\n" .
-        'Thanks for your enquiry about ' .
-        $propName .
-        ' for ' .
-        uk_date($e['check_in']) .
-        ' to ' .
-        uk_date($e['check_out']) .
-        ".\n\n" .
-        $holdLine . ' ' .
-        ($link ? ($datesGone ? "You can see what's free here:\n" : "You can pick up where you left off here:\n") . $link . "\n\n" : '') .
-        "Or just reply to this email (or message us on the website) and we'll " .
-        ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.') .
-        "\n\n" .
-        "Warm wishes,\nCottage Holidays Blakeney";
-    // House email design (this and the rescue below were the only guest emails
-    // still going out as bare plain text).
-    $html = null;
-    if (function_exists('email_shell')) {
-        $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-        $accent = prop_display($e['prop_key'])['accent'];
-        $inner =
-            email_h('Still thinking it over?') .
-            email_p('Hello ' . $esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong> for ' . $esc(uk_date($e['check_in'])) . ' to ' . $esc(uk_date($e['check_out'])) . '.') .
-            email_p($esc($holdLine)) .
-            ($link ? email_btn($link, $ctaLabel, $accent, '#ffffff') : '') .
-            email_p("Or just reply to this email (or message us on the website) and we'll " . ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.'), true);
-        $html = email_shell('Still thinking about your Blakeney stay?', $inner, $accent);
-    }
+    // Composed by enquiry_nudge_body() in mailer.php — previewable, and the render
+    // gate proves it builds. datesGone carries the honest-status half.
+    $m = enquiry_nudge_body(
+        $name,
+        $propName,
+        uk_date($e['check_in']) . ' to ' . uk_date($e['check_out']),
+        $link,
+        prop_display($e['prop_key'])['accent'],
+        $datesGone,
+    );
+    [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
     try {
         // smtp_send returns ok:false on a soft failure (server down / mail off)
         // WITHOUT throwing — only mark the nudge sent if it actually went, else
@@ -172,34 +146,13 @@ foreach ($drafts as $d) {
         $base = function_exists('site_base_url') ? site_base_url() : '';
         $slug = prop_display($d['prop_key'])['slug'];
         $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
-        $dates = $d['check_in'] && $d['check_out'] ? ' for ' . uk_date($d['check_in']) . ' to ' . uk_date($d['check_out']) : '';
-        $subject = 'Finish your ' . $propName . ' enquiry?';
-        $text =
-            'Hello ' .
-            $name .
-            ",\n\n" .
-            'It looks like you were part-way through an enquiry about ' .
-            $propName .
-            $dates .
-            " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
-            "you can pick up where you left off here:\n" .
-            ($link ? $link . "\n\n" : "\n") .
-            "Your details are saved in the form on this device, so it only takes a moment. " .
-            "Or just reply to this email and we'll happily sort it out for you.\n\n" .
-            "Warm wishes,\nCottage Holidays Blakeney";
-        // House email design (was bare plain text, like the follow-up above).
-        $html = null;
-        if (function_exists('email_shell')) {
-            $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-            $accent = prop_display($d['prop_key'])['accent'];
-            $inner =
-                email_h('Finish your enquiry?') .
-                email_p('Hello ' . $esc($name) . ', it looks like you were part-way through an enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong>' . $esc($dates) . " and didn't quite finish.") .
-                email_p("No pressure at all — if you'd still like to stay, you can pick up where you left off in one tap. Your details are saved in the form on this device, so it only takes a moment.") .
-                ($link ? email_btn($link, 'Pick up where you left off', $accent, '#ffffff') : '') .
-                email_p("Or just reply to this email and we'll happily sort it out for you.", true);
-            $html = email_shell('Finish your ' . $propName . ' enquiry?', $inner, $accent);
-        }
+        // The BARE span; enquiry_rescue_body() adds the " for " when there is one.
+        // NB ltrim($dates, ' for ') was tried and is a landmine: ltrim takes a CHARACTER
+        // list, so it eats any leading space/f/o/r and only happened to work here.
+        $dates = $d['check_in'] && $d['check_out'] ? uk_date($d['check_in']) . ' to ' . uk_date($d['check_out']) : '';
+        // Composed by enquiry_rescue_body() in mailer.php — previewable, gated.
+        $m = enquiry_rescue_body($name, $propName, $dates, $link, prop_display($d['prop_key'])['accent']);
+        [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
         // Like the follow-up above: only mark it sent if it actually went, or the
         // one-and-only rescue email is silently burned on a mail hiccup.
         $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text, $html) : ['ok' => false];
