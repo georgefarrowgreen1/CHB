@@ -544,6 +544,24 @@ Single-operator holiday-let PWA. No framework, no build step.
   cottage names). It is revealed ONLY in the condensed state — at rest the page's
   own big heading is still on screen and showing both would say it twice. Home
   gets no title (the crown already says it).
+  **AND `.logo` MUST BE PINNED `flex: 0 0 auto`, for the SAME reason the owner side
+  is** (reported from a phone: "between experiences page and any other page the crown
+  logo changes size"). `#guest-head-title` beside it is `flex: 1 1 auto` and holds the
+  OWNER-EDITABLE screen name, while `.logo` was left at the shrinkable `0 1 auto`
+  default — so a long name took its share of the shortfall out of the BRAND: measured
+  at 390px, "21A Westgate Street" shrank the mark **49.9px → 38.5px** (23% smaller on
+  the page most guests land on) while Home, which deliberately has no title, stayed
+  full size. The sting is that the title is `opacity: 0` until the bar condenses, so an
+  element nobody could see was resizing the logo. The title already carries
+  `min-width: 0` + an ellipsis; it is the sibling that should absorb a squeeze. Gated
+  by **ui-test-topmenu §G**, which sweeps home / experiences / cottages / a cottage
+  page at rest AND condensed and asserts one box in one position — an OUTCOME, since a
+  `flex` declaration check would pass on any future layout that pins the logo another
+  way while still moving it. Compared WITHIN a state, never across: condensing scales
+  the mark 30 → 25px on purpose. A 57-character name is injected too (the real ones fit,
+  so the sweep alone could pass vacuously), and it asserts the name really arrived —
+  the first draft read `textContent` after restoring the short one and reported a
+  clipped 19-character title, passing while proving nothing.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
@@ -1908,6 +1926,44 @@ those two were never in disagreement.)
   search seeds any dates, so a seeded range can break the cottage's minimum.
 NB §4's plural check was anchored on `$` and the hint no longer ENDS with the night count,
 so it asserts the phrase now; the singular case is what proves the "s" is conditional.
+**"DIFFICULT TO SEE WHAT DATES YOU'VE COLLECTED" — TWO CAUSES, BOTH MEASURED ON PIXELS**
+(gated by ui-test-datepicker §18, 12 checks across both themes, each declaration
+break-tested). Reported from a phone with a September screenshot.
+- **The MIDDLE of the range was invisible.** `.dp-in-range` painted
+  `rgba(255,255,255,0.07)` — a raw white whatever the theme, while the two ENDS correctly
+  take `var(--text-light)` — so an in-range night measured **1.18:1 in dark and 1.03:1 in
+  light** against the unselected cells beside it. Two solid pills with three
+  perfectly-ordinary days between them. Selection is a UI STATE, so 1.4.11 asks 3:1 of the
+  band, and it must not cost the day number its AA — which is a real tension here, because
+  the light card grounds at 206 and a band strong enough to hit 3:1 by fill alone leaves NO
+  ink that reaches 4.5 (pure black tops out at 4.43). The answer is the ends' OWN pair at
+  **65%** (fill `--text-light`, ink `--dark-grey`) — one definition of the selection's
+  colour at three strengths — measuring band **7.66 / 4.01** and ink **7.47 / 5.61**
+  dark/light. The percentage is arithmetic: 60% clears both too but leaves light's ink 0.26
+  clear, and the house rule is a shade past the mark. The 4px grid gap is deliberately left
+  open — bridging it with a `box-shadow` from each neighbour paints every gap TWICE, and at
+  any alpha under 1 that makes the joins DARKER than the cells they join.
+- **The chosen CHECK-OUT was dimmed off the calendar.** `crossed` learned not to mark a
+  night inside the chosen stay and **`outOfReach` never did**, so the two marks disagreed
+  about one cell. A complete range makes every tap a RESTART, so the far end is judged as a
+  would-be check-in — and one with a booking two days later under a 2-night minimum starts
+  no stay. True, and nothing to do with the date just picked: `dp-out`'s `opacity: 0.3` took
+  it from the check-in's **17.59:1 to 2.61** (dark) and **9.35 to 1.78** (light), under a
+  hover title reading "There's a booking before this date" about the guest's own check-out.
+- **And the selection was carried in COLOUR ALONE.** Nothing in the DOM said which dates
+  were chosen, so a screen-reader user picked a range and heard the bare numbers back.
+  `selStage` names it ("your check-in" / "inside your stay" / "your check-out") in both the
+  label and the title. It is the PAINTED state, the rule these labels already follow, so it
+  outranks `offeredCheckout` (which exists only while no check-out is chosen, so no cell is
+  both) and the unavailable notes — "minimum stay 2 nights, unavailable" is true of STARTING
+  a stay there and a lie about the cell in front of them. `crossed` still wins: an admin
+  overlap is chosen AND booked, and booked is the operative fact there.
+- **The gate reads PIXELS, not `getComputedStyle`** — it screenshots the grid and samples it
+  back through a canvas. This surface is the worst case for a colour model: the card is
+  translucent glass over a scrim over the page, so `backgroundColor` reports only the top
+  layer and the card measures **pure white in BOTH themes**, which is how a 1.03:1 band
+  survived being looked at (twice, in this session, before the screenshot settled it). The
+  fifth false contrast reading this codebase has produced. Sample the paint.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

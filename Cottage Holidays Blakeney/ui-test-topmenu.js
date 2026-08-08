@@ -116,6 +116,94 @@ const { boot, ok } = require('./ui-test-lib');
     check(s.dockInHeader && !s.dockInWrap, 'coming back to a phone puts it in the header again');
     check(s.tabs.length > 0, `the tabs survived the round trip (${s.tabs.join(',')})`);
 
+    // ---- G: the crown is ONE size, in ONE place, on every screen ----
+    // Reported from a phone: "between experiences page and any other page the crown logo
+    // changes size". It did. `.logo` sits in a flex row beside `#guest-head-title`, which
+    // is `flex: 1 1 auto` and carries the OWNER-EDITABLE screen name — and `.logo` was left
+    // at the `0 1 auto` default, so it was a shrinkable sibling. A long name therefore took
+    // its share of the shortfall out of the BRAND: measured at 390px, "21A Westgate Street"
+    // shrank the mark 49.9px → 38.5px, 23% smaller on the page most guests land on, while
+    // Home (which deliberately has no title, the crown already says it) stayed full size.
+    // The sting is that the title is `opacity: 0` until the bar condenses, so an element
+    // nobody could see was resizing the logo. The title already has min-width: 0 and an
+    // ellipsis, so it is the sibling that should absorb a squeeze.
+    //
+    // Asserted as an OUTCOME — same box, same position — rather than by reading `flex` off
+    // the rule: what the guest sees is the geometry, and a declaration check would pass on
+    // any future layout that pins the logo some other way while still moving it.
+    const crown = () =>
+        page.evaluate(() => {
+            const m = document.querySelector('header .logo-mark');
+            const t = document.getElementById('guest-head-title');
+            if (!m) return null;
+            const r = m.getBoundingClientRect();
+            return {
+                w: +r.width.toFixed(1), h: +r.height.toFixed(1),
+                x: Math.round(r.left), y: Math.round(r.top),
+                title: t ? t.textContent.trim() : '',
+            };
+        });
+    const sweep = async () => {
+        const out = {};
+        for (const [label, view] of [['home', 'view-main'], ['experiences', 'view-experiences'], ['cottages', 'view-cottages'], ['cottage', 'view-21a']]) {
+            await page.evaluate((v) => {
+                if (v === 'view-21a') { try { openProperty('21a'); } catch (e) {} } else { try { nav(v); } catch (e) {} }
+            }, view);
+            await page.waitForTimeout(320);
+            out[label] = await crown();
+        }
+        return out;
+    };
+    const identical = (o) => {
+        const vals = Object.values(o);
+        const k = (v) => (v ? `${v.w}x${v.h}@${v.x},${v.y}` : 'missing');
+        return { same: vals.every((v) => v && k(v) === k(vals[0])), show: Object.entries(o).map(([n, v]) => `${n} ${k(v)}`).join(' · ') };
+    };
+
+    await page.evaluate(() => { window.scrollTo(0, 0); document.querySelector('header').classList.remove('header-condensed'); });
+    let rest = identical(await sweep());
+    check(rest.same, `the crown is the same size and place on every page (${rest.show})`);
+
+    // ...and in the CONDENSED bar too, which is where the title is actually VISIBLE and so
+    // pushing hardest. Compared within the state, never across it: condensing scales the
+    // mark 30px → 25px on purpose, so that difference is the design, not the defect.
+    await page.evaluate(() => document.querySelector('header').classList.add('header-condensed'));
+    await page.waitForTimeout(250);
+    const cond = identical(await sweep());
+    check(cond.same, `…and again once the bar condenses and the title shows (${cond.show})`);
+
+    // A HOSTILE NAME, because the real ones are short enough that this check could pass on
+    // its own — the same discipline as the injected long chip label in the search suite. The
+    // cottage titles are owner-editable, so the next one could be any length.
+    // NB every reading is taken BEFORE the name is put back. The first version restored it
+    // first and then read `textContent` and `scrollWidth`, so it measured the SHORT title
+    // and reported a clipped 19-character name — passing while proving nothing.
+    const hostile = await page.evaluate(async () => {
+        const mark = () => document.querySelector('header .logo-mark').getBoundingClientRect().width;
+        const before = mark();
+        const h = document.getElementById('prop-title');
+        const was = h ? h.textContent : '';
+        const LONG = 'The Old Lifeboat House at Blakeney Point, Westgate Street';
+        if (h) h.textContent = LONG;
+        setActiveTab('view-21a'); // the exported entry; setHeadTitle is a closure
+        await new Promise((r) => setTimeout(r, 200));
+        const el = document.getElementById('guest-head-title');
+        const out = {
+            before: +before.toFixed(1),
+            after: +mark().toFixed(1),
+            long: el.textContent.length,
+            arrived: el.textContent === LONG,
+            clipped: el.scrollWidth > Math.ceil(el.getBoundingClientRect().width),
+        };
+        if (h) h.textContent = was;
+        setActiveTab('view-21a');
+        return out;
+    });
+    check(hostile.arrived, `the hostile name really reached the header (${hostile.long} chars)`);
+    check(Math.abs(hostile.after - hostile.before) < 0.5,
+        `…and a ${hostile.long}-character screen name does not shrink the crown (${hostile.before}px → ${hostile.after}px)`);
+    check(hostile.clipped, '…because the TITLE takes the squeeze and ellipsises instead');
+
     console.log(fails ? `\n  ${fails} TOP-MENU CHECK(S) FAILED ❌` : '\n  TOP-MENU SUITE PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

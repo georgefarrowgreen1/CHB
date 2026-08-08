@@ -11905,7 +11905,15 @@ function renderDatePicker() {
         // picker simply stopped responding with nothing to explain it. NOT a
         // line-through, which would say "booked": these are free nights, out of reach
         // from THIS check-in only, and another check-in brings them back.
-        const outOfReach = !clickable && !crossed && !isPast && !tooSoon && dpMode !== 'admin';
+        // ...BUT NOT ON A NIGHT ALREADY CHOSEN. `crossed` learned this and `outOfReach`
+        // did not, so the two marks disagreed about one cell. A complete range makes every
+        // tap a RESTART, so the chosen check-out is judged as a would-be check-in — and one
+        // with a booking two days later and a 2-night minimum starts no stay. True, and
+        // nothing to do with the date just picked: measured, `dp-out`'s opacity took the
+        // check-out from the check-in's 17.59:1 to 2.61 (dark) and 9.35 to 1.78 (light), so
+        // the far end faded off the calendar under a title claiming a booking before it.
+        const outOfReach =
+            !clickable && !crossed && !isPast && !tooSoon && dpMode !== 'admin' && !inChosenStay;
         if (outOfReach) classes.push('dp-out');
         if (ds === todayDs) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
@@ -11947,23 +11955,46 @@ function renderDatePicker() {
         // this; the label and the hover title had not.
         const crossedPickable = crossed && clickable;
         const stillPick = ' — already booked, you can still pick it';
-        const aria = ` role="button" tabindex="-1" aria-label="${fmtDate(ds)}${crossedPickable ? stillPick : crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach || tooFew || tooMany ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
-        const title = tooFew
-            ? ` title="Minimum stay is ${minNights} nights"`
-            : tooMany
-              ? ` title="Maximum stay is ${maxNights} nights"`
-              : crossedPickable
-                ? ' title="Already booked — you can still pick it"'
-                : crossed
-                  ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
-                  : tooSoon
-                    ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
-                    : badArrival && !clickable
-                      ? ' title="No arrivals on this day"'
-                      : outOfReach
-                        ? ' title="There\'s a booking before this date"'
-                        : '';
+        // THE CHOSEN DATES SAY THEY ARE CHOSEN. The selection was carried in COLOUR ALONE,
+        // with nothing in the DOM to match, so a screen-reader user picked a range and heard
+        // the bare numbers back. This is the PAINTED state — the rule these labels already
+        // follow — so it outranks `offeredCheckout` (which only exists while no check-out is
+        // chosen, so no cell is both) and the unavailable notes: "minimum stay 2 nights,
+        // unavailable" is true of STARTING a stay on the guest's own check-out and a lie
+        // about the cell in front of them. `crossed` still wins — an admin overlap is chosen
+        // AND booked, and booked is the operative fact there.
+        const selStage = !dpState.start
+            ? ''
+            : ds === dpState.start && ds === dpState.end
+              ? 'Your dates'
+              : ds === dpState.start
+                ? 'Your check-in'
+                : dpState.end && ds === dpState.end
+                  ? 'Your check-out'
+                  : dpState.end && ds > dpState.start && ds < dpState.end
+                    ? 'Inside your stay'
+                    : '';
+        const selNote = selStage ? ` — ${selStage.toLowerCase()}` : '';
+        const chosenSay = selStage && !crossed;
+        const aria = ` role="button" tabindex="-1" aria-label="${fmtDate(ds)}${crossedPickable ? stillPick : crossed ? ' — booked' : chosenSay ? selNote : offeredCheckout ? ' — check-out only' : ''}"`;
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach || tooFew || tooMany || chosenSay ? ` aria-label="${fmtDate(ds)}${chosenSay ? selNote : unavailNote}"` : '');
+        const title = chosenSay
+            ? ` title="${selStage}"`
+            : tooFew
+              ? ` title="Minimum stay is ${minNights} nights"`
+              : tooMany
+                ? ` title="Maximum stay is ${maxNights} nights"`
+                : crossedPickable
+                  ? ' title="Already booked — you can still pick it"'
+                  : crossed
+                    ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
+                    : tooSoon
+                      ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
+                      : badArrival && !clickable
+                        ? ' title="No arrivals on this day"'
+                        : outOfReach
+                          ? ' title="There\'s a booking before this date"'
+                          : '';
         // THE PRICE IS ON THE NIGHTS THAT ARE FOR SALE, AND NOWHERE ELSE. A figure on a
         // cell the picker refuses would price something the guest cannot have, and the
         // chosen CHECKOUT day is not a night they pay for — so both are silent. Admin is
@@ -15449,7 +15480,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dptotal1';
+    const BUILD = 'dprange1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
