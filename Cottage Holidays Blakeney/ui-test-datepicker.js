@@ -114,6 +114,22 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     ok(seeded === 5, `the month under test carries the reported bookings (${seeded} ranges)`);
   };
 
+  // The same opener for a month with NOTHING booked (§16's arithmetic half), which
+  // cannot assert the 5-range fixture because it deliberately has none.
+  const openAtEmpty = async () => {
+    await page.evaluate(() => {
+      activeFrontProperty = 'jollyboat';
+      document.getElementById('enq-checkin').value = '';
+      document.getElementById('enq-checkout').value = '';
+      openDatePicker();
+    });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { dpState.view = new Date(2026, 7, 1); renderDatePicker(); });
+    await page.waitForTimeout(120);
+    const seeded = await page.evaluate(() => (propertyAvailability['jollyboat'] || []).length);
+    ok(seeded === 0, `the arithmetic month has nothing booked (${seeded} ranges)`);
+  };
+
   // Read the grid back as {day: {crossed, clickable}} — the two things the guest
   // can actually perceive and act on.
   const grid = () => page.evaluate(() => {
@@ -282,8 +298,11 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   // first — the check above left the picker on September.)
   await page.evaluate(() => dpChangeMonth(-1));
   await page.waitForTimeout(150);
+  // Addressed by data-day, not by exact TEXT: a sellable night now carries its price in
+  // the same cell (§16), so the cell's text is "26£175" and an anchored /^26$/ matches
+  // nothing. data-day is the stable hook.
   const liftOf = async (day) => {
-    const el = page.locator(`#dp-grid .dp-day`).filter({ hasText: new RegExp(`^${day}$`) }).first();
+    const el = page.locator(`#dp-grid .dp-day[data-day="2026-08-${String(day).padStart(2, '0')}"]`).first();
     await el.hover();
     await page.waitForTimeout(160);
     return el.evaluate((n) => getComputedStyle(n).transform);
@@ -916,6 +935,144 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   });
   ok(/June 2026/i.test(adminPast), `admin can still page into the past (${adminPast})`);
   await page.evaluate(() => closeDatePicker());
+
+  console.log('16. a night that is for sale says what it costs');
+  // The cottage page's read-only calendar has shown per-night prices for ages
+  // (`.ac-price`) and the picker did not, so a guest choosing dates could not see that a
+  // Tuesday is £130 and the Saturday £150 without leaving the modal. Same helper, same
+  // cottage — dpNightPrice → nightlyRateFor — so the two calendars cannot quote different
+  // money for one night.
+  //
+  // TWO fixtures, because one cannot exercise both halves. The ARITHMETIC needs an EMPTY
+  // calendar (this month's real fixture books every free Saturday, so there is no
+  // non-season weekend night left to price), and the REFUSALS need the real one. Driven
+  // with a weekend uplift AND a season, because a flat rate would let a broken
+  // derivation pass by printing one number everywhere.
+  await page.evaluate(() => {
+    closeDatePicker();
+    propertyRates['jollyboat'] = Object.assign({}, propertyRates['jollyboat'], {
+      minNights: 2, coupleRate: 130, weekendPct: 15, weekendDays: '5,6',
+    });
+    propertySeasons['jollyboat'] = [
+      { start_date: '2026-08-15', end_date: '2026-08-31', couple_rate: 175, label: 'Peak' },
+    ];
+  });
+  // PER_PROP, not AVAIL: openDatePicker fetches `?prop=jollyboat`, and the per-cottage
+  // route added for §14 answers that from PER_PROP — so clearing AVAIL changes nothing
+  // here (measured: still 5 ranges), which is what the vacuity check below catches.
+  PER_PROP.jollyboat = [];
+  await openAtEmpty();
+  const money = await page.evaluate(() => {
+    const at = (d) => document.querySelector(`#dp-grid .dp-day[data-day="2026-08-${d}"]`);
+    const priceOf = (d) => { const c = at(d); const p = c && c.querySelector('.dp-price'); return p ? p.textContent.trim() : null; };
+    const cells = [...document.querySelectorAll('#dp-grid .dp-day')];
+    const card = document.querySelector('.datepicker-card').getBoundingClientRect();
+    return {
+      base: priceOf('04'), // Tuesday, base rate
+      weekend: priceOf('01'), // Saturday, +15%
+      season: priceOf('16'), // Sunday inside Peak
+      seasonWeekend: priceOf('15'), // Saturday inside Peak — both uplifts compose
+      priced: cells.filter((c) => c.querySelector('.dp-price')).length,
+      overflowing: cells.filter((c) => { const r = c.getBoundingClientRect(); return r.right > card.right + 0.5 || r.bottom > card.bottom + 0.5; }).length,
+      clipped: cells.filter((c) => c.scrollHeight > c.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1).length,
+      tap: Math.round(at('04').getBoundingClientRect().height),
+      px: parseFloat(getComputedStyle(at('04').querySelector('.dp-price')).fontSize),
+      // STACKED, not beside. Without flex-direction: column the two sit side by side and
+      // the flex row simply squeezes them — nothing overflows and nothing clips, so the
+      // overflow check below does NOT gate the layout (break-tested). This does.
+      stacked: (() => {
+        const c = at('04');
+        const n = c.querySelector('.dp-num').getBoundingClientRect();
+        const p = c.querySelector('.dp-price').getBoundingClientRect();
+        return p.top >= n.bottom - 0.5;
+      })(),
+    };
+  });
+  ok(money.base === '£130', `a plain night carries its nightly rate (${money.base})`);
+  ok(money.weekend === '£150', `…the weekend uplift is in it (Sat 1 Aug = ${money.weekend})`);
+  ok(money.season === '£175', `…a season rate replaces the base (Sun 16 Aug = ${money.season})`);
+  ok(money.seasonWeekend === '£201',
+    `…and the two compose, as priceBreakdown composes them (peak Sat = ${money.seasonWeekend})`);
+  ok(money.priced === 31, `every night of an empty August is priced (${money.priced})`);
+  ok(money.px >= 10, `the figure clears the 10px floor (${money.px}px)`);
+  ok(money.overflowing === 0 && money.clipped === 0,
+    `and no cell grows past the card or clips (${money.overflowing} over, ${money.clipped} clipped)`);
+  ok(money.tap >= 24, `…with the tap target unchanged (${money.tap}px)`);
+  ok(money.stacked, 'the price sits UNDER the day number, not beside it');
+
+  // Now the REAL fixture, which is what has refused nights to be silent about.
+  PER_PROP.jollyboat = RANGES;
+  await openAt();
+  const refused = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('#dp-grid .dp-day')];
+    const priced = (sel) => cells.filter((c) => c.classList.contains(sel) && c.querySelector('.dp-price')).length;
+    return {
+      onBooked: priced('dp-booked'),
+      onPast: priced('dp-disabled'),
+      onOut: priced('dp-out'),
+      // 4,5,10,15,16,17,24,25,26,31 — the free nights a stay can START on, with 6/11/18/27
+      // crossed by the 2-night minimum and the rest booked.
+      priced: cells.filter((c) => c.querySelector('.dp-price')).length,
+    };
+  });
+  ok(refused.onBooked === 0 && refused.onOut === 0 && refused.onPast === 0,
+    `no price on a night the picker refuses (booked ${refused.onBooked}, out-of-reach ${refused.onOut}, past ${refused.onPast})`);
+  ok(refused.priced === 10,
+    `…and exactly the ten sellable nights carry one (${refused.priced})`);
+
+  // THE CHOSEN CHECKOUT IS NOT A NIGHT THEY PAY FOR, so it must not be priced — the one
+  // place a figure would state something untrue about the stay on screen.
+  const legs = await page.evaluate(() => {
+    dpClear();
+    dpPick('2026-08-04');
+    dpPick('2026-08-06');
+    const at = (d) => document.querySelector(`#dp-grid .dp-day[data-day="2026-08-${d}"]`);
+    const priceOf = (d) => { const c = at(d); const p = c && c.querySelector('.dp-price'); return p ? p.textContent.trim() : null; };
+    // On a SELECTED cell the ground flips dark, so the price must take the selection's
+    // own ink (2.39:1 measured with --text-muted). Compared to the day NUMBER beside it
+    // rather than by arithmetic: if the number is legible there, so is the price.
+    const start = at('04');
+    return {
+      checkin: priceOf('04'), mid: priceOf('05'), checkout: priceOf('06'),
+      inkMatches: getComputedStyle(start.querySelector('.dp-price')).color ===
+        getComputedStyle(start.querySelector('.dp-num')).color,
+    };
+  });
+  ok(legs.checkin === '£130' && legs.mid === '£130',
+    `the nights of the stay keep their prices (${legs.checkin} / ${legs.mid})`);
+  ok(legs.checkout === null, 'the chosen CHECKOUT carries none — it is not a night paid for');
+  ok(legs.inkMatches, '…and a selected cell prices in its own ink, not the muted one');
+
+  // ADMIN IS OUT. The owner is moving a booking, not shopping — and every cell there is
+  // pickable, so a price would appear on nights that are already sold.
+  const adminMoney = await page.evaluate(() => {
+    closeDatePicker();
+    dpMode = 'admin';
+    dpState.view = new Date(2026, 7, 1);
+    document.getElementById('date-picker').classList.add('open');
+    renderDatePicker();
+    const n = document.querySelectorAll('#dp-grid .dp-price').length;
+    dpMode = 'enquiry';
+    closeDatePicker();
+    return n;
+  });
+  ok(adminMoney === 0, `the owner's picker shows no prices (${adminMoney})`);
+
+  // The waitlist CAN pick a booked night — but a sold night has no price to offer.
+  await page.evaluate(() => { openWaitlistModal({ prop: 'jollyboat' }); openWaitlistDatePicker(); });
+  await page.waitForTimeout(450);
+  const wlMoney = await page.evaluate(() => {
+    dpState.view = new Date(2026, 7, 1);
+    renderDatePicker();
+    const cells = [...document.querySelectorAll('#dp-grid .dp-day')];
+    return {
+      booked: cells.filter((c) => c.classList.contains('dp-booked') && c.querySelector('.dp-price')).length,
+      free: cells.filter((c) => !c.classList.contains('dp-booked') && c.querySelector('.dp-price')).length,
+    };
+  });
+  ok(wlMoney.booked === 0 && wlMoney.free > 5,
+    `on the waitlist a sold night is pickable but unpriced (${wlMoney.booked} priced of the booked, ${wlMoney.free} free)`);
+  await page.evaluate(() => { closeDatePicker(); closeWaitlistModal(); });
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

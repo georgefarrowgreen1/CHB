@@ -11590,6 +11590,18 @@ let dpProp = null;
 function dpPropKey() {
     return dpProp || activeFrontProperty;
 }
+// WHAT A NIGHT COSTS, on the picker's own cells. The cottage page's read-only calendar
+// has shown this for ages (`.ac-price`) and the picker did not, so a guest choosing
+// dates could not see that a Tuesday is £115 and the Saturday £160 without leaving the
+// modal. Same helper the read-only calendar uses (nightlyRateFor → season + weekend
+// uplift), read off the SAME cottage the shading follows, so the two calendars can
+// never quote different money for the same night.
+function dpNightPrice(ds) {
+    const key = dpPropKey();
+    const rate = propertyRates[key] || defaultRates[key];
+    if (!rate) return 0;
+    return nightlyRateFor(ds, rate, propertySeasons[key] || []);
+}
 function isBookedNight(ds) {
     const ranges = propertyAvailability[dpPropKey()] || [];
     return ranges.some((r) => ds >= r.start && ds < r.end);
@@ -11918,7 +11930,17 @@ function renderDatePicker() {
                       : outOfReach
                         ? ' title="There\'s a booking before this date"'
                         : '';
-        cells += `<div class="${classes.join(' ')}" data-day="${ds}"${click}${title}>${d}</div>`;
+        // THE PRICE IS ON THE NIGHTS THAT ARE FOR SALE, AND NOWHERE ELSE. A figure on a
+        // cell the picker refuses would price something the guest cannot have, and the
+        // chosen CHECKOUT day is not a night they pay for — so both are silent. Admin is
+        // out too: the owner is moving a booking, not shopping, and every cell there is
+        // pickable, which would put a price on nights that are already sold.
+        let priceTag = '';
+        if (guestPick && clickable && !crossed && !isPast && !tooSoon && ds !== dpState.end) {
+            const p = dpNightPrice(ds);
+            if (p > 0) priceTag = `<span class="dp-price">£${Math.round(p)}</span>`;
+        }
+        cells += `<div class="${classes.join(' ')}" data-day="${ds}"${click}${title}><span class="dp-num">${d}</span>${priceTag}</div>`;
     }
     // Whether the grid had focus must be read BEFORE innerHTML destroys the node that
     // held it — after the swap document.activeElement is <body> and the answer is
@@ -15393,7 +15415,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'declinepill';
+    const BUILD = 'dpprice1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -1220,6 +1220,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .dp-day {
   aspect-ratio: 1;
   display: flex;
+  /* Column + tight leading, so a night carries its price under its number in one square
+     cell — .avail-cell's recipe on the cottage page. */
+  flex-direction: column;
+  line-height: 1.04;
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
@@ -1244,6 +1248,17 @@ body.light-mode ::-webkit-scrollbar-thumb {
   opacity: 0.3;
   cursor: not-allowed;
   text-decoration: line-through;
+}
+/* 0.7rem = 11.2px, matching .ac-price and clearing the 10px floor. */
+.dp-price {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+/* A selected cell's ground flips dark and the muted ink measured 2.39:1 on it, so the
+   price takes the selection's own ink; hierarchy comes from the size. */
+.dp-day.dp-start .dp-price,
+.dp-day.dp-end .dp-price {
+  color: inherit;
 }
 .dp-day.dp-booked {
   color: var(--text-muted);
