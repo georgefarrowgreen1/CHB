@@ -260,7 +260,10 @@ async function waitForServer(url, tries = 40) {
         { key: 'enquire-modal', open: "(async () => { openProperty('21a'); await new Promise(r => setTimeout(r, 300)); openEnquireModal(); })()", mustSee: ['#enquire-modal .modal-box'] },
         { key: 'auth-modal', open: "(() => { closeEnquireModal(); openGuestAuthModal(); })()", mustSee: ['#guest-auth-modal .modal-box'] },
         { key: 'chat-open', open: "(() => { closeGuestAuthModal(); try { closeChat(); } catch (e) {} toggleChat(); })()", mustSee: ['#chat-widget .chat-thread'] },
-        { key: 'waitlist-modal', open: "(() => { try { closeChat(); } catch (e) {} openWaitlistModal({ prop: '21a' }); })()", mustSee: ['#waitlist-modal .modal-box', '#wl-checkout'] },
+        // The dates control is the TRIGGER, not the inputs: #wl-checkin/#wl-checkout are
+        // type="hidden" behind the built-in calendar now, so naming one here asserted
+        // that a deliberately invisible element must be on screen.
+        { key: 'waitlist-modal', open: "(() => { try { closeChat(); } catch (e) {} openWaitlistModal({ prop: '21a' }); })()", mustSee: ['#waitlist-modal .modal-box', '#wl-date-trigger'] },
         { key: 'my-stays', open: "(async () => { try { closeWaitlistModal(); } catch (e) {} try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub'] },
       ], vp.name, vp.width);
       await page.close();
