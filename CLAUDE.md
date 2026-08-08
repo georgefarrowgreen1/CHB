@@ -1830,9 +1830,36 @@ a refused cell is a dead end to arrow out of again), and **`renderDatePicker` re
 whether the grid had focus BEFORE `innerHTML` destroys the node holding it** — after the
 swap `document.activeElement` is `<body>` and the answer is always no, which is how the
 first draft silently dropped focus on every pick.
-**Not done, and why:** the picker shows no per-night price where the cottage page's
-read-only calendar does — a conversion change and a real redesign of the cell, not a
-correctness one.
+**A NIGHT THAT IS FOR SALE SAYS WHAT IT COSTS** (`dpNightPrice`, `.dp-price`; gated by
+ui-test-datepicker §16, 17 checks). The cottage page's read-only calendar had shown
+per-night prices for ages (`.ac-price`) and the picker had not, so a guest choosing dates
+could not see that a Tuesday is £130 and the Saturday £150 without leaving the modal.
+`dpNightPrice` goes through the SAME `nightlyRateFor` the read-only calendar uses, read
+off the SAME cottage `dpPropKey()` shades, so the two calendars cannot quote different
+money for one night — season rate and weekend uplift compose exactly as `priceBreakdown`
+composes them (£130 base → £150 Sat → £175 peak → £201 peak Sat, all four gated).
+Where a price must NOT appear, and why each one would be a lie:
+- a night the picker REFUSES (booked, out of reach, past, too soon) — pricing something
+  the guest cannot have;
+- the chosen CHECKOUT (`ds !== dpState.end`) — not a night they pay for. Note it IS
+  priced while merely being *offered* as a checkout, which is the marginal cost of one
+  more night and the most useful moment for the figure to exist;
+- a night the WAITLIST offers (crossed but pickable there) — it is sold;
+- ADMIN, all of it — the owner is moving a booking, not shopping, and every cell there is
+  pickable, so a price would land on nights already sold.
+**A SELECTED cell prices in its OWN ink.** Its ground flips dark and `--text-muted`
+measured **2.39:1** on it in light mode; the fix is `color: inherit`, not an opacity —
+hierarchy comes from the 0.7rem size, and dimming text that is already muted is the trap
+container opacity sets. The gate asserts the price's colour EQUALS the day number's
+beside it, which needs no colour model to stay honest.
+**NB the cell's TEXT is no longer just its number** — it reads "26£175" — so a locator
+anchored on `/^26$/` matches nothing. §6's hover helper was exactly that and broke;
+`[data-day]` is the stable hook. And the overflow/clip check does NOT gate the stacked
+layout (break-tested: without `flex-direction: column` the flex row simply squeezes both
+and nothing clips), so §16 asserts the price's box sits BELOW the number's.
+**Still not done:** no stay TOTAL in the picker. The enquiry form already quotes the real
+one from `priceBreakdown` with the party size the picker does not know, and a second
+figure derived a second way is the two-definitions-of-one-fact trap this file is full of.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in
