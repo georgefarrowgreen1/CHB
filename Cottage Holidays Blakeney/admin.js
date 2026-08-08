@@ -9286,6 +9286,15 @@ function inboxSubline() {
     if (enq) parts.push(enq === 1 ? '1 enquiry waiting' : `${enq} enquiries waiting`);
     if (msg) parts.push(msg === 1 ? '1 unread chat' : `${msg} unread chats`);
     if (mbx) parts.push(mbx === 1 ? '1 unread email' : `${mbx} unread emails`);
+    // It only ever counted WAITING work, so the Declined drawer was captioned
+    // "All caught up — nothing needs a reply" over a list of rows.
+    if (__inboxFolder === 'enquiries' && __inboxTab === 'declined') {
+        const n = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
+        el.textContent = n
+            ? (n === 1 ? '1 declined enquiry' : `${n} declined enquiries`) + ' — restore any of them.'
+            : 'Nothing declined.';
+        return;
+    }
     el.textContent = parts.length ? parts.join(' · ') : 'All caught up — nothing needs a reply.';
 }
 
@@ -20753,24 +20762,48 @@ function declinedInboxHtml() {
     if (!__declinedEnq.length) {
         return '<div class="inbox-empty-inline">Nothing declined — anything you turn down shows up here.</div>';
     }
-    return __declinedEnq
-        .map((e) => {
-            const meta = propertyMeta[e.propKey];
-            const propName = meta ? meta.name : e.propKey;
-            return `
+    // A drawer of rows that look like enquiries but cannot be acted on like them needs
+    // a sentence, or it reads as a second inbox — and it states what they came to
+    // check: these are recoverable, and declining sent the guest nothing.
+    const lead =
+        '<p class="enq-declined-lead">Turned down, and kept. Restoring one puts it back in Waiting exactly as it arrived &mdash; nothing was sent to the guest when you declined.</p>';
+    return (
+        lead +
+        __declinedEnq
+            .map((e) => {
+                const meta = propertyMeta[e.propKey];
+                const propName = meta ? meta.name : e.propKey;
+                // WHEN it was declined — what tells one row from another here, and why
+                // declinedAt now survives the mapper. relTime is the inbox's own recency
+                // vocabulary; DD/MM/YYYY is for comparing dates, not "how long ago".
+                const when = e.declinedAt ? relTime(e.declinedAt) : '';
+                const msg = (e.message || '').trim();
+                return `
             <div class="bk-row glass-panel enq-declined-row">
                 <span class="bk-row-body">
                     <span class="bk-row-top">
                         <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
-                        <span class="bk-chip"><span class="bk-dot"></span>Declined</span>
+                        <span class="bk-chip declined"><span class="bk-dot"></span>Declined${
+                            when ? ' ' + escapeHtml(when) : ''
+                        }</span>
                     </span>
                     <strong class="bk-row-name">${escapeHtml(e.name || 'Guest')}</strong>
                     <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests || '')}</span>
+                    ${
+                        msg
+                            ? `<span class="enq-declined-msg" title="${escapeHtml(msg)}">&ldquo;${escapeHtml(msg)}&rdquo;</span>`
+                            : ''
+                    }
                 </span>
-                <button type="button" class="btn-sm btn-edit" ${chbAttrs('restoreDeclinedEnquiry', String(e.dbId), e.name || '')}>Restore</button>
+                <button type="button" class="btn-sm btn-edit enq-declined-restore" ${chbAttrs(
+                    'restoreDeclinedEnquiry',
+                    String(e.dbId),
+                    e.name || '',
+                )}>Put back in Waiting</button>
             </div>`;
-        })
-        .join('');
+            })
+            .join('')
+    );
 }
 // Put it back in the inbox, and take it out of the drawer in the same breath so
 // the two lists cannot both claim it.
@@ -20805,6 +20838,17 @@ function renderInbox() {
                 `<button type="button" class="inbox-sort-btn${__inboxTab === k ? ' is-on' : ''}" role="tab" aria-selected="${__inboxTab === k}" ${chbAttrs('inboxTab', String(k))}>${lbl}</button>`,
         )
         .join('')}</div>`;
+    // THE HEADING NAMES THE LIST BENEATH IT: "Enquiries" + the WAITING count put a
+    // green 0 above a non-empty declined list (owner's screenshot). The badge is hidden
+    // by CLASS, not emptied — refreshInboxBadge() is in app.js and runs from a dozen
+    // places, so it would write the number back. The TEXT is safe to set here:
+    // renderInbox is the only thing that switches tabs.
+    const enqFolder = document.getElementById('inbox-folder-enquiries');
+    if (enqFolder) enqFolder.classList.toggle('showing-declined', __inboxTab === 'declined');
+    const enqHead = enqFolder ? enqFolder.querySelector('.bo-sec-title') : null;
+    if (enqHead && enqHead.firstChild && enqHead.firstChild.nodeType === 3) {
+        enqHead.firstChild.nodeValue = __inboxTab === 'declined' ? 'Declined enquiries ' : 'Enquiries ';
+    }
     if (__inboxTab === 'declined') {
         list.innerHTML = tabBar + declinedInboxHtml();
         return;

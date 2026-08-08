@@ -244,6 +244,46 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The declined drawer says what it is
+
+Reported from a phone (screenshot): the Declined tab showed a green **0** and "All caught
+up — nothing needs a reply" directly above a list with a row in it.
+- **`mapEnquiryFromApi` DROPPED `declined_at`.** enquiries.php's `declined` action
+  `SELECT *`s and `ORDER BY declined_at DESC` — so the server sends and sorts by the one
+  fact that identifies a decline, and the client threw it away. The row now leads with
+  it via `relTime` (the inbox's own recency vocabulary: "Yesterday", "5 Aug"). That is
+  NOT a breach of the DD/MM/YYYY screen rule — a numeric date is for comparing dates
+  against each other, and the question here is how long ago.
+- **THE HEADING NAMES THE LIST BENEATH IT.** The h2 is "Enquiries" + the WAITING count,
+  which on this tab described nothing on screen. It reads "Declined enquiries" while the
+  drawer is open, and the badge is hidden **by CLASS, not emptied** — `refreshInboxBadge()`
+  lives in app.js and runs from a dozen places, so an emptied badge is written straight
+  back. The heading TEXT is safe to set in `renderInbox`, which is the only thing that
+  switches tabs.
+- **`inboxSubline()` only ever counted WAITING work**, hence the "All caught up" caption
+  over a non-empty list. The drawer gets its own line.
+- **ARCHIVED WITHOUT DIMMING ANYTHING — two attempts measured as contrast failures
+  first.** `opacity: 0.72` on the row body composites every ink toward the ground: the
+  guest's quoted message fell to **3.05:1 dark / 2.75:1 light**. Tinting the ground with
+  `var(--text-muted)` — the ink's own hue — moved the ground toward the text and still
+  measured 4.34 / 3.86. Flat and unlifted reads as filed away and leaves every ink where
+  the tokens put it. **Container opacity is the blunt instrument to distrust here: it
+  dims text that was already muted, and no token audit can see it because the token is
+  unchanged.**
+- **`--text-muted` MEASURES 4.34:1 IN DARK MODE on `.glass-panel`, and that is
+  PRE-EXISTING** — checked before "fixing" it: **215** existing elements use that exact
+  colour on that exact ground and measure the identical ratio. So new muted text here is
+  consistent with the app, and special-casing two elements would be wrong. a11y-test
+  gates the status tints and `--accent-text`, not this one; fixing it means nudging one
+  token across 215 elements and belongs in its own PR.
+- Declined is a **DECISION, not a fault** — deliberately not the red `danger` chip. The
+  guest's message shows on one clamped line so two declines can be told apart without
+  restoring one, and the action says where it goes ("Put back in Waiting"), matching the
+  toast. Gated by ui-test-mailbox (9 checks; the mapper, the opacity and the heading each
+  break-tested). NB `chbAttrs` emits **`data-args`** (a JSON list), so a
+  `[data-arg="declined"]` selector finds nothing — which is how the first draft of that
+  gate silently tested an unclicked tab.
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

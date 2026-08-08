@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 429;
+const ADMIN_BUNDLE_V = 430;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 153;
+const ADMIN_CSS_V = 154;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1371,6 +1371,9 @@ function mapEnquiryFromApi(row) {
         termsVersion: row.terms_version || '',
         noDogsAt: row.no_dogs_at || '',
         seenAt: row.seen_at || '',
+        // enquiries.php SELECTs * and ORDERs BY declined_at; this mapper dropped it,
+        // so the recovery drawer could not show the one fact identifying a decline.
+        declinedAt: row.declined_at || '',
         received: (row.created_at || '').split(' ')[0] || '',
         receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
@@ -15125,7 +15128,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'weeklybtn2';
+    const BUILD = 'declined1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
