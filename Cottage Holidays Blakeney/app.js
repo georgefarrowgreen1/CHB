@@ -10795,11 +10795,11 @@ function cottageCardHtml(k, idPrefix, withFav) {
                         <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(resizedUrl(img, 800))}');"></div>
                         ${fav}
                     </div>
-                    <div class="cott-head">
-                        <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                    <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                    <div class="cott-facts">
                         <div class="card-rating" id="${idPrefix}card-rating-${k}"></div>
+                        <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
                     </div>
-                    <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
                     <div class="card-foot">
                         <div class="card-price" id="${idPrefix}card-price-${k}"></div>
                         <div class="card-avail" id="${idPrefix}card-avail-${k}"></div>
@@ -10817,6 +10817,13 @@ function renderCottageGrid(gridId, idPrefix, withFav) {
     } catch (e) {}
     try {
         renderCardRatings();
+    } catch (e) {}
+    // ...AND THE AVAILABILITY, the one row this did not repaint. It is filled by a single
+    // call after loadAvailabilityAll() resolves, and loadRates rebuilds the grid after that
+    // — so every card settled with no "Available from …" at all, measured blank at rest.
+    // Safe whenever: it returns early until availability has actually loaded.
+    try {
+        renderCardAvailability();
     } catch (e) {}
     try {
         fadeInCardImages(grid);
@@ -15480,7 +15487,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dpnight1';
+    const BUILD = 'cardrow1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
