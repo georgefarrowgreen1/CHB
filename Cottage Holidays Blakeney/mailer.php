@@ -3368,3 +3368,311 @@ function send_arrival_for_booking($bk)
         return ['ok' => false, 'error' => $e->getMessage()];
     }
 }
+
+// ============================================================
+//  OWNER NOTES — the plain-text alerts, as PURE builders
+// ============================================================
+// These five emails composed INLINE in reviews.php / leads.php / experiences.php /
+// webpush.php / diagnostics.php, which made them the only sends nothing could reach:
+// email-samples.php had no way to preview them and test-emails-render.php had no way
+// to render them, so a fatal in one shipped and the owner found out by not being told
+// about a review. Their LOOK was never the problem — send_owner() already wraps a
+// plain-text caller in owner_alert_text_html(), so they have carried the house shell
+// all along; what they lacked was a function a sample could call without the route.
+//
+// Each returns ['subject' => …, 'text' => …] and takes everything as arguments (the
+// pure-composer rule), so the gate drives the REAL builder with no DB and no SMTP.
+// Plain text on purpose: owner_alert_text_html turns blank lines into paragraphs and
+// bare URLs into links, which is the whole content of an alert like this.
+
+/** A guest review submitted through the site, waiting for approval. */
+function owner_note_review($guestName, $propName, $stars, $text)
+{
+    return [
+        'subject' => 'New guest review awaiting approval',
+        'text' =>
+            'A review was submitted by ' . $guestName . ' for ' . $propName . ' (' . (int) $stars . "\u{2605}):\n\n" .
+            trim((string) $text) .
+            "\n\nApprove or decline it in Manage \u{2192} Guest reviews.",
+    ];
+}
+
+/** A review left through the direct review LINK, which also carries contact details. */
+function owner_note_lead($name, $propName, $stars, $text, $email, $phone = '')
+{
+    return [
+        'subject' => 'New guest review awaiting approval',
+        'text' =>
+            $name . ' left a ' . (int) $stars . "\u{2605} review for " . $propName . " via the review link:\n\n" .
+            trim((string) $text) .
+            "\n\nContact: " . $email . ($phone ? ' / ' . $phone : '') .
+            "\n\nApprove it (and privately rate the guest) in Manage \u{2192} Guest reviews.",
+    ];
+}
+
+/** A guest's suggestion for the things-to-do list. */
+function owner_note_experience($guestName, $title, $body, $linkUrl = '', $phone = '')
+{
+    return [
+        'subject' => 'New experience suggestion to review',
+        'text' =>
+            ($guestName ?: 'A guest') . " suggested an experience:\n\n" .
+            $title . "\n\n" . trim((string) $body) . "\n\n" .
+            ($linkUrl ? 'Link: ' . $linkUrl . "\n" : '') .
+            ($phone ? 'Phone: ' . $phone . "\n" : '') .
+            "\nReview it in Manage \u{2192} Experiences.",
+    ];
+}
+
+/** A push that reached NO device, so the alert falls back to email. */
+function owner_note_push_fallback($title, $body)
+{
+    return [
+        'subject' => $title,
+        'text' =>
+            trim((string) $body) .
+            "\n\n(Sent by email because no device is currently receiving alerts \u{2014} " .
+            "check Manage \u{2192} Notifications.)",
+    ];
+}
+
+/**
+ * The owner's own "does email work at all" test, from Manage → System check. This one
+ * builds its own HTML rather than leaning on owner_alert_text_html, because the branded
+ * shell IS the point: the email doubles as a live preview of what guests receive.
+ */
+function owner_mail_test_body()
+{
+    return [
+        'subject' => 'Cottage Holidays Blakeney — test email',
+        'text' => "This is a test email from your System check. If you're reading this, outgoing email works.",
+        'html' => email_shell(
+            'Test email',
+            email_h('It works! 🎉') .
+                email_p('This is a test email from your System check — outgoing email is set up correctly.') .
+                email_p('This is exactly how your emails look to guests.', true),
+        ),
+    ];
+}
+
+// ---- The rest of the app's emails, as PURE builders -------------------------
+// Same reason as the owner notes above: these composed inline in a route or a cron
+// script, so nothing could preview or render them. Each takes its facts as arguments
+// and returns ['subject','text','html'] — no DB, no SMTP, no globals.
+
+/** The one-time code that finishes an owner sign-in on a new device. */
+function admin_code_body($code)
+{
+    return [
+        'subject' => 'Your sign-in code — Cottage Holidays Blakeney',
+        'text' =>
+            'Your one-time sign-in code is: ' . $code .
+            "\n\nIt expires in 10 minutes. If you didn't just try to sign in to your back office, " .
+            'ignore this email and consider changing your password.',
+        // The code is set big enough to read off a phone screen, which is the one
+        // thing this email exists to do.
+        'html' => email_shell(
+            'Your one-time sign-in code',
+            email_h('Your sign-in code') .
+                email_p(
+                    'Use this code to finish signing in to your back office on a new device. It expires in 10 minutes.',
+                ) .
+                '<div style="text-align:center;padding:20px 0 8px;"><span style="font-family:' .
+                email_sans() .
+                ';font-size:34px;letter-spacing:9px;font-weight:700;color:#2A2622;">' .
+                email_esc($code) .
+                '</span></div>' .
+                email_p(
+                    'If you didn&rsquo;t just try to sign in, ignore this email and consider changing your password.',
+                    true,
+                ),
+        ),
+    ];
+}
+
+/** The weekly database backup, whose .sql.gz rides as an attachment. */
+function backup_report_body($sizeLabel, $filesNote = '')
+{
+    return [
+        'subject' => 'Weekly database backup — Cottage Holidays Blakeney',
+        'text' =>
+            "Attached is this week's database backup (" . $sizeLabel . ").\n\n" .
+            'Keep a few of these somewhere safe (they contain all bookings, payments and guest details). ' .
+            "To restore, unzip and import the .sql via your host's phpMyAdmin." .
+            ($filesNote ? "\n\n" . $filesNote : ''),
+        'html' => email_shell(
+            'Weekly database backup',
+            email_h('Weekly database backup') .
+                email_p('Attached is this week&rsquo;s database backup (' . email_esc($sizeLabel) . ').') .
+                email_p(
+                    'Keep a few of these somewhere safe — they contain all bookings, payments and guest details. ' .
+                        'To restore, unzip and import the .sql via your host&rsquo;s phpMyAdmin.',
+                    !$filesNote,
+                ) .
+                ($filesNote ? email_p(email_esc($filesNote), true) : ''),
+        ),
+    ];
+}
+
+/**
+ * The guest's copy of a chat reply — the message quoted, with the photo one tap away.
+ * `$replyable` is whether a reply-to address exists, which changes only the sentence
+ * about how to answer.
+ */
+function guest_chat_body($guestName, $message, $photoUrl = '', $replyable = false)
+{
+    $who = $guestName ?: 'there';
+    $reply = 'Reply on our website chat' . ($replyable ? ' — or just reply to this email' : '') . '.';
+    return [
+        'subject' => 'A message from Cottage Holidays Blakeney',
+        'text' =>
+            'Hello ' . $who . ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
+            $message . '"' .
+            ($photoUrl !== '' ? "\n\nView photo: " . $photoUrl : '') .
+            "\n\n" . $reply . "\nCottage Holidays Blakeney",
+        'html' => email_shell(
+            'A message from Cottage Holidays Blakeney',
+            email_h('You have a new message') .
+                email_p('Hello ' . email_esc($who) . ',') .
+                email_p('&ldquo;' . nl2br(email_esc($message)) . '&rdquo;') .
+                ($photoUrl !== ''
+                    ? email_p(
+                        '<a href="' . email_esc($photoUrl) . '" style="color:' . email_accent_ink() .
+                            ';text-decoration:underline;">View the photo</a>',
+                    )
+                    : '') .
+                email_p(
+                    'Reply on our website chat' .
+                        ($replyable ? ' &mdash; or just reply to this email' : '') . '.',
+                    true,
+                ),
+        ),
+    ];
+}
+
+/** The owner's heads-up that a guest answered a chat BY EMAIL. Plain text by design. */
+function owner_note_chat_reply($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
+{
+    return [
+        'subject' => 'New website message — Cottage Holidays Blakeney' . $subjTag,
+        'text' =>
+            "A guest has replied by email to a website chat.\n\nFrom: " .
+            ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
+            $message . "\"\n" .
+            ($replyable ? "\nJust reply to this email and they get it on the website and by email." : '') .
+            "\nOr open the back office → Guest messages to reply.",
+    ];
+}
+
+/** The owner sending a chat message FROM the back office, as the guest receives it. */
+function guest_message_body($guestName, $message)
+{
+    $who = $guestName ?: 'there';
+    return [
+        'subject' => 'Cottage Holidays Blakeney',
+        'text' => 'Hello ' . $who . ",\n\n" . $message . "\n\nCottage Holidays Blakeney",
+        'html' => email_shell(
+            'A message from Cottage Holidays Blakeney',
+            email_h('A message for you') .
+                email_p('Hello ' . email_esc($who) . ',') .
+                email_p(nl2br(email_esc($message))) .
+                email_p('Reply any time on our website chat.', true),
+        ),
+    ];
+}
+
+/**
+ * The owner's heads-up that a guest started a chat on the WEBSITE. Sibling of
+ * owner_note_chat_reply, which is the same news arriving by email instead — two
+ * different facts, so deliberately two composers rather than one with a flag.
+ */
+function owner_note_chat_new($guestName, $guestEmail, $message, $replyable = false, $subjTag = '')
+{
+    return [
+        'subject' => 'New website message — Cottage Holidays Blakeney' . $subjTag,
+        'text' =>
+            "Someone has sent you a message via the website chat.\n\nFrom: " .
+            ($guestName ?: '—') . ' (' . ($guestEmail ?: 'no email') . ")\n\n\"" .
+            $message . "\"\n" .
+            ($replyable ? "\nJust reply to this email and the guest gets it on the website and by email." : '') .
+            "\nOr open the back office → Guest messages to reply.",
+    ];
+}
+
+/**
+ * The follow-up to an enquiry that went quiet. `$datesGone` is the honest half: the
+ * email may only claim a hold while the dates really are free.
+ */
+function enquiry_nudge_body($name, $propName, $dateSpan, $link, $accent, $datesGone = false)
+{
+    $holdLine = $datesGone
+        ? "Those exact dates have since been booked, but we'd love to help you find another stay that suits."
+        : "We're still holding those dates for you.";
+    $cta = $datesGone ? 'See available dates' : 'Pick up where you left off';
+    $close =
+        "Or just reply to this email (or message us on the website) and we'll " .
+        ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.');
+    return [
+        'subject' => 'Still thinking about your Blakeney stay?',
+        'text' =>
+            'Hello ' . $name . ",\n\nThanks for your enquiry about " . $propName . ' for ' . $dateSpan . ".\n\n" .
+            $holdLine . ' ' .
+            ($link
+                ? ($datesGone ? "You can see what's free here:\n" : "You can pick up where you left off here:\n") .
+                    $link . "\n\n"
+                : '') .
+            $close . "\n\nWarm wishes,\nCottage Holidays Blakeney",
+        'html' => email_shell(
+            'Still thinking about your Blakeney stay?',
+            email_h('Still thinking it over?') .
+                email_p(
+                    'Hello ' . email_esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' .
+                        email_esc($propName) . '</strong> for ' . email_esc($dateSpan) . '.',
+                ) .
+                email_p(email_esc($holdLine)) .
+                // THE BUTTON KEEPS THE HOUSE ACCENT, not the cottage's. These two were
+                // the only templates handing a per-cottage colour to email_btn, and a
+                // button carries WORDS: white on Jollyboat's green measured 3.30:1 and
+                // even the design system's dark ink only reaches 4.00:1, both under AA.
+                // The house accent+ink pair is the measured-safe one every other
+                // template uses. The cottage colour stays where it is a FILL — the
+                // shell's bar and email_h's swatch, which carry no text.
+                ($link ? email_btn($link, $cta) : '') .
+                email_p(email_esc($close), true),
+            $accent,
+        ),
+    ];
+}
+
+/** The rescue for an enquiry FORM abandoned part-way — a draft, not a sent enquiry. */
+function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
+{
+    $span = $dateSpan !== '' ? ' for ' . $dateSpan : '';
+    return [
+        'subject' => 'Finish your ' . $propName . ' enquiry?',
+        'text' =>
+            'Hello ' . $name . ",\n\nIt looks like you were part-way through an enquiry about " . $propName . $span .
+            " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
+            "you can pick up where you left off here:\n" .
+            ($link ? $link . "\n\n" : "\n") .
+            'Your details are saved in the form on this device, so it only takes a moment. ' .
+            "Or just reply to this email and we'll happily sort it out for you.\n\n" .
+            "Warm wishes,\nCottage Holidays Blakeney",
+        'html' => email_shell(
+            'Finish your ' . $propName . ' enquiry?',
+            email_h('Finish your enquiry?') .
+                email_p(
+                    'Hello ' . email_esc($name) .
+                        ', it looks like you were part-way through an enquiry about <strong style="color:#2A2622;">' .
+                        email_esc($propName) . '</strong>' . email_esc($span) . " and didn't quite finish.",
+                ) .
+                email_p(
+                    "No pressure at all — if you'd still like to stay, you can pick up where you left off in one tap. " .
+                        'Your details are saved in the form on this device, so it only takes a moment.',
+                ) .
+                ($link ? email_btn($link, 'Pick up where you left off') : '') .
+                email_p("Or just reply to this email and we'll happily sort it out for you.", true),
+            $accent,
+        ),
+    ];
+}

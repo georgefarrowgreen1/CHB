@@ -212,42 +212,15 @@ if (!function_exists('chat_admin_reply')) {
                         $attachment !== '' && function_exists('site_base_url')
                             ? rtrim(site_base_url(), '/') . '/' . $attachment
                             : '';
-                    $photoLine = $photoUrl !== '' ? "\n\nView photo: " . $photoUrl : '';
-                    // Same coastal shell as every other guest email, with the
-                    // message quoted and the photo (if any) one tap away.
-                    $chatHtml = email_shell(
-                        'A message from Cottage Holidays Blakeney',
-                        email_h('You have a new message') .
-                            email_p('Hello ' . email_esc($thread['name'] ?: 'there') . ',') .
-                            email_p('&ldquo;' . nl2br(email_esc($logBody)) . '&rdquo;') .
-                            ($photoUrl !== ''
-                                ? email_p(
-                                    '<a href="' .
-                                        email_esc($photoUrl) .
-                                        '" style="color:' . email_accent_ink() . ';text-decoration:underline;">View the photo</a>',
-                                )
-                                : '') .
-                            email_p(
-                                'Reply on our website chat' .
-                                    ($replyAddr ? ' &mdash; or just reply to this email' : '') .
-                                    '.',
-                                true,
-                            ),
-                    );
+                    // Composed by guest_chat_body() in mailer.php — previewable, and the
+                    // render gate proves it builds.
+                    $m = guest_chat_body($thread['name'] ?? '', $logBody, $photoUrl, $replyAddr !== '');
                     smtp_send(
                         $thread['email'],
                         $thread['name'] ?: 'there',
-                        'A message from Cottage Holidays Blakeney',
-                        'Hello ' .
-                            ($thread['name'] ?: 'there') .
-                            ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
-                            $logBody .
-                            '"' .
-                            $photoLine .
-                            "\n\nReply on our website chat" .
-                            ($replyAddr ? ' — or just reply to this email' : '') .
-                            ".\nCottage Holidays Blakeney",
-                        $chatHtml,
+                        $m['subject'],
+                        $m['text'],
+                        $m['html'],
                         [],
                         $replyAddr ?: null,
                         $msgId,
@@ -320,24 +293,14 @@ if (!function_exists('chat_guest_reply')) {
                     $replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag()
                         ? ' [#' . msg_reply_token($threadId) . ']'
                         : '';
-                $b =
-                    "A guest has replied by email to a website chat.\n\nFrom: " .
-                    ($th['name'] ?? '' ?: '—') .
-                    ' (' .
-                    ($th['email'] ?? '' ?: 'no email') .
-                    ")\n\n\"" .
-                    $bodyTxt .
-                    "\"\n" .
-                    ($replyAddr ? "\nJust reply to this email and they get it on the website and by email." : '') .
-                    "\nOr open the back office → Guest messages to reply.";
-                send_owner(
-                    'New website message — Cottage Holidays Blakeney' . $subjTag,
-                    $b,
-                    null,
-                    [],
-                    $replyAddr ?: null,
-                    $msgId,
+                $m = owner_note_chat_reply(
+                    $th['name'] ?? '',
+                    $th['email'] ?? '',
+                    $bodyTxt,
+                    $replyAddr !== '',
+                    $subjTag,
                 );
+                send_owner($m['subject'], $m['text'], null, [], $replyAddr ?: null, $msgId);
             }
         } catch (\Throwable $e) {
         }

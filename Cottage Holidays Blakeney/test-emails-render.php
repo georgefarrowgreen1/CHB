@@ -186,6 +186,27 @@ $JOBS = [
   ['deposit-return', 'guest', fn() => send_deposit_return_email($B)],
   ['cancellation', 'guest', fn() => send_cancellation_email($B)],
   ['review-request', 'guest', fn() => send_review_request_email($B)],
+  // THE THIRTEEN THAT COMPOSED INLINE in a route or a cron script. Until they had pure
+  // builders in mailer.php nothing could render them, so a fatal in any one shipped and
+  // the owner found out by not being told about a review. Driven through the same
+  // send_owner/smtp_send capture as the rest, so §2 measures their colours too.
+  ['mail-test', 'owner', function () { $m = owner_mail_test_body(); return smtp_send('o@x.co', 'Owner', $m['subject'], $m['text'], $m['html']); }],
+  ['admin-code', 'owner', function () { $m = admin_code_body('428 913'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['backup-report', 'owner', function () { $m = backup_report_body('412 KB', 'Photos are archived separately (18.4 MB).'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['guest-chat', 'guest', function () { $m = guest_chat_body('Wren', 'The key safe code is 1066.', 'https://example.test/p/1.jpg', true); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],
+  ['guest-message', 'guest', function () { $m = guest_message_body('Wren', 'Your welcome book is ready.'); return smtp_send('g@x.co', 'Wren', $m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-nudge', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', false); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-nudge-gone', 'guest', function () { $m = enquiry_nudge_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047', true); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  ['enquiry-rescue', 'guest', function () { $m = enquiry_rescue_body('Sam', 'Jollyboat', '15/08/2026 to 19/08/2026', site_base_url(), '#43a047'); return send_owner($m['subject'], $m['text'], $m['html']); }],
+  // The plain-text owner notes carry no 'html' of their own: send_owner() supplies the
+  // house shell via owner_alert_text_html(), so driving them through send_owner is what
+  // renders the document §2 then measures.
+  ['owner-review', 'owner', function () { $m = owner_note_review('Test Guest', 'Jollyboat', 5, 'A lovely week.'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-lead', 'owner', function () { $m = owner_note_lead('Test Guest', 'Jollyboat', 4, 'Really enjoyed it.', 'g@x.co', '07700 900123'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-experience', 'owner', function () { $m = owner_note_experience('Test Guest', 'Seal trip', 'Worth adding.', 'https://example.test/seals', '07700 900123'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-chat-new', 'owner', function () { $m = owner_note_chat_new('Test Guest', 'g@x.co', 'Parking for two cars?', true); return send_owner($m['subject'], $m['text']); }],
+  ['owner-chat-reply', 'owner', function () { $m = owner_note_chat_reply('Test Guest', 'g@x.co', 'That works, thank you.', true, ' [#ab12]'); return send_owner($m['subject'], $m['text']); }],
+  ['owner-push-fallback', 'owner', function () { $m = owner_note_push_fallback('Payment received — £175.43', 'Test Guest has paid their deposit.'); return send_owner($m['subject'], $m['text']); }],
   ['autopay-notice', 'guest', fn() => send_autopay_notice($B, $PAYURL)],
   ['autopay-failure', 'guest', fn() => send_autopay_failure($B, 'card_declined', false, '2026-07-20')],
   ['refund', 'guest', fn() => send_refund_email($B)],
@@ -588,8 +609,15 @@ foreach (glob($APP . '/*.php') as $f) {
         $composers[$b] = $src;
     }
 }
-// Vacuity guard: if the discovery stops finding files, everything below passes.
-chk('found the files that compose emails (' . count($composers) . ')', count($composers) >= 8);
+// Vacuity guard: if the discovery stops finding files, everything below passes. The
+// floor was 8 and is now 4, because THIS is the number the consolidation was for —
+// thirteen inline compositions moved into mailer.php's builders, so fewer files reach
+// for the design system directly. mailer.php is asserted BY NAME as well, since a
+// count alone would pass on four files that happened not to include the real one.
+chk(
+    'found the files that compose emails (' . implode(', ', array_keys($composers)) . ')',
+    count($composers) >= 4 && isset($composers['mailer.php']),
+);
 $offenders = [];
 foreach ($composers as $b => $src) {
     // Strip line comments first — this file NAMES every retired ink in the table

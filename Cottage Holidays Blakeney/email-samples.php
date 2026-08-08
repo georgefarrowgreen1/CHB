@@ -36,6 +36,15 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         }
     } catch (\Throwable $e) {
     }
+    // The cottage's own accent, for the two nudges and the rescue — they are the only
+    // samples whose builder takes one (email_shell's bar and email_btn's fill).
+    $accent = '#C79A64';
+    try {
+        if ($propKey !== '') {
+            $accent = prop_display($propKey)['accent'] ?: $accent;
+        }
+    } catch (\Throwable $e) {
+    }
 
     $base = function_exists('site_base_url') ? site_base_url() : '';
     $ci = date('Y-m-d', strtotime('+30 days'));
@@ -224,6 +233,107 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
                     . '(This is sample text — your own reply goes here.)',
                 'enquiry',
             ),
+        ],
+        // THE THIRTEEN THAT COMPOSED INLINE. Each of these lived in a route or a cron
+        // script, so nothing could preview it and nothing could render it — a fatal in
+        // one shipped, and the owner would have found out by not being told about a
+        // review. Each now has a PURE builder in mailer.php, driven here and by
+        // test-emails-render.php §1. The plain-text ones carry no 'html': send_owner()
+        // supplies the house shell via owner_alert_text_html(), which is how they have
+        // looked right all along even though nothing was watching them.
+        'mail_test' => [
+            'Test email (System check)',
+            function () use ($owner) {
+                $m = owner_mail_test_body();
+                return smtp_send($owner, 'Owner', $m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'admin_code' => [
+            'Owner sign-in code (new device)',
+            function () {
+                $m = admin_code_body('428 913');
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'backup_report' => [
+            'Weekly database backup',
+            function () {
+                // No attachment on the sample: the point is the wording, and a real
+                // .sql.gz of the live database has no business in a preview inbox.
+                $m = backup_report_body('412 KB', 'Your photos and uploads are archived separately on the host (18.4 MB).');
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'guest_chat' => [
+            'Guest: a new chat message',
+            function () use ($owner, $g) {
+                $m = guest_chat_body($g['name'], "Hello! Just to say the key safe code is 1066 and the bins go out on Tuesday.", '', true);
+                return smtp_send($owner, $g['name'], $m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'guest_message' => [
+            'Guest: a message from the back office',
+            function () use ($owner, $g) {
+                $m = guest_message_body($g['name'], "Your welcome book is now ready — everything you need is in there.");
+                return smtp_send($owner, $g['name'], $m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'enquiry_nudge' => [
+            'Enquiry follow-up (dates still free)',
+            function () use ($propName, $ci, $co, $accent) {
+                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, false);
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'enquiry_nudge_gone' => [
+            'Enquiry follow-up (dates since taken)',
+            function () use ($propName, $ci, $co, $accent) {
+                // The honest-status half: this branch must never claim a hold.
+                $m = enquiry_nudge_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent, true);
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'enquiry_rescue' => [
+            'Abandoned-enquiry rescue',
+            function () use ($propName, $ci, $co, $accent) {
+                $m = enquiry_rescue_body('Sam', $propName, uk_date($ci) . ' to ' . uk_date($co), site_base_url(), $accent);
+                return send_owner($m['subject'], $m['text'], $m['html']);
+            },
+        ],
+        'owner_review' => [
+            'Owner: a review to approve',
+            function () use ($propName) {
+                $m = owner_note_review('Test Guest', $propName, 5, 'A lovely week — the cottage was spotless and the beach walk is wonderful.');
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
+        'owner_lead' => [
+            'Owner: a review via the review link',
+            function () use ($propName, $owner) {
+                $m = owner_note_lead('Test Guest', $propName, 4, 'Really enjoyed our stay, thank you.', $owner, '07700 900123');
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
+        'owner_experience' => [
+            'Owner: an experience suggestion',
+            function () {
+                $m = owner_note_experience('Test Guest', 'Seal trip from Morston Quay', 'The boat trips are the highlight of a stay here — worth adding to the list.', 'https://example.com/seals', '07700 900123');
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
+        'owner_chat' => [
+            'Owner: a new website message',
+            function () use ($owner) {
+                $m = owner_note_chat_new('Test Guest', $owner, 'Is there parking for two cars?', true);
+                return send_owner($m['subject'], $m['text']);
+            },
+        ],
+        'owner_push_fallback' => [
+            'Owner: an alert that no device received',
+            function () {
+                $m = owner_note_push_fallback('Payment received — £175.43', 'Test Guest has paid their deposit.');
+                return send_owner($m['subject'], $m['text']);
+            },
         ],
         // "A space has opened up" — sent when a cancellation frees dates someone is
         // waiting on. wl_send() is already a plain function taking a row, so this

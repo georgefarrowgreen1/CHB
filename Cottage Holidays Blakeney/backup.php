@@ -394,30 +394,16 @@ try {
                 number_format(filesize($fz) / 1048576, 1) .
                 ' MB) — download a copy occasionally from Settings → Health check → "Download files".'
             : '';
-        $r = smtp_send(
-            OWNER_NOTIFY_EMAIL,
-            'Owner',
-            'Weekly database backup — Cottage Holidays Blakeney',
-            "Attached is this week's database backup ({$nice}).\n\nKeep a few of these somewhere safe (they contain all bookings, payments and guest details). To restore, unzip and import the .sql via your host's phpMyAdmin." .
-                ($filesNote ? "\n\n" . $filesNote : ''),
-            email_shell(
-                'Weekly database backup',
-                email_h('Weekly database backup') .
-                    email_p('Attached is this week&rsquo;s database backup (' . email_esc($nice) . ').') .
-                    email_p(
-                        'Keep a few of these somewhere safe — they contain all bookings, payments and guest details. To restore, unzip and import the .sql via your host&rsquo;s phpMyAdmin.',
-                        !$filesNote,
-                    ) .
-                    ($filesNote ? email_p(email_esc($filesNote), true) : ''),
-            ),
+        // Composed by backup_report_body() in mailer.php — previewable, and the render
+        // gate proves it builds. The attachment stays here: it is a file, not content.
+        $m = backup_report_body($nice, $filesNote);
+        $r = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html'], [
             [
-                [
-                    'filename' => basename($res['file']),
-                    'mime' => 'application/gzip',
-                    'content' => file_get_contents($res['file']),
-                ],
+                'filename' => basename($res['file']),
+                'mime' => 'application/gzip',
+                'content' => file_get_contents($res['file']),
             ],
-        );
+        ]);
         $emailed = !empty($r['ok']);
         $emailErr = $r['error'] ?? null;
     }
