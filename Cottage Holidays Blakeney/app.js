@@ -9186,6 +9186,7 @@ function chatAvailDates(uid) {
         display: uid + '-display',
         trigger: uid + '-trigger',
         prop: dpVal(uid + '-prop') || activeFrontProperty,
+        both: true, // chatAvailRun cannot answer half a range
     });
 }
 async function chatAvailRun(uid) {
@@ -9386,6 +9387,17 @@ async function submitWaitlist() {
     const email = (v('wl-email') || '').trim();
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         show('Please enter a valid email address.');
+        return;
+    }
+    // A LONE DATE IS THE ONE STATE THAT LIES. The server stores half a range as an
+    // OPEN-DATED wait (see waitlist.php), so a guest who picked a check-in and stopped
+    // would be told about every cancellation for ever while believing they were waiting
+    // for that one day. The picker refuses it too; this covers a PREFILL, which can
+    // arrive half-filled from the hero search. Both ways out are named.
+    const wlCi = v('wl-checkin'),
+        wlCo = v('wl-checkout');
+    if ((wlCi && !wlCo) || (wlCo && !wlCi)) {
+        show('Please add both dates, or clear them to be told whenever anything frees up.');
         return;
     }
     try {
@@ -11350,6 +11362,9 @@ document.addEventListener('keydown', (e) => {
     if (gd && gd.classList.contains('open')) return;
     const m = topOpenDialog();
     if (!m) return;
+    // The picker's grid owns the arrow keys wherever focus sits inside it, so the first
+    // arrow from the card enters the grid instead of doing nothing.
+    if (m.id === 'date-picker' && dpGridKeys(e)) return;
     if (e.key === 'Escape') {
         e.preventDefault();
         if (m.id === 'lightbox') return closeLightbox();
@@ -11678,10 +11693,22 @@ function closeDatePicker() {
     // leave the enquiry form shading someone else's bookings, looking perfectly normal.
     dpProp = null;
     dpTarget = null;
+    __dpFocusDay = null; // the next open seats its own tab stop
 }
 
+// THE PAST IS NOT ON OFFER. Paging was unbounded and ‹ was never disabled, so a guest
+// could walk back to June 2025 — measured: 36 cells, 0 of them pickable, a screenful of
+// dead calendar with nothing to say why. Admin is exempt, because the owner back-dates.
+function dpMonthFloor() {
+    if (dpMode === 'admin') return null;
+    const n = dpToday0();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+}
 function dpChangeMonth(delta) {
-    dpState.view = new Date(dpState.view.getFullYear(), dpState.view.getMonth() + delta, 1);
+    const next = new Date(dpState.view.getFullYear(), dpState.view.getMonth() + delta, 1);
+    const floor = dpMonthFloor();
+    if (floor && next < floor) return;
+    dpState.view = next;
     renderDatePicker();
 }
 
@@ -11717,6 +11744,12 @@ function renderDatePicker() {
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
     if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
+    // …and ‹ when there is no earlier month to show (see dpMonthFloor).
+    const prevBtn = /** @type {HTMLButtonElement|null} */ (document.querySelector('.dp-nav-btn[data-arg="-1"]'));
+    if (prevBtn) {
+        const floor = dpMonthFloor();
+        prevBtn.disabled = !!floor && new Date(view.getFullYear(), view.getMonth() - 1, 1) < floor;
+    }
 
     const grid = document.getElementById('dp-grid');
     const year = view.getFullYear(),
@@ -11860,24 +11893,110 @@ function renderDatePicker() {
                       : outOfReach
                         ? ' — too late, a booking falls before this date'
                         : '';
-        const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
+        // THE ANNOUNCED STATE MUST MATCH THE PICKABILITY. A crossed cell is REFUSED on
+        // the enquiry form and SELECTABLE everywhere else (a waitlist is for the taken
+        // nights, the owner overlaps on purpose) — and it was announced "— booked" in
+        // both cases, so a screen-reader user was told a button was unavailable while it
+        // was the one thing that surface exists to select. The visible legend learned
+        // this; the label and the hover title had not.
+        const crossedPickable = crossed && clickable;
+        const stillPick = ' — already booked, you can still pick it';
+        const aria = ` role="button" tabindex="-1" aria-label="${fmtDate(ds)}${crossedPickable ? stillPick : crossed ? ' — booked' : offeredCheckout ? ' — check-out only' : ''}"`;
         const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (crossed || tooSoon || outOfReach || tooFew || tooMany ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
         const title = tooFew
             ? ` title="Minimum stay is ${minNights} nights"`
             : tooMany
               ? ` title="Maximum stay is ${maxNights} nights"`
-              : crossed && !clickable
-                ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
-                : tooSoon
-                  ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
-                  : badArrival && !clickable
-                    ? ' title="No arrivals on this day"'
-                    : outOfReach
-                      ? ' title="There\'s a booking before this date"'
-                      : '';
-        cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
+              : crossedPickable
+                ? ' title="Already booked — you can still pick it"'
+                : crossed
+                  ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`)
+                  : tooSoon
+                    ? ' title="Book by the night before — same-day stays aren\'t bookable online"'
+                    : badArrival && !clickable
+                      ? ' title="No arrivals on this day"'
+                      : outOfReach
+                        ? ' title="There\'s a booking before this date"'
+                        : '';
+        cells += `<div class="${classes.join(' ')}" data-day="${ds}"${click}${title}>${d}</div>`;
     }
+    // Whether the grid had focus must be read BEFORE innerHTML destroys the node that
+    // held it — after the swap document.activeElement is <body> and the answer is
+    // always "no", which is how the first version silently dropped focus on every pick.
+    const hadFocus = !!(document.activeElement && grid.contains(document.activeElement));
     grid.innerHTML = cells;
+    dpSeatFocus(hadFocus);
+}
+// ---- ONE TAB STOP, THEN ARROWS (the roving-tabindex pattern every date grid uses).
+// Every clickable day carried tabindex="0", so crossing a month was up to 31 Tab
+// presses — measured 35 stops inside the picker — while the search window and the coach
+// overlay both give arrows to their lists. One cell is reachable by Tab and the arrows
+// move between days; Enter/Space still pick (data-act-keydown="activate").
+let __dpFocusDay = null;
+function dpCells() {
+    return /** @type {HTMLElement[]} */ (
+        Array.from(document.querySelectorAll('#dp-grid .dp-day[data-act="dpPick"]'))
+    );
+}
+// The day that carries the tab stop: the one being navigated, else the check-in, else
+// the first pickable day of the month — so Tab always lands somewhere useful.
+function dpSeatFocus(hadFocus) {
+    const cells = dpCells();
+    if (!cells.length) return;
+    let seat = cells.find((el) => el.getAttribute('data-day') === __dpFocusDay);
+    if (!seat) seat = cells.find((el) => el.getAttribute('data-day') === dpState.start) || cells[0];
+    seat.setAttribute('tabindex', '0');
+    // Re-focus only if the grid ALREADY had it: a render also happens on OPENING, and
+    // stealing focus there would skip the dialog's own announcement.
+    if (hadFocus) {
+        __dpFocusDay = seat.getAttribute('data-day');
+        try { seat.focus(); } catch (e) {}
+    }
+}
+// Move the day focus by n days (arrows), paging the month when it crosses a boundary.
+// Lands on the nearest PICKABLE day in the direction of travel, because focusing a
+// refused cell is a dead end the guest has to arrow out of again.
+function dpMoveFocus(days) {
+    const first = dpCells()[0];
+    const from = __dpFocusDay || dpState.start || (first && first.getAttribute('data-day'));
+    if (!from) return;
+    const step = days > 0 ? 1 : -1;
+    let cur = dpParse(from);
+    const floor = dpMonthFloor();
+    for (let hop = 0; hop < Math.abs(days) + 62; hop++) {
+        cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + step);
+        if (floor && cur < floor) return;
+        const iso = formatDashed(cur);
+        // Show the month the target sits in before asking whether the cell is pickable.
+        if (cur.getMonth() !== dpState.view.getMonth() || cur.getFullYear() !== dpState.view.getFullYear()) {
+            dpState.view = new Date(cur.getFullYear(), cur.getMonth(), 1);
+            __dpFocusDay = iso;
+            renderDatePicker();
+        }
+        const cell = /** @type {HTMLElement|null} */ (
+            document.querySelector(`#dp-grid .dp-day[data-day="${iso}"][data-act="dpPick"]`)
+        );
+        if (!cell) continue;
+        if (hop + 1 < Math.abs(days)) continue; // still travelling
+        __dpFocusDay = iso;
+        dpCells().forEach((el) => el.setAttribute('tabindex', el === cell ? '0' : '-1'));
+        try { cell.focus(); } catch (e) {}
+        return;
+    }
+}
+function dpGridKeys(e) {
+    const by = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    if (Object.prototype.hasOwnProperty.call(by, e.key)) {
+        e.preventDefault();
+        dpMoveFocus(by[e.key]);
+        return true;
+    }
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
+        e.preventDefault();
+        dpChangeMonth(e.key === 'PageUp' ? -1 : 1);
+        return true;
+    }
+    return false;
 }
 
 function dpPick(ds) {
@@ -11916,6 +12035,19 @@ function dpDone() {
     }
     if (dpMode === 'fields') {
         const t = dpTarget || {};
+        // BOTH OR NEITHER. On these surfaces half a range means something the label does
+        // not say — the waitlist stores it as an OPEN-DATED wait (see waitlist.php) and
+        // the chat check refuses it outright — so Done names both ways out rather than
+        // closing on a selection that is neither. The hint is a live region, so the
+        // refusal is announced as well as shown.
+        if (t.both && !!dpState.start !== !!dpState.end) {
+            const hint = document.getElementById('dp-hint');
+            if (hint)
+                hint.innerText = t.emptyOk
+                    ? 'Pick a check-out date too — or Clear dates to wait for any dates'
+                    : 'Pick a check-out date too';
+            return;
+        }
         dpSetVal(t.ci, dpState.start || '');
         dpSetVal(t.co, dpState.end || '');
         const disp = t.display ? document.getElementById(t.display) : null;
@@ -12101,6 +12233,8 @@ function openWaitlistDatePicker() {
         trigger: 'wl-date-trigger',
         prop: dpVal('wl-prop') || activeFrontProperty,
         empty: 'Any dates (optional)',
+        both: true,
+        emptyOk: true, // "no dates" is a real answer here, so the refusal offers it
     });
 }
 function wlRefreshDateTrigger() {
@@ -15259,7 +15393,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'guestcal1';
+    const BUILD = 'guestcal2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

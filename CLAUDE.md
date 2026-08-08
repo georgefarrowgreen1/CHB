@@ -1754,6 +1754,51 @@ Add/Edit Booking form, not a guest surface — and §14's native-field ratchet e
 `#edit-modal` for exactly that reason. The eight `.value` reads this added went through
 two typed helpers (`dpVal`/`dpSetVal`), because the typecheck ratchet counts every
 `HTMLElement.value` in the long tail and the budget only falls.
+**AND THE LEGEND WAS ONLY THE VISIBLE LAYER — four things below it said otherwise**
+(gated by ui-test-datepicker §15, 20 checks, each break-tested; the waitlist half-range
+also by test-integration §12).
+- **THE ANNOUNCED STATE MUST MATCH THE PICKABILITY.** A crossed cell is REFUSED on the
+  enquiry form and SELECTABLE on the other three modes, and it was announced `role=
+  "button"` `aria-label="07/08/2026 — booked"` in both cases, with **no `title` at all**
+  (that branch was gated `crossed && !clickable`). So a screen-reader user was told the
+  button was unavailable while it was the one thing a waitlist exists to select.
+  `crossedPickable` now carries "already booked, you can still pick it" into the label
+  AND the hover title. a11y-test cannot see this class of defect — it checks that a name
+  exists, not that it is true.
+- **HALF A RANGE IS NOT A RANGE, and it does not mean what it looks like.** Done with one
+  date wrote `wl-checkin` alone and the trigger read "4 Aug 2026 — pick check-out" — but
+  `waitlist_notify_freed` matches `check_in IS NULL OR check_out IS NULL OR (overlap)`,
+  so ONE date stored alone is an **OPEN-DATED** wait, emailed about every future
+  cancellation, and the email's date clause is gated on both being set so it names no
+  dates at all. Three layers now: a `fields` target may declare **`both: true`** (the
+  waitlist adds `emptyOk` so the refusal can offer "or Clear dates", which is a real
+  answer there) and `dpDone` refuses via the hint rather than closing; `submitWaitlist`
+  refuses too, because a PREFILL arrives half-filled from the hero search and never
+  touches the picker; and **`waitlist.php` is the authority**, for the stale tab.
+- **THE PAST IS NOT ON OFFER.** `dpChangeMonth` was unbounded and ‹ was never disabled —
+  measured, 14 taps reached June 2025 with **0 of 36 cells pickable**, a screenful of
+  dead calendar. `dpMonthFloor()` stops at the current month and returns null in ADMIN,
+  because the owner back-dates. NB §6's past-month check now sets `dpState.view`
+  DIRECTLY: what it tests is how a past CELL renders, not how it was reached.
+- **THE HINT IS ANNOUNCED** (`role="status" aria-live="polite"`). It is the only progress
+  report — "select a check-in" → "now a check-out — up to 28 Aug" → "4 Aug → 7 Aug · 3
+  nights" — and it changed silently, so a screen-reader user picked a date and heard
+  nothing about what was left. It also carries the both-or-neither refusal, so that is
+  announced for free.
+**ONE TAB STOP, THEN ARROWS.** Every clickable day carried `tabindex="0"` — measured 35
+stops inside the picker, up to 31 of them to cross a month — while the search window and
+the coach overlay both give arrows to their lists. Roving tabindex now (`dpSeatFocus`,
+`__dpFocusDay`, `data-day` on every cell), arrows via `dpGridKeys` hung off the SAME
+global handler that owns Escape and Tab, so an arrow works wherever focus sits in the
+dialog and the first one from the card enters the grid. Two things it must keep right:
+`dpMoveFocus` lands on the nearest **pickable** day in the direction of travel (focusing
+a refused cell is a dead end to arrow out of again), and **`renderDatePicker` reads
+whether the grid had focus BEFORE `innerHTML` destroys the node holding it** — after the
+swap `document.activeElement` is `<body>` and the answer is always no, which is how the
+first draft silently dropped focus on every pick.
+**Not done, and why:** the picker shows no per-night price where the cottage page's
+read-only calendar does — a conversion change and a real redesign of the cell, not a
+correctness one.
 
 **THE TERMS QUOTE THE SERVER, NEVER PROSE** (app.js `definitionParagraphs` /
 `paymentClauseParagraphs` / `termsSecurityDeposit`; the `payment` block in

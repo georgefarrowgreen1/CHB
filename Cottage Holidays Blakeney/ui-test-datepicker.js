@@ -254,7 +254,10 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   // June is entirely in the past from the pinned July: every cell is refused, so
   // every cell must say so. Deliberately asserts the count is non-zero as well,
   // or a month that rendered nothing would pass by having nothing to fail.
-  await page.evaluate(() => { dpChangeMonth(-1); dpChangeMonth(-1); dpChangeMonth(-1); });
+  // dpState.view is set DIRECTLY, not by paging: §15(e) now stops a guest walking
+  // back past the current month at all, so dpChangeMonth(-1) refuses to leave July.
+  // What is under test here is how a past CELL renders, not how it was reached.
+  await page.evaluate(() => { dpState.view = new Date(2026, 5, 1); renderDatePicker(); });
   await page.waitForTimeout(150);
   const june = await page.evaluate(() => {
     const cells = [...document.querySelectorAll('#dp-grid .dp-day')].filter((e) => parseInt(e.textContent.trim(), 10));
@@ -270,7 +273,7 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     `a month wholly in the past reads as past, every cell (${june.dimmed}/${june.total} dimmed, ${june.bare} bare)`);
   // Back to September, where this block found it — the next check turns one page
   // BACK to reach August and would otherwise land somewhere else entirely.
-  await page.evaluate(() => { dpChangeMonth(1); dpChangeMonth(1); dpChangeMonth(1); });
+  await page.evaluate(() => { dpState.view = new Date(2026, 8, 1); renderDatePicker(); });
   await page.waitForTimeout(150);
 
   // …and it must not ANSWER the pointer either. A shared hover rule lifts and
@@ -774,6 +777,145 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     const i = propertyList.findIndex((p) => p.prop_key === 'pimpernel');
     if (i >= 0) propertyList.splice(i, 1);
   });
+
+  console.log('15. the picker tells the truth on EVERY channel, not just the visible one');
+  // §14 fixed the LEGEND. Four things below it had not learned the same lesson, all
+  // measured on the merged code before being fixed.
+  await page.evaluate(() => {
+    closeDatePicker();
+    activeFrontProperty = 'jollyboat';
+    openWaitlistModal({ prop: 'jollyboat' });
+  });
+  await page.waitForTimeout(150);
+  await page.click('#wl-date-trigger');
+  await page.waitForTimeout(450);
+  await page.evaluate(() => { dpState.view = new Date(2026, 7, 1); renderDatePicker(); });
+  await page.waitForTimeout(120);
+
+  // (a) A CROSSED CELL THAT IS SELECTABLE MUST NOT BE ANNOUNCED AS UNAVAILABLE. It was
+  // a role="button" labelled "07/08/2026 — booked" with no title at all, on the one
+  // surface whose whole purpose is picking those nights.
+  const dayCell = (day) => page.evaluate((d) => {
+    const el = document.querySelector(`#dp-grid .dp-day[data-day="2026-08-${String(d).padStart(2, '0')}"]`);
+    return el && { label: el.getAttribute('aria-label'), title: el.getAttribute('title'), role: el.getAttribute('role'), tabindex: el.getAttribute('tabindex'), act: el.getAttribute('data-act'), crossed: el.classList.contains('dp-booked') };
+  }, day);
+  const booked = await dayCell(7);
+  ok(booked && booked.crossed && booked.act === 'dpPick', 'a booked night on the waitlist is crossed and pickable');
+  ok(/still pick it/i.test(booked.label || ''),
+    `…and says so to a screen reader, not just "booked" ("${booked.label}")`);
+  ok(/still pick it/i.test(booked.title || ''), `…and on hover too ("${booked.title}")`);
+
+  // (b) ONE TAB STOP, THEN ARROWS. Every clickable day used to carry tabindex="0" — 35
+  // stops inside the picker, up to 31 of them to cross a month.
+  const seats = await page.evaluate(() => {
+    const live = Array.from(document.querySelectorAll('#dp-grid .dp-day[data-act="dpPick"]'));
+    return { live: live.length, stops: live.filter((el) => el.getAttribute('tabindex') === '0').length };
+  });
+  ok(seats.live > 10 && seats.stops === 1,
+    `exactly one day carries the tab stop (${seats.stops} of ${seats.live} pickable)`);
+  // Arrows move it, and Enter on the arrived-at cell picks THAT day — so the keyboard
+  // path reaches a real selection, which is the only thing that matters here.
+  await page.evaluate(() => {
+    dpClear();
+    const first = document.querySelector('#dp-grid .dp-day[data-day="2026-08-04"]');
+    first.setAttribute('tabindex', '0');
+    first.focus();
+    __dpFocusDay = '2026-08-04';
+  });
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(80);
+  const moved = await page.evaluate(() => (document.activeElement.getAttribute ? document.activeElement.getAttribute('data-day') : null));
+  ok(moved === '2026-08-05', `ArrowRight moves the day focus (landed on ${moved})`);
+  await page.keyboard.press('ArrowDown');
+  await page.waitForTimeout(80);
+  const wk = await page.evaluate(() => (document.activeElement.getAttribute ? document.activeElement.getAttribute('data-day') : null));
+  ok(wk === '2026-08-12', `ArrowDown moves a week (landed on ${wk})`);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(120);
+  const picked = await page.evaluate(() => dpState.start);
+  ok(picked === '2026-08-12', `Enter picks the day the arrows arrived at (${picked})`);
+  ok(await page.evaluate(() => {
+    const el = document.querySelector('#dp-grid .dp-day[data-day="2026-08-12"]');
+    return !!el && document.activeElement === el;
+  }), '…and the re-render keeps focus on it rather than dropping it to the body');
+
+  // (c) THE HINT IS ANNOUNCED. It is the only progress report and it changed silently.
+  const hintEl = await page.evaluate(() => {
+    const el = document.getElementById('dp-hint');
+    return { role: el.getAttribute('role'), live: el.getAttribute('aria-live'), text: el.innerText.trim() };
+  });
+  ok(hintEl.role === 'status' && hintEl.live === 'polite',
+    `the hint is a live region (role=${hintEl.role} aria-live=${hintEl.live})`);
+  ok(/check-out/i.test(hintEl.text), `…carrying what is left to do ("${hintEl.text}")`);
+
+  // (d) BOTH OR NEITHER, and Done says so. A lone check-in is stored as an OPEN-DATED
+  // wait by waitlist.php's notifier, so the guest would hear about every cancellation
+  // while believing they were waiting for that one day.
+  const lone = await page.evaluate(() => {
+    dpDone();
+    return {
+      closed: !document.getElementById('date-picker').classList.contains('open'),
+      hint: document.getElementById('dp-hint').innerText.trim(),
+      ci: document.getElementById('wl-checkin').value,
+    };
+  });
+  ok(!lone.closed && lone.ci === '', 'Done on a lone check-in does not close or write a half range');
+  ok(/check-out date too/i.test(lone.hint) && /any dates/i.test(lone.hint),
+    `…and names BOTH ways out ("${lone.hint}")`);
+  const bothOk = await page.evaluate(() => {
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    dpDone();
+    return { ci: document.getElementById('wl-checkin').value, co: document.getElementById('wl-checkout').value, closed: !document.getElementById('date-picker').classList.contains('open') };
+  });
+  ok(bothOk.closed && bothOk.ci && bothOk.co, 'a complete range still closes and writes both');
+
+  // …and the SUBMIT refuses a half range too, because a PREFILL can arrive half-filled
+  // from the hero search and never touches the picker.
+  const submitted = await page.evaluate(async () => {
+    document.getElementById('wl-checkout').value = '';
+    document.getElementById('wl-email').value = 'g@example.com';
+    let posted = false;
+    const real = window.apiPost;
+    window.apiPost = () => { posted = true; return Promise.resolve({ ok: true }); };
+    await submitWaitlist();
+    window.apiPost = real;
+    return { posted, msg: (document.getElementById('wl-msg') || {}).textContent || '' };
+  });
+  ok(!submitted.posted, 'a half range is never posted to the waitlist');
+  ok(/both dates/i.test(submitted.msg), `…and the modal says why ("${submitted.msg}")`);
+
+  // (e) THE PAST IS NOT ON OFFER. Paging was unbounded — measured, 14 taps reached June
+  // 2025 with 0 pickable cells and ‹ still enabled.
+  const past = await page.evaluate(() => {
+    closeWaitlistModal();
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    openDatePicker();
+    for (let i = 0; i < 14; i++) dpChangeMonth(-1);
+    const cells = Array.from(document.querySelectorAll('#dp-grid .dp-day'));
+    return {
+      title: document.getElementById('dp-title').innerText,
+      pickable: cells.filter((el) => el.getAttribute('data-act')).length,
+      prevDisabled: document.querySelector('.dp-nav-btn[data-arg="-1"]').disabled,
+    };
+  });
+  ok(/July 2026/i.test(past.title),
+    `14 taps back cannot leave the current month (showing ${past.title})`);
+  ok(past.prevDisabled, '…and ‹ is disabled there, so it does not look broken');
+  ok(past.pickable > 0, '…leaving a month with dates that can actually be picked');
+  // Admin back-dates on purpose, so the floor must not apply to the owner.
+  const adminPast = await page.evaluate(() => {
+    closeDatePicker();
+    dpMode = 'admin';
+    dpState.view = new Date(2026, 6, 1);
+    dpChangeMonth(-1);
+    const t = document.getElementById('dp-title').innerText;
+    dpMode = 'enquiry';
+    return t;
+  });
+  ok(/June 2026/i.test(adminPast), `admin can still page into the past (${adminPast})`);
+  await page.evaluate(() => closeDatePicker());
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
