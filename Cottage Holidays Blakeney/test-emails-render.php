@@ -456,6 +456,90 @@ chk('email_accent_ink clears AA on all three grounds',
 chk('the accent works as a button fill under its own ink',
     em_ratio('#3A2E1E', '#C79A64') >= 4.5 && em_ratio('#3A2E1E', '#D6A785') >= 4.5);
 
+// ============================================================================
+//  §4  THE OWNER'S "EMAIL ME SAMPLES" BUTTON ACTUALLY SENDS ALL OF THEM
+// ============================================================================
+// §3 proves every email HAS a registry entry. That is not the same as the entry
+// WORKING: #1027 found email-samples.php handing the money composers a booking row
+// where they expect a derived payload, so the owner's own preview quoted figures no
+// guest would ever see — with a perfectly valid registry entry. The only check that
+// catches that is running the thing.
+//
+// WHAT THIS SECTION DOES NOT PROVE, so nobody assumes it does: it shows every sample
+// is REACHABLE and DELIVERS, not that its figures are right. Break-tested — putting a
+// non-numeric total into a fixture still sends happily (PHP casts it to 0.0), so a
+// wrong number passes here. The arithmetic is test-payrail's job, which drives the
+// money composers against expected values; this one guards the affordance.
+//
+// chb_send_sample_emails() is a plain function (require_admin() guards the route
+// BELOW it), so it can be driven here. Its own requires are stripped: this harness
+// has already supplied db.php's helpers and the capture-spliced mailer.
+echo "\n-- \u{00A7}4 every sample actually sends --\n";
+$smpTmp = $APP . '/__samples_capture_test.php';
+// Strip its requires at ANY indentation: chb_send_sample_emails() re-requires
+// mailer.php from INSIDE the function body, and an anchored ^require_once missed it,
+// so the real mailer clashed with this harness's capture-spliced copy.
+$smp = preg_replace(
+    '#^\s*require_once __DIR__ \. \'/(db|mailer)\.php\';$#m',
+    '// require stripped for the harness',
+    $smpSrc,
+);
+// NB no tail-stripping is needed: email-samples.php already guards its route with
+// `if (basename($_SERVER['SCRIPT_NAME']) === 'email-samples.php')`, so including the
+// file defines the function and does nothing else. (Cutting the tail by hand was the
+// first attempt and it sliced mid-block.)
+file_put_contents($smpTmp, $smp);
+$before = count($GLOBALS['CAP']);
+$sampleRes = null;
+$sampleErr = '';
+try {
+    require_once $smpTmp;
+    $sampleRes = chb_send_sample_emails('all', '[SAMPLE] ');
+} catch (\Throwable $e) {
+    $sampleErr = $e->getMessage();
+}
+@unlink($smpTmp);
+chk('the sample sender runs at all' . ($sampleErr !== '' ? " — $sampleErr" : ''), $sampleErr === '');
+if (is_array($sampleRes)) {
+    $results = $sampleRes['results'] ?? [];
+    $failed = [];
+    foreach ($results as $r) {
+        if (empty($r['ok'])) {
+            $failed[] = ($r['label'] ?? $r['which'] ?? '?') . ': ' . ($r['error'] ?? 'no reason given');
+        }
+    }
+    chk('it reports every sample as sent (' . count($results) . ' samples)', $results !== [] && $failed === []);
+    foreach (array_slice($failed, 0, 10) as $f) {
+        echo "        $f\n";
+    }
+    // And the transport really was handed that many messages — a sender that
+    // reports ok without composing anything is the failure this pairs against.
+    $captured = count($GLOBALS['CAP']) - $before;
+    chk("the transport received one message per sample ($captured captured)", $captured >= count($results));
+    // MARKED AS A SAMPLE — asserted where the marking actually happens. The
+    // "[SAMPLE] " prefix is applied by smtp_TRANSMIT, which is downstream of the
+    // smtp_send this harness splices, so the captured subjects here genuinely cannot
+    // show it and a check on them would be measuring the harness. Both halves of the
+    // real mechanism are checked instead: the sender sets the global, and the
+    // transport prepends it. Without the marking, a sample is indistinguishable from
+    // a real email in the owner's inbox.
+    chk('the sample sender marks its messages', strpos($smpSrc, "\$GLOBALS['__chb_test_prefix'] = \$prefix;") !== false);
+    chk('...and the transport prepends that mark to the subject',
+        preg_match("/if \\(!empty\\(\\\$GLOBALS\\['__chb_test_prefix'\\]\\)\\) \\{\\s*\\n\\s*\\\$subject = \\\$GLOBALS\\['__chb_test_prefix'\\] \\. \\\$subject;/", $mlSrc) === 1);
+    chk('...and clears it afterwards, so a real send is never marked',
+        substr_count($smpSrc, "unset(\$GLOBALS['__chb_test_prefix']);") >= 2);
+
+    // The owner is the only recipient. A sample addressed to a guest fixture would
+    // be a real email to a stranger.
+    $toOwner = true;
+    foreach (array_slice($GLOBALS['CAP'], $before) as $m) {
+        if (trim((string) ($m['to'] ?? '')) === '') {
+            $toOwner = false;
+        }
+    }
+    chk('and addressed somewhere, never a blank recipient', $toOwner);
+}
+
 @unlink($APP . '/__mailer_capture_test.php');
 echo "\n== Summary ==\n";
 if ($fail) {

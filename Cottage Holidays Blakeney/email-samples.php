@@ -210,6 +210,37 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         // see what its emails said.
         'hold_request' => ['Card hold request (legacy)', fn() => send_hold_request($b, $payUrl)],
         'hold_released' => ['Card hold released (legacy)', fn() => send_hold_released($b)],
+        // The owner's own reply to an enquirer. It has a LIVE preview in the composer
+        // (which is why the render gate excludes it), but the composer only exists
+        // once you are looking at a real enquiry — so a sample is still the only way
+        // to see it cold, and to see it beside the others in one inbox.
+        'enquiry_reply' => [
+            'Reply to an enquiry',
+            fn() => send_enquiry_reply_email(
+                $enqSample,
+                'About your stay at ' . $propName,
+                "Hello,\n\nYes — the dates you asked about are free, and there's parking for one car right outside. "
+                    . "A late arrival is no trouble at all; just let us know roughly when to expect you.\n\n"
+                    . '(This is sample text — your own reply goes here.)',
+                'enquiry',
+            ),
+        ],
+        // "A space has opened up" — sent when a cancellation frees dates someone is
+        // waiting on. wl_send() is already a plain function taking a row, so this
+        // needed no extraction; it simply had no way in.
+        'waitlist' => [
+            'Waitlist — a space opened up',
+            function () use ($propKey, $owner, $ci, $co) {
+                require_once __DIR__ . '/waitlist-lib.php';
+                return wl_send([
+                    'name' => 'Test Guest',
+                    'email' => $owner,
+                    'prop_key' => $propKey,
+                    'check_in' => $ci,
+                    'check_out' => $co,
+                ]);
+            },
+        ],
         'owner_notice' => [
             'Owner: payment received',
             fn() => send_owner_payment_notice(array_merge($b, [

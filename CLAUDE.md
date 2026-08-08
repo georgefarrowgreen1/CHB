@@ -168,6 +168,33 @@ table and looked like a different product from the confirmation that follows the
   out IN FULL and must not be derived from §1's: deriving it was vacuous, because §1
   legitimately excludes the two autopay senders (thin wrappers over their pure builders)
   and those were exactly the previews that were missing.
+- **EVERY EMAIL TYPE THE APP CAN SEND IS SENDABLE AS A SAMPLE — and §4 PROVES it, it
+  does not assert it.** email-samples.php is now 21 entries (the enquiry reply and the
+  waitlist "a space has opened" were the two callable senders with no way in;
+  `wl_send($row)` needed no extraction, it simply had no caller). §4 drives the REAL
+  `chb_send_sample_emails('all')` through the capture harness — the file already guards
+  its route with `basename($_SERVER['SCRIPT_NAME'])`, so including it defines the
+  function and does nothing else, and only its requires need stripping (at ANY
+  indentation: it re-requires mailer.php from INSIDE the function body, and an anchored
+  `^require_once` missed it, so the real mailer clashed with the capture copy).
+  **What §4 does NOT prove** — break-tested: a non-numeric total in a fixture still
+  sends happily, so a WRONG FIGURE passes. It guards the affordance; test-payrail owns
+  the arithmetic. And the `[SAMPLE] ` prefix is applied by **smtp_TRANSMIT**, downstream
+  of the smtp_send this harness splices, so the captured subjects genuinely cannot show
+  it — asserting it on them would measure the harness, so both halves of the real
+  mechanism are checked instead (the sender sets the global, the transport prepends it,
+  and it is unset afterwards so a real send is never marked).
+  **STILL NOT SAMPLABLE, and why**: roughly sixteen emails compose INLINE in a cron
+  script or a route rather than in a callable function — the weekly owner digest and
+  weekly analytics (both script-level, and both still using the retired `#8E877A`, which
+  the contrast gate cannot see because it renders mailer.php only), the two enquiry
+  nudges, the guest chat notification, the chat auto-reply, the admin sign-in code
+  (inside `admin_complete_login`), the backup report, the newsletter, the mailbox reply,
+  and the four PLAIN-TEXT owner notes (`reviews.php`, `leads.php`, `experiences.php`,
+  webpush's email fallback) which have no HTML half at all. Each needs the same pure
+  `*_body()` extraction mailer.php's ten got. NB the digest, analytics and enquiry-nudge
+  scripts already support `?force=1` for an on-demand send and have NO BUTTON anywhere —
+  the mailboxTab shape again, and the cheapest way to make those three reachable.
 - **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
   72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
   8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A
