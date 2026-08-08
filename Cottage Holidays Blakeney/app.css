@@ -9440,20 +9440,36 @@ body.light-mode .hs-field:hover {
   width: 12px;
   height: 12px;
 }
-.cottages-list .cott-head {
+/* ONE ANATOMY, WHATEVER THE COTTAGE IS CALLED. Name and rating were siblings in a WRAPPING
+   row, so the card's shape came down to a pixel comparison against an owner-editable name:
+   in 344px the three needed 379 / 343 / 362, giving cards of 413/380/413, and it flipped
+   with the screen too (all wrap at 390px, one inline at 402, two at 430). Jollyboat cleared
+   it by ONE pixel. The name owns its line now; the two REFERENCE facts share the one under
+   it, price and availability keep theirs. Flat 384px. Unscoped so the homepage grid, from
+   the same function, cannot drift. Gated by ui-test-cottagecards. */
+.cott-facts {
   display: flex;
   align-items: baseline;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 0 8px;
+  margin: 0 0 14px;
 }
-.cottages-list .cott-head .card-title {
-  margin-bottom: 0;
+.cott-facts .card-rating {
+  margin: 0;
+  white-space: nowrap;
 }
-.cottages-list .cott-head .card-rating {
+.cott-facts .card-meta {
   margin: 0;
   font-size: 0.85rem;
-  white-space: nowrap;
-  flex: none;
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* BETWEEN two facts, so conditional on both: with no occupancy set .card-meta is empty
+   (cottageSleepsLabel returns ''), which used to be a whole empty row with a 15px margin. */
+.cott-facts .card-rating:not(:empty) + .card-meta:not(:empty)::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-muted);
 }
 .map-price-pill {
   background: transparent !important;
@@ -10131,20 +10147,12 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
   }
 }
 
-/* ============================================================
-           UNIFIED LIQUID-GLASS INTERACTIONS
-           One motion language for every interactive control: the same
-           --fluid-bezier (colour/bg/border) + --spring (transform) easing,
-a
-           subtle hover lift + soft shadow on pointer devices,
-and a consistent
-           press. Appended last so it standardises the scattered per-component
-           rules. Reduced motion is already neutralised globally (the * rule near
-           the top). .card / .btn-glass keep their own larger reference lift;
-           these bring every other control in line with the same feel. Each
-           element keeps its own colour/background :hover — we only add the
-           transform + shadow + press. .gallery-nav / .lightbox-nav are handled
-           separately because they carry a translateY(-50%) centring transform. */
+/* UNIFIED LIQUID-GLASS INTERACTIONS — one motion language for every interactive control:
+   --fluid-bezier (colour/bg/border) + --spring (transform), a hover lift on pointer devices,
+   a consistent press. Appended last so it standardises the per-component rules; each element
+   keeps its own colour :hover and only gains the transform/shadow/press. Reduced motion is
+   neutralised globally. .card / .btn-glass keep their own larger lift; .gallery-nav and
+   .lightbox-nav are handled separately, carrying a translateY(-50%) centring transform. */
 .btn-sm,
 .btn-edit,
 .toggle-btn,

@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=40">
+    <link rel="stylesheet" href="guest-app.css?v=41">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=248">
+    <link rel="stylesheet" href="app.css?v=249">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -344,28 +344,28 @@
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                <div class="cott-facts">
+                    <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 </div>
-                <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
               </a>
               <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                <div class="cott-facts">
+                    <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 </div>
-                <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
               </a>
               <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                <div class="cott-facts">
+                    <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
                 </div>
-                <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
               </a>
             </div>
         </section>
@@ -474,11 +474,11 @@
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-21a" hidden></span>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                <div class="cott-facts">
                     <div class="card-rating" id="card-rating-21a"></div>
+                    <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 </div>
-                <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 <div class="card-price" id="card-price-21a"></div>
             </a>
               <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
@@ -486,11 +486,11 @@
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-jollyboat" hidden></span>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                <div class="cott-facts">
                     <div class="card-rating" id="card-rating-jollyboat"></div>
+                    <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 </div>
-                <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 <div class="card-price" id="card-price-jollyboat"></div>
             </a>
               <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
@@ -498,11 +498,11 @@
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-pimpernel" hidden></span>
                 </div>
-                <div class="cott-head">
-                    <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                <div class="cott-facts">
                     <div class="card-rating" id="card-rating-pimpernel"></div>
+                    <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
                 </div>
-                <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
                 <div class="card-price" id="card-price-pimpernel"></div>
             </a>
             </div>
@@ -1829,7 +1829,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=743"></script>
+    <script defer src="app.js?v=744"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

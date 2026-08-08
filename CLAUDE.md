@@ -288,6 +288,51 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The cottage cards are ONE shape, whatever the cottages are called
+
+Reported from a phone: the cards don't lay out the same way. They didn't — and it was never
+a second template, since all of them come from `cottageCardHtml()`. The **name and the rating
+were siblings in a WRAPPING flex row**, so a card's anatomy came down to a pixel comparison
+against owner-editable text. Measured at 402px with 344px of card: 21A needed 245+122+12 =
+**379**, Jollyboat **343**, Pimpernel **362** — so the rating sat beside Jollyboat and under
+the other two, making its card **380px against their 413**. Jollyboat cleared it by **ONE
+pixel**, and the comparison moves with the screen (all three wrap at 390px, one is inline at
+402, two at 430), so the same list was tidy on one guest's phone and mixed on another's, and
+would flip the moment a cottage was renamed in Settings.
+- **The name owns its own line; the two REFERENCE facts share the line under it** — `.cott-facts`
+  holding `.card-rating` + `.card-meta` as "★ 5.0 · 16 reviews · Sleeps 2". Price and
+  availability keep their own lines: they are the DECISION, not the reference. Flat **384px**
+  at every width, one row shorter than before. The separator is
+  `.card-rating:not(:empty) + .card-meta:not(:empty)::before`, conditional on BOTH, because a
+  cottage with no occupancy set renders an empty `.card-meta` (`cottageSleepsLabel` returns
+  `''`) which used to be a whole empty uppercase row carrying its own 15px margin.
+- **The CSS is UNSCOPED and index.html's six static fallback cards were rewritten to match.**
+  Both grids render from the same function, so scoping to `.cottages-list` would let the
+  homepage drift; and the static pre-JS cards (two shapes — the homepage set has no
+  `.card-rating`) are what crawlers and the first paint see. `.cott-head` is GONE everywhere.
+- **`renderCottageGrid` now repaints the AVAILABILITY too.** It called `renderCardPrices` and
+  `renderCardRatings` and not `renderCardAvailability`, which is filled by a single call after
+  `loadAvailabilityAll()` resolves — and `loadRates` rebuilds the grid after that. Measured:
+  every card settled with **no "Available from …" at all**. It only looks fine if you
+  re-render by hand before reading it, which is how the first version of that gate passed
+  with the fix reverted; the gate captures the chips AT REST now, before anything re-renders.
+- **The Messages button moved to the bottom RIGHT.** Every card row is left-aligned and none
+  reaches the right edge; on the left it sat on the words — at 402px a price reads x 28..238
+  and at scrollY 74 sits at y 808..833, through the button's 764..824 band, so x 12..76
+  covered 48px of it (the owner's screenshot, with "from" hidden).
+- **MEASURE THE INKED TEXT, NOT THE ELEMENT BOX.** `.card-title` is now a plain block spanning
+  the whole card, so a box-based overlap sweep reports the button covering names whose words
+  stop 89px short of it — it produced a confident "15 of 31 scroll positions" that was pure
+  artefact. A `Range` over the contents gives what is actually painted. Same family as the
+  contrast traps: the box is not the ink.
+- Gated by **`ui-test-cottagecards.js`** (24 checks: one row order, identical heights swept
+  360-430px, a hostile 40-character name that takes two lines and moves nothing, the empty
+  occupancy case, availability at rest, the button sweep, and the homepage grid matching), each
+  declaration break-tested — reverting the flex row reproduces 413/380/413 exactly. NB
+  line-sharing is decided on `left`, never `top`: these rows are baseline-aligned, so a tall
+  name and a small rating on ONE line still have very different tops, and testing `top`
+  reported "wrapped" for every inline case.
+
 ## The declined drawer says what it is
 
 Reported from a phone (screenshot): the Declined tab showed a green **0** and "All caught

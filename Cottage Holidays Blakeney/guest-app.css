@@ -425,13 +425,18 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   opacity: 1;
 }
 
-/* Standalone Messages button — detached from the menu at the bottom-left, but
-   it reuses .guest-dock + .guest-dock-btn so it's the same size/design. */
+/* Standalone Messages button — detached from the menu, reusing .guest-dock +
+   .guest-dock-btn so it's the same size/design.
+   ON THE RIGHT: every card row is left-aligned and none reaches the right edge. On the left
+   it sat on the words — at 402px a price reads x 28..238 and at scrollY 74 y 808..833, through
+   the button's 764..824 band, so x 12..76 covered 48px of it ("from" hidden in the report).
+   ui-test-cottagecards sweeps 31 positions, measuring INKED text via a Range: .card-title is
+   a block spanning the card, so a box sweep "finds" names ending 89px short of the button. */
 body.guest-app:not(.owner-mode) #guest-msg-fab {
   display: flex;
   align-items: center;
   position: fixed;
-  left: 12px;
+  right: 12px;
   bottom: calc(20px + var(--safe-b));
   z-index: 1400;
 }
