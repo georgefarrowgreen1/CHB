@@ -155,12 +155,24 @@ body.light-mode {
   gap: 12px;
   cursor: default;
 }
+/* THE PILLS GET A LINE, NOT THE SCRAPS. "Put back in Waiting" is 165px of nowrap
+   button, leaving the body 150px at 390px — and the chip is flex-shrink:0, so the
+   cottage pill took the whole squeeze at 22px of its 91 ("Pimpernel" as "Pl…"). The
+   basis forces a wrap, so a phone puts the button beneath; a wide column keeps one row. */
+.enq-declined-row {
+  flex-wrap: wrap;
+}
 .enq-declined-row .bk-row-body {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 240px;
 }
 .enq-declined-row .btn-sm {
   flex: 0 0 auto;
+}
+/* A pair, not opposite corners: the general .bk-row-top is space-between for rows whose
+   chip is a right-hand status rail. */
+.enq-declined-row .bk-row-top {
+  justify-content: flex-start;
 }
 /* ARCHIVED, WITHOUT DIMMING ANYTHING. Two attempts measured as contrast failures
    first: `opacity: 0.72` on the body composites every ink toward the ground (quoted
@@ -380,6 +392,9 @@ body.light-mode {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* .prop-tag's stacked-context margin-bottom:12px lifted it 6px above the chip beside
+     it (centres 523 vs 529) — this row's `gap` is the spacing. */
+  margin-bottom: 0;
 }.bk-row-name {
   font-size: 1rem;
   line-height: 1.3;
