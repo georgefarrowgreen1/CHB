@@ -334,8 +334,13 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
     out.two = read();
     return out;
   });
-  ok(/·\s*1 night$/.test(nightsHint.one), `one night reads "1 night" (${nightsHint.one})`);
-  ok(/·\s*2 nights$/.test(nightsHint.two), `two read "2 nights" (${nightsHint.two})`);
+  // Not anchored to the END of the string any more: on the enquiry form the hint now
+  // carries the stay total after the night count (§17), so `$` matched nothing. What is
+  // under test is the PLURAL, so the assertion is the phrase, and the singular case
+  // still proves the "s" is conditional rather than always present.
+  ok(/·\s*1 night\b/.test(nightsHint.one) && !/1 nights/.test(nightsHint.one),
+    `one night reads "1 night" (${nightsHint.one})`);
+  ok(/·\s*2 nights\b/.test(nightsHint.two), `two read "2 nights" (${nightsHint.two})`);
   ok(!/night\(s\)/.test(nightsHint.one + nightsHint.two), 'and neither shows the "night(s)" placeholder');
 
   console.log('8. a seeded range that DOES cross a booking keeps its marks');
@@ -1073,6 +1078,129 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(wlMoney.booked === 0 && wlMoney.free > 5,
     `on the waitlist a sold night is pickable but unpriced (${wlMoney.booked} priced of the booked, ${wlMoney.free} free)`);
   await page.evaluate(() => { closeDatePicker(); closeWaitlistModal(); });
+
+  console.log('17. the stay total, and the one screen it may appear on');
+  // The picker can now say what the whole stay costs — but only where it can know, and
+  // only through the function the screen behind it already quotes from. On the other
+  // three modes the ONLY computable total is the sum of the nights, which omits extra
+  // adults, children and the card fee: measured 22-86% under the real ask, so they get
+  // none. Same fixture as §16 (weekend uplift + peak season + extras + card fee).
+  await page.evaluate(() => {
+    closeDatePicker();
+    propertyRates['jollyboat'] = Object.assign({}, propertyRates['jollyboat'], {
+      minNights: 2, coupleRate: 130, extraAdultRate: 25, childRate: 15,
+      transactionPct: 3, damagesDeposit: 75, weekendPct: 15, weekendDays: '5,6',
+    });
+    propertySeasons['jollyboat'] = [];
+  });
+  PER_PROP.jollyboat = [];
+  const totalFor = (a, k) => page.evaluate(([adults, children]) => {
+    activeFrontProperty = 'jollyboat';
+    document.getElementById('enq-adults').value = String(adults);
+    document.getElementById('enq-children').value = String(children);
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    openDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    const h = document.getElementById('dp-hint');
+    const fig = h.querySelector('.dp-fig');
+    return {
+      text: h.innerText.replace(/\s+/g, ' ').trim(),
+      money: (h.innerText.match(/£[\d,.]+/) || [])[0] || null,
+      role: h.getAttribute('role'),
+      live: h.getAttribute('aria-live'),
+      // Emphasis is WEIGHT at the sentence's own size — the search hero's lesson.
+      weight: fig && getComputedStyle(fig).fontWeight,
+      sameSize: fig && getComputedStyle(fig).fontSize === getComputedStyle(h).fontSize,
+    };
+  }, [a, k]);
+
+  const two = await totalFor(2, 0);
+  ok(two.money === '£401.70', `a couple's three midweek nights price at the real total (${two.money})`);
+  ok(/3 nights/.test(two.text) && /for 2 adults/.test(two.text),
+    `…and the sentence names the nights and the party ("${two.text}")`);
+  ok(two.role === 'status' && two.live === 'polite',
+    'the figure lands in the hint, which is already the live region — so it is announced');
+  ok(two.weight === '700' && two.sameSize,
+    `…emphasised by weight at the sentence's own size (${two.weight}, same size ${two.sameSize})`);
+
+  // THE PARTY IS IN IT. This is the whole reason the sum of the nights would not do:
+  // four adults and two children pay £648.90 for the same three £130 nights.
+  const six = await totalFor(4, 2);
+  ok(six.money === '£648.90', `the party moves the figure (4 adults + 2 children = ${six.money})`);
+  ok(/4 adults, 2 children/.test(six.text), `…and is named in full ("${six.text}")`);
+  ok(six.money !== two.money, '…so the sum of the nights (£390 for both) could not have served');
+
+  // THE FIGURE MUST MATCH THE SCREEN IT SITS ON. The enquiry price box and the book bar
+  // already quote this stay; a deposit-inclusive headline here would be a third framing
+  // of the same money, seconds before the guest reads the second one.
+  const agree = await page.evaluate(() => {
+    document.getElementById('enq-adults').value = '2';
+    document.getElementById('enq-children').value = '0';
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    openDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    const inPicker = (document.getElementById('dp-hint').innerText.match(/£[\d,.]+/) || [])[0];
+    dpDone();
+    try { updateEnquiryPrice(); } catch (e) {}
+    const box = (document.getElementById('enq-price-box') || {}).innerText || '';
+    const bar = (document.getElementById('prop-book-bar') || {}).innerText || '';
+    return {
+      inPicker,
+      inBox: (box.match(/£[\d,.]+/) || [])[0],
+      deposit: (box.match(/£[\d,.]+/g) || [])[1],
+      inBar: (bar.match(/£[\d,.]+/) || [])[0],
+    };
+  });
+  ok(agree.inPicker === agree.inBox && agree.inBox === agree.inBar,
+    `one figure in all three places (picker ${agree.inPicker}, price box ${agree.inBox}, book bar ${agree.inBar})`);
+  ok(agree.deposit === '£75.00',
+    `…with the refundable deposit still on its OWN row, not folded in (${agree.deposit})`);
+
+  // THE OTHER THREE MODES SAY NOTHING. Each would have to fall back to the sum of the
+  // nights, and a figure 22-86% light is worse than no figure.
+  const silent = await page.evaluate(() => {
+    const money = () => (document.getElementById('dp-hint').innerText.match(/£/) ? 'has money' : '');
+    const out = {};
+    closeDatePicker();
+    openHeroDatePicker(); dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04'); dpPick('2026-08-07');
+    out.search = money();
+    closeDatePicker();
+    openWaitlistModal({ prop: 'jollyboat' }); openWaitlistDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04'); dpPick('2026-08-07');
+    out.fields = money();
+    closeDatePicker(); closeWaitlistModal();
+    dpMode = 'admin';
+    dpState.start = '2026-08-04'; dpState.end = '2026-08-07';
+    dpState.view = new Date(2026, 7, 1);
+    document.getElementById('date-picker').classList.add('open'); renderDatePicker();
+    out.admin = money();
+    dpMode = 'enquiry'; closeDatePicker();
+    return out;
+  });
+  ok(silent.search === '' && silent.fields === '' && silent.admin === '',
+    'the hero search, the waitlist/chat and admin show no total at all');
+
+  // A STAY THE FORM WILL REFUSE IS NOT PRICED. The hero search seeds any dates, so a
+  // seeded range can break the cottage's minimum — and pricing that is worse than mute.
+  const illegal = await page.evaluate(() => {
+    document.getElementById('enq-checkin').value = '2026-08-04';
+    document.getElementById('enq-checkout').value = '2026-08-05'; // 1 night, minimum is 2
+    openDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    renderDatePicker();
+    return document.getElementById('dp-hint').innerText.replace(/\s+/g, ' ').trim();
+  });
+  ok(!/£/.test(illegal), `a seeded stay under the minimum carries no price ("${illegal}")`);
+  await page.evaluate(() => closeDatePicker());
+  PER_PROP.jollyboat = RANGES;
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
