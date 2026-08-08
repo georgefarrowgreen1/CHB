@@ -14750,6 +14750,7 @@ async function saveModal() {
 
     try {
         let addRes = null;
+        let materialEdit = true; // an older server that does not say assumes yes
         if (mode === 'add') {
             addRes = await saveBookingGuarded('add', payload, 'Add this booking anyway?');
             if (addRes === null) return; // owner cancelled at a warning
@@ -14759,6 +14760,8 @@ async function saveModal() {
             payload.id = dbBookings[loc.propKey][loc.idx].dbId;
             const upRes = await saveBookingGuarded('update', payload, 'Save these changes anyway?');
             if (upRes === null) return;
+            // Server-decided: it holds the OLD row. Silence assumes yes.
+            materialEdit = !upRes || upRes.material !== false;
         }
         await loadData();
         closeModal();
@@ -14767,9 +14770,12 @@ async function saveModal() {
         showChangeoverToasts();
         if (mode !== 'add') {
             toast('Booking updated.');
-            // Offer to email the guest the updated details (e.g. after a date
-            // change) — the SAME ask the money row uses, so wording never forks.
-            if (payload.email) {
+            // Offer the guest the updated details — the money row's own ask, so
+            // wording never forks. Only on a MATERIAL edit (dates/cottage/party/
+            // price; bookings.php decides): it fired on every save, so a phone-typo
+            // asked to re-send the confirmation, and an ask that appears for nothing
+            // teaches the owner to dismiss the one that counts.
+            if (payload.email && materialEdit) {
                 const freshB = Object.values(dbBookings).flat().find((x) => x.dbId === payload.id);
                 if (freshB) await offerUpdatedConfirmationEmail(freshB.id);
             }
@@ -15119,7 +15125,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'backoffice1';
+    const BUILD = 'emailink1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

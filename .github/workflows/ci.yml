@@ -120,6 +120,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-payrail.php
 
+      - name: Email templates (all 21 render; every colour clears WCAG AA)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-emails-render.php
+
       - name: Square webhook signature verification
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webhook.php

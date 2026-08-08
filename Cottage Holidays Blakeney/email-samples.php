@@ -132,6 +132,45 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'invoice_url' => $base . 'invoice.php?b=0&token=SAMPLE',
     ] + $b;
 
+    // The enquiry the two enquiry-shaped emails need. Its approve/decline links are
+    // deliberately inert sample URLs — a sample must never carry a live token.
+    $enqSample = [
+        'id' => 0,
+        'name' => 'Test Guest',
+        'email' => $owner,
+        'phone' => '01234 567890',
+        'prop_key' => $propKey,
+        'prop_name' => $propName,
+        'check_in' => $ci,
+        'check_out' => $co,
+        'check_in_time' => '15:00',
+        'check_out_time' => '10:00',
+        'adults' => 2,
+        'children' => 0,
+        'message' => 'Is there parking, and can we arrive a little late?',
+        'address' => '123 Test Street, Blakeney',
+        'postcode' => 'NR25 7XX',
+        'prior_stays' => 0,
+        'price' => [
+            'total' => $rentalTotal,
+            'nights' => 3,
+            'perNight' => 130.0,
+            'nightly' => 390.0,
+            'damagesDeposit' => 75.0,
+        ],
+        'approve_url' => $base . 'enquiry-action.php?a=approve&id=0&t=SAMPLE',
+        'decline_url' => $base . 'enquiry-action.php?a=decline&id=0&t=SAMPLE',
+    ];
+    // A three-instalment plan, so the notice and the failure both show a SCHEDULE
+    // rather than their single-collection wording — the schedule is the half an
+    // owner most wants to check before it goes out.
+    $autopaySample = $b + [
+        'autopay_amount' => 100.43,
+        'autopay_instalments' => 3,
+        'autopay_due' => date('Y-m-d', strtotime($ci . ' -3 days')),
+        'autopay_next_at' => date('Y-m-d', strtotime($ci . ' -33 days')),
+    ];
+
     // which => [human label, sender closure]
     $senders = [
         'confirmation' => ['Booking confirmation', fn() => send_booking_emails($b)],
@@ -146,6 +185,31 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ')
         'cancellation' => ['Booking cancelled', fn() => send_cancellation_email($b)],
         'anniversary' => ['Anniversary re-invite', fn() => send_anniversary_email($b)],
         'direct_followup' => ['Book-direct re-invite (external reviewer)', fn() => send_direct_followup_email($b)],
+        // THE SIX THAT HAD NO PREVIEW. The selection above looked decided and was
+        // accidental: it omitted both AUTOMATIC-PAYMENT emails — the newest and most
+        // complex money emails in the app, and the two where a wrong figure would be
+        // least recoverable — plus the enquiry acknowledgement (the first email most
+        // guests ever get) and the owner's own new-enquiry notification (the one they
+        // read most). #1027 found the preview screen quoting three wrong figures
+        // while the live path was correct, which is exactly why every money email
+        // needs to be lookable-at.
+        'enquiry_ack' => ['Enquiry acknowledgement', fn() => send_enquiry_ack($enqSample, false)],
+        'autopay_notice' => [
+            'Automatic payment — advance notice',
+            fn() => send_autopay_notice($autopaySample, $payUrl),
+        ],
+        'autopay_failure' => [
+            'Automatic payment — it did not go through',
+            // Not stopped, so the sample shows the retry wording rather than the
+            // give-up wording; both halves of that branch are gated in test-payrail.
+            fn() => send_autopay_failure($autopaySample, 'The card was declined.', false),
+        ],
+        'owner_enquiry' => ['Owner: new enquiry', fn() => send_owner_enquiry_email($enqSample)],
+        // Legacy card-HOLD era. Only reachable for old bookings, so genuinely lower
+        // value than the four above — but an owner looking at an old booking can now
+        // see what its emails said.
+        'hold_request' => ['Card hold request (legacy)', fn() => send_hold_request($b, $payUrl)],
+        'hold_released' => ['Card hold released (legacy)', fn() => send_hold_released($b)],
         'owner_notice' => [
             'Owner: payment received',
             fn() => send_owner_payment_notice(array_merge($b, [
