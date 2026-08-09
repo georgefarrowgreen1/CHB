@@ -135,11 +135,13 @@ function render_invoice_html($d)
             $money($d['nightly'] ?? 0),
             $e(($d['prop_name'] ?? '') . ' · ' . ($d['check_in'] ?? '') . ' – ' . ($d['check_out'] ?? '')),
         ) . $row('Transaction fee (' . $e($d['tx_pct'] ?? 0) . '%)', $money($d['tx_fee'] ?? 0));
-    // The deposit line is on the document in EVERY state, with its own state in
-    // words underneath. It used to be deleted outright once refunded, so nothing
-    // recorded that the money had been taken and given back.
-    if ($depAmt > 0) {
-        $charge .= $row('Refundable damages deposit', $money($depAmt), $e($depStatus));
+    // CHARGES ADD UP TO THEIR OWN TOTAL, so this line carries what is IN the total
+    // ($damages), not what the deposit was. The deposit is a HOLDING, not a charge:
+    // once it has gone back it leaves the total, and a line for it here would leave
+    // the table summing to £770.25 under a stated total of £695.25. Its history is
+    // then in Payments — the dated return row, plus the sentence below the card.
+    if ($damages > 0) {
+        $charge .= $row('Refundable damages deposit', $money($damages), $e($depStatus));
     }
 
     // MONEY IN reduces what is outstanding, so it reads as a credit; money going
@@ -303,6 +305,11 @@ function render_invoice_html($d)
         '<h2>Payments</h2>' .
         '<table class="grp"><tbody>' . $payRows . '</tbody>' .
         '<tfoot>' . $row($settled ? 'Nothing outstanding' : 'Still to pay', $money($balance)) . '</tfoot></table>' .
+        // the deposit has left the total, so it is no longer a charge — but it was
+        // taken, and the document says so in words where the movement is recorded
+        ($depAmt > 0 && $damages <= 0.005 && $depStatus !== ''
+            ? '<p class="fine">Refundable damages deposit of ' . $money($depAmt) . ' — ' . $e($depStatus) . '</p>'
+            : '') .
 
         '<h2>Your stay</h2>' .
         '<div class="kvs">' .

@@ -23,6 +23,9 @@ const vm = require('vm');
 
 const HTML_PATH = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, 'index.html');
 let failures = 0;
+// Work that cannot be synchronous (downloadInvoice awaits ensureJsPdf, so its
+// continuation lands on a microtask). The summary at the foot waits for these.
+const pendingChecks = [];
 const pass = (m) => console.log('  ✓ ' + m);
 const fail = (m) => { failures++; console.log('  ✗ ' + m); };
 function check(name, cond) { cond ? pass(name) : fail(name); }
@@ -874,6 +877,144 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check(`deposit status matches all ${dfx.cases.length} shared fixtures`, disBad.length === 0, disBad.slice(0, 3).join(' | '));
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    //  THE OWNER'S PDF INVOICE, DRIVEN FOR REAL (downloadInvoice → jsPDF).
+    //
+    //  It is the other half of one booking's two documents and nothing had ever
+    //  exercised it, so:
+    //    * a settled invoice printed "Paid in full £770.25" — gbp(gt.fullyPaid ?
+    //      gt.total : gt.balance) put the whole TOTAL in the column every other
+    //      state uses for what is still owed;
+    //    * nothing called addPage(), and the page furniture was painted once, so
+    //      a long address or deposit status pushed the closing sentence off the
+    //      sheet (baseline y=819 against a sheet ending at 814);
+    //    * the £75 deposit was listed in Charges AND given a section of its own;
+    //    * "I N V O I C E" was the accent as text (2.55:1) and "Paid in full"
+    //      was #4CAF50 (2.78:1).
+    //  jsPDF is stubbed by wrapping the CONSTRUCTOR (not the prototype), which is
+    //  what makes every text baseline and colour measurable with no browser.
+    // ════════════════════════════════════════════════════════════════════════
+    const dl = get('downloadInvoice');
+    if (typeof dl !== 'function') { fail('downloadInvoice is not defined'); }
+    else {
+        const A4 = { W: 595.28, H: 841.89 };
+        const SHEET_BOTTOM = A4.H - 28; // the white sheet's own lower edge
+        const mkDoc = () => {
+            const calls = { text: [], pages: 1, colours: [], saved: '' };
+            let ink = [0, 0, 0];
+            const doc = {
+                internal: { pageSize: { getWidth: () => A4.W, getHeight: () => A4.H } },
+                setFillColor() {}, setDrawColor() {}, setFont() {}, setFontSize() {},
+                rect() {}, roundedRect() {}, line() {}, addImage() {},
+                setTextColor(...c) { ink = c.length === 1 ? [c[0], c[0], c[0]] : c; calls.colours.push(ink.join(',')); },
+                splitTextToSize: (t, w) => {
+                    // ~5.2pt per character at 10pt helvetica is close enough to make
+                    // a long value wrap the way it really does
+                    const per = Math.max(1, Math.floor(w / 5.2));
+                    const out = [];
+                    for (let i = 0; i < String(t).length; i += per) out.push(String(t).slice(i, i + per));
+                    return out.length ? out : [''];
+                },
+                text(t, x, yy) {
+                    const arr = Array.isArray(t) ? t : [t];
+                    arr.forEach((s2, i) => calls.text.push({ s: String(s2), x, y: yy + i * 14, page: calls.pages, ink: ink.join(',') }));
+                },
+                addPage() { calls.pages++; },
+                save(n) { calls.saved = n; },
+            };
+            return { doc, calls };
+        };
+        let captured = null;
+        sandbox.window.ensureJsPdf = async () => {};
+        sandbox.window.jspdf = { jsPDF: function () { const m = mkDoc(); captured = m.calls; return m.doc; } };
+        // dbBookings / propertyMeta / propertyRates are `const`, so in a vm context
+        // they live in the script's LEXICAL scope and never appear on the sandbox
+        // object — get() cannot see them. Seed by evaluating in the same context,
+        // which is also the only way to mutate a const object legitimately.
+        let ADDRESS = '4 Westgate Street, Blakeney, Norfolk NR25 7NQ';
+        const AGREED = { nights: 5, perNight: 135, nightly: 675, transactionPct: 3, txFee: 20.25, damagesDeposit: 75, total: 695.25, rentalTotal: 695.25 };
+        const seed = (booking) => vm.runInContext(
+            `propertyMeta.jollyboat = { name: 'Jollyboat', accent: '#7FA88A' };\n`
+            + `propertyRates.jollyboat = ${JSON.stringify({ address: ADDRESS })};\n`
+            + `dbBookings.jollyboat = [${JSON.stringify(booking)}];`,
+            ctx,
+        );
+        const mkBooking = (over) => Object.assign({
+            id: 'b42', dbId: 42, name: 'Sarah Pemberton', email: 'sarah@example.co.uk',
+            checkIn: '2026-09-06', checkOut: '2026-09-11', checkInTime: '15:00', checkOutTime: '10:00',
+            adults: 2, children: 1, guests: '2 adults, 1 child', agreedPrice: AGREED,
+            payment: 'deposit', depositPaid: 248.81, holdStatus: 'charged', holdAmount: 75,
+            paymentMethod: 'Square card', paymentDate: '2026-07-20',
+        }, over || {});
+        const run = async (over) => {
+            captured = null;
+            seed(mkBooking(over));
+            await dl('b42');
+            return captured;
+        };
+        const said = (c, re) => c.text.filter((t) => re.test(t.s));
+        // -- the settled row is the same fact twice over ---------------------
+        const probe = async () => {
+            const paid = await run({ payment: 'paid', depositPaid: 695.25 });
+            check('PDF: a settled invoice renders', !!paid && paid.saved.includes('CHB-000042'));
+            const lbl = said(paid, /^Nothing outstanding$/)[0];
+            check('PDF: settled says "Nothing outstanding"', !!lbl);
+            if (lbl) {
+                const fig = paid.text.find((t) => t.y === lbl.y && t.x > A4.W / 2);
+                check('PDF: …beside £0.00, not the total', !!fig && fig.s === '£0.00', fig ? fig.s : 'no figure on that line');
+            }
+            check('PDF: no "Paid in full" beside a figure that is not zero',
+                said(paid, /Paid in full/).length === 0);
+            // -- the deposit is stated ONCE ----------------------------------
+            check('PDF: the deposit line appears once', said(paid, /^Refundable damages deposit$/).length === 1,
+                said(paid, /Refundable damages deposit/).map((t) => t.s).join(' | '));
+            // -- inks ---------------------------------------------------------
+            check('PDF: the retired green #4CAF50 is never set', paid.colours.indexOf('76,175,80') === -1);
+            const inv = said(paid, /I N V O I C E/)[0];
+            check('PDF: the accent as WORDS takes the accent ink', !!inv && inv.ink === '138,90,43', inv ? inv.ink : 'not drawn');
+            // -- a balance still reads as a balance ---------------------------
+            const part = await run({});
+            check('PDF: a part-paid invoice says "Balance due"', said(part, /^Balance due$/).length === 1);
+            const bl = said(part, /^Balance due$/)[0];
+            const bfig = bl && part.text.find((t) => t.y === bl.y && t.x > A4.W / 2);
+            check('PDF: …beside what is actually owed', !!bfig && bfig.s === '£446.44', bfig ? bfig.s : 'none');
+            // -- a REFUNDED deposit leaves the charges but stays on the page ---
+            const ret = await run({ payment: 'paid', depositPaid: 695.25, holdStatus: 'returned', damagesReturned: 75, holdSettledAt: '2026-09-14 10:00:00' });
+            check('PDF: refunded — the deposit is not a charge line',
+                said(ret, /^Refundable damages deposit$/).length === 0);
+            check('PDF: refunded — but it is still recorded, with its date',
+                said(ret, /Refundable damages deposit of £75\.00/).length > 0 || said(ret, /Refunded in full on 14\/09\/2026/).length > 0);
+            // -- PAGINATION: nothing may be drawn past the sheet --------------
+            for (const [label, over] of [
+                ['a normal booking', {}],
+                ['a very long address', {}],
+                ['a long guest line', { guests: 'Six adults, four children and a party name that runs on and on and on' }],
+            ]) {
+                if (label === 'a very long address') {
+                    ADDRESS = 'Flat 12b, The Old Lifeboat Station, Westgate Street, Blakeney, Holt, North Norfolk, NR25 7NQ, United Kingdom';
+                }
+                const c = await run(over);
+                const off = c.text.filter((t) => t.y > SHEET_BOTTOM);
+                check(`PDF: ${label} — nothing is drawn past the sheet`, off.length === 0,
+                    off.map((t) => `"${t.s}" at y=${Math.round(t.y)}`).slice(0, 3).join(' | '));
+            }
+            ADDRESS = '4 Westgate Street, Blakeney, Norfolk NR25 7NQ';
+            // …and a document long enough to need one really does get a second page.
+            // It has to be a WRAPPING field to grow — a single row is 18pt whatever
+            // is in it — so this is the address, the same field that pushed the real
+            // footer off the sheet.
+            ADDRESS = Array.from({ length: 40 }, (_, i) => `Line ${i} of a preposterous address`).join(', ');
+            const tall = await run({});
+            check('PDF: a document that outgrows the sheet gets another page', tall.pages >= 2, 'pages=' + tall.pages);
+            const off2 = tall.text.filter((t) => t.y > SHEET_BOTTOM);
+            check('PDF: …and still nothing past the sheet on any page', off2.length === 0,
+                off2.map((t) => `"${t.s}" at y=${Math.round(t.y)}`).slice(0, 3).join(' | '));
+        };
+        pendingChecks.push(
+            (async () => { await probe(); })().catch((e) => fail('PDF invoice probe threw: ' + e.message)),
+        );
+    }
+
     // THE DEPOSIT ON A GUEST'S INVOICE IS THE SUM TAKEN, NOT THE SUM AGREED.
     // agreed_booking_fee moves whenever the owner edits the deposit; hold_amount
     // is what the card really took and what damages_collected() caps a refund at.
@@ -1197,6 +1338,8 @@ console.log('\n§13 The activity log declares its own cap');
     );
 }
 
-console.log('\n== Summary ==');
-if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
-console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
+Promise.all(pendingChecks).then(() => {
+    console.log('\n== Summary ==');
+    if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
+    console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
+});
