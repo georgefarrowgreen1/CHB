@@ -296,8 +296,10 @@ echo "\n§5 the affordances\n";
 inv_ok(substr_count($html['part'], '07/08/2026') >= 2,
     'the due date is on the page beside the figure AND in the pay bar',
     substr_count($html['part'], '07/08/2026') . ' occurrences');
-inv_ok(str_contains($html['part'], 'by 07/08/2026') && str_contains($html['part'], 'Due 07/08/2026'),
-    '…in both wordings');
+// ONE wording in both places. It used to read "by <date>" beside the figure and
+// "Due <date>" in the bar — the same fact in two registers on one screen.
+inv_ok(substr_count($html['part'], 'Due 07/08/2026') === 2 && !str_contains($html['part'], 'by 07/08/2026'),
+    '…in one wording, not two');
 inv_ok(!str_contains($html['paid'], '07/08/2026'), 'a settled invoice names no deadline');
 inv_ok(str_contains($html['part'], 'href="index.html?pay=tok&amp;b=42"'), 'a balance can be paid from the invoice');
 inv_ok(!str_contains($html['paid'], 'index.html?pay='), 'a settled invoice offers no pay link');
@@ -328,8 +330,13 @@ $pr = (function (string $h) { preg_match('/@media print\{(.*?)\}\s*<\/style>/s',
 inv_ok($pr !== '', 'the print block is readable', strlen($pr) . ' bytes');
 inv_ok(!str_contains($pr, 'border-radius:0') && !str_contains($pr, 'display:flex'),
     'print does NOT flatten the cards or re-lay the header');
-inv_ok(preg_match('/\.hd,\.grp,\.kvs\{[^}]*border:1px solid/', $pr) === 1,
-    'print gives every card a hairline, having no fill to rely on');
+// There is no card chrome LEFT to flatten — the modernised document is space and
+// hairlines — so print keeps the rules and only drops what cannot act on paper.
+inv_ok(!preg_match('/\.(grp|kvs)\{[^}]*(box-shadow|border-radius)/', $html['part']),
+    'no card chrome on the rows in the first place, so print has none to undo');
+inv_ok(preg_match('/\.grp td\{[^}]*border-top:1px solid/', $html['part']) === 1
+    && preg_match('/\.grp tfoot td\{[^}]*border-top:1\.5px solid/', $html['part']) === 1,
+    'a row is one hairline and a total is a heavier rule');
 inv_ok(str_contains($pr, 'background:none!important'),
     'and the chips keep a border for the same reason');
 
@@ -354,7 +361,8 @@ inv_ok(preg_match('/@media print\{.*background:none!important/s', $html['part'])
 // the sticky bar must clear the notch, like every other fixed element here
 inv_ok(str_contains($html['part'], 'env(safe-area-inset-bottom)'), 'the action bar clears the home indicator');
 // tap targets
-inv_ok(preg_match('/\.btn,\.btn2\{[^}]*min-height:44px/', $html['part']) === 1, 'both controls take the 44px floor');
+preg_match('/\.btn,\.btn2\{[^}]*min-height:(\d+)px/', $html['part'], $mh);
+inv_ok(!empty($mh[1]) && (int) $mh[1] >= 44, 'both controls clear the 44px floor', ($mh[1] ?? '?') . 'px');
 
 // ════════════════════════════════════ §6 ════════════════════════════════════
 // TWO DEFINITIONS OF A COLOUR, KEPT IN LOCKSTEP BY THIS CHECK. invoice.php

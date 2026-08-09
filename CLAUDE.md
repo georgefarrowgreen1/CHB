@@ -290,6 +290,37 @@ table and looked like a different product from the confirmation that follows the
 
 ## The guest's invoice: ONE document, two presentations
 
+**AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style
+invoice"*). Three things were carrying the traditional register, and they were carrying
+it on BOTH surfaces because the two share one anatomy: the **centred** crown-over-brand
+masthead, the **serif** money figure, and **uppercase letterspaced** captions. All three
+are gone. Everything is now left-aligned against one rail; the figure is the grotesque
+at 46px/32pt with a −0.035em track and tabular figures; captions are sentence case at
+600 weight, so hierarchy comes from size and space rather than tracking; the ground is
+WHITE (the linen and every card fill went with it) and the accent is a 3px rule at the
+very top instead of a slab. The serif survives in exactly one place — the business NAME,
+as the brand's signature. The INKS are untouched: they are the email design system's and
+§6 asserts the pair, so modernising the layout could not regress contrast.
+- **The rows lost their cards.** A row is one hairline above it and a total is a heavier
+  1.5px rule; the meta blocks are a two-column grid collapsing at 520px. `.kvs.one` is
+  the single-party variant, because a lone `.who` in a two-column grid leaves half the
+  row empty.
+- **AIR IS WHAT MAKES IT MODERN AND A ONE-SHEET INVOICE MATTERS MORE.** The first pass
+  at the airier rhythm pushed even the SETTLED case onto two pages (row 27→ sub 12→ gap
+  22). The values shipped are the tightest that still read as space rather than a
+  ledger — row 25, foot 29, sub 11, gap 17 — and the settled case is one sheet again.
+  The bank-rail case (one extra group) still runs to two and breaks correctly.
+- **Two assertions had to be re-aimed, not patched:** "print gives every card a hairline"
+  described chrome that no longer exists (the check now asserts there is no card chrome
+  to undo, and that a row is one hairline while a total is heavier), and the 44px floor
+  check pinned `min-height:44px` where the modern control is 46 — it reads the number and
+  compares now. And ten of the PDF's checks named UPPERCASE captions; sentence case is
+  the point of the change, so they follow the page's vocabulary.
+- NB `.vh` (the visually-hidden document title) was used in the markup before it was
+  defined in the stylesheet, so the `<h1>` would have painted at browser-default size.
+  Nothing else would have caught it — the gates read text, not type size.
+
+
 `invoice.php` is the page the guest files and may show an insurer, and
 `render_invoice_html()` has always been PURE and unit-testable while nothing unit-tested
 it — so three things shipped on it. Gated now by **`test-invoice.php`** (85 checks: the

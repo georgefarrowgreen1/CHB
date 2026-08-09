@@ -905,12 +905,12 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const SHEET_BOTTOM = A4.H - 44;
         const isStamp = (t) => /^(Page \d+ of \d+|Invoice CHB-\d+)$/.test(t.s) && t.y > SHEET_BOTTOM;
         const mkDoc = () => {
-            const calls = { text: [], pages: 1, colours: [], saved: '', props: null, lang: '', on: 0 };
+            const calls = { text: [], pages: 1, colours: [], fills: [], saved: '', props: null, lang: '', on: 0 };
             let ink = [0, 0, 0];
             const doc = {
                 internal: { pageSize: { getWidth: () => A4.W, getHeight: () => A4.H } },
-                setFillColor() {}, setDrawColor() {}, setFont() {}, setFontSize() {},
-                rect() {}, roundedRect() {}, line() {}, addImage() {}, setCharSpace() {},
+                setFillColor(...c) { calls.fills.push(c.join(',')); }, setDrawColor() {}, setFont() {}, setFontSize() {},
+                rect() {}, roundedRect() {}, line() {}, addImage() {}, setCharSpace() {}, setLineWidth() {},
                 setProperties(o) { calls.props = o; }, setLanguage(l) { calls.lang = l; },
                 getNumberOfPages() { return calls.pages; },
                 setPage(n) { calls.on = n; },
@@ -980,9 +980,9 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             // the hero caption over the amount received — which names its own
             // figure, and is what invoice.php does.
             check('PDF: settled — no owed-money label anywhere',
-                said(paid, /^(Balance due|Still to pay|BALANCE DUE)$/).length === 0,
+                said(paid, /^(Balance due|Still to pay)$/).length === 0,
                 said(paid, /Balance|Still to pay/i).map((t) => t.s).join(' | '));
-            const hCap = said(paid, /^PAID IN FULL$/)[0];
+            const hCap = said(paid, /^Paid in full$/)[0];
             check('PDF: settled — the hero caption names the figure beneath it', !!hCap);
             check('PDF: …and takes the ok ink, not the 2.78:1 green', !!hCap && hCap.ink === '31,107,58',
                 hCap ? hCap.ink : 'not drawn');
@@ -993,9 +993,14 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
                 said(paid, /refunded in full after your stay/i).length === 1);
             // -- inks ---------------------------------------------------------
             check('PDF: the retired green #4CAF50 is never set', paid.colours.indexOf('76,175,80') === -1);
+            // The modernised document is space and hairlines: the only fills left are
+            // the accent rule, the white ground and a status chip's tint. A linen
+            // ground or a card fill would put the old letterhead back.
+            check('PDF: no linen ground and no card fills', !paid.fills.includes('245,241,233'),
+                paid.fills.join(' | '));
             // -- a balance still reads as a balance ---------------------------
             const part = await run({});
-            const pCap = said(part, /^BALANCE DUE$/)[0];
+            const pCap = said(part, /^Balance due$/)[0];
             check('PDF: a part-paid invoice leads with "Balance due"', !!pCap);
             // the accent as WORDS takes the accent INK — the rose-gold fill is 2.55:1
             check('PDF: …in the accent ink, never the accent fill', !!pCap && pCap.ink === '138,90,43',
@@ -1006,7 +1011,7 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const sfig = stp && part.text.find((t) => t.y === stp.y && t.x > A4.W / 2);
             check('PDF: …and the ledger foot agrees', !!sfig && sfig.s === '£446.44', sfig ? sfig.s : 'none');
             // -- ONE ANATOMY with invoice.php: the page's own group captions ----
-            for (const c of ['CHARGES', 'PAYMENTS', 'YOUR STAY', 'BILLED TO', 'ISSUED BY']) {
+            for (const c of ['Charges', 'Payments', 'Your stay', 'Billed to', 'Issued by']) {
                 check(`PDF: carries the page's "${c}" group`, said(part, new RegExp('^' + c + '$')).length === 1);
             }
             check('PDF: and none of the old letterhead is left',
@@ -1029,14 +1034,14 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             // -- HOW TO PAY, off the card rail ---------------------------------
             const bankBal = await run({ paymentMethod: 'Bank transfer', payment: 'deposit', depositPaid: 100 });
             check('PDF: a bank-rail balance says how to pay',
-                said(bankBal, /^HOW TO PAY$/).length === 1 && said(bankBal, /Sort 01-02-03/).length === 1,
-                said(bankBal, /HOW TO PAY|Sort/).map((t) => t.s).join(' | '));
+                said(bankBal, /^How to pay$/).length === 1 && said(bankBal, /Sort 01-02-03/).length === 1,
+                said(bankBal, /How to pay|Sort/).map((t) => t.s).join(' | '));
             const cardBal = await run({ payment: 'deposit', depositPaid: 100 });
             check('PDF: the card rail does not — it has a link instead',
-                said(cardBal, /^HOW TO PAY$/).length === 0);
+                said(cardBal, /^How to pay$/).length === 0);
             const bankPaid = await run({ paymentMethod: 'Bank transfer', payment: 'paid', depositPaid: 695.25 });
             check('PDF: and a settled invoice never asks',
-                said(bankPaid, /^HOW TO PAY$/).length === 0);
+                said(bankPaid, /^How to pay$/).length === 0);
             // -- PAGINATION: nothing may be drawn past the margin -------------
             for (const [label, over] of [
                 ['a normal booking', {}],
