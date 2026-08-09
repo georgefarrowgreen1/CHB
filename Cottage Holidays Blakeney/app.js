@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 432;
+const ADMIN_BUNDLE_V = 433;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 157;
+const ADMIN_CSS_V = 158;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -792,22 +792,40 @@ async function oqRegisterSync() {
         if (reg && 'sync' in reg) await reg.sync.register('chb-sync');
     } catch (e) {}
 }
-// Send now if online; otherwise queue it and report it as queued.
-async function queueOrPost(endpoint, payload) {
+// A client-generated id for the op ledger (db.php op_claim): stamped on a write
+// BEFORE its first attempt, so the attempt and every replay carry the SAME id
+// and the server can answer a repeat from its stored response instead of
+// re-applying it. randomUUID needs a secure context; the fallback is fine for
+// a collision domain of one phone's unsent queue.
+function chbOpId() {
+    try {
+        return 'op-' + crypto.randomUUID();
+    } catch (e) {
+        return 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
+}
+// Send now; queue ON FAILURE TO SEND. navigator.onLine is true on a dead
+// router, so the old gate threw the write away on exactly the connection this
+// queue exists for. The rule: an HTTP status = the server ANSWERED (a refusal,
+// never retried blind); no status = transport failure → queue. The op_id is
+// what makes that safe — the request may have LANDED and lost only its reply,
+// and the identical id on the replay lets the server dedupe. See CLAUDE.md.
+async function queueOrPost(endpoint, payload, label) {
+    if (!payload || !payload.op_id) payload = Object.assign({}, payload || {}, { op_id: chbOpId() });
     const enqueue = async () => {
         try {
-            await oqAdd({ endpoint, payload, at: Date.now() });
+            await oqAdd({ endpoint, payload, label: String(label || ''), at: Date.now() });
         } catch (e) {}
         await oqRefreshCount();
         oqRegisterSync();
         return { queued: true };
     };
-    if (navigator.onLine === false) return enqueue();
+    if (navigator.onLine === false) return enqueue(); // definitely down — skip the round trip
     try {
         return await apiPost(endpoint, payload);
     } catch (e) {
-        if (navigator.onLine === false) return enqueue();
-        throw e;
+        if (e && /** @type {any} */ (e).status) throw e; // the server spoke — a refusal, not a failure
+        return enqueue();
     }
 }
 let __oqFlushing = false;
@@ -821,6 +839,7 @@ async function oqFlush() {
         try {
             await oqRefreshCount();
         } catch (e) {}
+        oqRegisterSync(); // re-arm — a sync that already fired and failed gets another shot
         return;
     }
     let items = [];
@@ -833,16 +852,23 @@ async function oqFlush() {
     }
     __oqFlushing = true;
     let failed = 0;
+    const failMsgs = [];
     try {
         for (const it of items) {
             try {
                 await apiPost(it.endpoint, it.payload);
             } catch (e) {
-                if (navigator.onLine === false) break; // offline again — stop, keep the rest queued
+                // A TRANSPORT failure (no e.status) keeps the WHOLE queue for a
+                // later try — only a server ANSWER may consume an item (the old
+                // onLine test deleted items on a dead router, losing the write).
+                if (!(e && /** @type {any} */ (e).status)) break;
                 // Auth lapsed (session expired) → KEEP the write to retry after re-sign-in;
-                // don't drop it. Other 4xx/5xx are treated as handled so the queue can't wedge.
-                if (e && (e.status === 401 || e.status === 403)) continue;
+                // don't drop it. Other 4xx/5xx are treated as handled so the queue can't
+                // wedge — but the refusal is NAMED (a clash-refused enquiry saying only
+                // "try again" would be advice that can't work).
+                if (e.status === 401 || e.status === 403) continue;
                 failed++;
+                failMsgs.push((it.label ? it.label + ' — ' : '') + String(e.message || 'rejected').slice(0, 120));
             }
             try {
                 await oqDelete(it.id);
@@ -866,10 +892,14 @@ async function oqFlush() {
         if (typeof renderMoneyOverview === 'function') renderMoneyOverview();
     } catch (e) {}
     if (failed > 0) {
-        // A queued change was rejected by the server (e.g. session expired) — never
-        // claim success; tell the owner so they can redo it rather than lose it silently.
+        // A queued change was REFUSED by the server — never claim success, and
+        // NAME the refusal in the server's own words: a clash-refused enquiry
+        // told only "please try again" is advice that cannot work.
         try {
-            toast(failed + (failed > 1 ? ' changes' : ' change') + " couldn't be saved — please try again.");
+            toast(
+                "Couldn't save " + (failMsgs[0] || 'a change')
+                + (failed > 1 ? ' (and ' + (failed - 1) + ' more)' : ''),
+            );
         } catch (e) {}
     } else if (__oqCount === 0) {
         try {
@@ -877,6 +907,12 @@ async function oqFlush() {
         } catch (e) {}
     }
 }
+// The replay probes: the online event (which a connected-but-dead router never
+// fires), coming back to the tab, and — the honest one — ANY successful apiPost,
+// because a request that just worked is the only proof the link works.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) oqFlush();
+});
 window.addEventListener('online', () => {
     updateOnlineStatus();
     oqFlush();
@@ -974,6 +1010,14 @@ async function apiPost(endpoint, payload) {
         throw apiErr(data.error || 'Request failed (' + res.status + ')', res.status, data.code);
     }
     chbClockSync(data.srv);
+    // A request that just SUCCEEDED is the only honest connectivity probe there
+    // is — the `online` event never fires on a router that came back from dead
+    // (navigator.onLine was true throughout). If writes are waiting, replay now.
+    if (__oqCount > 0 && !__oqFlushing) {
+        try {
+            setTimeout(oqFlush, 50);
+        } catch (e) {}
+    }
     return data;
 }
 async function apiGet(endpoint) {
@@ -1033,6 +1077,7 @@ function forceAdminLogout() {
     try {
         localStorage.removeItem('chb-was-admin');
         localStorage.removeItem('chb-daysheet');
+        localStorage.removeItem('chb-dep-decisions');
     } catch (e) {}
     try {
         setAuthUI();
@@ -15638,7 +15683,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'offday1';
+    const BUILD = 'opledger1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -196,3 +196,14 @@ CREATE TABLE IF NOT EXISTS guest_registrations (
     UNIQUE KEY uniq_booking (booking_id),
     KEY idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- The op ledger (migration-109): exactly-once for replayed offline writes.
+-- A client-generated op_id rides each queued write; the first success stores
+-- its JSON response here and a replay of the same id is answered from it.
+-- Pruned after 30 days by self-repair.php.
+CREATE TABLE IF NOT EXISTS op_ledger (
+    op_id VARCHAR(48) NOT NULL PRIMARY KEY,
+    response MEDIUMTEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_op_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

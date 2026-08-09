@@ -48,18 +48,24 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     // far future — must NOT reach the snapshot
     mkBooking(5, { name: 'Zara Outofrange', check_in: d(20), check_out: d(23) }),
   ];
+  const posts = [];
   await page.route(/\.php/, async (route) => {
-    if (apiDead) return route.abort();
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     if (route.request().method() === 'POST') {
       const b = JSON.parse(route.request().postData() || '{}');
       const f = url.split('/').pop().split('?')[0];
+      b.__f = f;
+      posts.push(b);
+      // apiDead = the request LANDS but the reply dies — record, then abort.
+      // That is the ambiguous-timeout shape the op ledger exists for.
+      if (apiDead) return route.abort();
       if (f === 'auth.php' && b.action === 'admin_status') return json({ admin: true });
       if (f === 'content.php' && b.action === 'get_all') return json({ content: { 'ops-21a': 'Key safe 4021 — black box right of the porch\nStopcock — under the kitchen sink' } });
       if (f === 'content.php' && b.action === 'save') return json({ ok: true });
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [], returns: {}, threads: [] });
     }
+    if (apiDead) return route.abort();
     if (url.includes('admin-bootstrap.php')) return json({ ok: true, cron: null, feeds: [], payoutTrouble: null, rates: null, bookings: { bookings: BOOKINGS }, enquiries: { enquiries: [] }, blocks: { ok: true, blocks: [] } });
     if (url.includes('bookings.php')) return json({ bookings: BOOKINGS });
     if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
@@ -161,6 +167,74 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await settle(3000);
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('owner-mode')),
     'an offline reload on a signed-out device lands on the public site, not the owner\'s day');
+
+  // ── §7 THE WRITE HALF: captures on the day sheet, queue-on-failure, and the
+  //     op id that makes the retry safe. navigator.onLine is TRUE throughout —
+  //     the routes abort instead, which is precisely the connection the old
+  //     `onLine === false` gate could never see (the write was thrown away).
+  console.log('§7 the day-sheet captures, offline');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();                       // sign in fresh, snapshot rebuilt
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet is up again');
+  const gdSet = (id, v) => page.evaluate(([i2, v2]) => { const el = document.getElementById('gdf-' + i2); if (el) { el.value = v2; el.dispatchEvent(new Event('input')); } }, [id, v]);
+
+  // (a) record Marcus's payment — full settlement, cash
+  const preOps = posts.length;
+  await page.locator('#offline-daysheet button', { hasText: 'Record a payment' }).first().click();
+  await page.waitForTimeout(400);
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1200);
+  const payTry = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'set_payment');
+  ok(payTry.length === 1, 'the tap TRIED — the request landed even though the reply died');
+  ok(!!payTry[0].op_id && /^op-/.test(payTry[0].op_id), 'and it carried an op id from birth');
+  ok(payTry[0].payment === 'paid' && payTry[0].payment_method === 'Cash', 'the payload mirrors the online recorder (paid in full, cash)');
+  ok(await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent.includes('Recorded · waiting to sync')), 'the row says recorded-not-synced, honestly');
+
+  // (b) decide Hannah's deposit — saved on the phone, NOT queued for auto-replay
+  await page.locator('#offline-daysheet button', { hasText: 'Decide the deposit' }).click();
+  await page.waitForTimeout(400);
+  await gdSet('note', 'All fine — checked the lot');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 1), 'the decision is saved on the phone');
+  ok(posts.filter((p2) => p2.action === 'return_deposit' || p2.action === 'keep_deposit').length === 0, 'and NO money op was sent — a deferred decision, never a deferred authority');
+
+  // (c) the phone enquiry
+  await page.locator('#offline-daysheet button', { hasText: 'Save it as an enquiry' }).click();
+  await page.waitForTimeout(400);
+  await gdSet('name', 'Elaine Barrowcliffe');
+  await gdSet('phone', '07700 900233');
+  await gdSet('ci', d(60));
+  await gdSet('co', d(63));
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1200);
+  const enqTry = posts.filter((p2) => p2.__f === 'enquiries.php' && p2.action === 'submit');
+  ok(enqTry.length === 1 && enqTry[0].name === 'Elaine Barrowcliffe' && !!enqTry[0].op_id, 'the enquiry tried too, op id aboard');
+
+  // ── §8 reconnect: the replay carries the SAME ids, and money asks first ──
+  console.log('§8 the replay');
+  apiDead = false;
+  await page.evaluate(() => oqFlush());
+  await page.waitForTimeout(2500);
+  const payAll = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'set_payment');
+  ok(payAll.length === 2 && payAll[0].op_id === payAll[1].op_id, 'EXACTLY-ONCE CONTRACT: the replayed payment carries the SAME op id as the lost attempt');
+  const enqAll = posts.filter((p2) => p2.__f === 'enquiries.php' && p2.action === 'submit');
+  ok(enqAll.length === 2 && enqAll[0].op_id === enqAll[1].op_id, '…and so does the enquiry');
+  // the deposit decision surfaces as a CONFIRM on the next Today load
+  await page.evaluate(() => initBackOffice());
+  await page.waitForTimeout(1500);
+  ok(await page.evaluate(() => {
+    const m = document.getElementById('glass-dialog-msg');
+    return !!m && /Return £75\.00 to Hannah/.test(m.textContent || '') && /All fine — checked the lot/.test(m.textContent || '');
+  }), 'reconnecting asks about the deposit, quoting the decision made at the cottage');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1000);
+  ok(posts.filter((p2) => p2.action === 'return_deposit').length === 1, 'the refund op exists only after the OK');
+  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 0), 'and the decision is cleared once executed');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);

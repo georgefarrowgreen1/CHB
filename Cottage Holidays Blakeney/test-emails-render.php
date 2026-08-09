@@ -67,7 +67,7 @@ function prop_display($k) {
     $m = ['jollyboat' => 'Jollyboat', '21a' => '21A Westgate', 'pimpernel' => 'Pimpernel Cottage'];
     return ['name' => $m[$k] ?? $k, 'accent' => '#43a047'];
 }
-function occupancy_limits($k) { return ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2]; }
+function occupancy_limits($k = null) { return ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2]; } // arity mirrors db.php's (0-arg) — see rate_limit above
 function content_value($k, $d = null) {
     $c = [
         'host-name' => 'George', 'contact-phone' => '01263 000000',
@@ -84,7 +84,11 @@ function guest_reg_token($id) { return 'regtok'; }
 function invoice_token($id) { return 'invtok'; }
 function pay_token($id) { return 'paytok'; }
 function square_enabled() { return true; }
-function rate_limit() { return true; }
+// Signature MIRRORS db.php's real rate_limit — PHPStan analyses the whole file
+// set as one (the three-ok() lesson), so a zero-arg stub here re-types every
+// real call site in auth.php/messages.php/… as "invoked with 3 parameters,
+// 0 required" the moment those files are re-analysed.
+function rate_limit($key = '', $max = 8, $windowMin = 10) { return true; }
 // Verbatim from db.php — both pure, so the decisions in these renders are the real ones.
 function booking_price_is_custom($nightly, $txFee, $rentalTotal) {
     return abs(((float) $nightly + (float) $txFee) - (float) $rentalTotal) > 0.005;

@@ -4058,9 +4058,58 @@ TOAST could catch, because initBackOffice self-heals the sheet). The pieces:
   link couldn't load the bundle at all (the immutable HTTP disk cache is an evictable
   lucky backstop, not a design). Still OUT of CORE — guests never pay. smoke-test asserts
   the handler carries no admin.js bypass in CODE (comments legitimately narrate it).
-- **What this PR deliberately does NOT do**: no writes are queued (`queueOrPost` still
-  gates on `navigator.onLine` — the known bad-WiFi gap), no op ledger, no refuse-up-front
-  labels. That is PR-2/PR-3 territory; this is the read-only half of the offline plan.
+- ~~What this PR deliberately does NOT do~~ **PR-2 shipped the write half.** What follows
+  supersedes the deferral note that stood here.
+
+**THE OP LEDGER — exactly-once for replayed writes** (migration-109 + `op_claim`/
+`op_finish` in db.php, gated by test-integration §17 + ui-test-offline §7/§8, each half
+break-tested). A phone on one bar can land a request whose REPLY dies — the client
+cannot tell that from a request that never arrived, so it queues and retries. Without
+the ledger the retry double-applies, and this was a LATENT LIVE BUG: `expenses add` and
+`messages send` (queueOrPost's two original users) INSERT rows, and `set_payment` writes
+an ABSOLUTE reconciled figure, so a stale replay would REGRESS a newer payment (gated
+both ways in §17b). The shape:
+- `$opTok = op_claim($in)` at the top of a queueable action; success exits through
+  `json_out(op_finish($opTok, [...]))`. A repeat of a stored id is answered from the
+  ledger with `replayed: true`; concurrent repeats serialise on a per-op GET_LOCK (the
+  book_lock posture); an UN-MIGRATED table degrades to no-dedupe, never a blocked write.
+- **ERRORS ARE NEVER STORED** — a 4xx/5xx json_out exits before op_finish, so a replay
+  re-runs and meets the same deterministic refusal (a clash-refused enquiry re-refuses;
+  §17e) — storing refusals would freeze a fixable one forever.
+- Wired: `set_payment`, `expenses add`, all three `messages send` variants (the
+  anonymous one claims AFTER its rate limit, so a flood can't ride stored responses
+  around the toll), and `enquiries submit` (claimed BEFORE its rate limit, so a
+  legitimate retry never burns a slot). Rows pruned at 30 days by self-repair §4d.
+- **`queueOrPost` queues ON FAILURE TO SEND, never on `navigator.onLine`** — the flag is
+  true on a dead router, so the old gate threw the write away on exactly the connection
+  the queue exists for. An `e.status` means the server ANSWERED: a refusal throws to the
+  caller and is never retried blind. The op_id is stamped BEFORE the first attempt
+  (break-tested: stamping at enqueue splits the ids and §8's exactly-once contract
+  fails). oqFlush likewise only lets a server ANSWER consume an item — a transport
+  failure breaks and keeps the whole queue (the old onLine test deleted items on a dead
+  router), and a refusal's toast now carries the item's label + the server's own words.
+- **Replay probes**: `online`, `visibilitychange`, and — the honest one — ANY successful
+  apiPost (a request that just worked is the only real proof the link works; a router
+  back from the dead fires no event at all).
+- **The day-sheet captures** (admin.js `odsPay`/`odsDep`/`odsEnquiry`): record a cash
+  payment (payload MIRRORS recordPayment's — cumulative rental vs `rtot`, deposit rides
+  `deposit_collected` on 'paid' only; snapshot rows carry dbId/rtot/rpaid/dmg/holdNone
+  for exactly this), the deposit DECISION (localStorage `chb-dep-decisions`, deliberately
+  OUTSIDE the oq queue: the SW replayer deletes items on any non-auth response, so a
+  pseudo-endpoint there would be silently dropped — and it must never auto-replay at
+  all: reconnecting runs `odsDepConfirmSweep`, one glassConfirm per decision quoting the
+  note from the cottage, executing return/keep_deposit ONLY on the OK; "Not now" and a
+  server refusal both keep it, with the server's sentence shown), and the phone enquiry
+  (an ENQUIRY, never a booking — approval re-checks the calendar under book_lock, so
+  dates that went to Airbnb while the phone was blind become a decline, not a double
+  booking; enquiries.php's address/postcode are now admin-exempt for exactly this,
+  §17d). Queued-payment rows re-mark via `__odsQueued` (ids, not object flags — the
+  sheet re-renders fresh row objects from the snapshot and a mark on the old object dies
+  with it; measured, the first gate run caught it).
+- **NB the PHPStan stub-arity class struck twice here**: test-emails-render.php declared
+  `rate_limit()` and `occupancy_limits($k)` with the WRONG ARITY, and touching their real
+  callers re-typed 17 call sites against the stubs (the three-`ok()` lesson again — the
+  set is analysed as one). Stubs must mirror the real signature.
 
 ## Where you were, and sending things once
 

@@ -1027,6 +1027,11 @@ if ($action === 'set_notes') {
 }
 
 if ($action === 'set_payment') {
+    // Replay-safe: the offline day sheet queues this write and retries it, and a
+    // stale replay would REGRESS deposit_paid to an older figure (this action
+    // writes an absolute, reconciled value). op_claim answers a repeat from the
+    // ledger before any work happens.
+    $opTok = op_claim($in);
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -1095,7 +1100,7 @@ if ($action === 'set_payment') {
     } else {
         log_activity('payment', 'booking.set_payment', 'Payment status set to ' . $status . ($b['name'] ? ' — ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     }
-    json_out(['ok' => true]);
+    json_out(op_finish($opTok, ['ok' => true]));
 }
 
 // Manually (re)send the confirmation email for an existing booking.

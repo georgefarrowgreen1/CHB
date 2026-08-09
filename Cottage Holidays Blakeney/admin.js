@@ -14966,10 +14966,12 @@ async function logoutStaff() {
     } catch (e) {}
     isAuthenticated = false;
     // Same hygiene as forceAdminLogout: a signed-out device keeps neither the
-    // offline-boot hint nor the day-sheet snapshot.
+    // offline-boot hint, the day-sheet snapshot, nor an unconfirmed deposit
+    // decision (it names a guest and an amount).
     try {
         localStorage.removeItem('chb-was-admin');
         localStorage.removeItem('chb-daysheet');
+        localStorage.removeItem('chb-dep-decisions');
     } catch (e) {}
     setAuthUI();
     glassAlert('You have been securely logged out.');
@@ -16877,13 +16879,26 @@ function chbSnapWrite() {
                 // the one owner-facing "still to collect" figure (see CLAUDE.md).
                 let due = 0;
                 try { due = Math.max(0, Number((bookingDue(pk, b) || {}).balance) || 0); } catch (e) {}
+                // The RENTAL frame too (paymentSummary), because the offline
+                // record-payment capture mirrors the online recorder's payload and
+                // set_payment reconciles against the rental total, not the folded one.
+                let rtot = 0, rpaid = 0;
+                try {
+                    const ps = paymentSummary(pk, b);
+                    rtot = Math.round((Number(ps.total) || 0) * 100) / 100;
+                    rpaid = Math.round((Number(ps.deposit) || 0) * 100) / 100;
+                } catch (e) {}
                 rows.push({
                     pk, cot: (propertyMeta[pk] || {}).name || pk,
+                    dbId: Number(b.dbId) || 0,
                     nm: b.name || '', ph: b.phone || '',
                     ci: b.checkIn, co: b.checkOut, cit: b.checkInTime || '', cot_t: b.checkOutTime || '',
                     party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
                     due: Math.round(due * 100) / 100,
                     dep: (b.holdStatus === 'charged' || b.holdStatus === 'captured') ? Math.round((Number(b.holdAmount) || 0) * 100) / 100 : 0,
+                    rtot, rpaid,
+                    dmg: Math.round((Number(b.damagesDeposit) || 0) * 100) / 100,
+                    holdNone: (b.holdStatus || 'none') === 'none',
                     notes: String(b.notes || '').slice(0, 300),
                 });
             });
@@ -16933,20 +16948,38 @@ function renderOfflineDaySheet() {
     const e = escapeHtml;
     const ICP = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>';
     const ICM = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.6 7.1L4 21l1.9-5.4A8 8 0 1121 12z"/></svg>';
+    __odsRows = s.rows || [];
+    const depDecided = odsDepDecisions().map((d2) => d2.dbId);
     const row = (r, g) => {
+        const i = __odsRows.indexOf(r);
+        if (__odsQueued.indexOf(r.dbId) !== -1) r._q = true;
         const when = g === 'leave' ? 'Out by ' + e(r.cot_t || '10:00')
             : g === 'staying' ? 'In residence'
             : 'In from ' + e(r.cit || '15:00');
         const chips = [];
-        if (r.due > 0.005) chips.push('<span class="bhub-chip is-warn">' + e(gbp(r.due)) + ' to collect</span>');
-        if (r.dep > 0.005) chips.push('<span class="bhub-chip">' + e(gbp(r.dep)) + ' deposit held</span>');
-        const sev = r.due > 0.005 ? ' ny-danger' : g === 'leave' && r.dep > 0.005 ? '' : ' ny-ok';
+        if (r._q) chips.push('<span class="bhub-chip is-warn">Recorded · waiting to sync</span>');
+        else if (r.due > 0.005) chips.push('<span class="bhub-chip is-warn">' + e(gbp(r.due)) + ' to collect</span>');
+        if (depDecided.indexOf(r.dbId) !== -1) chips.push('<span class="bhub-chip is-warn">Deposit decided · confirm when back on</span>');
+        else if (r.dep > 0.005) chips.push('<span class="bhub-chip">' + e(gbp(r.dep)) + ' deposit held</span>');
+        const sev = r.due > 0.005 && !r._q ? ' ny-danger' : g === 'leave' && r.dep > 0.005 ? '' : ' ny-ok';
+        // The captures: the SAFE writes, right on the row they belong to. A cash
+        // payment is a ledger record (money already handed over), a deposit
+        // DECISION moves nothing until it is confirmed back on signal — and
+        // nothing here emails a guest or charges a card.
+        const acts = [];
+        if (r.dbId && r.due > 0.005 && !r._q && (g === 'arrive' || g === 'staying' || g === 'leave')) {
+            acts.push('<button class="btn-sm btn-edit" ' + chbAttrs('odsPay', String(i)) + '>Record a payment</button>');
+        }
+        if (r.dbId && g === 'leave' && r.dep > 0.005 && depDecided.indexOf(r.dbId) === -1) {
+            acts.push('<button class="btn-sm btn-edit" ' + chbAttrs('odsDep', String(i)) + '>Decide the deposit</button>');
+        }
         return '<div class="ny-row ods-row' + sev + '"><div class="ny-main">'
             + '<span class="prop-tag tag-' + e(r.pk) + '">' + e(r.cot) + '</span>'
             + '<span class="ny-label">' + e(r.nm) + '</span>'
             + '<span class="ny-sub">' + when + ' · ' + e(r.party) + (g === 'tomorrow' ? ' · ' + e(fmtDate(r.ci)) : '') + '</span>'
             + (r.notes ? '<span class="ods-note">' + e(r.notes) + '</span>' : '')
             + (chips.length ? '<span class="ods-chips">' + chips.join('') + '</span>' : '')
+            + (acts.length ? '<span class="ods-btns">' + acts.join('') + '</span>' : '')
             + '</div>'
             + (r.ph ? '<span class="ods-acts">'
                 + '<a class="bhub-icbtn" href="tel:' + e(r.ph) + '" aria-label="Call ' + e(r.nm) + '">' + ICP + '</a>'
@@ -16973,8 +17006,178 @@ function renderOfflineDaySheet() {
         + (opsKeys.length
             ? '<h2 class="bo-sec-title">Cottage notes</h2>'
               + opsKeys.map((pk) => '<details class="ods-ops"><summary>' + e((s.cots || {})[pk] || pk) + '</summary><pre class="ods-pre">' + e(s.ops[pk]) + '</pre></details>').join('')
-            : '');
+            : '')
+        + '<div style="margin:14px 0 24px;"><button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Someone rang? Save it as an enquiry</button></div>';
     return true;
+}
+// ── THE THREE CAPTURES — the writes a cottage doorstep actually needs, and
+//    only those. Each is queued through queueOrPost, so it carries an op_id
+//    from birth and replays exactly once; nothing here charges a card or
+//    emails a guest (those stay refused offline, with the reason).
+let __odsRows = [];
+// Which bookings have a payment queued THIS SESSION — the day sheet re-renders
+// from the snapshot (fresh row objects), so a mark on the old object dies with
+// it; ids don't. In-memory on purpose: once the queue replays, the live Today
+// takes over and the mark has nothing left to say.
+let __odsQueued = [];
+// Record a cash/bank payment — MIRRORS recordPayment's payload precisely
+// (set_payment reconciles a CUMULATIVE rental figure; the deposit rides a full
+// settlement via deposit_collected, exactly as the online recorder sends it).
+async function odsPay(i) {
+    const r = __odsRows[Number(i)];
+    if (!r || !r.dbId) return;
+    const askDep = r.holdNone && r.dmg > 0.005;
+    const fields = [
+        { id: 'amount', label: 'Rental received so far (£)', type: 'text', value: String(r.rtot.toFixed(2)) },
+        { id: 'method', label: 'How they paid', type: 'select', options: [
+            { value: 'Cash', label: 'Cash' }, { value: 'Bank transfer', label: 'Bank transfer' }, { value: 'Cheque', label: 'Cheque' },
+        ] },
+        { id: 'date', label: 'Payment date', type: 'date', value: todayDashed() },
+    ];
+    if (askDep) {
+        fields.push({ id: 'withdep', label: 'Damages deposit (' + gbp(r.dmg) + ')', type: 'select', options: [
+            { value: 'no', label: 'Not collected yet' },
+            { value: 'yes', label: 'Collected too (cash/bank)' },
+        ], value: 'no' });
+    }
+    const vals = await glassForm(
+        'Record a payment from ' + (r.nm || 'the guest') + '.\nRental total ' + gbp(r.rtot)
+            + (askDep ? ' + ' + gbp(r.dmg) + ' refundable damages deposit' : '')
+            + ' — enter the rental received so far. It saves to this phone and posts when the signal returns.',
+        fields,
+        { title: 'Record a payment', okLabel: 'Record it' },
+    );
+    if (vals === null) return;
+    let dep = Math.max(0, parseFloat(vals.amount) || 0);
+    if (dep > r.rtot) dep = r.rtot;
+    let status;
+    if (dep <= 0.001) status = 'unpaid';
+    else if (dep >= r.rtot - 0.001) status = 'paid';
+    else status = 'deposit';
+    const payload = { action: 'set_payment', id: r.dbId, payment: status };
+    if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
+    if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
+    if (dep > 0.001) {
+        const d = (vals.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+            glassAlert('A valid payment date is required.');
+            return;
+        }
+        payload.payment_date = d;
+        payload.payment_method = (vals.method || '').trim();
+    }
+    const res = await queueOrPost('bookings.php', payload, 'Payment — ' + (r.nm || 'guest'));
+    if (__odsQueued.indexOf(r.dbId) === -1) __odsQueued.push(r.dbId);
+    renderOfflineDaySheet();
+    toast(res && res.queued
+        ? 'Saved on this phone — it posts itself when the signal returns.'
+        : 'Payment recorded.');
+}
+// The deposit DECISION — kept on this phone, never auto-replayed: money leaving
+// still wants a human at the moment it leaves, so reconnecting asks first
+// (odsDepConfirmSweep). What is deferred is the decision, not the authority.
+function odsDepDecisions() {
+    try {
+        const l = JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]');
+        return Array.isArray(l) ? l : [];
+    } catch (e) {
+        return [];
+    }
+}
+function odsDepSave(list) {
+    try {
+        localStorage.setItem('chb-dep-decisions', JSON.stringify(list.slice(0, 20)));
+    } catch (e) {}
+}
+async function odsDep(i) {
+    const r = __odsRows[Number(i)];
+    if (!r || !r.dbId) return;
+    const vals = await glassForm(
+        'Decide ' + (r.nm || 'the guest') + '’s ' + gbp(r.dep) + ' deposit. The decision saves on this phone — the refund itself runs when you’re back on signal, and asks first.',
+        [
+            { id: 'choice', label: 'Decision', type: 'select', options: [
+                { value: 'return', label: 'No damage — return it all' },
+                { value: 'keep', label: 'Keep it (damage or loss)' },
+            ] },
+            { id: 'note', label: 'Note (what and why)', type: 'text', value: '' },
+        ],
+        { title: 'Deposit · ' + gbp(r.dep), okLabel: 'Save the decision' },
+    );
+    if (vals === null) return;
+    const list = odsDepDecisions().filter((d2) => d2.dbId !== r.dbId);
+    list.push({ dbId: r.dbId, nm: r.nm, amt: r.dep, choice: vals.choice === 'keep' ? 'keep' : 'return', note: String(vals.note || '').slice(0, 500), at: Date.now() });
+    odsDepSave(list);
+    renderOfflineDaySheet();
+    toast('Decision saved — you’ll confirm it when the signal returns.');
+}
+// On reconnect: each saved decision is put to the owner ONCE, in their own
+// words from the cottage, and executes through the normal Tier-C endpoint only
+// on the OK. "Not now" keeps it for the next reconnect; a server refusal (e.g.
+// the guest hasn't checked out yet) keeps it too, with the reason shown.
+async function odsDepConfirmSweep() {
+    const list = odsDepDecisions();
+    if (!list.length) return;
+    for (const d2 of list) {
+        const verb = d2.choice === 'keep' ? 'Keep' : 'Return';
+        const okd = await glassConfirm(
+            verb + ' ' + gbp(d2.amt) + (d2.choice === 'keep' ? ' from ' : ' to ') + (d2.nm || 'the guest')
+                + '? You decided this at the cottage' + (d2.note ? ' — “' + d2.note + '”' : '') + '.'
+                + (d2.choice === 'keep' ? '' : ' It goes back to their card and leaves your Square balance today.'),
+            verb === 'Keep' ? 'Keep the deposit' : 'Confirm the refund',
+        );
+        if (!okd) continue; // kept for the next reconnect — never silently dropped
+        try {
+            await apiPost('bookings.php', d2.choice === 'keep'
+                ? { action: 'keep_deposit', id: d2.dbId, note: d2.note }
+                : { action: 'return_deposit', id: d2.dbId, note: d2.note });
+            odsDepSave(odsDepDecisions().filter((x) => x.dbId !== d2.dbId));
+            toast(d2.choice === 'keep' ? 'Deposit kept — booked as income.' : gbp(d2.amt) + ' on its way back to ' + (d2.nm || 'the guest') + '.');
+        } catch (e) {
+            // The server refused (not checked out yet, already settled…) — the
+            // decision stays saved and the reason is the server's own sentence.
+            toast('Not done — ' + String((e && e.message) || 'the server refused').slice(0, 140));
+        }
+    }
+}
+// A phone enquiry, jotted at the door — saved as an ENQUIRY, never a booking:
+// approval re-checks the calendar under book_lock, so dates that went to
+// Airbnb while this phone was blind become a decline, not a double booking.
+async function odsEnquiry() {
+    const s = chbSnapRead(true) || {};
+    const cots = s.cots || {};
+    const keys = Object.keys(cots);
+    if (!keys.length) return;
+    const vals = await glassForm(
+        'Saved as an enquiry — the calendar gets the last word when you approve it.',
+        [
+            { id: 'name', label: 'Name', type: 'text', value: '' },
+            { id: 'phone', label: 'Phone', type: 'text', value: '' },
+            { id: 'prop', label: 'Cottage', type: 'select', options: keys.map((k) => ({ value: k, label: cots[k] })) },
+            { id: 'ci', label: 'Check-in', type: 'date', value: '' },
+            { id: 'co', label: 'Check-out', type: 'date', value: '' },
+            { id: 'adults', label: 'Adults', type: 'text', value: '2' },
+        ],
+        { title: 'Taken by phone', okLabel: 'Save the enquiry' },
+    );
+    if (vals === null) return;
+    if (!String(vals.name || '').trim() || !/^\d{4}-\d{2}-\d{2}$/.test(vals.ci || '') || !/^\d{4}-\d{2}-\d{2}$/.test(vals.co || '')) {
+        glassAlert('A name and both dates are needed — the rest can wait.');
+        return;
+    }
+    const res = await queueOrPost('enquiries.php', {
+        action: 'submit',
+        prop_key: vals.prop,
+        name: String(vals.name).trim(),
+        phone: String(vals.phone || '').trim(),
+        check_in: vals.ci,
+        check_out: vals.co,
+        adults: Math.max(1, parseInt(vals.adults, 10) || 2),
+        children: 0,
+        message: 'Taken by phone' + (String(vals.phone || '').trim() ? ' (' + String(vals.phone).trim() + ')' : ''),
+    }, 'Enquiry — ' + String(vals.name).trim());
+    toast(res && res.queued
+        ? 'Saved on this phone — it lands in your inbox when the signal returns.'
+        : 'Enquiry saved — it’s in your inbox.');
 }
 // Save a cottage's private ops notes AND refresh the snapshot in the same
 // breath — the whole point of the notes is being readable offline, so a save
@@ -17027,6 +17230,9 @@ async function initBackOffice() {
         const __ods = document.getElementById('offline-daysheet');
         if (__ods) __ods.remove();
         try { chbSnapWrite(); } catch (e) {}
+        // Deposit decisions saved at a cottage door wait here for their OK —
+        // fire-and-forget, one confirm each, never silently executed.
+        try { odsDepConfirmSweep(); } catch (e) {}
     }
     try {
         todayOpsLine();
