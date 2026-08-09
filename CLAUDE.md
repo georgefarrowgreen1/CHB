@@ -4111,6 +4111,43 @@ both ways in §17b). The shape:
   callers re-typed 17 call sites against the stubs (the three-`ok()` lesson again — the
   set is analysed as one). Stubs must mirror the real signature.
 
+**LIVE ONLINE/OFFLINE TRANSITIONS — one evidence-based verdict, both ways, no reloads**
+(app.js `chbNetDown`/`chbNetUp`/`chbNetProbe`, gated by ui-test-offline §9, five
+break-tests firing). `navigator.onLine` only knows whether an INTERFACE is up (true on
+a dead router), so the verdict is what actually happened: any transport failure in
+apiPost/apiGet flips the whole dashboard offline (`body.net-off` + the pill, at the
+FIRST failed request), any success flips it back, and while off a version.php probe
+retries every 15s so recovery is automatic with nothing touched. The `online` event is
+a HINT to probe now, never a verdict.
+- **Tier-C refuses up front at the dispatcher** (`CHB_NEEDS_NET`: requestPayment,
+  returnDeposit, keepDeposit, sendArrivalInfo, approveEnquiry): dimmed under
+  `body.net-off` by a style rule GENERATED from the same list the guard reads (one
+  definition; style-src carries 'unsafe-inline' so the injected <style> is allowed),
+  and a tap gets the reason immediately. NB the hub's payask can offer
+  **`recordPayment` — the SAFE capture — which is deliberately NOT in the list**; the
+  first draft of the gate targeted a hub that showed it and proved the distinction by
+  accident. `returnDeposit` needs a CHECKED-OUT fixture to render at all.
+- **A BLIP IS NOT AN OUTAGE** (`CHB_NET_NOTICED_MS` 8s): on genuinely bad WiFi SOME
+  requests fail while others land, so the verdict flips per request — measured,
+  ui-test-poorsignal's mixed-endpoint scenario had "Back online." burying the specific
+  failure message it asserts. The pill moves instantly both ways; the TOAST and the
+  re-render recovery fire only for an outage the owner could have noticed (lasted 8s,
+  queued writes, or the day sheet up). While known-off, requests take a 5s timeout so
+  taps fail fast.
+- **Recovery is in place, never a reload** (§9 pins a window marker across the whole
+  arc): the cold-boot day sheet swaps itself for the live Today when the probe
+  succeeds; the odsRetry branch in `chbNetRecover` owns the PARKED case (sheet up
+  while the owner sits on another view) — break-tested, the on-Today path is equally
+  covered by initBackOffice's own fallthrough, and the comment says so rather than
+  claiming more.
+- **THE GATE'S FIRST RUN CAUGHT A DOUBLE ASK**: chbNetUp's recovery and an explicit
+  initBackOffice swept the deposit decisions CONCURRENTLY — two sweeps snapshotted the
+  same list and a second "Return £75.00 to Hannah?" confirm sat over the page (the
+  server's book_lock made its OK a 409, so no money could move twice — but a double
+  ask about money leaving is exactly what the sweep must never do).
+  `odsDepConfirmSweep` is re-entrant-safe (`__odsSweeping`) and re-checks each item
+  against the LIVE list before asking.
+
 ## Where you were, and sending things once
 
 - **A RELOAD COMES BACK TO THE SCREEN YOU WERE ON** (`chbNavRemember`/`maybeRestoreView`,
