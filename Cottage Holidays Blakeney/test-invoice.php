@@ -319,6 +319,33 @@ inv_ok(!str_contains($policy, "'unsafe-inline'") || !preg_match("/script-src[^;]
     'and the policy still has no unsafe-inline on script-src');
 // print really is styled, and drops what makes no sense on paper
 inv_ok(str_contains($html['part'], '@media print{'), 'there is a print stylesheet');
+// ── PRINT IS THE SAME DOCUMENT, NOT A THIRD ONE. It used to flip the header into a
+//    masthead and flatten every card to a ruled table, which made the guest's SAVED
+//    PDF differ from both this screen and the owner's jsPDF download — on the one
+//    invoice all three are of. Assert what it must NOT do as well as what it must:
+//    a printer drops tinted fills, so a card with no fill needs a hairline.
+$pr = (function (string $h) { preg_match('/@media print\{(.*?)\}\s*<\/style>/s', $h, $m); return $m[1] ?? ''; })($html['part']);
+inv_ok($pr !== '', 'the print block is readable', strlen($pr) . ' bytes');
+inv_ok(!str_contains($pr, 'border-radius:0') && !str_contains($pr, 'display:flex'),
+    'print does NOT flatten the cards or re-lay the header');
+inv_ok(preg_match('/\.hd,\.grp,\.kvs\{[^}]*border:1px solid/', $pr) === 1,
+    'print gives every card a hairline, having no fill to rely on');
+inv_ok(str_contains($pr, 'background:none!important'),
+    'and the chips keep a border for the same reason');
+
+// ── AN INVOICE THAT STATES A BALANCE SAYS HOW TO PAY IT ─────────────────────────
+$bank = $render('part', ['pay_url' => '', 'bank_details' => "Cottage Holidays Blakeney\nSort 01-02-03 · Acct 12345678"]);
+inv_ok(str_contains($bank, 'How to pay') && str_contains($bank, 'Sort 01-02-03'),
+    'off the card rail, the bank details are on the document');
+inv_ok(str_contains($bank, 'Sort 01-02-03 · Acct 12345678') || str_contains($bank, '<br'),
+    '…with its line breaks kept');
+$noDetails = $render('part', ['pay_url' => '', 'bank_details' => '']);
+inv_ok(str_contains($noDetails, 'How to pay') && str_contains($noDetails, 'we will send you our bank details'),
+    'no details on file → it names a way to get them, rather than saying nothing');
+inv_ok(!str_contains($html['part'], 'How to pay'),
+    'on the card rail there is a pay link instead, so no bank block');
+inv_ok(!str_contains($html['paid'], 'How to pay'),
+    'and a settled invoice never asks');
 inv_ok(str_contains($html['part'], '@page{margin:14mm}'), 'the printed page has a stated margin, not a browser default');
 inv_ok(preg_match('/@media print\{.*\.bar\{display:none\}/s', $html['part']) === 1,
     'print hides the action bar');

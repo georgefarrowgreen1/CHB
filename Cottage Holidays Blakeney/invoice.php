@@ -37,6 +37,7 @@ const INV_WARN_INK = '#8A5000';   // a due date                (email_warn_ink)
 const INV_ALERT_INK = '#A3291C';  // a deposit retained        (email_alert_ink)
 const INV_OK_INK = '#1f6b3a';     // settled, a credit
 const INV_ON_ACCENT = '#3a2e1e';  // ink ON the accent fill
+const INV_HAIR = '#e4dbc8';       // the hairline a printed card needs, having no fill
 
 // The Save-a-copy handler. It is a hashed inline <script> and not an onclick
 // ATTRIBUTE, because the site's CSP is `script-src 'self' 'unsafe-eval'
@@ -266,24 +267,25 @@ function render_invoice_html($d)
         // ── the same DOM as a printed statement ──────────────────────────────
         // an explicit page margin rather than whatever the browser happens to default
         '@page{margin:14mm}' .
+        // ── PRINT KEEPS THE CARD ANATOMY. It used to flip the header into a
+        //    masthead and flatten every card to a ruled table — which made the
+        //    guest's SAVED PDF a THIRD look, different from both this screen and
+        //    the owner's jsPDF download, on the one document all three are of.
+        //    The reason it flattened is real: a printer drops tinted fills by
+        //    default, so a white card on linen prints as white on white. So the
+        //    cards keep their shape and take a HAIRLINE instead of relying on the
+        //    fill, and every tinted thing states a border of its own.
         '@media print{' .
         '.acts{display:none}' .
-        'body{background:#fff;padding:0;font-size:12pt}' .
+        'body{background:#fff;padding:0;font-size:11pt}' .
         '.bar{display:none}' .
         '.sheet{max-width:none}' .
-        '.band{border-radius:0}' .
-        // brand left, the amount right: a masthead, from the same two elements
-        '.hd{border-radius:0;box-shadow:none;padding:16px 0 18px;text-align:left;display:flex;' .
-        'justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:2px solid ' . INV_INK . '}' .
-        '.brand{margin:0;justify-content:flex-start}' .
-        '.hero{text-align:right}' .
-        '.fig{font-size:26pt;margin:2px 0 6px}' .
-        '.grp,.kvs{box-shadow:none;border-radius:0;border-top:1px solid ' . INV_INK . '}' .
-        '.grp tfoot td{background:none;border-top:1px solid ' . INV_INK . '}' .
-        // a tinted chip is invisible once the printer drops backgrounds
+        '.hd,.grp,.kvs{box-shadow:none;border:1px solid ' . INV_HAIR . '}' .
+        '.fig{font-size:24pt}' .
+        '.grp tfoot td{border-top:1px solid ' . INV_INK . '}' .
+        // a tinted chip or total row is invisible once the printer drops backgrounds
         '.chip{border:1px solid currentColor;background:none!important}' .
-        'h2{margin:18px 0 4px;padding-left:0}' .
-        '.kv,.grp td,.who{padding-left:0;padding-right:0}' .
+        'h2{margin:16px 0 5px}' .
         '}' .
         '</style></head><body' . ($bar !== '' ? ' class="has-bar"' : '') . '>' .
         '<main class="sheet">' .
@@ -326,6 +328,20 @@ function render_invoice_html($d)
         '<div class="nm">' . $e($d['guest_name'] ?? '') . '</div>' .
         (!empty($d['guest_email']) ? '<div class="l">' . $e($d['guest_email']) . '</div>' : '') .
         '</div></div>' .
+
+        // ── AN INVOICE THAT STATES A BALANCE MUST SAY HOW TO PAY IT. The pay
+        //    button is correctly withheld off the card rail (payment_rail — the
+        //    decision the chase emails already follow), and nothing replaced it:
+        //    a guest who paid by transfer got "Balance due £446.44" and no
+        //    instructions at all. The chase emails print bacs-details; the
+        //    document the guest FILES did not.
+        ($balance > 0.001 && empty($d['pay_url'])
+            ? '<h2>How to pay</h2><div class="kvs"><div class="who">' .
+              (trim((string) ($d['bank_details'] ?? '')) !== ''
+                  ? '<div class="l">' . nl2br($e($d['bank_details'])) . '</div>'
+                  : '<div class="l">Reply to your confirmation email and we will send you our bank details.</div>') .
+              '</div></div>'
+            : '') .
 
         '<h2>Issued by</h2>' .
         '<div class="kvs"><div class="who">' .
@@ -557,5 +573,9 @@ echo render_invoice_html([
         ? site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id
         : '',
     'phone' => content_value('contact-phone'),
+    // Only when there is a balance and no card link: the bank rail's own answer.
+    // bacs-details is an INTERNAL content key, so this is the one surface that can
+    // always resolve it — a guest's app.js never receives it.
+    'bank_details' => $balance > 0.001 && payment_rail($b) !== 'card' ? content_value('bacs-details') : '',
     'accent' => $disp['accent'] ?? '#8FB3C7',
 ]);

@@ -5711,6 +5711,17 @@ async function downloadInvoice(bookingId) {
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    // A document people file needs its own identity: none of this was set, so the
+    // Title was empty and a screen reader got no language.
+    try {
+        doc.setProperties({
+            title: `Invoice ${bookingRef(b.id)} — Cottage Holidays Blakeney`,
+            subject: `${meta.name}, ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`,
+            author: 'Cottage Holidays Blakeney',
+            creator: 'Cottage Holidays Blakeney',
+        });
+        doc.setLanguage('en-GB');
+    } catch (e) {}
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
     // The site's coastal palette, so the PDF reads as the same brand: linen
@@ -5750,9 +5761,11 @@ async function downloadInvoice(bookingId) {
     };
     const ink = (c) => doc.setTextColor(c[0], c[1], c[2]);
     const body = () => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); ink(INK); };
-    // the page's uppercase letterspaced group caption
-    const groupCap = (t) => {
-        need(20);
+    // The page's uppercase letterspaced group caption. It is PAINTED here and the
+    // room for it is reserved by group(), which owns both — asking for it here
+    // independently put a caption on page one with its card on page two.
+    const CAP_H = 15;
+    const paintCap = (t) => {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setCharSpace(1.3);
@@ -5760,7 +5773,7 @@ async function downloadInvoice(bookingId) {
         doc.text(String(t).toUpperCase(), left + 4, y + 7);
         doc.setCharSpace(0);
         body();
-        y += 15;
+        y += CAP_H;
     };
     const fine = (t, gap) => {
         if (!t) return;
@@ -5803,12 +5816,23 @@ async function downloadInvoice(bookingId) {
         body();
         return ry + m.h;
     };
-    const group = (items) => {
+    const group = (cap, items) => {
         const ms = items.filter(Boolean).map(measure);
         let idx = 0;
+        let head = true;
         while (idx < ms.length) {
-            const avail = BOTTOM - y - PAD;
-            if (avail < ms[idx].h + 6) { doc.addPage(); ground(); y = 46; continue; }
+            // A CAPTION IS NEVER SEPARATED FROM ITS FIRST ROW: the break is decided
+            // with the caption's height included, then the caption is painted. And
+            // PAD/2 is what the card actually adds (see cardH) — reserving a full
+            // PAD made the fit test twice as conservative as the drawing, breaking
+            // a page for a group that had room by 1pt.
+            if (BOTTOM - y - PAD / 2 - (head ? CAP_H : 0) < ms[idx].h + 6) {
+                doc.addPage();
+                ground();
+                y = 46;
+            }
+            if (head) { paintCap(cap); head = false; }
+            const avail = BOTTOM - y - PAD / 2;
             let take = 0, hh = 0;
             while (idx + take < ms.length && hh + ms[idx + take].h <= avail) { hh += ms[idx + take].h; take++; }
             const cardH = hh + PAD / 2;
@@ -5822,9 +5846,9 @@ async function downloadInvoice(bookingId) {
                 }
                 ry = drawRow(ms[idx + k], ry, cardH, y);
             }
-            y += cardH + 14;
+            y += cardH + 11;
             idx += take;
-            if (idx < ms.length) { doc.addPage(); ground(); y = 46; }
+            if (idx < ms.length) { doc.addPage(); ground(); y = 46; } // continuation: no caption
         }
     };
     // a tinted status pill — the page's chip
@@ -5848,7 +5872,7 @@ async function downloadInvoice(bookingId) {
     const stateChip = (b.holdStatus === 'kept')
         ? ['Deposit retained', ALERT_INK, [250, 233, 230]]
         : (depAmt > 0 && gt.dep <= 0.005 ? ['Deposit returned', OK, [230, 241, 233]] : null);
-    const heroH = 100 + (stateChip ? 24 : 0);
+    const heroH = 94 + (stateChip ? 24 : 0);
     doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
     doc.roundedRect(left, y, CW, 10, 3, 3, 'F');
     doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
@@ -5884,14 +5908,13 @@ async function downloadInvoice(bookingId) {
     doc.text(`Invoice ${bookingRef(b.id)}  ·  issued ${fmtDate(todayDashed())}`, W / 2, hy, { align: 'center' });
     body();
     if (stateChip) { hy += 21; chip(stateChip[0], stateChip[1], stateChip[2], hy); }
-    y += heroH + 22;
+    y += heroH + 18;
 
     // ── Charges ───────────────────────────────────────────────────────────
-    groupCap('Charges');
     // The lines add up to their own total, so the deposit line carries what is IN
     // it (gt.dep, 0 once refunded): a HOLDING, not a charge. It used to be listed
     // here AND in a section of its own — the same £75 twice.
-    group([
+    group('Charges', [
         priceIsCustom(p)
             ? { label: 'Agreed price for your stay', sub: `${p.nights} night${p.nights === 1 ? '' : 's'}`, value: gbp(p.total) }
             : { label: `${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, sub: `${meta.name}  ·  ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`, value: gbp(p.nightly) },
@@ -5901,13 +5924,12 @@ async function downloadInvoice(bookingId) {
     ]);
 
     // ── Payments ──────────────────────────────────────────────────────────
-    groupCap('Payments');
     const how = [
         b.paymentDate ? fmtDate(b.paymentDate) : '',
         b.paymentMethod ? `by ${b.paymentMethod}` : '',
         gt.dep > 0 && depositCharged(b.holdStatus || 'none') ? `includes the ${gbp(gt.dep)} refundable deposit` : '',
     ].filter(Boolean).join('  ·  ');
-    group([
+    group('Payments', [
         gt.paid > 0
             ? { label: 'Payment received', sub: how, value: '- ' + gbp(gt.paid), ink: OK }
             : { label: 'Nothing received yet', value: gbp(0) },
@@ -5921,8 +5943,7 @@ async function downloadInvoice(bookingId) {
     }
 
     // ── Your stay ─────────────────────────────────────────────────────────
-    groupCap('Your stay');
-    group([
+    group('Your stay', [
         { label: 'Cottage', value: meta.name },
         address ? { label: 'Address', sub: address, value: '' } : null,
         { label: 'Check in', value: `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}` },
@@ -5932,12 +5953,31 @@ async function downloadInvoice(bookingId) {
     ]);
 
     // ── who it is for, and who issued it ──────────────────────────────────
-    groupCap('Billed to');
-    group([{ label: b.name || '', sub: b.email || '', value: '' }]);
-    groupCap('Issued by');
-    group([{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
+    group('Billed to', [{ label: b.name || '', sub: b.email || '', value: '' }]);
+    // An invoice stating a balance must say how to pay it: off the card rail there
+    // was no link and nothing replaced it. bacs-details is INTERNAL, so the owner's
+    // copy resolves it and a guest's cannot — their route is invoice.php, which can.
+    const bacs = String((typeof siteContent === 'object' && siteContent && siteContent['bacs-details']) || '').trim();
+    if (gt.balance > 0.001 && bookingOwnerArranged(b) && bacs) {
+        group('How to pay', [{ label: 'Bank transfer', sub: bacs, value: '' }]);
+    }
+
+    group('Issued by', [{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
 
     fine(`This invoice relates to booking ${bookingRef(b.id)}. Any questions? Just reply to your confirmation email and we will answer.`);
+
+    // Every page carries the reference and its number — pagination shipped and the
+    // footer did not follow, so sheet two said nothing about which booking it was.
+    // A second pass, because the total is only known once the drawing is done.
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        ink(MUTED);
+        doc.text(`Invoice ${bookingRef(b.id)}`, left, H - 26);
+        doc.text(`Page ${i} of ${pageCount}`, right, H - 26, { align: 'right' });
+    }
 
     doc.save(`Cottage-Holidays-Blakeney-Invoice-${bookingRef(b.id)}.pdf`);
 }
@@ -15531,7 +15571,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pdfcont';
+    const BUILD = 'invpol2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
