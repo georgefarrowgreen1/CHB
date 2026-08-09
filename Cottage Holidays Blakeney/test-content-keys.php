@@ -148,6 +148,13 @@ foreach ($jsFound as $k => $where) {
 // finds fewer than two const-keyed writes has stopped seeing them.
 ck_check("the client scan still finds const-keyed operational writes ($constKeyed)", $constKeyed >= 2);
 
+// The owner's private per-cottage ops card (key-safe code, stopcock, cleaner)
+// is written CONCATENATED ('ops-' . prop), which the literal scanner above
+// cannot see — so its classification is pinned here directly. PRIVATE like
+// arrival-, not internal: these codes physically open the cottages.
+ck_check("ops-<prop> keys are PRIVATE (encrypted at rest, never in any content GET)", is_private_content_key('ops-jollyboat'));
+ck_check('…and not merely internal', !is_internal_content_key('ops-jollyboat'));
+
 
 echo "\n== Summary ==\n";
 if ($fail) {

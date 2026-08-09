@@ -11711,6 +11711,12 @@ const ACCOM_SECTIONS = [
         sub: 'In-stay guide: Wi-Fi, appliances, bins, tips',
         ic: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/>',
     },
+    {
+        id: 'opsnotes',
+        label: 'Private cottage notes',
+        sub: 'Key safe, stopcock, cleaner — offline on your phone',
+        ic: '<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    },
 ];
 function settingsOpenAccom(k) {
     adminHistPush('view-settings', 'accom', { prop: k });
@@ -14959,6 +14965,12 @@ async function logoutStaff() {
         await apiPost('auth.php', { action: 'admin_logout' });
     } catch (e) {}
     isAuthenticated = false;
+    // Same hygiene as forceAdminLogout: a signed-out device keeps neither the
+    // offline-boot hint nor the day-sheet snapshot.
+    try {
+        localStorage.removeItem('chb-was-admin');
+        localStorage.removeItem('chb-daysheet');
+    } catch (e) {}
     setAuthUI();
     glassAlert('You have been securely logged out.');
     nav('view-main');
@@ -16808,12 +16820,214 @@ function todayOpsLine() {
     el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
 }
 // Unified back office: load data once, render calendar and inbox.
+// ═══════════════════════════════════════════════════════════════════════════
+//  THE OFFLINE DAY SHEET — Today, rendered from a snapshot saved on this phone.
+//
+//  On a changeover morning with no signal the back office is being CONSULTED,
+//  not edited: who leaves, who arrives, their phone number, what's owed. So the
+//  one screen that works with nothing else working is that list — pre-warmed on
+//  every successful loadData (deliberately, not opportunistically: caching
+//  whatever happened to load means the one morning it matters the copy is from
+//  Tuesday), rendered behind an explicit marker, never silently. tel:/sms: need
+//  no data at all, which makes the numbers the most useful thing on the page.
+//
+//  Grouping is RECOMPUTED from each row's own dates at render time, never
+//  trusted from the write: a snapshot taken yesterday calls yesterday's
+//  "arriving tomorrow" arriving TODAY, and a stay that ended drops out.
+//
+//  The snapshot lives in localStorage on the owner's own device (guest names,
+//  phones, and the ops- cottage notes — the same facts their Notes app would
+//  hold); both it and the chb-was-admin boot hint are removed on either logout
+//  path. Money renders ONLY behind the marker: a cached figure presented as
+//  live is the failure this codebase has fixed most often.
+// ═══════════════════════════════════════════════════════════════════════════
+const CHB_SNAP_KEY = 'chb-daysheet';
+const CHB_SNAP_MAX_AGE_H = 48; // older is refused: a changeover off a two-day-old sheet is worse than none
+function chbSnapGroup(r, today, tom) {
+    if (!r || !r.ci || !r.co) return null;
+    if (r.co === today) return 'leave';
+    if (r.ci === today) return 'arrive';
+    if (r.ci === tom) return 'tomorrow';
+    if (r.ci < today && r.co > today) return 'staying';
+    return null;
+}
+function chbSnapRead(raw) {
+    try {
+        const s = JSON.parse(localStorage.getItem(CHB_SNAP_KEY) || 'null');
+        if (!s || !Array.isArray(s.rows)) return null;
+        if (!raw && Date.now() - (s.at || 0) > CHB_SNAP_MAX_AGE_H * 3600000) return null;
+        return s;
+    } catch (e) {
+        return null;
+    }
+}
+function chbSnapWrite() {
+    try {
+        const today = todayDashed(), tom = ukShiftDays(today, 1), dayAfter = ukShiftDays(today, 2);
+        const rows = [];
+        Object.keys(dbBookings || {}).forEach((pk) => {
+            (dbBookings[pk] || []).forEach((b) => {
+                if (!b || !b.checkIn || !b.checkOut) return;
+                // today's movements + in-residence + the next two mornings' arrivals,
+                // so a snapshot taken tonight still covers tomorrow's changeover
+                const keep = b.checkOut === today || (b.checkIn >= today && b.checkIn < dayAfter)
+                    || (b.checkIn < today && b.checkOut > today);
+                if (!keep) return;
+                // bookingDue returns the displayGrand SHAPE — the balance member is
+                // the one owner-facing "still to collect" figure (see CLAUDE.md).
+                let due = 0;
+                try { due = Math.max(0, Number((bookingDue(pk, b) || {}).balance) || 0); } catch (e) {}
+                rows.push({
+                    pk, cot: (propertyMeta[pk] || {}).name || pk,
+                    nm: b.name || '', ph: b.phone || '',
+                    ci: b.checkIn, co: b.checkOut, cit: b.checkInTime || '', cot_t: b.checkOutTime || '',
+                    party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
+                    due: Math.round(due * 100) / 100,
+                    dep: (b.holdStatus === 'charged' || b.holdStatus === 'captured') ? Math.round((Number(b.holdAmount) || 0) * 100) / 100 : 0,
+                    notes: String(b.notes || '').slice(0, 300),
+                });
+            });
+        });
+        // ops notes: best available now, else what the LAST snapshot carried —
+        // adminPrivateContent only fills when Manage is opened, and forgetting the
+        // key-safe codes because the owner didn't visit Settings today would decay
+        // the snapshot for no reason.
+        const prev = chbSnapRead(true) || {};
+        const ops = Object.assign({}, prev.ops || {});
+        const cots = {};
+        Object.keys(propertyMeta || {}).forEach((pk) => {
+            cots[pk] = (propertyMeta[pk] || {}).name || pk;
+            const v = (adminPrivateContent || {})['ops-' + pk];
+            if (typeof v === 'string' && v.trim() !== '') ops[pk] = v.slice(0, 4000);
+        });
+        localStorage.setItem(CHB_SNAP_KEY, JSON.stringify({ at: Date.now(), day: today, rows, ops, cots }));
+    } catch (e) {}
+}
+// The marker speaks in the DAY'S terms, not the clock's — "this morning" tells
+// the owner whether to trust it; a bare timestamp makes them do the arithmetic.
+function chbSnapWhen(s) {
+    const today = todayDashed();
+    const t = new Date(s.at || 0);
+    const hm = t.getHours() + ':' + String(t.getMinutes()).padStart(2, '0');
+    if (s.day === today) return 'saved ' + (t.getHours() < 12 ? 'this morning' : 'today') + ' at ' + hm;
+    if (s.day === ukShiftDays(today, -1)) return 'saved yesterday at ' + hm;
+    return 'saved on ' + fmtDate(s.day);
+}
+function renderOfflineDaySheet() {
+    const s = chbSnapRead();
+    const host = document.getElementById('view-backoffice');
+    if (!s || !host) return false;
+    let el = document.getElementById('offline-daysheet');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'offline-daysheet';
+        host.prepend(el);
+    }
+    document.body.classList.add('offline-snap');
+    const today = todayDashed(), tom = ukShiftDays(today, 1);
+    const groups = { leave: [], arrive: [], staying: [], tomorrow: [] };
+    (s.rows || []).forEach((r) => {
+        const g = chbSnapGroup(r, today, tom);
+        if (g) groups[g].push(r);
+    });
+    const e = escapeHtml;
+    const ICP = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a1 1 0 01-1 1A16 16 0 014 5a1 1 0 011-1z"/></svg>';
+    const ICM = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.6 7.1L4 21l1.9-5.4A8 8 0 1121 12z"/></svg>';
+    const row = (r, g) => {
+        const when = g === 'leave' ? 'Out by ' + e(r.cot_t || '10:00')
+            : g === 'staying' ? 'In residence'
+            : 'In from ' + e(r.cit || '15:00');
+        const chips = [];
+        if (r.due > 0.005) chips.push('<span class="bhub-chip is-warn">' + e(gbp(r.due)) + ' to collect</span>');
+        if (r.dep > 0.005) chips.push('<span class="bhub-chip">' + e(gbp(r.dep)) + ' deposit held</span>');
+        const sev = r.due > 0.005 ? ' ny-danger' : g === 'leave' && r.dep > 0.005 ? '' : ' ny-ok';
+        return '<div class="ny-row ods-row' + sev + '"><div class="ny-main">'
+            + '<span class="prop-tag tag-' + e(r.pk) + '">' + e(r.cot) + '</span>'
+            + '<span class="ny-label">' + e(r.nm) + '</span>'
+            + '<span class="ny-sub">' + when + ' · ' + e(r.party) + (g === 'tomorrow' ? ' · ' + e(fmtDate(r.ci)) : '') + '</span>'
+            + (r.notes ? '<span class="ods-note">' + e(r.notes) + '</span>' : '')
+            + (chips.length ? '<span class="ods-chips">' + chips.join('') + '</span>' : '')
+            + '</div>'
+            + (r.ph ? '<span class="ods-acts">'
+                + '<a class="bhub-icbtn" href="tel:' + e(r.ph) + '" aria-label="Call ' + e(r.nm) + '">' + ICP + '</a>'
+                + '<a class="bhub-icbtn" href="sms:' + e(r.ph) + '" aria-label="Text ' + e(r.nm) + '">' + ICM + '</a>'
+                + '</span>' : '')
+            + '</div>';
+    };
+    const sec = (t, key) => groups[key].length
+        ? '<h2 class="bo-sec-title">' + t + ' <span class="inbox-badge">' + groups[key].length + '</span></h2>' + groups[key].map((r) => row(r, key)).join('')
+        : '';
+    const opsKeys = Object.keys(s.ops || {}).filter((pk) => String(s.ops[pk] || '').trim() !== '');
+    el.innerHTML =
+        '<div class="ods-mark" role="status">'
+        + '<span><b>No connection</b> — this is the day sheet ' + e(chbSnapWhen(s)) + '. Anything may have moved since; nothing here is live.</span>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsRetry') + '>Try again</button>'
+        + '</div>'
+        + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
+        + sec('Leaving today', 'leave')
+        + sec('Arriving today', 'arrive')
+        + sec('Staying', 'staying')
+        + sec('Tomorrow', 'tomorrow')
+        + (!(s.rows || []).length || !(groups.leave.length + groups.arrive.length + groups.staying.length + groups.tomorrow.length)
+            ? '<p class="ods-empty">Nothing on the saved sheet for today or tomorrow.</p>' : '')
+        + (opsKeys.length
+            ? '<h2 class="bo-sec-title">Cottage notes</h2>'
+              + opsKeys.map((pk) => '<details class="ods-ops"><summary>' + e((s.cots || {})[pk] || pk) + '</summary><pre class="ods-pre">' + e(s.ops[pk]) + '</pre></details>').join('')
+            : '');
+    return true;
+}
+// Save a cottage's private ops notes AND refresh the snapshot in the same
+// breath — the whole point of the notes is being readable offline, so a save
+// that waited for the next boot to reach the phone would ship a stale card.
+// saveContent RETHROWS on failure (and has already alerted); the mirror and the
+// snapshot then stay on the last SAVED value rather than adopting a rejected one.
+async function saveOpsNotes(k, v) {
+    const val = String(v == null ? '' : v).slice(0, 4000);
+    try {
+        await saveContent('ops-' + k, val);
+    } catch (e) {
+        return;
+    }
+    adminPrivateContent['ops-' + k] = val;
+    try { chbSnapWrite(); } catch (e) {}
+}
+// "Try again" is honest both ways: live data replaces the sheet, a still-dead
+// link says so and keeps it — never a silent nothing (the dead-end rule).
+async function odsRetry() {
+    const r = await loadData();
+    const stillDead = !!(r && Array.isArray(r.failed) && r.failed.indexOf('bookings') !== -1)
+        && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
+    if (stillDead) {
+        toast('Still no connection — the saved sheet stays up.');
+        return;
+    }
+    document.body.classList.remove('offline-snap');
+    const el = document.getElementById('offline-daysheet');
+    if (el) el.remove();
+    try { toast('Back on — this is live data now.'); } catch (e) {}
+    initBackOffice();
+}
 async function initBackOffice() {
     // The page header carries the living date ("Friday 10 July") instantly;
     // once the data lands, todayOpsLine() enriches it with the day's ops.
     const td = document.getElementById('today-date');
     if (td) td.textContent = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-    await loadData();
+    const __ldr = await loadData();
+    // No bookings could be FETCHED and none survive in memory → the offline day
+    // sheet is the truest thing this screen can say (an empty live Today would
+    // report a business with no bookings, which is the poor-signal lie). A
+    // successful load does the opposite half: pre-warm the snapshot and drop any
+    // sheet left up from an earlier failure.
+    const __bookingsDead = !!(__ldr && Array.isArray(__ldr.failed) && __ldr.failed.indexOf('bookings') !== -1)
+        && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
+    if (__bookingsDead) {
+        if (renderOfflineDaySheet()) return;
+    } else if (!(__ldr && Array.isArray(__ldr.failed) && __ldr.failed.indexOf('bookings') !== -1)) {
+        document.body.classList.remove('offline-snap');
+        const __ods = document.getElementById('offline-daysheet');
+        if (__ods) __ods.remove();
+        try { chbSnapWrite(); } catch (e) {}
+    }
     try {
         todayOpsLine();
     } catch (e) {}
@@ -17514,6 +17728,16 @@ function accomSectionHtml(k, sec) {
         case 'arrival':
             return `
                     <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)}>${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
+        case 'opsnotes':
+            // The OWNER'S operational card — the facts needed standing AT the
+            // cottage: key safe, stopcock, fuse board, boiler reset, meters,
+            // cleaner's and handyman's numbers, bins, WiFi. Distinct from
+            // arrival- (guest-facing access instructions): this is what the
+            // OWNER needs and no guest ever sees. Saved on change like the
+            // arrival text, and carried in the phone's offline day sheet so a
+            // burst pipe with no signal still finds the stopcock.
+            return `
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">For you only — never shown to guests. Key safe code, stopcock, fuse board, boiler reset, meter locations, cleaner's number, bin days. Saved to your phone with the day sheet, so it's readable at the cottage door with no signal.</label><textarea rows="10" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)}>${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>`;
         case 'location':
             return `
                     <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)}>${escapeHtml(r.address || '')}</textarea></div>
