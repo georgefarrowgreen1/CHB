@@ -5711,6 +5711,17 @@ async function downloadInvoice(bookingId) {
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    // A document people file needs its own identity: none of this was set, so the
+    // Title was empty and a screen reader got no language.
+    try {
+        doc.setProperties({
+            title: `Invoice ${bookingRef(b.id)} — Cottage Holidays Blakeney`,
+            subject: `${meta.name}, ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`,
+            author: 'Cottage Holidays Blakeney',
+            creator: 'Cottage Holidays Blakeney',
+        });
+        doc.setLanguage('en-GB');
+    } catch (e) {}
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
     // The site's coastal palette, so the PDF reads as the same brand: linen
@@ -5734,8 +5745,15 @@ async function downloadInvoice(bookingId) {
     // Billed to / Issued by as white rounded groups with a tinted footer row.
     // The two used to be drawn from different plans (a serif letterhead here, a
     // card stack there): same booking, two products. FIGURES are still gt/ps.
-    const PAPER = [255, 255, 255], LINEN = [245, 241, 233], TINT = [250, 246, 236], HAIR2 = [239, 233, 220];
-    const ground = () => { doc.setFillColor(LINEN[0], LINEN[1], LINEN[2]); doc.rect(0, 0, W, H, 'F'); };
+    // WHITE, NOT LINEN, and no card fills: the modernised document is space and
+    // hairlines, so the only fills left are the accent rule and a status chip.
+    const HAIR2 = [234, 230, 222];
+    const ground = () => {
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, W, H, 'F');
+        doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        doc.rect(0, 0, W, 3, 'F');
+    };
     ground();
     const left = 42, right = W - 42, CW = right - left, PAD = 16;
     const BOTTOM = H - 44;
@@ -5750,17 +5768,17 @@ async function downloadInvoice(bookingId) {
     };
     const ink = (c) => doc.setTextColor(c[0], c[1], c[2]);
     const body = () => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); ink(INK); };
-    // the page's uppercase letterspaced group caption
-    const groupCap = (t) => {
-        need(20);
+    // The page's uppercase letterspaced group caption. It is PAINTED here and the
+    // room for it is reserved by group(), which owns both — asking for it here
+    // independently put a caption on page one with its card on page two.
+    const CAP_H = 15;
+    const paintCap = (t) => {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.setCharSpace(1.3);
-        ink(MUTED);
-        doc.text(String(t).toUpperCase(), left + 4, y + 7);
-        doc.setCharSpace(0);
+        doc.setFontSize(10);
+        ink(INK);
+        doc.text(String(t), left, y + 8);
         body();
-        y += 15;
+        y += CAP_H;
     };
     const fine = (t, gap) => {
         if (!t) return;
@@ -5778,66 +5796,65 @@ async function downloadInvoice(bookingId) {
     const VAL_W = 110;
     const measure = (it) => {
         doc.setFontSize(it.foot ? 10.5 : 10);
-        const sub = it.sub ? doc.splitTextToSize(String(it.sub), CW - PAD * 2 - VAL_W) : [];
-        return Object.assign({}, it, { subLines: sub, h: (it.foot ? 26 : 23) + (sub.length ? sub.length * 11 : 0) });
+        const sub = it.sub ? doc.splitTextToSize(String(it.sub), CW - VAL_W) : [];
+        return Object.assign({}, it, { subLines: sub, h: (it.foot ? 29 : 25) + (sub.length ? sub.length * 11 : 0) });
     };
-    const drawRow = (m, ry, cardH, cardTop) => {
-        if (m.foot) {
-            // tinted, rounded at the card's foot, square where it meets the row above
-            doc.setFillColor(TINT[0], TINT[1], TINT[2]);
-            doc.roundedRect(left, ry, CW, cardH - (ry - cardTop), 9, 9, 'F');
-            doc.rect(left, ry, CW, 10, 'F');
-        }
+    const drawRow = (m, ry) => {
+        // one hairline above every row; a total gets the heavier rule instead
+        doc.setDrawColor(...(m.foot ? INK : HAIR2));
+        doc.setLineWidth(m.foot ? 1 : 0.5);
+        doc.line(left, ry, right, ry);
+        doc.setLineWidth(0.5);
         doc.setFont('helvetica', m.foot ? 'bold' : 'normal');
-        doc.setFontSize(m.foot ? 10.5 : 10);
+        doc.setFontSize(m.foot ? 12 : 10);
         ink(INK);
-        doc.text(String(m.label), left + PAD, ry + 15);
+        doc.text(String(m.label), left, ry + 16);
         ink(m.ink || INK);
-        doc.text(String(m.value == null ? '' : m.value), right - PAD, ry + 15, { align: 'right' });
+        doc.text(String(m.value == null ? '' : m.value), right, ry + 16, { align: 'right' });
         if (m.subLines.length) {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(8.5);
             ink(MUTED);
-            doc.text(m.subLines, left + PAD, ry + 27);
+            doc.text(m.subLines, left, ry + 29);
         }
         body();
         return ry + m.h;
     };
-    const group = (items) => {
+    const group = (cap, items) => {
         const ms = items.filter(Boolean).map(measure);
         let idx = 0;
+        let head = true;
         while (idx < ms.length) {
-            const avail = BOTTOM - y - PAD;
-            if (avail < ms[idx].h + 6) { doc.addPage(); ground(); y = 46; continue; }
+            // A CAPTION IS NEVER SEPARATED FROM ITS FIRST ROW: the break is decided
+            // with the caption's height included, then the caption is painted. And
+            // PAD/2 is what the card actually adds (see cardH) — reserving a full
+            // PAD made the fit test twice as conservative as the drawing, breaking
+            // a page for a group that had room by 1pt.
+            if (BOTTOM - y - (head ? CAP_H : 0) < ms[idx].h + 6) {
+                doc.addPage();
+                ground();
+                y = 46;
+            }
+            if (head) { paintCap(cap); head = false; }
+            const avail = BOTTOM - y;
             let take = 0, hh = 0;
             while (idx + take < ms.length && hh + ms[idx + take].h <= avail) { hh += ms[idx + take].h; take++; }
-            const cardH = hh + PAD / 2;
-            doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
-            doc.roundedRect(left, y, CW, cardH, 9, 9, 'F');
-            let ry = y + 4;
-            for (let k = 0; k < take; k++) {
-                if (k && !ms[idx + k].foot) {
-                    doc.setDrawColor(HAIR2[0], HAIR2[1], HAIR2[2]);
-                    doc.line(left + PAD, ry, right - PAD, ry);
-                }
-                ry = drawRow(ms[idx + k], ry, cardH, y);
-            }
-            y += cardH + 14;
+            let ry = y;
+            for (let k = 0; k < take; k++) ry = drawRow(ms[idx + k], ry);
+            y = ry + 17;
             idx += take;
-            if (idx < ms.length) { doc.addPage(); ground(); y = 46; }
+            if (idx < ms.length) { doc.addPage(); ground(); y = 46; } // continuation: no caption
         }
     };
     // a tinted status pill — the page's chip
     const chip = (t, fg, bg, cy) => {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.setCharSpace(1.2);
-        const w = doc.getTextWidth(String(t).toUpperCase()) + 16;
+        doc.setFontSize(9);
+        const w = doc.getTextWidth(String(t)) + 18;
         doc.setFillColor(bg[0], bg[1], bg[2]);
-        doc.roundedRect(W / 2 - w / 2, cy - 9, w, 15, 4, 4, 'F');
+        doc.roundedRect(left, cy - 9, w, 17, 5, 5, 'F');
         ink(fg);
-        doc.text(String(t).toUpperCase(), W / 2, cy + 1.5, { align: 'center' });
-        doc.setCharSpace(0);
+        doc.text(String(t), left + 9, cy + 3);
         body();
     };
 
@@ -5848,50 +5865,50 @@ async function downloadInvoice(bookingId) {
     const stateChip = (b.holdStatus === 'kept')
         ? ['Deposit retained', ALERT_INK, [250, 233, 230]]
         : (depAmt > 0 && gt.dep <= 0.005 ? ['Deposit returned', OK, [230, 241, 233]] : null);
-    const heroH = 100 + (stateChip ? 24 : 0);
-    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
-    doc.roundedRect(left, y, CW, 10, 3, 3, 'F');
-    doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
-    doc.roundedRect(left, y + 5, CW, heroH, 9, 9, 'F');
-    doc.rect(left, y + 5, CW, 8, 'F');
-    let hy = y + 30;
-    // crown and business name on ONE line, centred — the page's brand lockup
+    // ── header: brand on the left rail, the document's own id on the right. The
+    //    crown-over-brand centred lockup was the most traditional thing on the page;
+    //    the serif is kept for the NAME alone, as the brand's signature.
+    try { doc.addImage(CHB_CROWN_PNG, 'PNG', left, y - 2, 20, 12); } catch (e) {}
     doc.setFont('times', 'bold');
-    doc.setFontSize(13.5);
-    const bn = 'Cottage Holidays Blakeney';
-    const bnW = doc.getTextWidth(bn);
-    const lockL = W / 2 - (bnW + 30) / 2;
-    try { doc.addImage(CHB_CROWN_PNG, 'PNG', lockL, hy - 11, 22, 13); } catch (e) {}
+    doc.setFontSize(13);
     ink(INK);
-    doc.text(bn, lockL + 30, hy);
-    hy += 22;
-    // the caption names WHICH figure this is; accent as WORDS takes the accent INK
+    doc.text('Cottage Holidays Blakeney', left + 27, y + 9);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setCharSpace(1.3);
-    ink(settled ? OK : ACCENT_INK);
-    doc.text(heroCap.toUpperCase(), W / 2, hy, { align: 'center' });
-    doc.setCharSpace(0);
-    hy += 28;
-    doc.setFont('times', 'bold');
-    doc.setFontSize(27);
-    ink(INK);
-    doc.text(heroFig, W / 2, hy, { align: 'center' });
-    hy += 17;
+    doc.setFontSize(10.5);
+    doc.text(bookingRef(b.id), right, y + 4, { align: 'right' });
     body();
     doc.setFontSize(8.5);
     ink(MUTED);
-    doc.text(`Invoice ${bookingRef(b.id)}  ·  issued ${fmtDate(todayDashed())}`, W / 2, hy, { align: 'center' });
+    doc.text(`Issued ${fmtDate(todayDashed())}`, right, y + 17, { align: 'right' });
     body();
-    if (stateChip) { hy += 21; chip(stateChip[0], stateChip[1], stateChip[2], hy); }
-    y += heroH + 22;
+    y += 48;
+    // ── the ask, left-aligned and large, in the grotesque at a tight track ──
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    ink(settled ? OK : ACCENT_INK);
+    doc.text(heroCap, left, y);
+    y += 27;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(32);
+    ink(INK);
+    doc.text(heroFig, left, y);
+    y += 16;
+    body();
+    doc.setFontSize(9.5);
+    ink(MUTED);
+    doc.text(settled
+        ? `Received ${b.paymentDate ? fmtDate(b.paymentDate) : 'in full'}`
+        : (gt.paid > 0 ? `${gbp(gt.paid)} of ${gbp(gt.total)} received` : `${gbp(gt.total)} total`), left, y);
+    body();
+    y += 14;
+    if (stateChip) { y += 11; chip(stateChip[0], stateChip[1], stateChip[2], y); y += 9; }
+    y += 16;
 
     // ── Charges ───────────────────────────────────────────────────────────
-    groupCap('Charges');
     // The lines add up to their own total, so the deposit line carries what is IN
     // it (gt.dep, 0 once refunded): a HOLDING, not a charge. It used to be listed
     // here AND in a section of its own — the same £75 twice.
-    group([
+    group('Charges', [
         priceIsCustom(p)
             ? { label: 'Agreed price for your stay', sub: `${p.nights} night${p.nights === 1 ? '' : 's'}`, value: gbp(p.total) }
             : { label: `${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, sub: `${meta.name}  ·  ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`, value: gbp(p.nightly) },
@@ -5901,13 +5918,12 @@ async function downloadInvoice(bookingId) {
     ]);
 
     // ── Payments ──────────────────────────────────────────────────────────
-    groupCap('Payments');
     const how = [
         b.paymentDate ? fmtDate(b.paymentDate) : '',
         b.paymentMethod ? `by ${b.paymentMethod}` : '',
         gt.dep > 0 && depositCharged(b.holdStatus || 'none') ? `includes the ${gbp(gt.dep)} refundable deposit` : '',
     ].filter(Boolean).join('  ·  ');
-    group([
+    group('Payments', [
         gt.paid > 0
             ? { label: 'Payment received', sub: how, value: '- ' + gbp(gt.paid), ink: OK }
             : { label: 'Nothing received yet', value: gbp(0) },
@@ -5921,8 +5937,7 @@ async function downloadInvoice(bookingId) {
     }
 
     // ── Your stay ─────────────────────────────────────────────────────────
-    groupCap('Your stay');
-    group([
+    group('Your stay', [
         { label: 'Cottage', value: meta.name },
         address ? { label: 'Address', sub: address, value: '' } : null,
         { label: 'Check in', value: `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}` },
@@ -5932,12 +5947,31 @@ async function downloadInvoice(bookingId) {
     ]);
 
     // ── who it is for, and who issued it ──────────────────────────────────
-    groupCap('Billed to');
-    group([{ label: b.name || '', sub: b.email || '', value: '' }]);
-    groupCap('Issued by');
-    group([{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
+    group('Billed to', [{ label: b.name || '', sub: b.email || '', value: '' }]);
+    // An invoice stating a balance must say how to pay it: off the card rail there
+    // was no link and nothing replaced it. bacs-details is INTERNAL, so the owner's
+    // copy resolves it and a guest's cannot — their route is invoice.php, which can.
+    const bacs = String((typeof siteContent === 'object' && siteContent && siteContent['bacs-details']) || '').trim();
+    if (gt.balance > 0.001 && bookingOwnerArranged(b) && bacs) {
+        group('How to pay', [{ label: 'Bank transfer', sub: bacs, value: '' }]);
+    }
+
+    group('Issued by', [{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
 
     fine(`This invoice relates to booking ${bookingRef(b.id)}. Any questions? Just reply to your confirmation email and we will answer.`);
+
+    // Every page carries the reference and its number — pagination shipped and the
+    // footer did not follow, so sheet two said nothing about which booking it was.
+    // A second pass, because the total is only known once the drawing is done.
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        ink(MUTED);
+        doc.text(`Invoice ${bookingRef(b.id)}`, left, H - 26);
+        doc.text(`Page ${i} of ${pageCount}`, right, H - 26, { align: 'right' });
+    }
 
     doc.save(`Cottage-Holidays-Blakeney-Invoice-${bookingRef(b.id)}.pdf`);
 }
@@ -15531,7 +15565,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pdfcont';
+    const BUILD = 'invmod1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

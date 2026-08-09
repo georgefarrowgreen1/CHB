@@ -37,6 +37,12 @@ const INV_WARN_INK = '#8A5000';   // a due date                (email_warn_ink)
 const INV_ALERT_INK = '#A3291C';  // a deposit retained        (email_alert_ink)
 const INV_OK_INK = '#1f6b3a';     // settled, a credit
 const INV_ON_ACCENT = '#3a2e1e';  // ink ON the accent fill
+const INV_HAIR = '#e4dbc8';       // a stated edge (buttons, the action bar)
+const INV_HAIR_2 = '#eae6de';     // the one hairline between rows
+const INV_PAPER = '#ffffff';      // white, not linen: the ground is air now
+const INV_DUE_BG = '#fbf0da';
+const INV_OK_BG = '#e6f1e9';
+const INV_KEPT_BG = '#fae9e6';
 
 // The Save-a-copy handler. It is a hashed inline <script> and not an onclick
 // ATTRIBUTE, because the site's CSP is `script-src 'self' 'unsafe-eval'
@@ -167,18 +173,19 @@ function render_invoice_html($d)
     //  isn't, it is the total received. Two different facts, so the caption
     //  above it names which — an invoice with a big £0.00 on it states nothing.
     $stateChip = $depState === 'kept'
-        ? '<p class="chip kept">Deposit retained</p>'
-        : ($depState === 'returned' ? '<p class="chip ok">Deposit returned</p>' : '');
+        ? '<span class="chip kept">Deposit retained</span>'
+        : ($depState === 'returned' ? '<span class="chip ok">Deposit returned</span>' : '');
     //  Said ONCE: the caption "Paid in full" over the figure and a "Nothing
     //  outstanding" chip beneath it were the same fact on adjacent lines, and the
     //  Payments card's own footer states it a third time where it reconciles.
     $hero = $settled
         ? '<p class="cap ok">Paid in full</p>' .
-          '<p class="fig">' . $money($paid) . '</p>'
+          '<p class="fig">' . $money($paid) . '</p>' .
+          '<p class="sub">Received ' . $e($d['payments'][0]['date'] ?? '') . '</p>'
         : '<p class="cap accent">Balance due</p>' .
           '<p class="fig">' . $money($balance) . '</p>' .
-          (!empty($d['balance_due_date']) ? '<p class="chip due">by ' . $e($d['balance_due_date']) . '</p>' : '') .
-          ($paid > 0.001 ? '<p class="sub">' . $money($paid) . ' of ' . $money($grand) . ' received</p>' : '');
+          ($paid > 0.001 ? '<p class="sub">' . $money($paid) . ' of ' . $money($grand) . ' received</p>' : '') .
+          (!empty($d['balance_due_date']) ? '<p class="chip due">Due ' . $e($d['balance_due_date']) . '</p>' : '');
 
     // ── the actions. Pay is a real <a>, so no script and no CSP involvement;
     //    Save a copy needs one line of JS and gets the hashed <script> above. ──
@@ -203,100 +210,105 @@ function render_invoice_html($d)
         '<title>Invoice ' . $e($ref) . ' — ' . $e($business) . '</title>' .
         '<style>' .
         '*{box-sizing:border-box}' .
-        'body{margin:0;background:#f5f1e9;color:' . INV_INK . ';' .
+        // ── A MODERN DOCUMENT, NOT A LETTERHEAD. The centred crown-over-brand
+        //    masthead, the serif money figure and the uppercase letterspaced
+        //    captions were all traditional cues, and together they read as an old
+        //    printed invoice. What changes: everything is LEFT-ALIGNED against one
+        //    rail, the figures are the grotesque at a tight track (the serif is
+        //    kept for the business NAME alone, as a signature — the brand's own
+        //    voice), captions are sentence case, and the card chrome is gone in
+        //    favour of space and a single hairline. The INKS are untouched: they
+        //    are the email design system's and §6 asserts the pair.
+        'body{margin:0;background:' . INV_PAPER . ';color:' . INV_INK . ';' .
         'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;' .
-        'font-size:15px;line-height:1.5;padding:24px 16px 32px;-webkit-font-smoothing:antialiased}'
-        . '.has-bar{padding-bottom:104px}' .
+        'font-size:15px;line-height:1.55;padding:0 20px 40px;-webkit-font-smoothing:antialiased;' .
+        'font-variant-numeric:tabular-nums}' .
+        '.has-bar{padding-bottom:104px}' .
         '.sheet{max-width:640px;margin:0 auto}' .
-        // the accent stays a FILL — it is 2.55:1 as words and fails AA outright
-        '.band{height:4px;background:' . $accent . ';border-radius:4px 4px 0 0}' .
-        '.hd{background:#fff;border-radius:0 0 14px 14px;padding:22px 22px 26px;text-align:center;' .
-        'box-shadow:0 1px 2px rgba(20,30,40,.06),0 6px 18px rgba(20,30,40,.05)}' .
-        '.brand{display:flex;align-items:center;justify-content:center;gap:9px;margin:0 0 18px}' .
-        '.crest{width:32px;height:auto;display:block}' .
-        '.bn{font-family:Georgia,"Times New Roman",serif;font-size:16px;letter-spacing:-.01em}' .
-        '.cap{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:' . INV_MUTED . ';margin:0}' .
+        // the accent is a fine rule at the very top, not a slab
+        '.band{height:3px;background:' . $accent . ';margin:0 -20px 34px}' .
+        // ── header: brand on the left rail, the document\'s own id on the right ──
+        '.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;' .
+        'padding-bottom:30px}' .
+        '.brand{display:flex;align-items:center;gap:9px;margin:0}' .
+        '.crest{width:26px;height:auto;display:block}' .
+        '.bn{font-family:Georgia,"Times New Roman",serif;font-size:15px;letter-spacing:-.01em;white-space:nowrap}' .
+        '.hd .id{text-align:right;font-size:12.5px;color:' . INV_MUTED . ';line-height:1.5;flex:0 0 auto}' .
+        '.hd .id b{display:block;color:' . INV_INK . ';font-weight:600;letter-spacing:.01em}' .
+        // ── the ask, left-aligned and large ──
+        '.hero{padding-bottom:36px}' .
+        '.cap{font-size:12.5px;color:' . INV_MUTED . ';margin:0;letter-spacing:0}' .
         '.cap.accent{color:' . INV_ACCENT_INK . '}' .
         '.cap.ok{color:' . INV_OK_INK . '}' .
-        '.fig{font-family:Georgia,"Times New Roman",serif;font-size:38px;line-height:1.05;margin:6px 0 10px;' .
-        'font-variant-numeric:tabular-nums;letter-spacing:-.02em}' .
-        '.sub{color:' . INV_MUTED . ';font-size:13px;margin:8px 0 0}' .
-        '.ref{color:' . INV_MUTED . ';font-size:12.5px;margin:10px 0 0}' .
-        '.chip{display:inline-block;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;' .
-        'padding:4px 9px;border-radius:5px;margin:0}' .
-        '.chip.due{background:#fbf0da;color:' . INV_WARN_INK . '}' .
-        '.chip.ok{background:#e6f1e9;color:' . INV_OK_INK . '}' .
-        '.chip.kept{background:#fae9e6;color:' . INV_ALERT_INK . '}' .
-        '.chip+.chip{margin-left:6px}' .
-        'h2{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:' . INV_MUTED . ';' .
-        'font-weight:600;margin:26px 0 7px;padding-left:4px}' .
-        '.grp{background:#fff;border-radius:13px;overflow:hidden;width:100%;border-collapse:collapse;' .
-        'box-shadow:0 1px 2px rgba(20,30,40,.06),0 5px 14px rgba(20,30,40,.05)}' .
-        '.grp td{padding:12px 15px;vertical-align:top;font-size:14.5px}' .
-        '.grp tr+tr td{border-top:1px solid #efe9dc}' .
-        '.grp td.a{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:1%}' .
-        '.grp td.d small{display:block;font-size:12.5px;color:' . INV_MUTED . ';margin-top:2px;line-height:1.45}' .
+        '.fig{font-size:46px;font-weight:700;line-height:1.02;letter-spacing:-.035em;margin:4px 0 0}' .
+        '.sub{color:' . INV_MUTED . ';font-size:13.5px;margin:10px 0 0}' .
+        '.chip{display:inline-block;font-size:12px;font-weight:600;padding:4px 10px;border-radius:6px;margin:12px 0 0}' .
+        '.chip.due{background:' . INV_DUE_BG . ';color:' . INV_WARN_INK . '}' .
+        '.chip.ok{background:' . INV_OK_BG . ';color:' . INV_OK_INK . '}' .
+        '.chip.kept{background:' . INV_KEPT_BG . ';color:' . INV_ALERT_INK . '}' .
+        '.chip+.chip{margin-left:7px}' .
+        // ── sections: sentence case, weight not letterspacing ──
+        'h2{font-size:13.5px;font-weight:600;color:' . INV_INK . ';margin:30px 0 2px;letter-spacing:-.005em}' .
+        // ── rows: no cards. Space, one hairline, and a heavier rule for a total ──
+        '.grp{width:100%;border-collapse:collapse}' .
+        '.grp td{padding:14px 0;vertical-align:top;font-size:14.5px;border-top:1px solid ' . INV_HAIR_2 . '}' .
+        '.grp td.a{text-align:right;white-space:nowrap;width:1%;padding-left:20px}' .
+        '.grp td.d small{display:block;font-size:12.5px;color:' . INV_MUTED . ';margin-top:3px;line-height:1.5}' .
         '.grp tr.cr td.a{color:' . INV_OK_INK . '}' .
-        '.grp tfoot td{background:#faf6ec;font-weight:700}' .
-        '.kvs{background:#fff;border-radius:13px;overflow:hidden;' .
-        'box-shadow:0 1px 2px rgba(20,30,40,.06),0 5px 14px rgba(20,30,40,.05)}' .
-        '.kv{display:flex;gap:14px;align-items:baseline;padding:12px 15px}' .
-        '.kv+.kv{border-top:1px solid #efe9dc}' .
+        '.grp tfoot td{border-top:1.5px solid ' . INV_INK . ';font-weight:700;font-size:16px;padding-top:15px}' .
+        // the visually-hidden document title (announced, never painted)
+        '.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}' .
+        // a META block is two columns; a single party block is one
+        '.kvs{display:grid;grid-template-columns:1fr 1fr;gap:0 32px}' .
+        '.kvs.one{grid-template-columns:1fr}' .
+        '@media (max-width:520px){.kvs{grid-template-columns:1fr}}' .
+        '.kv{display:flex;gap:14px;align-items:baseline;padding:11px 0;border-top:1px solid ' . INV_HAIR_2 . '}' .
         '.kv .k{flex:0 0 auto;color:' . INV_MUTED . ';font-size:12.5px}' .
-        '.kv .v{flex:1 1 auto;min-width:0;text-align:right;font-size:14.5px}' .
-        '.who{padding:12px 15px;font-size:14px;line-height:1.6}' .
+        '.kv .v{flex:1 1 auto;min-width:0;text-align:right;font-size:14px}' .
+        '.who{padding:13px 0;font-size:14px;line-height:1.6;border-top:1px solid ' . INV_HAIR_2 . '}' .
         '.who .nm{font-weight:600}' .
         '.who .l{color:' . INV_INK_2 . '}' .
-        '.fine{color:' . INV_MUTED . ';font-size:12.5px;line-height:1.6;margin:20px 4px 0}' .
-        // the action bar rides the bottom of the screen the whole way down: the
-        // pay affordance must not be something you have to scroll to find
-        '.acts{margin:16px 4px 0}'
-        . '.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(245,241,233,.96);' .
-        'border-top:1px solid #e4dbc8;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}' .
-        '.bar-in{max-width:640px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}' .
+        '.fine{color:' . INV_MUTED . ';font-size:12.5px;line-height:1.6;margin:34px 0 0;' .
+        'padding-top:18px;border-top:1px solid ' . INV_HAIR_2 . '}' .
+        // the action bar rides the bottom of the screen the whole way down
+        '.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.97);' .
+        'border-top:1px solid ' . INV_HAIR . ';padding:11px 20px calc(11px + env(safe-area-inset-bottom))}' .
+        '.bar-in{max-width:640px;margin:0 auto;display:flex;gap:12px;align-items:center;flex-wrap:wrap}' .
         '.bar-lbl{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}' .
-        '.bar-fig{font-family:Georgia,"Times New Roman",serif;font-size:19px;font-variant-numeric:tabular-nums}' .
-        '.btn,.btn2{display:inline-flex;align-items:center;justify-content:center;min-height:44px;' .
-        'padding:11px 20px;border-radius:8px;font-size:15px;font-weight:700;text-decoration:none;cursor:pointer;' .
-        'font-family:inherit;flex:0 0 auto}' .
+        '.bar-fig{font-size:19px;font-weight:700;letter-spacing:-.02em}' .
+        '.acts{margin:22px 0 0}' .
+        '.btn,.btn2{display:inline-flex;align-items:center;justify-content:center;min-height:46px;' .
+        'padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;' .
+        'font-family:inherit;flex:0 0 auto;letter-spacing:-.01em}' .
         // ink ON the accent, never white: white on this fill measures 2.55:1
         '.btn{background:' . $accent . ';color:' . INV_ON_ACCENT . ';border:0}' .
-        '.btn2{background:transparent;color:' . INV_ACCENT_INK . ';border:1px solid #e4dbc8}' .
+        '.btn2{background:transparent;color:' . INV_ACCENT_INK . ';border:1px solid ' . INV_HAIR . '}' .
         'a:focus-visible,button:focus-visible{outline:2px solid ' . INV_ACCENT_INK . ';outline-offset:2px}' .
-        // ── the same DOM as a printed statement ──────────────────────────────
-        // an explicit page margin rather than whatever the browser happens to default
+        // ── PRINT IS THE SAME DOCUMENT. There is no card chrome left to flatten, so
+        //    print only has to drop the actions, set a type size and keep the rules
+        //    (borders print; fills do not, which is why a tinted chip states one).
         '@page{margin:14mm}' .
         '@media print{' .
         '.acts{display:none}' .
-        'body{background:#fff;padding:0;font-size:12pt}' .
+        'body{padding:0;font-size:11pt}' .
         '.bar{display:none}' .
-        '.sheet{max-width:none}' .
-        '.band{border-radius:0}' .
-        // brand left, the amount right: a masthead, from the same two elements
-        '.hd{border-radius:0;box-shadow:none;padding:16px 0 18px;text-align:left;display:flex;' .
-        'justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:2px solid ' . INV_INK . '}' .
-        '.brand{margin:0;justify-content:flex-start}' .
-        '.hero{text-align:right}' .
-        '.fig{font-size:26pt;margin:2px 0 6px}' .
-        '.grp,.kvs{box-shadow:none;border-radius:0;border-top:1px solid ' . INV_INK . '}' .
-        '.grp tfoot td{background:none;border-top:1px solid ' . INV_INK . '}' .
-        // a tinted chip is invisible once the printer drops backgrounds
+        '.band{margin:0 0 30px}' .
+        '.fig{font-size:30pt}' .
         '.chip{border:1px solid currentColor;background:none!important}' .
-        'h2{margin:18px 0 4px;padding-left:0}' .
-        '.kv,.grp td,.who{padding-left:0;padding-right:0}' .
         '}' .
         '</style></head><body' . ($bar !== '' ? ' class="has-bar"' : '') . '>' .
-        '<main class="sheet">' .
         '<div class="band"></div>' .
+        '<main class="sheet">' .
+        '<h1 class="vh">Invoice ' . $e($ref) . '</h1>' .
+        // brand on the left rail, the document's own id on the right — the modern
+        // invoice header, and it takes the reference out of the amount block where
+        // it was competing with the figure
         '<header class="hd">' .
-        '<p class="brand"><img class="crest" src="logo.svg" alt="" width="32" height="19">' .
+        '<p class="brand"><img class="crest" src="logo.svg" alt="" width="26" height="16">' .
         '<span class="bn">' . $e($business) . '</span></p>' .
-        '<div class="hero">' .
-        '<h1 class="sr-only" hidden>Invoice ' . $e($ref) . '</h1>' .
-        $hero .
-        '<p class="ref">Invoice ' . $e($ref) . ' · issued ' . $e($d['issued'] ?? '') . '</p>' .
-        ($stateChip !== '' ? '<p class="ref">' . $stateChip . '</p>' : '') .
-        '</div></header>' .
+        '<div class="id"><b>' . $e($ref) . '</b>Issued ' . $e($d['issued'] ?? '') . '</div>' .
+        '</header>' .
+        '<div class="hero">' . $hero . $stateChip . '</div>' .
 
         '<h2>Charges</h2>' .
         '<table class="grp"><tbody>' . $charge . '</tbody>' .
@@ -322,13 +334,27 @@ function render_invoice_html($d)
         '</div>' .
 
         '<h2>Billed to</h2>' .
-        '<div class="kvs"><div class="who">' .
+        '<div class="kvs one"><div class="who">' .
         '<div class="nm">' . $e($d['guest_name'] ?? '') . '</div>' .
         (!empty($d['guest_email']) ? '<div class="l">' . $e($d['guest_email']) . '</div>' : '') .
         '</div></div>' .
 
+        // ── AN INVOICE THAT STATES A BALANCE MUST SAY HOW TO PAY IT. The pay
+        //    button is correctly withheld off the card rail (payment_rail — the
+        //    decision the chase emails already follow), and nothing replaced it:
+        //    a guest who paid by transfer got "Balance due £446.44" and no
+        //    instructions at all. The chase emails print bacs-details; the
+        //    document the guest FILES did not.
+        ($balance > 0.001 && empty($d['pay_url'])
+            ? '<h2>How to pay</h2><div class="kvs one"><div class="who">' .
+              (trim((string) ($d['bank_details'] ?? '')) !== ''
+                  ? '<div class="l">' . nl2br($e($d['bank_details'])) . '</div>'
+                  : '<div class="l">Reply to your confirmation email and we will send you our bank details.</div>') .
+              '</div></div>'
+            : '') .
+
         '<h2>Issued by</h2>' .
-        '<div class="kvs"><div class="who">' .
+        '<div class="kvs one"><div class="who">' .
         '<div class="nm">' . $e($business) . '</div>' .
         '<div class="l">North Norfolk Coastal Retreats' .
         (!empty($d['phone']) ? ' · ' . $e($d['phone']) : '') . '</div>' .
@@ -557,5 +583,9 @@ echo render_invoice_html([
         ? site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id
         : '',
     'phone' => content_value('contact-phone'),
+    // Only when there is a balance and no card link: the bank rail's own answer.
+    // bacs-details is an INTERNAL content key, so this is the one surface that can
+    // always resolve it — a guest's app.js never receives it.
+    'bank_details' => $balance > 0.001 && payment_rail($b) !== 'card' ? content_value('bacs-details') : '',
     'accent' => $disp['accent'] ?? '#8FB3C7',
 ]);

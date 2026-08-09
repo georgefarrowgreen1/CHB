@@ -290,6 +290,37 @@ table and looked like a different product from the confirmation that follows the
 
 ## The guest's invoice: ONE document, two presentations
 
+**AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style
+invoice"*). Three things were carrying the traditional register, and they were carrying
+it on BOTH surfaces because the two share one anatomy: the **centred** crown-over-brand
+masthead, the **serif** money figure, and **uppercase letterspaced** captions. All three
+are gone. Everything is now left-aligned against one rail; the figure is the grotesque
+at 46px/32pt with a −0.035em track and tabular figures; captions are sentence case at
+600 weight, so hierarchy comes from size and space rather than tracking; the ground is
+WHITE (the linen and every card fill went with it) and the accent is a 3px rule at the
+very top instead of a slab. The serif survives in exactly one place — the business NAME,
+as the brand's signature. The INKS are untouched: they are the email design system's and
+§6 asserts the pair, so modernising the layout could not regress contrast.
+- **The rows lost their cards.** A row is one hairline above it and a total is a heavier
+  1.5px rule; the meta blocks are a two-column grid collapsing at 520px. `.kvs.one` is
+  the single-party variant, because a lone `.who` in a two-column grid leaves half the
+  row empty.
+- **AIR IS WHAT MAKES IT MODERN AND A ONE-SHEET INVOICE MATTERS MORE.** The first pass
+  at the airier rhythm pushed even the SETTLED case onto two pages (row 27→ sub 12→ gap
+  22). The values shipped are the tightest that still read as space rather than a
+  ledger — row 25, foot 29, sub 11, gap 17 — and the settled case is one sheet again.
+  The bank-rail case (one extra group) still runs to two and breaks correctly.
+- **Two assertions had to be re-aimed, not patched:** "print gives every card a hairline"
+  described chrome that no longer exists (the check now asserts there is no card chrome
+  to undo, and that a row is one hairline while a total is heavier), and the 44px floor
+  check pinned `min-height:44px` where the modern control is 46 — it reads the number and
+  compares now. And ten of the PDF's checks named UPPERCASE captions; sentence case is
+  the point of the change, so they follow the page's vocabulary.
+- NB `.vh` (the visually-hidden document title) was used in the markup before it was
+  defined in the stylesheet, so the `<h1>` would have painted at browser-default size.
+  Nothing else would have caught it — the gates read text, not type size.
+
+
 `invoice.php` is the page the guest files and may show an insurer, and
 `render_invoice_html()` has always been PURE and unit-testable while nothing unit-tested
 it — so three things shipped on it. Gated now by **`test-invoice.php`** (85 checks: the
@@ -398,6 +429,41 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
     `downloadInvoice` awaits `ensureJsPdf`, so its continuation lands on a microtask and
     the summary printed first — the probe's promise goes in `pendingChecks`, which the
     summary now waits on. It is the one async gate in that file.
+- **THE PRINT STYLESHEET WAS A THIRD LOOK, and that is three documents of one
+  invoice.** The screen and the owner's PDF matched; `@media print` then flipped the
+  header into a masthead and flattened every card to a ruled table, so the guest's
+  SAVED PDF matched neither. It flattened for a real reason — a printer drops tinted
+  fills, so a white card on linen prints white on white — so the cards keep their
+  shape and take a **hairline** instead, and every tinted thing states its own
+  border. test-invoice asserts what print must NOT do (`border-radius:0`,
+  `display:flex`) as well as what it must.
+- **AN INVOICE THAT STATES A BALANCE MUST SAY HOW TO PAY IT.** `grep -c bacs
+  invoice.php` was **0**: the pay button is correctly withheld off the card rail
+  (`payment_rail`) and NOTHING replaced it, so a guest who paid by transfer got
+  "Balance due £459.64" and no instructions. The chase emails print `bacs-details`;
+  the document the guest FILES did not. A "How to pay" group now carries them, and
+  with none on file it names a way to get them rather than saying nothing. NB
+  `bacs-details` is INTERNAL, so invoice.php (server-side) always resolves it while a
+  GUEST's app.js never receives it — the owner's PDF shows the block, a guest's copy
+  of the PDF cannot, and their route is the emailed page, which can.
+- **THE PDF HAD NO IDENTITY AND ITS SECOND PAGE WAS A LOOSE SHEET.**
+  `setProperties` / `setLanguage` / `getNumberOfPages` / `setPage` were all absent, so
+  the Title was empty (viewers and Files showed the filename alone), a screen reader
+  got no document language, and — once #1042 made pagination possible — page two
+  carried nothing saying which booking it was. Stamped in a SECOND pass, because the
+  total is only known once the drawing is done.
+- **THE FIT TEST WAS TWICE AS CONSERVATIVE AS THE DRAWING, AND THEN ORPHANED A
+  CAPTION.** `avail` reserved a full `PAD` while `cardH` only adds `PAD/2`, so a
+  group with 1pt of room broke the page; and `groupCap` asked for its own 20pt
+  independently of the group after it, which put a caption on page one with its card
+  on page two — strictly worse than the break it was trying to avoid. `group(cap,
+  items)` now owns both: the break is decided with the caption's height included,
+  then the caption is painted, and a continuation slice gets no caption. General
+  rule: whatever can be separated by a page break must be measured by ONE decision.
+  NB the bank-rail case (one extra group) still legitimately runs to two pages — it
+  breaks correctly now rather than fitting by a millimetre, which is the outcome to
+  want. Folding "Issued by" into the closing fine print would bring it back to one
+  sheet and is the next thing to try if that matters.
 - **AND THE CHARGES MUST ADD UP TO THEIR OWN TOTAL — the half the first pass missed.**
   Coherence was asserted for the Payments card and not for Charges, so the refunded state
   listed a £75 deposit in a table stated to total £695.25. A deposit is a HOLDING, not a
