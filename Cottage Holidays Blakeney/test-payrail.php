@@ -1621,8 +1621,11 @@ chk('the invoice issues its date in the house form, not date(\'j M Y\')',
     && strpos($invW, "date('j M Y')") === false);
 chk('...carries the booking-derived balance due date',
     preg_match("/'balance_due_date' => \\\$balance > 0\\.001 \\? uk_date\\(booking_balance_due_date\\(\\\$b\\)\\)/", $invW) === 1);
-chk('...and renders it on the Balance due row',
-    preg_match("/'Balance due' \\. \\(!empty\\(\\\$d\\['balance_due_date'\\]\\) \\? ' by ' \\. \\\$e\\(\\\$d\\['balance_due_date'\\]\\)/", $invW) === 1);
+// (Whether the date REACHES the page is asserted in test-invoice.php §5, against
+//  the rendered output. It used to be pattern-matched here against the exact
+//  string concatenation that built the label, which is the ingredient and not the
+//  outcome — the redesign moved the date to a chip beside the caption and the
+//  check failed on a page that renders it twice.)
 
 // ============================================================
 //  A DEAD END AT THE END OF AN EMAILED LINK.

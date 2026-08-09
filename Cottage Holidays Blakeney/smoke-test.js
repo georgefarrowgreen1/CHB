@@ -857,15 +857,21 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     const dis = get('depositInvoiceStatus');
     if (typeof dis !== 'function') { fail('depositInvoiceStatus is not defined'); }
     else {
-        check('deposit charged → "Paid … refunded after your stay"', /Paid.*refunded in full after your stay/i.test(dis(75, 'charged', 0, '')));
-        // The caller passes a DD/MM/YYYY date (fmtDate at the invoice call site) —
-        // the on-screen/PDF invoice must never show an ISO date.
-        check('deposit returned → "Refunded in full on <DD/MM/YYYY>"', dis(75, 'returned', 75, '18/07/2026') === 'Refunded in full on 18/07/2026.');
-        check('deposit fully returned while still charged → refunded', /Refunded in full/i.test(dis(75, 'charged', 75, '')));
-        check('deposit partially returned → "£X of £Y refunded"', /£40\.00 of £75\.00 refunded/.test(dis(75, 'charged', 40, '')));
-        check('deposit kept → "Retained … for damage"', /Retained.*damage/i.test(dis(75, 'kept', 0, '')));
-        check('legacy hold → "Held on your card"', /Held on your card/i.test(dis(75, 'authorized', 0, '')));
-        check('no deposit → empty status', dis(0, 'none', 0, '') === '');
+        // ONE source of truth with the PHP half (invoice.php's
+        // invoice_deposit_status, driven by test-invoice.php §1): the guest's two
+        // invoices used to make OPPOSITE claims about a kept deposit — the PDF said
+        // "Retained after checkout for damage or loss", the emailed page said the
+        // same money "is returned in full after checkout". Add a case to the JSON,
+        // never here. The dates in it are DD/MM/YYYY because the caller passes
+        // fmtDate — neither invoice may ever show an ISO date.
+        const dfx = JSON.parse(fs.readFileSync(path.join(path.dirname(HTML_PATH), 'invoice-deposit-fixtures.json'), 'utf8'));
+        check('deposit-status fixtures load', Array.isArray(dfx.cases) && dfx.cases.length >= 12);
+        let disBad = [];
+        for (const c of dfx.cases) {
+            const got = dis(c.dep, c.hold, c.returned, c.settled);
+            if (got !== c.want) disBad.push(`${c.hold}/${c.returned}: got "${got}" want "${c.want}"`);
+        }
+        check(`deposit status matches all ${dfx.cases.length} shared fixtures`, disBad.length === 0, disBad.slice(0, 3).join(' | '));
     }
 
     // THE DEPOSIT ON A GUEST'S INVOICE IS THE SUM TAKEN, NOT THE SUM AGREED.

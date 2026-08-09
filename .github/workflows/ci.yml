@@ -124,6 +124,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-emails-render.php
 
+      - name: The guest invoice — deposit states, money, contrast, affordances
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-invoice.php
+
       - name: Square webhook signature verification
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webhook.php

@@ -288,6 +288,73 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The guest's invoice: ONE document, two presentations
+
+`invoice.php` is the page the guest files and may show an insurer, and
+`render_invoice_html()` has always been PURE and unit-testable while nothing unit-tested
+it — so three things shipped on it. Gated now by **`test-invoice.php`** (85 checks: the
+deposit states, the money, contrast by arithmetic, the affordances, the ink lockstep).
+- **A KEPT DEPOSIT WAS DESCRIBED AS "returned in full after checkout".** The HTML invoice
+  had ONE static sentence for every state while the owner's PDF said "Retained after
+  checkout for damage or loss" about the same money — one booking, two documents, opposite
+  claims, and the guest's copy was the wrong one. `invoice_deposit_status()` is the PHP
+  mirror of app.js's `depositInvoiceStatus`, and **both are driven by
+  `invoice-deposit-fixtures.json`** (the `pricing-fixtures.json` pattern: add a case to
+  the JSON, never to either test — test-invoice §1 and smoke-test both loop it).
+  Rendering them together also caught **`captured`**: a LEGACY card hold that was
+  captured means the money was taken, and it sat in the holds branch reading "held on your
+  card (not charged)" while `$depositCharged` and `damages_collected()` both already
+  counted it as collected. One sentence disagreed with the rest of the app.
+- **A REFUNDED DEPOSIT WAS DELETED FROM THE PAGE.** `$damages = 0` for
+  returned/released is right for the ARITHMETIC (the money went back, so it leaves the
+  total) and was applied to the DISPLAY as well, so nothing recorded that £75 had ever
+  been taken or given back. **Display and arithmetic are different questions**: `damages`
+  is what is still in the total, `deposit_amount` is what the deposit WAS and never goes
+  to zero. The state rides as a chip at the top too (Deposit returned / Deposit retained).
+- **AND THE ONLY CONTROL ON IT HAD NEVER WORKED.** `onclick="window.print()"` — the
+  site's CSP is `script-src 'self' 'unsafe-eval' 'sha256-…'` with **no 'unsafe-inline'
+  and no 'unsafe-hashes'**, so an inline event-handler ATTRIBUTE is blocked outright. The
+  handler is now a hashed inline `<script>` (`INV_PRINT_JS`, the pattern index.html's
+  theme-boot script already uses); test-invoice hashes that constant and fails if the
+  policy doesn't carry it, so editing the script TELLS you to update the header. A CSP
+  edit is a cached asset — `node bump.js` (see the deploy checklist).
+- **THE LEDGER RECONCILES, and the trap is that `payments.amount` is RENTAL-ONLY.**
+  pay.php charges rental + the refundable deposit as ONE Square payment and records only
+  the rental part, so listing the rows raw leaves the Payments card £75 short of its own
+  footer AND smaller than the guest's bank statement. The carrying row (matched on
+  `hold_payment_id`) is shown at the sum the CARD took with "includes the £75.00
+  refundable deposit" underneath — the same fact `booking_payments_rows()` flags to the
+  owner as `deposit_carried`. §3 asserts the property rather than the pounds: **the rows
+  plus what is still to pay equal the total**, in all four states.
+- **The inks are the EMAIL design system's**, restated as consts because the composer is
+  pure and mailer.php is not required on a guest page — §6 asserts each equals its
+  `email_*_ink()` definition, so the restatement cannot drift. What they replace: every
+  label, heading and note at `#8a8378` (**3.75:1**), the word INVOICE as the accent in
+  text (**2.55:1**), and white on the accent fill (**2.55:1**, the old Print button).
+- **The BAR exists to pay.** Label + one action; a settled invoice gets no bar at all,
+  because a fixed bar carrying no action is chrome that covers the last rows of the
+  document. Save a copy lives in the flow at the foot in both states — beside Pay in the
+  bar it wrapped to a second line and took **121px of a 390px screen**.
+- **Print is the SAME DOM, restyled** — masthead split, cards flattened to ruled tables,
+  actions gone, `@page{margin:14mm}` stated rather than left to the browser, and the chips
+  get a border because a printer drops tinted fills. Not a second composition: two would
+  drift the way the two invoices already had.
+- **What it does NOT say: a VAT position.** The mockup asserted "Not registered for VAT"
+  and nothing in the app states one — a fixture can invent a tax status, a document a
+  guest files cannot. Same for a trading address; it names the business and the phone
+  from `contact-phone`, and stops.
+- NB `test-payrail` had pattern-matched the exact string concatenation that built the
+  "Balance due by <date>" label. The date is still rendered — twice, beside the figure and
+  in the bar — so the check moved to test-invoice §5 and reads the OUTPUT. Assert the
+  outcome, not the ingredient. And **three test files declared a global `function ok()`**
+  with incompatible signatures (test-csp-report's is `($cond,$msg)`, test-smtp's is
+  `($label,$cond)` — opposite order); they never load together at runtime but PHPStan
+  analyses the set as one, which is how it caught a third being added.
+- **Still on the owner's PDF, not done here**: `downloadInvoice` prints "Paid in full"
+  against the full TOTAL where the balance column belongs, and has no `addPage()` at all
+  (the footer leaves the sheet at a 4-line address — measured y=819 against an 814pt
+  bottom) while `admin.js`'s statement PDF has had `brk()` for pagination all along.
+
 ## The cottage cards are ONE shape, whatever the cottages are called
 
 Reported from a phone: the cards don't lay out the same way. They didn't — and it was never

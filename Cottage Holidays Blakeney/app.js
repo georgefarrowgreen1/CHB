@@ -5560,8 +5560,11 @@ function closeTermsModal() {
     m.classList.remove('open');
 }
 
-// The one-line status shown under the refundable-deposit figure on the invoice.
-// Pure (given amount/state) so it's unit-tested. States mirror the hold_* model:
+// The one-line status under the refundable-deposit figure on the invoice. Pure,
+// and the MIRROR of PHP invoice_deposit_status — both driven by
+// invoice-deposit-fixtures.json; add cases there, not to either test. 'captured'
+// is a legacy hold that WAS captured, so the money was taken: it sits with
+// 'charged' below, not with the holds, which said "held (not charged)". States mirror the hold_* model:
 // 'charged' = paid with the booking; 'returned'/full = refunded; 'kept' = retained
 // for damage; legacy card-hold statuses keep the "held on your card" wording.
 function depositInvoiceStatus(depAmt, holdStatus, returnedAmt, settledDate) {
@@ -5569,19 +5572,19 @@ function depositInvoiceStatus(depAmt, holdStatus, returnedAmt, settledDate) {
     const returned = Math.round((Number(returnedAmt) || 0) * 100) / 100;
     const when = settledDate ? ' on ' + settledDate : '';
     const st = holdStatus || 'none';
-    if (st === 'returned' || (st === 'charged' && returned >= depAmt - 0.01)) {
+    if (st === 'returned' || ((st === 'charged' || st === 'captured') && returned >= depAmt - 0.01)) {
         return 'Refunded in full' + when + '.';
     }
     if (st === 'kept') return 'Retained after checkout for damage or loss.';
-    if (st === 'charged') {
+    if (st === 'charged' || st === 'captured') {
         return returned > 0.01
             ? `${gbp(returned)} of ${gbp(depAmt)} refunded${when}. Balance refundable after your stay.`
             : 'Paid — refunded in full after your stay, provided there is no damage.';
     }
-    if (['authorized', 'captured', 'released', 'expired'].includes(st)) {
-        return st === 'released' || st === 'expired'
-            ? 'The hold on your card has been released.'
-            : 'Held on your card (not charged) — released after checkout.';
+    if (['authorized', 'released', 'expired'].includes(st)) {
+        return st === 'authorized'
+            ? 'Held on your card (not charged) — released after checkout.'
+            : 'The hold on your card has been released.';
     }
     return 'Charged with your first payment and refunded after your stay.';
 }
@@ -15487,7 +15490,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cardrow1';
+    const BUILD = 'inv0809';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
