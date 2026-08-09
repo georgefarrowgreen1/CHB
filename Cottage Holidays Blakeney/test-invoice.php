@@ -137,11 +137,15 @@ inv_ok(str_contains($html['kept'], 'Retained after checkout for damage or loss')
     'kept: the page says the deposit was retained');
 inv_ok(!str_contains($html['kept'], 'returned in full after checkout'),
     'kept: and does NOT promise it back');
-// the deposit survives being refunded
-inv_ok(str_contains($html['ret'], 'Refundable damages deposit') && str_contains($html['ret'], '£75.00'),
-    'refunded: the £75 is still recorded on the document');
-inv_ok(str_contains($html['ret'], 'Refunded in full on 14/09/2026'),
-    'refunded: dated, not implied');
+// THE DEPOSIT SURVIVES BEING REFUNDED — but as a MOVEMENT, not a charge. It is a
+// holding: once it has gone back it leaves the total, and a line for it in Charges
+// would leave that table summing to £770.25 under a stated total of £695.25.
+inv_ok(str_contains($html['ret'], 'Refundable deposit returned') && str_contains($html['ret'], '£75.00'),
+    'refunded: the £75 is recorded in Payments, dated');
+inv_ok(str_contains($html['ret'], 'Refundable damages deposit of £75.00 — Refunded in full on 14/09/2026.'),
+    'refunded: and stated in words beneath the movement');
+inv_ok(!preg_match('/Refundable damages deposit<small>/', $html['ret']),
+    'refunded: and is NOT a charge line, so the charges still add up');
 inv_ok(str_contains($html['ret'], 'Deposit returned'),
     'refunded: and the state is chipped at the top');
 inv_ok(str_contains($html['kept'], 'Deposit retained'), 'kept: chipped at the top too');
@@ -195,6 +199,32 @@ foreach (array_keys($STATES) as $k) {
         "$k: the payment rows plus what is still to pay equal the total",
         sprintf('%.2f + %.2f = %.2f vs %.2f', $net, $d['balance'], $lhs, $d['grand_total']));
 }
+// AND THE CHARGES ADD UP TO THEIR OWN TOTAL. This is the half that was missing:
+// coherence was asserted for the Payments card only, and the refunded state listed
+// a £75 deposit in a table stated to total £695.25.
+// Read it off the RENDERED table, never off the payload: computing from the input
+// leaves the check blind to the renderer, which is what it is here to watch —
+// break-tested by putting the deposit line back on `deposit_amount`.
+$tableSum = function (string $html, int $nth) {
+    preg_match_all('#<table class="grp"><tbody>(.*?)</tbody><tfoot>(.*?)</tfoot>#s', $html, $t, PREG_SET_ORDER);
+    if (!isset($t[$nth])) {
+        return null;
+    }
+    $amt = function (string $frag) {
+        preg_match_all('#<td class="a">(?:&minus; )?£([\d,]+\.\d\d)</td>#', $frag, $m);
+        return array_map(fn($x) => (float) str_replace(',', '', $x), $m[1]);
+    };
+    $rows = $amt($t[$nth][1]);
+    $foot = $amt($t[$nth][2]);
+    return ['rows' => $rows, 'sum' => round(array_sum($rows), 2), 'total' => $foot[0] ?? null];
+};
+foreach (array_keys($STATES) as $k) {
+    $c = $tableSum($html[$k], 0);
+    inv_ok($c !== null && $c['total'] !== null && abs($c['sum'] - $c['total']) < 0.005,
+        "$k: the charge lines on the page sum to the total on the page",
+        $c === null ? 'no charges table found' :
+            sprintf('%s = %.2f vs %.2f', implode(' + ', array_map(fn($x) => number_format($x, 2), $c['rows'])), $c['sum'], $c['total']));
+}
 // and the carrying row names the deposit rather than quietly differing from the
 // guest's bank statement
 inv_ok(str_contains($html['part'], 'includes the £75.00 refundable deposit'),
@@ -209,6 +239,8 @@ foreach (['part', 'paid', 'kept'] as $k) {
     inv_ok(str_contains($html[$k], '£675.00') && str_contains($html[$k], '£20.25') && str_contains($html[$k], '£75.00'),
         "$k: 675 + 20.25 + 75 are all on the page and total 770.25");
 }
+inv_ok(str_contains($html['ret'], '£675.00') && str_contains($html['ret'], '£20.25'),
+    'ret: the charges are the rental alone, and total 695.25');
 
 // ════════════════════════════════════ §4 ════════════════════════════════════
 // CONTRAST BY ARITHMETIC on the rendered output — the same method

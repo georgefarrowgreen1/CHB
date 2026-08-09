@@ -350,10 +350,39 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
   with incompatible signatures (test-csp-report's is `($cond,$msg)`, test-smtp's is
   `($label,$cond)` — opposite order); they never load together at runtime but PHPStan
   analyses the set as one, which is how it caught a third being added.
-- **Still on the owner's PDF, not done here**: `downloadInvoice` prints "Paid in full"
-  against the full TOTAL where the balance column belongs, and has no `addPage()` at all
-  (the footer leaves the sheet at a 4-line address — measured y=819 against an 814pt
-  bottom) while `admin.js`'s statement PDF has had `brk()` for pagination all along.
+- **AND THE OWNER'S PDF IS THE SAME DOCUMENT, so it was fixed to match** (`downloadInvoice`,
+  app.js; gated by smoke-test's PDF section, which stubs jsPDF by wrapping the
+  CONSTRUCTOR — every text baseline, page and ink then measurable with no browser).
+  - **"Paid in full £770.25".** `gbp(gt.fullyPaid ? gt.total : gt.balance)` put the whole
+    TOTAL in the column every other state uses for what is still owed. The label and the
+    figure are one fact now, in invoice.php's words: `Nothing outstanding £0.00` /
+    `Balance due £446.44`.
+  - **NOTHING CALLED `addPage()`** and the page furniture was painted once, so a long
+    address pushed the closing sentence off the sheet (baseline **819** against a sheet
+    ending at **814**) — and a second page would have been bare linen with no white sheet
+    under the ink. `sheet()` draws the furniture per page and `need(h)` breaks; the row
+    writers **advance `y` themselves**, because the old helpers took the baseline as an
+    argument and left `y += 18` to fifteen call sites, which is exactly where a break
+    cannot be inserted reliably. The gate's multi-page fixture must be a WRAPPING field
+    (a long address) — a single row is 18pt whatever is in it, so a 40-name guest string
+    grew the document not at all and the check passed vacuously first time.
+  - **The deposit was stated twice** — once in Charges as money, once in a section of its
+    own with its status. One line now, with the status underneath, on the same
+    display-vs-arithmetic split as invoice.php: the line carries `gt.dep` (in the total,
+    0 once refunded) and the record only appears once it has LEFT the total.
+  - **Inks**: "I N V O I C E" was the accent as text (**2.55:1**) and "Paid in full" was
+    `#4CAF50` (**2.78:1**). Both take invoice.php's INV_ACCENT_INK / INV_OK_INK.
+  - NB smoke-test is otherwise entirely synchronous and `process.exit`s at the foot;
+    `downloadInvoice` awaits `ensureJsPdf`, so its continuation lands on a microtask and
+    the summary printed first — the probe's promise goes in `pendingChecks`, which the
+    summary now waits on. It is the one async gate in that file.
+- **AND THE CHARGES MUST ADD UP TO THEIR OWN TOTAL — the half the first pass missed.**
+  Coherence was asserted for the Payments card and not for Charges, so the refunded state
+  listed a £75 deposit in a table stated to total £695.25. A deposit is a HOLDING, not a
+  charge: while it is in the total it is a charge line, and once it has gone back it
+  leaves and its history lives in Payments (the dated return row) plus a sentence beneath
+  the card. **And the gate for it has to read the RENDERED table** — the first version
+  summed the payload, so reverting the renderer left it green.
 
 ## The cottage cards are ONE shape, whatever the cottages are called
 

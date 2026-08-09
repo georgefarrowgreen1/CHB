@@ -5723,38 +5723,74 @@ async function downloadInvoice(bookingId) {
     const INK = [27, 42, 52];
     const MUTED = [82, 100, 110];
     const HAIR = [230, 221, 202];
-    const OK = [76, 175, 80];
+    // #4CAF50 was 2.78:1 and the accent as TEXT 2.55:1, both under AA. These are
+    // invoice.php's INV_OK_INK / INV_ACCENT_INK; the accent stays a FILL.
+    const OK = [31, 107, 58];
+    const ACCENT_INK = [138, 90, 43];
     const ACCENT = hexRgb((meta && meta.accent) || '#C79A64');
-    // Linen page + white sheet + accent band
-    doc.setFillColor(245, 241, 233);
-    doc.rect(0, 0, W, H, 'F');
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(28, 28, W - 56, H - 56, 10, 10, 'F');
-    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
-    doc.rect(28, 28, W - 56, 5, 'F');
+    // PER PAGE, because there can now be more than one: nothing called addPage(),
+    // so a long address pushed the footer off the sheet (baseline 819 vs 814). The
+    // furniture must be redrawn or page two is bare linen. (CLAUDE.md has the rest.)
+    const sheet = () => {
+        doc.setFillColor(245, 241, 233);
+        doc.rect(0, 0, W, H, 'F');
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(28, 28, W - 56, H - 56, 10, 10, 'F');
+        doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        doc.rect(28, 28, W - 56, 5, 'F');
+    };
+    sheet();
     const left = 64,
         right = W - 64;
+    const BOTTOM = H - 76; // the last baseline that still sits on the sheet
     let y = 84;
-    const line = (yy) => {
-        doc.setDrawColor(HAIR[0], HAIR[1], HAIR[2]);
-        doc.line(left, yy, right, yy);
+    // Every writer advances y itself and asks for room first: the old helpers took
+    // the baseline as an argument, leaving `y += 18` to fifteen call sites.
+    const need = (h) => {
+        if (y + (h || 18) <= BOTTOM) return;
+        doc.addPage();
+        sheet();
+        y = 84;
     };
-    const rowLR = (l, rr, yy, bold) => {
+    const line = () => {
+        need(10);
+        doc.setDrawColor(HAIR[0], HAIR[1], HAIR[2]);
+        doc.line(left, y, right, y);
+    };
+    const row = (l, rr, bold, ink) => {
+        need(18);
         doc.setFont('helvetica', bold ? 'bold' : 'normal');
-        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-        if (bold) doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.text(String(l), left, yy);
+        doc.setFontSize(10);
+        doc.setTextColor(...(bold ? INK : MUTED));
+        doc.text(String(l), left, y);
+        doc.setTextColor(...(ink || INK));
+        doc.text(String(rr), right, y, { align: 'right' });
         doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.text(String(rr), right, yy, { align: 'right' });
+        y += 18;
+    };
+    // A wrapped note under the row above it.
+    const note = (t) => {
+        if (!t) return;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        const lines = doc.splitTextToSize(String(t), right - left);
+        need(lines.length * 12 + 4);
+        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+        doc.text(lines, left, y);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.setFontSize(10);
+        y += lines.length * 12 + 4;
     };
     // Section titles echo the site's serif headings.
-    const sectionTitle = (t, yy) => {
+    const sectionTitle = (t) => {
+        need(34);
         doc.setFont('times', 'bold');
         doc.setFontSize(14);
         doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.text(t, left, yy);
+        doc.text(t, left, y);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
+        y += 20;
     };
 
     // Letterhead: the crown mark centred over the serif brand — the same
@@ -5776,127 +5812,91 @@ async function downloadInvoice(bookingId) {
     y += 15;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    // the accent as WORDS takes the accent INK — the fill is 2.55:1
+    doc.setTextColor(ACCENT_INK[0], ACCENT_INK[1], ACCENT_INK[2]);
     doc.text('I N V O I C E', cx, y, { align: 'center' });
     doc.setTextColor(INK[0], INK[1], INK[2]);
     y += 20;
-    line(y);
+    line();
     y += 28;
 
     // Invoice meta
     doc.setFontSize(10);
-    rowLR('Invoice reference', bookingRef(b.id), y);
-    y += 18;
-    rowLR('Issued', fmtDate(todayDashed()), y);
-    y += 18;
-    rowLR('Guest', b.name || '', y);
-    y += 18;
-    if (b.email) {
-        rowLR('Email', b.email, y);
-        y += 18;
-    }
+    row('Invoice reference', bookingRef(b.id));
+    row('Issued', fmtDate(todayDashed()));
+    row('Guest', b.name || '');
+    if (b.email) row('Email', b.email);
     y += 10;
-    line(y);
+    line();
     y += 28;
 
     // Stay details
-    sectionTitle('Your stay', y);
-    y += 20;
-    rowLR('Property', meta.name, y);
-    y += 18;
+    sectionTitle('Your stay');
+    row('Property', meta.name);
     // Address can wrap
     doc.setFont('helvetica', 'normal');
+    const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
+    need(addrLines.length * 14 + 6);
     doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text('Address', left, y);
     doc.setTextColor(INK[0], INK[1], INK[2]);
-    const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
     doc.text(addrLines, right, y, { align: 'right' });
     y += addrLines.length * 14 + 6;
-    rowLR('Check in', `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}`, y);
-    y += 18;
-    rowLR('Check out', `${fmtDate(b.checkOut)}  ·  ${b.checkOutTime || '10:00'}`, y);
-    y += 18;
-    rowLR('Nights', String(p.nights), y);
-    y += 18;
-    rowLR('Guests', b.guests || `${b.adults || 0} adults`, y);
-    y += 18;
+    row('Check in', `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}`);
+    row('Check out', `${fmtDate(b.checkOut)}  ·  ${b.checkOutTime || '10:00'}`);
+    row('Nights', String(p.nights));
+    row('Guests', b.guests || `${b.adults || 0} adults`);
     y += 10;
-    line(y);
+    line();
     y += 28;
 
     // Charges. A custom price is ONE line (priceIsCustom) — the standard
     // per-night + fee snapshot cannot reach the agreed total, and this PDF and
     // the emailed confirmation are one booking's documents.
-    sectionTitle('Charges', y);
-    y += 20;
+    sectionTitle('Charges');
     if (priceIsCustom(p)) {
-        rowLR(`Agreed price for your stay (${p.nights} night${p.nights === 1 ? '' : 's'})`, gbp(p.total), y);
-        y += 18;
+        row(`Agreed price for your stay (${p.nights} night${p.nights === 1 ? '' : 's'})`, gbp(p.total));
     } else {
-        rowLR(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly), y);
-        y += 18;
-        rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
-        y += 18;
+        row(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly));
+        row(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee));
     }
+    // The charge lines add up to their own total, so this carries what is IN it
+    // (gt.dep, which drops to 0 once refunded). A deposit is a HOLDING, not a
+    // charge. It used to be here AND in a section of its own — the same £75 twice.
     if (gt.dep > 0) {
-        rowLR('Refundable damages deposit', gbp(gt.dep), y);
-        y += 18;
+        row('Refundable damages deposit', gbp(gt.dep));
+        note(depStatus);
     }
     y += 4;
-    line(y);
+    line();
     y += 20;
-    rowLR(gt.dep > 0 ? 'Total (incl. deposit)' : 'Total', gbp(gt.total), y, true);
-    y += 28;
+    row('Total', gbp(gt.total), true);
+    y += 10;
 
-    // Refundable damages deposit — its OWN section (never part of the rental
-    // total, since it's never rental income), showing the amount and its live
-    // status: paid with the booking and, after checkout, refunded.
-    if (depAmt > 0) {
-        sectionTitle('Refundable damages deposit', y);
-        doc.text(gbp(depAmt), right, y, { align: 'right' });
-        y += 18;
-        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-        const stLines = doc.splitTextToSize(depStatus, right - left);
-        doc.text(stLines, left, y);
-        doc.setTextColor(INK[0], INK[1], INK[2]);
-        y += stLines.length * 13 + 8;
-        line(y);
-        y += 24;
+    // …and once it has gone back it is no longer a charge, but it was taken.
+    if (depAmt > 0 && gt.dep <= 0.005 && depStatus) {
+        note(`Refundable damages deposit of ${gbp(depAmt)} — ${depStatus}`);
+        y += 6;
     }
 
     // Payments
-    sectionTitle('Payments', y);
-    y += 20;
+    sectionTitle('Payments');
     if (gt.paid > 0) {
         const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
         const when = b.paymentDate ? ` on ${fmtDate(b.paymentDate)}` : '';
-        rowLR(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), y);
-        y += 18;
-        if (gt.fullyPaid) doc.setTextColor(OK[0], OK[1], OK[2]);
-        doc.setFont('helvetica', 'bold');
-        doc.text(gt.fullyPaid ? 'Paid in full' : 'Balance due', left, y);
-        doc.text(gbp(gt.fullyPaid ? gt.total : gt.balance), right, y, { align: 'right' });
-        doc.setTextColor(INK[0], INK[1], INK[2]);
-        y += 18;
+        row(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), false, OK);
     } else {
-        rowLR('Amount paid', gbp(0), y);
-        y += 18;
-        rowLR('Balance due', gbp(gt.balance), y, true);
-        y += 18;
+        row('Amount paid', gbp(0));
     }
+    // The label and the figure must be the same fact: this printed the whole TOTAL
+    // when settled, so it read "Paid in full £770.25" in the owed column.
+    row(gt.fullyPaid ? 'Nothing outstanding' : 'Balance due', gbp(gt.balance), true, gt.fullyPaid ? OK : INK);
 
     // Footer
-    y += 30;
-    line(y);
     y += 20;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-    doc.text(
-        'Thank you for booking with Cottage Holidays Blakeney. We look forward to welcoming you.',
-        left,
-        y,
-    );
+    line();
+    y += 20;
+    note('Thank you for booking with Cottage Holidays Blakeney. We look forward to welcoming you.');
 
     doc.save(`Cottage-Holidays-Blakeney-Invoice-${bookingRef(b.id)}.pdf`);
 }
@@ -15490,7 +15490,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'inv0809';
+    const BUILD = 'pdfinv1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
