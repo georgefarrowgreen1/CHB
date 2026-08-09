@@ -924,21 +924,13 @@ function previewBlockedToast() {
 function apiErr(message, status, code) {
     return Object.assign(new Error(message), { status: status, code: code ? String(code) : '' });
 }
-// NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission. A guard that
-// returned the SAME promise for an identical request already in flight was shipped and
-// WITHDRAWN: `apiPost` is not a write channel, it is the app's only POST channel, and
-// several of the busiest calls through it are READS (`email_logs`, `history`,
-// `deposit_returns`, `recent_payments`). Two identical reads are indistinguishable from
-// each other by endpoint + body, so a read issued AFTER a state change could be answered
-// by one issued BEFORE it — which is worse than the thing the guard was for: an email log
-// fetched after a send, showing the state before it, invites sending the same email
-// again. Measured: it reproduced as ui-test-poorsignal losing a store it is meant to keep
-// (~1 run in 3; 4 of 4 green with the guard removed).
-// The double-send safeguards live where the INTENT is known instead — `chbRunAct`
-// disables a control whose handler is still running (every send affordance in this app is
-// a `data-act` button; there are no inline `onclick`s left in the markup), and
-// `recent_send_at()` refuses a repeat server-side inside a window, which is the only
-// layer that survives a reload mid-request or a second device. See CLAUDE.md.
+// NO IN-FLIGHT COALESCING HERE, and that is a decision, not an omission: it was shipped
+// and WITHDRAWN. This is the app's only POST channel and several of its busiest calls are
+// READS, which are indistinguishable by endpoint + body — so a read issued AFTER a state
+// change got answered by one issued BEFORE it (measured: ~1 run in 3 of ui-test-poorsignal
+// losing a store it exists to keep). Double-send is guarded where the INTENT is known:
+// `chbRunAct` disables a running control, `recent_send_at()` refuses a server-side repeat.
+// Full history in CLAUDE.md.
 /** Endpoints answer arbitrary JSON, so the body is `any` — stated, not inferred.
  * @returns {Promise<any>} */
 async function apiPost(endpoint, payload) {
@@ -5722,6 +5714,54 @@ async function downloadInvoice(bookingId) {
         });
         doc.setLanguage('en-GB');
     } catch (e) {}
+    // ── EVERY STRING DRAWN IS SANITISED ONCE, AT THE BOUNDARY.
+    //    jsPDF's built-in fonts declare WinAnsi but its encoder does not handle
+    //    cp1252's 0x80-0x9F block, so an en dash, em dash, curly quote or ellipsis
+    //    is DELETED with no error — measured, the Charges row's date range drew as
+    //    "06/09/2026  11/09/2026" on every invoice — while a character OUTSIDE
+    //    cp1252 makes it emit UTF-16BE under a WinAnsi font, turning a guest's name
+    //    to line noise. £ · × é ë sit at 0xA0+ and are fine, hence the long silence.
+    //    Wrapped onto the INSTANCE, not per call site: a sanitiser you must remember
+    //    is one the next draw call forgets. Width and wrapping are wrapped too, or a
+    //    chip is sized for characters that never appear. setProperties is NOT — the
+    //    Info dictionary is already UTF-16BE with a BOM. Both maps carry ONLY what
+    //    the rules below miss; 16 further entries were dropped as provably redundant,
+    //    being drawable at 0xA0+ (Ø Æ Þ ß) or decomposing under NFD (Š ž Ÿ İ).
+    const PDF_PUNCT = {
+        '–': '-', '—': '-', '‘': "'", '’': "'", '‚': "'", '“': '"', '”': '"',
+        '„': '"', '…': '...', '•': '-', '€': 'EUR', '™': '(TM)',
+    };
+    const PDF_LETTER = { 'Ł': 'L', 'ł': 'l', 'Đ': 'D', 'đ': 'd', 'Œ': 'OE', 'œ': 'oe', 'ı': 'i' };
+    // what a built-in font can paint: newline, ASCII, cp1252's upper half
+    const pdfDrawable = /^[\n\u0020-\u007E\u00A0-\u00FF]*$/;
+    const pdfSafe = (v) => {
+        const s = String(v == null ? '' : v);
+        if (pdfDrawable.test(s)) return s; // overwhelmingly the common case
+        let out = '';
+        for (const ch of s) {
+            const c = ch.codePointAt(0);
+            // \n is KEPT — splitTextToSize honours it, and the bank details are
+            // naturally multi-line (name / sort code / account number).
+            if (ch === '\n' || (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff)) { out += ch; continue; }
+            if (PDF_PUNCT[ch] != null) { out += PDF_PUNCT[ch]; continue; }
+            if (PDF_LETTER[ch] != null) { out += PDF_LETTER[ch]; continue; }
+            if (c === 0x09 || c === 0x0b || c === 0x0c || c === 0x0d) { out += ' '; continue; }
+            // strip the mark and keep the letter — most European names land here
+            const d = ch.normalize('NFD').replace(/[\u0300-\u036F]/g, '');
+            if (d && d !== ch && pdfDrawable.test(d)) { out += d; continue; }
+            // a script these fonts cannot draw at all (Cyrillic, Greek, CJK): '?'
+            // is visible and honest, dropping it silently is the defect above, and
+            // drawing it is the line noise. C0/C1 controls go entirely.
+            out += c > 0xff ? '?' : '';
+        }
+        return out;
+    };
+    const _pdfText = doc.text.bind(doc);
+    doc.text = (t, ...rest) => _pdfText(Array.isArray(t) ? t.map(pdfSafe) : pdfSafe(t), ...rest);
+    const _pdfSplit = doc.splitTextToSize.bind(doc);
+    doc.splitTextToSize = (t, ...rest) => _pdfSplit(pdfSafe(t), ...rest);
+    const _pdfWidth = doc.getTextWidth.bind(doc);
+    doc.getTextWidth = (t) => _pdfWidth(pdfSafe(t));
     const W = doc.internal.pageSize.getWidth();
     const H = doc.internal.pageSize.getHeight();
     // The site's coastal palette, so the PDF reads as the same brand: linen
@@ -5951,14 +5991,28 @@ async function downloadInvoice(bookingId) {
     // An invoice stating a balance must say how to pay it: off the card rail there
     // was no link and nothing replaced it. bacs-details is INTERNAL, so the owner's
     // copy resolves it and a guest's cannot — their route is invoice.php, which can.
+    //    A GUEST'S COPY MUST STILL NAME A WAY TO PAY. The group was gated on
+    //    `bacs` being present, so with the key absent it rendered NOTHING and a
+    //    bank-rail guest downloaded a PDF stating "Balance due £459.64" with no
+    //    instructions — the very dead end this group was added to close, still
+    //    open on the copy the guest keeps. invoice.php's branch already offers a
+    //    way to GET the details when none are on file; this now matches it word
+    //    for word, so the two documents say the same thing to the same guest.
     const bacs = String((typeof siteContent === 'object' && siteContent && siteContent['bacs-details']) || '').trim();
-    if (gt.balance > 0.001 && bookingOwnerArranged(b) && bacs) {
-        group('How to pay', [{ label: 'Bank transfer', sub: bacs, value: '' }]);
+    if (gt.balance > 0.001 && bookingOwnerArranged(b)) {
+        group('How to pay', [bacs
+            ? { label: 'Bank transfer', sub: bacs, value: '' }
+            : { label: 'Bank transfer', sub: 'Reply to your confirmation email and we will send you our bank details.', value: '' }]);
     }
 
-    group('Issued by', [{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
-
-    fine(`This invoice relates to booking ${bookingRef(b.id)}. Any questions? Just reply to your confirmation email and we will answer.`);
+    // ISSUED BY IS FINE PRINT, NOT A SECTION. Its own group cost 57pt (caption 15
+    // + row 25 + gap 17) to restate what the masthead says at the top of every
+    // page, and that was the 57pt taking the bank-rail case onto a second sheet.
+    // Folded on BOTH surfaces — invoice.php had the same section, and letting the
+    // PDF drop it alone would reopen the divergence the continuity work closed.
+    fine(`Issued by Cottage Holidays Blakeney, North Norfolk Coastal Retreats. `
+        + `This invoice relates to booking ${bookingRef(b.id)}. `
+        + `Any questions? Just reply to your confirmation email and we will answer.`);
 
     // Every page carries the reference and its number — pagination shipped and the
     // footer did not follow, so sheet two said nothing about which booking it was.
@@ -9523,16 +9577,11 @@ async function submitNewsletter(ev) {
         show(e.message || 'Could not sign you up just now.', false);
     }
 }
-// A TAPPED NOTIFICATION LANDS ON THE RECORD IT IS ABOUT. Every owner alert used
-// to open './' — so "Payment received — £900 · Jollyboat" and "New enquiry" both
-// dropped you on the back-office root and left you to find the thing yourself,
-// which on a phone is the whole job the notification was meant to save. The
-// senders now pass ?open=<what>, mirroring the ?unsub= pattern below: read it,
-// route, then tidy the URL so a refresh doesn't repeat it.
-//
-// Routed through the FACADE STUBS (openBookingHub, openEnquiryHub, openInbox …),
-// never admin globals directly — the stub loads the bundle and delegates, which is
-// exactly the case it exists for: arriving cold from a notification.
+// A TAPPED NOTIFICATION LANDS ON THE RECORD IT IS ABOUT. Every owner alert used to
+// open './', leaving you to find the thing yourself. Senders pass ?open=<what>,
+// mirroring ?unsub= below: read it, route, tidy the URL. Routed through the FACADE
+// STUBS, never admin globals — arriving cold from a notification is the case they
+// exist for. Full history in CLAUDE.md.
 // WHERE YOU WERE — survives a reload. sessionStorage, so it dies with the tab (a
 // reload keeps it; opening fresh tomorrow starts clean) and two tabs can't fight over
 // one view. Stored as a TARGET STRING in chbOpenTarget()'s vocabulary, so restoring
@@ -15565,7 +15614,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'invmod1';
+    const BUILD = 'pdfenc1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

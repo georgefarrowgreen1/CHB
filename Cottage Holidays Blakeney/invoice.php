@@ -353,14 +353,15 @@ function render_invoice_html($d)
               '</div></div>'
             : '') .
 
-        '<h2>Issued by</h2>' .
-        '<div class="kvs one"><div class="who">' .
-        '<div class="nm">' . $e($business) . '</div>' .
-        '<div class="l">North Norfolk Coastal Retreats' .
-        (!empty($d['phone']) ? ' · ' . $e($d['phone']) : '') . '</div>' .
-        '</div></div>' .
-
-        '<p class="fine">This invoice relates to booking ' . $e($ref) . '. ' .
+        // ── ISSUED BY IS FINE PRINT, NOT A SECTION. It restated what the masthead
+        //    already says at the top of the document, and on the PDF — which is
+        //    drawn from this same anatomy — its group cost 57pt, which was the
+        //    57pt taking the bank-rail case onto a second sheet. Folded on BOTH
+        //    surfaces together: dropping it on one would reopen exactly the
+        //    divergence the continuity work closed.
+        '<p class="fine">Issued by ' . $e($business) . ', North Norfolk Coastal Retreats' .
+        (!empty($d['phone']) ? ' · ' . $e($d['phone']) : '') . '. ' .
+        'This invoice relates to booking ' . $e($ref) . '. ' .
         'Any questions? Just reply to your confirmation email and we will answer.</p>' .
         '<p class="acts"><button type="button" class="btn2" id="inv-print">Save a copy</button></p>' .
         '</main>' .

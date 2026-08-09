@@ -1011,9 +1011,18 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const sfig = stp && part.text.find((t) => t.y === stp.y && t.x > A4.W / 2);
             check('PDF: …and the ledger foot agrees', !!sfig && sfig.s === '£446.44', sfig ? sfig.s : 'none');
             // -- ONE ANATOMY with invoice.php: the page's own group captions ----
-            for (const c of ['Charges', 'Payments', 'Your stay', 'Billed to', 'Issued by']) {
+            for (const c of ['Charges', 'Payments', 'Your stay', 'Billed to']) {
                 check(`PDF: carries the page's "${c}" group`, said(part, new RegExp('^' + c + '$')).length === 1);
             }
+            // "Issued by" is FINE PRINT now, on both surfaces — its own group spent
+            // 57pt restating the masthead, and that was the 57pt taking the
+            // bank-rail case onto a second sheet. So the fact to assert is that the
+            // issuer is still NAMED, not that it has a heading: a document must say
+            // who issued it, and where it says so is a layout decision.
+            check('PDF: no "Issued by" group of its own', said(part, /^Issued by$/).length === 0);
+            check('PDF: …the issuer is named in the fine print instead',
+                said(part, /Issued by Cottage Holidays Blakeney/).length === 1,
+                said(part, /Issued by/).map((t) => t.s).join(' | '));
             check('PDF: and none of the old letterhead is left',
                 said(part, /^(I N V O I C E|Invoice reference|Amount paid.*)$/).length === 0,
                 said(part, /I N V O I C E|Invoice reference|Amount paid/).map((t) => t.s).join(' | '));
@@ -1042,6 +1051,118 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const bankPaid = await run({ paymentMethod: 'Bank transfer', payment: 'paid', depositPaid: 695.25 });
             check('PDF: and a settled invoice never asks',
                 said(bankPaid, /^How to pay$/).length === 0);
+            // A GUEST'S COPY HAS NO bacs-details — the key is INTERNAL, so their
+            // app.js never receives it. The group used to be gated on the value
+            // being present, so it rendered NOTHING and a bank-rail guest kept a
+            // PDF stating a balance with no way to settle it.
+            vm.runInContext("delete siteContent['bacs-details'];", ctx);
+            const guestBank = await run({ paymentMethod: 'Bank transfer', payment: 'deposit', depositPaid: 100 });
+            check('PDF: a guest with no bank details on file still gets the group',
+                said(guestBank, /^How to pay$/).length === 1);
+            // NB target the sentence unique to THIS block: the closing fine print
+            // also says "reply to your confirmation email", so the obvious phrase
+            // matched with the whole group deleted (break-tested — it passed).
+            check('PDF: …and it names a way to get them, rather than saying nothing',
+                said(guestBank, /send you our bank details/i).length >= 1,
+                guestBank.text.map((t) => t.s).filter((s) => /bank/i.test(s)).join(' | ') || 'nothing said');
+            vm.runInContext("siteContent['bacs-details'] = 'Cottage Holidays Blakeney\\nSort 01-02-03  ·  Acct 12345678';", ctx);
+
+            // ── NOTHING UNDRAWABLE REACHES THE PAGE ─────────────────────────
+            //  jsPDF's built-in fonts declare WinAnsi and its encoder does not
+            //  handle cp1252's 0x80-0x9F block, so an en dash, em dash, curly
+            //  quote or ellipsis is DELETED with no error — measured against the
+            //  real bundle, the Charges row's date range drew as
+            //  "06/09/2026  11/09/2026" on every invoice. A character outside
+            //  cp1252 is worse: jsPDF emits UTF-16BE bytes under a WinAnsi font,
+            //  so a name renders as a control char and NUL-separated letters.
+            //  Assert the PROPERTY over every drawn string, not a list of glyphs.
+            const DRAWABLE = /^[\n\u0020-\u007E\u00A0-\u00FF]*$/;
+            const undrawable = (c) => c.text.filter((t) => !DRAWABLE.test(t.s));
+            const enc = await run({});
+            check('PDF: every drawn string is one the font can paint', undrawable(enc).length === 0,
+                undrawable(enc).map((t) => JSON.stringify(t.s)).slice(0, 3).join(' | '));
+            // and the fix is a TRANSLITERATION, not deleting the dash from the source
+            check('PDF: the stay range still carries its dash',
+                said(enc, /06\/09\/2026\s*-\s*11\/09\/2026/).length === 1,
+                said(enc, /06\/09\/2026/).map((t) => t.s).join(' | '));
+            // DATA-DRIVEN: names, cottage names and addresses are free text, and no
+            // fixture had ever carried one outside cp1252. é and ó are cp1252 and
+            // must survive untouched; L-stroke and s-cedilla have to be folded.
+            //  Asserted on the diacritic fixture SEPARATELY, because the two
+            //  wrappers cover different paths: a row SUB is cleaned by
+            //  splitTextToSize, a row LABEL only by text — so sweeping one
+            //  fixture leaves whichever wrapper the other path uses untested
+            //  (measured: removing the text wrapper left the plain sweep green).
+            const dia = await run({ name: 'Łukasz Wójcik-Şahin', email: 'l@example.pl' });
+            check('PDF: …including a guest name that is not Latin-1', undrawable(dia).length === 0,
+                undrawable(dia).map((t) => JSON.stringify(t.s)).slice(0, 3).join(' | '));
+            check('PDF: a name outside cp1252 is transliterated, never garbled',
+                said(dia, /^Lukasz Wójcik-Sahin$/).length === 1,
+                said(dia, /ukasz|Lukasz/).map((t) => JSON.stringify(t.s)).join(' | ') || 'name not drawn');
+
+            // ── THE PDF'S OWN MONEY COHERES ─────────────────────────────────
+            //  test-invoice asserts both properties on the guest page's RENDERED
+            //  tables; the PDF drives the same money through a different renderer
+            //  and asserted neither — and a Charges-coherence defect (the deposit
+            //  listed in a table stated to total less than its own lines) is
+            //  exactly what had to be fixed on the other surface. Read off the
+            //  DRAWN rows, never the payload: summing the payload leaves a broken
+            //  renderer green, which is how the first version of the page's own
+            //  check passed with the fix reverted.
+            const GBP = /^(-\s?)?£([\d,]+\.\d\d)$/;
+            const money = (s) => { const m = GBP.exec(s); return (m[1] ? -1 : 1) * Number(m[2].replace(/,/g, '')); };
+            // a group's right-hand column: the values between its caption and the next
+            const column = (c, from, to) => {
+                const A = said(c, new RegExp('^' + from + '$'))[0];
+                const B = to ? said(c, new RegExp('^' + to + '$'))[0] : null;
+                if (!A) return [];
+                return c.text
+                    .filter((t) => t.page === A.page && t.y > A.y && (!B || t.y < B.y)
+                        && t.x > A4.W / 2 && GBP.test(t.s))
+                    .sort((x, z) => x.y - z.y)
+                    .map((t) => money(t.s));
+            };
+            const near = (a, bb) => Math.abs(a - bb) < 0.005;
+            for (const [label, over] of [
+                ['part paid', { payment: 'deposit', depositPaid: 248.81 }],
+                ['settled', { payment: 'paid', depositPaid: 695.25 }],
+                ['nothing paid', { payment: 'deposit', depositPaid: 0, holdStatus: 'none' }],
+                ['deposit refunded', { payment: 'paid', depositPaid: 695.25, holdStatus: 'returned', damagesReturned: 75, holdSettledAt: '2026-09-14 10:00:00' }],
+            ]) {
+                const c = await run(over);
+                const ch = column(c, 'Charges', 'Payments');
+                const pay = column(c, 'Payments', 'Your stay');
+                const total = ch.length ? ch[ch.length - 1] : NaN;
+                const lines = ch.slice(0, -1).reduce((a, v) => a + v, 0);
+                check(`PDF (${label}): the charge lines add up to their own Total`,
+                    ch.length >= 2 && near(lines, total), `lines ${lines.toFixed(2)} vs total ${total.toFixed(2)}`);
+                // received is drawn as "- £248.81", so its sign is already right
+                const received = pay.slice(0, -1).reduce((a, v) => a + v, 0);
+                const stillToPay = pay.length ? pay[pay.length - 1] : NaN;
+                check(`PDF (${label}): received + still to pay == the total`,
+                    pay.length >= 2 && near(-received + stillToPay, total),
+                    `${(-received).toFixed(2)} + ${stillToPay.toFixed(2)} vs ${total.toFixed(2)}`);
+            }
+
+            // ── AND NO INK ON IT IS ILLEGIBLE ───────────────────────────────
+            //  The inks are invoice.php's, which test-invoice proves equal to the
+            //  email design system's measured values — but nothing checked that
+            //  the PDF only ever USES those. A new setTextColor here would be
+            //  invisible to every other gate. Arithmetic, not pixels: there is no
+            //  PDF rasteriser in CI, and the ground is a known flat colour.
+            const lum = (rgb) => {
+                const f = rgb.map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); });
+                return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+            };
+            const ratio = (a, bb) => { const l1 = lum(a), l2 = lum(bb); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+            const GROUNDS = [['white', [255, 255, 255]], ['the returned chip', [230, 241, 233]], ['the retained chip', [250, 233, 230]]];
+            const inks = [...new Set([...part.colours, ...ret.colours])].map((s) => s.split(',').map(Number));
+            check('PDF: the ink sweep saw some ink', inks.length >= 3, 'inks=' + inks.length);
+            for (const [gname, g] of GROUNDS) {
+                const worst = inks.map((i) => [i, ratio(i, g)]).sort((a, bb) => a[1] - bb[1])[0];
+                check(`PDF: every ink clears AA on ${gname}`, worst && worst[1] >= 4.5,
+                    worst ? `rgb(${worst[0].join(',')}) = ${worst[1].toFixed(2)}:1` : 'no inks');
+            }
             // -- PAGINATION: nothing may be drawn past the margin -------------
             for (const [label, over] of [
                 ['a normal booking', {}],
