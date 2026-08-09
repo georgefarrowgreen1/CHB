@@ -5727,176 +5727,217 @@ async function downloadInvoice(bookingId) {
     // invoice.php's INV_OK_INK / INV_ACCENT_INK; the accent stays a FILL.
     const OK = [31, 107, 58];
     const ACCENT_INK = [138, 90, 43];
+    const ALERT_INK = [163, 41, 28];
     const ACCENT = hexRgb((meta && meta.accent) || '#C79A64');
-    // PER PAGE, because there can now be more than one: nothing called addPage(),
-    // so a long address pushed the footer off the sheet (baseline 819 vs 814). The
-    // furniture must be redrawn or page two is bare linen. (CLAUDE.md has the rest.)
-    const sheet = () => {
-        doc.setFillColor(245, 241, 233);
-        doc.rect(0, 0, W, H, 'F');
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(28, 28, W - 56, H - 56, 10, 10, 'F');
-        doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
-        doc.rect(28, 28, W - 56, 5, 'F');
-    };
-    sheet();
-    const left = 64,
-        right = W - 64;
-    const BOTTOM = H - 76; // the last baseline that still sits on the sheet
-    let y = 84;
-    // Every writer advances y itself and asks for room first: the old helpers took
-    // the baseline as an argument, leaving `y += 18` to fifteen call sites.
+    // ONE ANATOMY WITH invoice.php — the guest's page in pt: linen ground, an
+    // amount card under the accent band, then Charges / Payments / Your stay /
+    // Billed to / Issued by as white rounded groups with a tinted footer row.
+    // The two used to be drawn from different plans (a serif letterhead here, a
+    // card stack there): same booking, two products. FIGURES are still gt/ps.
+    const PAPER = [255, 255, 255], LINEN = [245, 241, 233], TINT = [250, 246, 236], HAIR2 = [239, 233, 220];
+    const ground = () => { doc.setFillColor(LINEN[0], LINEN[1], LINEN[2]); doc.rect(0, 0, W, H, 'F'); };
+    ground();
+    const left = 42, right = W - 42, CW = right - left, PAD = 16;
+    const BOTTOM = H - 44;
+    let y = 46;
+    // Writers advance y themselves and ask for room first: `y += 18` at fifteen
+    // call sites is where a break cannot go, and nothing called addPage() at all.
     const need = (h) => {
-        if (y + (h || 18) <= BOTTOM) return;
+        if (y + h <= BOTTOM) return;
         doc.addPage();
-        sheet();
-        y = 84;
+        ground();
+        y = 46;
     };
-    const line = () => {
-        need(10);
-        doc.setDrawColor(HAIR[0], HAIR[1], HAIR[2]);
-        doc.line(left, y, right, y);
+    const ink = (c) => doc.setTextColor(c[0], c[1], c[2]);
+    const body = () => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); ink(INK); };
+    // the page's uppercase letterspaced group caption
+    const groupCap = (t) => {
+        need(20);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setCharSpace(1.3);
+        ink(MUTED);
+        doc.text(String(t).toUpperCase(), left + 4, y + 7);
+        doc.setCharSpace(0);
+        body();
+        y += 15;
     };
-    const row = (l, rr, bold, ink) => {
-        need(18);
-        doc.setFont('helvetica', bold ? 'bold' : 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(...(bold ? INK : MUTED));
-        doc.text(String(l), left, y);
-        doc.setTextColor(...(ink || INK));
-        doc.text(String(rr), right, y, { align: 'right' });
-        doc.setTextColor(INK[0], INK[1], INK[2]);
-        y += 18;
-    };
-    // A wrapped note under the row above it.
-    const note = (t) => {
+    const fine = (t, gap) => {
         if (!t) return;
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        const lines = doc.splitTextToSize(String(t), right - left);
-        need(lines.length * 12 + 4);
-        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-        doc.text(lines, left, y);
-        doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.setFontSize(10);
-        y += lines.length * 12 + 4;
+        doc.setFontSize(8.5);
+        const lines = doc.splitTextToSize(String(t), CW - 8);
+        need(lines.length * 11 + 6);
+        ink(MUTED);
+        doc.text(lines, left + 4, y + 8);
+        body();
+        y += lines.length * 11 + (gap == null ? 10 : gap);
     };
-    // Section titles echo the site's serif headings.
-    const sectionTitle = (t) => {
-        need(34);
-        doc.setFont('times', 'bold');
-        doc.setFontSize(14);
-        doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.text(t, left, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        y += 20;
+    // Measured, then drawn, so the card fits its rows — and slices across pages
+    // at row boundaries rather than overflowing one.
+    const VAL_W = 110;
+    const measure = (it) => {
+        doc.setFontSize(it.foot ? 10.5 : 10);
+        const sub = it.sub ? doc.splitTextToSize(String(it.sub), CW - PAD * 2 - VAL_W) : [];
+        return Object.assign({}, it, { subLines: sub, h: (it.foot ? 26 : 23) + (sub.length ? sub.length * 11 : 0) });
+    };
+    const drawRow = (m, ry, cardH, cardTop) => {
+        if (m.foot) {
+            // tinted, rounded at the card's foot, square where it meets the row above
+            doc.setFillColor(TINT[0], TINT[1], TINT[2]);
+            doc.roundedRect(left, ry, CW, cardH - (ry - cardTop), 9, 9, 'F');
+            doc.rect(left, ry, CW, 10, 'F');
+        }
+        doc.setFont('helvetica', m.foot ? 'bold' : 'normal');
+        doc.setFontSize(m.foot ? 10.5 : 10);
+        ink(INK);
+        doc.text(String(m.label), left + PAD, ry + 15);
+        ink(m.ink || INK);
+        doc.text(String(m.value == null ? '' : m.value), right - PAD, ry + 15, { align: 'right' });
+        if (m.subLines.length) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            ink(MUTED);
+            doc.text(m.subLines, left + PAD, ry + 27);
+        }
+        body();
+        return ry + m.h;
+    };
+    const group = (items) => {
+        const ms = items.filter(Boolean).map(measure);
+        let idx = 0;
+        while (idx < ms.length) {
+            const avail = BOTTOM - y - PAD;
+            if (avail < ms[idx].h + 6) { doc.addPage(); ground(); y = 46; continue; }
+            let take = 0, hh = 0;
+            while (idx + take < ms.length && hh + ms[idx + take].h <= avail) { hh += ms[idx + take].h; take++; }
+            const cardH = hh + PAD / 2;
+            doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
+            doc.roundedRect(left, y, CW, cardH, 9, 9, 'F');
+            let ry = y + 4;
+            for (let k = 0; k < take; k++) {
+                if (k && !ms[idx + k].foot) {
+                    doc.setDrawColor(HAIR2[0], HAIR2[1], HAIR2[2]);
+                    doc.line(left + PAD, ry, right - PAD, ry);
+                }
+                ry = drawRow(ms[idx + k], ry, cardH, y);
+            }
+            y += cardH + 14;
+            idx += take;
+            if (idx < ms.length) { doc.addPage(); ground(); y = 46; }
+        }
+    };
+    // a tinted status pill — the page's chip
+    const chip = (t, fg, bg, cy) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setCharSpace(1.2);
+        const w = doc.getTextWidth(String(t).toUpperCase()) + 16;
+        doc.setFillColor(bg[0], bg[1], bg[2]);
+        doc.roundedRect(W / 2 - w / 2, cy - 9, w, 15, 4, 4, 'F');
+        ink(fg);
+        doc.text(String(t).toUpperCase(), W / 2, cy + 1.5, { align: 'center' });
+        doc.setCharSpace(0);
+        body();
     };
 
-    // Letterhead: the crown mark centred over the serif brand — the same
-    // anatomy as the site's sign-in brand panel.
-    const cx = W / 2;
-    try {
-        doc.addImage(CHB_CROWN_PNG, 'PNG', cx - 27, y - 22, 54, 32);
-    } catch (e) {}
-    y += 28;
+    // the amount card: band, brand, then what this document asks or records
+    const settled = !!gt.fullyPaid;
+    const heroFig = gbp(settled ? gt.paid : gt.balance);
+    const heroCap = settled ? 'Paid in full' : 'Balance due';
+    const stateChip = (b.holdStatus === 'kept')
+        ? ['Deposit retained', ALERT_INK, [250, 233, 230]]
+        : (depAmt > 0 && gt.dep <= 0.005 ? ['Deposit returned', OK, [230, 241, 233]] : null);
+    const heroH = 100 + (stateChip ? 24 : 0);
+    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.roundedRect(left, y, CW, 10, 3, 3, 'F');
+    doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
+    doc.roundedRect(left, y + 5, CW, heroH, 9, 9, 'F');
+    doc.rect(left, y + 5, CW, 8, 'F');
+    let hy = y + 30;
+    // crown and business name on ONE line, centred — the page's brand lockup
     doc.setFont('times', 'bold');
-    doc.setFontSize(22);
-    doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text('Cottage Holidays Blakeney', cx, y, { align: 'center' });
-    y += 15;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-    doc.text('North Norfolk Coastal Retreats', cx, y, { align: 'center' });
-    y += 15;
+    doc.setFontSize(13.5);
+    const bn = 'Cottage Holidays Blakeney';
+    const bnW = doc.getTextWidth(bn);
+    const lockL = W / 2 - (bnW + 30) / 2;
+    try { doc.addImage(CHB_CROWN_PNG, 'PNG', lockL, hy - 11, 22, 13); } catch (e) {}
+    ink(INK);
+    doc.text(bn, lockL + 30, hy);
+    hy += 22;
+    // the caption names WHICH figure this is; accent as WORDS takes the accent INK
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    // the accent as WORDS takes the accent INK — the fill is 2.55:1
-    doc.setTextColor(ACCENT_INK[0], ACCENT_INK[1], ACCENT_INK[2]);
-    doc.text('I N V O I C E', cx, y, { align: 'center' });
-    doc.setTextColor(INK[0], INK[1], INK[2]);
-    y += 20;
-    line();
-    y += 28;
+    doc.setFontSize(7.5);
+    doc.setCharSpace(1.3);
+    ink(settled ? OK : ACCENT_INK);
+    doc.text(heroCap.toUpperCase(), W / 2, hy, { align: 'center' });
+    doc.setCharSpace(0);
+    hy += 28;
+    doc.setFont('times', 'bold');
+    doc.setFontSize(27);
+    ink(INK);
+    doc.text(heroFig, W / 2, hy, { align: 'center' });
+    hy += 17;
+    body();
+    doc.setFontSize(8.5);
+    ink(MUTED);
+    doc.text(`Invoice ${bookingRef(b.id)}  ·  issued ${fmtDate(todayDashed())}`, W / 2, hy, { align: 'center' });
+    body();
+    if (stateChip) { hy += 21; chip(stateChip[0], stateChip[1], stateChip[2], hy); }
+    y += heroH + 22;
 
-    // Invoice meta
-    doc.setFontSize(10);
-    row('Invoice reference', bookingRef(b.id));
-    row('Issued', fmtDate(todayDashed()));
-    row('Guest', b.name || '');
-    if (b.email) row('Email', b.email);
-    y += 10;
-    line();
-    y += 28;
+    // ── Charges ───────────────────────────────────────────────────────────
+    groupCap('Charges');
+    // The lines add up to their own total, so the deposit line carries what is IN
+    // it (gt.dep, 0 once refunded): a HOLDING, not a charge. It used to be listed
+    // here AND in a section of its own — the same £75 twice.
+    group([
+        priceIsCustom(p)
+            ? { label: 'Agreed price for your stay', sub: `${p.nights} night${p.nights === 1 ? '' : 's'}`, value: gbp(p.total) }
+            : { label: `${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, sub: `${meta.name}  ·  ${fmtDate(b.checkIn)} – ${fmtDate(b.checkOut)}`, value: gbp(p.nightly) },
+        priceIsCustom(p) ? null : { label: `Transaction fee (${p.transactionPct}%)`, value: gbp(p.txFee) },
+        gt.dep > 0 ? { label: 'Refundable damages deposit', sub: depStatus, value: gbp(gt.dep) } : null,
+        { label: 'Total', value: gbp(gt.total), foot: true },
+    ]);
 
-    // Stay details
-    sectionTitle('Your stay');
-    row('Property', meta.name);
-    // Address can wrap
-    doc.setFont('helvetica', 'normal');
-    const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
-    need(addrLines.length * 14 + 6);
-    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-    doc.text('Address', left, y);
-    doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(addrLines, right, y, { align: 'right' });
-    y += addrLines.length * 14 + 6;
-    row('Check in', `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}`);
-    row('Check out', `${fmtDate(b.checkOut)}  ·  ${b.checkOutTime || '10:00'}`);
-    row('Nights', String(p.nights));
-    row('Guests', b.guests || `${b.adults || 0} adults`);
-    y += 10;
-    line();
-    y += 28;
-
-    // Charges. A custom price is ONE line (priceIsCustom) — the standard
-    // per-night + fee snapshot cannot reach the agreed total, and this PDF and
-    // the emailed confirmation are one booking's documents.
-    sectionTitle('Charges');
-    if (priceIsCustom(p)) {
-        row(`Agreed price for your stay (${p.nights} night${p.nights === 1 ? '' : 's'})`, gbp(p.total));
-    } else {
-        row(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly));
-        row(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee));
-    }
-    // The charge lines add up to their own total, so this carries what is IN it
-    // (gt.dep, which drops to 0 once refunded). A deposit is a HOLDING, not a
-    // charge. It used to be here AND in a section of its own — the same £75 twice.
-    if (gt.dep > 0) {
-        row('Refundable damages deposit', gbp(gt.dep));
-        note(depStatus);
-    }
-    y += 4;
-    line();
-    y += 20;
-    row('Total', gbp(gt.total), true);
-    y += 10;
-
-    // …and once it has gone back it is no longer a charge, but it was taken.
+    // ── Payments ──────────────────────────────────────────────────────────
+    groupCap('Payments');
+    const how = [
+        b.paymentDate ? fmtDate(b.paymentDate) : '',
+        b.paymentMethod ? `by ${b.paymentMethod}` : '',
+        gt.dep > 0 && depositCharged(b.holdStatus || 'none') ? `includes the ${gbp(gt.dep)} refundable deposit` : '',
+    ].filter(Boolean).join('  ·  ');
+    group([
+        gt.paid > 0
+            ? { label: 'Payment received', sub: how, value: '- ' + gbp(gt.paid), ink: OK }
+            : { label: 'Nothing received yet', value: gbp(0) },
+        // The label and the figure must be the same fact: this printed the whole
+        // TOTAL when settled, so it read "Paid in full £770.25" in the owed column.
+        { label: settled ? 'Nothing outstanding' : 'Still to pay', value: gbp(gt.balance), foot: true },
+    ]);
+    // …and once the deposit has gone back it is no longer a charge, but it was taken.
     if (depAmt > 0 && gt.dep <= 0.005 && depStatus) {
-        note(`Refundable damages deposit of ${gbp(depAmt)} — ${depStatus}`);
-        y += 6;
+        fine(`Refundable damages deposit of ${gbp(depAmt)} — ${depStatus}`, 16);
     }
 
-    // Payments
-    sectionTitle('Payments');
-    if (gt.paid > 0) {
-        const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
-        const when = b.paymentDate ? ` on ${fmtDate(b.paymentDate)}` : '';
-        row(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), false, OK);
-    } else {
-        row('Amount paid', gbp(0));
-    }
-    // The label and the figure must be the same fact: this printed the whole TOTAL
-    // when settled, so it read "Paid in full £770.25" in the owed column.
-    row(gt.fullyPaid ? 'Nothing outstanding' : 'Balance due', gbp(gt.balance), true, gt.fullyPaid ? OK : INK);
+    // ── Your stay ─────────────────────────────────────────────────────────
+    groupCap('Your stay');
+    group([
+        { label: 'Cottage', value: meta.name },
+        address ? { label: 'Address', sub: address, value: '' } : null,
+        { label: 'Check in', value: `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}` },
+        { label: 'Check out', value: `${fmtDate(b.checkOut)}  ·  ${b.checkOutTime || '10:00'}` },
+        { label: 'Nights', value: String(p.nights) },
+        { label: 'Guests', value: b.guests || `${b.adults || 0} adults` },
+    ]);
 
-    // Footer
-    y += 20;
-    line();
-    y += 20;
-    note('Thank you for booking with Cottage Holidays Blakeney. We look forward to welcoming you.');
+    // ── who it is for, and who issued it ──────────────────────────────────
+    groupCap('Billed to');
+    group([{ label: b.name || '', sub: b.email || '', value: '' }]);
+    groupCap('Issued by');
+    group([{ label: 'Cottage Holidays Blakeney', sub: 'North Norfolk Coastal Retreats', value: '' }]);
+
+    fine(`This invoice relates to booking ${bookingRef(b.id)}. Any questions? Just reply to your confirmation email and we will answer.`);
 
     doc.save(`Cottage-Holidays-Blakeney-Invoice-${bookingRef(b.id)}.pdf`);
 }
@@ -15490,7 +15531,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pdfinv1';
+    const BUILD = 'pdfcont';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
