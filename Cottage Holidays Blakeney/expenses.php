@@ -18,6 +18,10 @@ $in = body();
 $action = $in['action'] ?? '';
 
 if ($action === 'add') {
+    // Replay-safe: expenses ride the offline queue (queueOrPost) and an INSERT
+    // replayed after an ambiguous timeout is a duplicate expense corrupting net
+    // profit — the exact latent bug the op ledger exists to close.
+    $opTok = op_claim($in);
     $category = substr(clean($in['category'] ?? 'General') ?: 'General', 0, 64);
     $description = substr(clean($in['description'] ?? ''), 0, 255);
     $amount = round((float) ($in['amount'] ?? 0), 2);
@@ -50,7 +54,7 @@ if ($action === 'add') {
             )
             ->execute([$category, $description, $amount, $prop, $recurring, $receiptData, $date]);
         log_activity('expenses', 'expense.add', 'Expense added — £' . number_format($amount, 2) . ' · ' . $category, ['prop_key' => (string) $prop, 'entity' => 'expense', 'entity_id' => (string) db()->lastInsertId()]);
-        json_out(['ok' => true, 'id' => (int) db()->lastInsertId()]);
+        json_out(op_finish($opTok, ['ok' => true, 'id' => (int) db()->lastInsertId()]));
     } catch (\Throwable $e) {
         // Older DB without the recurring/receipt_data columns — save the core fields.
         try {
@@ -59,7 +63,7 @@ if ($action === 'add') {
                     'INSERT INTO expenses (category, description, amount, prop_key, expense_date) VALUES (?,?,?,?,?)',
                 )
                 ->execute([$category, $description, $amount, $prop, $date]);
-            json_out(['ok' => true, 'id' => (int) db()->lastInsertId()]);
+            json_out(op_finish($opTok, ['ok' => true, 'id' => (int) db()->lastInsertId()]));
         } catch (\Throwable $e2) {
             json_out(['error' => 'Could not save — has migrate.php been run?'], 500);
         }

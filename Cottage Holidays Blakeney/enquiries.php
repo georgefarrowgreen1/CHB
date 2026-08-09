@@ -123,6 +123,11 @@ if ($action === 'draft') {
 }
 
 if ($action === 'submit') {
+    // Replay-safe (op ledger): the phone-enquiry capture queues this write, and a
+    // replayed INSERT is a duplicate enquiry in the inbox. Claimed before the
+    // rate limit so a legitimate retry never burns a slot — a NEW flood op pays
+    // as before (an unseen op_id falls straight through to the limiter).
+    $opTok = op_claim($in);
     // Public — anyone can submit an enquiry. Rate-limit per IP to stop floods.
     // The admin "Edit / Move Enquiry" screen also lands here (decline + resubmit):
     // for that, skip the rate limit and — below — the guest acknowledgement and
@@ -208,10 +213,15 @@ if ($action === 'submit') {
 
     $address = clean($in['address'] ?? '');
     $postcode = clean($in['postcode'] ?? '');
-    if ($address === '') {
+    // Admin-exempt like the message field: a phone enquiry jotted at a cottage
+    // door has no address yet — the owner collects it at approval, exactly as
+    // the existing comment blesses ("a phone walk-in is the owner's to take").
+    // A NON-empty admin postcode is still validated: exempting the format, not
+    // the field, would store typos the approval then copies onto the booking.
+    if ($address === '' && !$isAdminEdit) {
         json_out(['error' => 'Please enter your UK address'], 400);
     }
-    if (!uk_postcode_valid($postcode)) {
+    if (!uk_postcode_valid($postcode) && !($isAdminEdit && $postcode === '')) {
         json_out(['error' => 'Please enter a valid UK postcode'], 400);
     }
 
@@ -379,7 +389,7 @@ if ($action === 'submit') {
     // acknowledgement when they originally enquired, and the owner doesn't
     // need an email about an enquiry they just edited themselves.
     if ($isAdminEdit) {
-        json_out(['ok' => true, 'account_exists' => $accountExists]);
+        json_out(op_finish($opTok, ['ok' => true, 'account_exists' => $accountExists]));
     }
     require_once __DIR__ . '/mailer.php';
     $ackName = $name;
@@ -471,7 +481,7 @@ if ($action === 'submit') {
         }
     });
 
-    json_out(['ok' => true, 'account_exists' => $accountExists]);
+    json_out(op_finish($opTok, ['ok' => true, 'account_exists' => $accountExists]));
 }
 
 // All remaining actions are admin-only

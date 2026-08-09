@@ -1356,6 +1356,69 @@ $r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $pastI
 $pastStamp = $rootDb->query("SELECT pre_arrival_sent FROM bookings WHERE id = $pastId")->fetchColumn();
 it_check('correcting a finished stay keeps its stamp', ($r['json']['ok'] ?? false) && $pastStamp !== null, $r['raw']);
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// §17 THE OP LEDGER — exactly-once for replayed writes, against the REAL
+// stack: migration-109's table, db.php's op_claim/op_finish, and the four
+// wired endpoints. The case that matters is the AMBIGUOUS TIMEOUT: the phone
+// sends, the server applies, the reply dies — so the phone retries the SAME
+// op_id and the server must answer from its ledger, never re-apply. And a
+// replay must never REGRESS newer state written between the two.
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA717 the op ledger\n";
+
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Op Ledger','op@gmail.com','2027-03-01','2027-03-04',2,0,'unpaid',0,300,300,0,3)");
+$opBid = (int) $rootDb->lastInsertId();
+$dep = fn() => (float) $rootDb->query("SELECT deposit_paid FROM bookings WHERE id = $opBid")->fetchColumn();
+
+// (a) set_payment records once, and the SAME op_id replays from the ledger.
+$op1 = 'op-int-' . bin2hex(random_bytes(6));
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 100, 'payment_method' => 'Cash', 'payment_date' => '2026-08-01', 'op_id' => $op1]);
+it_check('set_payment with an op_id applies once', ($r['json']['ok'] ?? false) && abs($dep() - 100.0) < 0.001, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 100, 'payment_method' => 'Cash', 'payment_date' => '2026-08-01', 'op_id' => $op1]);
+it_check('…and the replay is answered from the ledger', ($r['json']['replayed'] ?? false) === true, $r['raw']);
+
+// (b) THE REGRESSION CASE — the reason this action needed the ledger at all:
+// a newer payment lands between the original send and the replay; the stale
+// replay must NOT drag deposit_paid back to the old figure.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 200, 'payment_method' => 'Cash', 'payment_date' => '2026-08-02', 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+it_check('(fixture) a newer payment lands', ($r['json']['ok'] ?? false) && abs($dep() - 200.0) < 0.001, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $opBid, 'payment' => 'deposit', 'deposit' => 100, 'payment_method' => 'Cash', 'payment_date' => '2026-08-01', 'op_id' => $op1]);
+it_check('a stale replay never regresses the newer figure', ($r['json']['replayed'] ?? false) === true && abs($dep() - 200.0) < 0.001, 'deposit now ' . $dep());
+
+// (c) An INSERT action: two sends, one op_id, ONE expense row.
+$op2 = 'op-int-' . bin2hex(random_bytes(6));
+$expCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM expenses WHERE description = 'op ledger gate'")->fetchColumn();
+http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'op ledger gate', 'amount' => 12.5, 'date' => '2026-08-01', 'op_id' => $op2]);
+$r = http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'op ledger gate', 'amount' => 12.5, 'date' => '2026-08-01', 'op_id' => $op2]);
+it_check('an expense replayed with the same op_id inserts ONCE', $expCount() === 1 && ($r['json']['replayed'] ?? false) === true, 'rows=' . $expCount() . ' ' . $r['raw']);
+http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'op ledger gate', 'amount' => 12.5, 'date' => '2026-08-01', 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+it_check('…while a DIFFERENT op_id is a genuine second expense', $expCount() === 2);
+
+// (d) The phone-enquiry capture: admin submit with no address, replayed once.
+$op3 = 'op-int-' . bin2hex(random_bytes(6));
+$enqCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM enquiries WHERE name = 'Op Phone Enquiry'")->fetchColumn();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => '2027-05-10', 'check_out' => '2027-05-13', 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
+it_check('a phone enquiry saves with NO address (admin-exempt)', ($r['json']['ok'] ?? false) && $enqCount() === 1, $r['raw']);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Phone Enquiry', 'phone' => '07700 900233', 'check_in' => '2027-05-10', 'check_out' => '2027-05-13', 'adults' => 2, 'children' => 0, 'message' => 'Taken by phone', 'op_id' => $op3]);
+it_check('…and its replay lands ONE enquiry, not two', $enqCount() === 1 && ($r['json']['replayed'] ?? false) === true, 'rows=' . $enqCount());
+
+// (e) ERRORS ARE NEVER STORED: a clash-refused enquiry re-refuses on replay
+// (a stored refusal would freeze a fixable one forever) — and the refusal
+// still refuses after the ledger has seen the id once.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Clash Holder','ch@gmail.com','2027-06-10','2027-06-13',2,0,'unpaid',0,300,300,0,3)");
+$op4 = 'op-int-' . bin2hex(random_bytes(6));
+$mk = fn() => http($admin, 'POST', '/enquiries.php', ['action' => 'submit', 'prop_key' => $propKey, 'name' => 'Op Clash Enquiry', 'phone' => '07700 900234', 'check_in' => '2027-06-11', 'check_out' => '2027-06-12', 'adults' => 2, 'children' => 0, 'message' => 'x', 'op_id' => $op4]);
+$r = $mk();
+it_check('a clashing enquiry is refused (dates already taken)', ($r['json']['error'] ?? '') !== '', $r['raw']);
+$r = $mk();
+it_check('…and the refusal is NOT stored — the replay re-refuses, never replays', ($r['json']['error'] ?? '') !== '' && !($r['json']['replayed'] ?? false), $r['raw']);
+
+// (f) A malformed op_id is ignored (no dedupe, no error) — the ledger must
+// never make an ordinary write harder.
+$r = http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'op ledger loose id', 'amount' => 3, 'date' => '2026-08-01', 'op_id' => 'x']);
+it_check('a malformed op_id degrades to a plain write', ($r['json']['ok'] ?? false) === true, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

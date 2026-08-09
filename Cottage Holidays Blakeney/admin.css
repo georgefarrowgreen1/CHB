@@ -4591,3 +4591,9 @@ body.offline-snap #view-backoffice > :not(#offline-daysheet) {
   margin: 8px 0 0;
   color: var(--text-light);
 }
+.ods-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}

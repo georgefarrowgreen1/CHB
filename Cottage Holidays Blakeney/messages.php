@@ -438,6 +438,9 @@ if ($isAdmin && empty($in['token'])) {
             json_out(['ok' => true]);
         }
         if ($action === 'send') {
+            // Replay-safe (op ledger): a re-sent chat message is a duplicate the
+            // guest reads twice — the INSERT class of replay bug.
+            $opTok = op_claim($in);
             $tid = (int) ($in['thread_id'] ?? 0);
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
             $att = chat_valid_attachment($in['attachment'] ?? '');
@@ -451,7 +454,7 @@ if ($isAdmin && empty($in['token'])) {
                 db()->prepare('UPDATE chat_threads SET admin_typing_at = NULL WHERE id = ?')->execute([$tid]);
             } catch (\Throwable $e) {
             }
-            json_out(['ok' => true]);
+            json_out(op_finish($opTok, ['ok' => true]));
         }
         if ($action === 'unread') {
             // Only count unread in NON-archived threads — the thread list hides
@@ -552,6 +555,10 @@ if ($guestId) {
             json_out(['ok' => true]);
         }
         if ($action === 'send') {
+            // Replay-safe (op ledger): this is queueOrPost's oldest customer, and
+            // its replay path could double-post a guest's message on an ambiguous
+            // timeout since the day it was built.
+            $opTok = op_claim($in);
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
             $att = chat_valid_attachment($in['attachment'] ?? '');
             if ($bodyTxt === '' && $att === '') {
@@ -575,7 +582,7 @@ if ($guestId) {
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
             chat_notify_owner_deferred($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-            json_out(['ok' => true]);
+            json_out(op_finish($opTok, ['ok' => true]));
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
         chat_nudge_mailbox();
@@ -611,6 +618,9 @@ try {
         // Anonymous visitor chat — rate-limit per IP (a new thread also emails the
         // owner, so this curbs spam/flooding without affecting logged-in guests).
         rate_limit('chat', 20, 10);
+        // Replay-safe (op ledger) — AFTER the rate limit, so a replay still pays
+        // the toll and a flood can't ride stored responses around it.
+        $opTok = op_claim($in);
         $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
         $att = chat_valid_attachment($in['attachment'] ?? '');
         if ($bodyTxt === '' && $att === '') {
@@ -656,7 +666,7 @@ try {
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
         chat_notify_owner_deferred($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-        json_out(['ok' => true, 'token' => $token]);
+        json_out(op_finish($opTok, ['ok' => true, 'token' => $token]));
     }
     if ($action === 'typing') {
         // Visitor is composing → stamp the thread so the owner's poll shows "typing…".

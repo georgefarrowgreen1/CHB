@@ -175,6 +175,80 @@ function book_unlock($propKey)
     }
 }
 
+// ---- The op ledger: exactly-once for replayed writes ----
+// A phone on one bar can land a request whose REPLY dies on the way back; the
+// client cannot tell that from a request that never arrived, so it queues the
+// write and retries with the SAME client-generated op_id. op_claim() answers a
+// repeat from the stored response instead of re-running — without it a retry
+// double-applies (a second expense row, a duplicated chat message, set_payment
+// regressing a newer figure with a stale one). Usage, in a queueable action:
+//     $opTok = op_claim($in);              // '' when no op_id rode the request
+//     ... the action's own work ...
+//     json_out(op_finish($opTok, ['ok' => true]));
+// Three rules the pair keeps:
+//  * ERRORS ARE NEVER STORED — a json_out(4xx/5xx) exits before op_finish, so a
+//    retry re-runs and meets the same (deterministic) refusal or succeeds once
+//    the state allows. Storing refusals would freeze a fixable one forever.
+//  * CONCURRENT REPEATS SERIALISE on a GET_LOCK per op (the book_lock pattern —
+//    auto-freed if a request dies, best-effort where GET_LOCK is unavailable):
+//    the second runner takes the lock after the first stored, finds the row,
+//    and answers from it.
+//  * AN UN-MIGRATED TABLE DEGRADES to exactly the old behaviour (no dedupe)
+//    rather than blocking the write — the brief window after a deploy before
+//    migrate.php runs must not refuse payments.
+function op_claim(array $in)
+{
+    $id = (string) ($in['op_id'] ?? '');
+    if ($id === '' || !preg_match('/^[a-z0-9][a-z0-9-]{7,46}$/i', $id)) {
+        return '';
+    }
+    try {
+        $s = db()->prepare('SELECT GET_LOCK(?, 15)');
+        $s->execute(['chb_op_' . $id]);
+        $s->fetchColumn();
+    } catch (\Throwable $e) {
+        // no lock support — proceed unprotected, same posture as book_lock
+    }
+    try {
+        $q = db()->prepare('SELECT response FROM op_ledger WHERE op_id = ?');
+        $q->execute([$id]);
+        $row = $q->fetch();
+        if ($row && $row['response'] !== null && $row['response'] !== '') {
+            $res = json_decode((string) $row['response'], true);
+            op_release($id);
+            // `replayed` lets the client say "already went" rather than "sent".
+            json_out(is_array($res) ? $res + ['replayed' => true] : ['ok' => true, 'replayed' => true]);
+        }
+    } catch (\Throwable $e) {
+        op_release($id);
+        return ''; // table not migrated yet — no dedupe, never a blocked write
+    }
+    return $id;
+}
+function op_finish($opId, array $res)
+{
+    if ($opId === '') {
+        return $res;
+    }
+    try {
+        db()
+            ->prepare('INSERT IGNORE INTO op_ledger (op_id, response) VALUES (?, ?)')
+            ->execute([$opId, json_encode($res)]);
+    } catch (\Throwable $e) {
+    }
+    op_release($opId);
+    return $res;
+}
+function op_release($opId)
+{
+    try {
+        $s = db()->prepare('SELECT RELEASE_LOCK(?)');
+        $s->execute(['chb_op_' . (string) $opId]);
+        $s->fetchColumn();
+    } catch (\Throwable $e) {
+    }
+}
+
 // ---- JSON helpers ----
 // THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
 // says, and a device clock can be wrong by accident or on purpose — reported

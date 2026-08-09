@@ -326,6 +326,17 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4d. Op-ledger hygiene: prune replay receipts past any retry horizon ----
+// The op ledger (db.php op_claim/op_finish) answers a REPLAYED write from its
+// stored response. 30 days is far beyond any real replay window — a phone that
+// has queued a write for a month gets a fresh run, which is the safe direction
+// (the alternative is a table that only ever grows, fed partly by public chat
+// sends). Guarded: an un-migrated table is simply skipped.
+try {
+    db()->exec('DELETE FROM op_ledger WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)');
+} catch (\Throwable $e) {
+}
+
 // ---- 5. Orphaned payment rows (flag only — never delete money records) -----
 // ---- 6. Monthly digest into the activity log --------------------------------
 try {
