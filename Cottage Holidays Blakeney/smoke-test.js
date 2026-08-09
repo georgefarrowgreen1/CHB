@@ -905,7 +905,8 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
             const doc = {
                 internal: { pageSize: { getWidth: () => A4.W, getHeight: () => A4.H } },
                 setFillColor() {}, setDrawColor() {}, setFont() {}, setFontSize() {},
-                rect() {}, roundedRect() {}, line() {}, addImage() {},
+                rect() {}, roundedRect() {}, line() {}, addImage() {}, setCharSpace() {},
+                getTextWidth: (t) => String(t).length * 5.2,
                 setTextColor(...c) { ink = c.length === 1 ? [c[0], c[0], c[0]] : c; calls.colours.push(ink.join(',')); },
                 splitTextToSize: (t, w) => {
                     // ~5.2pt per character at 10pt helvetica is close enough to make
@@ -963,21 +964,43 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
                 const fig = paid.text.find((t) => t.y === lbl.y && t.x > A4.W / 2);
                 check('PDF: …beside £0.00, not the total', !!fig && fig.s === '£0.00', fig ? fig.s : 'no figure on that line');
             }
-            check('PDF: no "Paid in full" beside a figure that is not zero',
-                said(paid, /Paid in full/).length === 0);
+            // The invariant, not the old string: on a settled invoice nothing that
+            // MEANS "still owed" may carry a figure at all. "Paid in full" is now
+            // the hero caption over the amount received — which names its own
+            // figure, and is what invoice.php does.
+            check('PDF: settled — no owed-money label anywhere',
+                said(paid, /^(Balance due|Still to pay|BALANCE DUE)$/).length === 0,
+                said(paid, /Balance|Still to pay/i).map((t) => t.s).join(' | '));
+            const hCap = said(paid, /^PAID IN FULL$/)[0];
+            check('PDF: settled — the hero caption names the figure beneath it', !!hCap);
+            check('PDF: …and takes the ok ink, not the 2.78:1 green', !!hCap && hCap.ink === '31,107,58',
+                hCap ? hCap.ink : 'not drawn');
             // -- the deposit is stated ONCE ----------------------------------
             check('PDF: the deposit line appears once', said(paid, /^Refundable damages deposit$/).length === 1,
                 said(paid, /Refundable damages deposit/).map((t) => t.s).join(' | '));
+            check('PDF: …with its status underneath, not in a section of its own',
+                said(paid, /refunded in full after your stay/i).length === 1);
             // -- inks ---------------------------------------------------------
             check('PDF: the retired green #4CAF50 is never set', paid.colours.indexOf('76,175,80') === -1);
-            const inv = said(paid, /I N V O I C E/)[0];
-            check('PDF: the accent as WORDS takes the accent ink', !!inv && inv.ink === '138,90,43', inv ? inv.ink : 'not drawn');
             // -- a balance still reads as a balance ---------------------------
             const part = await run({});
-            check('PDF: a part-paid invoice says "Balance due"', said(part, /^Balance due$/).length === 1);
-            const bl = said(part, /^Balance due$/)[0];
-            const bfig = bl && part.text.find((t) => t.y === bl.y && t.x > A4.W / 2);
-            check('PDF: …beside what is actually owed', !!bfig && bfig.s === '£446.44', bfig ? bfig.s : 'none');
+            const pCap = said(part, /^BALANCE DUE$/)[0];
+            check('PDF: a part-paid invoice leads with "Balance due"', !!pCap);
+            // the accent as WORDS takes the accent INK — the rose-gold fill is 2.55:1
+            check('PDF: …in the accent ink, never the accent fill', !!pCap && pCap.ink === '138,90,43',
+                pCap ? pCap.ink : 'not drawn');
+            check('PDF: …over the figure actually owed',
+                said(part, /^£446\.44$/).length >= 1, said(part, /^£\d/).map((t) => t.s).join(' '));
+            const stp = said(part, /^Still to pay$/)[0];
+            const sfig = stp && part.text.find((t) => t.y === stp.y && t.x > A4.W / 2);
+            check('PDF: …and the ledger foot agrees', !!sfig && sfig.s === '£446.44', sfig ? sfig.s : 'none');
+            // -- ONE ANATOMY with invoice.php: the page's own group captions ----
+            for (const c of ['CHARGES', 'PAYMENTS', 'YOUR STAY', 'BILLED TO', 'ISSUED BY']) {
+                check(`PDF: carries the page's "${c}" group`, said(part, new RegExp('^' + c + '$')).length === 1);
+            }
+            check('PDF: and none of the old letterhead is left',
+                said(part, /^(I N V O I C E|Invoice reference|Amount paid.*)$/).length === 0,
+                said(part, /I N V O I C E|Invoice reference|Amount paid/).map((t) => t.s).join(' | '));
             // -- a REFUNDED deposit leaves the charges but stays on the page ---
             const ret = await run({ payment: 'paid', depositPaid: 695.25, holdStatus: 'returned', damagesReturned: 75, holdSettledAt: '2026-09-14 10:00:00' });
             check('PDF: refunded — the deposit is not a charge line',

@@ -350,7 +350,29 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
   with incompatible signatures (test-csp-report's is `($cond,$msg)`, test-smtp's is
   `($label,$cond)` — opposite order); they never load together at runtime but PHPStan
   analyses the set as one, which is how it caught a third being added.
-- **AND THE OWNER'S PDF IS THE SAME DOCUMENT, so it was fixed to match** (`downloadInvoice`,
+- **AND IT IS ONE ANATOMY, NOT TWO — asked for as "invoice continuity".** The PDF was a
+  formal letterhead (crown above a 22pt serif brand, "I N V O I C E", a meta block, serif
+  Title Case section titles) while the guest's page led with the amount in grouped cards:
+  same booking, two products, which is exactly the divergence this whole pass exists to
+  end. `downloadInvoice` now draws the PAGE's structure in points — linen ground, an
+  amount card under the accent band (crown + name on ONE line, the caption naming which
+  figure it is, the serif figure, the ref line, a state chip), then Charges / Payments /
+  Your stay / Billed to / Issued by as white rounded groups with hairline rows and a
+  tinted footer row. The meta block is gone: its facts live in the ref line and Billed to,
+  as they do on the page.
+  - **`group(items)` MEASURES THEN DRAWS**, because a card cannot be sized until its rows
+    are — and it slices at ROW boundaries across pages rather than overflowing one. A row
+    is `{label, sub, value, ink, foot}`; the `foot` row is the tinted total, drawn as a
+    rounded rect squared off at its top edge where it meets the row above.
+  - **The figures are still `gt`/`ps`** — nothing in the drawing code re-derives money. The
+    ledger reconciles by construction: received + still-to-pay = total (verified on the
+    real booking, £228.21 + £459.64 = £687.85).
+  - **A PDF CANNOT BE RASTERISED IN THIS CONTAINER** (no jsPDF in node_modules, no
+    pdftoppm/mutool/gs), so it was looked at by REPLAYING the recorded draw calls onto a
+    canvas in Playwright at 1pt = 1px. Worth keeping as the technique — but note the
+    preview's own stub sliced `addImage`'s arguments one short and reported the crown as
+    absent, i.e. the harness lied before the app did.
+- **AND THE OWNER'S PDF WAS FIXED TO MATCH ON THE FACTS FIRST** (`downloadInvoice`,
   app.js; gated by smoke-test's PDF section, which stubs jsPDF by wrapping the
   CONSTRUCTOR — every text baseline, page and ink then measurable with no browser).
   - **"Paid in full £770.25".** `gbp(gt.fullyPaid ? gt.total : gt.balance)` put the whole
