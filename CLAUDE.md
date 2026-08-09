@@ -471,6 +471,72 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
   leaves and its history lives in Payments (the dated return row) plus a sentence beneath
   the card. **And the gate for it has to read the RENDERED table** — the first version
   summed the payload, so reverting the renderer left it green.
+- **jsPDF SILENTLY DELETES SMART PUNCTUATION, AND MANGLES ANY NAME OUTSIDE cp1252.**
+  Its built-in fonts declare WinAnsi and its encoder does **not** handle cp1252's
+  **0x80–0x9F** block, so `–` `—` `’` `…` `•` `€` `™` are dropped with no error — measured
+  against the real 2.5.1 bundle by reading the `Tj` operators back out of the output. Two
+  drawn strings were affected and one is on **every invoice ever produced**: the Charges
+  row's `06/09/2026 – 11/09/2026` drew as `06/09/2026  11/09/2026`, a hole where the range
+  dash belongs, which also silently reopened the HTML-vs-PDF divergence the continuity work
+  had just closed. A character OUTSIDE cp1252 is worse: jsPDF emits **UTF-16BE bytes while
+  still declaring a WinAnsi font**, so `Łukasz Wójcik` painted as a control character, an
+  `A`, then NUL-separated letters — a guest's own name as line noise on the document they
+  file, and names/cottage names/addresses are all free text, so nothing but a fixture with
+  one in it could ever have caught it. `£ · × é ë Á` all sit at 0xA0+ and draw correctly,
+  which is why a gap in a date range was the only visible symptom for so long. The
+  **metadata is fine** and must not be "fixed": jsPDF writes the Info dictionary as
+  UTF-16BE with a BOM, which is correct — only page text is broken.
+  `pdfSafe` is **wrapped onto the jsPDF INSTANCE**, not applied per call site, because a
+  sanitiser you have to remember is one the next draw call forgets; `getTextWidth` and
+  `splitTextToSize` are wrapped too, or a chip is sized and a line broken on characters
+  that never appear. Transliteration, not font embedding: jsPDF wants TTF where the brand
+  faces are variable woff2, and the base64 lands in app.js's budget — `Lukasz Wójcik` (the
+  ó is cp1252 and survives) is legible and honest where the status quo was garbage. A
+  script the fonts cannot draw at all gets `?` per character: visible and honest, where
+  dropping is the defect and drawing is the noise.
+  **Both maps carry ONLY what the two general rules miss**, and 16 of the 46 entries first
+  written were provably redundant — either already drawable at 0xA0+ (`Ø Æ Þ Ð ß`) or
+  decomposing under NFD (`Š š Ž ž Ÿ İ`). Check before tabulating; the test that answers it
+  is three lines.
+  **THE TWO WRAPPERS COVER DIFFERENT PATHS, so one fixture cannot gate both.** A row's SUB
+  reaches the page through `splitTextToSize` and a row's LABEL only through `text` — so
+  break-testing with the `text` wrapper removed left the plain-invoice sweep GREEN (the sub
+  had already been cleaned by the other wrapper). The undrawable sweep is asserted on the
+  ordinary fixture AND on a non-Latin-1 guest name, separately.
+- **THE PDF'S MONEY IS NOW GATED THE WAY THE PAGE'S IS.** test-invoice §3 asserted both
+  coherence properties on the guest page's rendered tables and smoke-test's PDF section —
+  the same money through a *different renderer* — asserted **neither**, which is the surface
+  the Charges-coherence defect above actually shipped on. Both now read the DRAWN rows (the
+  right-hand column between one group caption and the next) in all four deposit states:
+  charge lines sum to their own Total, and received + still-to-pay equals it.
+- **PDF CONTRAST IS ARITHMETIC ON THE RECORDED INKS, and rasterising was the wrong answer.**
+  The inks are invoice.php's, which test-invoice proves equal to the email design system's
+  measured values — but nothing checked the PDF only ever USES those, so a new
+  `setTextColor` here was invisible to every gate. There is still no PDF rasteriser in this
+  container or in CI (no jsPDF in node_modules, no pdftoppm/mutool/gs), and adding a system
+  package to gate what arithmetic already settles is a bad trade: the ground is a known flat
+  colour, so every distinct ink is measured against white and both chip tints. Break-tested
+  by restoring the retired `#4CAF50`, which fails all three grounds.
+- **A GUEST'S PDF STATED A BALANCE WITH NO WAY TO PAY IT.** The "How to pay" group was gated
+  on `bacs` being PRESENT rather than on the guest being off the card rail — and
+  `bacs-details` is INTERNAL, so a guest's app.js never receives it and the group rendered
+  nothing at all. The dead end the group was added to close, still open on the copy the
+  guest keeps. It now falls back to invoice.php's own sentence, word for word.
+  **And the gate for it walked straight into a vacuity trap**: the closing fine print also
+  says "reply to your confirmation email", so the obvious phrase passed with the whole group
+  deleted (break-tested). It targets `send you our bank details`, which only this block says.
+- **"ISSUED BY" IS FINE PRINT NOW, ON BOTH SURFACES.** Its own section restated the masthead
+  at a cost of 57pt on the PDF (caption 15 + row 25 + gap 17) — and that was the 57pt taking
+  the bank-rail case onto a second sheet, so folding it is what finally brought that case
+  back to one. Folded on BOTH surfaces together, because invoice.php had the same section and
+  letting one drop it alone reopens the divergence. Two gates re-aimed rather than patched:
+  the fact to assert is that the issuer is still **named**, not that it has a heading.
+- **PROSE IS A POOR LEVER ON A BUDGET, measured.** app.js went 2,071 gz bytes over; trimming
+  three long comment blocks (two of which restated CLAUDE.md at length and both ended "See
+  CLAUDE.md") plus 16 map entries recovered only **828** of them, because gzip compresses
+  repetitive prose extremely well and the residue is irreducible code. The order in the rule
+  still holds — trim first, raise second — but expect the trim to buy less than it looks like
+  it should, and don't cut load-bearing comments chasing it. Budget raised 230400 → 232100.
 
 ## The cottage cards are ONE shape, whatever the cottages are called
 

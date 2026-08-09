@@ -310,6 +310,16 @@ inv_ok(str_contains($noRail, 'id="inv-print"'), '…but Save a copy is still the
 // is why the button this page shipped with did nothing at all
 inv_ok(!preg_match('/\son[a-z]+=/i', $html['part']), 'no inline event-handler attribute anywhere', 'CSP would block it');
 inv_ok(str_contains($html['part'], '<script>' . INV_PRINT_JS . '</script>'), 'the handler ships as a hashed <script>');
+// A DOCUMENT MUST SAY WHO ISSUED IT. This lived in a section of its own, which
+// restated the masthead at a cost of 57pt on the PDF drawn from the same anatomy
+// — the 57pt taking the bank-rail case onto a second sheet. So it is fine print
+// now on BOTH surfaces, and what is asserted is that the issuer is still NAMED:
+// where a document says so is a layout decision, that it says so is not.
+inv_ok(!str_contains($html['part'], '<h2>Issued by</h2>'), 'no "Issued by" section of its own');
+inv_ok(preg_match('/class="fine">Issued by [^<]*Cottage Holidays Blakeney/', $html['part']) === 1,
+    '…the issuer is named in the fine print instead');
+inv_ok(substr_count($html['part'], 'North Norfolk Coastal Retreats') === 1,
+    '…and said once, not in two places');
 $policy = (function () {
     $p = __DIR__ . '/csp-policy.php';
     return is_file($p) ? (string) include $p : (string) file_get_contents(__DIR__ . '/htaccess.txt');
