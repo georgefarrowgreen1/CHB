@@ -4015,6 +4015,53 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   now checks both ends of the day on purpose (case 10 is the far end, and removing
   its pin fails the check, which is how you know the pin is load-bearing).
 
+## The offline day sheet — Today with no signal
+
+**A changeover morning with one bar still gets its day sheet** (gated by
+**`ui-test-offline.js`**, 23 checks, each break-tested — including one that only the
+TOAST could catch, because initBackOffice self-heals the sheet). The pieces:
+- **The snapshot is pre-warmed, deliberately** (`chbSnapWrite`, localStorage
+  `chb-daysheet`): written on every SUCCESSFUL loadData in initBackOffice — never
+  opportunistically, or the one morning it matters the copy is from Tuesday. It carries
+  today's movements + in-residence + the next TWO mornings' arrivals (a snapshot taken
+  tonight still covers tomorrow's changeover), each row with name/phone/times/party,
+  `bookingDue(pk,b).balance` (NB the shape — bookingDue returns the displayGrand OBJECT,
+  not a number), the held deposit, and the booking notes. Refused past 48h
+  (`chbSnapRead`).
+- **An offline BOOT enters owner-mode on a hint** (`chb-was-admin`, stamped by a
+  VERIFIED admin_status): the boot catch distinguishes a network failure (no `e.status`)
+  from a 401 (a verdict), and only the former + the hint enters. Never in the
+  account-preview iframe. Both the hint and the snapshot are removed on BOTH logout
+  paths — guest names and key-safe codes don't outlive the session.
+- **The day sheet replaces Today outright** (`renderOfflineDaySheet`,
+  `body.offline-snap` hides every other child of view-backoffice): half-real panels
+  under an offline banner would present empty stores as facts. The marker speaks in the
+  day's terms ("saved this morning at 8:12"), phones are `tel:`/`sms:` links (they need
+  no data at all), and **grouping is recomputed from each row's own dates at render** —
+  a yesterday-snapshot's "arriving tomorrow" renders as arriving TODAY, and finished
+  stays drop out. "Try again" is honest both ways; the still-dead branch owns the TOAST
+  (the sheet re-rendering is initBackOffice self-healing — break-testing found the
+  branch removable with every DOM check green).
+- **`ops-<prop>` is the owner's private cottage card** (Manage → cottage → Private
+  cottage notes; key safe, stopcock, boiler reset, cleaner's number) — PRIVATE like
+  `arrival-` (encrypted at rest; these codes physically open the cottages), NOT internal
+  like bacs-details: the decrypt-failure trade that kept bank details plaintext (garbage
+  in a guest's inbox) doesn't apply to an owner-side field that can be retyped. Written
+  concatenated so the test-content-keys literal scanner can't see it — its
+  classification is pinned there explicitly. `saveOpsNotes` refreshes the snapshot in
+  the same breath, and the snapshot keeps the LAST-SEEN ops when adminPrivateContent
+  isn't loaded (it only fills when Manage opens; forgetting the key-safe codes because
+  the owner didn't visit Settings today would decay the sheet for no reason).
+- **sw.js no longer excludes admin.js from the fetch handler** — keyed on its full `?v=`
+  URL a cached copy cannot drift beyond the lockstep app.js already imposes (an old
+  app.js asks for the old URL), and the exclusion's real cost was this feature: a dead
+  link couldn't load the bundle at all (the immutable HTTP disk cache is an evictable
+  lucky backstop, not a design). Still OUT of CORE — guests never pay. smoke-test asserts
+  the handler carries no admin.js bypass in CODE (comments legitimately narrate it).
+- **What this PR deliberately does NOT do**: no writes are queued (`queueOrPost` still
+  gates on `navigator.onLine` — the known bad-WiFi gap), no op ledger, no refuse-up-front
+  labels. That is PR-2/PR-3 territory; this is the read-only half of the offline plan.
+
 ## Where you were, and sending things once
 
 - **A RELOAD COMES BACK TO THE SCREEN YOU WERE ON** (`chbNavRemember`/`maybeRestoreView`,

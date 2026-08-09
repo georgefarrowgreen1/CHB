@@ -655,7 +655,15 @@ function is_private_content_key($key)
     return strpos($key, 'ical-feeds-') === 0 ||
         strpos($key, 'arrival-') === 0 ||
         strpos($key, 'apikey-') === 0 ||
-        strpos($key, 'welcome-') === 0;
+        strpos($key, 'welcome-') === 0 ||
+        // The owner's private per-cottage operations card (key-safe code,
+        // stopcock, boiler, cleaner's number — Manage → cottage → Private
+        // notes). PRIVATE like arrival-, not internal like bacs-details: it
+        // holds codes that physically open the cottages and is never printed
+        // into an email, so the decrypt-failure trade that kept bacs-details
+        // plaintext (garbage in a guest's inbox) doesn't apply — a failed
+        // decrypt here renders an empty owner-side field, which is retypable.
+        strpos($key, 'ops-') === 0;
 }
 
 // Operational/internal content keys: written by server code (never the content

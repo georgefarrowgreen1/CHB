@@ -619,6 +619,14 @@ try {
     // bundle load — it must NOT be precached, and app.js must actually inject it.
     check('admin.css is NOT in the sw.js CORE precache list', !/CORE = \[[^\]]*admin\.css/.test(sw));
     check('app.js injects admin.css via ensureAdminCss', /ensureAdminCss/.test(appScript) && /admin\.css\?v=/.test(appScript));
+    // …but the fetch handler must no longer BYPASS admin.js (network-only): the
+    // offline day sheet cannot render if the back office can't load its own
+    // bundle on a dead link. Runtime-cached under its exact ?v= URL is safe —
+    // an old app.js asks for the old URL, which is lockstep, not drift. Scan
+    // CODE only (a comment legitimately narrates the removed exclusion).
+    check('sw.js fetch handler no longer bypasses admin.js', !sw.split('\n')
+        .filter((l) => !/^\s*\/\//.test(l))
+        .some((l) => /admin\\?\.js/.test(l) && /return/.test(l)));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
 // 6c-iii. Migration naming convention: NEW migrations must be

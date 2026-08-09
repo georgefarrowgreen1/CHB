@@ -14,14 +14,14 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v802';
+const CACHE = 'chb-cache-v803';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=751', 'guest-app.css?v=41', 'guest-app.js?v=22'];
+const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=752', 'guest-app.css?v=41', 'guest-app.js?v=22'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -74,11 +74,11 @@ self.addEventListener('fetch', (event) => {
     // never let per-date/year query strings grow the cache unbounded. (Covers the
     // version.php update probe too, which must always be live.)
     if (url.pathname.endsWith('.php') && !isImgPhp) return;
-    // admin.js is owner-only and version-pinned by ADMIN_BUNDLE_V inside app.js.
-    // Serving it stale-while-revalidate lets an out-of-date app.js pin an
-    // out-of-date back office for extra reloads — always go to the network
-    // (the browser's own HTTP cache + the ?v= pin still make repeats cheap).
-    if (/(^|\/)admin\.js$/.test(url.pathname)) return;
+    // admin.js is deliberately NOT excluded any more: keyed on its full ?v= URL
+    // a cached copy cannot drift beyond the lockstep app.js already imposes (an
+    // old app.js asks for the old URL), and the exclusion's real cost was the
+    // OFFLINE DAY SHEET — a dead link couldn't load the bundle at all. It rides
+    // the generic SWR branch below and stays OUT of CORE (guests never pay).
     // The on-device model files (darkstar.bin ~7.6MB, encoder.onnx ~23MB, its
     // vocab) are ?v=-pinned and served immutable/1y by htaccess — cloning them
     // into Cache Storage is ~30MB of pure duplication per release (and iOS PWA
