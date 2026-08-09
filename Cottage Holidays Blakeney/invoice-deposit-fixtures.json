@@ -1,0 +1,80 @@
+{
+  "_note": [
+    "THE DEPOSIT'S STATE, IN WORDS — driven by BOTH halves so they cannot drift.",
+    "There are two invoices for one booking: the guest's HTML page (invoice.php,",
+    "invoice_deposit_status) and the owner's jsPDF download (app.js,",
+    "depositInvoiceStatus). They used to disagree — the PDF said a kept deposit was",
+    "'Retained after checkout for damage or loss' while the emailed invoice said the",
+    "same £75 'is returned in full after checkout', because the HTML half had one",
+    "static sentence for every state. Same shape as pricing-fixtures.json: add a case",
+    "HERE, never to either test.",
+    "settled is already in the house DD/MM/YYYY form; both halves only ever print it."
+  ],
+  "cases": [
+    {
+      "why": "no deposit on this booking at all — say nothing, do not print a £0 line",
+      "dep": 0, "hold": "charged", "returned": 0, "settled": "",
+      "want": ""
+    },
+    {
+      "why": "the everyday case: charged with the first payment, nothing back yet",
+      "dep": 75, "hold": "charged", "returned": 0, "settled": "",
+      "want": "Paid — refunded in full after your stay, provided there is no damage."
+    },
+    {
+      "why": "refunded after checkout, status column caught up",
+      "dep": 75, "hold": "returned", "returned": 75, "settled": "14/09/2026",
+      "want": "Refunded in full on 14/09/2026."
+    },
+    {
+      "why": "refunded, but the ledger is ahead of the status column — same answer",
+      "dep": 75, "hold": "charged", "returned": 75, "settled": "14/09/2026",
+      "want": "Refunded in full on 14/09/2026."
+    },
+    {
+      "why": "KEPT for damage. Must never promise it back — this is the bug that shipped",
+      "dep": 75, "hold": "kept", "returned": 0, "settled": "14/09/2026",
+      "want": "Retained after checkout for damage or loss."
+    },
+    {
+      "why": "part refunded — name both figures, and what happens to the rest",
+      "dep": 75, "hold": "charged", "returned": 25, "settled": "14/09/2026",
+      "want": "£25.00 of £75.00 refunded on 14/09/2026. Balance refundable after your stay."
+    },
+    {
+      "why": "thousands separator, so the two money formatters are pinned to each other",
+      "dep": 1500, "hold": "charged", "returned": 250, "settled": "01/10/2026",
+      "want": "£250.00 of £1,500.00 refunded on 01/10/2026. Balance refundable after your stay."
+    },
+    {
+      "why": "legacy card HOLD, still authorised — here 'held, not charged' is the truth",
+      "dep": 75, "hold": "authorized", "returned": 0, "settled": "",
+      "want": "Held on your card (not charged) — released after checkout."
+    },
+    {
+      "why": "legacy hold released",
+      "dep": 75, "hold": "released", "returned": 0, "settled": "",
+      "want": "The hold on your card has been released."
+    },
+    {
+      "why": "legacy hold expired past Square's auth window — same outcome for the guest",
+      "dep": 75, "hold": "expired", "returned": 0, "settled": "",
+      "want": "The hold on your card has been released."
+    },
+    {
+      "why": "legacy hold CAPTURED: the money WAS taken, so 'held, not charged' was false. Both invoice.php's own $depositCharged and damages_collected() treat captured as collected; only this sentence disagreed",
+      "dep": 75, "hold": "captured", "returned": 0, "settled": "",
+      "want": "Paid — refunded in full after your stay, provided there is no damage."
+    },
+    {
+      "why": "nothing recorded yet — state the intention, claim no event",
+      "dep": 75, "hold": "none", "returned": 0, "settled": "",
+      "want": "Charged with your first payment and refunded after your stay."
+    },
+    {
+      "why": "an unrecognised status falls back rather than inventing an event",
+      "dep": 75, "hold": "wat", "returned": 0, "settled": "",
+      "want": "Charged with your first payment and refunded after your stay."
+    }
+  ]
+}
