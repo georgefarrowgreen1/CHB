@@ -4277,6 +4277,20 @@ a HINT to probe now, never a verdict.
   guaranteed-complete nights — day+2 can hold un-snapshotted arrivals), with one
   hatched UNKNOWN cell per lane beyond: an empty cell there would pose as "free",
   which is the lie the whole day sheet exists to avoid.
+- **NOTIFICATIONS NEVER DOUBLE-SHOW** (gated by ui-test-offline §22, three
+  break-tests — the broken run reproduces the owner's screenshot verbatim,
+  "Back online." stacked over two copies of "Back on — this is live data now.").
+  Three layers: `toast()` DEDUPES an identical message already on screen (action
+  toasts exempt — dropping one silently drops the affordance); `chbNetUp`'s
+  generic voice STANDS DOWN while the day sheet is up (odsRetry's "Back on —
+  this is live data now." is the specific version of the same message); and
+  `odsRetry` is RE-ENTRANT-SAFE (`__odsRetrying` — a flapping link fires the
+  recovery twice in quick succession, and two concurrent retries meant two
+  loadDatas: the cause; the dedupe is the backstop). NB one recovery is TWO
+  bootstrap loads by design (odsRetry's own loadData, then initBackOffice's) —
+  §22's counter asserts 2 and the guard's failure mode is 4+; asserting 1 was a
+  wrong count, not a wrong guard.
+- **THE WIFI-ICON RULE** (`chbGoOffline`, wired to the `offline` event; gated by
   ui-test-offline §19, wiring break-tested). Airplane mode / wifi-off fires the
   browser's `offline` event with NO failed request — the whole back office
   transforms at once: day sheet up, header trimmed, and the owner brought to it
