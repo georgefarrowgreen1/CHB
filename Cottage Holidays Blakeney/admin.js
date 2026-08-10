@@ -17538,6 +17538,7 @@ async function odsRetry() {
     try { toast('Back on — this is live data now.'); } catch (e) {}
     initBackOffice();
 }
+let __odsPatienceUsed = false; // the boot's patience window — armed once per page
 async function initBackOffice() {
     // The page header carries the living date ("Friday 10 July") instantly;
     // once the data lands, todayOpsLine() enriches it with the day's ops.
@@ -17548,7 +17549,35 @@ async function initBackOffice() {
     try {
         await chbSecLoad();
     } catch (e) {}
-    const __ldr = await loadData();
+    // OFFLINE MODE TAKES OVER BY ITSELF, on both triggers. A dead interface
+    // (navigator.onLine false) or an already-known-off verdict gets the saved
+    // sheet IMMEDIATELY; a poor signal — where nothing fails, everything
+    // HANGS — gets it after a short patience window instead of after the 15s
+    // timeouts. loadData keeps running underneath either way: if the slow data
+    // eventually lands, the success branch below swaps the sheet for the live
+    // Today by itself (the same no-reload recovery chbNetUp uses). Only while
+    // the stores are EMPTY — with last-good data in memory, Today is already
+    // the better screen and the sheet stays out of the way.
+    const __ldrP = loadData();
+    const __storesEmpty = () => !Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
+    let __odsPatienceT = null;
+    // ONCE PER PAGE, deliberately: the patience window is the BOOT's. A
+    // mid-session re-init (recovery, openBookings) already has the live
+    // verdict machinery and the bookingsDead branch below — arming the timer
+    // there put the sheet up 4s into every stalled refresh, and its presence
+    // made the next chbNetUp "noticed", burying the specific failure toasts
+    // (measured by ui-test-poorsignal §3–§4).
+    if (!__odsPatienceUsed && __storesEmpty()) {
+        __odsPatienceUsed = true;
+        const wait = navigator.onLine === false || chbNetIsOff() ? 0 : CHB_BOOT_PATIENCE_MS + 1000;
+        __odsPatienceT = setTimeout(() => {
+            if (__storesEmpty()) {
+                try { renderOfflineDaySheet(); } catch (e) {}
+            }
+        }, wait);
+    }
+    const __ldr = await __ldrP;
+    if (__odsPatienceT) clearTimeout(__odsPatienceT);
     // No bookings could be FETCHED and none survive in memory → the offline day
     // sheet is the truest thing this screen can say (an empty live Today would
     // report a business with no bookings, which is the poor-signal lie). A
