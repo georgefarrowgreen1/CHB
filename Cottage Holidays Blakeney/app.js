@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 441;
+const ADMIN_BUNDLE_V = 442;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1184,9 +1184,14 @@ function chbNetUp() {
     setTimeout(oqFlush, 60); // always — it no-ops on an empty queue
     if (!noticed) return; // a blip: no toast, no re-render churn
     // A REAL outage's end is SAID (a pill clearing silently reads as never
-    // having happened), and the screen catches itself up in place.
+    // having happened), and the screen catches itself up in place. With the
+    // DAY SHEET up, the generic voice stands down: the recovery's own "Back
+    // on — this is live data now." is the specific version of this message,
+    // and two voices for one moment double-speak (owner screenshot).
     try {
-        toast(__oqCount > 0 ? 'Back online — sending what you saved…' : 'Back online.');
+        if (!document.getElementById('offline-daysheet')) {
+            toast(__oqCount > 0 ? 'Back online — sending what you saved…' : 'Back online.');
+        }
     } catch (e) {}
     try {
         chbNetRecover();
@@ -11929,6 +11934,18 @@ function toast(message, type, action) {
         ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>'
         : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>';
     const hasAction = action && typeof action.fn === 'function';
+    // NOTIFICATIONS NEVER DOUBLE-SHOW (owner screenshot: two copies of "Back
+    // on — this is live data now." stacked over each other): an identical
+    // message already on screen is not stacked again. Action toasts are
+    // exempt — their button may be armed with different state, and dropping
+    // one silently could drop the affordance the owner needed.
+    if (!hasAction) {
+        const dup = Array.from(stack.querySelectorAll('.toast:not(.toast-out)')).some((t) => {
+            const s = t.querySelector('.toast-body span');
+            return s && s.textContent === String(message) && !t.querySelector('.toast-action');
+        });
+        if (dup) return;
+    }
     const el = document.createElement('div');
     el.className = 'toast toast-mini' + (ok ? '' : ' toast-err');
     // An error is a higher-priority announcement than a routine "saved" toast.
@@ -16174,7 +16191,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'oneday11';
+    const BUILD = 'onevoice12';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

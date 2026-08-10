@@ -17815,19 +17815,31 @@ function odsA2hsNudge() {
 }
 // "Try again" is honest both ways: live data replaces the sheet, a still-dead
 // link says so and keeps it — never a silent nothing (the dead-end rule).
+// RE-ENTRANT-SAFE: a flapping link can fire chbNetUp's recovery twice in
+// quick succession (a straggler request fails mid-recovery, the next success
+// recovers again), and two concurrent retries meant two loadDatas and two
+// "Back on" toasts (owner screenshot — the toast dedupe is the backstop,
+// this is the cause).
+let __odsRetrying = false;
 async function odsRetry() {
-    const r = await loadData();
-    const stillDead = !!(r && Array.isArray(r.failed) && r.failed.indexOf('bookings') !== -1)
-        && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
-    if (stillDead) {
-        toast('Still no connection — the saved sheet stays up.');
-        return;
+    if (__odsRetrying) return;
+    __odsRetrying = true;
+    try {
+        const r = await loadData();
+        const stillDead = !!(r && Array.isArray(r.failed) && r.failed.indexOf('bookings') !== -1)
+            && !Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length);
+        if (stillDead) {
+            toast('Still no connection — the saved sheet stays up.');
+            return;
+        }
+        document.body.classList.remove('offline-snap');
+        const el = document.getElementById('offline-daysheet');
+        if (el) el.remove();
+        try { toast('Back on — this is live data now.'); } catch (e) {}
+        initBackOffice();
+    } finally {
+        __odsRetrying = false;
     }
-    document.body.classList.remove('offline-snap');
-    const el = document.getElementById('offline-daysheet');
-    if (el) el.remove();
-    try { toast('Back on — this is live data now.'); } catch (e) {}
-    initBackOffice();
 }
 let __odsPatienceUsed = false; // the boot's patience window — armed once per page
 async function initBackOffice() {
