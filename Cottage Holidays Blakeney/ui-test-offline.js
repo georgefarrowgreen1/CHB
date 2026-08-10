@@ -303,7 +303,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // second "Return £75.00 to Hannah?" was sitting here intercepting the click.
   ok(await page.evaluate(() => { const g = document.getElementById('glass-dialog'); return !(g && g.classList.contains('open')); }),
     'no second ask about money that was already confirmed (the sweep is re-entrant-safe)');
-  await page.locator('[data-act="returnDeposit"]').first().click();
+  // The VISIBLE copy: at this 390px viewport the next-action card's own button
+  // yields to the sticky bar (the iOS restyle's one-tap-offered-once rule), so
+  // a bare .first() lands on the hidden card button and can never be clicked.
+  await page.locator('[data-act="returnDeposit"]:visible').first().click();
   await page.waitForTimeout(500);
   ok(posts.filter((p2) => p2.action === 'return_deposit').length === preC,
     'tapping it sends NOTHING — money leaving is never queued and hoped for');
@@ -315,13 +318,21 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     return false;
   }), 'the dim rule is GENERATED from the same list the guard reads — one definition');
 
-  // (c) recovery is automatic: the probe notices within its 15s interval
+  // (c) recovery is automatic: the probe notices within its 15s interval.
+  // SAMPLED BY STATE, not by a single read at a fixed instant: the "Back
+  // online." toast auto-dismisses, so where inside the probe's 15s window the
+  // recovery lands decides whether a one-shot read at 16.5s still sees it —
+  // measured as a CI-load flake (green locally, red on the runner). The poll
+  // catches the toast whenever it appears and still fails if it never does.
   apiDead = false;
-  await page.waitForTimeout(16500);
-  ok(await page.evaluate(() => !document.body.classList.contains('net-off') && !document.body.classList.contains('is-offline')),
-    'the probe brings the dashboard back by itself — nothing was tapped');
-  ok(await page.evaluate(() => /Back online/.test((document.getElementById('app-toasts') || {}).textContent || '')),
-    'and the transition is SAID, never silent');
+  let backOn = false, saidBack = false;
+  for (let i = 0; i < 36 && !(backOn && saidBack); i++) {
+    await page.waitForTimeout(500);
+    if (!backOn) backOn = await page.evaluate(() => !document.body.classList.contains('net-off') && !document.body.classList.contains('is-offline'));
+    if (!saidBack) saidBack = await page.evaluate(() => /Back online/.test((document.getElementById('app-toasts') || {}).textContent || ''));
+  }
+  ok(backOn, 'the probe brings the dashboard back by itself — nothing was tapped');
+  ok(saidBack, 'and the transition is SAID, never silent');
   ok(await page.evaluate(() => window.__noReloadMarker === 42), 'no reload happened at any point (the marker survived)');
 
   // (d) the cold-boot day sheet also exits by itself when signal returns

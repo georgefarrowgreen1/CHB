@@ -967,15 +967,19 @@ body.light-mode .ny-act {
   border-radius: var(--r-panel);
   margin-top: 14px;
 }.bhub-head-top {
+  /* NOWRAP + shrinkable identity: the ⋯ pins top-right at every width. */
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: flex-start;
+}.bhub-iden {
+  flex: 1 1 auto;
+  min-width: 0;
 }.bhub-name {
   font-family: var(--font-serif);
   font-weight: 400;
-  font-size: 1.7rem;
+  font-size: 1.9rem;
   margin: 8px 0 4px;
 }.bhub-ref {
   margin-left: 8px;
@@ -994,12 +998,9 @@ body.light-mode .ny-act {
   margin-top: 10px;
   cursor: pointer;
   border: 1px solid rgba(255, 167, 38, 0.32);
-}.bhub-pipe3 {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0 0;
+}.bhub-money-more {
+  /* The money fold. No display value — it would override [hidden]. */
+  margin-top: 10px;
 }/* The payments block unified INTO the header card (the old standalone Payments
    card + its duplicate mini-pipeline are gone): a quiet divider separates it
    from the next-action banner. No inner glass box — the payline is a plain
@@ -1061,8 +1062,7 @@ body.light-mode .ny-act {
 }.bhub-linklike:hover {
   color: var(--text-light);
   text-decoration: underline;
-}/* Interactive journey pills + KPI tiles read as tappable. */
-.pipe-step[data-act],
+}/* Interactive KPI tiles read as tappable. */
 .mo-kpi[data-act] {
   cursor: pointer;
 }/* The header's tappable "£X to collect" — inherits the ops line's look, just
@@ -1077,17 +1077,16 @@ body.light-mode .ny-act {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
   text-underline-offset: 3px;
-}.bhub-pipe-full {
-  display: none;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0 0;
-}@media (min-width: 900px) {.bhub-pipe3 {
-    display: none;
-  }.bhub-pipe-full {
-    display: flex;
-  }}.bhub-next {
+}/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
+   one line of words. Full-width inside the card's wrap. */
+.bhub-next-cap {
+  flex: 1 1 100%;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--warn-text);
+}.bhub-next {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1197,33 +1196,13 @@ body.light-mode .ny-act {
   }.bhub-card {
     padding: 16px;
   }.bhub-name {
-    font-size: 1.45rem;
+    font-size: 1.6rem;
   }.bhub-btn-row {
     display: grid;
     /* minmax(0,…) lets a column shrink below a long label's natural width */
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
-  }.bhub-actions {
-    /* The Edit menu is the RAREST action on the page and used to render as a
-       full-width pill above the pipeline — maximum weight for minimum use
-       (measured: the widest control in the header at 390px). A compact
-       right-aligned button reads as chrome, which is what it is; the menu it
-       opens is its absolute sibling and anchors the same either way. */
-    width: 100%;
-    display: flex;
-    justify-content: flex-end;
-  }.bhub-pipe3 {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }.bhub-pipe3::-webkit-scrollbar {
-    display: none;
-  }.bhub-pipe3 .pipe-step {
-    white-space: nowrap;
-    padding: 4px 10px;
   }.bhub-next {
     flex-direction: column;
     align-items: stretch;
@@ -4176,16 +4155,8 @@ body.cmdk-open {
    next-action bar. Tokens throughout; the sticky bar reads --safe-b so a notch
    phone keeps it tappable, and hides at the canonical 900px boundary where the
    whole hub is on screen anyway. */
-.bhub-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
-.bhub-chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    border: 1px solid var(--glass-border); border-radius: 999px;
-    padding: 3px 10px; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;
-}
-.bhub-chip.is-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
-/* PART of what is needed — the register short of the booking's party. Its own
-   state because a tick and a blank are both wrong for it. */
-.bhub-chip.is-warn { color: var(--warn-text); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+/* (.bhub-chips/.bhub-chip are GONE — the facts are Guest-card rows; the DOTS
+   below survive on the kv rows and plan states.) */
 .bhub-payask {
     margin: -2px 0 12px; padding-bottom: 12px;
     border-bottom: 1px solid var(--glass-border);
@@ -4234,6 +4205,11 @@ body.cmdk-open {
     background: var(--glass-bg);
 }
 @media (min-width: 901px) { .bhub-sticky { display: none; } }
+/* ≤900px the sticky bar IS the action — the card drops its button so one tap
+   is offered once (A2c). Booking hub only: the enquiry hub's Approve has no
+   sticky to hand over to. */
+@media (max-width: 900px) { #booking-hub-content .bhub-next .bhub-next-btn { display: none; } }
+
 
 /* The per-booking payment plan, inside the Payments header (hubPlanHtml):
    two schedule sentences (deposit, balance-by-date), each with its provenance
@@ -4379,9 +4355,17 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    record's management actions) — centred under the cards, clear of the
    phone sticky bar. Its dropdown opens UPWARD here, or the menu would fall
    off the bottom of the document. */
-.bhub-foot { display: flex; justify-content: center; margin: 20px 0 40px; }
-.bhub-foot .bhub-actions { position: relative; width: auto; justify-content: center; }
-.bhub-foot .bhub-menu { top: auto; bottom: calc(100% + 6px); }
+/* (.bhub-foot is GONE — the ⋯ menu lives in the header top-right, dropdown
+   opening downward.) */
+.bhub-menu-btn {
+  /* Chrome, not a pill — the words live in aria-label/title. */
+  min-width: 44px;
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 1.15rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
 
 /* Glass-dialog TITLE + per-field HINTS (owner dialogs — the Edit-plan form
    first): the serif title names the dialog once, the message drops to one
