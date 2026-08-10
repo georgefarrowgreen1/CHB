@@ -17337,6 +17337,12 @@ function keysafeRevealOpen(b, today) {
 // reveal (my-bookings reads the same flag); the record and its history are
 // KEPT, so turning it back on finds everything as it was.
 async function keysafeSetEnabled(pk, on) {
+    // A failed save must not leave the CHECKBOX telling the new state while
+    // the alert says "nothing changed" — the box goes back with the words.
+    const revert = () => {
+        const cb = document.getElementById('ks-toggle-' + pk);
+        if (cb) cb.checked = !on;
+    };
     try {
         const r = await apiPost('keysafe.php', { action: 'set_enabled', prop_key: pk, enabled: !!on });
         if (r && r.ok && r.safe) {
@@ -17348,9 +17354,11 @@ async function keysafeSetEnabled(pk, on) {
             renderKeysafe();
             renderNeedsYou();
         } else {
+            revert();
             glassAlert((r && r.error) || 'Couldn’t save the switch — nothing changed.');
         }
     } catch (e) {
+        revert();
         glassAlert('Couldn’t save the switch — check your signal. Nothing changed.');
     }
 }
