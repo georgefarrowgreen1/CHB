@@ -212,6 +212,54 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled !== false), 'Turn on restores it');
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 1, '…duty and all — the record was kept, not erased');
 
+  console.log('§8 the audit pins — who "next" is, and the switch tells the truth');
+  // Pure keysafeNextBooking logic on a scratch cottage (mutate the const
+  // stores, never reassign — the dbBlocks lesson).
+  const nx = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    const sh = (n) => ukShiftDays(t, n);
+    const out = {};
+    dbBookings.scratch = [
+      { dbId: 71, name: 'Leaver', checkIn: sh(-3), checkOut: t },      // out this morning
+      { dbId: 72, name: 'Arriver', checkIn: t, checkOut: sh(3) },      // in this afternoon
+    ];
+    dbBlocks.scratch = [];
+    out.changeover = (keysafeNextBooking('scratch') || {}).name;       // must be the ARRIVER
+    dbBookings.scratch = [
+      { dbId: 73, name: 'InResidence', checkIn: sh(-1), checkOut: sh(2) },
+      { dbId: 74, name: 'Tomorrow Guest', checkIn: sh(1), checkOut: sh(4) },
+    ];
+    out.midstay = (keysafeNextBooking('scratch') || {}).name;          // must be the guest IN the cottage
+    // …and with their code on the safe, NO duty may fire (never rotate a
+    // safe out from under a guest mid-stay).
+    __keysafe.scratch = { code: '5917', setAt: '', forBooking: 73, forStay: 'b:73', enabled: true, history: [], name: 'Scratch' };
+    out.midstayDuty = chbDuties().filter((x) => x.kind === 'keysafe' && /Scratch|scratch/.test(x.label)).length;
+    // an OTA stay IN RESIDENCE outranks a later direct arrival
+    dbBookings.scratch = [{ dbId: 75, name: 'Later Direct', checkIn: sh(5), checkOut: sh(8) }];
+    dbBlocks.scratch = [{ id: 1, source: 'vrbo', checkIn: sh(-1), checkOut: sh(2) }];
+    out.otaFirst = (keysafeNextBooking('scratch') || {}).name;         // must be the Vrbo guest
+    delete dbBookings.scratch; delete dbBlocks.scratch; delete __keysafe.scratch;
+    return out;
+  });
+  ok(nx.changeover === 'Arriver', `changeover day: the leaver never outranks the arriver (${nx.changeover})`);
+  ok(nx.midstay === 'InResidence', `mid-stay: the guest IN the cottage is who the safe serves (${nx.midstay})`);
+  ok(nx.midstayDuty === 0, 'and with their code on the safe there is NO duty — never rotate under a mid-stay guest');
+  ok(nx.otaFirst === 'Vrbo guest', `an in-residence platform stay outranks a later direct arrival (${nx.otaFirst})`);
+  // The switch tells the truth on a FAILED save: the checkbox goes back with
+  // the words, and the mirror never moved.
+  await page.evaluate(async () => { await openArea(); });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); settingsOpenAccomSec('21a', 'opsnotes'); });
+  await page.waitForTimeout(500);
+  apiDead = true;
+  await page.locator('#ks-toggle-21a').click();
+  await page.waitForTimeout(900);
+  await page.evaluate(() => glassDialogResolve(true)); // dismiss the failure alert
+  await page.waitForTimeout(300);
+  ok(await page.locator('#ks-toggle-21a').isChecked(), 'a failed save puts the checkbox BACK — the box never tells a state the record doesn’t hold');
+  ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled !== false), '…and the mirror never moved');
+  apiDead = false;
+
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nKEYSAFE UI PASSED ✅');
   await done(fails);
 })();
