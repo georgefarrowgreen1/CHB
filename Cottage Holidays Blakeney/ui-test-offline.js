@@ -54,6 +54,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const posts = [];
   let verHits = 0;   // version.php probe counter (§11)
   let addDead = false; // §12: abort ONLY the booking-add post — the ambiguous save
+  let refuseEnq = false; // §14: the server ANSWERS an enquiry replay with a refusal
   await page.route(/\.php/, async (route) => {
     const url = route.request().url();
     if (url.includes('version.php')) verHits++;
@@ -68,6 +69,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       if (apiDead) return route.abort();
       if (addDead && f === 'bookings.php' && b.action === 'add') return route.abort();
       if (f === 'bookings.php' && b.action === 'add') return json({ ok: true, id: 990 });
+      if (refuseEnq && f === 'enquiries.php' && b.action === 'submit')
+        return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'Those dates clash — Bob Carter has them' }) });
       if (f === 'auth.php' && b.action === 'admin_status') return json({ admin: true });
       if (f === 'content.php' && b.action === 'get_all') return json({ content: { 'ops-21a': 'Key safe 4021 — black box right of the porch\nStopcock — under the kitchen sink' } });
       if (f === 'content.php' && b.action === 'save') return json({ ok: true });
@@ -425,6 +428,101 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     'recordPayment stamps the ledger id on set_payment');
   // dismiss the offer-updated-confirmation ask it raises on success
   await page.evaluate(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); });
+
+  // ── §13 PHOTO EVIDENCE ON THE DEPOSIT DECISION — taken in the cottage, at
+  //     the moment of deciding, with no signal; shown back WITH the reconnect
+  //     confirm; uploaded only with the confirmed money op.
+  console.log('§13 the deposit photo');
+  // a real (1×1) JPEG, so createImageBitmap and the server's magic-byte check
+  // both see the genuine article
+  const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==', 'base64');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();                       // fresh snapshot (Hannah's deposit is back in the fixture)
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  await page.locator('#offline-daysheet button', { hasText: 'Decide the deposit' }).click();
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { const el = document.getElementById('gdf-choice'); el.value = 'keep'; el.dispatchEvent(new Event('input')); });
+  await gdSet('note', 'Burn on the kitchen worktop');
+  await page.locator('#gdf-photo').setInputFiles({ name: 'evidence.jpg', mimeType: 'image/jpeg', buffer: JPG });
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(900);
+  const dec = await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]'));
+  ok(dec.length === 1 && dec[0].choice === 'keep' && /^data:image\/jpeg/.test(dec[0].photo || ''),
+    'the decision saved WITH the photo, re-encoded as a JPEG data URI');
+  // reconnect → the confirm shows the photo beside the question it answers
+  apiDead = false;
+  await page.evaluate(() => initBackOffice());
+  await page.waitForTimeout(1800);
+  ok(await page.evaluate(() => {
+    const m = document.getElementById('glass-dialog-msg');
+    const im = document.getElementById('glass-dialog-img');
+    return !!m && /Keep £75\.00 from Hannah/.test(m.textContent || '')
+      && !!im && im.style.display !== 'none' && /^data:image\/jpeg/.test(im.src || '');
+  }), 'the reconnect confirm shows the photo WITH the question it exists to answer');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(900);
+  const kept = posts.filter((p2) => p2.action === 'keep_deposit');
+  ok(kept.length === 1 && /^data:image\/jpeg;base64,/.test(kept[0].photo_data || ''),
+    'the confirmed keep carries the photo to the server — evidence rides the money op');
+  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 0),
+    'and the decision (photo included) clears once executed');
+  // THE SHARED NODE MUST NOT LEAK — the okLabel rule, for pictures
+  await page.evaluate(() => { glassConfirm('A plain question with no photo?'); });
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => {
+    const im = document.getElementById('glass-dialog-img');
+    return !im || im.style.display === 'none';
+  }), 'a plain confirm after it shows NO photo — the shared node is cleared each open');
+  await page.evaluate(() => glassDialogResolve(false));
+
+  // ── §14 A REFUSED REPLAY BECOMES A DUTY — the flush's toast covers the owner
+  //     who is looking; the record covers the one who is not. It persists on
+  //     Needs-you until READ and dismissed, with the server's own sentence.
+  console.log('§14 refused replays become duties');
+  apiDead = true;
+  await page.evaluate(([ci, co]) => queueOrPost('enquiries.php', { action: 'submit', prop_key: '21a', name: 'Refused Test', check_in: ci, check_out: co, adults: 2, children: 0, message: 'x' }, 'Enquiry — Refused Test'), [d(70), d(73)]);
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(async () => (await oqAll()).length >= 1), '(fixture) a write is queued while the link is dead');
+  apiDead = false;
+  refuseEnq = true;
+  await page.evaluate(() => oqFlush());
+  await page.waitForTimeout(1200);
+  ok(await page.evaluate(async () => (await oqAll()).length === 0), 'the server ANSWERED (a refusal), so the queue consumed the item');
+  const ref = await page.evaluate(async () => await oqRefusedAll());
+  ok(ref.length === 1 && /Refused Test/.test(ref[0].label) && /Bob Carter/.test(ref[0].reason),
+    'the refusal is RECORDED with the label and the server\'s own sentence');
+  await page.evaluate(() => oqRefusedLoad().then(() => renderNeedsYou()));
+  await page.waitForTimeout(500);
+  const nyTxt = await page.evaluate(() => (document.getElementById('needs-you-list') || {}).textContent || '');
+  ok(/A change saved offline was refused — Enquiry — Refused Test/.test(nyTxt) && /did NOT apply/.test(nyTxt),
+    'it surfaces as a Needs-you duty saying the change did NOT apply');
+  await page.locator('#needs-you-list .ny-row', { hasText: 'Refused Test' }).click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => {
+    const m = document.getElementById('glass-dialog-msg');
+    const t = document.getElementById('glass-dialog-title');
+    return !!m && /Bob Carter/.test(m.textContent || '') && !!t && /didn’t save/.test(t.textContent || '');
+  }), 'opening it shows the full refusal before anything can be dismissed');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(async () => (await oqRefusedAll()).length === 0), 'Dismiss clears the record');
+  ok(await page.evaluate(() => !/Refused Test/.test((document.getElementById('needs-you-list') || {}).textContent || '')),
+    'and the duty leaves the strip');
+  refuseEnq = false;
+  // The SW half runs with the app CLOSED — out of this harness's reach (the SW
+  // is stubbed), so its wiring is a source assertion: the refusal is recorded
+  // BEFORE the item is deleted, on any non-auth error response.
+  {
+    const sw = require('fs').readFileSync(require('path').join(__dirname, 'sw.js'), 'utf8');
+    const flushBody = sw.slice(sw.indexOf('async function swFlushQueue'), sw.indexOf('self.addEventListener(\'sync\''));
+    const iRef = flushBody.indexOf('swRefusedAdd');
+    const iDel = flushBody.indexOf('swQueueDelete(db, it.id)');
+    ok(iRef !== -1 && iDel !== -1 && iRef < iDel && /!r\.ok/.test(flushBody),
+      'the SW replayer records a refusal (before consuming the item) on any non-auth error');
+  }
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);

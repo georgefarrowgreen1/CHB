@@ -4097,6 +4097,36 @@ both ways in §17b). The shape:
   two callers a few ms apart (the recovery's 60ms flush + the any-success hook) both
   pass the guard and both post the same items: a double POST the ledger absorbs but
   that should never reach the wire.
+- **A REFUSED REPLAY BECOMES A DUTY** (IDB store `refused` — chb-db is **v2** now, and
+  app.js's `oqDB` + sw.js's `swQueueDB` must bump TOGETHER or the loser gets a
+  VersionError; gated by ui-test-offline §14, the SW half by a source assertion since
+  the harness stubs the SW). The flush's toast covers the owner who is LOOKING; the SW
+  replay runs with the app CLOSED, where a refusal reaches nobody — and a change the
+  owner believes saved but that did not apply is the worst lie the queue can tell.
+  Both replayers record the refusal (label + the server's own sentence) before
+  consuming the item; `chbDuties` surfaces it (`__oqRefused` mirror, loaded async in
+  initBackOffice) as a red row saying "it did NOT apply", and `oqRefusedOpen` shows the
+  full reason BEFORE it can be dismissed. Deliberately not cleared on logout — it is a
+  business record, like the queue itself.
+- **PHOTO EVIDENCE RIDES THE DEPOSIT DECISION** (odsDep's `file` field → `odsPhotoData`
+  canvas re-encode ≤1280px JPEG; shown by `glassDialog`'s `img` option in the reconnect
+  confirm; uploaded as `photo_data` ON the confirmed keep/return; server
+  `deposit_evidence_store` in db.php; gated by ui-test-offline §13 + test-integration
+  §17j). The judgements: the photo is EVIDENCE, never a precondition — a photo that
+  won't decode still saves the decision, and the server helper NEVER THROWS (magic-byte
+  checked JPEG only, 2MB cap, random filename suffix because uploads/ is web-reachable)
+  so the money op stands whatever happens to it; `odsDepSave` sheds the OLDEST photos
+  first when the record outgrows localStorage (~5MB) — a photo is worth less than
+  losing the decisions; and the shared `#glass-dialog-img` node is reassigned on EVERY
+  dialog open (the okLabel-leak rule, for pictures — break-tested: setting it only
+  when present leaks the photo into the next plain confirm). glassForm's `file` type
+  resolves the File OBJECT, not the fakepath string `.value` would give.
+- **NB ui-test-poorsignal §7 must DRAIN the recovery's own reads before seeding** —
+  chbNetRecover's fire-and-forget initBackOffice issues loadDepositReturns, and under
+  CI's 3-suite load its generic 200 landed MID-SEED and wiped the fixture (the check
+  read £0 while the app code was correct; reproduced 1-in-3 locally under the same
+  contention). Same class as the email-log drain directly above it in that suite:
+  wait for the verdict to settle, then issue-and-await the read yourself.
 - **`queueOrPost` queues ON FAILURE TO SEND, never on `navigator.onLine`** — the flag is
   true on a dead router, so the old gate threw the write away on exactly the connection
   the queue exists for. An `e.status` means the server ANSWERED: a refusal throws to the

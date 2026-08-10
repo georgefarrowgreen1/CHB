@@ -1458,6 +1458,26 @@ it_check('the override post writes the booking under the same id', ($r['json']['
 $r = $ladder();
 it_check('a retried ladder is answered at post ONE — no clash prompt, no duplicate', ($r['json']['replayed'] ?? false) === true && $ladCount() === 1, 'rows=' . $ladCount() . ' ' . $r['raw']);
 
+// (j) PHOTO EVIDENCE ON A DEPOSIT DECISION — rides the confirmed keep/return,
+// BEST-EFFORT by contract: a valid JPEG data URI is stored under uploads/ with
+// an activity row; anything malformed is ignored and the MONEY OP STANDS.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Evidence Keep','ek@gmail.com','2026-07-01','2026-07-04',2,0,'paid',300,300,300,0,3,'charged',75)");
+$evBid = (int) $rootDb->lastInsertId();
+// a real 1×1 JPEG — the server checks the magic bytes, so a fake would prove nothing
+$jpg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==';
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'keep_deposit', 'id' => $evBid, 'note' => 'Burn on the worktop', 'photo_data' => $jpg]);
+// NB the app is served from the TEMP docroot ($work) — uploads land THERE.
+$evFiles = glob($work . '/uploads/deposit-evidence-' . $evBid . '-*.jpg') ?: [];
+it_check('keep_deposit with a photo keeps the money AND stores the evidence', ($r['json']['ok'] ?? false) && count($evFiles) === 1, $r['raw'] . ' files=' . count($evFiles));
+$evLog = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'deposit.evidence' AND entity_id = '$evBid'")->fetchColumn();
+it_check('…and the activity log names where it lives', $evLog === 1);
+
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Evidence Bad','eb@gmail.com','2026-07-05','2026-07-08',2,0,'paid',300,300,300,0,3,'charged',75)");
+$evBid2 = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $evBid2, 'note' => 'All fine', 'photo_data' => 'data:image/jpeg;base64,not-a-jpeg-at-all']);
+$evFiles2 = glob($work . '/uploads/deposit-evidence-' . $evBid2 . '-*.jpg') ?: [];
+it_check('a MALFORMED photo is ignored and the refund still stands (best-effort contract)', ($r['json']['ok'] ?? false) && count($evFiles2) === 0, $r['raw'] . ' files=' . count($evFiles2));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

@@ -14,14 +14,14 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v806';
+const CACHE = 'chb-cache-v807';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=755', 'guest-app.css?v=41', 'guest-app.js?v=22'];
+const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=756', 'guest-app.css?v=41', 'guest-app.js?v=22'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -148,13 +148,15 @@ self.addEventListener('fetch', (event) => {
 // page's on-reconnect / on-open flush covers that case.
 function swQueueDB() {
     return new Promise((res, rej) => {
-        let r; try { r = indexedDB.open('chb-db', 1); } catch (e) { return rej(e); }
-        r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
+        let r; try { r = indexedDB.open('chb-db', 2); } catch (e) { return rej(e); }
+        // v2 adds 'refused' — same version as app.js's oqDB, bumped together.
+        r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); if (!db.objectStoreNames.contains('refused')) db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true }); };
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
 }
 function swQueueAll(db) { return new Promise((res, rej) => { const tx = db.transaction('queue', 'readonly'); const rq = tx.objectStore('queue').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); }); }
 function swQueueDelete(db, id) { return new Promise((res, rej) => { const tx = db.transaction('queue', 'readwrite'); tx.objectStore('queue').delete(id); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+function swRefusedAdd(db, rec) { return new Promise((res) => { try { const tx = db.transaction('refused', 'readwrite'); tx.objectStore('refused').add(rec); tx.oncomplete = res; tx.onerror = () => res(undefined); } catch (e) { res(undefined); } }); }
 
 async function swFlushQueue() {
     const db = await swQueueDB();
@@ -173,6 +175,14 @@ async function swFlushQueue() {
         // owner re-signs in; don't silently drop it. Any other response is treated as
         // handled so a genuinely-rejected item can't wedge the queue.
         if (r && (r.status === 401 || r.status === 403)) continue;
+        if (r && !r.ok) {
+            // A refusal here happens with the app CLOSED — nobody sees a toast,
+            // and a change the owner believes saved has silently not applied.
+            // Record it so the page surfaces a duty on the next open.
+            let reason = '';
+            try { const j = JSON.parse(await r.text()); reason = String((j && j.error) || '').slice(0, 200); } catch (e) {}
+            await swRefusedAdd(db, { label: String(it.label || ''), endpoint: String(it.endpoint || ''), reason, at: Date.now() });
+        }
         await swQueueDelete(db, it.id);
         sent++;
     }

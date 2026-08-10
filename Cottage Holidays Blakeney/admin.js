@@ -16501,6 +16501,20 @@ function chbDuties() {
             }),
         );
     } catch (e) {}
+    // 1c) A QUEUED WRITE THE SERVER REFUSED — the SW replay can run with the
+    // app CLOSED, where a refusal reaches nobody, and a change the owner
+    // believes saved but that did not apply is the worst lie the queue can
+    // tell. Persists until READ and dismissed.
+    (__oqRefused || []).forEach((r) => {
+        out.push({
+            kind: 'refused', sev: 'danger', ic: 'alert',
+            label: `A change saved offline was refused — ${r.label || 'a queued write'}`,
+            sub: `${r.reason || 'The server said no'} · it did NOT apply`,
+            act: 'Read', go: chbAttrs('oqRefusedOpen', String(r.id)),
+            board: 'today', scope: 'bookings',
+            run: () => { closeCmdK(); oqRefusedOpen(String(r.id)); },
+        });
+    });
     // 1a) A CALENDAR SYNC THAT HAS STOPPED. This was only ever a line in the
     // assistant's foot — you had to open search AND read the bottom of it — and
     // it is the failure that costs the most: while an Airbnb feed is stale its
@@ -17082,6 +17096,34 @@ async function odsPay(i) {
         ? 'Saved on this phone — it posts itself when the signal returns.'
         : 'Payment recorded.');
 }
+// ── Refused replays as duties. __oqRefused mirrors IDB 'refused' (loaded
+//    async on Today; chbDuties is sync and reads the mirror).
+let __oqRefused = [];
+async function oqRefusedLoad() {
+    try {
+        __oqRefused = await oqRefusedAll();
+    } catch (e) {
+        __oqRefused = [];
+    }
+}
+async function oqRefusedOpen(id) {
+    const r = (__oqRefused || []).find((x) => String(x.id) === String(id));
+    if (!r) return;
+    const okd = await glassDialog({
+        type: 'confirm',
+        title: 'This didn’t save',
+        message: (r.label ? r.label + '\n\n' : '')
+            + 'The server refused it' + (r.reason ? ': ' + r.reason : '.')
+            + '\n\nIt was NOT applied — redo it by hand if it still matters. Dismissing only clears this note.',
+        okLabel: 'Dismiss',
+    });
+    if (!okd) return;
+    try {
+        await oqRefusedDelete(r.id);
+    } catch (e) {}
+    await oqRefusedLoad();
+    renderNeedsYou();
+}
 // The deposit DECISION — kept on this phone, never auto-replayed: money leaving
 // still wants a human at the moment it leaves, so reconnecting asks first
 // (odsDepConfirmSweep). What is deferred is the decision, not the authority.
@@ -17095,8 +17137,37 @@ function odsDepDecisions() {
 }
 function odsDepSave(list) {
     try {
-        localStorage.setItem('chb-dep-decisions', JSON.stringify(list.slice(0, 20)));
+        const l = list.slice(0, 20);
+        let s = JSON.stringify(l);
+        // localStorage is ~5MB and a photo is worth less than losing the
+        // DECISIONS — shed the OLDEST photos first if the record outgrows it.
+        for (let i = 0; i < l.length && s.length > 4200000; i++) {
+            if (l[i] && l[i].photo) {
+                delete l[i].photo;
+                s = JSON.stringify(l);
+            }
+        }
+        localStorage.setItem('chb-dep-decisions', s);
     } catch (e) {}
+}
+// Downscale + re-encode to a ≤1280px JPEG. Anything that won't decode returns
+// '' — the DECISION saves either way; the photo is evidence, not a precondition.
+async function odsPhotoData(file) {
+    if (!file || !/^image\//.test(file.type || '')) return '';
+    try {
+        const bmp = await createImageBitmap(file);
+        const scale = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(bmp.width * scale));
+        c.height = Math.max(1, Math.round(bmp.height * scale));
+        const ctx = c.getContext('2d');
+        if (!ctx) return '';
+        ctx.drawImage(bmp, 0, 0, c.width, c.height);
+        const uri = c.toDataURL('image/jpeg', 0.72);
+        return uri.length > 900000 ? c.toDataURL('image/jpeg', 0.5) : uri;
+    } catch (e) {
+        return '';
+    }
 }
 async function odsDep(i) {
     const r = __odsRows[Number(i)];
@@ -17109,12 +17180,20 @@ async function odsDep(i) {
                 { value: 'keep', label: 'Keep it (damage or loss)' },
             ] },
             { id: 'note', label: 'Note (what and why)', type: 'text', value: '' },
+            // Evidence taken IN the cottage — needs no signal; uploads with
+            // the confirmed keep/return.
+            { id: 'photo', label: 'Photo (optional — worth taking if you keep it)', type: 'file' },
         ],
         { title: 'Deposit · ' + gbp(r.dep), okLabel: 'Save the decision' },
     );
     if (vals === null) return;
+    let photo = '';
+    try {
+        photo = await odsPhotoData(vals.photo);
+    } catch (e) {}
     const list = odsDepDecisions().filter((d2) => d2.dbId !== r.dbId);
-    list.push({ dbId: r.dbId, nm: r.nm, amt: r.dep, choice: vals.choice === 'keep' ? 'keep' : 'return', note: String(vals.note || '').slice(0, 500), at: Date.now() });
+    // `photo: undefined` when absent — JSON.stringify drops it from storage.
+    list.push({ dbId: r.dbId, nm: r.nm, amt: r.dep, choice: vals.choice === 'keep' ? 'keep' : 'return', note: String(vals.note || '').slice(0, 500), at: Date.now(), photo: photo || undefined });
     odsDepSave(list);
     renderOfflineDaySheet();
     toast('Decision saved — you’ll confirm it when the signal returns.');
@@ -17146,17 +17225,22 @@ async function odsDepConfirmRun() {
     for (const d2 of list) {
         if (!odsDepDecisions().some((x) => x.dbId === d2.dbId)) continue; // settled since the snapshot
         const verb = d2.choice === 'keep' ? 'Keep' : 'Return';
-        const okd = await glassConfirm(
-            verb + ' ' + gbp(d2.amt) + (d2.choice === 'keep' ? ' from ' : ' to ') + (d2.nm || 'the guest')
+        const okd = await glassDialog({
+            type: 'confirm',
+            message: verb + ' ' + gbp(d2.amt) + (d2.choice === 'keep' ? ' from ' : ' to ') + (d2.nm || 'the guest')
                 + '? You decided this at the cottage' + (d2.note ? ' — “' + d2.note + '”' : '') + '.'
                 + (d2.choice === 'keep' ? '' : ' It goes back to their card and leaves your Square balance today.'),
-            verb === 'Keep' ? 'Keep the deposit' : 'Confirm the refund',
-        );
+            okLabel: verb === 'Keep' ? 'Keep the deposit' : 'Confirm the refund',
+            // The photo taken at the cottage is shown WITH the question it
+            // exists to answer, and uploads with the confirmed op below.
+            img: d2.photo || '',
+        });
         if (!okd) continue; // kept for the next reconnect — never silently dropped
         try {
-            await apiPost('bookings.php', d2.choice === 'keep'
-                ? { action: 'keep_deposit', id: d2.dbId, note: d2.note }
-                : { action: 'return_deposit', id: d2.dbId, note: d2.note });
+            await apiPost('bookings.php', Object.assign(
+                { action: d2.choice === 'keep' ? 'keep_deposit' : 'return_deposit', id: d2.dbId, note: d2.note },
+                d2.photo ? { photo_data: d2.photo } : {},
+            ));
             odsDepSave(odsDepDecisions().filter((x) => x.dbId !== d2.dbId));
             toast(d2.choice === 'keep' ? 'Deposit kept — booked as income.' : gbp(d2.amt) + ' on its way back to ' + (d2.nm || 'the guest') + '.');
         } catch (e) {
@@ -17303,6 +17387,11 @@ async function initBackOffice() {
     }
     try {
         todayOpsLine();
+    } catch (e) {}
+    // Refused replays (IDB, so it works offline too) → the Needs-you strip
+    // repaints once the mirror lands.
+    try {
+        oqRefusedLoad().then(() => renderNeedsYou());
     } catch (e) {}
     try {
         renderNeedsYou();
