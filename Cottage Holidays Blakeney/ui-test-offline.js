@@ -868,6 +868,76 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     '…and never nagged again this session');
   apiDead = false;
 
+  // ── §21 THE UNIFIED DASHBOARD — the sheet wears the online Today's anatomy,
+  //     fed by ONE adapter (chbDayRows): the same ops-line grammar, the
+  //     Needs-you rows routing to the captures, a read-only hub card, and a
+  //     timeline bounded to the days the rows vouch for.
+  console.log('§21 one dashboard, two sources');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();
+  const onlineLine = await page.evaluate(() => (document.getElementById('today-date') || {}).textContent || '');
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  // (a) the ops line — same grammar as the online header, source stated
+  const sheetLine = await page.evaluate(() => (document.querySelector('.ods-opsline') || {}).textContent || '');
+  ok(/1 departure/.test(sheetLine) && /to collect/.test(sheetLine) && /from the saved sheet/.test(sheetLine),
+    `the sheet's ops line speaks the header's grammar, source stated ("${sheetLine.trim()}")`);
+  ok(/1 departure/.test(onlineLine),
+    `…the SAME grammar the online header used moments earlier ("${onlineLine.slice(0, 80)}…")`);
+  // (b) the duties — Needs-you rows, routing to the captures
+  const duties = await page.evaluate(() => Array.from(document.querySelectorAll('.ods-duty .ny-label')).map((n) => n.textContent));
+  ok(duties.some((d2) => /£340\.00 to collect from Marcus Ellery/.test(d2)), 'the money duty names the guest and the figure');
+  ok(duties.some((d2) => /Hannah Whitlock’s £75\.00 deposit to decide/.test(d2)), 'the deposit duty names whose and how much');
+  await page.locator('.ods-duty', { hasText: 'to collect from Marcus' }).click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => /Record a payment/.test((document.getElementById('glass-dialog-title') || {}).textContent || '')),
+    'tapping the money duty opens the CAPTURE — the one action offline can honour');
+  await page.evaluate(() => glassDialogResolve(false));
+  await page.waitForTimeout(300);
+  // (c) the read-only hub card behind the guest's name
+  await page.locator('.ods-open', { hasText: 'Marcus Ellery' }).click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => {
+    const ov = document.getElementById('ods-hub-ov');
+    const t = ov ? ov.textContent : '';
+    return !!ov && ov.classList.contains('open') && /07700 900342/.test(t) && /£340\.00/.test(t) && /needs a connection/.test(t);
+  }), 'the guest\'s name opens the hub-card — phone, money, and the honest boundary');
+  await page.locator('.ods-hub-close').click();
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !document.getElementById('ods-hub-ov').classList.contains('open')), '…and it closes');
+  // (d) the bounded timeline: Today + Tomorrow drawn, beyond hatched UNKNOWN
+  ok(await page.evaluate(() => {
+    const tl = document.querySelector('.ods-tl');
+    if (!tl) return false;
+    const days = Array.from(tl.querySelectorAll('.ods-tl-day')).map((d2) => d2.textContent);
+    const lanes = tl.querySelectorAll('.ods-tl-nm').length;
+    const unknown = tl.querySelectorAll('.ods-tl-cell.unknown').length;
+    return days.includes('Today') && days.includes('Tomorrow') && lanes >= 1 && unknown === lanes;
+  }), 'the timeline draws exactly the vouched days — one hatched UNKNOWN cell per lane, never an empty "free"');
+  ok(await page.evaluate(() => /Marcus/.test((document.querySelector('.ods-tl-cell.has') || {}).textContent || '')),
+    'a stay covering today paints its bar with the guest\'s name');
+  ok(await page.evaluate(() => /unknown/.test((document.querySelector('.ods-tl-note') || {}).textContent || '')),
+    'and the note says what the hatching means');
+  // (e) THE ADAPTER'S OTHER SOURCE: a mid-session takeover (stores loaded)
+  //     renders the same sheet from LIVE data, marker keyed on the source.
+  apiDead = false;
+  await page.evaluate(() => odsRetry());
+  await settle(2500);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) back on live Today');
+  apiDead = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await page.waitForTimeout(900);
+  const liveMark = await page.evaluate(() => (document.querySelector('.ods-mark') || {}).textContent || '');
+  ok(/built from the data already on this phone/.test(liveMark),
+    'a mid-session takeover says its rows came from MEMORY, not the snapshot');
+  ok(await page.evaluate(() => /1 departure/.test((document.querySelector('.ods-opsline') || {}).textContent || '')),
+    '…and the same sections render from the live source — one page, two sources');
+  apiDead = false;
+  await page.evaluate(() => chbNetProbe());
+  await page.waitForTimeout(2500);
+
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
 })();

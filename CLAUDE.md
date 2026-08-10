@@ -4255,7 +4255,28 @@ a HINT to probe now, never a verdict.
   Screen once ever, only on an un-installed Apple touch device. NB odsExpense/
   odsEnquiry call `odsQueueRefresh()` themselves — only odsPay re-renders the sheet,
   and a tray that waits for the 30s tick reads as a capture that vanished.
-- **THE WIFI-ICON RULE** (`chbGoOffline`, wired to the `offline` event; gated by
+- **ONE DASHBOARD, TWO SOURCES** (gated by ui-test-offline §21, four break-tests
+  fired in ISOLATION — a broken duty row kills the suite at its own click, so a
+  combined break run proves only the first break; see the §21 history). The sheet
+  wears the online Today's anatomy, fed by ONE adapter: `chbSnapRowsFromStores()`
+  is the single derivation of the day's rows (the snapshot WRITER and the live
+  path both call it), `chbDayRows()` picks the source (live stores when they hold
+  anything — the wifi-icon takeover mid-session renders from MEMORY, marker
+  reading "built from the data already on this phone" — else the saved snapshot),
+  and `chbOpsParts(tuples)` is the one GRAMMAR both day lines speak (measured
+  identical: "1 arrival · 1 departure · 1 changeover · £340 to collect"; the
+  online header keeps its judgements — hasCheckedIn, owner-arranged zeroing, the
+  needspay button — in its own tuples, the sheet states its source instead).
+  The sheet's own sections: `odsDutiesHtml` (Needs-you row vocabulary, each duty
+  routing to the CAPTURE that answers it — there is no live hub offline — plus
+  the refused-replay records, the one duty class that works entirely from the
+  phone), `odsHubCard` (the guest's NAME is the tap target — a `<button>` with
+  the UA reset — opening a read-only grouped-row card that ends "the full record
+  needs a connection"), and `odsTimelineHtml` — lanes and bars for EXACTLY the
+  days the rows vouch for (today + tomorrow; the snapshot window's
+  guaranteed-complete nights — day+2 can hold un-snapshotted arrivals), with one
+  hatched UNKNOWN cell per lane beyond: an empty cell there would pose as "free",
+  which is the lie the whole day sheet exists to avoid.
   ui-test-offline §19, wiring break-tested). Airplane mode / wifi-off fires the
   browser's `offline` event with NO failed request — the whole back office
   transforms at once: day sheet up, header trimmed, and the owner brought to it

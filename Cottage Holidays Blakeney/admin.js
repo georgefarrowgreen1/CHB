@@ -16905,46 +16905,58 @@ function renderNeedsYou() {
 // The header's living second line: the date plus what today actually holds —
 // arrivals, departures, changeovers and money still to collect. Quiet days
 // read "all quiet"; the numbers come from data already loaded for the page.
-function todayOpsLine() {
-    const el = document.getElementById('today-date');
-    if (!el) return;
-    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+// ONE GRAMMAR for the day line — the header online and the day sheet offline
+// speak identical sentences from whatever tuples the caller supplies:
+// {pk, ci, co, arrived, due} (due already zeroed where a caller must not
+// volunteer it). Returns { parts, owed } — the OWED rendering differs by
+// surface (a filter button online, plain text on the sheet), so it is not
+// folded into parts here.
+function chbOpsParts(tuples) {
     const today = todayDashed();
-    let arrivals = 0,
-        staying = 0,
-        departures = 0,
-        changeovers = 0,
-        owed = 0;
-    Object.keys(dbBookings || {}).forEach((k) => {
-        let inToday = false,
-            outToday = false;
-        (dbBookings[k] || []).forEach((b) => {
-            if (b.checkIn === today) {
-                inToday = true;
-                // Before their check-in time they're an "arrival"; once it's passed
-                // they've arrived and are "staying" — matches the booking-row badge.
-                if (typeof hasCheckedIn === 'function' && hasCheckedIn(b)) staying++;
-                else arrivals++;
-            }
-            if (b.checkOut === today) {
-                departures++;
-                outToday = true;
-            }
-            if ((b.checkOut || '') >= today && !bookingOwnerArranged(b)) {
-                // THE HEADER LINE the owner reads first — deposit-aware, so it agrees
-                // with the bookings summary below it and with each booking's own row;
-                // owner-arranged money is never volunteered.
-                const ps = bookingDue(k, b);
-                if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
-            }
-        });
-        if (inToday && outToday) changeovers++;
+    let arrivals = 0, staying = 0, departures = 0, changeovers = 0, owed = 0;
+    const inout = {};
+    (tuples || []).forEach((t) => {
+        if (t.ci === today) {
+            if (t.arrived) staying++;
+            else arrivals++;
+            (inout[t.pk] = inout[t.pk] || {}).in = true;
+        }
+        if (t.co === today) {
+            departures++;
+            (inout[t.pk] = inout[t.pk] || {}).out = true;
+        }
+        if ((t.co || '') >= today) owed += Math.max(0, t.due || 0);
     });
+    Object.keys(inout).forEach((k) => { if (inout[k].in && inout[k].out) changeovers++; });
     const parts = [];
     if (arrivals) parts.push(arrivals === 1 ? '1 arrival' : arrivals + ' arrivals');
     if (staying) parts.push(staying === 1 ? '1 staying' : staying + ' staying');
     if (departures) parts.push(departures === 1 ? '1 departure' : departures + ' departures');
     if (changeovers) parts.push(changeovers === 1 ? '1 changeover' : changeovers + ' changeovers');
+    return { parts, owed };
+}
+function todayOpsLine() {
+    const el = document.getElementById('today-date');
+    if (!el) return;
+    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    // THE HEADER LINE the owner reads first — deposit-aware (bookingDue), so it
+    // agrees with the bookings summary below it and with each booking's own
+    // row; owner-arranged money is never volunteered; before their check-in
+    // time a guest is an "arrival", after it they're "staying" (matches the
+    // booking-row badge). The tuples carry those judgements; chbOpsParts owns
+    // the words, shared with the offline day sheet.
+    const tuples = [];
+    Object.keys(dbBookings || {}).forEach((k) => {
+        (dbBookings[k] || []).forEach((b) => {
+            let due = 0;
+            if ((b.checkOut || '') >= todayDashed() && !bookingOwnerArranged(b)) {
+                const ps = bookingDue(k, b);
+                if (!ps.fullyPaid) due = Math.max(0, ps.balance || 0);
+            }
+            tuples.push({ pk: k, ci: b.checkIn, co: b.checkOut, arrived: typeof hasCheckedIn === 'function' && hasCheckedIn(b), due });
+        });
+    });
+    const { parts, owed } = chbOpsParts(tuples);
     if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
     // innerHTML: every part is generated (counts + the owed button) — no user text.
     el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
@@ -17046,46 +17058,64 @@ function chbSnapRead(raw) {
     if (!raw && Date.now() - (s.at || 0) > CHB_SNAP_MAX_AGE_H * 3600000) return null;
     return s;
 }
-function chbSnapWrite() {
-    try {
-        const today = todayDashed(), tom = ukShiftDays(today, 1), dayAfter = ukShiftDays(today, 2);
-        const rows = [];
-        Object.keys(dbBookings || {}).forEach((pk) => {
-            (dbBookings[pk] || []).forEach((b) => {
-                if (!b || !b.checkIn || !b.checkOut) return;
-                // today's movements + in-residence + the next two mornings' arrivals,
-                // so a snapshot taken tonight still covers tomorrow's changeover
-                const keep = b.checkOut === today || (b.checkIn >= today && b.checkIn < dayAfter)
-                    || (b.checkIn < today && b.checkOut > today);
-                if (!keep) return;
-                // bookingDue returns the displayGrand SHAPE — the balance member is
-                // the one owner-facing "still to collect" figure (see CLAUDE.md).
-                let due = 0;
-                try { due = Math.max(0, Number((bookingDue(pk, b) || {}).balance) || 0); } catch (e) {}
-                // The RENTAL frame too (paymentSummary), because the offline
-                // record-payment capture mirrors the online recorder's payload and
-                // set_payment reconciles against the rental total, not the folded one.
-                let rtot = 0, rpaid = 0;
-                try {
-                    const ps = paymentSummary(pk, b);
-                    rtot = Math.round((Number(ps.total) || 0) * 100) / 100;
-                    rpaid = Math.round((Number(ps.deposit) || 0) * 100) / 100;
-                } catch (e) {}
-                rows.push({
-                    pk, cot: (propertyMeta[pk] || {}).name || pk,
-                    dbId: Number(b.dbId) || 0,
-                    nm: b.name || '', ph: b.phone || '',
-                    ci: b.checkIn, co: b.checkOut, cit: b.checkInTime || '', cot_t: b.checkOutTime || '',
-                    party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
-                    due: Math.round(due * 100) / 100,
-                    dep: (b.holdStatus === 'charged' || b.holdStatus === 'captured') ? Math.round((Number(b.holdAmount) || 0) * 100) / 100 : 0,
-                    rtot, rpaid,
-                    dmg: Math.round((Number(b.damagesDeposit) || 0) * 100) / 100,
-                    holdNone: (b.holdStatus || 'none') === 'none',
-                    notes: String(b.notes || '').slice(0, 300),
-                });
+// ONE derivation of "the day's rows" — the snapshot WRITER and the live
+// adapter (chbDayRows) both call this, so the two sources can never describe
+// one booking differently. The window: today's movements + in-residence + the
+// next two mornings' arrivals, so a snapshot taken tonight still covers
+// tomorrow's changeover.
+function chbSnapRowsFromStores() {
+    const today = todayDashed(), dayAfter = ukShiftDays(today, 2);
+    const rows = [];
+    Object.keys(dbBookings || {}).forEach((pk) => {
+        (dbBookings[pk] || []).forEach((b) => {
+            if (!b || !b.checkIn || !b.checkOut) return;
+            const keep = b.checkOut === today || (b.checkIn >= today && b.checkIn < dayAfter)
+                || (b.checkIn < today && b.checkOut > today);
+            if (!keep) return;
+            // bookingDue returns the displayGrand SHAPE — the balance member is
+            // the one owner-facing "still to collect" figure (see CLAUDE.md).
+            let due = 0;
+            try { due = Math.max(0, Number((bookingDue(pk, b) || {}).balance) || 0); } catch (e) {}
+            // The RENTAL frame too (paymentSummary), because the offline
+            // record-payment capture mirrors the online recorder's payload and
+            // set_payment reconciles against the rental total, not the folded one.
+            let rtot = 0, rpaid = 0;
+            try {
+                const ps = paymentSummary(pk, b);
+                rtot = Math.round((Number(ps.total) || 0) * 100) / 100;
+                rpaid = Math.round((Number(ps.deposit) || 0) * 100) / 100;
+            } catch (e) {}
+            rows.push({
+                pk, cot: (propertyMeta[pk] || {}).name || pk,
+                dbId: Number(b.dbId) || 0,
+                nm: b.name || '', ph: b.phone || '',
+                ci: b.checkIn, co: b.checkOut, cit: b.checkInTime || '', cot_t: b.checkOutTime || '',
+                party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
+                due: Math.round(due * 100) / 100,
+                dep: (b.holdStatus === 'charged' || b.holdStatus === 'captured') ? Math.round((Number(b.holdAmount) || 0) * 100) / 100 : 0,
+                rtot, rpaid,
+                dmg: Math.round((Number(b.damagesDeposit) || 0) * 100) / 100,
+                holdNone: (b.holdStatus || 'none') === 'none',
+                notes: String(b.notes || '').slice(0, 300),
             });
         });
+    });
+    return rows;
+}
+// THE ADAPTER — one question ("what is the day?"), two sources. Live stores
+// when they hold anything; the saved snapshot when they don't. Consumers key
+// off `source`, so "from the saved sheet" is stated once, not per-surface.
+function chbDayRows() {
+    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) {
+        return { source: 'live', at: Date.now(), rows: chbSnapRowsFromStores() };
+    }
+    const s = chbSnapRead();
+    return s ? { source: 'snapshot', at: s.at || 0, rows: s.rows || [] } : { source: 'none', at: 0, rows: [] };
+}
+function chbSnapWrite() {
+    try {
+        const today = todayDashed();
+        const rows = chbSnapRowsFromStores();
         // ops notes: best available now, else what the LAST snapshot carried —
         // adminPrivateContent only fills when Manage is opened, and forgetting the
         // key-safe codes because the owner didn't visit Settings today would decay
@@ -17160,7 +17190,14 @@ function chbSnapWhen(s) {
     return 'saved on ' + fmtDate(s.day);
 }
 function renderOfflineDaySheet() {
-    const s = chbSnapRead();
+    // THE ADAPTER decides the source: live stores when they hold anything (the
+    // wifi-icon takeover mid-session — fresher than any snapshot), the saved
+    // snapshot on a cold boot. The marker below is keyed on which one spoke.
+    const day = chbDayRows();
+    const snap = chbSnapRead();
+    const s = day.source === 'live'
+        ? Object.assign({}, snap || {}, { at: day.at, day: todayDashed(), rows: day.rows, __live: true })
+        : snap;
     const host = document.getElementById('view-backoffice');
     if (!s || !host) return false;
     let el = document.getElementById('offline-daysheet');
@@ -17207,7 +17244,7 @@ function renderOfflineDaySheet() {
         }
         return '<div class="ny-row ods-row' + sev + '"><div class="ny-main">'
             + '<span class="prop-tag tag-' + e(r.pk) + '">' + e(r.cot) + '</span>'
-            + '<span class="ny-label">' + e(r.nm) + '</span>'
+            + '<button type="button" class="ny-label ods-open" ' + chbAttrs('odsHubCard', String(i)) + '>' + e(r.nm) + '</button>'
             + '<span class="ny-sub">' + when + ' · ' + e(r.party) + (g === 'tomorrow' ? ' · ' + e(fmtDate(r.ci)) : '') + '</span>'
             + (r.notes ? '<span class="ods-note">' + e(r.notes) + '</span>' : '')
             + (chips.length ? '<span class="ods-chips">' + chips.join('') + '</span>' : '')
@@ -17226,10 +17263,16 @@ function renderOfflineDaySheet() {
     // The banner is the mode's IDENTITY: wifi-off mark, live freshness
     // (odsMarkWire ticks it, stale past 6h) and the probe made visible.
     const ICW = '<svg class="ic ods-mark-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l22 22"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>';
+    // The marker tells the truth about the SOURCE: a mid-session takeover
+    // renders from the data already in memory (fresher than any snapshot); a
+    // cold boot renders the saved sheet. One page either way.
+    const provenance = s.__live
+        ? 'built from the data already on this phone'
+        : 'this is the day sheet ' + e(chbSnapWhen(s));
     el.innerHTML =
         '<div class="ods-mark" role="status">'
         + ICW
-        + '<span><b>Offline</b> — this is the day sheet ' + e(chbSnapWhen(s))
+        + '<span><b>Offline</b> — ' + provenance
         + '<span id="ods-fresh"></span>. Anything may have moved since; nothing here is live.'
         + ' <em id="ods-probe" class="ods-probe"></em></span>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsRetry') + '>Try again</button>'
@@ -17237,6 +17280,9 @@ function renderOfflineDaySheet() {
         + '<div id="ods-queue" class="ods-queue" style="display:none;"></div>'
         + odsCoastLine(s)
         + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
+        + odsOpsLineHtml(s.rows || [], s.__live)
+        + odsDutiesHtml(s.rows || [])
+        + odsTimelineHtml(s.rows || [])
         + sec('Leaving today', 'leave')
         + sec('Arriving today', 'arrive')
         + sec('Staying', 'staying')
@@ -17254,6 +17300,120 @@ function renderOfflineDaySheet() {
     odsMarkWire(s);
     odsQueueRefresh();
     return true;
+}
+// ── THE UNIFIED SECTIONS — the same anatomy the online Today wears, rendered
+//    from the day's rows. Each refuses to invent: the ops line shares the
+//    online header's grammar (chbOpsParts), the duties wear the Needs-you
+//    row vocabulary and route to the CAPTURES (there is no live hub to open),
+//    and the timeline draws exactly the days the rows vouch for.
+function odsOpsLineHtml(rows, live) {
+    const { parts, owed } = chbOpsParts((rows || []).map((r) => ({ pk: r.pk, ci: r.ci, co: r.co, arrived: false, due: r.due || 0 })));
+    if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
+    const e = escapeHtml;
+    return '<div class="ods-opsline">' + e(parts.length ? parts.join(' · ') : 'all quiet today')
+        + ' <span class="ods-src">— from ' + (live ? 'this phone’s data' : 'the saved sheet') + '</span></div>';
+}
+function odsDutiesHtml(rows) {
+    const today = todayDashed();
+    const out = [];
+    const decided = odsDepDecisions().map((d2) => d2.dbId);
+    (rows || []).forEach((r, i) => {
+        if ((r.due || 0) > 0.005 && (r.co || '') >= today && __odsQueued.indexOf(r.dbId) === -1 && r.dbId) {
+            out.push({
+                sev: 'ny-danger',
+                l: gbp(r.due) + ' to collect from ' + (r.nm || 'a guest'),
+                s: (r.ci === today ? 'arriving today' : r.ci < today ? 'in residence' : 'arriving ' + fmtDate(r.ci)) + ' · ' + r.cot,
+                act: chbAttrs('odsPay', String(i)),
+            });
+        }
+        if (r.co === today && (r.dep || 0) > 0.005 && decided.indexOf(r.dbId) === -1 && r.dbId) {
+            out.push({
+                sev: '',
+                l: (r.nm || 'A guest') + '’s ' + gbp(r.dep) + ' deposit to decide',
+                s: 'checks out this morning · ' + r.cot,
+                act: chbAttrs('odsDep', String(i)),
+            });
+        }
+    });
+    // Refused replays keep their place — the one duty class that works
+    // entirely from this phone (the record is IDB, the reader a dialog).
+    (__oqRefused || []).forEach((f) => out.push({
+        sev: 'ny-danger',
+        l: 'A change saved offline was refused — ' + (f.label || 'a queued write'),
+        s: (f.reason || 'the server said no') + ' · it did NOT apply',
+        act: chbAttrs('oqRefusedOpen', String(f.id)),
+    }));
+    if (!out.length) return '';
+    const e = escapeHtml;
+    return '<h2 class="bo-sec-title">Needs you <span class="inbox-badge">' + out.length + '</span></h2>'
+        + out.map((d) => '<button type="button" class="ny-row glass-panel ods-duty ' + d.sev + '" ' + d.act + '>'
+            + '<span class="ny-main"><span class="ny-label">' + e(d.l) + '</span><span class="ny-sub">' + e(d.s) + '</span></span>'
+            + '<span class="ods-duty-go">Open ›</span></button>').join('');
+}
+// The timeline, BOUNDED: lanes and bars across only the days the rows vouch
+// for (today + tomorrow — the snapshot window's guaranteed-complete nights).
+// Beyond the horizon is hatched UNKNOWN, never an empty cell posing as free.
+function odsTimelineHtml(rows) {
+    if (!(rows || []).length) return '';
+    const today = todayDashed();
+    const days = [today, ukShiftDays(today, 1)];
+    const lanes = {};
+    rows.forEach((r) => {
+        (lanes[r.pk] = lanes[r.pk] || { cot: r.cot, rows: [] }).rows.push(r);
+    });
+    const pks = Object.keys(lanes);
+    const e = escapeHtml;
+    const dayLabel = (iso, i) => (i === 0 ? 'Today' : 'Tomorrow');
+    let html = '<div class="ods-tl"><div class="ods-tl-grid" style="--lanes:' + pks.length + ';">'
+        + '<span></span>' + days.map((d2, i) => '<span class="ods-tl-day' + (i === 0 ? ' is-today' : '') + '">' + dayLabel(d2, i) + '</span>').join('') + '<span class="ods-tl-day">beyond</span>';
+    pks.forEach((pk) => {
+        html += '<span class="ods-tl-nm"><span class="prop-tag tag-' + e(pk) + '">' + e(lanes[pk].cot) + '</span></span>';
+        days.forEach((d2) => {
+            const r = lanes[pk].rows.find((x) => x.ci <= d2 && x.co > d2);
+            html += '<span class="ods-tl-cell' + (r ? ' has' : '') + '">' + (r ? '<i>' + e(chbSayFirst(r.nm || '')) + '</i>' : '') + '</span>';
+        });
+        html += '<span class="ods-tl-cell unknown" title="Beyond the saved window — unknown, not free"></span>';
+    });
+    html += '</div><div class="ods-tl-note">Drawn from the sheet: the hatched column is <b>unknown</b>, never “free” — the live calendar needs a connection.</div></div>';
+    return html;
+}
+// The read-only HUB CARD — the booking hub's grouped-row anatomy from the
+// day's rows: tap a guest's name, get the record this phone holds, honestly
+// bounded ("the full record needs a connection").
+function odsHubCard(i) {
+    const r = __odsRows[Number(i)];
+    if (!r) return;
+    let ov = document.getElementById('ods-hub-ov');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'ods-hub-ov';
+        ov.className = 'ods-hub-ov';
+        ov.addEventListener('click', (e2) => { if (e2.target === ov) ov.classList.remove('open'); });
+        document.body.appendChild(ov);
+    }
+    const e = escapeHtml;
+    const kv = (l, v) => (v ? '<div class="ods-kv"><b>' + l + '</b><span>' + e(String(v)) + '</span></div>' : '');
+    ov.innerHTML = '<div class="ods-hub">'
+        + '<h3>' + e(r.nm || 'Guest') + '</h3>'
+        + '<div class="ods-hub-cap">Read-only — from the day sheet on this phone</div>'
+        + kv('Cottage', r.cot)
+        + kv('Stay', fmtStayRange(r.ci, r.co))
+        + kv('Party', r.party)
+        + kv('Phone', r.ph)
+        + ((r.due || 0) > 0.005 && __odsQueued.indexOf(r.dbId) === -1 ? kv('Still to collect', gbp(r.due)) : '')
+        + ((r.dep || 0) > 0.005 ? kv('Deposit held', gbp(r.dep)) : '')
+        + kv('Notes', r.notes)
+        + (r.ph
+            ? '<div class="ods-hub-acts"><a class="btn-sm btn-edit" href="tel:' + e(r.ph) + '">Call</a><a class="btn-sm btn-edit" href="sms:' + e(r.ph) + '">Text</a></div>'
+            : '')
+        + '<p class="ods-hub-foot">The full record — ledger, activity, emails — needs a connection. Everything above came from the sheet.</p>'
+        + '<button class="btn-sm btn-edit ods-hub-close" ' + chbAttrs('odsHubClose') + '>Close</button>'
+        + '</div>';
+    ov.classList.add('open');
+}
+function odsHubClose() {
+    const ov = document.getElementById('ods-hub-ov');
+    if (ov) ov.classList.remove('open');
 }
 // ── The banner's living parts. One interval owns the freshness readout and
 //    the queue section together (cleared and re-armed on every render); the
