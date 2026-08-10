@@ -82,6 +82,11 @@ function keysafe_read($raw)
         return $empty;
     }
     $code = isset($d['code']) && is_string($d['code']) && preg_match('/^\d{4}$/', $d['code']) ? $d['code'] : '';
+    // The STAY REF identifies who the safe was set for when there is no
+    // bookings row — a platform (Airbnb/Vrbo) stay, keyed 'o:<check-in>'
+    // (block ids are re-minted on every sync and cannot anchor a record).
+    // Direct stays keep matching on forBooking; the ref rides beside it.
+    $ref = fn($v) => is_string($v) && preg_match('/^[bo]:[\w:-]{1,40}$/', $v) ? $v : '';
     $hist = [];
     foreach (is_array($d['history'] ?? null) ? $d['history'] : [] as $h) {
         if (!is_array($h) || !isset($h['code']) || !preg_match('/^\d{4}$/', (string) $h['code'])) {
@@ -91,6 +96,7 @@ function keysafe_read($raw)
             'code' => (string) $h['code'],
             'setAt' => is_string($h['setAt'] ?? null) ? $h['setAt'] : '',
             'forBooking' => (int) ($h['forBooking'] ?? 0),
+            'forStay' => $ref($h['forStay'] ?? ''),
             'guest' => is_string($h['guest'] ?? null) ? $h['guest'] : '',
         ];
         if (count($hist) >= KEYSAFE_HISTORY_MAX) {
@@ -101,6 +107,7 @@ function keysafe_read($raw)
         'code' => $code,
         'setAt' => is_string($d['setAt'] ?? null) ? $d['setAt'] : '',
         'forBooking' => (int) ($d['forBooking'] ?? 0),
+        'forStay' => $ref($d['forStay'] ?? ''),
         'history' => $hist,
     ];
 }

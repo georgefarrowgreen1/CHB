@@ -21,8 +21,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     { id: 1, prop_key: '21a', name: 'Hannah Whitlock', email: 'h@x.co', phone: '', address: '', postcode: '', check_in: d(-5), check_out: d(0), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-9), agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30), hold_status: 'none', notes: '' },
     { id: 2, prop_key: '21a', name: 'Marcus Ellery', email: 'm@x.co', phone: '', address: '', postcode: '', check_in: d(1), check_out: d(4), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-9), agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30), hold_status: 'none', notes: '' },
   ];
-  // The stubbed safe record: still set for HANNAH (booking 1).
-  let SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, history: [{ code: '3074', setAt: d(-15) + 'T09:00:00Z', forBooking: 0, guest: 'Priya Raman' }], name: '21A Westgate' };
+  // The stubbed safe records: 21a still set for HANNAH (booking 1);
+  // jollyboat never recorded — its next stay is an AIRBNB import.
+  let SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, forStay: 'b:1', history: [{ code: '3074', setAt: d(-15) + 'T09:00:00Z', forBooking: 0, forStay: '', guest: 'Priya Raman' }], name: '21A Westgate' };
+  let SAFE_JB = { code: '', setAt: '', forBooking: 0, forStay: '', history: [], name: 'Jollyboat' };
   const confirms = []; // every confirm POST the wire sees
   let apiDead = false;
   await page.route(/\.php/, (route) => {
@@ -33,13 +35,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (url.includes('keysafe.php') && b.action === 'confirm') confirms.push(b);
     if (apiDead) return route.abort();
     if (url.includes('keysafe.php')) {
-      if (b.action === 'state') return json({ ok: true, safes: { '21a': SAFE }, revealDays: 2 });
+      if (b.action === 'state') return json({ ok: true, safes: { '21a': SAFE, 'jollyboat': SAFE_JB }, revealDays: 2 });
       if (b.action === 'confirm') {
-        SAFE = Object.assign({}, SAFE, { code: b.code, setAt: new Date().toISOString(), forBooking: b.booking_id, history: [{ code: '9265', setAt: SAFE.setAt, forBooking: 1, guest: 'Hannah Whitlock' }].concat(SAFE.history) });
-        return json({ ok: true, safe: SAFE });
+        const upd = (r) => Object.assign({}, r, { code: b.code, setAt: new Date().toISOString(), forBooking: b.booking_id, forStay: b.stay_ref || '', history: (r.code ? [{ code: r.code, setAt: r.setAt, forBooking: r.forBooking, forStay: r.forStay || '', guest: r.forBooking === 1 ? 'Hannah Whitlock' : '' }] : []).concat(r.history) });
+        if (b.prop_key === 'jollyboat') { SAFE_JB = upd(SAFE_JB); return json({ ok: true, safe: SAFE_JB }); }
+        SAFE = upd(SAFE); return json({ ok: true, safe: SAFE });
       }
     }
-    if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
+    if (url.includes('ical-import.php')) return json({ ok: true, blocks: [{ id: 900, prop_key: 'jollyboat', source: 'airbnb', check_in: d(1), check_out: d(4) }] });
+    if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }, { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 140, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 2 }], seasons: {}, occupancy: {} });
     if (url.includes('bookings.php')) {
       if (b.action === 'email_logs') return json({ ok: true, logs: {} });
       if (b.action === 'history') return json({ ok: true, history: [] });
@@ -74,7 +78,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/Priya Raman/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the history names who had which code');
 
   console.log('§3 the rotate flow');
-  await page.locator('#keysafe-body button', { hasText: 'Rotate the code' }).click();
+  await page.locator('.ks-card', { hasText: '21A' }).locator('button', { hasText: 'Rotate the code' }).click();
   await page.waitForTimeout(400);
   const pre = await page.evaluate(() => (document.getElementById('gdf-code') || {}).value || '');
   ok(/^\d{4}$/.test(pre), 'a fresh 4-digit code is filled in (' + pre + ')');
@@ -88,7 +92,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(300);
   // The real rotation: overtype a chosen code, confirm.
-  await page.locator('#keysafe-body button', { hasText: 'Rotate the code' }).click();
+  await page.locator('.ks-card', { hasText: '21A' }).locator('button', { hasText: 'Rotate the code' }).click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '4826'; });
   await page.locator('#glass-dialog-ok').click();
@@ -104,7 +108,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // Reset the record to "still Hannah's" and reload the mirror: the duty fires.
   SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, history: [], name: '21A Westgate' };
   await page.evaluate(async () => { __keysafe = null; await keysafeLoad(); });
-  const duties = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe'));
+  // scoped to 21A — jollyboat's unrotated Airbnb stay legitimately mints its own (§6)
+  const duties = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)));
   const duty0 = duties[0] || {};
   ok(duties.length === 1, 'one rotation duty for the cottage');
   ok(duty0.sev === 'danger', '…RED — Marcus arrives tomorrow, his reveal window is open and empty');
@@ -114,7 +119,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => /Rotate 21A/.test((document.getElementById('needs-you-list') || {}).textContent || '')), 'and it renders on Today’s strip');
   // Confirmed for Marcus → the duty stands down (never nags a done job).
   await page.evaluate(() => { __keysafe['21a'] = Object.assign({}, __keysafe['21a'], { code: '4826', forBooking: 2 }); });
-  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe').length) === 0, 'once the safe is set for him, the duty is gone');
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 0, 'once the safe is set for him, the duty is gone');
   // …and no mirror means NO duty — never a duty from ignorance.
   ok(await page.evaluate(() => { const keep = __keysafe; __keysafe = null; const n = chbDuties().filter((x) => x.kind === 'keysafe').length; __keysafe = keep; return n; }) === 0, 'an unloaded mirror mints no duty');
 
@@ -146,6 +151,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(confirms.length >= 1 && ids.length === 1, `every wire attempt carries ONE op_id (${confirms.length} attempt(s), ${ids.length} id) — the ledger's exactly-once contract`);
   ok(await page.evaluate(() => (__keysafe['21a'] || {}).code === '5917'), 'the local mirror updated at once — the sheet stops nagging before the signal returns');
   apiDead = false;
+
+  console.log('§6 a platform stay rotates too — identified by ref, told via the platform');
+  apiDead = false;
+  await page.evaluate(async () => { __keysafe = null; await keysafeLoad(); await openKeysafe(); });
+  await page.waitForTimeout(900);
+  const jb = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
+  ok(/Airbnb guest/.test(jb), 'the Airbnb stay is the jollyboat card\'s next guest — external bookings count');
+  ok(/share it in your Airbnb message thread/.test(jb), '…and the reveal line is honest: platform guests don\'t see this site, share it in the thread');
+  const otaDuty = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label))[0] || null);
+  ok(!!otaDuty && otaDuty.sev === 'danger', 'the rotation duty fires for the platform stay (red — they arrive tomorrow)');
+  confirms.length = 0;
+  const jbCard = page.locator('.ks-card', { hasText: 'Jollyboat' });
+  await jbCard.locator('button', { hasText: 'Rotate the code' }).click();
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { document.getElementById('gdf-code').value = '6183'; });
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(900);
+  ok(confirms.length === 1 && confirms[0].booking_id === 0 && confirms[0].stay_ref === 'o:' + d(1),
+    `the confirm identifies the stay by ref, not a booking id (${confirms[0] && confirms[0].stay_ref})`);
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label)).length) === 0,
+    'and once the safe is set for them, the duty is gone');
+  ok(/code on the safe ✓/.test(await page.evaluate(() => document.querySelectorAll('.ks-card')[1].textContent)),
+    'the card flips — the platform stay wears the same ✓ a direct one does');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nKEYSAFE UI PASSED ✅');
   await done(fails);

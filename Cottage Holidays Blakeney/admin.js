@@ -16596,7 +16596,7 @@ function chbDuties() {
         if (__keysafe) Object.keys(__keysafe).forEach((pk) => {
             const rec = __keysafe[pk] || {};
             const next = keysafeNextBooking(pk);
-            if (!next || Number(rec.forBooking) === Number(next.dbId)) return;
+            if (!next || keysafeSetFor(rec, next)) return;
             const soon = dpParse(next.checkIn).getTime() - t0 <= __keysafeDays * dayMs;
             out.push({
                 kind: 'keysafe', sev: soon ? 'danger' : 'warn', ic: 'alert',
@@ -17231,16 +17231,34 @@ function keysafeGen(exclude) {
     return '4821';
 }
 // The stay the safe should currently be set FOR: whoever is in residence,
-// else the soonest arrival. One definition — the page, the duty and the
-// rotate dialog must never disagree about who "next" is.
+// else the soonest arrival — DIRECT bookings and PLATFORM stays alike (an
+// Airbnb guest needs the safe rotated for them exactly as much; the sync's
+// mirror-suppression means a block here is a real external stay). One
+// definition — the page, the duty and the rotate dialog must never disagree
+// about who "next" is. An OTA stay has no bookings row, so it is identified
+// by `ref` ('o:' + check-in — block ids are re-minted on every sync and
+// cannot anchor a record); a direct stay keeps matching on dbId.
 function keysafeNextBooking(pk) {
     const today = todayDashed();
     let best = null;
     ((dbBookings || {})[pk] || []).forEach((b) => {
         if (!b || !b.checkIn || !b.checkOut || b.checkOut <= today) return;
-        if (!best || b.checkIn < best.checkIn) best = b;
+        if (!best || b.checkIn < best.checkIn) best = { dbId: b.dbId, name: b.name || '', checkIn: b.checkIn, checkOut: b.checkOut, ota: false, ref: 'b:' + b.dbId };
+    });
+    ((dbBlocks || {})[pk] || []).forEach((bl) => {
+        if (!isOtaBlock(bl) || bl.checkOut <= today) return;
+        if (!best || bl.checkIn < best.checkIn) {
+            const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
+            best = { dbId: 0, name: src + ' guest', checkIn: bl.checkIn, checkOut: bl.checkOut, ota: true, ref: 'o:' + bl.checkIn };
+        }
     });
     return best;
+}
+// Is the record set for THIS stay? Direct stays match on the booking id,
+// platform stays on the stored stay ref — one rule for the page and the duty.
+function keysafeSetFor(rec, next) {
+    if (!rec || !rec.code || !next) return false;
+    return next.ota ? (rec.forStay || '') === next.ref : Number(rec.forBooking) === Number(next.dbId);
 }
 async function openKeysafe() {
     nav('view-keysafe'); // navigate first, load second — the poor-signal rule
@@ -17260,9 +17278,10 @@ function renderKeysafe() {
     host.innerHTML = Object.keys(__keysafe).map((pk) => {
         const rec = __keysafe[pk] || {};
         const next = keysafeNextBooking(pk);
-        const nextMine = !!(next && rec.code && Number(rec.forBooking) === Number(next.dbId));
+        const nextMine = keysafeSetFor(rec, next);
         const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
         const forGuest = (() => {
+            if ((rec.forStay || '').charAt(0) === 'o') return 'a platform guest';
             if (!rec.forBooking) return '';
             const all = ((dbBookings || {})[pk] || []).find((b) => Number(b.dbId) === Number(rec.forBooking));
             if (all) return all.name || '';
@@ -17282,13 +17301,17 @@ function renderKeysafe() {
                         ? '<span class="bhub-chip is-ok">code on the safe ✓</span>'
                         : '<span class="bhub-chip is-warn">no code set for them' + (soon ? ' — due now' : '') + '</span>') + '</span></div>'
                     + '<div class="ks-kv"><span class="ks-k">They see it</span><span class="ks-v"><small>'
-                    + (nextMine
-                        ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
-                        : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
+                    + (next.ota
+                        // A platform guest has no account here, so the reveal
+                        // cannot reach them — the platform's own thread can.
+                        ? 'share it in your ' + e(next.name.replace(' guest', '')) + ' message thread — platform guests don’t see this site'
+                        : nextMine
+                            ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
+                            : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
                 : '<div class="ks-kv"><span class="ks-k">Next guest</span><span class="ks-v"><small>no upcoming booking</small></span></div>')
             + ((rec.history || []).length
                 ? '<details class="ks-hist"><summary>Who had which code</summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'
-                    + rec.history.map((h) => '<tr><td><span class="ks-code">' + e(h.code) + '</span></td><td>' + e(h.guest || '—') + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
+                    + rec.history.map((h) => '<tr><td><span class="ks-code">' + e(h.code) + '</span></td><td>' + e(h.guest || ((h.forStay || '').charAt(0) === 'o' ? 'Platform guest' : '—')) + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
                     + '</table><p class="ks-note">Stored encrypted, like your private cottage notes. The log says which code was live and when it changed — your record if entry is ever disputed.</p></details>'
                 : '')
             + '</div>';
@@ -17323,14 +17346,18 @@ async function keysafeRotate(pk) {
         glassAlert('That code is too guessable — four digits, not a run or a repeat. The safe was not recorded.');
         return;
     }
-    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next ? next.dbId : 0 };
+    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next && !next.ota ? next.dbId : 0, stay_ref: next ? next.ref : '' };
     payload.op_id = chbOpFor(payload);
     try {
         const r = await apiPost('keysafe.php', payload);
         if (r && r.ok && r.safe) {
             __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, r.safe);
             chbOpBump();
-            toast(`Safe recorded as ${code}` + (next ? ` — ${chbSayFirst(next.name || 'the guest')} sees it on their booking page ${keysafeRevealOpen(next, todayDashed()) ? 'now' : 'from ' + fmtDate(ukShiftDays(next.checkIn, -__keysafeDays))}.` : '.'));
+            toast(`Safe recorded as ${code}` + (next
+                ? next.ota
+                    ? ` — share it with your ${next.name} in the platform’s messages.`
+                    : ` — ${chbSayFirst(next.name || 'the guest')} sees it on their booking page ${keysafeRevealOpen(next, todayDashed()) ? 'now' : 'from ' + fmtDate(ukShiftDays(next.checkIn, -__keysafeDays))}.`
+                : '.'));
             renderKeysafe();
             renderNeedsYou();
         } else {
@@ -17345,11 +17372,15 @@ async function keysafeRotate(pk) {
 // once on replay) and updates the local mirror so the sheet's duty clears.
 async function odsKeysafe(pk) {
     const rec = (__keysafe || {})[pk] || { code: '', history: [] };
-    const next = keysafeNextBooking(pk) || ((chbSnapRead() || {}).rows || []).filter((r) => r.pk === pk && r.dbId && r.ci >= todayDashed()).map((r) => ({ dbId: r.dbId, name: r.nm, checkIn: r.ci, checkOut: r.co }))[0] || null;
+    const next = keysafeNextBooking(pk) || ((chbSnapRead() || {}).rows || []).filter((r) => r.pk === pk && r.ci >= todayDashed() && (r.dbId || r.ota)).map((r) => ({ dbId: r.dbId || 0, name: r.nm, checkIn: r.ci, checkOut: r.co, ota: !!r.ota, ref: r.ota ? 'o:' + r.ci : 'b:' + r.dbId }))[0] || null;
     const gen = keysafeGen([rec.code].concat((rec.history || []).map((h) => h.code)));
     const nm = (propertyMeta[pk] || {}).name || pk;
     const vals = await glassForm(
-        (next ? `${next.name || 'The next guest'} — their code goes live on their booking page when the signal returns, never before the safe is set.` : 'Recorded for the cottage; posts itself when the signal returns.'),
+        (next
+            ? next.ota
+                ? `${next.name || 'A platform guest'} — share the code in the platform’s messages once it’s set; platform guests don’t see this site.`
+                : `${next.name || 'The next guest'} — their code goes live on their booking page when the signal returns, never before the safe is set.`
+            : 'Recorded for the cottage; posts itself when the signal returns.'),
         [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
         { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
     );
@@ -17359,10 +17390,10 @@ async function odsKeysafe(pk) {
         glassAlert('That code is too guessable — four digits, not a run or a repeat. Nothing was recorded.');
         return;
     }
-    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next ? next.dbId : 0 };
+    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next && !next.ota ? next.dbId : 0, stay_ref: next ? next.ref : '' };
     payload.op_id = chbOpFor(payload);
     __keysafe = __keysafe || {};
-    __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, { code, setAt: new Date().toISOString(), forBooking: next ? next.dbId : 0 });
+    __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, { code, setAt: new Date().toISOString(), forBooking: next && !next.ota ? next.dbId : 0, forStay: next ? next.ref : '' });
     chbOpBump();
     queueOrPost('keysafe.php', payload, 'Key safe · ' + nm).catch(() => {});
     toast('Recorded on this phone — it posts itself when the signal returns.');
@@ -17609,9 +17640,11 @@ function odsDutiesHtml(rows) {
     // the safe isn't set for.
     const ksSeen = {};
     (rows || []).forEach((r) => {
-        if (!r.dbId || r.ota || ksSeen[r.pk] || (r.ci || '') < today) return;
+        if ((!r.dbId && !r.ota) || ksSeen[r.pk] || (r.ci || '') < today) return;
         const rec = (__keysafe || {})[r.pk];
-        if (!rec || Number(rec.forBooking) === Number(r.dbId)) return;
+        // Platform stays rotate too — matched on the stay ref, since they
+        // have no bookings row (keysafeSetFor, the one rule).
+        if (!rec || keysafeSetFor(rec, { ota: !!r.ota, dbId: r.dbId || 0, ref: 'o:' + r.ci })) return;
         ksSeen[r.pk] = 1;
         out.push({
             sev: r.ci === today ? 'ny-danger' : '',

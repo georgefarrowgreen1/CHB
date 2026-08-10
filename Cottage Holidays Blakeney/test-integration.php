@@ -1542,6 +1542,14 @@ it_check('the near guest no longer sees the superseded code', ($bk['door_code'] 
 $ksState = http($admin, 'POST', '/keysafe.php', ['action' => 'state'])['json']['safes'][$propKey] ?? [];
 it_check('the history names who had the previous code', ($ksState['history'][0]['guest'] ?? '') === 'Keysafe Guest' && ($ksState['history'][0]['code'] ?? '') === '4821', json_encode($ksState['history'][0] ?? null));
 
+// (h) A PLATFORM stay has no bookings row, so it is identified by stay_ref
+// ('o:<check-in>') — round-tripped through the encrypted record; a garbage
+// ref reads as none rather than anything at all.
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '5917', 'booking_id' => 0, 'stay_ref' => 'o:2027-09-01', 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+it_check('a platform-stay rotation stores its stay ref', ($r['json']['safe']['forStay'] ?? '') === 'o:2027-09-01', $r['raw']);
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '6183', 'booking_id' => 0, 'stay_ref' => '<script>bad', 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+it_check('…and a garbage ref reads as none', ($r['json']['ok'] ?? false) && ($r['json']['safe']['forStay'] ?? 'x') === '', $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
