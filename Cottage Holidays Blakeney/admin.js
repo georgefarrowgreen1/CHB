@@ -14973,6 +14973,10 @@ async function logoutStaff() {
         localStorage.removeItem('chb-daysheet');
         localStorage.removeItem('chb-dep-decisions');
     } catch (e) {}
+    // …and the at-rest key + mirrors go too: a fresh sign-in mints a fresh key.
+    __chbSnapCache = null;
+    __odsDepCache = [];
+    try { chbSecForget(); } catch (e) {}
     setAuthUI();
     glassAlert('You have been securely logged out.');
     nav('view-main');
@@ -16873,15 +16877,70 @@ function chbSnapGroup(r, today, tom) {
     if (r.ci < today && r.co > today) return 'staying';
     return null;
 }
+// ── The two phone-side stores are ENCRYPTED AT REST (chbSecEncrypt, app.js),
+//    read through DECRYPTED MIRRORS so every reader stays sync. chbSecLoad
+//    unlocks once per boot (initBackOffice awaits it); legacy plaintext is
+//    adopted; a value that won't decrypt is ABSENT (and removed), never garbage.
+let __chbSnapCache;
+let __odsDepCache;
+let __chbSecLoadP = null;
+function chbSecLoad() {
+    if (__chbSecLoadP) return __chbSecLoadP;
+    __chbSecLoadP = (async () => {
+        const read = async (key) => {
+            const v = localStorage.getItem(key) || '';
+            if (!v) return null;
+            if (v.slice(0, 5) === 'enc1:') {
+                const dec = await chbSecDecrypt(v);
+                if (dec === null) {
+                    try { localStorage.removeItem(key); } catch (e) {}
+                    return null;
+                }
+                try { return JSON.parse(dec); } catch (e) { return null; }
+            }
+            try { return JSON.parse(v); } catch (e) { return null; }
+        };
+        const s = await read(CHB_SNAP_KEY);
+        __chbSnapCache = s && Array.isArray(s.rows) ? s : null;
+        const d = await read('chb-dep-decisions');
+        __odsDepCache = Array.isArray(d) ? d : [];
+    })().catch(() => {
+        if (__chbSnapCache === undefined) __chbSnapCache = null;
+        if (__odsDepCache === undefined) __odsDepCache = [];
+    });
+    return __chbSecLoadP;
+}
+// The async persist half: ciphertext when the key is available, plaintext
+// otherwise (a browser without WebCrypto keeps the feature — the no-lock
+// degrade posture).
+function chbSecStore(key, str) {
+    chbSecEncrypt(str)
+        .then((enc) => {
+            try { localStorage.setItem(key, enc !== null ? enc : str); } catch (e) {}
+        })
+        .catch(() => {
+            try { localStorage.setItem(key, str); } catch (e) {}
+        });
+}
+function chbSnapStore(s) {
+    __chbSnapCache = s;
+    try { chbSecStore(CHB_SNAP_KEY, JSON.stringify(s)); } catch (e) {}
+}
 function chbSnapRead(raw) {
-    try {
-        const s = JSON.parse(localStorage.getItem(CHB_SNAP_KEY) || 'null');
-        if (!s || !Array.isArray(s.rows)) return null;
-        if (!raw && Date.now() - (s.at || 0) > CHB_SNAP_MAX_AGE_H * 3600000) return null;
-        return s;
-    } catch (e) {
-        return null;
+    if (__chbSnapCache === undefined) {
+        // called before the unlock (shouldn't happen — initBackOffice awaits it)
+        // — legacy plaintext is the only thing readable synchronously
+        try {
+            const v = localStorage.getItem(CHB_SNAP_KEY) || '';
+            __chbSnapCache = v.charAt(0) === '{' ? JSON.parse(v) : null;
+        } catch (e) {
+            __chbSnapCache = null;
+        }
     }
+    const s = __chbSnapCache;
+    if (!s || !Array.isArray(s.rows)) return null;
+    if (!raw && Date.now() - (s.at || 0) > CHB_SNAP_MAX_AGE_H * 3600000) return null;
+    return s;
 }
 function chbSnapWrite() {
     try {
@@ -16935,8 +16994,49 @@ function chbSnapWrite() {
             const v = (adminPrivateContent || {})['ops-' + pk];
             if (typeof v === 'string' && v.trim() !== '') ops[pk] = v.slice(0, 4000);
         });
-        localStorage.setItem(CHB_SNAP_KEY, JSON.stringify({ at: Date.now(), day: today, rows, ops, cots }));
+        // the coast (tides/weather) is carried forward from the last snapshot —
+        // chbSnapCoastPatch refreshes it async, and a rebuild between patches
+        // must not throw away data the offline morning needs
+        chbSnapStore({ at: Date.now(), day: today, rows, ops, cots, coast: prev.coast || null });
     } catch (e) {}
+}
+// The coast joins the snapshot ASYNC (never waited on; a failed fetch leaves
+// it coast-less). `day` gates the TIDE at render: yesterday's snapshot must
+// not state yesterday's high water as today's; weather is dated per day.
+async function chbSnapCoastPatch() {
+    try {
+        const day = todayDashed();
+        const c = await chbCoastFetch(day);
+        if (!c || (!c.tide && !c.weather)) return;
+        const s = chbSnapRead(true);
+        if (!s) return;
+        s.coast = { day, at: Date.now(), tide: c.tide || null, weather: c.weather || null };
+        chbSnapStore(s);
+    } catch (e) {}
+}
+// "High water 06:41 and 19:08 · low 12:55 · Sunny · 18°C" — the two things a
+// Blakeney owner is asked most, readable with no data at all.
+function odsCoastLine(s) {
+    const c = s && s.coast;
+    if (!c) return '';
+    const today = todayDashed();
+    const bits = [];
+    if (c.day === today && c.tide && Array.isArray(c.tide.extremes)) {
+        const t = (x) => String(x.time || '').slice(11, 16);
+        const hi = c.tide.extremes.filter((x) => /high/i.test(x.type || '')).map(t).filter(Boolean);
+        const lo = c.tide.extremes.filter((x) => /low/i.test(x.type || '')).map(t).filter(Boolean);
+        if (hi.length) bits.push('High water ' + hi.join(' and '));
+        if (lo.length) bits.push('low ' + lo.join(' and '));
+    }
+    const wx = c.weather && Array.isArray(c.weather.days) ? c.weather.days.find((d2) => d2.date === today) : null;
+    if (wx) {
+        const w = [];
+        if (wx.summary) w.push(String(wx.summary));
+        if (wx.tmax != null) w.push(wx.tmax + '°C');
+        if (wx.gust != null && wx.gust >= 30) w.push('gusting ' + wx.gust + ' mph');
+        if (w.length) bits.push(w.join(' · '));
+    }
+    return bits.length ? '<div class="ods-coast">' + escapeHtml(bits.join(' · ')) + '</div>' : '';
 }
 // The marker speaks in the DAY'S terms, not the clock's — "this morning" tells
 // the owner whether to trust it; a bare timestamp makes them do the arithmetic.
@@ -17016,6 +17116,7 @@ function renderOfflineDaySheet() {
         + '<span><b>No connection</b> — this is the day sheet ' + e(chbSnapWhen(s)) + '. Anything may have moved since; nothing here is live.</span>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsRetry') + '>Try again</button>'
         + '</div>'
+        + odsCoastLine(s)
         + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
         + sec('Leaving today', 'leave')
         + sec('Arriving today', 'arrive')
@@ -17128,12 +17229,15 @@ async function oqRefusedOpen(id) {
 // still wants a human at the moment it leaves, so reconnecting asks first
 // (odsDepConfirmSweep). What is deferred is the decision, not the authority.
 function odsDepDecisions() {
-    try {
-        const l = JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]');
-        return Array.isArray(l) ? l : [];
-    } catch (e) {
-        return [];
+    if (__odsDepCache === undefined) {
+        try {
+            const v = localStorage.getItem('chb-dep-decisions') || '';
+            __odsDepCache = v.charAt(0) === '[' ? JSON.parse(v) : [];
+        } catch (e) {
+            __odsDepCache = [];
+        }
     }
+    return Array.isArray(__odsDepCache) ? __odsDepCache : [];
 }
 function odsDepSave(list) {
     try {
@@ -17147,7 +17251,8 @@ function odsDepSave(list) {
                 s = JSON.stringify(l);
             }
         }
-        localStorage.setItem('chb-dep-decisions', s);
+        __odsDepCache = l;
+        chbSecStore('chb-dep-decisions', s);
     } catch (e) {}
 }
 // Downscale + re-encode to a ≤1280px JPEG. Anything that won't decode returns
@@ -17366,6 +17471,11 @@ async function initBackOffice() {
     // once the data lands, todayOpsLine() enriches it with the day's ops.
     const td = document.getElementById('today-date');
     if (td) td.textContent = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    // Unlock the encrypted phone-side stores BEFORE anything reads them — the
+    // day sheet and the deposit sweep both render from the decrypted mirrors.
+    try {
+        await chbSecLoad();
+    } catch (e) {}
     const __ldr = await loadData();
     // No bookings could be FETCHED and none survive in memory → the offline day
     // sheet is the truest thing this screen can say (an empty live Today would
@@ -17381,6 +17491,8 @@ async function initBackOffice() {
         const __ods = document.getElementById('offline-daysheet');
         if (__ods) __ods.remove();
         try { chbSnapWrite(); } catch (e) {}
+        // …and the coast (tides/weather) joins it async — never waited on.
+        try { chbSnapCoastPatch(); } catch (e) {}
         // Deposit decisions saved at a cottage door wait here for their OK —
         // fire-and-forget, one confirm each, never silently executed.
         try { odsDepConfirmSweep(); } catch (e) {}

@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 436;
+const ADMIN_BUNDLE_V = 437;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 159;
+const ADMIN_CSS_V = 160;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -731,13 +731,14 @@ window.addEventListener('load', layoutSentinelSchedule);
 // (shared with the service worker) and replayed when the connection returns —
 // by the page on reconnect/open, and by the SW via Background Sync even when
 // the app is closed (where the browser supports it; iOS falls back to on-open).
-// v2 adds 'refused' — queued writes the server said NO to; surfaced as a duty
-// on the next open. sw.js opens the same db — bump BOTH or one VersionErrors.
+// v2 added 'refused' (queued writes the server said NO to; surfaced as a duty
+// on the next open); v3 adds 'keys' (the non-extractable at-rest key below).
+// sw.js opens the same db — bump BOTH or one VersionErrors.
 function oqDB() {
     return new Promise((res, rej) => {
         let r;
         try {
-            r = indexedDB.open('chb-db', 2);
+            r = indexedDB.open('chb-db', 3);
         } catch (e) {
             return rej(e);
         }
@@ -747,10 +748,98 @@ function oqDB() {
                 db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
             if (!db.objectStoreNames.contains('refused'))
                 db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('keys'))
+                db.createObjectStore('keys', { keyPath: 'id' });
         };
         r.onsuccess = () => res(r.result);
         r.onerror = () => rej(r.error);
     });
+}
+// ── ENCRYPTED AT REST for the phone-side stores (guest names, phones,
+//    KEY-SAFE CODES): a NON-EXTRACTABLE IndexedDB CryptoKey — localStorage
+//    shows only ciphertext to disk/backup readers, and the key can't be
+//    exported by script. Not a defence against code ON the device; it closes
+//    the inspection surface. No WebCrypto → null → plaintext fallback.
+let __chbSecKeyP = null;
+function chbSecKey() {
+    if (__chbSecKeyP) return __chbSecKeyP;
+    __chbSecKeyP = (async () => {
+        if (!(typeof crypto !== 'undefined' && crypto.subtle)) return null;
+        const db = await oqDB();
+        const got = await new Promise((res) => {
+            try {
+                const tx = db.transaction('keys', 'readonly');
+                const rq = tx.objectStore('keys').get('sec');
+                rq.onsuccess = () => res(rq.result ? rq.result.k : null);
+                rq.onerror = () => res(null);
+            } catch (e) {
+                res(null);
+            }
+        });
+        if (got) return got;
+        const k = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+        await new Promise((res) => {
+            try {
+                const tx = db.transaction('keys', 'readwrite');
+                tx.objectStore('keys').put({ id: 'sec', k });
+                tx.oncomplete = res;
+                tx.onerror = () => res(undefined);
+            } catch (e) {
+                res(undefined);
+            }
+        });
+        return k;
+    })().catch(() => null);
+    return __chbSecKeyP;
+}
+async function chbSecEncrypt(str) {
+    try {
+        const k = await chbSecKey();
+        if (!k) return null;
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, new TextEncoder().encode(str));
+        // chunked — .apply over a photo-sized buffer blows the argument limit
+        const b64 = (buf) => {
+            const u = new Uint8Array(buf);
+            let out = '';
+            for (let i = 0; i < u.length; i += 0x8000)
+                out += String.fromCharCode.apply(null, /** @type {*} */ (u.subarray(i, i + 0x8000)));
+            return btoa(out);
+        };
+        return 'enc1:' + b64(iv.buffer) + ':' + b64(ct);
+    } catch (e) {
+        return null;
+    }
+}
+async function chbSecDecrypt(val) {
+    try {
+        if (typeof val !== 'string' || val.slice(0, 5) !== 'enc1:') return null;
+        const k = await chbSecKey();
+        if (!k) return null;
+        const parts = val.slice(5).split(':');
+        const un = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+        const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: un(parts[0]) }, k, un(parts[1]));
+        return new TextDecoder().decode(pt);
+    } catch (e) {
+        return null; // a value that will not decrypt is ABSENT, never garbage
+    }
+}
+// Logout hygiene's crypto half: the ciphertext is removed with the stores, and
+// the KEY goes too, so a fresh sign-in mints a fresh key.
+function chbSecForget() {
+    __chbSecKeyP = null;
+    return oqDB()
+        .then((db) => new Promise((res) => {
+            try {
+                const tx = db.transaction('keys', 'readwrite');
+                tx.objectStore('keys').delete('sec');
+                tx.oncomplete = res;
+                tx.onerror = () => res(undefined);
+            } catch (e) {
+                res(undefined);
+            }
+        }))
+        .catch(() => {});
 }
 async function oqRefusedAll() {
     const db = await oqDB();
@@ -1294,6 +1383,9 @@ function forceAdminLogout() {
         localStorage.removeItem('chb-was-admin');
         localStorage.removeItem('chb-daysheet');
         localStorage.removeItem('chb-dep-decisions');
+    } catch (e) {}
+    try {
+        chbSecForget(); // the at-rest key goes with the ciphertext it guarded
     } catch (e) {}
     try {
         setAuthUI();
@@ -15933,7 +16025,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'offup5a';
+    const BUILD = 'offup6a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
