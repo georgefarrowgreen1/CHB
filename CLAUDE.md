@@ -4213,6 +4213,28 @@ apiPost/apiGet flips the whole dashboard offline (`body.net-off` + the pill, at 
 FIRST failed request), any success flips it back, and while off a version.php probe
 retries every 15s so recovery is automatic with nothing touched. The `online` event is
 a HINT to probe now, never a verdict.
+- **OFFLINE MODE TAKES OVER BY ITSELF ON A POOR SIGNAL** (gated by ui-test-offline
+  §18, all three mechanisms break-tested). On one bar nothing FAILS — everything
+  HANGS — so the failure-driven verdict never fired and a hinted boot sat behind a
+  15s auth timeout plus a 15s data timeout before the sheet appeared (~30s of
+  nothing). Three parts, one constant (`CHB_BOOT_PATIENCE_MS` 3s): the boot-start
+  WATCHDOG (the boot's own content fetches hang BEFORE the auth step is reached, so
+  no per-step race can help — enter provisionally, reads only) with the auth race
+  behind it (a late FALSE verdict logs the provisional session straight out);
+  initBackOffice's PATIENCE timer (day sheet at patience+1s while loadData still
+  runs underneath — a late-landing load swaps the sheet for live Today by itself,
+  and `navigator.onLine === false`/known-off skip the wait entirely); and the
+  HEADER TRIMMED to what still works under `body.offline-snap` (Inbox/Payments/
+  Manage hidden — dead destinations read as broken; Today and the crown stay).
+  Measured in the gate: owner-mode at ~2.7s and the sheet at ~6.7s with every
+  request still pending. **The patience timer is armed ONCE PER PAGE
+  (`__odsPatienceUsed`) — the window is the BOOT's**: arming it on every re-init
+  put the sheet up 4s into any stalled mid-session refresh with emptied stores,
+  and its presence made the next chbNetUp "noticed", burying the specific failure
+  toasts ui-test-poorsignal §3–§4 assert (measured — the bisect that found it
+  reverted one mechanism at a time). The trim is keyed on `offline-snap`, NOT
+  `net-off`: a mid-session blip keeps the full menu, because those screens still
+  hold last-good data.
 - **Tier-C refuses up front at the dispatcher** (`CHB_NEEDS_NET`: requestPayment,
   returnDeposit, keepDeposit, sendArrivalInfo, approveEnquiry): dimmed under
   `body.net-off` by a style rule GENERATED from the same list the guard reads (one

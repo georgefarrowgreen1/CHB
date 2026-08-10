@@ -56,9 +56,15 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   let verHits = 0;   // version.php probe counter (§11)
   let addDead = false; // §12: abort ONLY the booking-add post — the ambiguous save
   let refuseEnq = false; // §14: the server ANSWERS an enquiry replay with a refusal
+  let apiHang = false;   // §18: poor signal — every request held, none failing
   await page.route(/\.php/, async (route) => {
     const url = route.request().url();
     if (url.includes('version.php')) verHits++;
+    // apiHang = POOR SIGNAL: nothing fails, everything HANGS. Requests are held
+    // until the flag drops, then answered normally — so releasing it makes the
+    // ORIGINAL slow requests land late, which is exactly the case §18's
+    // sheet-then-swap arc exists to prove.
+    while (apiHang) await new Promise((r) => setTimeout(r, 200));
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     if (route.request().method() === 'POST') {
       const b = JSON.parse(route.request().postData() || '{}');
@@ -663,6 +669,46 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await page.evaluate(() => document.body.classList.contains('net-off') && chbSnapAnswers('who arrives today') === null),
     'offline MID-SESSION with stores loaded it still abstains — live data stays in charge');
   apiDead = false;
+
+  // ── §18 OFFLINE MODE TAKES OVER BY ITSELF ON A POOR SIGNAL — nothing fails,
+  //     everything HANGS, and the owner must not stare at an empty Today for
+  //     the length of the 15s timeouts. The boot race enters owner-mode while
+  //     the auth verdict is still pending; the patience timer puts the saved
+  //     sheet up while the data is still pending; the header is trimmed to
+  //     what still works; and when the slow data finally lands, the live
+  //     Today swaps back in by itself — same arc, no reload, nothing tapped.
+  console.log('§18 automatic offline mode on a poor signal');
+  // (fixture) a good boot first, so the hint + snapshot are fresh
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();
+  apiHang = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  // (a) the boot race: owner-mode while the auth verdict is STILL HANGING
+  let ownerAt = -1, sheetAt = -1;
+  for (let t = 0; t < 60 && apiHang; t++) {
+    await page.waitForTimeout(250);
+    if (ownerAt < 0 && await page.evaluate(() => document.body.classList.contains('owner-mode'))) ownerAt = t * 250;
+    if (await page.evaluate(() => !!document.getElementById('offline-daysheet'))) { sheetAt = t * 250; break; }
+  }
+  ok(ownerAt >= 0, `owner-mode entered while the auth verdict was still pending (${ownerAt}ms — the boot race)`);
+  ok(sheetAt >= 0, `the day sheet took over while every request was still PENDING (${sheetAt}ms — the patience timer, not the 15s timeout)`);
+  // (b) the header is trimmed to what still works
+  const dockVis = (view) => page.evaluate((v) => {
+    const b = document.querySelector(`.admin-dock-btn[data-view="${v}"]`);
+    return !!b && getComputedStyle(b).display !== 'none';
+  }, view);
+  ok(await dockVis('view-backoffice'), 'Today stays in the header — it IS the sheet');
+  ok(!(await dockVis('view-inbox')) && !(await dockVis('view-accounts')) && !(await dockVis('view-settings')),
+    'Inbox, Payments and Manage are gone — dead destinations make a menu read as broken');
+  ok(await page.evaluate(() => { const l = document.querySelector('header .logo'); return !!l && l.getBoundingClientRect().width > 0; }),
+    'the crown stays — the assistant answers from the snapshot');
+  // (c) the SLOW data lands late → the live Today swaps in by itself
+  apiHang = false;
+  await page.waitForTimeout(6000);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap')),
+    'the late-landing data swapped the sheet for the live Today — no reload, nothing tapped');
+  ok(await dockVis('view-inbox') && await dockVis('view-accounts') && await dockVis('view-settings'),
+    'and the full menu came back with it');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);

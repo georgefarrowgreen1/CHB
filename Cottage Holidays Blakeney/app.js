@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 438;
+const ADMIN_BUNDLE_V = 439;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 160;
+const ADMIN_CSS_V = 161;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1100,6 +1100,11 @@ const CHB_NET_PROBE_MS = 15000;
 // lasted, or one that queued writes. Otherwise "Back online." spams every
 // flap and buries the specific failure message that mattered.
 const CHB_NET_NOTICED_MS = 8000;
+// How long a HINTED boot waits for the auth verdict, and how long Today waits
+// for its data, before offline mode takes over (see the boot race + the
+// initBackOffice patience timer). Short on purpose: on one bar nothing fails,
+// everything hangs, and the saved day sheet beats a 15-second spinner.
+const CHB_BOOT_PATIENCE_MS = 3000;
 function chbNetIsOff() {
     return __chbNetOff;
 }
@@ -6761,6 +6766,22 @@ function startLiveUpdates() {
 window.addEventListener('DOMContentLoaded', async () => {
     try {
         applySavedTheme();
+        // THE POOR-SIGNAL WATCHDOG (hinted devices only): on one bar nothing
+        // fails, everything HANGS — including the content fetches BEFORE the
+        // auth step, so no per-step race can help. Past the patience window,
+        // enter provisionally (reads only; the server refuses every write) and
+        // initBackOffice's patience puts the day sheet up. The real boot keeps
+        // running underneath: TRUE verdict = no-op, FALSE = logged back out.
+        try {
+            if (!PREVIEW_MODE && localStorage.getItem('chb-was-admin') === '1') {
+                setTimeout(() => {
+                    if (isAuthenticated || document.body.classList.contains('owner-mode')) return;
+                    isAuthenticated = true;
+                    try { setAuthUI(); } catch (e) {}
+                    try { tryAccessBackOffice(); } catch (e) {}
+                }, CHB_BOOT_PATIENCE_MS);
+            }
+        } catch (e) {}
         // The enquiry modal must be a direct child of <body>: its overlay is
         // position:fixed, and a transformed page-view ancestor would otherwise trap
         // it (off-screen). Move it out once, on boot.
@@ -6832,28 +6853,54 @@ window.addEventListener('DOMContentLoaded', async () => {
         // Restore admin + guest sessions — also independent, also concurrent.
         await Promise.all([
             (async () => {
+                const verdict = (async () => {
+                    try {
+                        const s = await apiPost('auth.php', { action: 'admin_status' });
+                        // Remember the VERDICT (not the session): an offline reload must
+                        // tell the owner's phone with no signal from "not signed in".
+                        try {
+                            if (s.admin) localStorage.setItem('chb-was-admin', '1');
+                            else localStorage.removeItem('chb-was-admin');
+                        } catch (_) {}
+                        return !!s.admin;
+                    } catch (e) {
+                        // A NETWORK failure is not a verdict (a 401 carries e.status and
+                        // IS one). On a device the owner signed in from before, boot into
+                        // owner-mode anyway — the server still refuses every write, and
+                        // initBackOffice renders the OFFLINE DAY SHEET instead of a dead
+                        // dashboard. Never in the account-preview iframe.
+                        try {
+                            if (!(e && /** @type {any} */ (e).status) && !PREVIEW_MODE
+                                && localStorage.getItem('chb-was-admin') === '1') {
+                                return true;
+                            }
+                        } catch (_) {}
+                        return false;
+                    }
+                })();
+                // On a hinted device the verdict gets CHB_BOOT_PATIENCE_MS,
+                // then the boot proceeds PROVISIONALLY (a hanging request is
+                // not a verdict). The verdict is still awaited underneath.
+                let hinted = false;
                 try {
-                    const s = await apiPost('auth.php', { action: 'admin_status' });
-                    isAuthenticated = !!s.admin;
-                    // Remember the VERDICT (not the session): an offline reload must
-                    // tell the owner's phone with no signal from "not signed in".
-                    try {
-                        if (s.admin) localStorage.setItem('chb-was-admin', '1');
-                        else localStorage.removeItem('chb-was-admin');
-                    } catch (_) {}
-                } catch (e) {
-                    // A NETWORK failure is not a verdict (a 401 carries e.status and
-                    // IS one). On a device the owner signed in from before, boot into
-                    // owner-mode anyway — the server still refuses every write, and
-                    // initBackOffice renders the OFFLINE DAY SHEET instead of a dead
-                    // dashboard. Never in the account-preview iframe.
-                    try {
-                        if (!(e && /** @type {any} */ (e).status) && !PREVIEW_MODE
-                            && localStorage.getItem('chb-was-admin') === '1') {
-                            isAuthenticated = true;
-                        }
-                    } catch (_) {}
+                    hinted = !PREVIEW_MODE && localStorage.getItem('chb-was-admin') === '1';
+                } catch (_) {}
+                if (!hinted) {
+                    isAuthenticated = await verdict;
+                    return;
                 }
+                isAuthenticated = await Promise.race([
+                    verdict,
+                    new Promise((r) => setTimeout(() => r(true), CHB_BOOT_PATIENCE_MS)),
+                ]);
+                // Whoever entered provisionally (this race or the boot-start
+                // watchdog), a real FALSE verdict landing late logs them out —
+                // never a session the server has already declined.
+                verdict.then((admin) => {
+                    if (!admin && (isAuthenticated || document.body.classList.contains('owner-mode'))) {
+                        try { forceAdminLogout(); } catch (_) {}
+                    }
+                });
             })(),
             restoreGuestSession().catch((e) => console.error('restoreGuestSession', e)),
         ]);
@@ -16025,7 +16072,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'offup7a';
+    const BUILD = 'offauto8';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

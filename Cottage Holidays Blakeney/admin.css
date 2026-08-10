@@ -4511,6 +4511,15 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 body.offline-snap #view-backoffice > :not(#offline-daysheet) {
   display: none;
 }
+/* …and the HEADER is trimmed to what still works: Inbox/Payments/Manage are
+   dead while the sheet is up (stores empty, fetches failing); Today and the
+   crown stay. Keyed on offline-snap, NOT net-off — a mid-session blip keeps
+   the full menu (those screens hold last-good data). */
+body.offline-snap .admin-dock-btn[data-view='view-inbox'],
+body.offline-snap .admin-dock-btn[data-view='view-accounts'],
+body.offline-snap .admin-dock-btn[data-view='view-settings'] {
+  display: none;
+}
 .ods-mark {
   display: flex;
   align-items: center;
