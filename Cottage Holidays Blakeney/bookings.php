@@ -1934,6 +1934,13 @@ if ($action === 'return_deposit') {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
         }
     }
+    // Photo evidence from the offline decision, riding the confirmed op —
+    // best-effort (deposit_evidence_store never throws; the refund stands
+    // whatever happens to the photo).
+    $evidence = deposit_evidence_store($id, $in['photo_data'] ?? '');
+    if ($evidence !== '') {
+        log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
 }
@@ -1970,6 +1977,13 @@ if ($action === 'keep_deposit') {
     } catch (\Throwable $e) {
     }
     book_unlock($b['prop_key'] ?? '');
+    // Photo evidence (see return_deposit) — on the KEEP it matters most: this
+    // is the decision a guest may dispute, and the photo taken in the cottage
+    // at the moment of deciding is what settles it.
+    $evidence = deposit_evidence_store($id, $in['photo_data'] ?? '');
+    if ($evidence !== '') {
+        log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    }
     log_activity('payment', 'deposit.kept', 'Damage deposit kept (damage) — £' . number_format($held, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['severity' => 'warn', 'prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => $note !== '' ? ['detail' => $note] : []]);
     json_out(['ok' => true, 'kept' => $held]);
 }

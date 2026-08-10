@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 435;
+const ADMIN_BUNDLE_V = 436;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -731,11 +731,13 @@ window.addEventListener('load', layoutSentinelSchedule);
 // (shared with the service worker) and replayed when the connection returns —
 // by the page on reconnect/open, and by the SW via Background Sync even when
 // the app is closed (where the browser supports it; iOS falls back to on-open).
+// v2 adds 'refused' — queued writes the server said NO to; surfaced as a duty
+// on the next open. sw.js opens the same db — bump BOTH or one VersionErrors.
 function oqDB() {
     return new Promise((res, rej) => {
         let r;
         try {
-            r = indexedDB.open('chb-db', 1);
+            r = indexedDB.open('chb-db', 2);
         } catch (e) {
             return rej(e);
         }
@@ -743,9 +745,38 @@ function oqDB() {
             const db = r.result;
             if (!db.objectStoreNames.contains('queue'))
                 db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains('refused'))
+                db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true });
         };
         r.onsuccess = () => res(r.result);
         r.onerror = () => rej(r.error);
+    });
+}
+async function oqRefusedAll() {
+    const db = await oqDB();
+    return new Promise((res, rej) => {
+        const tx = db.transaction('refused', 'readonly');
+        const rq = tx.objectStore('refused').getAll();
+        rq.onsuccess = () => res(rq.result || []);
+        rq.onerror = () => rej(rq.error);
+    });
+}
+async function oqRefusedAdd(rec) {
+    const db = await oqDB();
+    await new Promise((res, rej) => {
+        const tx = db.transaction('refused', 'readwrite');
+        tx.objectStore('refused').add(rec);
+        tx.oncomplete = res;
+        tx.onerror = () => rej(tx.error);
+    });
+}
+async function oqRefusedDelete(id) {
+    const db = await oqDB();
+    await new Promise((res, rej) => {
+        const tx = db.transaction('refused', 'readwrite');
+        tx.objectStore('refused').delete(id);
+        tx.oncomplete = res;
+        tx.onerror = () => rej(tx.error);
     });
 }
 async function oqAll() {
@@ -916,6 +947,16 @@ async function oqFlushRun(items) {
                 if (e.status === 401 || e.status === 403) continue;
                 failed++;
                 failMsgs.push((it.label ? it.label + ' — ' : '') + String(e.message || 'rejected').slice(0, 120));
+                // The toast covers the owner who is LOOKING; the record is a
+                // Needs-you duty until read and dismissed.
+                try {
+                    await oqRefusedAdd({
+                        label: String(it.label || ''),
+                        endpoint: String(it.endpoint || ''),
+                        reason: String(e.message || 'rejected').slice(0, 200),
+                        at: Date.now(),
+                    });
+                } catch (e2) {}
             }
             try {
                 await oqDelete(it.id);
@@ -11392,6 +11433,21 @@ function glassDialog(opts) {
                 return;
             }
             msg.innerText = opts.message || '';
+            // Optional PHOTO (data: URI) — the deposit sweep's evidence. The
+            // node is SHARED, so it is reassigned on each open (the okLabel
+            // rule) or a photo haunts the next plain confirm.
+            let dImg = /** @type {HTMLImageElement|null} */ (document.getElementById('glass-dialog-img'));
+            if (!dImg && opts.img) {
+                dImg = document.createElement('img');
+                dImg.id = 'glass-dialog-img';
+                dImg.alt = 'Photo saved with this decision';
+                dImg.style.cssText = 'max-width:100%;max-height:38vh;border-radius:10px;margin:10px 0 2px;display:block;';
+                msg.insertAdjacentElement('afterend', dImg);
+            }
+            if (dImg) {
+                dImg.src = opts.img || '';
+                dImg.style.display = opts.img ? 'block' : 'none';
+            }
             // Optional TITLE — names the dialog and becomes its accessible name.
             const ttl = document.getElementById('glass-dialog-title');
             if (ttl) {
@@ -11416,6 +11472,11 @@ function glassDialog(opts) {
                                     .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
                                     .join('');
                                 return label + `<select class="input-glass" id="gdf-${f.id}">${os}</select>`;
+                            }
+                            // 'file': photo picker (camera on a phone); resolves
+                            // the File object, never the fakepath string.
+                            if (f.type === 'file') {
+                                return label + `<input class="input-glass" id="gdf-${f.id}" type="file" accept="image/*" capture="environment">`;
                             }
                             return (
                                 label +
@@ -11448,8 +11509,8 @@ function glassDialog(opts) {
                 if (isForm && ok) {
                     formVals = {};
                     opts.fields.forEach((f) => {
-                        const el = document.getElementById('gdf-' + f.id);
-                        formVals[f.id] = el ? el.value : '';
+                        const el = /** @type {HTMLInputElement|null} */ (document.getElementById('gdf-' + f.id));
+                        formVals[f.id] = el ? (f.type === 'file' ? (el.files && el.files[0]) || null : el.value) : '';
                     });
                 }
                 o.classList.remove('open');
@@ -15872,7 +15933,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'offup4a';
+    const BUILD = 'offup5a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

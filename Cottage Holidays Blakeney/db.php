@@ -249,6 +249,40 @@ function op_release($opId)
     }
 }
 
+// Photo evidence for a deposit decision — the offline capture's photo, uploaded
+// with the confirmed keep/return. BEST-EFFORT BY CONTRACT: the money op must
+// never fail because a photo was malformed, so this returns the stored relative
+// path or '' and never throws. JPEG data URIs only (the client encodes to JPEG),
+// magic bytes checked (nothing arbitrary lands in a web-served dir), decoded
+// size capped at 2MB. Random suffix: uploads/ is reachable by URL and damage
+// photos should not be guessable from a booking id.
+function deposit_evidence_store($bookingId, $dataUri)
+{
+    try {
+        if (!is_string($dataUri) || strncmp($dataUri, 'data:image/jpeg;base64,', 23) !== 0) {
+            return '';
+        }
+        $raw = base64_decode(substr($dataUri, 23), true);
+        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 2 * 1024 * 1024) {
+            return '';
+        }
+        if (substr($raw, 0, 2) !== "\xFF\xD8") {
+            return '';
+        }
+        $dir = __DIR__ . '/uploads';
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+            return '';
+        }
+        $name = 'deposit-evidence-' . (int) $bookingId . '-' . bin2hex(random_bytes(6)) . '.jpg';
+        if (@file_put_contents($dir . '/' . $name, $raw) === false) {
+            return '';
+        }
+        return 'uploads/' . $name;
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
 // ---- JSON helpers ----
 // THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
 // says, and a device clock can be wrong by accident or on purpose — reported
