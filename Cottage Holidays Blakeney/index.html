@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=250">
+    <link rel="stylesheet" href="app.css?v=251">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -249,6 +249,9 @@
                 </button>
                 <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
+                </button>
+                <button class="admin-dock-btn" data-view="view-keysafe" data-label="Key safes" aria-label="Key safes" title="Key safes" data-act="openKeysafe">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15.5" r="4.5"/><path d="M11.5 12 20.5 3"/><path d="M16 7.5l2.5 2.5"/><path d="M18.5 5l2 2"/></svg>
                 </button>
                 <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" data-act="openArea" data-arg="manage">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -989,6 +992,10 @@
 
     <!-- ================= MONEY (Apple-style grouped index + drill-down) ================= -->
     <main id="view-accounts" class="page-view container">
+    </main>
+
+    <!-- ================= KEY SAFES (per-cottage code keeper) ================= -->
+    <main id="view-keysafe" class="page-view container">
     </main>
 
     <!-- ================= GUEST LOGIN / REGISTER ================= -->
@@ -1830,7 +1837,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=765"></script>
+    <script defer src="app.js?v=766"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

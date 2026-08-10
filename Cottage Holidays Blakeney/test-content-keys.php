@@ -155,6 +155,13 @@ ck_check("the client scan still finds const-keyed operational writes ($constKeye
 ck_check("ops-<prop> keys are PRIVATE (encrypted at rest, never in any content GET)", is_private_content_key('ops-jollyboat'));
 ck_check('…and not merely internal', !is_internal_content_key('ops-jollyboat'));
 
+// keysafe-<prop> (keysafe.php) — the same shape as ops-: written concatenated
+// ('keysafe-' . prop) so the literal scanner can't see it, and PRIVATE for the
+// same reason: the codes physically open the cottages. Its one guest surface
+// (my-bookings.php) degrades to "no code" via keysafe_read on a failed decrypt.
+ck_check("keysafe-<prop> keys are PRIVATE (encrypted at rest)", is_private_content_key('keysafe-jollyboat'));
+ck_check('…and not merely internal', !is_internal_content_key('keysafe-jollyboat'));
+
 
 echo "\n== Summary ==\n";
 if ($fail) {

@@ -16587,6 +16587,27 @@ function chbDuties() {
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
+    // 1a-ks) A KEY SAFE DUE A ROTATION. The record says which booking the
+    // safe is set FOR; when that isn't the stay in residence / arriving next,
+    // the code a past guest holds still opens the door. Red once the next
+    // guest's reveal window is open (their booking page is due the code and
+    // has nothing to show). No mirror loaded → no duty — never from ignorance.
+    try {
+        if (__keysafe) Object.keys(__keysafe).forEach((pk) => {
+            const rec = __keysafe[pk] || {};
+            const next = keysafeNextBooking(pk);
+            if (!next || Number(rec.forBooking) === Number(next.dbId)) return;
+            const soon = dpParse(next.checkIn).getTime() - t0 <= __keysafeDays * dayMs;
+            out.push({
+                kind: 'keysafe', sev: soon ? 'danger' : 'warn', ic: 'alert',
+                label: `Rotate ${pname(pk)}’s key safe`,
+                sub: `${next.name || 'The next guest'} ${next.checkIn <= today ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — their code isn’t on the safe yet`,
+                act: 'Rotate', go: chbAttrs('openKeysafe'),
+                board: 'today', scope: 'bookings',
+                run: () => { closeCmdK(); openKeysafe(); },
+            });
+        });
+    } catch (e) {}
     // 1b) AN AUTOMATIC PAYMENT THAT GAVE UP. The collector stands down after
     // three tries and the ordinary chase takes over — but "the automatic thing
     // stopped" is exactly what the owner arranged NOT to have to watch, so it
@@ -17155,6 +17176,199 @@ function chbDayRows() {
     const s = chbSnapRead();
     return s ? { source: 'snapshot', at: s.at || 0, rows: s.rows || [] } : { source: 'none', at: 0, rows: [] };
 }
+// ════════════════════════════════════════════════════════════════════════
+//  THE KEY SAFE KEEPER — its own page (view-keysafe, the key in the dock).
+//  Every checkout the safe gets a fresh 4-digit code, generated or the
+//  owner's own; NOTHING is recorded — and the guest is shown nothing — until
+//  the owner confirms the safe is physically set (the app cannot turn a
+//  dial). The guest is never emailed a code (mailer.php's standing policy):
+//  my-bookings.php reveals it on their booking page only once the record
+//  says the safe is set FOR their stay and arrival is near.
+// ════════════════════════════════════════════════════════════════════════
+let __keysafe = null; // {pk: {code, setAt, forBooking, history, name}} — last good copy
+let __keysafeDays = 2; // server's KEYSAFE_REVEAL_DAYS, adopted from `state`
+let __keysafeLoading = null;
+function keysafeLoad() {
+    if (__keysafeLoading) return __keysafeLoading;
+    __keysafeLoading = apiPost('keysafe.php', { action: 'state' })
+        .then((r) => {
+            if (r && r.ok && r.safes) {
+                __keysafe = r.safes;
+                __keysafeDays = parseInt(r.revealDays, 10) || 2;
+            }
+            return __keysafe;
+        })
+        .catch(() => __keysafe) // keep the last good copy — the poor-signal rule
+        .finally(() => { __keysafeLoading = null; });
+    return __keysafeLoading;
+}
+// The client twin of keysafe_generate — the offline capture generates
+// on-device, so both ends refuse the same junk.
+function keysafeBad(c) {
+    if (!/^\d{4}$/.test(c)) return true;
+    if (/^(\d)\1{3}$/.test(c)) return true;
+    let asc = true, desc = true;
+    for (let i = 1; i < 4; i++) {
+        const d = c.charCodeAt(i) - c.charCodeAt(i - 1);
+        if (d !== 1) asc = false;
+        if (d !== -1) desc = false;
+    }
+    return asc || desc;
+}
+function keysafeGen(exclude) {
+    const ex = {};
+    (exclude || []).forEach((c) => { if (c) ex[c] = 1; });
+    const buf = new Uint16Array(1);
+    for (let i = 0; i < 200; i++) {
+        crypto.getRandomValues(buf);
+        const c = String(buf[0] % 10000).padStart(4, '0');
+        if (!keysafeBad(c) && !ex[c]) return c;
+    }
+    for (let n = 0; n <= 9999; n++) {
+        const c = String(n).padStart(4, '0');
+        if (!keysafeBad(c) && !ex[c]) return c;
+    }
+    return '4821';
+}
+// The stay the safe should currently be set FOR: whoever is in residence,
+// else the soonest arrival. One definition — the page, the duty and the
+// rotate dialog must never disagree about who "next" is.
+function keysafeNextBooking(pk) {
+    const today = todayDashed();
+    let best = null;
+    ((dbBookings || {})[pk] || []).forEach((b) => {
+        if (!b || !b.checkIn || !b.checkOut || b.checkOut <= today) return;
+        if (!best || b.checkIn < best.checkIn) best = b;
+    });
+    return best;
+}
+async function openKeysafe() {
+    nav('view-keysafe'); // navigate first, load second — the poor-signal rule
+    renderKeysafe();
+    await keysafeLoad();
+    renderKeysafe();
+}
+function renderKeysafe() {
+    const host = document.getElementById('keysafe-body');
+    if (!host) return;
+    if (!__keysafe) {
+        host.innerHTML = '<p class="lead" style="text-align:left;">' + (__keysafeLoading ? 'Loading the safes…' : 'Couldn’t load the safes just now — check your signal and reopen this page.') + '</p>';
+        return;
+    }
+    const e = escapeHtml;
+    const today = todayDashed();
+    host.innerHTML = Object.keys(__keysafe).map((pk) => {
+        const rec = __keysafe[pk] || {};
+        const next = keysafeNextBooking(pk);
+        const nextMine = !!(next && rec.code && Number(rec.forBooking) === Number(next.dbId));
+        const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
+        const forGuest = (() => {
+            if (!rec.forBooking) return '';
+            const all = ((dbBookings || {})[pk] || []).find((b) => Number(b.dbId) === Number(rec.forBooking));
+            if (all) return all.name || '';
+            const h = (rec.history || [])[0];
+            return h && Number(h.forBooking) === Number(rec.forBooking) ? h.guest || '' : '';
+        })();
+        const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
+        return '<div class="glass-panel ks-card">'
+            + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>'
+            + '<button class="btn-sm btn-edit" ' + chbAttrs('keysafeRotate', String(pk)) + '>Rotate the code</button></div>'
+            + '<div class="ks-kv"><span class="ks-k">Safe is set to</span><span class="ks-v">'
+            + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span> <small>' + (rec.setAt ? 'since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) : '') + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>'
+                : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
+            + (next
+                ? '<div class="ks-kv"><span class="ks-k">' + e(next.name || 'Next guest') + ' <small>' + (next.checkIn <= today ? 'in residence' : 'arrives ' + e(fmtDate(next.checkIn))) + '</small></span><span class="ks-v">'
+                    + (nextMine
+                        ? '<span class="bhub-chip is-ok">code on the safe ✓</span>'
+                        : '<span class="bhub-chip is-warn">no code set for them' + (soon ? ' — due now' : '') + '</span>') + '</span></div>'
+                    + '<div class="ks-kv"><span class="ks-k">They see it</span><span class="ks-v"><small>'
+                    + (nextMine
+                        ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
+                        : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
+                : '<div class="ks-kv"><span class="ks-k">Next guest</span><span class="ks-v"><small>no upcoming booking</small></span></div>')
+            + ((rec.history || []).length
+                ? '<details class="ks-hist"><summary>Who had which code</summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'
+                    + rec.history.map((h) => '<tr><td><span class="ks-code">' + e(h.code) + '</span></td><td>' + e(h.guest || '—') + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
+                    + '</table><p class="ks-note">Stored encrypted, like your private cottage notes. The log says which code was live and when it changed — your record if entry is ever disputed.</p></details>'
+                : '')
+            + '</div>';
+    }).join('') || '<p class="lead" style="text-align:left;">No cottages yet.</p>';
+}
+// The guest-side reveal window, mirrored for DISPLAY only (my-bookings.php
+// owns the real gate) — from revealDays before check-in through check-out.
+function keysafeRevealOpen(b, today) {
+    return today >= ukShiftDays(b.checkIn, -__keysafeDays) && today <= b.checkOut;
+}
+// The rotate flow. Generating records NOTHING; the OK button is the owner's
+// "I've set the safe" and is the single act that writes the record — and
+// with it, releases the code to the next guest's booking page.
+async function keysafeRotate(pk) {
+    const rec = (__keysafe || {})[pk] || { code: '', history: [] };
+    const next = keysafeNextBooking(pk);
+    const exclude = [rec.code]
+        .concat((rec.history || []).map((h) => h.code))
+        .concat(Object.keys(__keysafe || {}).map((k) => ((__keysafe || {})[k] || {}).code));
+    const gen = keysafeGen(exclude);
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    const vals = await glassForm(
+        next
+            ? `${next.name || 'The next guest'} ${next.checkIn <= todayDashed() ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — they see this code on their booking page only after you confirm.`
+            : 'No upcoming booking — the new code is recorded for the cottage.',
+        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Go set the safe, then confirm.' }],
+        { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
+    );
+    if (!vals) return; // backed out: nothing recorded, nothing shown to anyone
+    const code = String(vals.code || '').trim();
+    if (keysafeBad(code)) {
+        glassAlert('That code is too guessable — four digits, not a run or a repeat. The safe was not recorded.');
+        return;
+    }
+    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next ? next.dbId : 0 };
+    payload.op_id = chbOpFor(payload);
+    try {
+        const r = await apiPost('keysafe.php', payload);
+        if (r && r.ok && r.safe) {
+            __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, r.safe);
+            chbOpBump();
+            toast(`Safe recorded as ${code}` + (next ? ` — ${chbSayFirst(next.name || 'the guest')} sees it on their booking page ${keysafeRevealOpen(next, todayDashed()) ? 'now' : 'from ' + fmtDate(ukShiftDays(next.checkIn, -__keysafeDays))}.` : '.'));
+            renderKeysafe();
+            renderNeedsYou();
+        } else {
+            glassAlert((r && r.error) || 'Couldn’t record the code — the safe itself is whatever you set it to.');
+        }
+    } catch (err) {
+        glassAlert(chbActErrSay(err) || 'Couldn’t record the code — check your signal and try again. The safe itself is whatever you set it to.');
+    }
+}
+// The OFFLINE capture — the same decision at the cottage door with one bar.
+// Generates on-device, queues the confirm through the op ledger (exactly
+// once on replay) and updates the local mirror so the sheet's duty clears.
+async function odsKeysafe(pk) {
+    const rec = (__keysafe || {})[pk] || { code: '', history: [] };
+    const next = keysafeNextBooking(pk) || ((chbSnapRead() || {}).rows || []).filter((r) => r.pk === pk && r.dbId && r.ci >= todayDashed()).map((r) => ({ dbId: r.dbId, name: r.nm, checkIn: r.ci, checkOut: r.co }))[0] || null;
+    const gen = keysafeGen([rec.code].concat((rec.history || []).map((h) => h.code)));
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    const vals = await glassForm(
+        (next ? `${next.name || 'The next guest'} — their code goes live on their booking page when the signal returns, never before the safe is set.` : 'Recorded for the cottage; posts itself when the signal returns.'),
+        [{ id: 'code', label: 'New 4-digit code', def: gen, hint: 'A fresh one is filled in — overtype it to use your own. Set the safe, then confirm.' }],
+        { title: `New code for ${nm}’s key safe`, okLabel: 'I’ve set the safe' },
+    );
+    if (!vals) return;
+    const code = String(vals.code || '').trim();
+    if (keysafeBad(code)) {
+        glassAlert('That code is too guessable — four digits, not a run or a repeat. Nothing was recorded.');
+        return;
+    }
+    const payload = { action: 'confirm', prop_key: pk, code, booking_id: next ? next.dbId : 0 };
+    payload.op_id = chbOpFor(payload);
+    __keysafe = __keysafe || {};
+    __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, { code, setAt: new Date().toISOString(), forBooking: next ? next.dbId : 0 });
+    chbOpBump();
+    queueOrPost('keysafe.php', payload, 'Key safe · ' + nm).catch(() => {});
+    toast('Recorded on this phone — it posts itself when the signal returns.');
+    renderOfflineDaySheet();
+}
+
 function chbSnapWrite() {
     try {
         const today = todayDashed();
@@ -17173,8 +17387,10 @@ function chbSnapWrite() {
         });
         // the coast (tides/weather) is carried forward from the last snapshot —
         // chbSnapCoastPatch refreshes it async, and a rebuild between patches
-        // must not throw away data the offline morning needs
-        chbSnapStore({ at: Date.now(), day: today, rows, up: chbSnapUpFromStores(), ops, cots, coast: prev.coast || null });
+        // must not throw away data the offline morning needs. The key safe
+        // mirror rides the same way (last-seen when this session hasn't
+        // loaded it) — the offline duty and capture need it at the door.
+        chbSnapStore({ at: Date.now(), day: today, rows, up: chbSnapUpFromStores(), ops, cots, coast: prev.coast || null, ks: __keysafe || prev.ks || null });
     } catch (e) {}
 }
 // The coast joins the snapshot ASYNC (never waited on; a failed fetch leaves
@@ -17243,6 +17459,10 @@ function renderOfflineDaySheet() {
         : snap;
     const host = document.getElementById('view-backoffice');
     if (!s || !host) return false;
+    // Seed the key safe mirror from the snapshot on an offline boot — the
+    // rotation duty and the capture both read it, and a cold boot has no
+    // fetch to fill it. Never overwrites a live-loaded mirror.
+    if (!__keysafe && s.ks) __keysafe = s.ks;
     let el = document.getElementById('offline-daysheet');
     if (!el) {
         el = document.createElement('div');
@@ -17381,6 +17601,24 @@ function odsDutiesHtml(rows) {
                 act: chbAttrs('odsDep', String(i)),
             });
         }
+    });
+    // A key safe due a rotation — the capture works entirely from this phone
+    // (on-device code, queued confirm), which is the point: changeover
+    // morning at the cottage door is exactly where the signal isn't. Bounded
+    // to the sheet's own window: a row ARRIVING today/tomorrow whose booking
+    // the safe isn't set for.
+    const ksSeen = {};
+    (rows || []).forEach((r) => {
+        if (!r.dbId || r.ota || ksSeen[r.pk] || (r.ci || '') < today) return;
+        const rec = (__keysafe || {})[r.pk];
+        if (!rec || Number(rec.forBooking) === Number(r.dbId)) return;
+        ksSeen[r.pk] = 1;
+        out.push({
+            sev: r.ci === today ? 'ny-danger' : '',
+            l: 'Rotate ' + (r.cot || r.pk) + '’s key safe',
+            s: (r.nm || 'The next guest') + ' arrives ' + (r.ci === today ? 'today' : 'tomorrow') + ' — their code isn’t on the safe yet',
+            act: chbAttrs('odsKeysafe', String(r.pk)),
+        });
     });
     // Refused replays keep their place — the one duty class that works
     // entirely from this phone (the record is IDB, the reader a dialog).
@@ -17971,6 +18209,12 @@ async function initBackOffice() {
     // repaints once the mirror lands.
     try {
         oqRefusedLoad().then(() => renderNeedsYou());
+    } catch (e) {}
+    // The key safe mirror — the rotation duty reads it, and the next snapshot
+    // carries it to the offline morning. Fire-and-forget; a failure keeps the
+    // last good copy and mints no duty from ignorance.
+    try {
+        keysafeLoad().then(() => renderNeedsYou());
     } catch (e) {}
     try {
         renderNeedsYou();

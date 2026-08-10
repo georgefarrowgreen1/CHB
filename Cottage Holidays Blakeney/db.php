@@ -771,7 +771,13 @@ function is_private_content_key($key)
         // into an email, so the decrypt-failure trade that kept bacs-details
         // plaintext (garbage in a guest's inbox) doesn't apply — a failed
         // decrypt here renders an empty owner-side field, which is retypable.
-        strpos($key, 'ops-') === 0;
+        strpos($key, 'ops-') === 0 ||
+        // The key safe keeper's per-cottage record (keysafe.php): the current
+        // code, which booking it was set for, and the rotation history. Same
+        // reasoning as ops- — these open the cottages — and its one guest
+        // surface (my-bookings.php's door-code reveal) degrades to "no code"
+        // on a failed decrypt via keysafe_read, never to garbage.
+        strpos($key, 'keysafe-') === 0;
 }
 
 // Operational/internal content keys: written by server code (never the content
@@ -950,6 +956,27 @@ function content_json($key, $default = [])
         if (is_string($d)) {
             $d = json_decode($d, true);
         } // unwrap legacy double-encoding
+        return is_array($d) ? $d : $default;
+    } catch (\Throwable $e) {
+        return $default;
+    }
+}
+
+// Read an ARRAY/object stored under a PRIVATE (encrypted-at-rest) key —
+// content_json's sibling for the keys content_set_secret writes. content_json
+// reads the ciphertext raw and decodes garbage to $default, which happens to be
+// safe but is an accident; this decrypts first, the way content_value does for
+// scalars. A failed decrypt returns $default: absent, never garbage.
+function content_secret_json($key, $default = [])
+{
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute([$key]);
+        $v = $s->fetchColumn();
+        if ($v === false || $v === null || $v === '') {
+            return $default;
+        }
+        $d = json_decode(decrypt_value($v), true);
         return is_array($d) ? $d : $default;
     } catch (\Throwable $e) {
         return $default;

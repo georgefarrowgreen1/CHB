@@ -7464,6 +7464,44 @@ body.light-mode .feed-dot-bad {
     display: none;
   }
 }
+/* The guest's door code — my-bookings.php sends it only once the owner has
+   confirmed the safe is set for this stay and arrival is near. */
+.hub-doorcode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.hub-doorcode .ic {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--accent);
+}
+.hub-doorcode-lbl {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--text-light);
+}
+.hub-doorcode-fig {
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  letter-spacing: 0.22em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-text);
+}
+.hub-doorcode.is-wait {
+  background: transparent;
+  border-style: dashed;
+}
+.hub-doorcode.is-wait .hub-doorcode-lbl {
+  color: var(--text-muted);
+}
 .hub-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));

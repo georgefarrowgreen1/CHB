@@ -4362,6 +4362,50 @@ a HINT to probe now, never a verdict.
   `odsDepConfirmSweep` is re-entrant-safe (`__odsSweeping`) and re-checks each item
   against the LIVE list before asking.
 
+## The key safe keeper — a code the guest only gets once the safe carries it
+
+**Its own page** (`view-keysafe`, the KEY icon in the admin dock — 5 buttons now) plus
+duties on both dashboards, an offline capture, and a guest reveal. The owner's rule,
+stated at the demo and load-bearing everywhere: **the guest is never given a code the
+safe hasn't been confirmed set to.** Three consequences shape the whole design:
+- **Generating records NOTHING.** The app cannot turn a dial, so `keysafeRotate`'s
+  dialog (a glassForm with a generated 4-digit code prefilled — `def` support added to
+  glassForm for it — overtype to use your own) writes only on "I've set the safe".
+  That confirm is also what RELEASES the code to the guest.
+- **The code is never emailed** — that was already mailer.php's standing policy (the
+  arrival email says "your entry details appear on your booking page"), but the in-app
+  reveal that sentence pointed at had been REMOVED (arrival-access.php now serves only
+  coordinates), so the promise was dead. `my-bookings.php` makes it true again:
+  `door_code` is attached to a stay only when the record says the safe is set FOR that
+  booking AND `keysafe_reveal_window` is open (2 days before check-in through check-out,
+  string-compared ISO dates so no timezone moves the day); `door_code_from` carries the
+  dated promise once a confirmed code exists. Gated BOTH directions in
+  test-integration §18 — the break-test's failure mode is the exact leak ("7302" shown
+  to a guest a month out).
+- **The record is PRIVATE like ops-** (`keysafe-<prop>`, encrypted at rest via
+  `content_set_secret`; read through the new `content_secret_json` in db.php, which
+  content_json is NOT — it reads ciphertext raw). §18 asserts the stored row never
+  contains the plaintext code, and the activity log records THAT a rotation happened,
+  never the code (log rows are plaintext). `keysafe_read` sanitises: garbage, a failed
+  decrypt or a non-4-digit code degrade to "no code", never line noise on a guest page.
+The pieces: **keysafe-lib.php** (pure — `keysafe_bad` refuses runs/repeats/junk,
+`keysafe_generate` excludes this cottage's recent codes AND the other cottages' current
+ones, the reveal window; gated by test-keysafe.php, CI-wired), **keysafe.php** (admin,
+route_actions; `confirm` rides the op ledger so the offline capture replays exactly
+once), the **duty** (`chbDuties` kind `keysafe`: fires when `forBooking` ≠ the stay in
+residence / arriving next — `keysafeNextBooking`, ONE definition the page, duty and
+dialog all read; RED once the next guest's reveal window is open; an unloaded mirror
+mints NO duty — never from ignorance), and the **offline capture** (`odsKeysafe`:
+on-device `crypto.getRandomValues`, queued confirm, local mirror update so the sheet
+stops nagging before the signal returns; the mirror rides the snapshot as `ks`,
+last-seen kept like the ops notes). Gated by ui-test-keysafe.js (31 checks; §5b's
+odsKeysafe call must NOT be awaited — it resolves only when its dialog is answered,
+and the awaiting line is what would answer it: a deadlock, hit on the first run) and
+ui-test-yourstay §20 (the guest renderer shows what the server sent, promises only a
+dated `door_code_from`, and says NOTHING otherwise — no empty row, no guess). NB
+ui-test-yourstay's `openPage(guest, …)` takes a guest OBJECT; `true` crashes
+renderGuestBookings on `currentGuest.name.split`.
+
 ## Where you were, and sending things once
 
 - **A RELOAD COMES BACK TO THE SCREEN YOU WERE ON** (`chbNavRemember`/`maybeRestoreView`,

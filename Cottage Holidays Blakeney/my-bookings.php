@@ -54,8 +54,35 @@ function my_bookings_payload(string $email, bool $preview = false): array
     // the guest can pay a balance / add details straight from My Stays) — UNLESS
     // this is a read-only admin preview, where those actionable tokens are stripped.
     $sqOn = square_enabled();
+    // THE DOOR CODE, released only by the owner's own confirm. keysafe.php's
+    // record says what the safe is PHYSICALLY set to and which booking it was
+    // set FOR; a stay is shown the code only when both match AND arrival is
+    // near (keysafe_reveal_window — from 2 days out through check-out). Never
+    // emailed: this reveal is what the arrival email's "your entry details
+    // appear on your booking page" sentence points at. One decrypt per
+    // cottage per request; a failed decrypt degrades to "no code".
+    require_once __DIR__ . '/keysafe-lib.php';
+    $ksToday = date('Y-m-d');
+    $ksByProp = [];
+    $ksFor = function ($pk) use (&$ksByProp) {
+        if (!array_key_exists($pk, $ksByProp)) {
+            $ksByProp[$pk] = keysafe_read(content_secret_json('keysafe-' . $pk, null));
+        }
+        return $ksByProp[$pk];
+    };
     foreach ($bookings as &$bk) {
         $bk['pay_token'] = ($preview || !$sqOn) ? null : pay_token((int) $bk['id']);
+        $ks = $ksFor($bk['prop_key']);
+        $ksMine = $ks['code'] !== '' && (int) $ks['forBooking'] === (int) $bk['id'];
+        $bk['door_code'] = $ksMine && keysafe_reveal_window($bk['check_in'], $bk['check_out'], $ksToday)
+            ? $ks['code']
+            : null;
+        // The date the code will appear, so the pre-arrival card can say so —
+        // only once a confirmed code exists for THIS stay (never a promise the
+        // owner hasn't yet made good on).
+        $bk['door_code_from'] = $ksMine && $bk['door_code'] === null && $bk['check_in'] >= $ksToday
+            ? date('Y-m-d', strtotime($bk['check_in'] . ' 12:00:00 UTC') - KEYSAFE_REVEAL_DAYS * 86400)
+            : null;
         $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
         // WHEN the balance is due, DERIVED — deliberately its own field, not the
         // raw `balance_due_date` column beside it. That column is the per-booking

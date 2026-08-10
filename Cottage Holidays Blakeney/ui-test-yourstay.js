@@ -464,6 +464,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/const openStamp = \+\+payState\.openStamp;/.test(appSrc) && (appSrc.match(/if \(!openLive\(\)\) return;/g) || []).length >= 2,
     'openPayView captures a supersede stamp and bails after each await');
 
+  // 20) THE DOOR CODE — rendered ONLY from what my-bookings.php sent. The
+  // server owns the gate (confirmed-set for this stay + arrival near, gated
+  // in test-integration §18); the client's whole contract is: show door_code
+  // when present, promise only a dated door_code_from, say NOTHING otherwise.
+  console.log('20) the guest\'s door code renders only what the server released');
+  {
+    const p20 = await openPage({ name: 'Keysafe Kate', email: 'k@x.co' }, [
+      mk('jollyboat', d(1), d(4), { name: 'Keysafe Kate', payment: 'paid', deposit_paid: 440, agreed_total: 440, door_code: '4826' }),
+    ]);
+    const t = await p20.evaluate(() => (document.getElementById('guest-bookings') || document.body).textContent);
+    ok(/Key safe code/.test(t) && /4826/.test(t), 'a released code shows on the pre-arrival hub, named for what it is');
+    await p20.close();
+    const p20b = await openPage({ name: 'Keysafe Kate', email: 'k@x.co' }, [
+      mk('jollyboat', d(10), d(13), { name: 'Keysafe Kate', payment: 'paid', deposit_paid: 440, agreed_total: 440, door_code_from: d(8) }),
+    ]);
+    const t2 = await p20b.evaluate(() => (document.getElementById('guest-bookings') || document.body).textContent);
+    ok(/Your key safe code appears here from/.test(t2) && !/4826/.test(t2), 'a confirmed-but-early code is a dated promise, never a number');
+    await p20b.close();
+    const p20c = await openPage({ name: 'Keysafe Kate', email: 'k@x.co' }, [
+      mk('jollyboat', d(1), d(4), { name: 'Keysafe Kate', payment: 'paid', deposit_paid: 440, agreed_total: 440 }),
+    ]);
+    const t3 = await p20c.evaluate(() => (document.getElementById('guest-bookings') || document.body).textContent);
+    ok(!/Key safe code|key safe code appears/.test(t3), 'with nothing released the card promises NOTHING — no empty row, no guess');
+    await p20c.close();
+  }
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

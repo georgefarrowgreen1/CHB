@@ -120,7 +120,9 @@ const snap = (page) =>
 
     let s = await snap(page);
     check(s.crownAct === 'crownSheetToggle', `the owner bundle repoints the crown at the assistant (${s.crownAct})`);
-    check(s.knotGone && s.dockBtns === 4, `the dock's separate Search knot is retired (${s.dockBtns} buttons left)`);
+    // 5 buttons: Today, Inbox, Payments, Key safes, Manage — the key joined
+    // for the keeper's page (owner-asked); the SEARCH knot stays retired.
+    check(s.knotGone && s.dockBtns === 5, `the dock's separate Search knot is retired (${s.dockBtns} buttons, none of them search)`);
     check(!s.open, 'the sheet starts closed');
 
     // ---- A) the crown opens it, and the field is genuinely typable ----
