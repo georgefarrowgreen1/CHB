@@ -38,6 +38,31 @@ route_actions([
         json_out(['ok' => true, 'safes' => $out, 'revealDays' => KEYSAFE_REVEAL_DAYS]);
     },
 
+    // The per-cottage on/off switch. OFF means: no rotation duties, no card
+    // on the page beyond the way back on, and the guest reveal withholds the
+    // code (my-bookings.php reads the same flag). The record itself is KEPT —
+    // turning the keeper back on finds the history exactly as it was.
+    'set_enabled' => function ($in) {
+        $propKey = clean($in['prop_key'] ?? '');
+        $on = !empty($in['enabled']);
+        try {
+            $st = db()->prepare('SELECT name FROM properties WHERE prop_key = ?');
+            $st->execute([$propKey]);
+            $propName = $st->fetchColumn();
+        } catch (\Throwable $e) {
+            $propName = false;
+        }
+        if ($propName === false) {
+            json_out(['error' => 'Unknown property'], 400);
+        }
+        $key = 'keysafe-' . $propKey;
+        $rec = keysafe_read(content_secret_json($key, null));
+        $rec['enabled'] = $on;
+        content_set_secret($key, $rec);
+        log_activity('keysafe', 'keysafe.toggle', 'Key safe keeper turned ' . ($on ? 'ON' : 'OFF') . ' — ' . $propName);
+        json_out(['ok' => true, 'safe' => $rec]);
+    },
+
     'confirm' => function ($in) {
         $opTok = op_claim($in);
         $propKey = clean($in['prop_key'] ?? '');

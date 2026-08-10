@@ -16595,6 +16595,7 @@ function chbDuties() {
     try {
         if (__keysafe) Object.keys(__keysafe).forEach((pk) => {
             const rec = __keysafe[pk] || {};
+            if (rec.enabled === false) return; // switched off for this cottage
             const next = keysafeNextBooking(pk);
             if (!next || keysafeSetFor(rec, next)) return;
             const soon = dpParse(next.checkIn).getTime() - t0 <= __keysafeDays * dayMs;
@@ -17277,6 +17278,15 @@ function renderKeysafe() {
     const today = todayDashed();
     host.innerHTML = Object.keys(__keysafe).map((pk) => {
         const rec = __keysafe[pk] || {};
+        // Switched off (Settings → cottage → Private notes): the card says so
+        // and offers the way back on — never a dead end, never a duty.
+        if (rec.enabled === false) {
+            return '<div class="glass-panel ks-card ks-off">'
+                + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>'
+                + '<button class="btn-sm btn-edit" ' + chbAttrs('keysafeSetEnabled', String(pk), true) + '>Turn on</button></div>'
+                + '<div class="ks-kv"><span class="ks-k">Keeper is off for this cottage</span><span class="ks-v"><small>no rotation duties, and guests are shown nothing' + ((rec.history || []).length || rec.code ? ' — the history is kept and returns with it' : '') + '</small></span></div>'
+                + '</div>';
+        }
         const next = keysafeNextBooking(pk);
         const nextMine = keysafeSetFor(rec, next);
         const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
@@ -17322,6 +17332,29 @@ function renderKeysafe() {
 function keysafeRevealOpen(b, today) {
     return today >= ukShiftDays(b.checkIn, -__keysafeDays) && today <= b.checkOut;
 }
+// The per-cottage on/off switch — lives in Settings → cottage → Private
+// notes AND on the keeper's own off-card. OFF stops the duties and the guest
+// reveal (my-bookings reads the same flag); the record and its history are
+// KEPT, so turning it back on finds everything as it was.
+async function keysafeSetEnabled(pk, on) {
+    try {
+        const r = await apiPost('keysafe.php', { action: 'set_enabled', prop_key: pk, enabled: !!on });
+        if (r && r.ok && r.safe) {
+            __keysafe = __keysafe || {};
+            __keysafe[pk] = Object.assign({}, __keysafe[pk] || {}, r.safe);
+            toast(on
+                ? `Key safe keeper is ON for ${(propertyMeta[pk] || {}).name || pk}.`
+                : `Key safe keeper is OFF for ${(propertyMeta[pk] || {}).name || pk} — no duties, and guests are shown nothing.`);
+            renderKeysafe();
+            renderNeedsYou();
+        } else {
+            glassAlert((r && r.error) || 'Couldn’t save the switch — nothing changed.');
+        }
+    } catch (e) {
+        glassAlert('Couldn’t save the switch — check your signal. Nothing changed.');
+    }
+}
+
 // The rotate flow. Generating records NOTHING; the OK button is the owner's
 // "I've set the safe" and is the single act that writes the record — and
 // with it, releases the code to the next guest's booking page.
@@ -17643,8 +17676,9 @@ function odsDutiesHtml(rows) {
         if ((!r.dbId && !r.ota) || ksSeen[r.pk] || (r.ci || '') < today) return;
         const rec = (__keysafe || {})[r.pk];
         // Platform stays rotate too — matched on the stay ref, since they
-        // have no bookings row (keysafeSetFor, the one rule).
-        if (!rec || keysafeSetFor(rec, { ota: !!r.ota, dbId: r.dbId || 0, ref: 'o:' + r.ci })) return;
+        // have no bookings row (keysafeSetFor, the one rule). A cottage the
+        // keeper is switched OFF for mints nothing, online or off.
+        if (!rec || rec.enabled === false || keysafeSetFor(rec, { ota: !!r.ota, dbId: r.dbId || 0, ref: 'o:' + r.ci })) return;
         ksSeen[r.pk] = 1;
         out.push({
             sev: r.ci === today ? 'ny-danger' : '',
@@ -18955,6 +18989,7 @@ function accomSectionHtml(k, sec) {
             // arrival text, and carried in the phone's offline day sheet so a
             // burst pipe with no signal still finds the stopcock.
             return `
+                    <label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" id="ks-toggle-${k}" style="width:auto;margin:0;" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}> Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</label>
                     <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">For you only — never shown to guests. Key safe code, stopcock, fuse board, boiler reset, meter locations, cleaner's number, bin days. Saved to your phone with the day sheet, so it's readable at the cottage door with no signal.</label><textarea rows="10" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)}>${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>`;
         case 'location':
             return `

@@ -4419,6 +4419,21 @@ platform guest** (forBooking 0 never matches a real booking id): the card and bo
 dialogs say to share the code in the platform's message thread instead, which is the
 honest version of "they see it". Gated by ui-test-keysafe §6 (break-tested: deleting
 the dbBlocks loop fails all five) + test-integration §18h + the lib's ref cases.
+**THE KEEPER IS A PER-COTTAGE SWITCH** (owner-asked; the checkbox lives in Settings →
+cottage → Private notes, `#ks-toggle-<pk>`, and the page's off-card carries "Turn on"
+so it is never a dead end). `enabled` rides the SAME record — default ON, only an
+explicit false disables, so pre-toggle records keep working and garbage can never
+switch a cottage off by accident (keysafe_read). OFF means: no rotation duty on
+either dashboard, and **my-bookings.php withholds the reveal even inside the window**
+(the break-test's failure mode is the code served while off). The record and history
+are KEPT — back on finds everything as it was. Three traps from building its gate,
+each general: `#accom-detail input[type=checkbox]` matches OTHER sections' hidden
+checkboxes (target by id); a bare `<input type=checkbox>` in that panel renders at
+ZERO size (the exp-recurring idiom `style="width:auto;margin:0"` is load-bearing);
+and the Manage section id is **'accom'**, not 'accommodations' — poorsignal §9d
+"worked" with the section invisible because it only tested DOM presence. Gated by
+ui-test-keysafe §7 (drives the REAL checkbox) + test-integration §18i + the lib's
+enabled cases, the duty guard and the reveal guard each break-tested in isolation.
 
 ## Where you were, and sending things once
 

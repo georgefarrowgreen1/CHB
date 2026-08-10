@@ -1550,6 +1550,20 @@ it_check('a platform-stay rotation stores its stay ref', ($r['json']['safe']['fo
 $r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '6183', 'booking_id' => 0, 'stay_ref' => '<script>bad', 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
 it_check('…and a garbage ref reads as none', ($r['json']['ok'] ?? false) && ($r['json']['safe']['forStay'] ?? 'x') === '', $r['raw']);
 
+// (i) THE PER-COTTAGE SWITCH gates the guest reveal: rotate for the near
+// guest (in window), then switch the keeper OFF — the code must leave their
+// page even though the record still carries it; back ON, it returns.
+http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '2749', 'booking_id' => $ksBid, 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+$bk = $ksPayload($ksBid);
+it_check('(fixture) the near guest sees the fresh code', ($bk['door_code'] ?? null) === '2749', json_encode($bk['door_code'] ?? 'absent'));
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $propKey, 'enabled' => false]);
+it_check('the switch turns off and says so', ($r['json']['ok'] ?? false) && ($r['json']['safe']['enabled'] ?? true) === false, $r['raw']);
+$bk = $ksPayload($ksBid);
+it_check('OFF withholds the code from the guest page — even inside the window', ($bk['door_code'] ?? null) === null, json_encode($bk['door_code'] ?? 'absent'));
+http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $propKey, 'enabled' => true]);
+$bk = $ksPayload($ksBid);
+it_check('back ON, the code returns — the record was kept, not erased', ($bk['door_code'] ?? null) === '2749', json_encode($bk['door_code'] ?? 'absent'));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

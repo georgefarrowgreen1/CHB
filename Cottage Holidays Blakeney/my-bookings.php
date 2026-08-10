@@ -73,7 +73,9 @@ function my_bookings_payload(string $email, bool $preview = false): array
     foreach ($bookings as &$bk) {
         $bk['pay_token'] = ($preview || !$sqOn) ? null : pay_token((int) $bk['id']);
         $ks = $ksFor($bk['prop_key']);
-        $ksMine = $ks['code'] !== '' && (int) $ks['forBooking'] === (int) $bk['id'];
+        // The cottage's on/off switch gates the reveal too — a keeper the
+        // owner turned off must not go on serving codes it no longer tracks.
+        $ksMine = $ks['enabled'] && $ks['code'] !== '' && (int) $ks['forBooking'] === (int) $bk['id'];
         $bk['door_code'] = $ksMine && keysafe_reveal_window($bk['check_in'], $bk['check_out'], $ksToday)
             ? $ks['code']
             : null;
