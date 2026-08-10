@@ -312,6 +312,10 @@ async function waitForServer(url, tries = 40) {
     // The sent emails now live in the ACTIVITY feed (one chronological story),
     // served by the real hub_bundle endpoint — same logged emails, now beside
     // the booking's other events, with the free-text body expanding in place.
+    // The feed sits inside the Activity disclosure fold: open it the way the
+    // owner does, or waitForSelector (which waits for VISIBLE) times out on
+    // rows that exist but are folded away.
+    await page.evaluate(() => { const f = document.getElementById('bhub-fold-activity'); if (f && f.hidden) bhubFoldToggle('activity'); });
     await page.waitForSelector('#hub-history .bhub-hist-row', { timeout: 5000 });
     const feedTx = (await page.locator('#hub-history').textContent()) || '';
     /Payment receipt/.test(feedTx) ? pass('payment receipt appears in the feed') : fail('payment receipt not in feed');

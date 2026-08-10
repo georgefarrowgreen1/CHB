@@ -165,6 +165,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const hubText = async (id) => {
     await hub.evaluate((i) => openBookingHub(i), id);
     await hub.waitForTimeout(700);
+    // The No-dog row lives inside the Guest details FOLD now (the
+    // only-what-needs-seeing hub) — open it the way the owner does, or
+    // innerText (which is '' for hidden content) reads an empty card.
+    await hub.evaluate(() => { const f = document.getElementById('bhub-fold-guest'); if (f && f.hidden) bhubFoldToggle('guest'); });
     return hub.evaluate(() => (document.querySelector('#booking-hub-content') || document.body).innerText);
   };
   const declared = await hubText('b1');
