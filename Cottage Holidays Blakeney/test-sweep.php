@@ -264,13 +264,15 @@ swchk('the screen shows the movable figure per payment and a total',
     && preg_match('/gbp\(it\.movable\)/', $adm) === 1
     && preg_match('/gbp\(T\.movable\)/', $adm) === 1);
 
-swchk('the screen exists and is reachable from the Payments index',
+// The index row is GONE by design (the five-verdict landing) — the way in is
+// the To-move-out verdict's own actions, composed in admin.js via chbAttrs.
+swchk('the screen exists and is reachable from the Money landing',
     strpos($adm, 'function renderSweep(') !== false
     && preg_match("/section === 'sweep'\s*\)\s*\{\s*renderSweep\(\)/", $adm) === 1
     && preg_match("/sweep:\s*'Move money out'/", $adm) === 1
     && strpos($views, 'asec-sweep') !== false
     && strpos($views, 'sweep-body') !== false
-    && preg_match('/data-act="accountsOpen"[^>]*data-arg="sweep"/', $views) === 1);
+    && substr_count($adm, "chbAttrs('accountsOpen', 'sweep')") >= 1);
 swchk('the screen renders the SERVER figure, never its own fee maths',
     strpos($adm, 'rep.deposit_liability') !== false
     && preg_match('/__sweepBalance[^\n]*(saveContent|localStorage|sessionStorage)/', $adm) === 0

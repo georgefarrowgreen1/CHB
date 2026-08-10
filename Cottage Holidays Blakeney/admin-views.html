@@ -214,32 +214,20 @@
 
         <!-- INDEX -->
         <div id="accounts-index" class="settings-index">
-            <div id="money-overview" class="money-overview"><!-- JS injects the graphical financial dashboard --></div>
-            <div class="settings-group">
+            <div id="money-overview" class="money-overview"><!-- JS injects the five-verdict money landing --></div>
+            <!-- The verdicts above route to Payments & balances, Recent, Income & tax
+                 and Move money out themselves — the index keeps only the destinations
+                 no verdict owns. -->
+            <span class="bhub-grpcap" style="max-width:640px;margin-left:auto;margin-right:auto;">More</span>
+            <div class="settings-group" style="max-width:640px;margin-left:auto;margin-right:auto;">
                 <button class="settings-row" data-act="accountsOpen" data-arg="payments">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Payments &amp; balances</span><span class="settings-row-sub">Take guest payments &amp; refund deposits</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-act="accountsOpen" data-arg="recent">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Recent payments</span><span class="settings-row-sub">A list of payments you've received</span></span><span class="settings-row-chev">›</span>
-                </button>
-            </div>
-            <div class="settings-group">
-                <button class="settings-row" data-act="accountsOpen" data-arg="income">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Profit, quarterly totals &amp; downloads for your accountant</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-act="accountsOpen" data-arg="sweep">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h13a4 4 0 0 1 0 8H7"/><path d="M10 18l-3-3 3-3"/><circle cx="19" cy="19" r="2.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Move money out</span><span class="settings-row-sub">How much you can transfer without leaving the account short</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-act="accountsOpen" data-arg="expenses">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
                 </button>
-            </div>
-            <div class="settings-group">
                 <button class="settings-row" data-act="accountsOpen" data-arg="pricingcoach">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>

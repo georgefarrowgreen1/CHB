@@ -4449,7 +4449,6 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* A dot breathes before its words. */
 .bhub-kv-val .bhub-chip-dot, .bhub-plan-state .bhub-chip-dot { margin-right: 7px; }
 .bhub-fold-lbl .bhub-chip-dot { margin-right: 8px; }
-.bhub-fold-lbl .bhub-chip-dot { margin-right: 8px; }
 
 /* ---- Disclosure groups — one summary row, detail unfolding in place. ---- */
 .bhub-grpcap {
@@ -4505,6 +4504,29 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }
+
+/* ---- Money landing + Income & tax folds: one centred 640px column (the
+   overview spans both desktop columns, so children centre themselves). A
+   landing booking row is a <button> wearing the kv anatomy (full UA reset —
+   the .cmdk-qa-row lesson): guest as label, figure right. */
+#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap {
+  max-width: 640px; margin-left: auto; margin-right: auto;
+}
+/* Income & tax's folds share the drill-down panel's LEFT rail (the headline
+   and year select above them are left-aligned) — centring only these made
+   two columns of one page. */
+#accounts-content .bhub-fold-grp { max-width: 640px; }
+.mo-pulse { font-size: 0.9rem; color: var(--text-muted); max-width: 640px; margin: 2px auto 0; }
+.mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; }
+@media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
+/* Every row in these folds names a GUEST (or a Due-now marker) — sentence
+   case at reading size, not the reference cards' 84px uppercase column. */
+#money-overview .bhub-kv-label {
+  flex: 1 1 auto; font-size: 0.9rem; letter-spacing: 0; text-transform: none;
+  color: var(--text-light); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#money-overview .bhub-kv-val { flex: 0 0 auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 /* ---- Add/Edit Booking: the sectioned form (owner-only, so these live in
    admin.css and app.css stays flat). Guest | Stay side by side ≥901px, Money

@@ -288,6 +288,51 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The Money area is FIVE ANSWERS, not an index
+
+`renderMoneyOverview` (admin.js) renders the landing in the hub's fold anatomy
+(`bhubFoldGrp` — see the booking-hub notes): a pulse line, the EXCEPTIONS, then one
+verdict group per money question — **To collect / To move out / To give back / The
+books / Recent** (+ Trends & history holding the old charts). Gated by ui-test-money
+§2/2b/2c (each break-tested; a deleted fold group fails NAMED checks, not a crash —
+the click is guarded).
+- **The owed rows are PLAN-AWARE and reuse the hub's own helpers** (`bookingDue`,
+  `bookingPlanDueDate`, `bookingInBalanceWindow`), so "due now" here and the payask
+  there cannot disagree. Due NOW: nothing paid in yet, inside the window, or the stay
+  is over. OVERDUE (finished stay, or due date a week gone) is an EXCEPTION row in
+  Needs attention, NOT a queue row — and the To-collect zero state therefore must not
+  claim "every upcoming booking is paid up" while an overdue row sits above it
+  (break-tested; it says "nothing else — the overdue one is above").
+- **`moChaseDue` rides `chbBulkBalanceAction`** (the search answer's informed-confirm
+  bulk machinery, unchanged) over the DUE-NOW rows; offered only at ≥2 chaseable
+  owers, the under-two rule the bulk chase already follows.
+- **`moAsyncFill` fills the slow answers in place, stamp-guarded** (`__moFillStamp`,
+  the cmdk supersede pattern): ONE accounts.php fetch answers To-move-out (payout
+  `P.inBank`), To-give-back (`L.items` with per-row states — the sweep's tensed
+  vocabulary), The-books (the SERVER net replacing the client's fee-less estimate),
+  and the "Square hasn't said" exception (joins Needs attention only when payouts ARE
+  reporting and a charge is >7 days old); it caches into `__sweepLiab` so opening the
+  sweep afterwards costs nothing. The recent feed is its own `recent_payments` call.
+  Navigate first, load second — the groups render instantly with "working it out…".
+- **Income & tax keeps its headline and folds the rest** (`renderAccounts`): The
+  arithmetic / Quarterly (MTD) / What this number doesn't cover, exports visible.
+  Every gate-pinned string (the feed rows, the Q2 regex, the fee note, the
+  `.accounts-stat.headline` classes) survives verbatim INSIDE the folds — textContent
+  reads pass through `hidden`, the fold rule again.
+- **The index shrank to one "More" group** (Payments & balances / Expenses / Pricing
+  coach) — the verdicts route to recent/income/sweep themselves. `#accounts-index` is
+  ONE desktop column now (app.css ≥900 block): two columns tore the caption from its
+  group, the money-overview children centre on a 640px rail (`.mo-pulse`'s own margin
+  must stay `auto` — a `margin: 2px 0 0` shorthand silently un-centred it, caught on
+  the screenshot). Income & tax's folds stay LEFT-aligned — the headline and year
+  select above them are, and centring only the folds made two columns of one page.
+- **`#money-overview .bhub-kv-label` is sentence case at reading size** — these rows
+  name GUESTS, and the reference cards' 84px uppercase column rendered "PAID UP ·
+  BALANCE" as a label. The landing's booking rows are `.mo-row` `<button>`s (full UA
+  reset) routing to `openBookingHub`.
+- The Move-money-out screen itself was deliberately left as-is this pass — it already
+  had its answer-first rebuild (see the sweep notes).
+
 ## The guest's invoice: ONE document, two presentations
 
 **AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style

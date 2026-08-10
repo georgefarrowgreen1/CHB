@@ -12601,35 +12601,41 @@ async function renderAccounts() {
         ? `<div class="accounts-note" style="margin-top:10px;">${scopeBits.map(escapeHtml).join(' ')}</div>`
         : '';
 
-    const quarterly = `<div class="mo-card" style="max-width:460px;margin-top:14px;"><div class="mo-card-title">Quarterly breakdown (Making Tax Digital)</div>
-                <div class="feed-list" style="padding:0;">
+    const quarterly = `<div class="feed-list" style="padding:4px 16px;">
                     <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
                     ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
-                </div></div>`;
+                </div>`;
 
-    content.innerHTML = `
-                <div class="accounts-stat headline" style="max-width:460px;">
-                    <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
-                    <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
-                </div>
-                <div class="feed-list" style="max-width:460px;margin-top:12px;padding:4px 16px;">
+    // Fold anatomy: net leads full size; arithmetic / quarters / honesty
+    // notes fold behind rows (gate-read strings kept verbatim — folds decide
+    // visibility, never existence); exports stay one visible tap.
+    const mathFold = `<div class="feed-list" style="padding:4px 16px;">
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Rental income</span><span class="feed-amt">${gbp(total)}</span></div>
                     ${Math.abs(keptIncome) > 0.005 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Damage deposits kept</span><span class="feed-amt">${gbp(keptIncome)}</span></div>` : ''}
                     ${cardFees > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Card processing fees</span><span class="feed-amt">− ${gbp(cardFees)}</span></div>` : ''}
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
+                </div>`;
+    const scopeFold = `${scopeNote}
+                <div class="accounts-note" style="margin-top:${scopeBits.length ? 8 : 4}px;">
+                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
+                    Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date.${cardFees > 0 ? ' Card processing fees (kept by Square) are deducted automatically from the payments ledger.' : ''} A record-keeping aid, not formal accounting advice.
+                    ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
+                </div>`;
+    content.innerHTML = `
+                <div class="accounts-stat headline" style="max-width:460px;">
+                    <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
+                    <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
                 </div>
-                ${scopeNote}
-                ${quarterly}
+                <div style="margin-top:12px;">
+                ${bhubFoldGrp('incmath', 'The arithmetic', escapeHtml(`${gbp(total + keptIncome)} in · ${gbp(cardFees + expTotal)} costs`), '', mathFold)}
+                ${bhubFoldGrp('incq', 'Quarterly (Making Tax Digital)', 'the same year in UK tax quarters', '', quarterly)}
+                ${bhubFoldGrp('incscope', 'What this number doesn’t cover', escapeHtml(`${expYear.length ? 'logged expenses only' : 'no expenses logged yet'} · platform stays sit outside it`), '', scopeFold)}
+                </div>
                 <div class="accounts-actions" style="margin-top:14px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
                     <button class="btn-sm btn-edit" data-act="exportAccountsCSV"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Export (CSV)</button>
                     <button class="btn-sm btn-edit" data-act="accountsOpen" data-arg="expenses">Manage expenses</button>
-                </div>
-                <div class="accounts-note" style="margin-top:12px;">
-                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
-                    Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date.${cardFees > 0 ? ' Card processing fees (kept by Square) are deducted automatically from the payments ledger.' : ''} A record-keeping aid, not formal accounting advice.
-                    ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
                 </div>`;
 }
 // ---- Expenses manager (Money → Expenses) ----
@@ -14187,37 +14193,238 @@ function renderMoneyOverview() {
             color: `var(--prop-${k})`,
         })),
     );
-    // The one figure that needs action — what you're owed — leads, with the
-    // "chase" CTA folded into its own tile (no separate duplicate banner).
-    const chaseCta =
-        owedUpcoming > 0.5
-            ? `<button class="btn-sm btn-edit mo-kpi-cta" data-act="stopAccountsPayments">Chase balances →</button>`
-            : '';
+    // ---- THE FIVE ANSWERS (owner-approved demo): the landing IS the
+    // answer — pulse line, exceptions, then one verdict group per money
+    // question; the slow answers (payouts, tax report, recent feed) fill
+    // in asynchronously. ----
+    // Per-booking owed rows with PLAN awareness — the same helpers the hub's
+    // payask uses, so "due now" here and the ask there cannot disagree. Due
+    // NOW: the first payment (nothing in) is due on booking; the balance once
+    // its own plan's date arrives; anything on a finished stay. OVERDUE (the
+    // exception, not the queue): a finished stay, or a due date a week gone.
+    const owedRows = [];
+    Object.keys(dbBookings).forEach((pk) => {
+        (dbBookings[pk] || []).forEach((b) => {
+            const dg = bookingDue(pk, b);
+            if (!dg || !(dg.balance > 0.005)) return;
+            const psR = paymentSummary(pk, b);
+            const pastR = (b.checkOut || '') <= today;
+            const dueDate = bookingPlanDueDate(b);
+            const inWin = (() => { try { return bookingInBalanceWindow(b); } catch (e) { return false; } })();
+            owedRows.push({
+                pk, b, ps: psR, dg, dueDate,
+                dueNow: pastR || inWin || !(dg.paid > 0.005),
+                overdue: pastR || !!(dueDate && ukShiftDays(dueDate, 7) < today),
+                arranged: bookingOwnerArranged(b),
+            });
+        });
+    });
+    owedRows.sort((a, z) => (a.b.checkIn || '').localeCompare(z.b.checkIn || ''));
+    __moOwedRows = owedRows;
+    const overdueRows = owedRows.filter((r) => r.overdue);
+    const queueRows = owedRows.filter((r) => !r.overdue);
+    const dueNowRows = queueRows.filter((r) => r.dueNow);
+    const dueNowSum = dueNowRows.reduce((s, r) => s + r.dg.balance, 0);
+    const laterSum = queueRows.reduce((s, r) => s + r.dg.balance, 0) - dueNowSum;
+    const collectTotal = dueNowSum + laterSum;
+    const kvDot = (cls) => `<span class="bhub-chip-dot ${cls}" aria-hidden="true"></span>`;
+    const stage = (r) => (!(r.dg.paid > 0.005) ? 'first payment' : 'balance');
+    const bkRow = (r, valHtml) =>
+        `<button type="button" class="bhub-kv mo-row" ${chbAttrs('openBookingHub', String(r.b.id))}><span class="bhub-kv-label">${escapeHtml(r.b.name || 'Guest')} · ${stage(r)}${r.arranged ? ' · you arranged this one' : ''}</span><span class="bhub-kv-val">${valHtml}</span></button>`;
+
+    // The pulse line — money in this month, paced against last year to the
+    // same point (the yoy derivation above).
+    const monthIn = months[11] ? months[11].received : 0;
+    const pulse = `${gbp(monthIn)} in this month${yoy.revLast > 0 ? ` · ${revDelta.txt} vs last year to this point` : receivedTY > 0 ? ` · ${gbp(receivedTY)} received in ${taxYearShort(curTY)}` : ''}`;
+
+    // Exceptions first — a clean day renders no red section at all. The
+    // Square-hasn't-said row joins asynchronously (its data is the payout
+    // cache) into #mo-attn-async.
+    let attnRows = '';
+    overdueRows.forEach((r, i) => {
+        const why = (r.b.checkOut || '') <= today ? 'the stay is over' : `was due ${fmtDate(r.dueDate)} under ${r.b.balanceDueDate ? 'their plan' : 'the standard schedule'}`;
+        const remind = !r.arranged && squareAdminEnabled && r.b.email && (r.b.balanceRequestedAt || r.b.depositRequestedAt)
+            ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(r.b.id))}>Send a reminder</button>` : '';
+        attnRows += bhubFoldGrp('mood' + i,
+            `${kvDot('is-bad')}Overdue — ${escapeHtml(r.b.name || 'Guest')}`,
+            escapeHtml(why + (r.b.balanceRemindedAt ? ' · reminded ' + fmtDate(String(r.b.balanceRemindedAt).slice(0, 10)) : '')),
+            `<span class="bhub-payline-fig" style="color:var(--warn-text);">${gbp(r.dg.balance)}</span>`,
+            `<div class="bhub-btn-row bhub-act-links">${remind}
+                ${!r.arranged && squareAdminEnabled && r.b.email ? `<button class="bhub-actlink" ${chbAttrs('requestPayment', String(r.b.id), 'balance')}>Request by card</button>` : ''}
+                <button class="bhub-actlink" ${chbAttrs('openBookingHub', String(r.b.id))}>Open the booking</button>
+            </div>`);
+    });
+    const attn = `${attnRows ? `<span class="bhub-grpcap is-attn" id="mo-attn-cap">Needs attention</span>` : `<span class="bhub-grpcap is-attn" id="mo-attn-cap" hidden>Needs attention</span>`}${attnRows}<div id="mo-attn-async"></div>`;
+
+    // The five verdicts.
+    const collectFold =
+        (dueNowRows.length ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Due now</strong></span><span></span></div>` + dueNowRows.map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate && r.dg.paid > 0.005 ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
+        (queueRows.length - dueNowRows.length > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Not due yet</strong></span><span></span></div>` + queueRows.filter((r) => !r.dueNow).map((r) => bkRow(r, `${gbp(r.dg.balance)}${r.dueDate ? ' · due ' + fmtDate(r.dueDate) : ''}`)).join('') : '') +
+        `<div class="bhub-btn-row bhub-act-links">
+            ${dueNowRows.filter((r) => !r.arranged && r.b.email && squareAdminEnabled).length >= 2 ? `<button class="bhub-actlink" data-act="moChaseDue">Chase everyone due (${dueNowRows.filter((r) => !r.arranged && r.b.email).length})</button>` : ''}
+            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button>
+        </div>`;
+    const collectGrp = collectTotal > 0.005
+        ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
+            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' due now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' not due yet' : ''}`),
+            `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
+        : bhubFoldGrp('mocollect', '<span style="color:var(--ok);">To collect</span>',
+            // "Paid up" is a claim — with an overdue row above it would be false.
+            overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
+            `<span class="bhub-payline-fig" style="color:var(--ok);">£0.00 ✓</span>`,
+            `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
+    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok);">To move out</span>', 'what Square has paid in, net of fees',
+        `<span class="bhub-payline-fig" id="mo-move-fig"><span class="bhub-sum-val">working it out…</span></span>`,
+        `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
+         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
+    const backGrp = bhubFoldGrp('moback', 'To give back', 'refundable deposits still held',
+        `<span class="bhub-payline-fig" id="mo-back-fig"><span class="bhub-sum-val">…</span></span>`,
+        `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
+         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
+    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
+        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok);">${gbp(netTY)}</span>`,
+        `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
+         <div class="bhub-btn-row bhub-act-links">
+            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'income')}>Open Income &amp; tax</button>
+            <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'expenses')}>Log an expense</button>
+         </div>`);
+    const recentGrp = bhubFoldGrp('morecent', 'Recent', 'the latest money in',
+        `<span class="bhub-sum-val" id="mo-recent-sum">…</span>`,
+        `<div id="mo-recent-rows" class="bhub-mut" style="margin-bottom:6px;">Loading the feed…</div>
+         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'recent')}>Full payment history</button></div>`);
+    const trendsGrp = bhubFoldGrp('motrends', 'Trends &amp; history', 'year on year, the monthly trend, by cottage', '',
+        `${yoyCard}
+         <div class="mo-grid2">
+            <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
+            <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
+                    <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
+                <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
+         </div>`);
 
     el.innerHTML = `
-                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your payments at a glance</h2>
-                <div class="mo-kpis">
-                    <div class="mo-kpi mo-kpi-lead" role="button" tabindex="0" data-act="accountsOpen" data-arg="payments" data-act-keydown="activate" title="Open Payments & balances"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div>${chaseCta}</div>
-                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="income" data-act-keydown="activate" title="Open Income & tax"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
-                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="income" data-act-keydown="activate" title="Open Income & tax"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
-                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="payments" data-act-keydown="activate" title="Open Payments & balances"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
-                </div>
-                <details class="mo-trends">
-                    <summary>Trends &amp; history</summary>
-                    ${yoyCard}
-                    <div class="mo-grid2">
-                        <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
-                        <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
-                            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
-                                <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
-                            <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
-                    </div>
-                </details>`;
+                <div class="mo-pulse">${pulse}</div>
+                ${attn}
+                <span class="bhub-grpcap">The five answers</span>
+                ${collectGrp}${moveGrp}${backGrp}${booksGrp}${recentGrp}${trendsGrp}`;
     // The fleet's live arrangements ride the same repaint (display-only
     // derivation — see chbMoneyOnTheWayHtml).
     try {
         el.innerHTML += chbMoneyOnTheWayHtml();
     } catch (e) {}
+    // Kick the slow answers — they fill in place, stamp-guarded so a repaint
+    // mid-flight never writes into a newer render.
+    moAsyncFill();
+}
+// Rows the landing's chase-all acts on (set by renderMoneyOverview).
+let __moOwedRows = [];
+let __moFillStamp = 0;
+// Chase everyone DUE through the search answer's bulk machinery — one
+// informed confirm, serial sends, honest partial report, no undo.
+async function moChaseDue() {
+    const rows = (__moOwedRows || [])
+        .filter((r) => r.dueNow)
+        .map((r) => ({ b: r.b, pk: r.pk, ps: Object.assign({}, r.ps, { balance: r.dg.balance, fullyPaid: false }) }));
+    const act = chbBulkAction && chbBulkBalanceAction ? chbBulkBalanceAction(rows) : null;
+    if (!act || typeof act.inline !== 'function') {
+        toast('Nothing to chase in bulk — use the rows above.');
+        return;
+    }
+    try {
+        const res = await act.inline();
+        if (res && res.say) toast(res.say);
+        renderMoneyOverview();
+    } catch (e) {
+        glassAlert(String((e && e.message) || e));
+    }
+}
+// ONE accounts.php fetch answers To-move-out, To-give-back, The-books AND
+// the Square-hasn't-said exception (the payload the sweep and Income & tax
+// read, cached into __sweepLiab); the recent feed is its own call.
+function moAsyncFill() {
+    const stamp = ++__moFillStamp;
+    const alive = (id) => __moFillStamp === stamp && document.getElementById(id);
+    apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed())))
+        .then((rep) => {
+            if (!alive('mo-move-fig')) return;
+            const L = rep.deposit_liability || null;
+            if (L && !L.error) __sweepLiab = L;
+            const P = (L && L.payouts) || null;
+            // To move out — the landed, movable figure (P.inBank is already
+            // net of fees and of deposits leaving those charges).
+            const moveFig = document.getElementById('mo-move-fig');
+            const moveRows = document.getElementById('mo-move-rows');
+            if (P && P.known > 0 && Number(P.inBank) > 0) {
+                moveFig.innerHTML = gbp(Number(P.inBank));
+                const items = (P.items && P.items.inBank) || [];
+                if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
+            } else {
+                moveFig.innerHTML = '<span class="bhub-sum-val">' + (P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen') + '</span>';
+                if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
+            }
+            // To give back — the ring-fenced deposits with their states.
+            const backFig = document.getElementById('mo-back-fig');
+            const backRows = document.getElementById('mo-back-rows');
+            if (backFig && L && !L.error) {
+                const items = L.items || [];
+                backFig.innerHTML = items.length ? gbp(Number(L.net || 0)) : '<span class="bhub-sum-val" style="color:var(--ok);">none held ✓</span>';
+                const today2 = todayDashed();
+                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok);">ready to return</span>');
+                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.amount) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
+            } else if (backFig) {
+                backFig.innerHTML = '<span class="bhub-sum-val">couldn’t work it out</span>';
+                if (backRows) backRows.textContent = 'The deposits screen has the detail.';
+            }
+            // The books — the SERVER'S net (rental + kept − fees − expenses),
+            // replacing the client's fee-less estimate.
+            const booksFig = document.getElementById('mo-books-fig');
+            if (booksFig && typeof rep.total === 'number') {
+                const startYear = taxYearStartOf(todayDashed());
+                const expT = expensesForYear(startYear).reduce((s2, x) => s2 + (x.amount || 0), 0);
+                const net = (rep.total || 0) + (rep.kept_deposits || 0) - (rep.card_fees || 0) - expT;
+                booksFig.textContent = gbp(net);
+                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok)';
+                const br = document.getElementById('mo-books-rows');
+                if (br) br.innerHTML = `${gbp(rep.total || 0)} income · − ${gbp(rep.card_fees || 0)} card fees · − ${gbp(expT)} expenses${(rep.kept_deposits || 0) > 0.005 ? ` · + ${gbp(rep.kept_deposits)} kept deposits` : ''}`;
+            }
+            // Square-hasn't-said — the exception joins the red section, with
+            // the age that makes it an exception (payouts checked, charge old).
+            const holder = document.getElementById('mo-attn-async');
+            if (holder && P && P.known > 0 && P.items && (P.items.unknown || []).length) {
+                const unk = P.items.unknown || [];
+                const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
+                const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
+                if (oldDays > 7) {
+                    holder.innerHTML = bhubFoldGrp('mounk', `<span class="bhub-chip-dot is-warn" aria-hidden="true"></span>Square hasn’t said`,
+                        `a ${oldDays}-day-old charge isn’t in the payout data — it should be by now`,
+                        `<span class="bhub-payline-fig">${gbp(total)}</span>`,
+                        `${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}${it.paid_on ? ' · taken ' + fmtDate(String(it.paid_on).slice(0, 10)) : ''}</span></div>`).join('')}
+                         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
+                    const cap = document.getElementById('mo-attn-cap');
+                    if (cap) cap.hidden = false;
+                }
+            }
+        })
+        .catch(() => {
+            const moveFig = document.getElementById('mo-move-fig');
+            if (__moFillStamp === stamp && moveFig) moveFig.innerHTML = '<span class="bhub-sum-val">couldn’t load</span>';
+        });
+    apiPost('bookings.php', { action: 'recent_payments' })
+        .then((r) => {
+            if (!alive('mo-recent-sum')) return;
+            const list = (r && r.payments) || [];
+            const sum = document.getElementById('mo-recent-sum');
+            const rowsEl = document.getElementById('mo-recent-rows');
+            if (!list.length) {
+                if (sum) sum.textContent = 'nothing yet';
+                if (rowsEl) rowsEl.textContent = 'Card payments will appear here as they come in.';
+                return;
+            }
+            const latest = list[0];
+            if (sum) sum.textContent = `${(latest.name || 'a guest').split(' ')[0]} · ${gbp(Math.abs(parseFloat(latest.amount)) || 0)}`;
+            if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')} · ${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}</span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}${p.created_at ? ' · ' + fmtDate(String(p.created_at).slice(0, 10)) : ''}</span></div>`).join('');
+        })
+        .catch(() => {});
 }
 // Per-booking payments & balances manager (top of the Money & income view).
 // Upcoming + current stays, with manual reconcile + Square request/refund.

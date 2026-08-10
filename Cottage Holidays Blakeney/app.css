@@ -9823,6 +9823,12 @@ body.light-mode .datepicker-pop {
     column-count: 1;
     max-width: 640px;
   }
+  /* The Money index is the five-verdict landing + ONE More group now — two
+     columns just tore the group from its caption. */
+  #accounts-index.settings-index {
+    column-count: 1;
+    max-width: none;
+  }
 }
 /* "How it works" disclosure — keeps background explanations one tap away so
            admin panels lead with the controls instead of a wall of text. */
