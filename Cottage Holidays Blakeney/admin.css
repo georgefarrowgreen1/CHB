@@ -963,9 +963,20 @@ body.light-mode .ny-act {
 }.bhub-card:nth-of-type(5) {
   animation-delay: 0.16s;
 }.bhub-head {
-  padding: 22px 24px;
-  border-radius: var(--r-panel);
-  margin-top: 14px;
+  /* Identity on the PAGE GROUND (the only-what-needs-seeing demo): the
+     tinted to-do card and the Money group are the surfaces, not a panel
+     around the lot. */
+  padding: 4px 2px 0;
+  margin-top: 10px;
+}#booking-hub-content {
+  /* One readable column — full-bleed label/value rows read as a spreadsheet. */
+  max-width: 760px;
+  margin: 0 auto;
+}#view-booking-hub .back-link {
+  display: block;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
 }.bhub-head-top {
   /* NOWRAP + shrinkable identity: the ⋯ pins top-right at every width. */
   display: flex;
@@ -1000,17 +1011,14 @@ body.light-mode .ny-act {
   border: 1px solid rgba(255, 167, 38, 0.32);
 }.bhub-money-more {
   /* The money fold. No display value — it would override [hidden]. */
-  margin-top: 10px;
+  margin-top: 0;
 }/* The payments block unified INTO the header card (the old standalone Payments
    card + its duplicate mini-pipeline are gone): a quiet divider separates it
    from the next-action banner. No inner glass box — the payline is a plain
    label/figure row, so the section reads as ONE surface, not boxes-in-boxes. */
 .bhub-headpay {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--glass-border);
-}.bhub-headpay .money-deposit,
-.bhub-payline {
+  margin-top: 12px;
+}.bhub-headpay .money-deposit {
   max-width: 620px;
 }.bhub-headpay-cap {
   display: block;
@@ -1023,7 +1031,8 @@ body.light-mode .ny-act {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 2px 14px;
 }.bhub-payline-main {
   min-width: 0;
 }.bhub-payline-label {
@@ -1092,9 +1101,9 @@ body.light-mode .ny-act {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 14px;
+  margin-top: 12px;
   padding: 12px 16px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-lg);
   background: rgba(255, 167, 38, 0.09);
   border: 1px solid rgba(255, 167, 38, 0.26);
   font-size: 0.9rem;
@@ -1107,9 +1116,9 @@ body.light-mode .ny-act {
   font-size: 0.8rem;
 }.bhub-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 16px 0 40px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 12px 0 40px;
   align-items: start;
 }.bhub-card {
   padding: 20px 22px;
@@ -1191,9 +1200,7 @@ body.light-mode .ny-act {
   }.bhub-hist-row {
     grid-template-columns: 1fr;
     gap: 2px;
-  }}@media (max-width: 640px) {.bhub-head {
-    padding: 18px 16px;
-  }.bhub-card {
+  }}@media (max-width: 640px) {.bhub-card {
     padding: 16px;
   }.bhub-name {
     font-size: 1.6rem;
@@ -4194,6 +4201,14 @@ body.cmdk-open {
     flex: 1; min-height: 44px; min-width: 0;
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
+.bhub-sticky-btn {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
 /* Money leads and never clips; the verb is the half that may ellipsise —
    a clipped verb still reads, a clipped amount is a different number. */
 .bhub-sticky-fig { flex: 0 0 auto; }
@@ -4204,6 +4219,7 @@ body.cmdk-open {
     border: 1px solid var(--glass-border); color: var(--text-light);
     background: var(--glass-bg);
 }
+.bhub-icbtn .ic { width: 20px; height: 20px; }
 @media (min-width: 901px) { .bhub-sticky { display: none; } }
 /* ≤900px the sticky bar IS the action — the card drops its button so one tap
    is offered once (A2c). Booking hub only: the enquiry hub's Approve has no
@@ -4388,6 +4404,60 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 
 /* A dot breathes before its words. */
 .bhub-kv-val .bhub-chip-dot, .bhub-plan-state .bhub-chip-dot { margin-right: 7px; }
+.bhub-fold-lbl .bhub-chip-dot { margin-right: 8px; }
+.bhub-fold-lbl .bhub-chip-dot { margin-right: 8px; }
+
+/* ---- Disclosure groups — one summary row, detail unfolding in place. ---- */
+.bhub-grpcap {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 20px 4px 8px;
+}
+.bhub-grpcap.is-attn { color: var(--danger-text); }
+.bhub-card.bhub-fold-grp { padding: 0; overflow: hidden; border-radius: var(--r-lg); }
+.bhub-fold-row {
+  /* A <button>: the FULL reset (the .cmdk-qa-row lesson). */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 18px;
+  background: none;
+  border: none;
+  color: var(--text-light);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) { .bhub-fold-row:hover { background: var(--glass-hover); } }
+.bhub-fold-lbl { font-weight: 600; font-size: 0.95rem; min-width: 0; }
+.bhub-fold-sub { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.bhub-fold-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.bhub-sum-ok { color: var(--ok-text); font-size: 0.85rem; }
+.bhub-sum-warn { color: var(--warn-text); font-size: 0.85rem; }
+.bhub-sum-val { color: var(--text-muted); font-size: 0.85rem; }
+.bhub-chev { color: var(--text-muted); font-size: 1.05rem; transition: transform 0.18s ease; }
+.bhub-fold-row[aria-expanded="true"] .bhub-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .bhub-chev { transition: none; } }
+.bhub-fold { border-top: 1px solid var(--glass-border); padding: 12px 18px 14px; }
+.bhub-money-grp .bhub-payline { max-width: none; }
+.bhub-payline-subfull { flex: 1 1 100%; }
+/* The when-line's in/out pair never splits across the wrap point — a
+   dangling "· in" at a line end read as a typo (measured at 390px). */
+.bhub-nowrap { white-space: nowrap; }
+#bhub-money-more .price-box { background: none; border: none; padding: 0; margin: 0 0 12px; }
+/* A group's summary sub never wraps — a two-line quote makes one row taller
+   than its siblings and the list reads ragged. */
+.bhub-fold-lbl { overflow: hidden; }
+.bhub-fold-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The fold's own act-link rows span it edge to edge like every other row. */
+.bhub-fold .bhub-btn-row { margin-top: 6px; }
 
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }

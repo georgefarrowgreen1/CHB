@@ -1719,7 +1719,44 @@ enquiry drafter; the balance line reads `bookingDue`, the one owner-facing due
 figure, so the draft can never quote a different number than the hub above it).
 All gated by ui-test-hub §C/§C2 (feed contract incl. order + twin-drop, all five
 affordances, sticky shown/hidden by width, share text, draft figure) + e2e (real
-hub_bundle shape end to end). Then the guest/intel grid cards; the payments
+hub_bundle shape end to end).
+**ONLY WHAT NEEDS TO BE SEEN (the fold build — owner-approved demo, "make it
+look exactly like this" + "more continuity").** The hub is DISCLOSURE GROUPS
+now: `bhubFoldGrp(key, label, sub, sum, fold)` renders one summary row stating
+its CONCLUSION with the detail in a hidden `#bhub-fold-<key>`; `bhubFoldToggle`
++ `__bhubOpenFolds` keep open state across re-renders. **The fold decides
+VISIBILITY, never existence** — same composers, same data-acts inside, so
+`textContent` reads and evaluate-clicks in gates keep working on folded
+content, but anything that MEASURES geometry, waits for `:visible`, real-taps,
+or reads `innerText` (which is '' for hidden) must OPEN the fold first — that
+re-aimed ui-test-nodogs, layout-test's hub scene and e2e's feed section, each
+of which failed honestly on it. The groups: `money` (the payline IS the
+disclosure row — bhubMoneyExpand kept its name; breakdown + plan panel + the
+quiet money actions all fold under it), `guest` (kvs + register links + other
+stays; summary = "All recorded ✓" or "N not recorded", counting EXACTLY what
+the rows inside show red), `emails` / `activity` (summaries filled by the
+hub_bundle handler — `hubEmailsSum`/`hubActivitySum`), `note` (first line
+quoted in the sub), `intel` (when present). **Needs attention** is the one
+extra section: the outstanding register as a red-dotted row with its fix
+actions folded under, standing down when the to-do card already carries the
+register ask (`__hubNext.regAsk`) — one statement of one duty. **The cap names
+the ASK's stage, not the flow cursor's** (`capIdx`/`capLbl`): money-first
+asking means the cursor can sit on "Guest details" while the sentence asks for
+the balance — caught on the build's own screenshot. **Continuity, measured:**
+identity sits on the PAGE GROUND (no .bhub-head glass panel — NB the ≤640
+media carried the old panel padding and was the phantom 18px in the rhythm),
+ONE radius (`--r-lg`) for the to-do card and every group, ONE 12px gap between
+blocks (caption 20/8), captions cut to the one that earns it ("Needs
+attention" — "Money"/"Everything else" repeated what their rows already say;
+the payTitle gate re-aimed to capGone), `#booking-hub-content` is a 760px
+column with the back-link on it. The payline's SUB spans full width under the
+label/figure line (beside the serif figure it squeezed to a three-line
+sliver), the when-line's in/out pair is `.bhub-nowrap`, and the sticky's main
+button is a filled accent pill in sentence case (`BHUB_IC_PHONE`/`BHUB_IC_MAIL`
+are the dock's bespoke stroke glyphs — the emoji painted in platform colours).
+Gated by ui-test-hub §A1b (fold round-trip + persistence, the exception rule
+both ways, needs-attention appears/completes/stands-down — all break-tested in
+isolation, four fired). Then the guest/intel grid cards; the payments
 block folds to ONE `.bhub-payline` in EVERY state (settled "Paid in full £X ✓",
 part-paid "Received so far £X of £Y", untouched "Total £Y" — label left with
 the deposit state + the plan's one-line brief (`hubPlanBrief` — same

@@ -9726,15 +9726,46 @@ function bhubMenuClose() {
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
     document.removeEventListener('keydown', __bhubMenuEsc);
 }
-// The money fold: plan + full maths disclose IN PLACE under the payline —
-// replaced the old #breakdown-modal pop-up (markup gone from index.html).
-// Keeps its data-act name so every gate that finds it keeps firing.
+// The money fold: plan + full maths + the quiet money actions disclose IN
+// PLACE under the payline (which IS the toggle row now) — replaced the old
+// #breakdown-modal pop-up (markup gone from index.html). Keeps its data-act
+// name so every gate that finds it keeps firing.
 function bhubMoneyExpand() {
     const more = document.getElementById('bhub-money-more');
     if (!more) return;
     more.hidden = !more.hidden;
     const btn = document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]');
     if (btn) btn.setAttribute('aria-expanded', more.hidden ? 'false' : 'true');
+}
+// ---- Disclosure groups — only what needs to be seen: ONE summary row
+// stating its conclusion, detail unfolding in place. The fold decides
+// VISIBILITY, never existence (same composers, same data-acts inside). Open
+// state survives re-renders via __bhubOpenFolds.
+const __bhubOpenFolds = new Set();
+// The dock's call/email marks — bespoke stroke glyphs (house 24-box, stroke
+// 2) replacing the emoji, which painted in the platform's colours.
+const BHUB_IC_PHONE = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/><path d="M15.5 4.5a5 5 0 0 1 4 4"/></svg>';
+const BHUB_IC_MAIL = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4.5" width="20" height="15" rx="2.5"/><path d="m2.5 8 8.3 5.4a2.2 2.2 0 0 0 2.4 0L21.5 8"/></svg>';
+function bhubFoldToggle(key) {
+    const f = document.getElementById('bhub-fold-' + key);
+    if (!f) return;
+    const opening = f.hidden;
+    f.hidden = !opening;
+    if (opening) __bhubOpenFolds.add(key);
+    else __bhubOpenFolds.delete(key);
+    const btn = document.querySelector(`.bhub-fold-row[data-args*='"${key}"']`);
+    if (btn) btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+}
+function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs) {
+    const open = __bhubOpenFolds.has(key);
+    return `
+        <section class="bhub-card glass-panel bhub-fold-grp" data-grp="${key}"${attrs || ''}>
+            <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${key}">
+                <span class="bhub-fold-lbl">${label}${sub ? `<small class="bhub-fold-sub">${sub}</small>` : ''}</span>
+                <span class="bhub-fold-right">${sumHtml || ''}<span class="bhub-chev" aria-hidden="true">›</span></span>
+            </button>
+            <div class="bhub-fold" id="bhub-fold-${key}"${open ? '' : ' hidden'}>${foldHtml}</div>
+        </section>`;
 }
 let __hubReturnView = 'view-backoffice';
 
@@ -9834,12 +9865,22 @@ async function openBookingHub(bookingId, quiet) {
                 const el2 = document.getElementById('hub-history');
                 if (!el2 || __hubBookingId !== bookingId) return;
                 el2.innerHTML = hubActivityHtml(r || {}, bookingId);
+                // The disclosure groups' summary rows state their conclusion
+                // from the same bundle: Activity's latest line, and the
+                // Emails group's last send when nothing synchronous (the
+                // pre-arrival stamp) already answered it.
+                const act = document.getElementById('bhub-activity-sum');
+                if (act) act.textContent = hubActivitySum(r || {});
+                const em = document.getElementById('bhub-emails-sum');
+                if (em && !em.textContent) em.textContent = hubEmailsSum(r || {});
             })
             .catch(() => {
                 const el2 = document.getElementById('hub-history');
                 // A dropped bundle left the card saying only that it had failed. The
                 // whole hub comes from ONE round trip, so re-opening it is the retry.
                 if (el2 && __hubBookingId === bookingId) el2.innerHTML = '<div class="bhub-empty">Couldn’t load the activity — the connection dropped. <button type="button" class="bhub-actlink" ' + chbAttrs('openBookingHub', bookingId) + '>Try again</button></div>';
+                const act = document.getElementById('bhub-activity-sum');
+                if (act && __hubBookingId === bookingId) act.textContent = 'Couldn’t load';
             });
     }
     // Guest-intel mentions ride the history corpus index: if it isn't built yet,
@@ -9863,6 +9904,31 @@ async function openBookingHub(bookingId, quiet) {
     } catch (e) {}
 }
 
+// The Activity group's summary line — the newest thing that happened, from
+// the same bundle the feed renders (a ledger row beats an event when newer).
+function hubActivitySum(r) {
+    const evs = (r && r.events) || [];
+    const pays = (r && r.payments) || [];
+    const evTop = evs.reduce((a, x) => (!a || String(x.at || '') > String(a.at || '') ? x : a), null);
+    const payTop = pays.reduce((a, x) => (!a || String(x.created_at || '') > String(a.created_at || '') ? x : a), null);
+    let label = '';
+    if (payTop && (!evTop || String(payTop.created_at || '') > String(evTop.at || ''))) {
+        label = `${/damages_return/.test(String(payTop.kind || '')) ? 'Deposit return' : 'Payment'} · ${gbp(Math.abs(parseFloat(payTop.amount)) || 0)}`;
+    } else if (evTop) {
+        label = String(evTop.summary || '').split('—')[0].trim();
+    }
+    if (!label) return 'Nothing yet';
+    return label.length > 36 ? label.slice(0, 35) + '…' : label;
+}
+// The Emails group's summary when the booking itself can't answer it (no
+// pre-arrival stamp): the last logged send, said as its conclusion.
+function hubEmailsSum(r) {
+    const e = ((r && r.events) || [])
+        .filter((x) => /^email\./.test(String(x.action || '')))
+        .reduce((a, x) => (!a || String(x.at || '') > String(a.at || '') ? x : a), null);
+    if (!e) return 'Nothing sent yet';
+    return /confirmation/i.test(String(e.summary || '')) ? 'Confirmation sent ✓' : 'Sent ✓';
+}
 function bookingHubBack() {
     const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-backoffice';
     if (back === 'view-accounts') {
@@ -9967,9 +10033,10 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     // The 'paid' stage is LABELLED "Paid in full" — right as a pill in a strip,
     // misleading as a bare caption over "£292.50 balance remaining" (it reads
     // as the booking's state). The cap names what is NEXT, so that one stage
-    // renames to the thing still to collect.
+    // renames to the thing still to collect. (The cap itself is composed
+    // AFTER the next action below — it must name the ASK's stage, not the
+    // flow cursor's, or "Guest details" captions a balance sentence.)
     const capLabel = (s) => (s.key === 'paid' ? 'Balance' : s.label);
-    const stageCap = curIdx === -1 ? '' : `Next · ${curIdx + 1} of ${stages.length} · ${capLabel(stages[curIdx])}`;
 
     const askKind = hubAskKind(gt, past, b, ps);
     // THE FIGURE THIS ACTION IS WORTH, derived once and carried on `next`, so the
@@ -9980,7 +10047,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
-    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string} | null} */
+    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean} | null} */
     let next = null;
     if (!gt.fullyPaid && !past) {
         const canCard = squareAdminEnabled && b.email;
@@ -10039,12 +10106,17 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 : 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
             onclick: chbAttrs('copyGuestRegLink', String(b.id)),
             btn: 'Copy the details link',
+            // Tagged so the Needs-attention section can stand down — when the
+            // register IS the to-do card, a second row saying it is the
+            // duplication disease.
+            regAsk: true,
         };
     } else if (!past && !b.preArrivalSent && b.email) {
         next = {
             text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',
             onclick: chbAttrs('sendArrivalInfo', String(b.id)),
             btn: 'Send arrival info',
+            capLabel: 'Arrival info', // not a flow stage — the cap names the job itself
         };
     } else if (past && dh.held > 0.001) {
         // Time-aware for the checkout-morning window: `past` is date-only (it
@@ -10069,6 +10141,19 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     // banner above a block repeating it) and for the phone's sticky bar. Stashed
     // rather than re-derived — two derivations of "what does this booking need"
     // is the drift class the money maths just spent thirteen PRs killing.
+    // The cap names the NEXT ACTION'S stage, not the flow cursor's — the ask
+    // is money-first, so the cursor can sit on "Guest details" while the
+    // sentence asks for the balance (caught on this build's own screenshot).
+    let capIdx = curIdx;
+    let capLbl = curIdx === -1 ? '' : capLabel(stages[curIdx]);
+    if (next && next.money) {
+        const key = askKind === 'deposit' ? 'deposit' : 'paid';
+        const i = stages.findIndex((s) => s.key === key);
+        if (i > -1) { capIdx = i; capLbl = key === 'deposit' ? 'Deposit' : 'Balance'; }
+    } else if (next && next.capLabel) {
+        capLbl = next.capLabel;
+    }
+    const stageCap = capIdx === -1 || !capLbl ? '' : `Next · ${capIdx + 1} of ${stages.length} · ${capLbl}`;
     // The stage cap rides `next` so the payask (rendered by renderBookingHub)
     // wears the same caption this card does — one derivation of "N of M".
     if (next) next.cap = stageCap;
@@ -10171,13 +10256,17 @@ function hubIntelCardHtml(intel) {
     const line2 = [];
     if (intel.favName) line2.push(`Usually books ${escapeHtml(intel.favName)}`);
     if (intel.lastStay) line2.push(`last stayed ${escapeHtml(intel.lastStay)}`);
-    return `
-        <section class="bhub-card glass-panel" id="hub-intel-card">
-            <h2 class="bhub-card-title">Knows your guest <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· from your own records</span></h2>
+    // A disclosure group like its siblings — the summary row carries the one
+    // fact worth a glance (which visit this is, what they're worth), the
+    // detail + history mentions fold underneath.
+    const sum = intel.ordinal
+        ? escapeHtml(intel.ordinal) + (intel.stays >= 2 ? ' · ' + gbp(intel.revenue) + ' lifetime' : '')
+        : 'in your records';
+    return bhubFoldGrp('intel', 'Knows your guest', '', `<span class="bhub-sum-val">${sum}</span>`, `
             ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
             ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
-            <div id="hub-intel-mentions">${hubIntelMentionRowsHtml(intel.mentions)}</div>
-        </section>`;
+            <div id="hub-intel-mentions">${hubIntelMentionRowsHtml(intel.mentions)}</div>`,
+        ' id="hub-intel-card"');
 }
 function hubIntelMentionRowsHtml(mentions) {
     const snip = (s) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > 110 ? s.slice(0, 109) + '…' : s; };
@@ -10286,19 +10375,25 @@ function renderBookingHub() {
     // settled story.
     const planBrief = hubPlanBrief(b, ps, gt, past);
     const depSub = [depSuffix ? escapeHtml(depSuffix.replace(/^ · /, '')) : '', escapeHtml(planBrief)].filter(Boolean).join(' · ');
-    const paylineMain = (label, ok2) =>
-        `<div class="bhub-payline-main"><span class="bhub-payline-label"${ok2 ? ' style="color:var(--ok);"' : ''}>${label}</span>${depSub ? `<span class="bhub-payline-sub">${depSub}</span>` : ''}</div>`;
-    const payline = gt.fullyPaid
-        ? `<div class="bhub-payline">${paylineMain('Paid in full', true)}<span class="bhub-payline-fig" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>`
-        : gt.paid > 0.001
-          ? `<div class="bhub-payline">${paylineMain('Received so far')}<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span></div>`
-          : `<div class="bhub-payline">${paylineMain('Total')}<span class="bhub-payline-fig">${gbp(gt.total)}</span></div>`;
-    // The breakdown opener is a quiet text link under the payline — it's
-    // information, not an action, so it must not compete with the real buttons.
-    // It DISCLOSES IN PLACE now: plan + full maths fold behind it, replacing
-    // the pop-up AND the always-visible plan panel. Open state survives a
-    // re-render (editPaymentPlan saves repaint the hub).
+    // Open state survives a re-render — editPaymentPlan saves repaint the hub,
+    // and losing the fold the owner just opened reads as the page snapping
+    // shut on them. Read BEFORE the payline composes (it renders the state).
     const moreWasOpen = (() => { const m = document.getElementById('bhub-money-more'); return !!m && !m.hidden; })();
+    const paylineMain = (label, ok2) =>
+        `<div class="bhub-payline-main"><span class="bhub-payline-label"${ok2 ? ' style="color:var(--ok);"' : ''}>${label}</span></div>`;
+    // The payline IS the money group's disclosure row now (the demo's Money
+    // card): tapping it unfolds the full maths, the plan and the quiet money
+    // actions. It keeps class bhub-disclose-btn + the bhubMoneyExpand act so
+    // every gate that finds the disclose control keeps firing. The SUB spans
+    // the row's full width UNDER the label/figure line — beside the serif
+    // figure it squeezed into a three-line sliver at 390px (measured).
+    const payRow = (inner) =>
+        `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${inner}<span class="bhub-chev" aria-hidden="true">›</span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
+    const payline = gt.fullyPaid
+        ? payRow(`${paylineMain('Paid in full', true)}<span class="bhub-payline-fig" style="color:var(--ok);">${gbp(gt.total)} ✓</span>`)
+        : gt.paid > 0.001
+          ? payRow(`${paylineMain('Received so far')}<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span>`)
+          : payRow(`${paylineMain('Total')}<span class="bhub-payline-fig">${gbp(gt.total)}</span>`);
     // The deposit's return ACTION lives in the pipeline's next-action banner
     // ("Return the deposit", once the stay is over and it's still held), and its
     // STATE now rides the fold line's suffix in every state — so no separate
@@ -10343,30 +10438,12 @@ function renderBookingHub() {
                 gapChip = `<button class="bhub-gap is-live" ${chbAttrs('settingsOpen', 'seasongrid')}><span aria-hidden="true">◫</span><span>Gap offer live after this stay at <strong>${gbp(plan.rate)}/night</strong> — edit in Rates</span></button>`;
         }
     } catch (e) {}
-    // The payment plan panel (hubPlanHtml) lives INSIDE the fold; the
-    // payline's sub carries its one-sentence brief (hubPlanBrief).
+    // The plan panel AND the quiet money actions live INSIDE the fold: the
+    // payask + sticky carry the one ask that matters; the rest is one tap
+    // away behind the payline row.
     const planPanel = hubPlanHtml(b, ps, gt, past);
-    const moreLabel = planPanel ? 'Payment plan &amp; full breakdown ›' : 'Show the full breakdown ›';
-    const discloseBtn = `<button type="button" class="bhub-linklike bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${moreLabel}</button>`;
-    const moneyMore = `<div class="bhub-money-more" id="bhub-money-more"${moreWasOpen ? '' : ' hidden'}>${fullBox}${agreedNote}${planPanel}</div>`;
-    const payBlock = `
-        <div class="bhub-headpay">
-            ${payAsk}
-            <span class="bhub-headpay-cap">Payments</span>
-            ${payline}
-            ${discloseBtn}
-            ${depositLine}
-            ${moneyMore}
+    const moneyActs = `
             <div class="bhub-btn-row bhub-act-links">
-                ${/* ONE ask, ONE loud control. The staged email button used to
-                      render here TOO — justified when the ask lived in a banner
-                      a screen above, a strict duplicate since the ask moved INTO
-                      this block (measured at 390px: the same requestPayment
-                      three times in one screen-height — payask, this row, the
-                      sticky bar). The payask above IS the staged ask now; what
-                      remains here are the COMPLEMENTARY actions, dressed as the
-                      quiet text row they are (the linklike vocabulary) instead
-                      of four pills shouting as loudly as the ask itself. */ ''}
                 ${/* A reminder only exists once something has been asked for —
                       the server refuses it cold, so the button waits for a
                       request stamp rather than offering a refusal. */ ''}
@@ -10376,12 +10453,18 @@ function renderBookingHub() {
                 ${!gt.fullyPaid ? `<button class="bhub-actlink" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="bhub-actlink" ${chbAttrs('copyPayLink', String(b.id))}>Copy pay link</button>` : ''}
                 ${/* Refunds belong on the MONEY surface, not in the Activity
-                      story where they used to sit as a red button per ledger
-                      row. Shown only once money has actually been taken and
-                      while the rental is still refundable — the picker names
-                      the charge when there is more than one. */ ''}
+                      story. Shown only once money has actually been taken and
+                      while the rental is still refundable. */ ''}
                 ${squareAdminEnabled && !refundBlocked && gt.paid > 0 ? `<button class="bhub-actlink" ${chbAttrs('hubRefundPicker', String(b.id))}>Refund a card payment</button>` : ''}
                 <button class="bhub-actlink" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
+            </div>`;
+    const moneyMore = `<div class="bhub-money-more bhub-fold" id="bhub-money-more"${moreWasOpen ? '' : ' hidden'}>${fullBox}${agreedNote}${planPanel}${depositLine}${moneyActs}</div>`;
+    const payBlock = `
+        <div class="bhub-headpay">
+            ${payAsk}
+            <div class="bhub-money-grp bhub-card glass-panel bhub-fold-grp" data-grp="money">
+            ${payline}
+            ${moneyMore}
             </div>
             ${payHistory}
         </div>`;
@@ -10421,18 +10504,19 @@ function renderBookingHub() {
                     </div>
                 </div>`;
 
-    // ---- Header — identity (serif name over ONE fmtStayRange when-line, the
-    // ⋯ menu top-right), the next-action card with its stage cap, then the
-    // money block. The status CHIPS are GONE — those facts are Guest-card
-    // rows now (the chips repeated three of them a screen above). ----
+    // ---- Header — identity on the PAGE GROUND now (the only-what-needs-
+    // seeing demo: no enclosing glass panel; the tinted to-do card and the
+    // Money group are the only surfaces up here). Serif name over ONE
+    // fmtStayRange when-line, the ⋯ menu top-right, then the next-action card
+    // with its stage cap, then the money group. ----
     const header = `
-        <div class="bhub-head glass-panel">
+        <div class="bhub-head">
             <div class="bhub-head-top">
                 <div class="bhub-iden">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}` : ''}${past ? ' · past stay' : ''}</div>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${past ? ' · past stay' : ''}</div>
                     ${changeover}
                 </div>
                 ${editMenu}
@@ -10442,20 +10526,33 @@ function renderBookingHub() {
             ${gapChip}
         </div>`;
 
-    // ---- Emails card ----
-    const emailsCard = `
-        <section class="bhub-card glass-panel">
-            <h2 class="bhub-card-title">Emails</h2>
-            ${
-                b.email
-                    ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:0;">
+    // ---- Needs attention — outstanding DUTIES surface; what is fine says
+    // nothing (the exception rule). Only the register qualifies today. Stands
+    // down when the to-do card already carries the ask. ----
+    const regNeeded = !past && b.regUrl && (!b.regSubmitted || !bookingRegComplete(b));
+    const attnHtml = regNeeded && !(__hubNext && __hubNext.regAsk)
+        ? `<span class="bhub-grpcap is-attn">Needs attention</span>` +
+          bhubFoldGrp('reg',
+              `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Guest register — ${b.regSubmitted ? `${b.regCount} of ${Math.max(1, Number(b.adults) || 1)} recorded` : 'not submitted'}`,
+              'Required before arrival (UK guest records)',
+              '',
+              `<div class="bhub-btn-row bhub-act-links">
+                  <button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy the details link</button>
+                  <button class="bhub-actlink" ${chbAttrs('openGuestRegister', String(b.id))}>Fill in the guest register</button>
+              </div>`)
+        : '';
+
+    // ---- Emails — the summary states the latest send (hub_bundle fills
+    // #bhub-emails-sum when the booking itself can't answer). ----
+    const emailsSum = b.email
+        ? (b.preArrivalSent ? '<span class="bhub-sum-ok">Arrival info sent ✓</span>' : '<span class="bhub-sum-val" id="bhub-emails-sum"></span>')
+        : '<span class="bhub-sum-warn">No email on file</span>';
+    const emailsFold = b.email
+        ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:0;">
                         ${
                             // Pre-arrival emails (confirmation / arrival info / updated
                             // confirmation) only make sense before the guest checks in.
-                            // Once they've arrived, the card is just "Write an email".
-                            // The QUIET vocabulary (bhub-actlink), same as the payments
-                            // row — a 2×2 grid of pills spent ~100px saying four equal
-                            // things; a card of sends is a list, not a control panel.
+                            // Once they've arrived, the group is just "Write an email".
                             (b.checkIn || '') > today
                                 ? `<button class="bhub-actlink" ${chbAttrs('sendConfirmationEmail', String(b.id))}>Send confirmation</button>
                         ${
@@ -10468,9 +10565,8 @@ function renderBookingHub() {
                         }
                         <button class="bhub-actlink" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
                     </div>`
-                    : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
-            }
-        </section>`;
+        : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>';
+    const emailsCard = bhubFoldGrp('emails', 'Emails', '', emailsSum, emailsFold);
 
     // ---- Guest card (contact + notes + their other stays) ----
     const emailLower = (b.email || '').toLowerCase();
@@ -10511,9 +10607,15 @@ function renderBookingHub() {
         !b.email && !b.phone
             ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the Edit/Move/Cancel menu → Edit / Move.</div>`
             : '';
-    const guestCard = `
-        <section class="bhub-card glass-panel">
-            <h2 class="bhub-card-title">Guest</h2>
+    // ---- Guest details — the summary states the CONCLUSION: all in → "All
+    // recorded ✓"; else "N not recorded", counting exactly what the rows
+    // inside show red (a green summary over a red row is a contradiction). ----
+    const regOkForSum = b.regSubmitted && bookingRegComplete(b);
+    const missingFacts = [!b.termsAcceptedAt, !b.noDogsAt, !regOkForSum].filter(Boolean).length;
+    const guestSum = missingFacts === 0
+        ? '<span class="bhub-sum-ok">All recorded ✓</span>'
+        : `<span class="bhub-sum-warn">${missingFacts} not recorded</span>`;
+    const guestFold = `
             ${noContact}
             <div class="bhub-kvs">
                 ${/* The address opens the SITE'S composer (draft reply, preview,
@@ -10551,30 +10653,29 @@ function renderBookingHub() {
                 <button class="bhub-actlink" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy register link</button>
             </div>`
                 : ''}
-            <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
+            ${staysHtml}`;
+    const guestCard = bhubFoldGrp('guest', 'Guest details', '', guestSum, guestFold);
+
+    // ---- Your note — its own group: the summary row quotes the note's first
+    // line (or offers to add one); the editor folds underneath. ----
+    const noteFirst = String(b.notes || '').split('\n')[0].trim();
+    const noteSub = noteFirst
+        ? `“${escapeHtml(noteFirst.length > 44 ? noteFirst.slice(0, 43) + '…' : noteFirst)}”`
+        : 'Add a private note — only you see it';
+    const noteCard = bhubFoldGrp('note', 'Your note', noteSub, '', `
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>
-            ${staysHtml}
-        </section>`;
+            <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>`);
 
-    // ---- Activity card — the story of this booking, one chronological feed.
-    // Ledger rows (live Square status dots + Refund, deposit_carried note) are
-    // interleaved with the activity log's events; the log's own card-payment
-    // twins are dropped (the ledger row is the authoritative money row), and a
-    // comms row whose email body was logged expands in place. The container
-    // keeps class sq-pay-history because it now IS the ledger's home. ----
-    const historyCard = `
-        <section class="bhub-card glass-panel">
-            <h2 class="bhub-card-title">Activity <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· the story of this booking</span></h2>
-            <div id="hub-history" class="sq-pay-history"><div class="bhub-empty">Loading activity…</div></div>
-        </section>`;
+    // ---- Activity — the chronological feed behind a summary row stating the
+    // LATEST event (hub_bundle fills it). Ledger rows interleave with events,
+    // card-payment twins dropped; container keeps class sq-pay-history. ----
+    const historyCard = bhubFoldGrp('activity', 'Activity', '',
+        '<span class="bhub-sum-val" id="bhub-activity-sum">Loading…</span>',
+        `<div id="hub-history" class="sq-pay-history"><div class="bhub-empty">Loading activity…</div></div>`);
 
-    // The Guest register has NO card of its own — it is a row inside the Guest
-    // card (see 'Register' above), because it is one fact about this guest
-    // rather than a subject in its own right.
-    // Ambient guest intelligence LEADS the grid — context before actions. It
+    // Ambient guest intelligence LEADS the list — context before actions. It
     // renders only when there is something worth knowing (repeat guest or
-    // real history mentions), so most first-time bookings see no extra card.
+    // real history mentions), so most first-time bookings see no group at all.
     let intelCard = '';
     try {
         const intel = chbGuestIntel(propKey, b);
@@ -10598,14 +10699,14 @@ function renderBookingHub() {
             __hubNext.money
                 ? `<strong class="bhub-sticky-fig">${gbp(__hubNext.fig != null ? __hubNext.fig : gt.balance)}</strong><span class="bhub-sticky-verb">${__hubNext.btnShort || __hubNext.btn}</span>`
                 : __hubNext.btn
-        }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">📞</a>` : ''}${
+        }</button>${b.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(b.phone))}" aria-label="Call ${escapeHtml(b.name || 'the guest')}">${BHUB_IC_PHONE}</a>` : ''}${
             // The SITE'S composer, never mailto: — a mailto bounced the owner
             // out to the phone's mail app, past the draft-reply, the preview
             // and the send log. tel: stays a link; the phone IS the client.
-            b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">✉️</button>` : ''
+            b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">${BHUB_IC_MAIL}</button>` : ''
         }</div>`
         : '';
-    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${historyCard}</div>${sticky}`;
+    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${intelCard}${guestCard}${emailsCard}${historyCard}${noteCard}</div>${sticky}`;
 }
 // (hubChipsHtml — the header's five-fact status-chip row — is REMOVED: the
 // iOS restyle states those facts as label+value rows in the Guest card, where

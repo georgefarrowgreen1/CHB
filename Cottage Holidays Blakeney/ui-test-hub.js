@@ -142,8 +142,13 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     // ONE when-line under the name: the house compact range (fmtStayRange, the
     // enquiry hub's own sub) + nights + party + in/out times.
     sub: ((document.querySelector('.bhub-sub') || {}).textContent || '').trim(),
-    cards: document.querySelectorAll('.bhub-card').length,
-    // The register is a ROW in the Guest card now, not a card of its own.
+    // The cards are DISCLOSURE GROUPS now (only-what-needs-seeing): each is a
+    // summary row stating its conclusion, detail folded underneath, closed by
+    // default. b1 is a repeat guest so the intel group renders too.
+    grps: ['money', 'guest', 'emails', 'activity', 'note', 'intel'].filter((k) => !!document.querySelector(`.bhub-fold-grp[data-grp="${k}"]`)),
+    foldsClosed: [...document.querySelectorAll('.bhub-fold')].every((f) => f.hidden),
+    guestSum: ((document.querySelector('[data-grp="guest"] .bhub-fold-right') || {}).textContent || '').trim(),
+    // The register is a ROW in the Guest details fold, not a card of its own.
     regRow: [...document.querySelectorAll('.bhub-kv')].some((r) => /Register/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || '')),
     regCard: Array.from(document.querySelectorAll('.bhub-card-title')).some((t) => /Guest register/.test(t.textContent || '')),
     notes: (document.querySelector('[id^="bk-notes-"]') || {}).value || '',
@@ -154,16 +159,17 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(/^Next · 2 of \d · Deposit$/.test(a.cap), `unpaid → the card's cap names the stage with its counter (${a.cap})`);
   ok(/ · 3 nights · /.test(a.sub) && / · in 15:00 \/ out 10:00$/.test(a.sub) && !/→/.test(a.sub),
     `ONE when-line: compact range · nights · party · in/out times (${a.sub})`);
-  // Five cards: the fixture guest is a REPEAT (two stays on guest@gmail.com),
-  // so the ambient "Knows your guest" intel card leads the grid. (Payments is
-  // no longer a card — it's unified into the header section.)
-  ok(a.cards === 4, `four cards rendered — the register folded into Guest (${a.cards})`);
+  ok(a.grps.length === 6, `all six disclosure groups render (${a.grps.join(', ')})`);
+  ok(a.foldsClosed, 'every fold starts CLOSED — the page opens at its summary');
+  // THE EXCEPTION RULE: b1's register is outstanding, so the Guest details
+  // summary counts it rather than claiming all is well.
+  ok(/1 not recorded/.test(a.guestSum), `the Guest details summary counts what's outstanding (${a.guestSum})`);
   // The unified header section: journey pipeline + next action + the money
   // block all in ONE .bhub-head — and the old duplicate money mini-pipeline
   // (.bhub-paypipe) is gone for good.
   const uni = await page.evaluate(() => ({
     payInHead: !!document.querySelector('.bhub-head .bhub-headpay .bhub-payline'),
-    payTitle: /Payments/i.test((document.querySelector('.bhub-head .bhub-headpay .bhub-headpay-cap') || {}).textContent || ''),
+    capGone: !document.querySelector('.bhub-headpay-cap'),
     noPayCard: ![...document.querySelectorAll('.bhub-card .bhub-card-title')].some((t) => /^Payments$/.test((t.textContent || '').trim())),
     noPaypipe: !document.querySelector('.bhub-paypipe'),
     reqBtns: document.querySelectorAll('#booking-hub-content [data-act="requestPayment"]').length,
@@ -172,7 +178,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     figWraps: (() => { const f = document.querySelector('.bhub-payline-fig'); return f ? getComputedStyle(f).whiteSpace : ''; })(),
     disclose: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
   }));
-  ok(uni.payInHead && uni.payTitle, 'payments block (breakdown + actions) lives INSIDE the header section');
+  ok(uni.payInHead && uni.capGone, 'the money group lives INSIDE the header section, self-labelled — no caption repeating its own row');
   ok(uni.noPayCard, 'no separate Payments card remains in the grid');
   ok(uni.noPaypipe, 'the duplicate money mini-pipeline is gone (journey strip carries the stages)');
   // Square is OFF at this point, so no email ask renders anywhere — the banner
@@ -204,6 +210,70 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(!em1.headerEmail && em1.labelled === 1 && em1.addrAff && em1.stickyAff,
     'ONE labelled email action (Emails card); address + sticky route to the SAME composer, none in the header');
   ok(em1.updConf === 0, 'no updated-confirmation button while nothing is paid');
+
+  // ---------- A1b. only what needs to be seen ----------
+  // The exception rule + the fold machinery, each break-tested.
+  console.log('A1b. exception rule + folds');
+  // (1) A fold opens in place, reports its state, and the open state survives
+  // a re-render — editPaymentPlan saves repaint the hub, and a page that
+  // snaps shut mid-task reads as broken.
+  await page.evaluate(() => bhubFoldToggle('guest'));
+  const foldSt = await page.evaluate(() => ({
+    open: !document.getElementById('bhub-fold-guest').hidden,
+    aria: document.querySelector('[data-grp="guest"] .bhub-fold-row').getAttribute('aria-expanded'),
+  }));
+  ok(foldSt.open && foldSt.aria === 'true', 'a group unfolds in place and reports its state');
+  await page.evaluate(() => renderBookingHub());
+  ok(await page.evaluate(() => !document.getElementById('bhub-fold-guest').hidden),
+    'the open fold survives a re-render (the page never snaps shut)');
+  await page.evaluate(() => bhubFoldToggle('guest'));
+  ok(await page.evaluate(() => document.getElementById('bhub-fold-guest').hidden), 'a second tap folds it away');
+  // (2) THE EXCEPTION RULE, both ways: everything recorded → ONE green summary
+  // row; un-record one fact → the summary counts it. Through the REAL renderer.
+  const excep = await page.evaluate(() => {
+    const b = findBookingById('b1');
+    const keep = { s: b.regSubmitted, c: b.regCount, t: b.termsAcceptedAt };
+    const sum = () => ((document.querySelector('[data-grp="guest"] .bhub-fold-right') || {}).textContent || '').trim();
+    b.regSubmitted = true; b.regCount = 2; renderBookingHub();
+    const all = sum();
+    b.termsAcceptedAt = null; renderBookingHub();
+    const one = sum();
+    b.termsAcceptedAt = keep.t; b.regSubmitted = keep.s; b.regCount = keep.c; renderBookingHub();
+    return { all, one };
+  });
+  ok(/All recorded ✓/.test(excep.all), `everything in → ONE green summary row (${excep.all})`);
+  ok(/1 not recorded/.test(excep.one), `un-record one fact → the summary counts it (${excep.one})`);
+  // (3) Needs attention: an outstanding register surfaces as its own red row
+  // with its fix actions folded under; completing it removes the whole
+  // section; and when the TO-DO CARD already carries the register ask, the
+  // section stands down — one statement of one duty.
+  const attn = await page.evaluate(() => {
+    const b = findBookingById('b1');
+    const keep = { url: b.regUrl, pay: b.payment, hold: b.holdStatus, amt: b.holdAmount, s: b.regSubmitted, c: b.regCount };
+    b.regUrl = 'guest-details.php?b=1&token=z'; renderBookingHub();
+    const shown = {
+      row: !!document.querySelector('[data-grp="reg"]'),
+      cap: ((document.querySelector('.bhub-grpcap.is-attn') || {}).textContent || '').trim(),
+      acts: !!document.querySelector('#bhub-fold-reg [data-act="copyGuestRegLink"]'),
+    };
+    b.regSubmitted = true; b.regCount = 2; renderBookingHub();
+    const done = !!document.querySelector('[data-grp="reg"]');
+    // Paid off + register outstanding → the to-do card IS the register ask.
+    b.regSubmitted = false; b.regCount = 0; b.payment = 'paid'; b.holdStatus = 'charged'; b.holdAmount = 50;
+    renderBookingHub();
+    const standsDown = {
+      row: !!document.querySelector('[data-grp="reg"]'),
+      todo: ((document.querySelector('.bhub-next') || {}).textContent || '').trim(),
+    };
+    b.regUrl = keep.url; b.payment = keep.pay; b.holdStatus = keep.hold; b.holdAmount = keep.amt;
+    b.regSubmitted = keep.s; b.regCount = keep.c; renderBookingHub();
+    return { shown, done, standsDown };
+  });
+  ok(attn.shown.row && /Needs attention/.test(attn.shown.cap) && attn.shown.acts,
+    'an outstanding register surfaces in Needs attention with its fix actions folded under');
+  ok(!attn.done, 'a completed register removes the section — nothing red on a booking that needs nothing');
+  ok(!attn.standsDown.row && /register|Guest details/i.test(attn.standsDown.todo),
+    `…and it stands down when the to-do card already carries the ask (${attn.standsDown.todo.slice(0, 50)})`);
 
   // ---------- A2. payment ledger: traffic-light dots ----------
   // With Square on, the hub's per-payment ledger rows show the SAME green/amber/
@@ -599,9 +669,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(/£60\.00 of the deposit still to come/.test(next2), `after £100 of a £160 deposit → the REST of the deposit (${next2.trim().slice(0, 50)}…)`);
   ok(!/balance remaining/.test(next2), '…and the words do not name a stage the figure is not');
   const pipe2 = await page.evaluate(() => ((document.querySelector('.bhub-next-cap') || {}).textContent || '').trim());
-  // The 'paid' stage renames to "Balance" as a caption — "Paid in full" over a
-  // balance-remaining sentence reads as the booking's state, not the stage.
-  ok(/^Next · \d of \d · Balance$/.test(pipe2), `the stage cap advanced with the payment (${pipe2})`);
+  // The cap follows the ASK's stage, not the flow cursor: £100 of a £160
+  // deposit is still the DEPOSIT stage (the sentence beside it says so), even
+  // though the flow's coarse "anything in" test moved its cursor past it.
+  ok(/^Next · \d of \d · Deposit$/.test(pipe2), `the stage cap names the ask's own stage (${pipe2})`);
   // Part-paid folds too: one "Received so far" payline with the running figures.
   const foldPart = await page.evaluate(() => {
     const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');
@@ -664,11 +735,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   });
   await page.waitForTimeout(400);
   const em2 = await page.evaluate(() => ({
-    inEmails: !!document.querySelector('#booking-hub-content .bhub-card:nth-of-type(2) [data-act="offerUpdatedConfirmationEmail"]') ||
-      Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Emails/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[data-act="offerUpdatedConfirmationEmail"]')),
-    inMoney: Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[data-act="offerUpdatedConfirmationEmail"]')),
+    inEmails: !!document.querySelector('[data-grp="emails"] [data-act="offerUpdatedConfirmationEmail"]'),
+    inMoney: !!document.querySelector('[data-grp="money"] [data-act="offerUpdatedConfirmationEmail"]'),
   }));
-  ok(em2.inEmails && !em2.inMoney, 'updated-confirmation button lives in the Emails card (not Money)');
+  ok(em2.inEmails && !em2.inMoney, 'updated-confirmation button lives in the Emails group (not Money)');
 
   // ---------- C+D. the Activity feed — one chronological story ----------
   // History + the email log + the ledger merged into #hub-history: events
@@ -724,7 +794,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // The header's status-chip row folded into the Guest card (the iOS restyle):
   // terms (with version) / no-dog / register / payment rail / texts are
   // label+value rows now, wearing the chips' dot vocabulary — green recorded,
-  // red outstanding, the rail dotless (a category, not a status).
+  // red outstanding, the rail dotless (a category, not a status). The rows
+  // live inside the Guest details fold, so it is OPENED first: the roundness
+  // checks measure boxes, and a hidden dot is a 0×0 box that proves nothing.
+  await page.evaluate(() => { const f = document.getElementById('bhub-fold-guest'); if (f && f.hidden) bhubFoldToggle('guest'); });
   const facts = await page.evaluate(() => {
     const kv = (label) => [...document.querySelectorAll('#booking-hub-content .bhub-kv')]
       .find((r) => new RegExp('^' + label + '$', 'i').test(((r.querySelector('.bhub-kv-label') || {}).textContent || '').trim()));
@@ -932,6 +1005,13 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // anatomy, pinned: every action spans its group (all labels on one rail —
   // symmetry is full width, not luck), sits at the 44px floor, and carries
   // the accent-text ink — colour is the "this is tappable" signal.
+  // The action rows live inside the disclosure folds now — open every fold
+  // first, or the geometry below measures 0×0 boxes and proves nothing.
+  await page.evaluate(() => {
+    document.querySelectorAll('.bhub-fold[hidden]').forEach((f) => { f.hidden = false; });
+    const m = document.getElementById('bhub-money-more');
+    if (m) m.hidden = false;
+  });
   const rowsOk = await page.evaluate(() => {
     // Resolve the token IN THE ROWS' OWN CONTEXT — the theme class on body
     // retunes --accent-text, so reading :root's value compares dark ink
