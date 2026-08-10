@@ -4235,6 +4235,18 @@ a HINT to probe now, never a verdict.
   reverted one mechanism at a time). The trim is keyed on `offline-snap`, NOT
   `net-off`: a mid-session blip keeps the full menu, because those screens still
   hold last-good data.
+- **THE WIFI-ICON RULE** (`chbGoOffline`, wired to the `offline` event; gated by
+  ui-test-offline §19, wiring break-tested). Airplane mode / wifi-off fires the
+  browser's `offline` event with NO failed request — the whole back office
+  transforms at once: day sheet up, header trimmed, and the owner brought to it
+  from wherever they were (the trimmed screens are about to be dead ends).
+  Deliberately ONLY on the no-interface signal — the evidence verdict alone (one
+  failed request, a blip) keeps the last-good workspace and never yanks the owner
+  off the screen they are reading. A SPURIOUS offline event self-corrects: the
+  first successful request swaps everything straight back — which is also why
+  §19's fixture must make requests actually FAIL when it dispatches the event
+  (with routes left alive, the correct self-correction reads as the feature
+  being broken).
 - **Tier-C refuses up front at the dispatcher** (`CHB_NEEDS_NET`: requestPayment,
   returnDeposit, keepDeposit, sendArrivalInfo, approveEnquiry): dimmed under
   `body.net-off` by a style rule GENERATED from the same list the guard reads (one

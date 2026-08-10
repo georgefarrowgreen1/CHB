@@ -1220,7 +1220,28 @@ window.addEventListener('online', () => {
     updateOnlineStatus();
     oqFlush();
 });
-window.addEventListener('offline', updateOnlineStatus);
+// THE WIFI-ICON RULE: the moment the INTERFACE is gone (airplane mode — the
+// `offline` event, no failed request needed) the back office transforms: day
+// sheet up, header trimmed, the owner brought to it from wherever they were
+// (the trimmed screens are about to be dead ends). ONLY on the no-interface
+// signal — the verdict alone (a blip) must not yank the owner off their
+// screen. Recovery is the existing arc: the first live probe swaps it back.
+function chbGoOffline() {
+    if (!isAuthenticated || !document.body.classList.contains('owner-mode')) return;
+    if (document.body.classList.contains('offline-snap')) return;
+    chbNetDown(); // the pill + the probe, immediately — no failed request needed
+    try {
+        const rods = /** @type {any} */ (window).renderOfflineDaySheet;
+        if (typeof rods === 'function' && rods()) {
+            const av = document.querySelector('.page-view.active');
+            if (!av || av.id !== 'view-backoffice') nav('view-backoffice');
+        }
+    } catch (e) {}
+}
+window.addEventListener('offline', () => {
+    updateOnlineStatus();
+    chbGoOffline();
+});
 updateOnlineStatus();
 try {
     oqRefreshCount();
@@ -16072,7 +16093,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'offauto8';
+    const BUILD = 'wifioff9';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
