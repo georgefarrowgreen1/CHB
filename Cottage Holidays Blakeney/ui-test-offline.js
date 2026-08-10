@@ -303,7 +303,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // second "Return £75.00 to Hannah?" was sitting here intercepting the click.
   ok(await page.evaluate(() => { const g = document.getElementById('glass-dialog'); return !(g && g.classList.contains('open')); }),
     'no second ask about money that was already confirmed (the sweep is re-entrant-safe)');
-  await page.locator('[data-act="returnDeposit"]').first().click();
+  // The VISIBLE copy: at this 390px viewport the next-action card's own button
+  // yields to the sticky bar (the iOS restyle's one-tap-offered-once rule), so
+  // a bare .first() lands on the hidden card button and can never be clicked.
+  await page.locator('[data-act="returnDeposit"]:visible').first().click();
   await page.waitForTimeout(500);
   ok(posts.filter((p2) => p2.action === 'return_deposit').length === preC,
     'tapping it sends NOTHING — money leaving is never queued and hoped for');
