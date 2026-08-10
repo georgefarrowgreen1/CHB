@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 433;
+const ADMIN_BUNDLE_V = 434;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 158;
+const ADMIN_CSS_V = 159;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -431,7 +431,24 @@ function chbAttrs(name, ...args) { return chbAttrsFor('', name, args); }
 function chbChange(name, ...args) { return chbAttrsFor('change', name, args); }
 function chbInput(name, ...args) { return chbAttrsFor('input', name, args); }
 function chbBlur(name, ...args) { return chbAttrsFor('blur', name, args); }
+// TIER-C NEVER RUNS OFFLINE, AND SAYS SO BEFORE ANYTHING HAPPENS — these
+// charge a card, move money or email a guest, so they refuse at the ONE choke
+// point every send affordance passes through; the safe captures are absent on
+// purpose (they queue). The generated rule dims them under body.net-off so the
+// refusal is visible BEFORE the tap. See CLAUDE.md.
+const CHB_NEEDS_NET = ['requestPayment', 'returnDeposit', 'keepDeposit', 'sendArrivalInfo', 'approveEnquiry'];
+try {
+    const st = document.createElement('style');
+    st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55}';
+    document.head.appendChild(st);
+} catch (e) {}
 function chbRunAct(el, name, event) {
+    if (__chbNetOff && CHB_NEEDS_NET.indexOf(name) !== -1) {
+        try {
+            toast('Needs signal — this one charges a card or emails a guest, so it’s never queued and hoped for.');
+        } catch (e) {}
+        return;
+    }
     let r;
     const fn = CHB_ACTIONS[name];
     if (typeof fn === 'function') {
@@ -769,7 +786,7 @@ async function oqRefreshCount() {
 }
 function updateOnlineStatus() {
     try {
-        const offline = navigator.onLine === false;
+        const offline = navigator.onLine === false || __chbNetOff;
         const n = __oqCount;
         document.body.classList.toggle('is-offline', offline);
         document.body.classList.toggle('has-queued', n > 0);
@@ -907,11 +924,122 @@ async function oqFlush() {
         } catch (e) {}
     }
 }
+// ── LIVE CONNECTIVITY — one evidence-based verdict, both ways, no reload.
+//    Any transport failure in apiPost/apiGet flips OFF, any success flips ON;
+//    while OFF a version.php probe retries every 15s so recovery is automatic.
+//    The `online` event is a HINT to probe now, never a verdict (it fires when
+//    an interface appears, not when the server is reachable). See CLAUDE.md.
+let __chbNetOff = false;
+let __chbNetOffAt = 0;
+let __chbNetProbeT = null;
+const CHB_NET_PROBE_MS = 15000;
+// A blip is not an outage: on genuinely bad WiFi SOME requests fail while
+// others land (measured — ui-test-poorsignal drops data endpoints and leaves
+// the rest alive), so the verdict flips per request. The pill moves instantly
+// both ways (it is cheap and honest), but the TOAST and the heavyweight
+// recovery only fire for an outage the owner could have NOTICED — one that
+// lasted, or one that queued writes. Otherwise "Back online." spams every
+// flap and buries the specific failure message that mattered.
+const CHB_NET_NOTICED_MS = 8000;
+function chbNetIsOff() {
+    return __chbNetOff;
+}
+function chbNetDown() {
+    if (__chbNetOff) return;
+    __chbNetOff = true;
+    __chbNetOffAt = Date.now();
+    try {
+        document.body.classList.add('net-off');
+    } catch (e) {}
+    try {
+        updateOnlineStatus();
+    } catch (e) {}
+    chbNetProbeArm();
+}
+function chbNetUp() {
+    chbNetProbeStop();
+    if (!__chbNetOff) return;
+    __chbNetOff = false;
+    try {
+        document.body.classList.remove('net-off');
+    } catch (e) {}
+    try {
+        updateOnlineStatus();
+    } catch (e) {}
+    const noticed = Date.now() - __chbNetOffAt > CHB_NET_NOTICED_MS || __oqCount > 0
+        || !!document.getElementById('offline-daysheet');
+    setTimeout(oqFlush, 60); // always — it no-ops on an empty queue
+    if (!noticed) return; // a blip: no toast, no re-render churn
+    // A REAL outage's end is SAID (a pill clearing silently reads as never
+    // having happened), and the screen catches itself up in place.
+    try {
+        toast(__oqCount > 0 ? 'Back online — sending what you saved…' : 'Back online.');
+    } catch (e) {}
+    try {
+        chbNetRecover();
+    } catch (e) {}
+}
+function chbNetProbeArm() {
+    if (__chbNetProbeT) return;
+    __chbNetProbeT = setInterval(chbNetProbe, CHB_NET_PROBE_MS);
+}
+function chbNetProbeStop() {
+    if (__chbNetProbeT) {
+        clearInterval(__chbNetProbeT);
+        __chbNetProbeT = null;
+    }
+}
+async function chbNetProbe() {
+    if (!__chbNetOff) {
+        chbNetProbeStop();
+        return;
+    }
+    if (document.hidden) return; // don't burn the radio in a pocket
+    try {
+        const r = await fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store', credentials: 'include' }, 5000);
+        if (r && r.ok) chbNetUp();
+    } catch (e) {}
+}
+// Coming back is LIVE: the day sheet swaps itself for the real Today (odsRetry
+// → initBackOffice, which also runs the deposit-decision confirms), an open
+// workspace refetches in place, and everything else at least refreshes its
+// badges. Owner-side only — a guest just sees the pill clear.
+function chbNetRecover() {
+    if (!isAuthenticated || !document.body.classList.contains('owner-mode')) return;
+    // NB when the owner is ON Today, the initBackOffice fallthrough below also
+    // clears the sheet (break-tested — deleting this branch leaves that path
+    // green). What THIS branch owns is the parked case: the sheet left up while
+    // the owner sits on another view, which the fallthrough never touches.
+    try {
+        if (document.getElementById('offline-daysheet') && typeof (/** @type {any} */ (window).odsRetry) === 'function') {
+            /** @type {any} */ (window).odsRetry();
+            return;
+        }
+    } catch (e) {}
+    const av = document.querySelector('.page-view.active');
+    const id = av ? av.id : '';
+    try {
+        if (id === 'view-backoffice' && typeof (/** @type {any} */ (window).initBackOffice) === 'function') {
+            /** @type {any} */ (window).initBackOffice();
+        } else if (id === 'view-inbox') {
+            renderInboxScreen();
+        } else {
+            refreshOwnerHomeBadges();
+        }
+    } catch (e) {}
+}
 // The replay probes: the online event (which a connected-but-dead router never
 // fires), coming back to the tab, and — the honest one — ANY successful apiPost,
 // because a request that just worked is the only proof the link works.
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) oqFlush();
+    if (!document.hidden) {
+        oqFlush();
+        if (__chbNetOff) chbNetProbe();
+    }
+});
+window.addEventListener('online', () => {
+    // a hint, not a verdict — probe now rather than waiting out the interval
+    if (__chbNetOff) chbNetProbe();
 });
 window.addEventListener('online', () => {
     updateOnlineStatus();
@@ -979,19 +1107,24 @@ async function apiPost(endpoint, payload) {
     }
     let res;
     try {
+        // Known-off gets a SHORT timeout: on a link the probe already judged
+        // dead, a tap should fail in seconds, not hang the full window — and the
+        // first success flips the verdict back anyway.
         res = await fetchWithTimeout(API_BASE + endpoint, {
             method: 'POST',
             headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeader()),
             credentials: 'include',
             body: JSON.stringify(payload || {}),
-        });
+        }, __chbNetOff ? 5000 : undefined);
     } catch (netErr) {
+        chbNetDown(); // evidence: the transport failed (a status is a different case)
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
                 : 'Network error — could not reach the server.',
         );
     }
+    chbNetUp(); // evidence: the server answered (whatever it said)
     const text = await res.text();
     let data = {};
     try {
@@ -1023,14 +1156,16 @@ async function apiPost(endpoint, payload) {
 async function apiGet(endpoint) {
     let res;
     try {
-        res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' });
+        res = await fetchWithTimeout(API_BASE + endpoint, { credentials: 'include' }, __chbNetOff ? 5000 : undefined);
     } catch (netErr) {
+        chbNetDown();
         throw new Error(
             netErr && netErr.name === 'AbortError'
                 ? 'The server took too long to respond. Please try again.'
                 : 'Network error — could not reach the server.',
         );
     }
+    chbNetUp();
     const text = await res.text();
     let data = {};
     try {
@@ -15683,7 +15818,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'opledger1';
+    const BUILD = 'netlive1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

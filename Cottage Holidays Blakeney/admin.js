@@ -17114,10 +17114,28 @@ async function odsDep(i) {
 // words from the cottage, and executes through the normal Tier-C endpoint only
 // on the OK. "Not now" keeps it for the next reconnect; a server refusal (e.g.
 // the guest hasn't checked out yet) keeps it too, with the reason shown.
+let __odsSweeping = false;
 async function odsDepConfirmSweep() {
+    // RE-ENTRANT CALLERS ARE THE NORM, NOT THE EDGE: initBackOffice runs this,
+    // and chbNetUp's recovery ALSO runs initBackOffice — measured, two sweeps
+    // snapshotted the same list and asked about Hannah's £75 TWICE (the server's
+    // book_lock made the second OK a 409, so no money moved twice — but a
+    // double ask about money leaving is exactly what this flow must never do).
+    // One sweep at a time, and each item is re-checked against the LIVE list
+    // before it is asked about, so an item executed elsewhere is never re-asked.
+    if (__odsSweeping) return;
+    __odsSweeping = true;
+    try {
+        await odsDepConfirmRun();
+    } finally {
+        __odsSweeping = false;
+    }
+}
+async function odsDepConfirmRun() {
     const list = odsDepDecisions();
     if (!list.length) return;
     for (const d2 of list) {
+        if (!odsDepDecisions().some((x) => x.dbId === d2.dbId)) continue; // settled since the snapshot
         const verb = d2.choice === 'keep' ? 'Keep' : 'Return';
         const okd = await glassConfirm(
             verb + ' ' + gbp(d2.amt) + (d2.choice === 'keep' ? ' from ' : ' to ') + (d2.nm || 'the guest')

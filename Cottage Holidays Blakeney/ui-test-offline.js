@@ -47,6 +47,9 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mkBooking(4, { name: 'Priya Raman', phone: '07700 900527', check_in: d(-1), check_out: d(2) }),
     // far future — must NOT reach the snapshot
     mkBooking(5, { name: 'Zara Outofrange', check_in: d(20), check_out: d(23) }),
+    // checked OUT with the deposit still held — §9's Tier-C control
+    // (returnDeposit only renders once the guest has actually left)
+    mkBooking(6, { name: 'Faye Left', phone: '07700 900888', check_in: d(-4), check_out: d(-1), hold_status: 'charged', hold_amount: 60 }),
   ];
   const posts = [];
   await page.route(/\.php/, async (route) => {
@@ -235,6 +238,73 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.waitForTimeout(1000);
   ok(posts.filter((p2) => p2.action === 'return_deposit').length === 1, 'the refund op exists only after the OK');
   ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 0), 'and the decision is cleared once executed');
+
+  // ── §9 LIVE TRANSITIONS — the verdict moves BOTH ways with no reload.
+  //     navigator.onLine is true throughout (routes abort, the interface is up),
+  //     so every state change here is EVIDENCE-driven: a transport failure flips
+  //     off, the 15s probe flips back. The window marker proves no reload.
+  console.log('§9 live transitions, no reloads');
+  await page.evaluate(() => { window.__noReloadMarker = 42; });
+
+  // (a) open the hub while the link is still good (the hub refuses to navigate
+  //     on a dead fetch — the poor-signal rule — so the drop comes after).
+  //     Hannah's hub: a charged deposit on a stay ending today, so it carries
+  //     returnDeposit — Tier-C, money leaving. (Marcus's payask offers
+  //     recordPayment, the SAFE capture, which is deliberately NOT in the deny
+  //     list — the first draft of this gate targeted his hub and proved that
+  //     distinction by accident.)
+  await page.evaluate(() => openBookingHub('b6'));
+  await page.waitForTimeout(1200);
+
+  // …then a mid-session drop is noticed at the FIRST failed request
+  apiDead = true;
+  await page.evaluate(() => apiPost('bookings.php', { action: 'history', id: 2 }).catch(() => {}));
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.body.classList.contains('net-off') && document.body.classList.contains('is-offline')),
+    'one failed request flips the whole dashboard to offline — no reload, no flag-watching');
+
+  // (b) Tier-C refuses up front, with the reason, and no request leaves
+  const preC = posts.filter((p2) => p2.action === 'return_deposit').length;
+  ok(await page.locator('[data-act="returnDeposit"]').count() >= 1, 'the hub renders its deposit controls from the stores loaded while online');
+  ok(await page.locator('[data-act="returnDeposit"]').first().evaluate((el2) => getComputedStyle(el2).opacity === '0.55'),
+    'the control is visibly dimmed BEFORE the tap (the generated net-off rule)');
+  // The first run of this gate caught a DOUBLE ASK: chbNetUp's recovery and
+  // §8's explicit initBackOffice both swept the decisions concurrently, and a
+  // second "Return £75.00 to Hannah?" was sitting here intercepting the click.
+  ok(await page.evaluate(() => { const g = document.getElementById('glass-dialog'); return !(g && g.classList.contains('open')); }),
+    'no second ask about money that was already confirmed (the sweep is re-entrant-safe)');
+  await page.locator('[data-act="returnDeposit"]').first().click();
+  await page.waitForTimeout(500);
+  ok(posts.filter((p2) => p2.action === 'return_deposit').length === preC,
+    'tapping it sends NOTHING — money leaving is never queued and hoped for');
+  ok(await page.evaluate(() => /Needs signal/.test((document.getElementById('app-toasts') || {}).textContent || '')),
+    'and the refusal says why, immediately');
+  ok(await page.evaluate(() => {
+    const els = document.querySelectorAll('style');
+    for (const st of els) { if (/net-off/.test(st.textContent) && /requestPayment/.test(st.textContent) && /approveEnquiry/.test(st.textContent)) return true; }
+    return false;
+  }), 'the dim rule is GENERATED from the same list the guard reads — one definition');
+
+  // (c) recovery is automatic: the probe notices within its 15s interval
+  apiDead = false;
+  await page.waitForTimeout(16500);
+  ok(await page.evaluate(() => !document.body.classList.contains('net-off') && !document.body.classList.contains('is-offline')),
+    'the probe brings the dashboard back by itself — nothing was tapped');
+  ok(await page.evaluate(() => /Back online/.test((document.getElementById('app-toasts') || {}).textContent || '')),
+    'and the transition is SAID, never silent');
+  ok(await page.evaluate(() => window.__noReloadMarker === 42), 'no reload happened at any point (the marker survived)');
+
+  // (d) the cold-boot day sheet also exits by itself when signal returns
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), '(fixture) offline boot lands on the day sheet');
+  await page.evaluate(() => { window.__noReloadMarker = 43; });
+  apiDead = false;
+  await page.waitForTimeout(17000);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap')),
+    'the day sheet swaps itself for the live Today when the probe succeeds');
+  ok(await page.evaluate(() => window.__noReloadMarker === 43), '…again with no reload');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
