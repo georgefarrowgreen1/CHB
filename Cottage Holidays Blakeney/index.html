@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=249">
+    <link rel="stylesheet" href="app.css?v=250">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -195,11 +195,12 @@
         </div>
     </div>
     <!-- Discrete offline indicator (shown whenever the device loses its connection,
-         or while offline changes are waiting to sync). -->
-    <div id="offline-pill" class="offline-pill" title="No internet connection" aria-label="No internet connection" role="status">
+         or while offline changes are waiting to sync). Tapping it opens the
+         waiting-to-send TRAY (oqTrayOpen) — the queue in words, not a number. -->
+    <button id="offline-pill" class="offline-pill" type="button" title="Offline — tap to see what’s waiting to send" aria-label="Offline — tap to see what’s waiting to send" data-act="oqTrayOpen">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
         <span id="offline-count" class="oq-count" style="display:none;">0</span>
-    </div>
+    </button>
 
     <div class="ambient-bg">
         <div class="blob blob-1"></div>
@@ -1829,7 +1830,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=760"></script>
+    <script defer src="app.js?v=761"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

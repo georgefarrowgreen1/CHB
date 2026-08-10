@@ -6123,6 +6123,32 @@ function chbSnapAnswers(ql) {
     }
     return null;
 }
+// The LANDING's offline rows — same gates as chbSnapAnswers, feeding the
+// ordinary boards machinery (each row declares its board; the final board-rank
+// sort places it). Online or with live data this contributes nothing.
+function chbSnapBriefRows() {
+    if (!(typeof chbNetIsOff === 'function' && chbNetIsOff())) return [];
+    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) return [];
+    const s = chbSnapRead();
+    if (!s || !(s.rows || []).length) return [];
+    const today = todayDashed(), tom = ukShiftDays(today, 1);
+    const g = { arrive: [], leave: [], staying: [], tomorrow: [] };
+    (s.rows || []).forEach((r) => {
+        const k = chbSnapGroup(r, today, tom);
+        if (k) g[k].push(r);
+    });
+    const src = 'From the saved day sheet — offline, so this may have moved';
+    const goToday = () => { closeCmdK(); nav('view-backoffice'); };
+    const out = [{ type: 'figure', scope: 'bookings', id: 'snap-brief-today', board: 'today', label: g.arrive.length + ' in · ' + g.leave.length + ' out', sub: src, run: goToday }];
+    const ow = (s.rows || []).filter((r) => (r.due || 0) > 0.005);
+    if (ow.length) {
+        const tot = ow.reduce((a, r) => a + (r.due || 0), 0);
+        out.push({ type: 'answer', scope: 'bookings', id: 'snap-brief-money', board: 'money', wrap: true, label: gbp(tot) + ' still to collect', sub: ow.map((r) => chbSayFirst(r.nm || 'a guest')).join(', ') + ' · ' + src, run: goToday });
+    }
+    const coast = odsCoastText(s);
+    if (coast) out.push({ type: 'answer', scope: 'bookings', id: 'snap-brief-coast', board: 'today', wrap: true, label: coast, sub: src, run: goToday });
+    return out;
+}
 function cmdkBuildResults(ql) {
     let results = [];
     let nluUsed = null;
@@ -7626,6 +7652,12 @@ function cmdkBrief() {
 }
 function cmdkBriefBuild() {
     const items = [];
+    // Offline boot: the landing's boards come from the SNAPSHOT — the
+    // store-backed composition below would report an empty business. Gated
+    // inside chbSnapBriefRows; online or with stores loaded it adds nothing.
+    try {
+        chbSnapBriefRows().forEach((r) => items.push(r));
+    } catch (e) {}
     const today = todayDashed();
     let ins = 0, outs = 0;
     Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
@@ -17088,7 +17120,10 @@ async function chbSnapCoastPatch() {
 }
 // "High water 06:41 and 19:08 · low 12:55 · Sunny · 18°C" — the two things a
 // Blakeney owner is asked most, readable with no data at all.
-function odsCoastLine(s) {
+// The coast as PLAIN TEXT (the assistant's landing row shares it) — the
+// day-sheet renderer wraps it below. Tide times are gated on the day they
+// were fetched FOR; weather finds today in its dated days.
+function odsCoastText(s) {
     const c = s && s.coast;
     if (!c) return '';
     const today = todayDashed();
@@ -17108,7 +17143,11 @@ function odsCoastLine(s) {
         if (wx.gust != null && wx.gust >= 30) w.push('gusting ' + wx.gust + ' mph');
         if (w.length) bits.push(w.join(' · '));
     }
-    return bits.length ? '<div class="ods-coast">' + escapeHtml(bits.join(' · ')) + '</div>' : '';
+    return bits.join(' · ');
+}
+function odsCoastLine(s) {
+    const txt = odsCoastText(s);
+    return txt ? '<div class="ods-coast">' + escapeHtml(txt) + '</div>' : '';
 }
 // The marker speaks in the DAY'S terms, not the clock's — "this morning" tells
 // the owner whether to trust it; a bare timestamp makes them do the arithmetic.
@@ -17128,6 +17167,7 @@ function renderOfflineDaySheet() {
     if (!el) {
         el = document.createElement('div');
         el.id = 'offline-daysheet';
+        el.classList.add('ods-enter'); // the takeover is a MOMENT, not a jump cut
         host.prepend(el);
     }
     document.body.classList.add('offline-snap');
@@ -17183,11 +17223,18 @@ function renderOfflineDaySheet() {
         ? '<h2 class="bo-sec-title">' + t + ' <span class="inbox-badge">' + groups[key].length + '</span></h2>' + groups[key].map((r) => row(r, key)).join('')
         : '';
     const opsKeys = Object.keys(s.ops || {}).filter((pk) => String(s.ops[pk] || '').trim() !== '');
+    // The banner is the mode's IDENTITY: wifi-off mark, live freshness
+    // (odsMarkWire ticks it, stale past 6h) and the probe made visible.
+    const ICW = '<svg class="ic ods-mark-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l22 22"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>';
     el.innerHTML =
         '<div class="ods-mark" role="status">'
-        + '<span><b>No connection</b> — this is the day sheet ' + e(chbSnapWhen(s)) + '. Anything may have moved since; nothing here is live.</span>'
+        + ICW
+        + '<span><b>Offline</b> — this is the day sheet ' + e(chbSnapWhen(s))
+        + '<span id="ods-fresh"></span>. Anything may have moved since; nothing here is live.'
+        + ' <em id="ods-probe" class="ods-probe"></em></span>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsRetry') + '>Try again</button>'
         + '</div>'
+        + '<div id="ods-queue" class="ods-queue" style="display:none;"></div>'
         + odsCoastLine(s)
         + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
         + sec('Leaving today', 'leave')
@@ -17204,7 +17251,73 @@ function renderOfflineDaySheet() {
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Someone rang? Save it as an enquiry</button>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
         + '</div>';
+    odsMarkWire(s);
+    odsQueueRefresh();
     return true;
+}
+// ── The banner's living parts. One interval owns the freshness readout and
+//    the queue section together (cleared and re-armed on every render); the
+//    probe listener is installed ONCE and checks the DOM, so it dies with the
+//    sheet rather than needing an unwire path.
+let __odsMarkT = null;
+function odsMarkWire(s) {
+    if (__odsMarkT) clearInterval(__odsMarkT);
+    const tick = () => {
+        const f = document.getElementById('ods-fresh');
+        if (!f) { clearInterval(__odsMarkT); __odsMarkT = null; return; }
+        const ageMin = Math.max(0, Math.round((Date.now() - (s.at || 0)) / 60000));
+        f.textContent = ' · ' + (ageMin < 1 ? 'just now' : ageMin < 60 ? ageMin + ' min ago' : Math.round(ageMin / 60) + 'h ago');
+        const mark = f.closest('.ods-mark');
+        if (mark) mark.classList.toggle('is-stale', ageMin >= 360);
+        odsQueueRefresh();
+    };
+    __odsMarkT = setInterval(tick, 30000);
+    tick();
+    if (!(/** @type {any} */ (window).__odsProbeWired)) {
+        /** @type {any} */ (window).__odsProbeWired = true;
+        document.addEventListener('chb-probe', (ev) => {
+            const p = document.getElementById('ods-probe');
+            if (!p) return;
+            const d = /** @type {any} */ (ev).detail;
+            if (d === 'start') {
+                p.textContent = 'checking the connection…';
+                p.dataset.at = String(Date.now());
+                return;
+            }
+            // A failed probe can answer in MILLISECONDS (airplane mode aborts
+            // instantly) — clearing at once made the check invisible, so the
+            // whisper holds a readable beat, signs off honestly, then clears.
+            const held = Date.now() - Number(p.dataset.at || 0);
+            setTimeout(() => {
+                const p2 = document.getElementById('ods-probe');
+                if (p2) p2.textContent = 'still offline — trying again shortly';
+                setTimeout(() => {
+                    const p3 = document.getElementById('ods-probe');
+                    if (p3 && /still offline/.test(p3.textContent)) p3.textContent = '';
+                }, 2600);
+            }, Math.max(0, 1200 - held));
+        });
+    }
+}
+// The waiting-to-send section — the queue in words, on the sheet itself.
+async function odsQueueRefresh() {
+    const box = document.getElementById('ods-queue');
+    if (!box) return;
+    let items = [];
+    try {
+        items = await oqAll();
+    } catch (e) {}
+    if (!document.getElementById('ods-queue')) return; // re-rendered while we read
+    if (!items.length) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+    }
+    const e2 = escapeHtml;
+    box.style.display = '';
+    box.innerHTML = '<h2 class="bo-sec-title">Waiting to send <span class="inbox-badge">' + items.length + '</span></h2>'
+        + items.map((it) => '<div class="ods-qrow"><span class="ods-qlabel">' + e2(it.label || it.endpoint || 'A change') + '</span>'
+            + '<span class="ods-qsub">saved ' + e2(oqAgo(it.at)) + ' · posts itself when the signal returns</span></div>').join('');
 }
 // ── THE THREE CAPTURES — the writes a cottage doorstep actually needs, and
 //    only those. Each is queued through queueOrPost, so it carries an op_id
@@ -17463,6 +17576,7 @@ async function odsExpense() {
         description: String(vals.desc || '').slice(0, 200),
         recurring: 0,
     }, 'Expense — ' + (vals.cat || 'General'));
+    try { odsQueueRefresh(); } catch (e) {} // the sheet's tray, current at once
     toast(res && res.queued
         ? 'Saved on this phone — it posts itself when the signal returns.'
         : 'Expense recorded.');
@@ -17503,6 +17617,7 @@ async function odsEnquiry() {
         children: 0,
         message: 'Taken by phone' + (String(vals.phone || '').trim() ? ' (' + String(vals.phone).trim() + ')' : ''),
     }, 'Enquiry — ' + String(vals.name).trim());
+    try { odsQueueRefresh(); } catch (e) {} // the sheet's tray, current at once
     toast(res && res.queued
         ? 'Saved on this phone — it lands in your inbox when the signal returns.'
         : 'Enquiry saved — it’s in your inbox.');
@@ -17521,6 +17636,22 @@ async function saveOpsNotes(k, v) {
     }
     adminPrivateContent['ops-' + k] = val;
     try { chbSnapWrite(); } catch (e) {}
+}
+// The offline machinery is strongest INSTALLED — the shell is precached and a
+// Safari tab's storage can be evicted wholesale. One nudge, once ever, only
+// where it is true (an Apple touch device browsing in-tab; iOS also only
+// allows web push installed, so the tip earns its keep twice). Never a prompt.
+function odsA2hsNudge() {
+    if (!isAppleTouchDevice() || isStandalonePwa()) return;
+    let seen = null;
+    try {
+        seen = localStorage.getItem('chb-a2hs-nudged');
+    } catch (e) {}
+    if (seen) return;
+    try {
+        localStorage.setItem('chb-a2hs-nudged', '1');
+    } catch (e) {}
+    toast('Tip: Share → Add to Home Screen keeps the offline day sheet ready even with no signal.');
 }
 // "Try again" is honest both ways: live data replaces the sheet, a still-dead
 // link says so and keeps it — never a silent nothing (the dead-end rule).
@@ -17597,6 +17728,8 @@ async function initBackOffice() {
         // Deposit decisions saved at a cottage door wait here for their OK —
         // fire-and-forget, one confirm each, never silently executed.
         try { odsDepConfirmSweep(); } catch (e) {}
+        // …and an un-installed Apple device gets its one A2HS nudge (below).
+        try { odsA2hsNudge(); } catch (e) {}
     }
     try {
         todayOpsLine();

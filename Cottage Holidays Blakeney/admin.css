@@ -4534,6 +4534,59 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   font-size: 0.85rem;
   line-height: 1.5;
 }
+/* the banner's living parts: the wifi-off mark, the probe whisper, and the
+   STALE grade — a snapshot past 6h turns the strip amber, because "saved
+   yesterday evening" deserves a different colour of trust */
+.ods-mark .ods-mark-ic {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.ods-mark .ods-probe {
+  font-style: italic;
+  opacity: 0.85;
+}
+.ods-mark.is-stale {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
+  color: var(--warn-text);
+}
+/* the waiting-to-send section — the queue in words, on the sheet itself */
+.ods-queue .ods-qrow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.ods-queue .ods-qlabel {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.ods-queue .ods-qsub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+/* the takeover is a MOMENT, not a jump cut — one soft entrance, and none at
+   all for reduced motion (the sheet is information, the slide is not) */
+.ods-enter {
+  animation: odsEnter 0.35s ease-out;
+}
+@keyframes odsEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ods-enter {
+    animation: none;
+  }
+}
 /* the coast line — tides + weather from the snapshot, readable with no data */
 .ods-coast {
   margin: 8px 0 0;

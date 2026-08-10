@@ -4235,6 +4235,26 @@ a HINT to probe now, never a verdict.
   reverted one mechanism at a time). The trim is keyed on `offline-snap`, NOT
   `net-off`: a mid-session blip keeps the full menu, because those screens still
   hold last-good data.
+- **THE MACHINERY IS VISIBLE NOW** (gated by ui-test-offline §20, four mechanisms
+  break-tested). The queue in WORDS: an `#ods-queue` section on the sheet and the
+  same tray behind the (now tappable, `<button>`-reset) offline pill via `oqTrayOpen`
+  — read-only by design, a queued change can be seen and awaited, never discarded.
+  The reconnect replay NARRATED: `oqSyncNote` updates one `#oq-sync` status element
+  in place ("Sending 2 of 3 — …" → "N sent ✓" / "N sent · M refused"), final state
+  lingering a beat. The banner is the mode's IDENTITY: wifi-off mark, LIVE freshness
+  (`odsMarkWire` ticks "· 4 min ago", amber `.is-stale` past 6h), and the probe made
+  visible — NB a failed probe can answer in MILLISECONDS (airplane mode aborts
+  instantly), so the "checking the connection…" whisper HOLDS a readable beat and
+  signs off "still offline" rather than clearing before it can be read (measured —
+  the first version was invisible in exactly the case it was for). Dimmed Tier-C
+  controls grow a "needs signal" title via a LAZY delegated mouseover (re-renders
+  wipe a one-off attribute pass) + grayscale in the generated rule. The assistant's
+  LANDING gets offline boards (`chbSnapBriefRows` — chbSnapAnswers' gates, rows
+  declaring their board so the §20a sort places them). A guest going offline is told
+  ONCE per session (sessionStorage-flagged toast). `odsA2hsNudge` tips Add-to-Home-
+  Screen once ever, only on an un-installed Apple touch device. NB odsExpense/
+  odsEnquiry call `odsQueueRefresh()` themselves — only odsPay re-renders the sheet,
+  and a tray that waits for the 30s tick reads as a capture that vanished.
 - **THE WIFI-ICON RULE** (`chbGoOffline`, wired to the `offline` event; gated by
   ui-test-offline §19, wiring break-tested). Airplane mode / wifi-off fires the
   browser's `offline` event with NO failed request — the whole back office

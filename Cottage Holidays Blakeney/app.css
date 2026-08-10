@@ -8494,6 +8494,45 @@ body.light-mode .theme-switch .ts-i-sun {
   -webkit-backdrop-filter: blur(10px);
   color: var(--text-light);
   opacity: 0.9;
+  /* it is a <button> now (the tray) — strip the UA chrome or it paints the
+     browser's default face (the .cmdk-qa-row lesson) */
+  padding: 0;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+/* THE SYNC STRIP — the reconnect replay, visible: one status element updated
+   in place ("Sending 2 of 3 — Payment — Marcus…"), final state lingering a
+   beat. Fixed above the fold's foot, out of the way of toasts (bottom-left). */
+.oq-sync {
+  position: fixed;
+  left: 14px;
+  bottom: calc(var(--safe-b) + 14px);
+  z-index: 1405;
+  max-width: min(80vw, 380px);
+  padding: 8px 14px;
+  border-radius: var(--r-md, 10px);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text-light);
+  font-size: 0.8rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.oq-sync.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .oq-sync {
+    transition: none;
+    transform: none;
+  }
 }
 .offline-pill .ic {
   width: 18px;

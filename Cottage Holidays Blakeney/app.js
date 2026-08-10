@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 439;
+const ADMIN_BUNDLE_V = 440;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 161;
+const ADMIN_CSS_V = 162;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -439,7 +439,8 @@ function chbBlur(name, ...args) { return chbAttrsFor('blur', name, args); }
 const CHB_NEEDS_NET = ['requestPayment', 'returnDeposit', 'keepDeposit', 'sendArrivalInfo', 'approveEnquiry'];
 try {
     const st = document.createElement('style');
-    st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55}';
+    // Dimmed AND desaturated: opacity alone read as "loading", not "won't run".
+    st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55;filter:grayscale(.7)}';
     document.head.appendChild(st);
 } catch (e) {}
 function chbRunAct(el, name, event) {
@@ -985,6 +986,44 @@ async function queueOrPost(endpoint, payload, label) {
         return enqueue();
     }
 }
+// ── THE SYNC STRIP: the reconnect replay, VISIBLE — one status element
+//    updated in place; the final state lingers so a fast flush is still seen.
+let __oqSyncT = null;
+function oqSyncNote(txt, done) {
+    try {
+        let el = document.getElementById('oq-sync');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'oq-sync';
+            el.className = 'oq-sync';
+            el.setAttribute('role', 'status');
+            document.body.appendChild(el);
+        }
+        el.textContent = txt;
+        el.classList.add('show');
+        if (__oqSyncT) clearTimeout(__oqSyncT);
+        if (done) __oqSyncT = setTimeout(() => { el.classList.remove('show'); }, 2600);
+    } catch (e) {}
+}
+// The waiting-to-send TRAY: the queue in words behind the pill. Read-only —
+// a queued change can be seen and awaited, never discarded.
+function oqAgo(t) {
+    const m = Math.max(0, Math.round((Date.now() - (Number(t) || 0)) / 60000));
+    return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : m < 60 ? m + ' minutes ago' : Math.round(m / 60) + 'h ago';
+}
+async function oqTrayOpen() {
+    let items = [];
+    try {
+        items = await oqAll();
+    } catch (e) {}
+    if (!items.length) {
+        toast(__chbNetOff ? 'Nothing waiting to send.' : 'Nothing waiting — every change is on the server.');
+        return;
+    }
+    const lines = items.map((it) => '• ' + (it.label || it.endpoint || 'a change') + (it.at ? ' — saved ' + oqAgo(it.at) : ''));
+    glassAlert('Waiting to send when the signal returns:\n\n' + lines.join('\n')
+        + '\n\nThese post themselves the moment the connection comes back.');
+}
 let __oqFlushing = false;
 async function oqFlush() {
     if (__oqFlushing || navigator.onLine === false) return;
@@ -1019,11 +1058,16 @@ async function oqFlush() {
 }
 async function oqFlushRun(items) {
     let failed = 0;
+    let sent = 0;
     const failMsgs = [];
     try {
+        let i = 0;
         for (const it of items) {
+            i++;
+            oqSyncNote(`Sending ${i} of ${items.length} — ${it.label || 'a saved change'}…`);
             try {
                 await apiPost(it.endpoint, it.payload);
+                sent++;
             } catch (e) {
                 // A TRANSPORT failure (no e.status) keeps the WHOLE queue for a
                 // later try — only a server ANSWER may consume an item (the old
@@ -1071,6 +1115,7 @@ async function oqFlushRun(items) {
         // A queued change was REFUSED by the server — never claim success, and
         // NAME the refusal in the server's own words: a clash-refused enquiry
         // told only "please try again" is advice that cannot work.
+        oqSyncNote(`${sent} sent · ${failed} refused — see Needs you`, true);
         try {
             toast(
                 "Couldn't save " + (failMsgs[0] || 'a change')
@@ -1078,9 +1123,13 @@ async function oqFlushRun(items) {
             );
         } catch (e) {}
     } else if (__oqCount === 0) {
+        oqSyncNote(`${sent} saved change${sent === 1 ? '' : 's'} sent ✓`, true);
         try {
             toast('Changes saved.');
         } catch (e) {}
+    } else {
+        // The link died mid-flush — what remains is still safe on the phone.
+        oqSyncNote(`${sent ? sent + ' sent · ' : ''}${__oqCount} still waiting for signal`, true);
     }
 }
 // ── LIVE CONNECTIVITY — one evidence-based verdict, both ways, no reload.
@@ -1159,9 +1208,21 @@ async function chbNetProbe() {
         return;
     }
     if (document.hidden) return; // don't burn the radio in a pocket
+    // The probe is VISIBLE where it matters: the day-sheet banner listens for
+    // these and shows "checking the connection…" — a silent 15s cycle read as
+    // the app doing nothing, and "Try again" as the only feedback.
+    try {
+        document.dispatchEvent(new CustomEvent('chb-probe', { detail: 'start' }));
+    } catch (e) {}
     try {
         const r = await fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store', credentials: 'include' }, 5000);
-        if (r && r.ok) chbNetUp();
+        if (r && r.ok) {
+            chbNetUp();
+            return;
+        }
+    } catch (e) {}
+    try {
+        document.dispatchEvent(new CustomEvent('chb-probe', { detail: 'still-off' }));
     } catch (e) {}
 }
 // Coming back is LIVE: the day sheet swaps itself for the real Today (odsRetry
@@ -1241,6 +1302,26 @@ function chbGoOffline() {
 window.addEventListener('offline', () => {
     updateOnlineStatus();
     chbGoOffline();
+    // A GUEST just gets told once, kindly: the cached pages still read fine,
+    // but the two things they might try next (availability, booking) need a
+    // connection. Once per session — a nag helps nobody find signal.
+    try {
+        if (!document.body.classList.contains('owner-mode') && !PREVIEW_MODE
+            && sessionStorage.getItem('chb-guest-off-note') !== '1') {
+            sessionStorage.setItem('chb-guest-off-note', '1');
+            toast('You’re offline — saved pages still work, but availability and booking need a connection.');
+        }
+    } catch (e) {}
+});
+// Dimmed Tier-C controls explain themselves BEFORE the tap where a pointer
+// exists — a lazy delegated title (re-renders would wipe a one-off pass).
+document.addEventListener('mouseover', (e) => {
+    if (!__chbNetOff) return;
+    try {
+        const t = /** @type {HTMLElement} */ (e.target);
+        const el = t && t.closest && t.closest(CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(','));
+        if (el && !el.getAttribute('title')) el.setAttribute('title', 'Needs signal — this one charges a card or emails a guest');
+    } catch (e2) {}
 });
 updateOnlineStatus();
 try {
@@ -16093,7 +16174,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'wifioff9';
+    const BUILD = 'offlux10';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
