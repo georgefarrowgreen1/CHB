@@ -1552,7 +1552,14 @@ delegates to `openBookingHub()` (admin.js): status pipeline + next action + the
 payments block are ONE unified header section (`.bhub-head` → `payBlock` /
 `.bhub-headpay` — there is NO separate Payments card and NO second money
 mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-test-hub
-§A; the journey strip carries the money stages. **A MONEY next-action renders
+§A. **THE JOURNEY IS A CAPTION, NOT A STRIP (the iOS restyle, owner-approved
+demo):** the pill pipelines — the phone's three-pill window AND the desktop
+full strip, plus all their `.pipe3-*`/`.pipe-step` CSS in app.css — are GONE;
+the stage rides the next-action card as `.bhub-next-cap` ("Next · 2 of 6 ·
+Deposit"), derived once in hubPipelineHtml and carried on `__hubNext.cap` so
+the payask wears the same words. NB the 'paid' stage renames to **"Balance"**
+in the cap — its label "Paid in full" over "£292.50 balance remaining" read as
+the booking's state (caught on the build's own screenshot). **A MONEY next-action renders
 INSIDE the Payments header** (`.bhub-payask`, deliberately still carrying
 `.bhub-next` so the gates that read the banner read the same node) and
 `nextHtml()` returns '' for it — the ask is said ONCE, where the money lives;
@@ -1595,14 +1602,21 @@ why it looks plausible. **The row that remains is the QUIET tier**
 Send a reminder / Record payment / Copy pay link / Invoice, because five pills
 shouting as loudly as the ask was the jumble the owner reported. Same pass: `.bhub-plan` is a FILL under a
 hairline, not a third box treatment between the tinted payask and the dashed
-gap chip. **The Edit/Move/Cancel menu lives at the page FOOT** (`.bhub-foot`,
-below the cards grid — the owner's ask, and the iOS home for a record's
-management actions; it had been the widest pill in the header for the page's
-rarest action). Same node, same data-acts — only the address changed, so
-every gate reading `.bhub-actions` kept firing — and its dropdown opens
-UPWARD there (`.bhub-foot .bhub-menu { top:auto; bottom:… }`) or it falls off
-the document; both the placement and the direction are pinned in ui-test-hub
-§H.
+gap chip. **The Edit/Move/Cancel menu is the ⋯ in the header's TOP-RIGHT
+corner** (the iOS restyle — it lived at the page FOOT for a while at the
+owner's earlier ask, and the approved demo carries the ellipsis in the
+nav-bar spot, superseding that). Chrome, not a pill: the button says "⋯" with
+the words in aria-label/title. Same node, same data-acts — every gate reading
+`.bhub-actions` kept firing — `.bhub-foot` and its upward-opening override are
+DELETED, the dropdown opens downward again, and §H pins head placement +
+on-screen fit. `.bhub-head-top` is `flex-wrap: nowrap` with a shrinkable
+`.bhub-iden` column so the ⋯ pins to the corner under a long guest name.
+**AND THE CARD'S BUTTON YIELDS TO THE STICKY ≤900px** (`#booking-hub-content
+.bhub-next .bhub-next-btn { display:none }` in that media): the banner button
+and the sticky bar were the same tap twice in one screen-height — the card
+keeps its cap + sentence, the sticky is the control. Scoped to the BOOKING
+hub by id, because the enquiry hub's Approve rides its own `.bhub-next` and
+has no sticky to hand over to. §C2 pins it (break-tested).
 **THE PAYMENT PLAN IS PER-BOOKING** (migration-103: `deposit_pct_override` /
 `deposit_amount_override` / `balance_due_date`, NULL = site standard; gated by
 test-payrail's plan section + ui-test-hub §C3). The 25% deposit and the 30-day
@@ -1661,11 +1675,13 @@ renders `hubActivityHtml`: ledger rows via the shared `hubLedgerRowHtml`
 interleaved with events newest-first; `payment.card` events are FILTERED because
 the ledger row is the same fact said better (ui-test-hub §C pins the twin
 dropped), and a logged email's subject/body expands in place
-(`details.bhub-feed-mail` — e2e clicks it open). **Status chips** under
-`.bhub-sub` (`hubChipsHtml`): terms vN, no-dog, guest register, payment rail
-(match `/card|square/i`, and EMPTY means card — nothing recorded is a guest who
-hasn't paid yet), and Texts OK only when opted in (`smsOptIn`, newly mapped in
-`mapBookingFromApi`). **Gap chip**: a 2–4-night hole starting at this stay's
+(`details.bhub-feed-mail` — e2e clicks it open). **The status CHIPS are GONE
+(`hubChipsHtml` REMOVED, iOS restyle)** — terms vN / no-dog / register /
+payment rail / texts are label+value rows in the Guest card now, keeping the
+dot vocabulary (green recorded, red outstanding; the rail stays dotless — a
+category, not a status; Texts only when opted in). The `.bhub-sub` when-line
+speaks `fmtStayRange` + nights + party + `in 15:00 / out 10:00` — the enquiry
+hub's own form, replacing two fmtDate·time pairs. **Gap chip**: a 2–4-night hole starting at this stay's
 checkout rides `chbGapScan`/`chbGapPlan` — the SAME plan the Pricing page and
 brief use, one-tap `nyGapOffer` or "offer live" → seasongrid. **Phone sticky
 action bar** (`.bhub-sticky`, hidden ≥901px, inset by the `--safe-b` token): the
@@ -1703,15 +1719,19 @@ enquiry drafter; the balance line reads `bookingDue`, the one owner-facing due
 figure, so the draft can never quote a different number than the hub above it).
 All gated by ui-test-hub §C/§C2 (feed contract incl. order + twin-drop, all five
 affordances, sticky shown/hidden by width, share text, draft figure) + e2e (real
-hub_bundle shape end to end). Then the guest/intel grid cards; on desktop
-(≥900px) the status pipeline shows ALL stages (upcoming = red dot), compact
-Done·Now·Next below that; the payments block folds to ONE `.bhub-payline` in EVERY
-state (settled "Paid in full £X ✓", part-paid "Received so far £X of £Y", untouched
-"Total £Y" — label left with the deposit state as a small `.bhub-payline-sub`, the
-serif figure right and NEVER wrapping; section labelled by a `.bhub-headpay-cap`
-matching the pipeline caps, no inner glass box) with the full maths behind the
-quiet "Show the full breakdown ›" text-link (`.bhub-linklike`, `bhubMoneyExpand`
-pop-up, `__bhubBreakdownHtml`); no separate deposit info row remains — even
+hub_bundle shape end to end). Then the guest/intel grid cards; the payments
+block folds to ONE `.bhub-payline` in EVERY state (settled "Paid in full £X ✓",
+part-paid "Received so far £X of £Y", untouched "Total £Y" — label left with
+the deposit state + the plan's one-line brief (`hubPlanBrief` — same
+derivations as the panel and the payask, '' once settled/past/due-date-passed)
+as a small `.bhub-payline-sub`, the serif figure right and NEVER wrapping).
+**The full maths AND the plan panel disclose IN PLACE** behind "Payment plan &
+full breakdown ›" (`bhubMoneyExpand` toggles `#bhub-money-more`, hidden by
+default, open state surviving re-renders): the old `#breakdown-modal` pop-up
+and `__bhubBreakdownHtml` are REMOVED (markup too — it was admin-only weight
+in public index.html). NB gates that MEASURE the plan panel (geometry, real
+taps) must open the fold first; textContent reads work on the hidden node.
+No separate deposit info row remains — even
 `holdControls`' fresh-booking note is gone (only real hold states render).
 Booking EDIT protection is layered in `openEditBooking` (app.js): a FINISHED stay
 (`hasCheckedOut`) is soft-locked — glassConfirm ("it's a record now") before the

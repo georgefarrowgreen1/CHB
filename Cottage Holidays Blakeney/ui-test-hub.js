@@ -134,13 +134,14 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   const a = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
     name: (document.querySelector('.bhub-name') || {}).textContent || '',
-    pipeSteps: document.querySelectorAll('.bhub-pipe3 .pipe-step').length,
-    fullSteps: document.querySelectorAll('.bhub-pipe-full .pipe-step').length,
-    fullVisible: !!document.querySelector('.bhub-pipe-full') && getComputedStyle(document.querySelector('.bhub-pipe-full')).display !== 'none',
-    compactHidden: !!document.querySelector('.bhub-pipe3') && getComputedStyle(document.querySelector('.bhub-pipe3')).display === 'none',
-    caps: Array.from(document.querySelectorAll('.pipe3-cap')).map((t) => t.textContent),
-    nowPill: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
-    donePill: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
+    // THE STAGE IS A CAPTION on the next-action card now (the iOS restyle):
+    // the pill strips are gone, and "Next · 2 of 6 · Deposit" carries what
+    // the three-pill window used to say.
+    cap: ((document.querySelector('.bhub-next-cap') || {}).textContent || '').trim(),
+    noStrips: !document.querySelector('.bhub-pipe3') && !document.querySelector('.bhub-pipe-full') && !document.querySelector('.pipe-step'),
+    // ONE when-line under the name: the house compact range (fmtStayRange, the
+    // enquiry hub's own sub) + nights + party + in/out times.
+    sub: ((document.querySelector('.bhub-sub') || {}).textContent || '').trim(),
     cards: document.querySelectorAll('.bhub-card').length,
     // The register is a ROW in the Guest card now, not a card of its own.
     regRow: [...document.querySelectorAll('.bhub-kv')].some((r) => /Register/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || '')),
@@ -149,11 +150,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(a.active === 'view-booking-hub', `hub view active (${a.active})`);
   ok(a.name === 'Walk-in Guest', `guest name in header (${a.name})`);
-  ok(a.pipeSteps === 3, `dynamic 3-pill journey window (${a.pipeSteps} pills)`);
-  ok(a.fullSteps >= 5, `desktop full-journey strip carries every stage (${a.fullSteps} pills)`);
-  ok(a.fullVisible && a.compactHidden, 'desktop shows the FULL strip and hides the compact window');
-  ok(a.caps.join('|') === 'Done|Now · 2 of 6|Next', `window captions with step counter (${a.caps.join('|')})`);
-  ok(a.donePill.includes('Booked') && a.nowPill.includes('Deposit'), `unpaid → Done:Booked, Now:Deposit (${a.nowPill})`);
+  ok(a.noStrips, 'the journey pill strips are gone — the stage is a caption');
+  ok(/^Next · 2 of \d · Deposit$/.test(a.cap), `unpaid → the card's cap names the stage with its counter (${a.cap})`);
+  ok(/ · 3 nights · /.test(a.sub) && / · in 15:00 \/ out 10:00$/.test(a.sub) && !/→/.test(a.sub),
+    `ONE when-line: compact range · nights · party · in/out times (${a.sub})`);
   // Five cards: the fixture guest is a REPEAT (two stays on guest@gmail.com),
   // so the ambient "Knows your guest" intel card leads the grid. (Payments is
   // no longer a card — it's unified into the header section.)
@@ -598,11 +598,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // witness of the rule the part-paid case above pins.
   ok(/£60\.00 of the deposit still to come/.test(next2), `after £100 of a £160 deposit → the REST of the deposit (${next2.trim().slice(0, 50)}…)`);
   ok(!/balance remaining/.test(next2), '…and the words do not name a stage the figure is not');
-  const pipe2 = await page.evaluate(() => ({
-    now: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
-    done: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
-  }));
-  ok(pipe2.done.includes('Deposit') && pipe2.now.includes('Paid in full'), `journey window advanced with the payment (now: ${pipe2.now.trim()})`);
+  const pipe2 = await page.evaluate(() => ((document.querySelector('.bhub-next-cap') || {}).textContent || '').trim());
+  // The 'paid' stage renames to "Balance" as a caption — "Paid in full" over a
+  // balance-remaining sentence reads as the booking's state, not the stage.
+  ok(/^Next · \d of \d · Balance$/.test(pipe2), `the stage cap advanced with the payment (${pipe2})`);
   // Part-paid folds too: one "Received so far" payline with the running figures.
   const foldPart = await page.evaluate(() => {
     const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');
@@ -631,22 +630,30 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
       folded: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
       rows: rows.length,
       line: rows[0] ? rows[0].textContent : '',
+      moreClosed: !!(document.getElementById('bhub-money-more') || {}).hidden,
     };
   });
   ok(fold.folded && fold.rows === 1 && /Paid in full/.test(fold.line), `settled money folds to one payline (${fold.rows} row)`);
-  // The full breakdown opens as a WINDOW over the page, not a reflow of it.
+  ok(fold.moreClosed, 'the money fold starts closed');
+  // The full breakdown DISCLOSES IN PLACE now (the iOS restyle retired the
+  // old #breakdown-modal pop-up): the fold opens under the payline with the
+  // full maths, the payline itself stays the one row, and the control reports
+  // its own state.
   await page.evaluate(() => document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]').click());
-  await page.waitForTimeout(400);
-  const modal = await page.evaluate(() => ({
-    open: document.getElementById('breakdown-modal').classList.contains('open'),
-    rows: document.querySelectorAll('#breakdown-modal-body .price-row').length,
+  await page.waitForTimeout(250);
+  const expander = await page.evaluate(() => ({
+    open: !document.getElementById('bhub-money-more').hidden,
+    rows: document.querySelectorAll('#bhub-money-more .price-row').length,
     pageRows: document.querySelectorAll('#booking-hub-content .bhub-payline').length,
+    aria: document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]').getAttribute('aria-expanded'),
+    modalGone: !document.getElementById('breakdown-modal'),
   }));
-  ok(modal.open && modal.rows >= 4, `breakdown opens in a pop-up window (${modal.rows} rows)`);
-  ok(modal.pageRows === 1, 'the page itself does not reflow (still one payline)');
-  await page.evaluate(() => closeBreakdownModal());
+  ok(expander.open && expander.rows >= 4, `the fold discloses the full maths in place (${expander.rows} rows)`);
+  ok(expander.pageRows === 1 && expander.aria === 'true', 'still ONE payline; the control reports expanded');
+  ok(expander.modalGone, 'the old breakdown pop-up window is gone from the document');
+  await page.evaluate(() => document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]').click());
   await page.waitForTimeout(200);
-  ok(await page.evaluate(() => !document.getElementById('breakdown-modal').classList.contains('open')), 'breakdown window closes');
+  ok(await page.evaluate(() => document.getElementById('bhub-money-more').hidden), 'a second tap folds it away again');
   // Put the whole part-paid state back, deposit included (the shared-fixture rule).
   await page.evaluate(() => {
     const b = findBookingById('b1');
@@ -713,49 +720,51 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     `the activity story reads at ONE size (${keys.join(', ')} over ${keys.reduce((n, k) => n + sizes[k].length, 0)} runs of text)`);
 
   // ---------- C2. the redesign's affordances ----------
-  console.log('C2. chips · gap · sticky · share · draft');
-  // Status chips: five facts from five places (incl. sms_opt_in, stored since
-  // the enquiry form gained the box and shown NOWHERE until this row).
-  const chips = await page.evaluate(() => (document.querySelector('.bhub-chips') || {}).textContent || '');
-  ok(/Terms v3/.test(chips) && /No dog/.test(chips) && /Register/.test(chips) && /Card rail/.test(chips) && /Texts OK/.test(chips),
-    `the chips row states all five facts (${chips.replace(/\s+/g, ' ').trim()})`);
-  // STATUS DOTS: green = done, red = outstanding (words still carry the state
-  // — colour reinforces, never the sole channel) — and every dot is a CIRCLE:
-  // the pipeline's dots rendered as ovals because a flex pill squeezed them,
-  // so roundness is measured, not assumed. The rail chip is a category and
-  // carries no dot.
-  const dots = await page.evaluate(() => {
+  console.log('C2. fact rows · gap · sticky · share · draft');
+  // The header's status-chip row folded into the Guest card (the iOS restyle):
+  // terms (with version) / no-dog / register / payment rail / texts are
+  // label+value rows now, wearing the chips' dot vocabulary — green recorded,
+  // red outstanding, the rail dotless (a category, not a status).
+  const facts = await page.evaluate(() => {
+    const kv = (label) => [...document.querySelectorAll('#booking-hub-content .bhub-kv')]
+      .find((r) => new RegExp('^' + label + '$', 'i').test(((r.querySelector('.bhub-kv-label') || {}).textContent || '').trim()));
     const probe = (v) => { const el = document.createElement('i'); el.style.color = `var(${v})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
-    const okC = probe('--ok'), badC = probe('--danger');
-    const round = (el) => { const r = el.getBoundingClientRect(); return Math.abs(r.width - r.height) < 0.6 && r.width > 5; };
-    const chipDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip-dot')];
-    // b1 has terms/no-dog/register all recorded → all green; render a BLANK
-    // booking's chips off-DOM to prove the red state too.
-    const scratch = document.createElement('div');
-    scratch.innerHTML = hubChipsHtml({});
-    document.body.appendChild(scratch);
-    const badDots = [...scratch.querySelectorAll('.bhub-chip-dot.is-bad')];
-    const okDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip.is-ok .bhub-chip-dot')];
-    const outDots = [...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip:not(.is-ok) .bhub-chip-dot')];
-    const out = {
-      n: chipDots.length,
-      greens: okDots.length,
-      allGreen: okDots.length >= 3 && okDots.every((d) => getComputedStyle(d).backgroundColor === okC),
-      pageRed: outDots.length === 1 && outDots.every((d) => getComputedStyle(d).backgroundColor === badC),
-      allRound: chipDots.every(round),
-      railBare: ![...document.querySelectorAll('#booking-hub-content .bhub-chips .bhub-chip')].some((ch) => /rail/i.test(ch.textContent) && ch.querySelector('.bhub-chip-dot')),
-      redCount: badDots.length,
-      allRed: badDots.length === 3 && badDots.every((d) => getComputedStyle(d).backgroundColor === badC),
-      pipeRound: [...document.querySelectorAll('.pipe-step .pipe-dot')].filter((d) => d.getBoundingClientRect().width > 0).every(round),
+    const okC = probe('--ok');
+    const read = (label) => { const r = kv(label); return r ? r.textContent.replace(/\s+/g, ' ').trim() : ''; };
+    const dotOf = (label) => { const r = kv(label); const d2 = r && r.querySelector('.bhub-chip-dot'); return d2 ? getComputedStyle(d2).backgroundColor : 'none'; };
+    const roundDot = (label) => { const r = kv(label); const d2 = r && r.querySelector('.bhub-chip-dot'); if (!d2) return false; const bx = d2.getBoundingClientRect(); return Math.abs(bx.width - bx.height) < 0.6 && bx.width > 5; };
+    return {
+      chipsGone: !document.querySelector('.bhub-chips'),
+      terms: read('Terms'), nodog: read('No dog'), rail: read('Payment rail'), texts: read('Texts'),
+      termsDot: dotOf('Terms'), nodogDot: dotOf('No dog'), textsDot: dotOf('Texts'),
+      railDotless: (() => { const r = kv('Payment rail'); return !!r && !r.querySelector('.bhub-chip-dot'); })(),
+      allRound: ['Terms', 'No dog', 'Texts'].every(roundDot),
+      okC,
     };
-    scratch.remove();
+  });
+  ok(facts.chipsGone, 'the header chip row is GONE — the facts live in the Guest card rows');
+  ok(/Accepted .*\(v3\)/.test(facts.terms) && /Confirmed/.test(facts.nodog) && /Card/.test(facts.rail) && /OK to text/.test(facts.texts),
+    `the Guest card states all five facts (${facts.terms} | ${facts.rail} | ${facts.texts})`);
+  ok(facts.termsDot === facts.okC && facts.nodogDot === facts.okC && facts.textsDot === facts.okC && facts.allRound,
+    'recorded facts wear round green dots');
+  ok(facts.railDotless, 'the rail row is a category, not a status — no dot');
+  // Outstanding facts wear the red dot — flipped through the REAL renderer,
+  // then restored (the scratch-render of the old chips gate went with them).
+  const redFacts = await page.evaluate(() => {
+    const probe = (v) => { const el = document.createElement('i'); el.style.color = `var(${v})`; document.body.appendChild(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+    const badC = probe('--danger');
+    const b = findBookingById('b1');
+    const keep = { t: b.termsAcceptedAt, n: b.noDogsAt };
+    b.termsAcceptedAt = null; b.noDogsAt = null; renderBookingHub();
+    const kv = (label) => [...document.querySelectorAll('#booking-hub-content .bhub-kv')]
+      .find((r) => new RegExp('^' + label + '$', 'i').test(((r.querySelector('.bhub-kv-label') || {}).textContent || '').trim()));
+    const dotOf = (label) => { const r = kv(label); const d2 = r && r.querySelector('.bhub-chip-dot'); return d2 ? getComputedStyle(d2).backgroundColor : 'none'; };
+    const out = { terms: (kv('Terms') || {}).textContent || '', termsDot: dotOf('Terms'), nodogDot: dotOf('No dog'), badC };
+    b.termsAcceptedAt = keep.t; b.noDogsAt = keep.n; renderBookingHub();
     return out;
   });
-  ok(dots.allGreen && dots.allRound, `recorded facts wear round green dots (${dots.greens} green of ${dots.n})`);
-  ok(dots.pageRed, 'the one outstanding fact on this booking (register · waiting) wears the red dot');
-  ok(dots.allRed, `outstanding facts wear red dots — terms/no-dog/register on a blank booking (${dots.redCount})`);
-  ok(dots.railBare, 'the rail chip is a category, not a status — no dot');
-  ok(dots.pipeRound, 'the journey pipeline\'s dots are circles, not flex-squashed ovals');
+  ok(/Not recorded/.test(redFacts.terms) && redFacts.termsDot === redFacts.badC && redFacts.nodogDot === redFacts.badC,
+    'outstanding terms/no-dog wear red dots and say Not recorded');
   // THE REGISTER'S STATUS ROW wears the same dots: red while waiting (b1),
   // green once submitted — flipped in place through the real renderer, then
   // restored.
@@ -792,9 +801,6 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     const shortNext = ((document.querySelector('.bhub-next') || {}).textContent || '').trim();
     b.payment = keepPay; b.holdStatus = keepHold; b.holdAmount = keepHeld;
     b.regUrl = keepUrl; renderBookingHub();
-    const shortChip = [...document.querySelectorAll('#booking-hub-content .bhub-chip')]
-      .map((c) => ({ t: c.textContent.trim(), warn: c.classList.contains('is-warn'), ok: c.classList.contains('is-ok') }))
-      .find((c) => /Register/i.test(c.t)) || { t: '', warn: false, ok: false };
     // Over-recorded is still complete — an edit DOWN must not nag.
     b.adults = 1; renderBookingHub();
     const over = read();
@@ -803,7 +809,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     b.regCount = 0; b.adults = 4; renderBookingHub();
     const legacy = read();
     b.regSubmitted = keep.s; b.regCount = keep.c; b.adults = keep.a; renderBookingHub();
-    return { waiting, submitted, short, shortNext, shortChip, over, legacy, okC, badC, warnC: probe('--warn') };
+    return { waiting, submitted, short, shortNext, over, legacy, okC, badC, warnC: probe('--warn') };
   });
   ok(/Not yet submitted/.test(regDots.waiting.text) && regDots.waiting.dot === regDots.badC,
     'register waiting → red dot beside "Not yet submitted"');
@@ -812,8 +818,6 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(/2 of 4 guests recorded/.test(regDots.short.text) && regDots.short.dot === regDots.warnC,
     `a register short of the party says so, in amber (${regDots.short.text})`);
   ok(!/Submitted ·/.test(regDots.short.text), '…and never reads as a completed record');
-  ok(regDots.shortChip.warn && !regDots.shortChip.ok && /2 of 4/.test(regDots.shortChip.t),
-    `…the status chip agrees (${regDots.shortChip.t})`);
   ok(/Only 2 of 4 guests are on the register/.test(regDots.shortNext),
     `…and it becomes the booking's next action (${regDots.shortNext.slice(0, 70)})`);
   ok(/Submitted · 2 guests recorded/.test(regDots.over.text) && regDots.over.dot === regDots.okC,
@@ -841,6 +845,15 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     return { shown: el && getComputedStyle(el).display !== 'none', text: el ? el.textContent : '' };
   });
   ok(sticky.shown && /by card|card link|Record a payment/.test(sticky.text), `on a phone it carries the next action (${sticky.text.trim().slice(0, 50)})`);
+  // …and while it does, the next-action card DROPS its own button (the A2c
+  // one-tap-offered-once rule applied to the card/sticky pair): the card keeps
+  // its cap + sentence, the sticky is the control. Booking hub only — the
+  // enquiry hub's Approve has no sticky to hand over to.
+  const cardBtn = await page.evaluate(() => {
+    const btn = document.querySelector('#booking-hub-content .bhub-next .bhub-next-btn');
+    return { exists: !!btn, hidden: !btn || getComputedStyle(btn).display === 'none' };
+  });
+  ok(cardBtn.exists && cardBtn.hidden, 'the card\'s own button yields to the sticky at phone width');
   // MONEY LEADS AND NEVER CLIPS: the label used to be verb-first with the
   // figure trailing, and "Request the balance by card — £930.37" measured
   // 104px wider than the button at 390px — the AMOUNT ran under the call
@@ -899,7 +912,10 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // THE PLAN'S STATE NEVER TANGLES WITH ITS SENTENCE: baseline-aligned columns
   // interleaved when the what-half wrapped (hostile-length names + a custom
   // plan) — on a phone the state stacks under the sentence, so their boxes
-  // must not intersect.
+  // must not intersect. The plan lives inside the money fold now, so the fold
+  // is OPENED first — hidden boxes are all zero-size and the check would pass
+  // over an interleaved panel without ever seeing it.
+  await page.evaluate(() => { const m = document.getElementById('bhub-money-more'); if (m) m.hidden = false; });
   const planTangle = await page.evaluate(() => {
     return [...document.querySelectorAll('.bhub-plan-row')].map((row) => {
       const w = row.querySelector('.bhub-plan-what'), s = row.querySelector('.bhub-plan-state');
@@ -941,6 +957,7 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   });
   ok(rowsOk.ok, `every secondary action is a full-width 44px accent-ink row (${rowsOk.n} rows across the hub's groups)`);
   ok(rowsOk.planEdit, 'Edit payment plan wears the same row anatomy — no muted stragglers in the panel');
+  await page.evaluate(() => { const m = document.getElementById('bhub-money-more'); if (m) m.hidden = true; });
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
   // Share stay details: for the cleaner's chat — and deliberately NO money.
@@ -969,6 +986,11 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
 
   // ---------- C3. the per-booking payment plan ----------
   console.log('C3. payment plan panel · edit dialog · reminder');
+  // The plan lives inside the money fold now — open it the way the owner does
+  // (the disclose row), and the open state survives the section's re-renders
+  // (renderBookingHub preserves it), so the geometry checks below see a real
+  // panel rather than zero-size hidden boxes.
+  await page.evaluate(() => { const m = document.getElementById('bhub-money-more'); if (m && m.hidden) bhubMoneyExpand(); });
   // Still on b1's hub: part-paid £100 against £440, no plan set — the panel
   // states the SITE standard (£110 = 25%) and where each figure comes from.
   const plan0 = await page.evaluate(() => (document.querySelector('.bhub-plan') || {}).textContent || '');
@@ -1284,33 +1306,38 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     `WHY: the withdrawn Delete explains itself and names what to use (${delWhy.says.slice(0, 70)})`);
   ok(delWhy.roles === 'none', `WHY: …as a note, not a menuitem (role=${delWhy.roles})`);
   ok(delWhy.menuitems >= 3, `WHY: …and the real menu items are still there (${delWhy.menuitems})`);
-  // Header declutter: secondary + destructive actions live in ONE ⋯ menu.
+  // Header declutter: secondary + destructive actions live in ONE ⋯ menu — in
+  // the header's TOP-RIGHT corner (the iOS restyle returned it from the page
+  // foot: the demo the owner approved carries the ellipsis in the nav-bar
+  // spot). The control is chrome, so its words ride aria-label/title; the
+  // dropdown opens DOWNWARD from up there and must stay on screen.
   const menu1 = await page.evaluate(() => {
     const menu = document.querySelector('.bhub-menu');
+    const btnEl = document.querySelector('.bhub-menu-btn');
     return {
       hidden: menu && menu.style.display === 'none',
       items: menu ? menu.innerHTML : '',
       headerBtns: document.querySelectorAll('.bhub-actions > .btn-sm').length,
-      // The menu lives at the page FOOT (the iOS home for a record's
-      // management actions — owner's ask), BELOW the cards grid, and its
-      // dropdown opens UPWARD so it can't fall off the document.
-      atFoot: (() => {
-        const foot = document.querySelector('.bhub-foot .bhub-actions');
-        const grid = document.querySelector('.bhub-grid');
-        if (!foot || !grid) return false;
-        return foot.getBoundingClientRect().top >= grid.getBoundingClientRect().bottom - 1;
-      })(),
-      opensUp: menu ? getComputedStyle(menu).bottom !== 'auto' && getComputedStyle(menu).top === 'auto' : false,
+      inHead: !!document.querySelector('.bhub-head .bhub-head-top .bhub-actions .bhub-menu-btn'),
+      footGone: !document.querySelector('.bhub-foot'),
+      named: btnEl ? (btnEl.getAttribute('aria-label') || '') : '',
+      opensDown: menu ? getComputedStyle(menu).top !== 'auto' : false,
     };
   });
   ok(menu1.hidden, 'overflow menu starts closed');
-  ok(menu1.headerBtns === 1, `ONE Edit/Move/Cancel button on the page (${menu1.headerBtns})`);
-  ok(menu1.atFoot, 'the menu lives at the page foot, below the cards');
-  ok(menu1.opensUp, 'its dropdown opens UPWARD — at the foot, downward falls off the document');
+  ok(menu1.headerBtns === 1, `ONE ⋯ menu button on the page (${menu1.headerBtns})`);
+  ok(menu1.inHead && menu1.footGone, 'the ⋯ lives in the header top-right; the page foot is gone');
+  ok(/edit/i.test(menu1.named), `the ⋯ carries its words as an accessible name (${menu1.named})`);
+  ok(menu1.opensDown, 'its dropdown opens downward from the header');
   ok(/openEditBooking|bhubEdit/.test(menu1.items) && /cancelBooking|bhubCancel/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
   await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
   await page.waitForTimeout(200);
-  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'), 'tapping Edit/Move/Cancel opens the menu');
+  const menuOpen = await page.evaluate(() => {
+    const m = document.querySelector('.bhub-menu');
+    const r = m.getBoundingClientRect();
+    return { shown: m.style.display !== 'none', fits: r.top >= 0 && r.left >= -1 && r.right <= innerWidth + 1 };
+  });
+  ok(menuOpen.shown && menuOpen.fits, 'tapping ⋯ opens the menu, fully on screen');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display === 'none'), 'Escape closes the menu');

@@ -931,7 +931,6 @@ nav a:focus-visible,
 .tl-bar:focus-visible,
 .tl-cell:focus-visible,
 .mo-kpi[data-act]:focus-visible,
-.pipe-step[data-act]:focus-visible,
 .ops-owed:focus-visible,
 .menu-toggle:focus-visible {
   outline: 2px solid var(--accent);
@@ -6475,87 +6474,9 @@ body.admin-screen .site-footer {
 
 
 
-/* Journey window: previous (done) › NOW › next — a dynamic three-pill view
-   of the booking's stage, instead of the whole strip squeezed in at once. */
+/* (The journey pill strips — pipe3 cols and pipe-step pills — are GONE:
+   the booking hub states the stage as a caption on its next-action card.) */
 
-/* Desktop: the FULL journey strip (every stage) replaces the compact
-   three-pill window — same pills, all six of them. */
-
-
-.pipe3-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.pipe3-cap {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  padding-left: 6px;
-  white-space: nowrap;
-}
-.pipe3-arrow {
-  color: var(--text-muted);
-  padding-bottom: 5px;
-  flex-shrink: 0;
-}
-.pipe-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: var(--r-pill);
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--glass-border);
-}
-.pipe-step .pipe-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  /* One calm colour system across BOTH pill strips (whole-booking status AND the
-     payments flow, which reuse this class): done = green, current = amber,
-     yet-to-come = a muted neutral dot (inherits the pill's muted text). A routine
-     "not yet" step isn't an error, so it no longer carries an alarming red dot —
-     that red was the only colour that appeared in one strip but not the other. */
-  background: currentColor;
-  opacity: 0.4;
-}
-.pipe-step.is-done {
-  color: var(--ok-text);
-  background: rgba(76, 175, 80, 0.1);
-  border-color: rgba(76, 175, 80, 0.26);
-}
-.pipe-step.is-done .pipe-dot {
-  background: var(--ok);
-  opacity: 1;
-}
-.pipe-step.is-now {
-  color: var(--warn-text);
-  background: rgba(255, 167, 38, 0.12);
-  border-color: rgba(255, 167, 38, 0.3);
-}
-.pipe-step.is-now .pipe-dot {
-  background: var(--warn);
-  opacity: 1;
-}
-/* The "Staying" stage reads GREEN while the guest is actually in-house (a live
-   "here now" state), not the amber in-progress colour. */
-.pipe-step.is-now.is-staying {
-  color: var(--ok-text);
-  background: rgba(76, 175, 80, 0.13);
-  border-color: rgba(76, 175, 80, 0.3);
-}
-.pipe-step.is-now.is-staying .pipe-dot {
-  background: var(--ok);
-}
-/* The single surfaced next action */
 
 
 
@@ -6574,8 +6495,7 @@ body.admin-screen .site-footer {
 
 
 /* Phone: the hub reads top-to-bottom in one clean column — even two-up button
-   grids instead of ragged pills, the pipeline as ONE swipeable line instead of
-   wrapping with dangling connectors, and tighter card padding. */
+   grids instead of ragged pills, and tighter card padding. */
 @media (max-width: 640px) {
   
   
