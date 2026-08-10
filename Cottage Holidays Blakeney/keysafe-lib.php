@@ -76,7 +76,7 @@ function keysafe_generate(array $exclude = [])
 //     forBooking, guest}] }
 function keysafe_read($raw)
 {
-    $empty = ['code' => '', 'setAt' => '', 'forBooking' => 0, 'history' => []];
+    $empty = ['code' => '', 'setAt' => '', 'forBooking' => 0, 'forStay' => '', 'enabled' => true, 'history' => []];
     $d = is_array($raw) ? $raw : (is_string($raw) && $raw !== '' ? json_decode($raw, true) : null);
     if (!is_array($d)) {
         return $empty;
