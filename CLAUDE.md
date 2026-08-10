@@ -4241,9 +4241,12 @@ a HINT to probe now, never a verdict.
   — read-only by design, a queued change can be seen and awaited, never discarded.
   The reconnect replay NARRATED: `oqSyncNote` updates one `#oq-sync` status element
   in place ("Sending 2 of 3 — …" → "N sent ✓" / "N sent · M refused"), final state
-  lingering a beat. The banner is the mode's IDENTITY: wifi-off mark, LIVE freshness
-  (`odsMarkWire` ticks "· 4 min ago", amber `.is-stale` past 6h), and the probe made
-  visible — NB a failed probe can answer in MILLISECONDS (airplane mode aborts
+  lingering a beat. The banner is the mode's IDENTITY: LIVE freshness
+  (`odsMarkWire` ticks "· 4 min ago", amber `.is-stale` past 6h) and the probe made
+  visible — but NO wifi-off glyph of its own, and a compact strip rather than a
+  card (owner: "make the offline box smaller", "both offline logos aren't really
+  needed"): the floating pill beside it is the ONE mark, and the functional one
+  (it opens the tray) — NB a failed probe can answer in MILLISECONDS (airplane mode aborts
   instantly), so the "checking the connection…" whisper HOLDS a readable beat and
   signs off "still offline" rather than clearing before it can be read (measured —
   the first version was invisible in exactly the case it was for). Dimmed Tier-C

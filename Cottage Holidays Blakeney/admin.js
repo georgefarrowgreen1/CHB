@@ -17303,9 +17303,10 @@ function renderOfflineDaySheet() {
         ? '<h2 class="bo-sec-title">' + t + ' <span class="inbox-badge">' + groups[key].length + '</span></h2>' + groups[key].map((r) => row(r, key)).join('')
         : '';
     const opsKeys = Object.keys(s.ops || {}).filter((pk) => String(s.ops[pk] || '').trim() !== '');
-    // The banner is the mode's IDENTITY: wifi-off mark, live freshness
-    // (odsMarkWire ticks it, stale past 6h) and the probe made visible.
-    const ICW = '<svg class="ic ods-mark-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l22 22"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>';
+    // The banner is the mode's IDENTITY: live freshness (odsMarkWire ticks
+    // it, stale past 6h) and the probe made visible. NO wifi-off glyph of its
+    // own — the floating pill beside it is the one mark (owner: "both offline
+    // logos aren't really needed"), and the pill is the functional one.
     // The marker tells the truth about the SOURCE: a mid-session takeover
     // renders from the data already in memory (fresher than any snapshot); a
     // cold boot renders the saved sheet. One page either way.
@@ -17314,9 +17315,8 @@ function renderOfflineDaySheet() {
         : 'this is the day sheet ' + e(chbSnapWhen(s));
     el.innerHTML =
         '<div class="ods-mark" role="status">'
-        + ICW
         + '<span><b>Offline</b> — ' + provenance
-        + '<span id="ods-fresh"></span>. Anything may have moved since; nothing here is live.'
+        + '<span id="ods-fresh"></span> · nothing here is live.'
         + ' <em id="ods-probe" class="ods-probe"></em></span>'
         + '<button class="btn-sm btn-edit" ' + chbAttrs('odsRetry') + '>Try again</button>'
         + '</div>'
