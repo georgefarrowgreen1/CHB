@@ -54,12 +54,14 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const posts = [];
   const d0 = d(0); // today, for the coast stubs below
   let verHits = 0;   // version.php probe counter (§11)
+  let bootHits = 0;  // admin-bootstrap.php counter (§22 — one recovery, one load)
   let addDead = false; // §12: abort ONLY the booking-add post — the ambiguous save
   let refuseEnq = false; // §14: the server ANSWERS an enquiry replay with a refusal
   let apiHang = false;   // §18: poor signal — every request held, none failing
   await page.route(/\.php/, async (route) => {
     const url = route.request().url();
     if (url.includes('version.php')) verHits++;
+    if (url.includes('admin-bootstrap.php')) bootHits++;
     // apiHang = POOR SIGNAL: nothing fails, everything HANGS. Requests are held
     // until the flag drops, then answered normally — so releasing it makes the
     // ORIGINAL slow requests land late, which is exactly the case §18's
@@ -937,6 +939,55 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   apiDead = false;
   await page.evaluate(() => chbNetProbe());
   await page.waitForTimeout(2500);
+
+  // ── §22 NOTIFICATIONS NEVER DOUBLE-SHOW (owner screenshot: "Back online."
+  //     stacked over TWO copies of "Back on — this is live data now."). Three
+  //     layers, each proven: toast() dedupes identical visible messages, the
+  //     retry is re-entrant-safe (one recovery = ONE data load), and the
+  //     generic chbNetUp voice stands down while the sheet's specific one
+  //     owns the moment.
+  console.log('§22 one voice per moment');
+  // (a) the dedupe itself — and the action-toast exemption
+  ok(await page.evaluate(() => {
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    toast('Dup test message');
+    toast('Dup test message');
+    return document.querySelectorAll('.toast').length === 1;
+  }), 'an identical message already on screen is not stacked again');
+  ok(await page.evaluate(() => {
+    toast('Dup test message', null, { label: 'Retry', fn: () => {} });
+    return document.querySelectorAll('.toast').length === 2;
+  }), '…but an ACTION toast is exempt — its button must not be dropped silently');
+  await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); });
+  // (b) two concurrent retries = ONE data load, one toast
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), '(fixture) the sheet is up');
+  await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); });
+  const bootBase = bootHits;
+  apiDead = false;
+  await page.evaluate(() => { odsRetry(); odsRetry(); });
+  await page.waitForTimeout(2500);
+  // ONE recovery is TWO loads by design (odsRetry's own loadData, then
+  // initBackOffice's) — the guard's failure mode is FOUR (break-tested).
+  ok(bootHits - bootBase === 2, `two overlapping retries ran ONE recovery (${bootHits - bootBase} loads = odsRetry + its initBackOffice) — re-entrant-safe`);
+  ok(await page.evaluate(() => {
+    const t = Array.from(document.querySelectorAll('.toast')).filter((x) => /Back on — this is live data now/.test(x.textContent));
+    return t.length === 1;
+  }), '…and said it once');
+  // (c) the generic voice stands down while the sheet is up
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); });
+  apiDead = false;
+  await page.evaluate(() => chbNetProbe());
+  await page.waitForTimeout(2500);
+  const arcToasts = await page.evaluate(() => (document.getElementById('app-toasts') || {}).textContent || '');
+  ok(/Back on — this is live data now/.test(arcToasts) && !/Back online\./.test(arcToasts),
+    `the probe recovery speaks with ONE voice — the sheet's own, never the generic on top ("${arcToasts.trim().slice(0, 60)}")`);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) and the sheet swapped for live Today');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
