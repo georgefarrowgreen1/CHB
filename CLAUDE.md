@@ -4277,6 +4277,22 @@ a HINT to probe now, never a verdict.
   guaranteed-complete nights — day+2 can hold un-snapshotted arrivals), with one
   hatched UNKNOWN cell per lane beyond: an empty cell there would pose as "free",
   which is the lie the whole day sheet exists to avoid.
+- **AN OTA STAY PAINTS AND NEVER COUNTS, and the sheet carries the Bookings list
+  too** (gated by ui-test-offline §23; owner screenshots — "offline mode looks
+  very jumbled, it needs to look like online mode"). A quiet day's sheet
+  collapsed to two buttons while online showed a screen of OTA bars and upcoming
+  cards. Three additions, all display-only: OTA rows join `chbSnapRowsFromStores`
+  (`ota: true`, dbId 0, no phone, no money — a changeover is changeover work
+  whoever booked it) and the ops line / duties / money / spoken answers all
+  filter them, so the grammar still agrees with the online header; the snapshot
+  gains **`up`** (`chbSnapUpFromStores`, the first 5 upcoming stays with the
+  paid/balance chip) rendered by `odsUpcomingHtml` as a Bookings section; and the
+  capture buttons moved to directly under the ops line, where online keeps its
+  action row. **NB the §23 fixture must put the OTA block on its OWN cottage**:
+  every 21a block overlapping a local booking is correctly suppressed as a
+  platform mirror (`suppressBlocksUnderLocalBookings`), and 21a's local stays
+  blanket today–tomorrow — the first fixture sat there and §23a silently tested
+  a row the app had rightly dropped.
 - **NOTIFICATIONS NEVER DOUBLE-SHOW** (gated by ui-test-offline §22, three
   break-tests — the broken run reproduces the owner's screenshot verbatim,
   "Back online." stacked over two copies of "Back on — this is live data now.").
@@ -4302,6 +4318,18 @@ a HINT to probe now, never a verdict.
   §19's fixture must make requests actually FAIL when it dispatches the event
   (with routes left alive, the correct self-correction reads as the feature
   being broken).
+  **AND THE EVENT CANNOT BE THE ONLY TRIGGER** (§23e; owner screenshot — the
+  live dashboard reachable in airplane mode). iOS never delivers `offline` when
+  airplane mode is toggled while the app is BACKGROUNDED, so the owner resumed
+  onto a dead dashboard with error toasts and no takeover. The interface being
+  off is checkable at two other moments: `chbNetDown` fires `chbGoOffline` when
+  the verdict flips with `navigator.onLine === false` (deferred a tick —
+  chbGoOffline's own chbNetDown call must not recurse), and the
+  visibilitychange/pageshow resume listeners check the same condition on wake.
+  A blip (onLine true) still never transforms — the wifi-icon rule is intact,
+  it just stops depending on an event iOS withholds. The gate shadows
+  `navigator.onLine` with an own-property getter and lifts it with
+  `delete navigator.onLine` (the prototype getter returns).
 - **Tier-C refuses up front at the dispatcher** (`CHB_NEEDS_NET`: requestPayment,
   returnDeposit, keepDeposit, sendArrivalInfo, approveEnquiry): dimmed under
   `body.net-off` by a style rule GENERATED from the same list the guard reads (one

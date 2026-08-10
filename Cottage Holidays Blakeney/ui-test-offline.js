@@ -86,7 +86,15 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [], returns: {}, threads: [] });
     }
     if (apiDead) return route.abort();
-    if (url.includes('admin-bootstrap.php')) return json({ ok: true, cron: null, feeds: [], payoutTrouble: null, rates: null, bookings: { bookings: BOOKINGS }, enquiries: { enquiries: [] }, blocks: { ok: true, blocks: [] } });
+    if (url.includes('admin-bootstrap.php')) return json({ ok: true, cron: null, feeds: [], payoutTrouble: null, rates: null, bookings: { bookings: BOOKINGS }, enquiries: { enquiries: [] }, blocks: { ok: true, blocks: [
+      // an OTA stay in the day window — §23: it must PAINT (timeline, groups)
+      // and never COUNT (ops line, duties, money). On its OWN cottage: every
+      // 21a block overlapping a local booking is correctly suppressed as a
+      // platform mirror (suppressBlocksUnderLocalBookings), and 21a's local
+      // stays blanket today–tomorrow — the first fixture sat there and §23a
+      // silently tested a row the app had rightly dropped.
+      { id: 900, prop_key: 'jollyboat', source: 'airbnb', check_in: d(0), check_out: d(2) },
+    ] } });
     if (url.includes('bookings.php')) return json({ bookings: BOOKINGS });
     if (url.includes('tides.php')) return json({ ok: true, extremes: [
       { type: 'High', time: d0 + 'T06:41:00' }, { type: 'Low', time: d0 + 'T12:55:00' }, { type: 'High', time: d0 + 'T19:08:00' },
@@ -229,7 +237,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(posts.filter((p2) => p2.action === 'return_deposit' || p2.action === 'keep_deposit').length === 0, 'and NO money op was sent — a deferred decision, never a deferred authority');
 
   // (c) the phone enquiry
-  await page.locator('#offline-daysheet button', { hasText: 'Save it as an enquiry' }).click();
+  await page.locator('#offline-daysheet button', { hasText: 'Save an enquiry' }).click();
   await page.waitForTimeout(400);
   await gdSet('name', 'Elaine Barrowcliffe');
   await gdSet('phone', '07700 900233');
@@ -988,6 +996,70 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Back on — this is live data now/.test(arcToasts) && !/Back online\./.test(arcToasts),
     `the probe recovery speaks with ONE voice — the sheet's own, never the generic on top ("${arcToasts.trim().slice(0, 60)}")`);
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) and the sheet swapped for live Today');
+
+  // ── §23 THE SHEET LOOKS LIKE THE ONLINE DASHBOARD (owner screenshots: a
+  //     quiet day collapsed to two buttons while online showed a screen of
+  //     OTA bars and upcoming cards) — and the takeover no longer needs the
+  //     `offline` EVENT, which iOS never delivers when airplane mode is
+  //     toggled while the app is backgrounded.
+  console.log('§23 the sheet mirrors online + the missed-event takeover');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  // (a) OTA stays PAINT — the timeline and the groups show them like online
+  ok(await page.evaluate(() => /Airbnb/.test((document.querySelector('.ods-tl') || {}).textContent || '')),
+    'the OTA stay paints its timeline bar, exactly as the online calendar does');
+  ok(await page.evaluate(() => {
+    const sheet = (document.getElementById('offline-daysheet') || {}).textContent || '';
+    return /Airbnb guest/.test(sheet);
+  }), '…and appears in the day\'s groups (a changeover is changeover work whoever booked it)');
+  // (b) …but never COUNTS: the ops line and duties are bookings-only, so the
+  //     grammar still agrees with the online header (§21's contract)
+  ok(await page.evaluate(() => /1 arrival · 1 departure/.test((document.querySelector('.ods-opsline') || {}).textContent || '')),
+    'the ops line is unchanged by the OTA row — it counts bookings, like online');
+  ok(await page.evaluate(() => !Array.from(document.querySelectorAll('.ods-duty')).some((d2) => /Airbnb/.test(d2.textContent))),
+    'and no duty is minted for money an OTA guest does not owe us');
+  // (c) the Bookings section — upcoming cards, like online's list
+  ok(await page.evaluate(() => {
+    const sheet = document.getElementById('offline-daysheet');
+    const t = sheet ? sheet.textContent : '';
+    return /Bookings/.test(t) && /upcoming/.test(t) && /Zara Outofrange/.test(t);
+  }), 'the sheet carries the online Bookings list\'s upcoming cards — a quiet day no longer looks empty');
+  ok(await page.evaluate(() => {
+    const chip = Array.from(document.querySelectorAll('.ods-row .bhub-chip')).find((c) => /Paid|Balance due/.test(c.textContent));
+    return !!chip;
+  }), '…each wearing the paid/balance chip the online cards wear');
+  // (d) the action row sits where online's does — right under the ops line
+  ok(await page.evaluate(() => {
+    const sheet = document.getElementById('offline-daysheet');
+    const html = sheet ? sheet.innerHTML : '';
+    return html.indexOf('Record an expense') < html.indexOf('ods-tl');
+  }), 'the capture buttons sit under the ops line, where online keeps its action row');
+  // (e) THE MISSED-EVENT TAKEOVER: airplane mode toggled while backgrounded
+  //     delivers NO offline event — the verdict flipping with the interface
+  //     down must transform on its own.
+  apiDead = false;
+  await page.evaluate(() => odsRetry());
+  await settle(2500);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) back on live Today');
+  apiDead = true;
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+  });
+  await page.evaluate(() => apiPost('bookings.php', { action: 'history', id: 2 }).catch(() => {}));
+  await page.waitForTimeout(900);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet') && document.body.classList.contains('offline-snap')),
+    'a failed request with the INTERFACE down transforms — no offline event needed');
+  await page.evaluate(() => {
+    delete navigator.onLine; // lift the shadow — the prototype getter returns
+  });
+  apiDead = false;
+  await page.evaluate(() => chbNetProbe());
+  await page.waitForTimeout(2500);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) recovered clean');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
