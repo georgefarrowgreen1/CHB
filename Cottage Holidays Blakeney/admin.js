@@ -6074,9 +6074,64 @@ function chbConvCompare(conv) {
     return [head, Object.assign({}, rA, { id: 'cmp-a' }), Object.assign({}, rB, { id: 'cmp-b' })];
 }
 let __cmdkNluOff = false; // one-shot bypass (the note's "search the literal words")
+// ── OFFLINE ANSWERS FROM THE DAY SHEET. On an offline BOOT the stores are
+//    empty, so the store-backed families would answer "nothing" about a
+//    business with bookings. Gated on verdict-OFF **and** empty stores —
+//    mid-session offline the loaded stores stay in charge (break-tested).
+function chbSnapAnswers(ql) {
+    if (!(typeof chbNetIsOff === 'function' && chbNetIsOff())) return null;
+    if (Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length)) return null;
+    const s = chbSnapRead();
+    if (!s || !(s.rows || []).length) return null;
+    const today = todayDashed(), tom = ukShiftDays(today, 1);
+    const rows = s.rows || [];
+    const grp = (key) => rows.filter((r) => chbSnapGroup(r, today, tom) === key);
+    const src = 'From the saved day sheet — no connection, so this may have moved';
+    const mk = (label, sub) => ({
+        type: 'answer', id: 'snap', scope: 'bookings', wrap: true, label, sub: sub || src,
+        run: () => { closeCmdK(); nav('view-backoffice'); },
+    });
+    const who = (l) => l.map((r) => chbSayFirst(r.nm || 'a guest')).join(', ');
+    if (/\b(arriv\w*|check\w*[- ]?in|coming)\b/.test(ql)) {
+        const a = grp('arrive');
+        return [mk(a.length ? who(a) + ' arriv' + (a.length === 1 ? 'es' : 'e') + ' today.' : 'No arrivals on the saved sheet today.')];
+    }
+    if (/\b(leav\w*|depart\w*|check\w*[- ]?out)\b/.test(ql)) {
+        const l = grp('leave');
+        return [mk(l.length ? who(l) + ' leav' + (l.length === 1 ? 'es' : 'e') + ' today.' : 'No departures on the saved sheet today.')];
+    }
+    if (/\b(staying|in residence|in the cottages?)\b/.test(ql)) {
+        const st = grp('staying');
+        return [mk(st.length ? who(st) + (st.length === 1 ? ' is' : ' are') + ' in residence.' : 'Nobody in residence on the saved sheet.')];
+    }
+    if (/\b(owes?|owed|due|collect\w*|balance\w*)\b/.test(ql)) {
+        const ow = rows.filter((r) => (r.due || 0) > 0.005);
+        const tot = ow.reduce((a, r) => a + (r.due || 0), 0);
+        return [mk(ow.length
+            ? gbp(tot) + ' to collect — ' + ow.map((r) => chbSayFirst(r.nm || 'a guest') + ' ' + gbp(r.due)).join(', ') + '.'
+            : 'Nothing to collect on the saved sheet.')];
+    }
+    // A NAME on the sheet: the phone number and the dates, with no data at all.
+    const toks = ql.split(/\s+/).filter((t) => t.length >= 3);
+    const hit = rows.find((r) => toks.some((t) => (r.nm || '').toLowerCase().includes(t)));
+    if (hit) {
+        return [mk(
+            hit.nm + ' — ' + hit.cot + ', ' + fmtStayRange(hit.ci, hit.co)
+                + (hit.due > 0.005 ? ' · ' + gbp(hit.due) + ' to collect' : ''),
+            (hit.ph ? hit.ph + ' · ' : '') + src,
+        )];
+    }
+    return null;
+}
 function cmdkBuildResults(ql) {
     let results = [];
     let nluUsed = null;
+    // Offline boot: the snapshot answers BEFORE the store-backed families can
+    // report an empty business (the tier gates itself — see chbSnapAnswers).
+    try {
+        const snapA = chbSnapAnswers(ql);
+        if (snapA && snapA.length) return { results: snapA, fuzzy: [], nlu: null, ask: [] };
+    } catch (e) {}
     // Conversational frame first: a one-slot follow-up ("and last year",
     // "just jollyboat", "occupancy", "vs last month") patches the previous
     // metric answer's frame and re-runs the same families. Any failure —
@@ -6829,6 +6884,12 @@ async function cmdkSemanticHistory(ql) {
 // Fire the federated search.php query and merge its typed results in below the
 // local answers, deduped and mapped to the right destination per type.
 function cmdkServerSearch(ql) {
+    // Known-off: every keystroke would otherwise spend its 5s timeout to learn
+    // what the verdict already knows. The local tiers still answer in full.
+    if (typeof chbNetIsOff === 'function' && chbNetIsOff()) {
+        cmdkSetLoading(false);
+        return;
+    }
     const stamp = ++__cmdkServerStamp;
     apiPost('search.php', { q: chbHistoryClean(ql) })
         .then((r) => {
@@ -8320,6 +8381,17 @@ function cmdkDeepPeriodSet(p) {
 // auto-corrected retry (kept for the "showing results for…" note).
 function cmdkDeepFetch(q, typo) {
     if (q.length < 2) return;
+    // Known-off → refuse NOW with the honest error state. The fetch would
+    // spend its 5s timeout to reach the same screen, with the owner watching
+    // "Searching everything…" over a search that cannot land.
+    if (typeof chbNetIsOff === 'function' && chbNetIsOff()) {
+        __cmdkDeepStamp++;
+        cmdkSetLoading(false);
+        cmdkDeepReset();
+        __cmdkDeepErr = q;
+        cmdkRender();
+        return;
+    }
     const stamp = ++__cmdkDeepStamp;
     __cmdkServerStamp++; // supersede any in-flight quick federated search
     cmdkSetLoading(true);
