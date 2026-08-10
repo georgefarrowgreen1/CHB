@@ -4567,6 +4567,169 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   font-size: 0.78rem;
   color: var(--text-muted);
 }
+/* ── THE UNIFIED SECTIONS: the online Today's anatomy on the sheet ── */
+.ods-opsline {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: -4px 0 10px;
+}
+.ods-opsline .ods-src {
+  color: var(--info-text);
+}
+/* the guest's NAME is the tap target that opens the read-only hub card —
+   a <button>, so it needs the UA reset (the .cmdk-qa-row lesson) */
+.ods-open {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+}
+/* the duties wear the strip's own row vocabulary */
+.ods-duty {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.ods-duty .ods-duty-go {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+/* the BOUNDED timeline: lanes and bars for exactly the days the rows vouch
+   for; the third column is hatched UNKNOWN, never an empty "free" cell */
+.ods-tl {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 10px 10px 12px;
+  margin: 4px 0 14px;
+}
+.ods-tl-grid {
+  display: grid;
+  grid-template-columns: minmax(58px, auto) 1fr 1fr 56px;
+  gap: 4px 6px;
+  align-items: center;
+}
+.ods-tl-day {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.ods-tl-day.is-today {
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.ods-tl-nm .prop-tag {
+  margin: 0;
+}
+.ods-tl-cell {
+  height: 28px;
+  border-radius: 999px;
+}
+.ods-tl-cell.has {
+  background: color-mix(in srgb, var(--text-light) 14%, transparent);
+  border: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  overflow: hidden;
+}
+.ods-tl-cell.has i {
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ods-tl-cell.unknown {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-light) 7%, transparent) 0 7px, transparent 7px 14px);
+  border: 1px dashed var(--glass-border);
+  border-radius: var(--r-sm, 8px);
+}
+.ods-tl-note {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-top: 8px;
+}
+/* the read-only hub card — the booking hub's grouped-row shape, bounded */
+.ods-hub-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 2050;
+  background: rgba(10, 9, 11, 0.55);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+.ods-hub-ov.open {
+  display: flex;
+}
+.ods-hub {
+  width: min(560px, 100%);
+  max-height: 82vh;
+  overflow: auto;
+  background: var(--bg-solid, #1d1c20);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px 22px 0 0;
+  padding: 18px 18px calc(18px + var(--safe-b));
+  animation: odsEnter 0.28s ease-out;
+}
+.ods-hub h3 {
+  font-size: 1.25rem;
+  margin: 0 0 2px;
+}
+.ods-hub-cap {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+}
+.ods-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.9rem;
+}
+.ods-kv b {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+.ods-kv span {
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ods-hub-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ods-hub-foot {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  margin: 12px 0 0;
+}
+.ods-hub-close {
+  width: 100%;
+  margin-top: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ods-hub {
+    animation: none;
+  }
+}
 /* the takeover is a MOMENT, not a jump cut — one soft entrance, and none at
    all for reduced motion (the sheet is information, the slide is not) */
 .ods-enter {
