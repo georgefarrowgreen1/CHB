@@ -43,6 +43,9 @@ route_actions([
         $propKey = clean($in['prop_key'] ?? '');
         $code = trim((string) ($in['code'] ?? ''));
         $bookingId = (int) ($in['booking_id'] ?? 0);
+        // The stay ref — how a PLATFORM stay (no bookings row) is identified;
+        // sanitised to the 'b:'/'o:' vocabulary, anything else reads as none.
+        $stayRef = is_string($in['stay_ref'] ?? null) && preg_match('/^[bo]:[\w:-]{1,40}$/', $in['stay_ref']) ? $in['stay_ref'] : '';
         try {
             $st = db()->prepare('SELECT name FROM properties WHERE prop_key = ?');
             $st->execute([$propKey]);
@@ -80,6 +83,7 @@ route_actions([
                 'code' => $rec['code'],
                 'setAt' => $rec['setAt'],
                 'forBooking' => $rec['forBooking'],
+                'forStay' => $rec['forStay'],
                 'guest' => $guestFor($rec['forBooking']),
             ]);
             $rec['history'] = array_slice($rec['history'], 0, KEYSAFE_HISTORY_MAX);
@@ -87,10 +91,12 @@ route_actions([
         $rec['code'] = $code;
         $rec['setAt'] = gmdate('c');
         $rec['forBooking'] = $bookingId;
+        $rec['forStay'] = $stayRef;
         content_set_secret($key, $rec);
         // THAT it rotated, for whom — never the code (activity_log is plaintext).
         log_activity('keysafe', 'keysafe.rotate', 'Key safe rotated — ' . $propName
-            . ($bookingId > 0 ? ' (set for booking #' . $bookingId . ')' : ''));
+            . ($bookingId > 0 ? ' (set for booking #' . $bookingId . ')'
+                : ($stayRef !== '' && $stayRef[0] === 'o' ? ' (set for the platform stay arriving ' . substr($stayRef, 2) . ')' : '')));
         json_out(op_finish($opTok, ['ok' => true, 'safe' => $rec]));
     },
 ]);

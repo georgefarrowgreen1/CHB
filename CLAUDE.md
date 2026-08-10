@@ -4398,13 +4398,27 @@ dialog all read; RED once the next guest's reveal window is open; an unloaded mi
 mints NO duty — never from ignorance), and the **offline capture** (`odsKeysafe`:
 on-device `crypto.getRandomValues`, queued confirm, local mirror update so the sheet
 stops nagging before the signal returns; the mirror rides the snapshot as `ks`,
-last-seen kept like the ops notes). Gated by ui-test-keysafe.js (31 checks; §5b's
+last-seen kept like the ops notes). Gated by ui-test-keysafe.js (38 checks; §5b's
 odsKeysafe call must NOT be awaited — it resolves only when its dialog is answered,
 and the awaiting line is what would answer it: a deadlock, hit on the first run) and
 ui-test-yourstay §20 (the guest renderer shows what the server sent, promises only a
 dated `door_code_from`, and says NOTHING otherwise — no empty row, no guess). NB
 ui-test-yourstay's `openPage(guest, …)` takes a guest OBJECT; `true` crashes
 renderGuestBookings on `currentGuest.name.split`.
+**PLATFORM STAYS ROTATE TOO** (owner: "it needs to look at external bookings too" —
+the first cut read only dbBookings, so a cottage with an Airbnb arrival tomorrow said
+"no upcoming booking"). `keysafeNextBooking` unions direct bookings with OTA
+`dbBlocks` (mirror-suppression means a block here is a real external stay); an OTA
+stay has NO bookings row, so it is identified by a **stay ref** (`o:<check-in>` —
+block ids are re-minted on every sync and cannot anchor a record; direct stays keep
+matching on `forBooking`, ref `b:<id>` riding beside). `keysafeSetFor(rec, next)` is
+the ONE match rule the page, both duties and the dialog read. The refs are
+vocabulary-sanitised at every boundary (`/^[bo]:[\w:-]{1,40}$/` in keysafe-lib +
+keysafe.php — garbage reads as none). **The guest reveal deliberately cannot reach a
+platform guest** (forBooking 0 never matches a real booking id): the card and both
+dialogs say to share the code in the platform's message thread instead, which is the
+honest version of "they see it". Gated by ui-test-keysafe §6 (break-tested: deleting
+the dbBlocks loop fails all five) + test-integration §18h + the lib's ref cases.
 
 ## Where you were, and sending things once
 

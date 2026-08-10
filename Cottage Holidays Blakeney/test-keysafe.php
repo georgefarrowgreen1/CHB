@@ -76,6 +76,14 @@ $r2 = keysafe_read(['code' => '123', 'history' => []]);
 ok2('a stored 3-digit code reads as NO code (never shown to a guest)', $r2['code'] === '');
 $big = ['code' => '4821', 'history' => array_fill(0, 60, ['code' => '9265', 'guest' => 'x', 'setAt' => '', 'forBooking' => 0])];
 ok2('history is capped at ' . KEYSAFE_HISTORY_MAX, count(keysafe_read($big)['history']) === KEYSAFE_HISTORY_MAX);
+// The stay ref — a PLATFORM stay's identity ('o:<check-in>'; 'b:<id>' for
+// direct). Anything outside that vocabulary reads as none, so owner-written
+// JSON can never smuggle markup or an over-long value through the record.
+ok2('a platform stay ref round-trips', keysafe_read(['code' => '4821', 'forStay' => 'o:2026-08-28'])['forStay'] === 'o:2026-08-28');
+ok2('a direct stay ref round-trips', keysafe_read(['code' => '4821', 'forStay' => 'b:42'])['forStay'] === 'b:42');
+ok2('a garbage ref reads as none', keysafe_read(['code' => '4821', 'forStay' => '<script>x'])['forStay'] === '');
+ok2('an over-long ref reads as none', keysafe_read(['code' => '4821', 'forStay' => 'o:' . str_repeat('9', 60)])['forStay'] === '');
+ok2('history rows carry their ref through the sanitiser', keysafe_read(['code' => '4821', 'history' => [['code' => '9265', 'forStay' => 'o:2026-08-01']]])['history'][0]['forStay'] === 'o:2026-08-01');
 
 echo "§4 the reveal window, both sides of both boundaries\n";
 // KEYSAFE_REVEAL_DAYS = 2: check-in 2026-08-14 → visible from 2026-08-12.
