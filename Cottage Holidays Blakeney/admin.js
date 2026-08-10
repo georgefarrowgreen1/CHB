@@ -6084,7 +6084,9 @@ function chbSnapAnswers(ql) {
     const s = chbSnapRead();
     if (!s || !(s.rows || []).length) return null;
     const today = todayDashed(), tom = ukShiftDays(today, 1);
-    const rows = s.rows || [];
+    // OTA rows are display-only (no phone, no money) — the spoken answers
+    // keep to guests this app can actually say something useful about.
+    const rows = (s.rows || []).filter((r) => !r.ota);
     const grp = (key) => rows.filter((r) => chbSnapGroup(r, today, tom) === key);
     const src = 'From the saved day sheet — no connection, so this may have moved';
     const mk = (label, sub) => ({
@@ -17100,7 +17102,48 @@ function chbSnapRowsFromStores() {
             });
         });
     });
+    // OTA stays join for DISPLAY only (the online timeline shows them; a
+    // changeover is changeover work whoever booked it). No dbId, no money —
+    // the capture/duty guards skip them by construction.
+    try {
+        if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((pk) => {
+            (dbBlocks[pk] || []).forEach((bl) => {
+                if (!isOtaBlock(bl) || !bl.checkIn || !bl.checkOut) return;
+                const keep = bl.checkOut === today || (bl.checkIn >= today && bl.checkIn < dayAfter)
+                    || (bl.checkIn < today && bl.checkOut > today);
+                if (!keep) return;
+                const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
+                rows.push({
+                    pk, cot: (propertyMeta[pk] || {}).name || pk, dbId: 0, ota: true,
+                    nm: src + ' guest', ph: '', ci: bl.checkIn, co: bl.checkOut,
+                    cit: '', cot_t: '', party: '', due: 0, dep: 0, rtot: 0, rpaid: 0,
+                    dmg: 0, holdNone: true, notes: '',
+                });
+            });
+        });
+    } catch (e) {}
     return rows;
+}
+// A glance of what's COMING — the first cards of the online Bookings list,
+// display-only, so a quiet day's sheet still reads as the same dashboard.
+function chbSnapUpFromStores() {
+    const today = todayDashed();
+    const up = [];
+    Object.keys(dbBookings || {}).forEach((pk) => {
+        (dbBookings[pk] || []).forEach((b) => {
+            if (!b || !b.checkIn || !b.checkOut || b.checkIn < today) return;
+            let paid = false;
+            try { paid = !!(bookingDue(pk, b) || {}).fullyPaid; } catch (e) {}
+            up.push({
+                pk, cot: (propertyMeta[pk] || {}).name || pk,
+                nm: b.name || '', ci: b.checkIn, co: b.checkOut,
+                party: b.guests || ((b.adults || 0) + ' adult' + (b.adults === 1 ? '' : 's') + (b.children ? ', ' + b.children + ' child' + (b.children === 1 ? '' : 'ren') : '')),
+                paid,
+            });
+        });
+    });
+    up.sort((a, z) => a.ci.localeCompare(z.ci));
+    return up.slice(0, 5);
 }
 // THE ADAPTER — one question ("what is the day?"), two sources. Live stores
 // when they hold anything; the saved snapshot when they don't. Consumers key
@@ -17131,7 +17174,7 @@ function chbSnapWrite() {
         // the coast (tides/weather) is carried forward from the last snapshot —
         // chbSnapCoastPatch refreshes it async, and a rebuild between patches
         // must not throw away data the offline morning needs
-        chbSnapStore({ at: Date.now(), day: today, rows, ops, cots, coast: prev.coast || null });
+        chbSnapStore({ at: Date.now(), day: today, rows, up: chbSnapUpFromStores(), ops, cots, coast: prev.coast || null });
     } catch (e) {}
 }
 // The coast joins the snapshot ASYNC (never waited on; a failed fetch leaves
@@ -17196,7 +17239,7 @@ function renderOfflineDaySheet() {
     const day = chbDayRows();
     const snap = chbSnapRead();
     const s = day.source === 'live'
-        ? Object.assign({}, snap || {}, { at: day.at, day: todayDashed(), rows: day.rows, __live: true })
+        ? Object.assign({}, snap || {}, { at: day.at, day: todayDashed(), rows: day.rows, up: chbSnapUpFromStores(), __live: true })
         : snap;
     const host = document.getElementById('view-backoffice');
     if (!s || !host) return false;
@@ -17245,7 +17288,7 @@ function renderOfflineDaySheet() {
         return '<div class="ny-row ods-row' + sev + '"><div class="ny-main">'
             + '<span class="prop-tag tag-' + e(r.pk) + '">' + e(r.cot) + '</span>'
             + '<button type="button" class="ny-label ods-open" ' + chbAttrs('odsHubCard', String(i)) + '>' + e(r.nm) + '</button>'
-            + '<span class="ny-sub">' + when + ' · ' + e(r.party) + (g === 'tomorrow' ? ' · ' + e(fmtDate(r.ci)) : '') + '</span>'
+            + '<span class="ny-sub">' + when + (r.party ? ' · ' + e(r.party) : '') + (g === 'tomorrow' ? ' · ' + e(fmtDate(r.ci)) : '') + '</span>'
             + (r.notes ? '<span class="ods-note">' + e(r.notes) + '</span>' : '')
             + (chips.length ? '<span class="ods-chips">' + chips.join('') + '</span>' : '')
             + (acts.length ? '<span class="ods-btns">' + acts.join('') + '</span>' : '')
@@ -17281,22 +17324,24 @@ function renderOfflineDaySheet() {
         + odsCoastLine(s)
         + '<h1 class="bo-sec-title" style="margin-top:12px;">Today</h1>'
         + odsOpsLineHtml(s.rows || [], s.__live)
+        // the action row sits where online's does — right under the ops line
+        + '<div class="ods-btns" style="margin:4px 0 14px;">'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>+ Save an enquiry</button>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
+        + '</div>'
         + odsDutiesHtml(s.rows || [])
         + odsTimelineHtml(s.rows || [])
         + sec('Leaving today', 'leave')
         + sec('Arriving today', 'arrive')
         + sec('Staying', 'staying')
         + sec('Tomorrow', 'tomorrow')
-        + (!(s.rows || []).length || !(groups.leave.length + groups.arrive.length + groups.staying.length + groups.tomorrow.length)
-            ? '<p class="ods-empty">Nothing on the saved sheet for today or tomorrow.</p>' : '')
+        + (!(groups.leave.length + groups.arrive.length + groups.staying.length + groups.tomorrow.length)
+            ? '<p class="ods-empty">No arrivals or departures today or tomorrow.</p>' : '')
+        + odsUpcomingHtml(s.up || [])
         + (opsKeys.length
             ? '<h2 class="bo-sec-title">Cottage notes</h2>'
               + opsKeys.map((pk) => '<details class="ods-ops"><summary>' + e((s.cots || {})[pk] || pk) + '</summary><pre class="ods-pre">' + e(s.ops[pk]) + '</pre></details>').join('')
-            : '')
-        + '<div class="ods-btns" style="margin:14px 0 24px;">'
-        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Someone rang? Save it as an enquiry</button>'
-        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
-        + '</div>';
+            : '');
     odsMarkWire(s);
     odsQueueRefresh();
     return true;
@@ -17307,7 +17352,9 @@ function renderOfflineDaySheet() {
 //    row vocabulary and route to the CAPTURES (there is no live hub to open),
 //    and the timeline draws exactly the days the rows vouch for.
 function odsOpsLineHtml(rows, live) {
-    const { parts, owed } = chbOpsParts((rows || []).map((r) => ({ pk: r.pk, ci: r.ci, co: r.co, arrived: false, due: r.due || 0 })));
+    // OTA rows excluded — todayOpsLine's tuples are bookings-only, and the
+    // two lines must speak the same figures (§21's agreement check).
+    const { parts, owed } = chbOpsParts((rows || []).filter((r) => !r.ota).map((r) => ({ pk: r.pk, ci: r.ci, co: r.co, arrived: false, due: r.due || 0 })));
     if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
     const e = escapeHtml;
     return '<div class="ods-opsline">' + e(parts.length ? parts.join(' · ') : 'all quiet today')
@@ -17376,6 +17423,20 @@ function odsTimelineHtml(rows) {
     });
     html += '</div><div class="ods-tl-note">Drawn from the sheet: the hatched column is <b>unknown</b>, never “free” — the live calendar needs a connection.</div></div>';
     return html;
+}
+// The online Bookings list's first cards, display-only — a quiet day's sheet
+// collapsed to "nothing today" while online showed a screen of upcoming stays
+// (owner screenshot). Same row anatomy, same paid/balance chip.
+function odsUpcomingHtml(up) {
+    if (!(up || []).length) return '';
+    const e = escapeHtml;
+    return '<h1 class="bo-sec-title" style="margin-top:18px;">Bookings</h1>'
+        + '<div class="ods-opsline">' + up.length + ' upcoming</div>'
+        + up.map((u) => '<div class="ny-row ods-row ny-ok"><span class="ny-main">'
+            + '<span class="prop-tag tag-' + e(u.pk) + '">' + e(u.cot) + '</span>'
+            + '<span class="ny-label">' + e(u.nm) + '</span>'
+            + '<span class="ny-sub">' + e(fmtStayRange(u.ci, u.co)) + (u.party ? ' · ' + e(u.party) : '') + '</span>'
+            + '</span><span class="bhub-chip' + (u.paid ? ' is-ok' : ' is-warn') + '">' + (u.paid ? 'Paid' : 'Balance due') + '</span></div>').join('');
 }
 // The read-only HUB CARD — the booking hub's grouped-row anatomy from the
 // day's rows: tap a guest's name, get the record this phone holds, honestly

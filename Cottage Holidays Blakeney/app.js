@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 442;
+const ADMIN_BUNDLE_V = 443;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1168,6 +1168,14 @@ function chbNetDown() {
         updateOnlineStatus();
     } catch (e) {}
     chbNetProbeArm();
+    // THE MISSED-EVENT CASE (owner screenshot): airplane mode toggled while
+    // BACKGROUNDED never delivers the `offline` event — so when the verdict
+    // flips with navigator.onLine false, the wifi-icon rule applies as if it
+    // had. Deferred a tick so chbGoOffline's own chbNetDown call can't
+    // recurse; a mere blip (onLine true) still never transforms.
+    try {
+        if (navigator.onLine === false) setTimeout(chbGoOffline, 0);
+    } catch (e) {}
 }
 function chbNetUp() {
     chbNetProbeStop();
@@ -1265,6 +1273,8 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
         oqFlush();
         if (__chbNetOff) chbNetProbe();
+        // resumed with the interface OFF — see pageshow below
+        if (navigator.onLine === false) chbGoOffline();
     }
 });
 // iOS has no Background Sync, so replay hangs on the PAGE waking — and a PWA
@@ -1274,6 +1284,10 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => {
     oqFlush();
     if (__chbNetOff) chbNetProbe();
+    // Resumed with the interface OFF (airplane mode toggled while backgrounded
+    // — the `offline` event was never delivered): take over now, don't wait
+    // for a request to fail into the toast the owner screenshotted.
+    if (navigator.onLine === false) chbGoOffline();
 });
 window.addEventListener('focus', () => {
     if (__chbNetOff) chbNetProbe();
@@ -16191,7 +16205,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'onevoice12';
+    const BUILD = 'mirror13';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
