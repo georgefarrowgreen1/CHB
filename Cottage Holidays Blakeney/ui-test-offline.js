@@ -52,6 +52,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mkBooking(6, { name: 'Faye Left', phone: '07700 900888', check_in: d(-4), check_out: d(-1), hold_status: 'charged', hold_amount: 60 }),
   ];
   const posts = [];
+  const d0 = d(0); // today, for the coast stubs below
   let verHits = 0;   // version.php probe counter (§11)
   let addDead = false; // §12: abort ONLY the booking-add post — the ambiguous save
   let refuseEnq = false; // §14: the server ANSWERS an enquiry replay with a refusal
@@ -79,12 +80,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     if (apiDead) return route.abort();
     if (url.includes('admin-bootstrap.php')) return json({ ok: true, cron: null, feeds: [], payoutTrouble: null, rates: null, bookings: { bookings: BOOKINGS }, enquiries: { enquiries: [] }, blocks: { ok: true, blocks: [] } });
     if (url.includes('bookings.php')) return json({ bookings: BOOKINGS });
+    if (url.includes('tides.php')) return json({ ok: true, extremes: [
+      { type: 'High', time: d0 + 'T06:41:00' }, { type: 'Low', time: d0 + 'T12:55:00' }, { type: 'High', time: d0 + 'T19:08:00' },
+    ] });
+    if (url.includes('weather.php')) return json({ ok: true, days: [{ date: d0, summary: 'Sunny intervals', tmax: 18, gust: 12 }] });
     if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [], threads: [], reviews: [], photos: [] });
   });
 
   const settle = async (ms) => { await page.waitForTimeout(ms || 2800); };
-  const snap = () => page.evaluate(() => JSON.parse(localStorage.getItem('chb-daysheet') || 'null'));
+  // the store is ENCRYPTED at rest — read through the decrypted mirror
+  const snap = () => page.evaluate(() => chbSnapRead(true));
 
   // ── §1 a successful owner boot pre-warms the snapshot ─────────────────────
   console.log('§1 the snapshot is pre-warmed, deliberately');
@@ -134,9 +140,9 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // ── §4 grouping is recomputed from the dates, never trusted from the write ─
   console.log('§4 a stale snapshot regroups honestly');
   await page.evaluate((yday) => {
-    const s2 = JSON.parse(localStorage.getItem('chb-daysheet'));
+    const s2 = chbSnapRead(true);
     s2.day = yday; s2.at = Date.now() - 20 * 3600000; // written "yesterday"
-    localStorage.setItem('chb-daysheet', JSON.stringify(s2));
+    __chbSnapCache = s2;
     renderOfflineDaySheet();
   }, d(-1));
   const sheet2 = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
@@ -211,7 +217,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await gdSet('note', 'All fine — checked the lot');
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(600);
-  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 1), 'the decision is saved on the phone');
+  ok(await page.evaluate(() => odsDepDecisions().length === 1), 'the decision is saved on the phone');
   ok(posts.filter((p2) => p2.action === 'return_deposit' || p2.action === 'keep_deposit').length === 0, 'and NO money op was sent — a deferred decision, never a deferred authority');
 
   // (c) the phone enquiry
@@ -245,7 +251,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(1000);
   ok(posts.filter((p2) => p2.action === 'return_deposit').length === 1, 'the refund op exists only after the OK');
-  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 0), 'and the decision is cleared once executed');
+  ok(await page.evaluate(() => odsDepDecisions().length === 0), 'and the decision is cleared once executed');
 
   // ── §9 LIVE TRANSITIONS — the verdict moves BOTH ways with no reload.
   //     navigator.onLine is true throughout (routes abort, the interface is up),
@@ -449,7 +455,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await page.locator('#gdf-photo').setInputFiles({ name: 'evidence.jpg', mimeType: 'image/jpeg', buffer: JPG });
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(900);
-  const dec = await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]'));
+  const dec = await page.evaluate(() => odsDepDecisions());
   ok(dec.length === 1 && dec[0].choice === 'keep' && /^data:image\/jpeg/.test(dec[0].photo || ''),
     'the decision saved WITH the photo, re-encoded as a JPEG data URI');
   // reconnect → the confirm shows the photo beside the question it answers
@@ -467,7 +473,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const kept = posts.filter((p2) => p2.action === 'keep_deposit');
   ok(kept.length === 1 && /^data:image\/jpeg;base64,/.test(kept[0].photo_data || ''),
     'the confirmed keep carries the photo to the server — evidence rides the money op');
-  ok(await page.evaluate(() => JSON.parse(localStorage.getItem('chb-dep-decisions') || '[]').length === 0),
+  ok(await page.evaluate(() => odsDepDecisions().length === 0),
     'and the decision (photo included) clears once executed');
   // THE SHARED NODE MUST NOT LEAK — the okLabel rule, for pictures
   await page.evaluate(() => { glassConfirm('A plain question with no photo?'); });
@@ -523,6 +529,83 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     ok(iRef !== -1 && iDel !== -1 && iRef < iDel && /!r\.ok/.test(flushBody),
       'the SW replayer records a refusal (before consuming the item) on any non-auth error');
   }
+
+  // ── §15 ENCRYPTED AT REST — the day sheet and the deposit decisions hold
+  //     guest names, phone numbers and key-safe codes; localStorage now shows
+  //     only ciphertext (enc1: envelope, AES-GCM under a non-extractable
+  //     IndexedDB key). A value that will not decrypt is ABSENT, never garbage;
+  //     legacy plaintext is adopted so an upgrade loses nothing.
+  console.log('§15 encrypted at rest');
+  await page.evaluate(() => initBackOffice());
+  await page.waitForTimeout(2500);
+  const rawSnap = await page.evaluate(() => localStorage.getItem('chb-daysheet') || '');
+  ok(/^enc1:/.test(rawSnap), 'the day sheet is CIPHERTEXT on disk (enc1: envelope)');
+  ok(!/Hannah|Marcus|Key safe/.test(rawSnap), 'no guest name or key-safe code is readable in the stored value');
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  const encSheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
+  ok(/Marcus Ellery/.test(encSheet), 'the offline boot DECRYPTS and renders the same sheet — the round trip is real');
+  // legacy plaintext (a phone that saved before this shipped) is ADOPTED
+  await page.evaluate((today) => {
+    localStorage.setItem('chb-daysheet', JSON.stringify({ at: Date.now(), day: today, rows: [
+      { pk: '21a', cot: '21A Westgate', dbId: 7, nm: 'Plain Legacy', ph: '', ci: today, co: today.slice(0, 8) + String(Number(today.slice(8)) + 2).padStart(2, '0'), cit: '', cot_t: '', party: '2 adults', due: 0, dep: 0, rtot: 0, rpaid: 0, dmg: 0, holdNone: true, notes: '' },
+    ], ops: {}, cots: {} }));
+    __chbSnapCache = undefined; __chbSecLoadP = null; // a fresh boot's state
+    return chbSecLoad().then(() => renderOfflineDaySheet());
+  }, d(0));
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => /Plain Legacy/.test((document.getElementById('offline-daysheet') || {}).textContent || '')),
+    'a pre-encryption PLAINTEXT snapshot still renders — the upgrade loses nothing');
+  // and a value that will NOT decrypt reads as absent, never as garbage
+  ok(await page.evaluate(async () => {
+    localStorage.setItem('chb-daysheet', 'enc1:AAAA:BBBB');
+    __chbSnapCache = undefined; __chbSecLoadP = null;
+    await chbSecLoad();
+    return chbSnapRead(true) === null && localStorage.getItem('chb-daysheet') === null;
+  }), 'an undecryptable value is treated as ABSENT and removed');
+
+  // ── §16 THE COAST ON THE SHEET — tides and weather ride the snapshot, and
+  //     the TIDE is gated on the day it was fetched for: yesterday's snapshot
+  //     rendering this morning must not state yesterday's high water as
+  //     today's (the weather payload is dated per day, so it survives).
+  console.log('§16 the coast on the sheet');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3000);
+  const s16 = await snap();
+  ok(!!(s16 && s16.coast && s16.coast.day === d(0) && s16.coast.tide), 'the coast joins the snapshot after a successful load, stamped with its day');
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  const coastSheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
+  ok(/High water 06:41 and 19:08/.test(coastSheet) && /low 12:55/.test(coastSheet),
+    'the sheet states the day\'s tides with no data at all');
+  ok(/Sunny intervals · 18°C/.test(coastSheet), '…and the day\'s weather');
+  await page.evaluate((yday) => {
+    const s2 = chbSnapRead(true);
+    s2.coast.day = yday; // fetched YESTERDAY
+    __chbSnapCache = s2;
+    renderOfflineDaySheet();
+  }, d(-1));
+  const staleSheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
+  ok(!/High water/.test(staleSheet), 'a tide fetched for YESTERDAY is not stated as today\'s');
+  ok(/Sunny intervals/.test(staleSheet), '…while the dated weather entry rightly survives the roll-over');
+  apiDead = false;
+  // hygiene, crypto half: the KEY record goes with the ciphertext it guarded
+  await page.evaluate(() => forceAdminLogout());
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(async () => {
+    const db = await oqDB();
+    return new Promise((res) => {
+      try {
+        const tx = db.transaction('keys', 'readonly');
+        const rq = tx.objectStore('keys').get('sec');
+        rq.onsuccess = () => res(!rq.result);
+        rq.onerror = () => res(false);
+      } catch (e) { res(false); }
+    });
+  }), 'logout deletes the at-rest key — a fresh sign-in mints a fresh one');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);

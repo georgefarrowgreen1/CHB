@@ -14,14 +14,14 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v807';
+const CACHE = 'chb-cache-v808';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=756', 'guest-app.css?v=41', 'guest-app.js?v=22'];
+const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=249', 'app.js?v=757', 'guest-app.css?v=41', 'guest-app.js?v=22'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -148,9 +148,9 @@ self.addEventListener('fetch', (event) => {
 // page's on-reconnect / on-open flush covers that case.
 function swQueueDB() {
     return new Promise((res, rej) => {
-        let r; try { r = indexedDB.open('chb-db', 2); } catch (e) { return rej(e); }
-        // v2 adds 'refused' — same version as app.js's oqDB, bumped together.
-        r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); if (!db.objectStoreNames.contains('refused')) db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true }); };
+        let r; try { r = indexedDB.open('chb-db', 3); } catch (e) { return rej(e); }
+        // v2 added 'refused', v3 adds 'keys' — same version as app.js's oqDB, bumped together.
+        r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); if (!db.objectStoreNames.contains('refused')) db.createObjectStore('refused', { keyPath: 'id', autoIncrement: true }); if (!db.objectStoreNames.contains('keys')) db.createObjectStore('keys', { keyPath: 'id' }); };
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     });
 }

@@ -4121,6 +4121,31 @@ both ways in §17b). The shape:
   dialog open (the okLabel-leak rule, for pictures — break-tested: setting it only
   when present leaks the photo into the next plain confirm). glassForm's `file` type
   resolves the File OBJECT, not the fakepath string `.value` would give.
+- **THE PHONE-SIDE STORES ARE ENCRYPTED AT REST** (`chbSecKey`/`chbSecEncrypt`/
+  `chbSecDecrypt`/`chbSecForget` in app.js; `chbSecLoad`/`chbSecStore` + the mirrors in
+  admin.js; gated by ui-test-offline §15, each half break-tested). The day sheet and
+  the deposit decisions hold guest names, phone numbers and KEY-SAFE CODES; localStorage
+  now shows only an `enc1:` AES-GCM envelope under a NON-EXTRACTABLE CryptoKey in IDB
+  (`chb-db` **v3** adds `keys` — app.js + sw.js bump together, the VersionError rule).
+  The judgements: readers stay SYNCHRONOUS through decrypted memory mirrors
+  (`__chbSnapCache`/`__odsDepCache`, unlocked ONCE by `chbSecLoad`, which initBackOffice
+  awaits before anything reads); a value that will not decrypt is ABSENT and removed,
+  never garbage; legacy plaintext is ADOPTED and re-encrypted on the next store, so the
+  upgrade loses nothing; no WebCrypto → plaintext fallback (the no-lock degrade — never
+  lose the feature to the lock); and logout deletes the KEY with the ciphertext, so a
+  fresh sign-in mints a fresh key. Deliberately NOT a defence against code running on
+  the device — nothing client-side is — it closes the backup/inspection surface.
+  NB tests that used to `JSON.parse(localStorage.getItem('chb-daysheet'))` now read
+  `chbSnapRead(true)` / `odsDepDecisions()` — the raw value is ciphertext.
+- **THE COAST RIDES THE SNAPSHOT** (`chbSnapCoastPatch` async after a successful
+  loadData — never waited on; `odsCoastLine` renders it under the marker; gated by
+  ui-test-offline §16). "High water 06:41 and 19:08 · low 12:55 · Sunny · 18°C" on a
+  no-signal morning, from the tides/weather the coast tier already fetches. **The TIDE
+  is gated on `coast.day === today`** — tide times are fetched FOR a day, and
+  yesterday's snapshot rendering this morning must not state yesterday's high water as
+  today's (break-tested); the weather payload carries dated days, so it survives the
+  roll-over on its own. chbSnapWrite carries `prev.coast` forward, or every rebuild
+  between patches would throw away what the offline morning needs.
 - **NB ui-test-poorsignal §7 must DRAIN the recovery's own reads before seeding** —
   chbNetRecover's fire-and-forget initBackOffice issues loadDepositReturns, and under
   CI's 3-suite load its generic 200 landed MID-SEED and wiped the fixture (the check
