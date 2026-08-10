@@ -710,6 +710,49 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await dockVis('view-inbox') && await dockVis('view-accounts') && await dockVis('view-settings'),
     'and the full menu came back with it');
 
+  // ── §19 THE WIFI-ICON RULE — airplane mode / wifi off fires the browser's
+  //     `offline` event with no failed request, and the WHOLE page transforms:
+  //     day sheet up, header trimmed, the owner brought to it from wherever
+  //     they were. Deliberately ONLY on the no-interface signal — the evidence
+  //     verdict alone (a blip) keeps the last-good workspace.
+  console.log('§19 the wifi-icon rule');
+  // (fixture) live, signed in, stores loaded, reading the INBOX
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();
+  await page.evaluate(() => openInbox());
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id === 'view-inbox'), '(fixture) the owner is reading the Inbox');
+  // a bare VERDICT flip (one failed request) must NOT transform — the blip rule
+  apiDead = true;
+  await page.evaluate(() => apiPost('bookings.php', { action: 'history', id: 2 }).catch(() => {}));
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.body.classList.contains('net-off') && !document.body.classList.contains('offline-snap')),
+    'a failed request alone flips the verdict but does NOT yank the owner off their screen');
+  apiDead = false;
+  await page.waitForTimeout(200);
+  await page.evaluate(() => apiPost('bookings.php', { action: 'history', id: 2 }).catch(() => {}));
+  await page.waitForTimeout(400);
+  // …then the INTERFACE goes (airplane mode: the event fires AND requests
+  // fail — with the routes left alive, the first successful request would
+  // correctly swap everything straight back, which is the self-correcting
+  // behaviour a SPURIOUS offline event deserves, not this fixture)
+  apiDead = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await page.waitForTimeout(800);
+  ok(await page.evaluate(() => document.body.classList.contains('offline-snap') && !!document.getElementById('offline-daysheet')),
+    'the offline event alone — NO failed request — puts the day sheet up');
+  ok(await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id === 'view-backoffice'),
+    'and brings the owner to it from the Inbox — the trim was about to strand them there');
+  ok(!(await dockVis('view-inbox')) && !(await dockVis('view-accounts')) && !(await dockVis('view-settings')),
+    'the header is trimmed with it');
+  // …and the existing recovery arc brings everything back
+  apiDead = false;
+  await page.evaluate(() => chbNetProbe());
+  await page.waitForTimeout(2500);
+  ok(await page.evaluate(() => !document.body.classList.contains('offline-snap') && !document.getElementById('offline-daysheet')),
+    'the first live probe swaps it all back — sheet gone, live Today');
+  ok(await dockVis('view-inbox'), 'and the full menu returns');
+
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
 })();
