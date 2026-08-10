@@ -4420,8 +4420,10 @@ dialogs say to share the code in the platform's message thread instead, which is
 honest version of "they see it". Gated by ui-test-keysafe §6 (break-tested: deleting
 the dbBlocks loop fails all five) + test-integration §18h + the lib's ref cases.
 **THE KEEPER IS A PER-COTTAGE SWITCH** (owner-asked; the checkbox lives in Settings →
-cottage → Private notes, `#ks-toggle-<pk>`, and the page's off-card carries "Turn on"
-so it is never a dead end). `enabled` rides the SAME record — default ON, only an
+cottage → Private notes, `#ks-toggle-<pk>`). A switched-off cottage is **HIDDEN from
+the key screen entirely — no off-card, no footnote** (both were built and removed at
+the owner's ask); the Settings checkbox is the one way back on. `enabled` rides the
+SAME record — default ON, only an
 explicit false disables, so pre-toggle records keep working and garbage can never
 switch a cottage off by accident (keysafe_read). OFF means: no rotation duty on
 either dashboard, and **my-bookings.php withholds the reveal even inside the window**
