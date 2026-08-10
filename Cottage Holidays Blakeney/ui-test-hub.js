@@ -1558,20 +1558,29 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     paneHub: !!document.querySelector('#inbox-detail-pane #enquiry-hub-content .bhub-head'),
     name: (document.querySelector('#inbox-detail-pane .bhub-name') || {}).textContent || '',
     openRows: document.querySelectorAll('#inbox-list .bk-row.is-open').length,
-    // Booking-hub vocabulary: Approve is the ONE loud control riding the
-    // next-action box; the rest are quiet action rows, Decline last in
-    // danger ink; the contact email is a composer button, never a mailto.
+    // The decision-first anatomy: Approve is the ONE loud control riding the
+    // green state card; Edit/Email/DECLINE live behind the ⋯ (decline is
+    // reversible via the drawer, so the page leads with the yes — quiet,
+    // last, in danger ink); the contact email is a composer button, never a
+    // mailto; the MESSAGE never folds.
     approveInNext: !!document.querySelector('#inbox-detail-pane .bhub-next [data-act="approveEnquiry"]'),
-    actions: document.querySelectorAll('#inbox-detail-pane .bhub-act-links .bhub-actlink').length,
+    readyCap: ((document.querySelector('#inbox-detail-pane .bhub-next.is-ready .bhub-next-cap') || {}).textContent || '').trim(),
+    eyebrow: ((document.querySelector('#inbox-detail-pane .bhub-eyebrow') || {}).textContent || '').trim(),
+    msgOpen: (() => {
+      const m = document.querySelector('#inbox-detail-pane .bhub-msg-text');
+      return !!m && m.getBoundingClientRect().height > 0 && /Dog friendly/.test(m.textContent);
+    })(),
+    draftRow: !!document.querySelector('#inbox-detail-pane .bhub-msg [data-act="enqReplyDraft"]'),
+    menuItems: document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]').length,
     dangerLast: (() => {
-      const rows = document.querySelectorAll('#inbox-detail-pane .bhub-act-links .bhub-actlink');
+      const rows = document.querySelectorAll('#inbox-detail-pane .bhub-menu [role="menuitem"]');
       const last = rows[rows.length - 1];
-      return !!last && last.classList.contains('is-danger') && /decline/i.test(last.textContent);
+      return !!last && last.classList.contains('bhub-menu-danger') && /decline/i.test(last.textContent);
     })(),
     // The danger ink must actually PAINT — class-only would pass with the
     // CSS rule deleted. Probe var(--danger-text) in the page's own theme.
     dangerInk: (() => {
-      const el = document.querySelector('#inbox-detail-pane .bhub-actlink.is-danger');
+      const el = document.querySelector('#inbox-detail-pane .bhub-menu .bhub-menu-danger');
       if (!el) return false;
       const probe = document.createElement('span');
       probe.style.color = 'var(--danger-text)';
@@ -1583,14 +1592,18 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     mailtos: document.querySelectorAll('#enquiry-hub-content a[href^="mailto:"]').length,
     emailKvBtn: !!document.querySelector('#inbox-detail-pane .bhub-kv-act[data-act="openEnquiryEmail"]'),
     priceBtn: !!document.querySelector('#inbox-detail-pane [data-act="setEnquiryPrice"]'),
+    quoteFig: ((document.querySelector('#inbox-detail-pane [data-grp="equote"] .bhub-payline-fig') || {}).textContent || '').trim(),
     // The No-dog row prints the house DD/MM/YYYY form, never the raw SQL stamp.
     noDog: (document.querySelector('#inbox-detail-pane #enquiry-hub-content') || {}).textContent || '',
   }));
   ok(j1.active === 'view-inbox' && j1.rows === 2 && j1.oldCards === 0, `compact enquiry rows (${j1.rows}), old cards gone`);
   ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
-  ok(j1.approveInNext && j1.actions === 3, `Approve rides the next box; ${j1.actions} quiet action rows`);
-  ok(j1.dangerLast && j1.dangerInk, 'Decline is the last row, painted in danger ink');
+  ok(j1.approveInNext && /Ready to approve · dates free/i.test(j1.readyCap), `Approve rides the green READY state card (${j1.readyCap})`);
+  ok(/^Enquiry · asked /.test(j1.eyebrow), `the eyebrow names what this is and how long it has waited (${j1.eyebrow})`);
+  ok(j1.msgOpen && j1.draftRow, 'the MESSAGE never folds, with the ✨ draft row beneath it');
+  ok(j1.menuItems === 3 && j1.dangerLast && j1.dangerInk, `Edit/Email/Decline live behind the ⋯; Decline last, painted in danger ink (${j1.menuItems})`);
   ok(j1.mailtos === 0 && j1.emailKvBtn && j1.priceBtn, 'contact email routes to the composer (no mailto); agreed-price stays');
+  ok(/^£/.test(j1.quoteFig), `the quote is ONE row with the figure on it (${j1.quoteFig})`);
   ok(/Confirmed 01\/07\/2026/.test(j1.noDog) && !j1.noDog.includes('2026-07-01'), 'No-dog row prints the house date form, not the raw stamp');
   // Approve from the hub → lands on the NEW booking's hub.
   const apr = page.evaluate(() => approveEnquiry(document.querySelector('#inbox-list .bk-row[data-enqid]').getAttribute('data-enqid')));
@@ -1637,14 +1650,47 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     await new Promise((r) => setTimeout(r, 350));
     return ((document.querySelector('#view-enquiry-hub .bhub-next') || {}).textContent || '').trim();
   }, { due, sqOn });
+  // THE DATES HAVE GONE — the calendar answer is the page's STATE: the card
+  // turns red, names WHO took the dates, offers the nearest free windows, and
+  // Approve is WITHDRAWN everywhere (card + dock) — the server would re-check
+  // under lock anyway, but the page must not leave the owner one distracted
+  // tap from that refusal. Driven by walking e7 onto a live booking, restored.
+  const clash = await page.evaluate(async (a) => {
+    const e = (enquiries || []).find((x) => String(x.id) === '7' || x.id === 7 || x.id === 'e7');
+    const keep = { ci: e.checkIn, co: e.checkOut };
+    e.checkIn = a.ci; e.checkOut = a.co;
+    await window.openEnquiryHub('e7');
+    await new Promise((r) => setTimeout(r, 350));
+    const out = {
+      gone: !!document.querySelector('#view-enquiry-hub .bhub-next.is-gone'),
+      text: ((document.querySelector('#view-enquiry-hub .bhub-next') || {}).textContent || '').trim(),
+      noApprove: !document.querySelector('#view-enquiry-hub [data-act="approveEnquiry"]'),
+      attn: !!document.querySelector('#view-enquiry-hub [data-grp="eclash"]'),
+      attnActs: !!document.querySelector('#view-enquiry-hub #bhub-fold-eclash [data-act="openBookingHub"]'),
+      sticky: ((document.querySelector('#view-enquiry-hub .bhub-sticky-btn') || {}).textContent || '').trim(),
+    };
+    e.checkIn = keep.ci; e.checkOut = keep.co;
+    await window.openEnquiryHub('e7');
+    await new Promise((r) => setTimeout(r, 300));
+    return out;
+  }, { ci: d(35), co: d(38) });
+  ok(clash.gone && /booked/.test(clash.text) && /(Next Guest|Gap Follower)/.test(clash.text),
+    `dates gone → the card turns red and names who took them (${clash.text.replace(/\s+/g, ' ').slice(0, 90)})`);
+  ok(/ free/.test(clash.text), '…and offers the nearest free windows of the same length');
+  ok(clash.noApprove && /Edit the dates/.test(clash.sticky),
+    `Approve is withdrawn everywhere; the dock offers Edit the dates instead (${clash.sticky})`);
+  ok(clash.attn && clash.attnActs, 'the blocker is a Needs-attention row routing to their booking');
+
+  // …and each ask now NAMES ITS FIGURE (the mockup's rule: approving sends
+  // money asks, so the sum is stated before the tap).
   const far = await apprSay(d(60), true);
-  ok(/requests the deposit by card/.test(far), `before the balance falls due, approval asks for the DEPOSIT by card (${far.slice(0, 90)})`);
+  ok(/requests the deposit by card — £/.test(far), `before the balance falls due, approval asks for the DEPOSIT by card, figure named (${far.slice(0, 110)})`);
   const near = await apprSay(d(-1), true);
-  ok(/requests the full amount by card/.test(near) && !/the deposit/.test(near),
-    `once it is due it asks for the FULL amount, as the server will (${near.slice(0, 90)})`);
+  ok(/requests the full amount by card — £/.test(near) && !/the deposit/.test(near),
+    `once it is due it asks for the FULL amount, as the server will (${near.slice(0, 110)})`);
   const noSq = await apprSay(d(60), false);
-  ok(/requests the deposit\./.test(noSq) && !/by card/.test(noSq),
-    `with Square off it never promises a card link (${noSq.slice(0, 90)})`);
+  ok(/requests the deposit — £/.test(noSq) && !/by card/.test(noSq),
+    `with Square off it never promises a card link (${noSq.slice(0, 110)})`);
   await page.evaluate(() => { /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = true; });
   const dec = page.evaluate(() => declineEnquiry('e7'));
   await page.waitForTimeout(500);

@@ -968,11 +968,13 @@ body.light-mode .ny-act {
      around the lot. */
   padding: 4px 2px 0;
   margin-top: 10px;
-}#booking-hub-content {
+}#booking-hub-content,
+#enquiry-hub-content {
   /* One readable column — full-bleed label/value rows read as a spreadsheet. */
   max-width: 760px;
   margin: 0 auto;
-}#view-booking-hub .back-link {
+}#view-booking-hub .back-link,
+#view-enquiry-hub .back-link {
   display: block;
   max-width: 760px;
   margin-left: auto;
@@ -1111,6 +1113,48 @@ body.light-mode .ny-act {
   background: rgba(76, 175, 80, 0.08);
   border-color: rgba(76, 175, 80, 0.22);
   color: var(--text-muted);
+}/* The enquiry page's state card: the calendar answer IS the page's state.
+   Ready = green and stating the tap's consequence; gone = red, naming who
+   took the dates, Approve withdrawn. */
+.bhub-next.is-ready {
+  background: rgba(76, 175, 80, 0.09);
+  border-color: rgba(76, 175, 80, 0.24);
+}.bhub-next.is-ready .bhub-next-cap {
+  color: var(--ok-text);
+}.bhub-next.is-gone {
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
+}.bhub-next.is-gone .bhub-next-cap {
+  color: var(--danger-text);
+}.bhub-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 8px;
+}.bhub-eyebrow-warn {
+  color: var(--warn-text);
+}/* THE MESSAGE NEVER FOLDS — the enquiry's one must-read, styled as its own
+   quiet card with the draft row on a hairline beneath. */
+.bhub-msg {
+  padding: 14px 18px 6px;
+}.bhub-msg-cap {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}.bhub-msg-text {
+  font-size: 0.94rem;
+  line-height: 1.55;
+  margin: 0 0 6px;
+}.bhub-msg-draft {
+  border-top: 1px solid var(--glass-border);
+  margin: 6px -18px 0;
+  padding-left: 18px !important;
 }.bhub-next-btn {
   padding: 12px 22px; /* the standard action-button geometry (.cal-add-btn) */
   font-size: 0.8rem;
@@ -4224,7 +4268,7 @@ body.cmdk-open {
 /* ≤900px the sticky bar IS the action — the card drops its button so one tap
    is offered once (A2c). Booking hub only: the enquiry hub's Approve has no
    sticky to hand over to. */
-@media (max-width: 900px) { #booking-hub-content .bhub-next .bhub-next-btn { display: none; } }
+@media (max-width: 900px) { #booking-hub-content .bhub-next .bhub-next-btn, #enquiry-hub-content .bhub-next .bhub-next-btn { display: none; } }
 
 
 /* The per-booking payment plan, inside the Payments header (hubPlanHtml):

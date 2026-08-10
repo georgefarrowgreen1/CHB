@@ -1778,9 +1778,29 @@ an arrived guest has dates+cottage locked (`lockBookingMove`); a fully-paid
 booking hides the payment-entry fields (`trimPaidBookingFields`). Gated by
 ui-test-hub §A3.
 The **enquiry hub**
-(`view-enquiry-hub`, `openEnquiryHub()`) is the same for enquiries — approve/edit/
-email/decline + agreed price live there; approving jumps to the new booking's hub
-(`enquiries.php` returns `booking_id`). At ≥1200px both the Today workspace and the
+(`view-enquiry-hub`, `openEnquiryHub()`) is a DECISION-FIRST page in the same
+anatomy (the owner-approved mockup: "an enquiry is one question — can I say
+yes?"), and three booking-page rules INVERT here. **The MESSAGE never folds**
+(`.bhub-msg` — it is the decision's input, with a one-tap `enqReplyDraft` ✨
+row that opens the composer THEN runs the drafter, order load-bearing since
+draftEnquiryReply reads `__composeTarget`). **The calendar answer is the
+page's STATE**: free → `.bhub-next.is-ready` stating the tap's consequence
+WITH its figure ("requests the deposit by card — £147.50", the plan deposit +
+the refundable ride, same fold as hubDepositAsk; full amount inside the
+window); gone → `.bhub-next.is-gone` naming WHO took the dates + the nearest
+free windows either side (`enquiryFreeNearby`, same-length scan ±31 days,
+never offering the past), with **Approve WITHDRAWN everywhere** (card + dock —
+the dock flips to "Edit the dates") and the blocker as a Needs-attention row
+routing to their booking. **Money is a QUOTE, not a ledger**: one fold row
+(`equote`) with the schedule in its sub, breakdown + agreed-price/plan
+controls inside (setEnquiryPrice/setEnquiryPlan data-acts kept). A returning
+guest announces themselves (`eintel`, priorStays); a first-timer says nothing.
+Edit/Email/**Decline** live behind the ⋯ (decline is reversible via the
+drawer, so the page leads with the yes — last, `bhub-menu-danger` ink).
+Approving jumps to the new booking's hub (`enquiries.php` returns
+`booking_id`). Gated by ui-test-hub §J (re-aimed to the menu + state card;
+clash state break-tested three ways — gone-card, approve-withdrawn,
+ask-figure — all fired). At ≥1200px both the Today workspace and the
 Inbox dock their hub in a side pane (master–detail; the `#booking-hub-content` /
 `#enquiry-hub-content` nodes re-parent between pane and standalone view, incl. live
 on crossing 1200px). Index rows

@@ -22621,6 +22621,35 @@ function enquirySeen(e) {
 function enquiryHubBack() {
     openInbox();
 }
+// The nearest free windows of the SAME length either side of a clashed
+// enquiry — what the decline-or-move sentence offers instead of a dead end.
+// Uses the same end-exclusive overlap the availability check uses, over
+// bookings AND blocks, scanning outward a month each way.
+function enquiryFreeNearby(e) {
+    const len = Math.round((new Date(e.checkOut).getTime() - new Date(e.checkIn).getTime()) / 864e5);
+    if (!(len > 0)) return [];
+    const busy = (ci, co) =>
+        (dbBookings[e.propKey] || []).some((b) => ci < b.checkOut && co > b.checkIn) ||
+        (dbBlocks[e.propKey] || []).some((x) => ci < x.checkOut && co > x.checkIn);
+    const today = todayDashed();
+    const out = [];
+    for (const dir of [-1, 1]) {
+        for (let n = 1; n <= 31; n++) {
+            const ci = ukShiftDays(e.checkIn, dir * n);
+            const co = ukShiftDays(e.checkOut, dir * n);
+            if (ci <= today) break; // never offer the past (or today — the night-before rule)
+            if (!busy(ci, co)) { out.push(fmtStayRange(ci, co)); break; }
+        }
+    }
+    return out;
+}
+// One tap from the message card to a READY draft: open the composer, then run
+// the deterministic drafter into it (draftEnquiryReply reads __composeTarget,
+// which openEnquiryEmail sets — the order is the point).
+function enqReplyDraft(enquiryId) {
+    openEnquiryEmail(enquiryId);
+    setTimeout(() => { try { draftEnquiryReply(); } catch (err) {} }, 250);
+}
 function renderEnquiryHub() {
     const el = document.getElementById('enquiry-hub-content');
     if (!el) return;
@@ -22633,89 +22662,159 @@ function renderEnquiryHub() {
     const av = enquiryAvailability(e);
     const days = enquiryAgeDays(e);
     const stale = days >= ENQUIRY_STALE_DAYS;
-    const ageRaw = timeAgoLabel(e.receivedAt || e.received) || e.received || '';
-    const agePart = ageRaw && !/invalid/i.test(String(ageRaw)) ? ` · received ${escapeHtml(String(ageRaw))}` : '';
-    let priceLine = '';
-    try {
-        const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
-        const std = pr && pr.total > 0 ? pr.total : null;
-        priceLine =
-            e.priceOverride != null
-                ? `Agreed price <strong>${gbp(e.priceOverride)}</strong>${std ? ` <span class="bhub-mut" style="margin:0;">(standard ${gbp(std)})</span>` : ''}`
-                : std
-                  ? `Site price <strong>${gbp(std)}</strong>`
-                  : 'Price unavailable';
-    } catch (err) {
-        priceLine = 'Price unavailable';
+    const ageRaw = timeAgoLabel(e.receivedAt || e.received) || '';
+    const nights = Math.max(1, Math.round((new Date(e.checkOut).getTime() - new Date(e.checkIn).getTime()) / 864e5));
+    let pr = null;
+    try { pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut); } catch (err) {}
+    const std = pr && pr.total > 0 ? pr.total : null;
+    const total = e.priceOverride != null ? Number(e.priceOverride) : std;
+    const dmg = (pr && pr.damagesDeposit) || 0;
+    // WHAT APPROVAL WILL ACTUALLY ASK FOR — stage from booking_payment_kind's
+    // window clause (bookingInBalanceWindow reads the same two fields off an
+    // enquiry), rail honesty with Square off, and now the FIGURE: the plan's
+    // deposit plus the refundable deposit the first payment carries, the same
+    // fold hubDepositAsk makes on the booking side.
+    const inWindow = (() => { try { return bookingInBalanceWindow(e); } catch (err) { return false; } })();
+    let askFig = null;
+    if (total != null) {
+        try {
+            askFig = inWindow ? Math.round((total + dmg) * 100) / 100 : Math.round((bookingPlanDeposit(e, total) + dmg) * 100) / 100;
+        } catch (err) {}
     }
-    const chips =
-        (av ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}</span>` : '') +
-        (stale ? `<span class="bk-chip warn" style="margin-left:6px;"><span class="bk-dot"></span>${days}d waiting</span>` : '');
-    // WHAT APPROVAL WILL ACTUALLY ASK FOR. This said "requests the deposit by
-    // card" whichever side of the balance window the enquiry sat, and whether or
-    // not Square is configured — but enquiry-actions.php derives the kind from
-    // booking_payment_kind, so an enquiry approved INSIDE the window correctly
-    // asks for the WHOLE amount. That is the hubAskKind fix, which never came
-    // along to the enquiry side. bookingInBalanceWindow takes a mapped booking
-    // and an enquiry carries the same two fields it reads.
     const apprAsk = () => {
-        const inWindow = (() => { try { return bookingInBalanceWindow(e); } catch (err) { return false; } })();
         const stage = inWindow ? 'the full amount' : 'the deposit';
-        // With Square off there is no card link to send — the chase rides the
-        // bank-transfer rail (payment_cta), so promising "by card" is wrong twice.
         const how = squareAdminEnabled ? ' by card' : '';
-        return `requests ${stage}${how}`;
+        return `requests ${stage}${how}${askFig != null ? ' — ' + gbp(askFig) : ''}`;
     };
-    // The one next step, spelled out like the booking hub's next-action box.
-    const next = av && !av.free
-        ? { text: 'These dates now clash with another booking — adjust the dates (Edit) or decline.', cls: '' }
-        : { text: `Free to approve — this creates the booking, emails the confirmation${e.email ? ' and ' + apprAsk() : ''}.`, cls: ' is-clear' };
-    const contact = (label, val) =>
-        `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val || '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>`;
-    el.innerHTML = `
-        <div class="bhub-head glass-panel">
-            <div class="bhub-head-top">
-                <div>
-                    <span class="prop-tag tag-${e.propKey}">${escapeHtml(meta.name)}</span>
-                    <h1 class="bhub-name">${escapeHtml(e.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${agePart}</div>
-                    <div style="margin-top:8px;">${chips}</div>
-                </div>
-            </div>
-            ${/* The booking hub's vocabulary: ONE loud control — Approve, riding
-                  the next-action box that already explains what it does — and
-                  the rest as quiet action rows, Decline in danger ink last
-                  (the iOS red-row-at-the-end shape). The four-pill float this
-                  replaces had no hierarchy at all. */ ''}
-            <div class="bhub-next${next.cls}"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button></div>
-            <div class="bhub-btn-row bhub-act-links bhub-actions">
-                <button class="bhub-actlink btn-sm" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
-                ${e.email ? `<button class="bhub-actlink btn-sm" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email guest</button>` : ''}
-                <button class="bhub-actlink btn-sm is-danger" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
-            </div>
-        </div>
-        <div class="bhub-grid">
-            <section class="bhub-card glass-panel">
-                <h2 class="bhub-card-title">Message &amp; contact</h2>
-                ${e.message ? `<div class="enq-ctx-quote" style="margin:0 0 14px;">“${escapeHtml(e.message)}”</div>` : '<div class="bhub-mut" style="margin:0 0 14px;">No message left.</div>'}
-                <div class="detail-grid" style="margin-top:0;">
-                    ${contact('Email', e.email ? `<button class="bhub-kv-act" ${chbAttrs('openEnquiryEmail', String(e.id))} title="Email the guest — opens the site's composer">${escapeHtml(e.email)}</button>` : '')}
-                    ${contact('Phone', e.phone ? `<a href="tel:${escapeHtml(e.phone)}" style="color:var(--text-light);">${escapeHtml(e.phone)}</a>` : '')}
-                    ${contact('No dog', e.noDogsAt ? 'Confirmed ' + fmtDate(String(e.noDogsAt).slice(0, 10)) : '<span class="bhub-mut" style="margin:0;">Not confirmed</span>')}
-                    <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${e.address || e.postcode ? escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>
-                </div>
-            </section>
-            <section class="bhub-card glass-panel">
-                <h2 class="bhub-card-title">Price &amp; history</h2>
-                <div style="font-size:0.95rem;">${priceLine}</div>
-                <div class="bhub-btn-row" style="margin-top:10px;">
-                    <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPlan', String(e.id))}>${enquiryHasPlan(e) ? 'Change payment plan' : 'Set a payment plan'}</button>
-                </div>
-                ${enquiryHasPlan(e) ? `<div class="bhub-mut" style="margin:8px 0 0;">Approving will use ${escapeHtml(enquiryPlanWords(e))}.</div>` : ''}
-                <div style="margin-top:16px;">${repeatGuestBadge(e) || '<span class="bhub-mut" style="margin:0;">First-time guest (no completed stays on this email).</span>'}</div>
-            </section>
+    // ---- The STATE CARD — the calendar answer is the page's state, not a
+    // detail row. Free → green, ready, stating the tap's CONSEQUENCE with its
+    // figure (approving sends money asks). Gone → red, naming WHO took the
+    // dates and offering the nearest free windows, with Approve withdrawn:
+    // the server would re-check under lock anyway, but the page must not
+    // leave the owner one distracted tap from that refusal. ----
+    const blockerBk = av && !av.free ? (dbBookings[e.propKey] || []).find((b) => e.checkIn < b.checkOut && e.checkOut > b.checkIn) : null;
+    const blockerBl = av && !av.free && !blockerBk ? (dbBlocks[e.propKey] || []).find((x) => e.checkIn < x.checkOut && e.checkOut > x.checkIn) : null;
+    let stateCard;
+    if (av && !av.free) {
+        const who = blockerBk
+            ? `<strong>${escapeHtml(blockerBk.name || 'Another guest')} booked ${escapeHtml(fmtStayRange(blockerBk.checkIn, blockerBk.checkOut))}</strong>`
+            : blockerBl
+              ? `<strong>${escapeHtml((blockerBl.source || 'An external') + ' block covers ' + fmtStayRange(blockerBl.checkIn, blockerBl.checkOut))}</strong>`
+              : '<strong>Another stay covers these dates</strong>';
+        const wins = enquiryFreeNearby(e);
+        stateCard = `<div class="bhub-next is-gone"><span class="bhub-next-cap">The dates have gone</span><span class="bhub-next-text">${who} while this enquiry waited. Suggest new dates, or decline with a note${wins.length ? ' — ' + wins.map(escapeHtml).join(' and ') + (wins.length === 1 ? ' is' : ' are') + ' free' : ''}.</span></div>`;
+    } else {
+        stateCard = `<div class="bhub-next is-ready"><span class="bhub-next-cap">Ready to approve · dates free</span><span class="bhub-next-text">Approving books ${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))} in, emails the confirmation${e.email ? ' and ' + apprAsk() : ''}.</span><button class="btn-glass bhub-next-btn btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button></div>`;
+    }
+    // ---- Needs attention (clash only): the blocker as a red row, its routes
+    // folded under — open the booking that has the dates, or move this one. ----
+    const attnHtml = av && !av.free
+        ? `<span class="bhub-grpcap is-attn">Needs attention</span>` +
+          bhubFoldGrp('eclash',
+              `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>${escapeHtml(av.text)}`,
+              blockerBk ? `${fmtStayRange(blockerBk.checkIn, blockerBk.checkOut)}${(() => { try { const bps = paymentSummary(e.propKey, blockerBk); return bps && bps.deposit > 0 ? ' · their deposit is paid' : ''; } catch (err) { return ''; } })()}` : '',
+              '',
+              `<div class="bhub-btn-row bhub-act-links">
+                  ${blockerBk ? `<button class="bhub-actlink" ${chbAttrs('openBookingHub', String(blockerBk.id))}>Open their booking</button>` : ''}
+                  <button class="bhub-actlink" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit the dates</button>
+              </div>`)
+        : '';
+    // ---- THE MESSAGE NEVER FOLDS. On a booking, guest words are history; on
+    // an enquiry they are the decision's input — "is it dog friendly?" has to
+    // be read before Approve. The ✨ draft row answers it in one tap. ----
+    const msgCard = `
+        <div class="bhub-msg bhub-card glass-panel">
+            <span class="bhub-msg-cap">Their message</span>
+            ${e.message ? `<p class="bhub-msg-text">“${escapeHtml(e.message)}”</p>` : '<p class="bhub-msg-text bhub-mut" style="margin:0;">No message — they just asked for the dates.</p>'}
+            ${e.email && e.message ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>` : ''}
         </div>`;
+    // ---- The QUOTE — money is a quote here, not a ledger: one row, the
+    // schedule approval implies in the sub, breakdown + price/plan controls
+    // folded behind. ----
+    const fin = (n) => typeof n === 'number' && isFinite(n);
+    const custom = e.priceOverride != null && std != null && Math.abs(Number(e.priceOverride) - std) > 0.005;
+    const quoteRows = (e.priceOverride != null
+        ? `<div class="bhub-kv"><span class="bhub-kv-label">Agreed price${custom ? ' (custom)' : ''} · ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(Number(e.priceOverride))}</span></div>` +
+          (custom ? `<div class="bhub-kv"><span class="bhub-kv-label">Standard price</span><span class="bhub-kv-val bhub-mut">${gbp(std)}</span></div>` : '')
+        : pr && fin(pr.perNight)
+          ? `<div class="bhub-kv"><span class="bhub-kv-label">${gbp(pr.perNight)} × ${nights} night${nights === 1 ? '' : 's'}</span><span class="bhub-kv-val">${gbp(pr.nightly)}</span></div>` +
+            (pr.txFee > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Transaction fee</span><span class="bhub-kv-val">${gbp(pr.txFee)}</span></div>` : '')
+          : '') +
+        (dmg > 0 ? `<div class="bhub-kv"><span class="bhub-kv-label">Refundable deposit (charged with the first payment)</span><span class="bhub-kv-val">${gbp(dmg)}</span></div>` : '') +
+        (askFig != null ? `<div class="bhub-kv"><span class="bhub-kv-label"><strong>Their first payment</strong></span><span class="bhub-kv-val"><strong>${gbp(askFig)}</strong></span></div>` : '') +
+        (enquiryHasPlan(e) ? `<div class="bhub-mut" style="margin:8px 0 2px;">Approving will use ${escapeHtml(enquiryPlanWords(e))}.</div>` : '') +
+        `<div class="bhub-btn-row bhub-act-links">
+            <button class="bhub-actlink" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
+            <button class="bhub-actlink" ${chbAttrs('setEnquiryPlan', String(e.id))}>${enquiryHasPlan(e) ? 'Change payment plan' : 'Set a payment plan'}</button>
+        </div>`;
+    const quoteSub = askFig != null && !inWindow
+        ? `${gbp(askFig)} deposit on approval, balance by ${fmtDate(bookingPlanDueDate(e) || ukShiftDays(e.checkIn, -(paymentTerms.balanceDays || 30)))}`
+        : askFig != null
+          ? 'the full amount is due on approval'
+          : '';
+    const quoteGrp = bhubFoldGrp('equote',
+        `<span class="bhub-payline-label">Quote${e.priceOverride != null ? '' : ' · site price'}</span>`,
+        quoteSub ? escapeHtml(quoteSub) : '',
+        total != null ? `<span class="bhub-payline-fig">${gbp(total)}</span>` : '<span class="bhub-sum-warn">Price unavailable</span>',
+        quoteRows);
+    // ---- A returning guest announces themselves; a first-timer says nothing
+    // (the exception rule — an empty dossier is noise). ----
+    const prior = (e && e.priorStays) || 0;
+    const intelGrp = prior >= 1
+        ? bhubFoldGrp('eintel', 'Knows your guest', '',
+              `<span class="bhub-sum-val">Returning · ${prior} stay${prior === 1 ? '' : 's'}</span>`,
+              `<div style="padding-top:2px;">${repeatGuestBadge(e)}</div>`)
+        : '';
+    // ---- Guest details — same exception summary as the booking page. ----
+    const kvDot = (okBit) => `<span class="bhub-chip-dot ${okBit ? 'is-ok' : 'is-bad'}" aria-hidden="true"></span>`;
+    const kv = (label, val) => (val ? `<div class="bhub-kv"><span class="bhub-kv-label">${label}</span><span class="bhub-kv-val">${val}</span></div>` : '');
+    const factsSum = e.noDogsAt
+        ? '<span class="bhub-sum-ok">All recorded ✓</span>'
+        : '<span class="bhub-sum-warn">1 not recorded</span>';
+    const factsGrp = bhubFoldGrp('efacts', 'Guest details', '', factsSum, `
+            <div class="bhub-kvs">
+                ${kv('Email', e.email ? `<button class="bhub-kv-act" ${chbAttrs('openEnquiryEmail', String(e.id))} title="Email the guest — opens the site's composer">${escapeHtml(e.email)}</button>` : '')}
+                ${kv('Phone', e.phone ? `<a href="tel:${escapeHtml(e.phone)}" style="color:var(--text-light);">${escapeHtml(e.phone)}</a>` : '')}
+                ${kv('Address', e.address || e.postcode ? escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) : '')}
+                ${kv('No dog', e.noDogsAt ? kvDot(true) + 'Confirmed ' + fmtDate(String(e.noDogsAt).slice(0, 10)) : kvDot(false) + '<span class="bhub-mut">Not confirmed</span>')}
+            </div>`);
+    // ---- The ⋯ menu — Edit / Email / DECLINE. Decline is deliberately quiet
+    // and last, in danger ink: it is reversible (the Declined drawer), and the
+    // page leads with the yes. ----
+    const menu = `
+        <div class="bhub-actions">
+            <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Edit, email or decline this enquiry" title="Edit / Email / Decline">⋯</button>
+            <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                <button role="menuitem" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
+                ${e.email ? `<button role="menuitem" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email the guest</button>` : ''}
+                <button role="menuitem" class="bhub-menu-danger" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
+            </div>
+        </div>`;
+    // ---- The phone dock — the decision under the thumb: Approve while the
+    // dates are free, Edit the dates once they've gone (never a dead Approve). ----
+    const sticky = `<div class="bhub-sticky">${
+        av && !av.free
+            ? `<button class="btn-glass bhub-sticky-btn" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit the dates</button>`
+            : `<button class="btn-glass bhub-sticky-btn" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button>`
+    }${e.phone ? `<a class="bhub-icbtn" href="tel:${escapeHtml(String(e.phone))}" aria-label="Call ${escapeHtml(e.name || 'the guest')}">${BHUB_IC_PHONE}</a>` : ''}${
+        e.email ? `<button class="bhub-icbtn" ${chbAttrs('openEnquiryEmail', String(e.id))} aria-label="Email ${escapeHtml(e.name || 'the guest')}">${BHUB_IC_MAIL}</button>` : ''
+    }</div>`;
+    el.innerHTML = `
+        <div class="bhub-head">
+            <div class="bhub-head-top">
+                <div class="bhub-iden">
+                    <span class="prop-tag tag-${e.propKey}">${escapeHtml(meta.name)}</span>
+                    <div class="bhub-eyebrow">Enquiry${ageRaw && !/invalid/i.test(String(ageRaw)) ? ' · asked ' + escapeHtml(String(ageRaw)) : ''}${stale ? ` <span class="bhub-eyebrow-warn">· ${days}d waiting</span>` : ''}</div>
+                    <h1 class="bhub-name">${escapeHtml(e.name || 'Guest')}</h1>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(e.checkIn, e.checkOut))} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(e.guests || '')}</div>
+                </div>
+                ${menu}
+            </div>
+            ${stateCard}
+        </div>
+        ${attnHtml}
+        <div class="bhub-grid">${msgCard}${quoteGrp}${intelGrp}${factsGrp}</div>
+        ${sticky}`;
 }
 
 // ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
