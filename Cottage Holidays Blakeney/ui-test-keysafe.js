@@ -204,13 +204,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }), 'the offline sheet mints nothing for it either');
   await page.evaluate(async () => { await openKeysafe(); });
   await page.waitForTimeout(700);
-  const offCard = await page.evaluate(() => (document.querySelector('.ks-card.ks-off') || {}).textContent || '');
-  ok(/Keeper is off for this cottage/.test(offCard) && /guests are shown nothing/.test(offCard), 'the page card says it is off — and what that means');
-  ok(/Turn on/.test(offCard), '…with the way back on, never a dead end');
-  await page.locator('.ks-card.ks-off button', { hasText: 'Turn on' }).click();
+  const pageTxt = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
+  ok(!/21A Westgate/.test(pageTxt) && !/9265/.test(pageTxt), 'a switched-off cottage is HIDDEN from the key screen — no card, no code, no footnote');
+  ok(/Jollyboat/.test(pageTxt), '…while the cottages still on keep their cards');
+  // The way back on is the Settings checkbox — tick it and the card returns.
+  await page.evaluate(async () => { await openArea(); });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); settingsOpenAccomSec('21a', 'opsnotes'); });
+  await page.waitForTimeout(500);
+  await page.locator('#ks-toggle-21a').click();
   await page.waitForTimeout(700);
-  ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled !== false), 'Turn on restores it');
+  ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled !== false), 'ticking the Settings box turns it back on');
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 1, '…duty and all — the record was kept, not erased');
+  await page.evaluate(async () => { await openKeysafe(); });
+  await page.waitForTimeout(700);
+  ok(await page.evaluate(() => /21A Westgate/.test(document.getElementById('keysafe-body').textContent)), 'and its card is back on the key screen');
 
   console.log('§8 the audit pins — who "next" is, and the switch tells the truth');
   // Pure keysafeNextBooking logic on a scratch cottage (mutate the const

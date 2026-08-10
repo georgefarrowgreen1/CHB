@@ -17278,15 +17278,9 @@ function renderKeysafe() {
     const today = todayDashed();
     host.innerHTML = Object.keys(__keysafe).map((pk) => {
         const rec = __keysafe[pk] || {};
-        // Switched off (Settings → cottage → Private notes): the card says so
-        // and offers the way back on — never a dead end, never a duty.
-        if (rec.enabled === false) {
-            return '<div class="glass-panel ks-card ks-off">'
-                + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>'
-                + '<button class="btn-sm btn-edit" ' + chbAttrs('keysafeSetEnabled', String(pk), true) + '>Turn on</button></div>'
-                + '<div class="ks-kv"><span class="ks-k">Keeper is off for this cottage</span><span class="ks-v"><small>no rotation duties, and guests are shown nothing' + ((rec.history || []).length || rec.code ? ' — the history is kept and returns with it' : '') + '</small></span></div>'
-                + '</div>';
-        }
+        // Switched off: HIDDEN from this page entirely (owner-asked — no
+        // off-card, no footnote). The way back on is the Settings checkbox.
+        if (rec.enabled === false) return '';
         const next = keysafeNextBooking(pk);
         const nextMine = keysafeSetFor(rec, next);
         const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
