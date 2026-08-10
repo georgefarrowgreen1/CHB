@@ -115,16 +115,90 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(nav1.active === 'view-accounts', `dock tap opens Money (${nav1.active})`);
   ok(nav1.current === 'view-accounts', `dock highlights Money (${nav1.current})`);
 
-  // ---- 2. overview ----
-  console.log('2. overview');
+  // ---- 2. overview — the five-verdict landing ----
+  console.log('2. overview (five-verdict landing)');
+  // The async fills have had time to land by here (the dock tap waited 1.1s).
   const ov = await page.evaluate(() => {
     const el = document.getElementById('money-overview');
-    const kpis = el ? el.querySelectorAll('.mo-kpi').length : 0;
-    return { kpis, text: el ? el.textContent : '' };
+    const grps = el ? Array.from(el.querySelectorAll('.bhub-fold-grp')).map((g) => g.getAttribute('data-grp')) : [];
+    const foldsOpen = el ? Array.from(el.querySelectorAll('.bhub-fold')).filter((f) => !f.hidden).length : 0;
+    const collect = el ? ((el.querySelector('[data-grp="mocollect"]') || {}).textContent || '').replace(/,/g, '') : '';
+    const cap = document.getElementById('mo-attn-cap');
+    return {
+      grps, foldsOpen, collect,
+      overdueRow: ((el.querySelector('[data-grp="mood0"]') || {}).textContent || '').replace(/,/g, ''),
+      pulse: !!(el && el.querySelector('.mo-pulse')),
+      attnHidden: !cap || cap.hidden,
+      books: (document.getElementById('mo-books-fig') || {}).textContent || '',
+      recent: (document.getElementById('mo-recent-sum') || {}).textContent || '',
+    };
   });
-  ok(ov.kpis === 4, `4 KPI tiles render (${ov.kpis})`);
-  ok(/Outstanding/.test(ov.text) && /£440/.test(ov.text), 'Outstanding shows the unpaid £440');
-  ok(/Received/.test(ov.text), 'received-this-tax-year tile present');
+  ok(['mocollect', 'momove', 'moback', 'mobooks', 'morecent', 'motrends'].every((k) => ov.grps.includes(k)), `the five verdicts + trends render (${ov.grps.join(',')})`);
+  ok(ov.foldsOpen === 0, `every verdict starts folded (${ov.foldsOpen} open)`);
+  // The fixture's ower checks in at d(20) — INSIDE the 30-day window with the
+  // standard due date 10 days gone, so it is genuinely OVERDUE: an exception
+  // row (at the deposit-folded £490 the payments rows quote), not a queue row.
+  ok(!ov.attnHidden, 'the overdue balance raises the Needs-attention caption');
+  ok(ov.grps.includes('mood0'), 'the overdue booking is an exception row, not a queue row');
+  ok(/To collect/.test(ov.collect) && /overdue one is above/.test(ov.collect), `To collect never claims "paid up" over an overdue row (${ov.collect.slice(0, 90)})`);
+  ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
+  ok(ov.pulse, 'the pulse line is present');
+  // The books figure is the SERVER'S net once the async fill lands
+  // (656.20 rental + 50 kept − 9.80 fees − 120 expenses = 576.40).
+  ok(/£576\.40/.test(ov.books.replace(/,/g, '')), `The books shows the server net (${ov.books})`);
+  ok(/nothing yet/.test(ov.recent), `Recent reports an honest empty feed (${ov.recent})`);
+
+  // 2b. the exception rule, the other way: moving the stay OUT of the window
+  // (check-in 45 days off, unpaid) stands the red section down and the same
+  // £490 reappears as a Due-now queue row under To collect (an unpaid first
+  // payment is due now wherever the stay sits). Restoring flips it back.
+  const attnChk = await page.evaluate(([ci, co]) => {
+    const b = (dbBookings['21a'] || []).find((x) => x.name === 'Owes Money');
+    const keep = { checkIn: b.checkIn, checkOut: b.checkOut };
+    b.checkIn = ci; b.checkOut = co;
+    renderMoneyOverview();
+    const txt = () => ((document.getElementById('money-overview') || {}).textContent || '').replace(/,/g, '');
+    const down = {
+      cap: !(document.getElementById('mo-attn-cap') || { hidden: true }).hidden,
+      row: /Overdue — Owes Money/.test(txt()),
+      collect: ((document.querySelector('#money-overview [data-grp="mocollect"]') || {}).textContent || '').replace(/,/g, ''),
+    };
+    Object.assign(b, keep);
+    renderMoneyOverview();
+    const up = {
+      cap: !(document.getElementById('mo-attn-cap') || { hidden: true }).hidden,
+      row: /Overdue — Owes Money/.test(txt()),
+    };
+    return { down, up };
+  }, [d(45), d(48)]);
+  ok(!attnChk.down.cap && !attnChk.down.row, 'moving the stay out of the window stands the red section down');
+  ok(/£490/.test(attnChk.down.collect) && /Due now/.test(attnChk.down.collect), `…and the £490 moves into To collect's Due-now queue (${attnChk.down.collect.slice(0, 80)})`);
+  ok(attnChk.up.cap && attnChk.up.row, 'restoring the dates raises the exception again');
+
+  // 2c. chase-everyone-due appears only at TWO+ chaseable owers — under two,
+  // the bulk action is the row's own action wearing a worse label.
+  const bulkChk = await page.evaluate(([ci, co]) => {
+    const has = () => !!document.querySelector('#money-overview [data-act="moChaseDue"]');
+    // The chase gates on the card rail (a bulk ask carries a pay link), and the
+    // fixture's ower is overdue (an exception, not a queue row) — move it out.
+    /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = true;
+    const b = (dbBookings['21a'] || []).find((x) => x.name === 'Owes Money');
+    const keep = { checkIn: b.checkIn, checkOut: b.checkOut };
+    b.checkIn = ci; b.checkOut = co;
+    renderMoneyOverview();
+    const one = has(); // one due-now ower
+    const c = JSON.parse(JSON.stringify(b));
+    c.id = 'b99'; c.dbId = 99; c.name = 'Second Ower'; c.email = 'second@gmail.com';
+    dbBookings['21a'].push(c);
+    renderMoneyOverview();
+    const two = has();
+    dbBookings['21a'].pop();
+    Object.assign(b, keep);
+    /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = false;
+    renderMoneyOverview();
+    return { one, two, after: has() };
+  }, [d(45), d(48)]);
+  ok(!bulkChk.one && bulkChk.two && !bulkChk.after, `chase-all offered only at 2+ owers (1:${bulkChk.one} 2:${bulkChk.two})`);
 
   // ---- 3. sections ----
   console.log('3. sections');
@@ -173,6 +247,27 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(feeChk.note, 'the note explains fees are deducted automatically');
   // Q2 income now carries both the £656.20 rental and the £50 kept deposit.
   ok(feeChk.q2 && Math.abs(feeChk.q2.inc - 706.2) < 0.005 && feeChk.q2.costs >= 9.8 && Math.abs(feeChk.q2.net - (feeChk.q2.inc - feeChk.q2.costs)) < 0.005, `Q2 quarterly income includes kept deposit + costs the fee (${JSON.stringify(feeChk.q2)})`);
+  // The fold anatomy: net leads, the arithmetic / quarters / honesty notes sit
+  // behind their rows (closed), the exports stay one visible tap. A fold OPENS
+  // in place — the arithmetic row is driven by clicking it, the way an owner does.
+  const incFolds = await page.evaluate(() => {
+    const c = document.getElementById('accounts-content');
+    const grps = Array.from(c.querySelectorAll('.bhub-fold-grp')).map((g) => g.getAttribute('data-grp'));
+    const open = Array.from(c.querySelectorAll('.bhub-fold')).filter((f) => !f.hidden).length;
+    const exportsVisible = (() => { const a = c.querySelector('.accounts-actions'); return !!(a && a.getClientRects().length && !a.closest('.bhub-fold')); })();
+    // Guarded, so a DELETED fold group fails the named checks below rather
+    // than killing the suite at this click (the §21 lesson).
+    const row = c.querySelector('[data-grp="incmath"] .bhub-fold-row');
+    if (row) row.click();
+    const mathFold = document.getElementById('bhub-fold-incmath');
+    const openNow = !!(mathFold && !mathFold.hidden && mathFold.getClientRects().length > 0);
+    if (row) row.click();
+    return { grps, open, exportsVisible, openNow, closedAgain: !!(mathFold && mathFold.hidden) };
+  });
+  ok(['incmath', 'incq', 'incscope'].every((k) => incFolds.grps.includes(k)), `income folds render (${incFolds.grps.join(',')})`);
+  ok(incFolds.open === 0, `income folds start closed (${incFolds.open} open)`);
+  ok(incFolds.exportsVisible, 'the exports row stays visible outside any fold');
+  ok(incFolds.openNow && incFolds.closedAgain, 'the arithmetic fold opens and closes in place');
   await page.evaluate(() => accountsShowIndex());
   await page.waitForTimeout(250);
   await secCheck('expenses', /boiler service|expense/i, 'Expenses (seeded row listed)');
