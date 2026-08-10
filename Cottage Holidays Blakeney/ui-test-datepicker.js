@@ -1347,11 +1347,17 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
         after[d] = await bgOf(d);
       }
       // ...and the tint must STILL work where it belongs, or this is a fix by deletion.
-      // 05 Aug is free, bookable and outside the chosen stay.
+      // 05 Aug is free, bookable and outside the chosen stay. POLLED, re-hovering
+      // each try: under CI load a re-render can swap the cell out from under the
+      // pointer (the replacement node has no :hover), so a single sample raced
+      // the paint and read transparent → transparent (measured, CI-only).
       const freeRest = await bgOf('05');
-      await page.locator(at('05')).hover();
-      await page.waitForTimeout(420);
-      const freeHover = await bgOf('05');
+      let freeHover = freeRest;
+      for (let t = 0; t < 8 && freeHover === freeRest; t++) {
+        await page.locator(at('05')).hover();
+        await page.waitForTimeout(350);
+        freeHover = await bgOf('05');
+      }
       return { rest, after, freeRest, freeHover };
     })();
     for (const [d, what] of [['24', 'check-in'], ['25', 'in-range night'], ['27', 'check-out']])
