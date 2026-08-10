@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 434;
+const ADMIN_BUNDLE_V = 435;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -821,6 +821,26 @@ function chbOpId() {
         return 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     }
 }
+// DETERMINISTIC id for a DIRECT (un-queued) write: a hand retry rebuilds the
+// payload from the form, so the id is derived FROM it — identical retry, same
+// id (dedupes at the op ledger); any edited field, a fresh id (never answered
+// from the save it replaces). chbOpBump on each confirmed success makes
+// re-stating an earlier value a NEW write, not a replay (£100→£150→£100).
+// queueOrPost keeps its random id — the queue PERSISTS the stamped payload.
+let __chbOpSeq = 0;
+const __chbOpBoot = Math.random().toString(36).slice(2, 8);
+function chbOpFor(payload) {
+    const s = JSON.stringify(payload) || '';
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+    }
+    return 'op-' + __chbOpBoot + '-' + __chbOpSeq.toString(36) + '-' + (h >>> 0).toString(36);
+}
+function chbOpBump() {
+    __chbOpSeq++;
+}
 // Send now; queue ON FAILURE TO SEND. navigator.onLine is true on a dead
 // router, so the old gate threw the write away on exactly the connection this
 // queue exists for. The rule: an HTTP status = the server ANSWERED (a refusal,
@@ -848,26 +868,36 @@ async function queueOrPost(endpoint, payload, label) {
 let __oqFlushing = false;
 async function oqFlush() {
     if (__oqFlushing || navigator.onLine === false) return;
-    // Where Background Sync exists (Chrome/Android), the service worker owns replay
-    // (it fires on reconnect and messages us 'chb-synced' to refresh) — running the
-    // page-side replay too would double-POST every queued write. So defer to the SW
-    // there; iOS/Safari has no SyncManager, so the page stays the sole replayer.
-    if ('serviceWorker' in navigator && 'SyncManager' in window && navigator.serviceWorker.controller) {
-        try {
-            await oqRefreshCount();
-        } catch (e) {}
-        oqRegisterSync(); // re-arm — a sync that already fired and failed gets another shot
-        return;
-    }
-    let items = [];
-    try {
-        items = await oqAll();
-    } catch (e) {}
-    if (!items.length) {
-        await oqRefreshCount();
-        return;
-    }
+    // CLAIMED BEFORE the first await: set after loading the queue, two callers
+    // a few ms apart (the recovery's 60ms flush + loadData's success hook)
+    // both pass the guard, both read the same items, and both post them.
     __oqFlushing = true;
+    try {
+        // Where Background Sync exists (Chrome/Android), the service worker owns replay
+        // (it fires on reconnect and messages us 'chb-synced' to refresh) — running the
+        // page-side replay too would double-POST every queued write. So defer to the SW
+        // there; iOS/Safari has no SyncManager, so the page stays the sole replayer.
+        if ('serviceWorker' in navigator && 'SyncManager' in window && navigator.serviceWorker.controller) {
+            try {
+                await oqRefreshCount();
+            } catch (e) {}
+            oqRegisterSync(); // re-arm — a sync that already fired and failed gets another shot
+            return;
+        }
+        let items = [];
+        try {
+            items = await oqAll();
+        } catch (e) {}
+        if (!items.length) {
+            await oqRefreshCount();
+            return;
+        }
+        await oqFlushRun(items);
+    } finally {
+        __oqFlushing = false;
+    }
+}
+async function oqFlushRun(items) {
     let failed = 0;
     const failMsgs = [];
     try {
@@ -892,7 +922,6 @@ async function oqFlush() {
             } catch (e) {}
         }
     } finally {
-        __oqFlushing = false;
         await oqRefreshCount();
     }
     // Refresh any open admin views with the now-synced data.
@@ -1036,6 +1065,17 @@ document.addEventListener('visibilitychange', () => {
         oqFlush();
         if (__chbNetOff) chbNetProbe();
     }
+});
+// iOS has no Background Sync, so replay hangs on the PAGE waking — and a PWA
+// resumed from background can arrive via bfcache (pageshow) or a bare refocus
+// (iPad split view) with no visibilitychange. Probe NOW, not in 15s; gated on
+// known-off state, so a healthy session costs nothing.
+window.addEventListener('pageshow', () => {
+    oqFlush();
+    if (__chbNetOff) chbNetProbe();
+});
+window.addEventListener('focus', () => {
+    if (__chbNetOff) chbNetProbe();
 });
 window.addEventListener('online', () => {
     // a hint, not a verdict — probe now rather than waiting out the interval
@@ -15342,7 +15382,7 @@ async function saveModal() {
         try {
             // Re-submit replaces the enquiry: decline the old, submit the new.
             await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
-            await apiPost('enquiries.php', {
+            const resub = {
                 action: 'submit',
                 prop_key: propKey,
                 name,
@@ -15364,7 +15404,12 @@ async function saveModal() {
                 // decline + resubmit, and must not wipe what the GUEST declared.
                 no_dogs_at_passthrough: enq.noDogsAt || '',
                 terms_version: enq.termsVersion || '',
-            });
+            };
+            // The resubmit is an INSERT — the deterministic id dedupes a hand
+            // retry (the re-decline ahead of it is idempotent either way).
+            resub.op_id = chbOpFor(['enq-edit', enq.dbId, resub]);
+            await apiPost('enquiries.php', resub);
+            chbOpBump();
             await loadData();
             closeModal();
             renderInbox();
@@ -15445,14 +15490,23 @@ async function saveModal() {
         let addRes = null;
         let materialEdit = true; // an older server that does not say assumes yes
         if (mode === 'add') {
+            // One id per save intent (chbOpFor): a hand retry replays instead
+            // of double-adding, and the guarded ladder's override posts share
+            // it, so a retried ladder is answered at post one.
+            payload.op_id = chbOpFor(['add', payload]);
             addRes = await saveBookingGuarded('add', payload, 'Add this booking anyway?');
             if (addRes === null) return; // owner cancelled at a warning
+            chbOpBump();
         } else {
             const loc = findBookingLocation(id);
             if (!loc) return;
             payload.id = dbBookings[loc.propKey][loc.idx].dbId;
+            // Stamped AFTER payload.id joins, so two bookings edited to
+            // coincidentally identical fields can never share an id.
+            payload.op_id = chbOpFor(['update', payload]);
             const upRes = await saveBookingGuarded('update', payload, 'Save these changes anyway?');
             if (upRes === null) return;
+            chbOpBump();
             // Server-decided: it holds the OLD row. Silence assumes yes.
             materialEdit = !upRes || upRes.material !== false;
         }
@@ -15818,7 +15872,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'netlive1';
+    const BUILD = 'offup4a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

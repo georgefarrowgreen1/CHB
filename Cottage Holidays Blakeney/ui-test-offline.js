@@ -52,8 +52,11 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mkBooking(6, { name: 'Faye Left', phone: '07700 900888', check_in: d(-4), check_out: d(-1), hold_status: 'charged', hold_amount: 60 }),
   ];
   const posts = [];
+  let verHits = 0;   // version.php probe counter (§11)
+  let addDead = false; // §12: abort ONLY the booking-add post — the ambiguous save
   await page.route(/\.php/, async (route) => {
     const url = route.request().url();
+    if (url.includes('version.php')) verHits++;
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     if (route.request().method() === 'POST') {
       const b = JSON.parse(route.request().postData() || '{}');
@@ -63,6 +66,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       // apiDead = the request LANDS but the reply dies — record, then abort.
       // That is the ambiguous-timeout shape the op ledger exists for.
       if (apiDead) return route.abort();
+      if (addDead && f === 'bookings.php' && b.action === 'add') return route.abort();
+      if (f === 'bookings.php' && b.action === 'add') return json({ ok: true, id: 990 });
       if (f === 'auth.php' && b.action === 'admin_status') return json({ admin: true });
       if (f === 'content.php' && b.action === 'get_all') return json({ content: { 'ops-21a': 'Key safe 4021 — black box right of the porch\nStopcock — under the kitchen sink' } });
       if (f === 'content.php' && b.action === 'save') return json({ ok: true });
@@ -305,6 +310,121 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await page.evaluate(() => !document.getElementById('offline-daysheet') && !document.body.classList.contains('offline-snap')),
     'the day sheet swaps itself for the live Today when the probe succeeds');
   ok(await page.evaluate(() => window.__noReloadMarker === 43), '…again with no reload');
+
+  // ── §10 THE EXPENSE CAPTURE — "paid the cleaner £60 cash" at the door.
+  //     The server half has been ledger-safe since the queue shipped; this
+  //     gates the affordance AND the exactly-once contract end to end.
+  console.log('§10 the expense capture');
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet is up for the capture');
+  await page.locator('#offline-daysheet button', { hasText: 'Record an expense' }).click();
+  await page.waitForTimeout(400);
+  await gdSet('amount', '60');
+  await gdSet('desc', 'Cleaner — changeover');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1200);
+  const expTry = posts.filter((p2) => p2.__f === 'expenses.php' && p2.action === 'add');
+  ok(expTry.length === 1 && expTry[0].amount === 60 && expTry[0].description === 'Cleaner — changeover',
+    'the expense TRIED with the figures as typed');
+  ok(!!expTry[0].op_id && /^op-/.test(expTry[0].op_id), 'and it carried an op id from birth');
+  ok(await page.evaluate(() => /Saved on this phone/.test((document.getElementById('app-toasts') || {}).textContent || '')),
+    'the toast says saved-not-synced, honestly');
+
+  // ── §11 A RESUMED APP PROBES NOW — iOS has no Background Sync, so replay
+  //     hangs on the page waking; pageshow/focus must not wait out the 15s
+  //     interval. The interval timer is STOPPED first, so any probe seen here
+  //     can only be the resume listener's — deterministic, not a race.
+  console.log('§11 the resume probe');
+  ok(await page.evaluate(() => document.body.classList.contains('net-off')), '(fixture) the dashboard is offline');
+  await page.evaluate(() => chbNetProbeStop());
+  let verBase = verHits;
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.waitForTimeout(600);
+  ok(verHits > verBase, 'pageshow probes immediately — no 15-second wait');
+  await page.evaluate(() => chbNetProbeStop());
+  verBase = verHits;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForTimeout(600);
+  ok(verHits > verBase, 'a bare window refocus probes too (iPad split view)');
+  // …and a LIVE probe through the resume path recovers everything at once:
+  // the day sheet is up, so the recovery is "noticed" and swaps it for Today.
+  apiDead = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.waitForTimeout(3000);
+  ok(await page.evaluate(() => !document.body.classList.contains('net-off') && !document.getElementById('offline-daysheet')),
+    'a live resume brings the whole dashboard back — sheet gone, verdict on');
+  // NB the wire may show MORE than two sends — §11's own pageshow dispatch ran
+  // a flush while the API was still dead, which is a legitimate retry (recorded,
+  // aborted, kept). The exactly-once contract is not "two posts": it is ONE id
+  // across every attempt (the ledger collapses them) and the queue draining the
+  // moment a server ANSWERS.
+  const expAll = posts.filter((p2) => p2.__f === 'expenses.php' && p2.action === 'add');
+  ok(expAll.length >= 2 && expAll.every((p2) => p2.op_id === expAll[0].op_id),
+    'EXACTLY-ONCE CONTRACT: every retry of the queued expense carries the SAME op id');
+  ok(await page.evaluate(async () => (await oqAll()).length === 0),
+    'and the queue drained once a reply was answered — nothing left to double-send');
+
+  // ── §12 THE ONLINE WRITE PATHS CARRY THE LEDGER ID — the ambiguous timeout
+  //     exists on good WiFi too. chbOpFor is deterministic over the payload:
+  //     a hand retry of the same form reuses the id (dedupes at the ledger),
+  //     an edited field mints a fresh one (an edited save must never be
+  //     answered from the stored response of the save it replaces), and a
+  //     CONFIRMED success bumps the sequence so re-stating an earlier value
+  //     is a new write, not a replay.
+  console.log('§12 the online write paths carry the ledger id');
+  await page.waitForTimeout(1500); // let the recovery's loadData settle
+  await page.evaluate(([ci, co]) => {
+    const sel = document.getElementById('modal-property');
+    sel.innerHTML = '<option value="21a">21A</option>';
+    sel.value = '21a';
+    document.getElementById('modal-mode').value = 'add';
+    document.getElementById('modal-record-id').value = '';
+    document.getElementById('modal-name').value = 'Opid Test';
+    document.getElementById('modal-email').value = '';
+    document.getElementById('modal-checkin').value = ci;
+    document.getElementById('modal-checkout').value = co;
+    document.getElementById('modal-payment').value = 'unpaid';
+  }, [d(40), d(43)]);
+  addDead = true;
+  await page.evaluate(() => saveModal().catch(() => {}));
+  await page.waitForTimeout(800);
+  let adds = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'add');
+  ok(adds.length === 1 && /^op-/.test(adds[0].op_id || ''), 'the booking add carries a ledger id');
+  await page.evaluate(() => saveModal().catch(() => {}));
+  await page.waitForTimeout(800);
+  adds = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'add');
+  ok(adds.length === 2 && adds[0].op_id === adds[1].op_id,
+    'a HAND RETRY of the same form reuses the id — the ambiguous timeout dedupes instead of double-adding');
+  await page.evaluate(() => { document.getElementById('modal-name').value = 'Opid Test Edited'; });
+  await page.evaluate(() => saveModal().catch(() => {}));
+  await page.waitForTimeout(800);
+  adds = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'add');
+  ok(adds.length === 3 && adds[2].op_id !== adds[1].op_id,
+    'an EDITED field mints a fresh id — never answered from the save it replaces');
+  addDead = false;
+  await page.evaluate(() => saveModal().catch(() => {}));
+  await page.waitForTimeout(1500);
+  adds = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'add');
+  ok(adds.length === 4 && adds[3].op_id === adds[2].op_id, 'the successful retry still wore the retried id');
+  await page.evaluate(() => saveModal().catch(() => {}));
+  await page.waitForTimeout(1500);
+  adds = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'add');
+  ok(adds.length === 5 && adds[4].op_id !== adds[3].op_id,
+    'after a CONFIRMED success the sequence bumps — the same values again is a new write, not a replay');
+  // recordPayment — the money recorder stamps the id too
+  const preSp = posts.filter((p2) => p2.action === 'set_payment').length;
+  await page.evaluate(() => { recordPayment('b2'); });
+  await page.waitForTimeout(500);
+  await gdSet('amount', '440');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1200);
+  const sp = posts.filter((p2) => p2.action === 'set_payment');
+  ok(sp.length === preSp + 1 && /^op-/.test(sp[sp.length - 1].op_id || ''),
+    'recordPayment stamps the ledger id on set_payment');
+  // dismiss the offer-updated-confirmation ask it raises on success
+  await page.evaluate(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); });
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);

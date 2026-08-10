@@ -4080,6 +4080,23 @@ both ways in §17b). The shape:
   anonymous one claims AFTER its rate limit, so a flood can't ride stored responses
   around the toll), and `enquiries submit` (claimed BEFORE its rate limit, so a
   legitimate retry never burns a slot). Rows pruned at 30 days by self-repair §4d.
+- **THE ONLINE WRITE PATHS CARRY IT TOO** (`chbOpFor`/`chbOpBump` in app.js; server:
+  `bookings add`/`update` joined the ledger; gated by ui-test-offline §12 +
+  test-integration §17g–i). The ambiguous timeout exists on good WiFi — a hand retry
+  rebuilds its payload from the FORM, so the id is DETERMINISTIC over the payload:
+  identical retry = same id (dedupes), any edited field = fresh id (an edited save must
+  never be answered from the stored response of the save it replaces), and `chbOpBump`
+  on each confirmed success makes re-stating an EARLIER value a new write, not a replay
+  (£100→£150→£100 would otherwise leave the DB at £150 while the ledger said done).
+  The guarded save LADDER shares one id: the clash refusal stores nothing, the override
+  post stores, so a retried ladder is answered at post ONE — no re-prompt, no duplicate.
+  Stamped in saveModal (add/update + the enquiry-edit resubmit) and recordPayment.
+  queueOrPost keeps its RANDOM id — the queue persists the stamped payload, so its
+  retries are the same object by construction; don't unify the two schemes.
+- **`oqFlush` claims its flag BEFORE the first await** — set after loading the queue,
+  two callers a few ms apart (the recovery's 60ms flush + the any-success hook) both
+  pass the guard and both post the same items: a double POST the ledger absorbs but
+  that should never reach the wire.
 - **`queueOrPost` queues ON FAILURE TO SEND, never on `navigator.onLine`** — the flag is
   true on a dead router, so the old gate threw the write away on exactly the connection
   the queue exists for. An `e.status` means the server ANSWERED: a refusal throws to the
@@ -4090,8 +4107,18 @@ both ways in §17b). The shape:
   router), and a refusal's toast now carries the item's label + the server's own words.
 - **Replay probes**: `online`, `visibilitychange`, and — the honest one — ANY successful
   apiPost (a request that just worked is the only real proof the link works; a router
-  back from the dead fires no event at all).
-- **The day-sheet captures** (admin.js `odsPay`/`odsDep`/`odsEnquiry`): record a cash
+  back from the dead fires no event at all). Plus **`pageshow` and `focus`** (gated on
+  known-off/queued state): iOS has no Background Sync, so replay hangs on the PAGE
+  waking, and a PWA resumed from background can arrive via bfcache or a bare refocus
+  (iPad split view) with no visibilitychange — the probe fires NOW, not in 15s
+  (ui-test-offline §11, deterministic: the interval timer is stopped first, so any
+  probe seen can only be the resume listener's).
+- **The day-sheet captures** (admin.js `odsPay`/`odsDep`/`odsEnquiry`/`odsExpense` —
+  the expense one reuses addExpense's payload + EXPENSE_CATS through queueOrPost, since
+  the server half was ledger-safe from the start and only the affordance was missing;
+  ui-test-offline §10 gates it, and NB its exactly-once assertion is ONE id across
+  every wire attempt + the queue draining, never a post COUNT — a resume-probe flush
+  while the API is still dead is a legitimate third attempt): record a cash
   payment (payload MIRRORS recordPayment's — cumulative rental vs `rtot`, deposit rides
   `deposit_collected` on 'paid' only; snapshot rows carry dbId/rtot/rpaid/dmg/holdNone
   for exactly this), the deposit DECISION (localStorage `chb-dep-decisions`, deliberately

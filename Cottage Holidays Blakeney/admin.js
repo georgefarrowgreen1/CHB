@@ -15136,7 +15136,13 @@ async function recordPayment(bookingId) {
         payload.payment_method = (vals.method || '').trim();
     }
     try {
-        await apiPost('bookings.php', { action: 'set_payment', ...payload });
+        // The direct-write ledger id (chbOpFor, app.js): a hand retry after an
+        // ambiguous timeout replays from the ledger; recording a DIFFERENT
+        // figure — or the same one again after a success — is a new write.
+        const body = { action: 'set_payment', ...payload };
+        body.op_id = chbOpFor(['set_payment', body]);
+        await apiPost('bookings.php', body);
+        chbOpBump();
         await loadData();
         renderCalendar();
         afterPaymentChange(bookingId);
@@ -17007,7 +17013,10 @@ function renderOfflineDaySheet() {
             ? '<h2 class="bo-sec-title">Cottage notes</h2>'
               + opsKeys.map((pk) => '<details class="ods-ops"><summary>' + e((s.cots || {})[pk] || pk) + '</summary><pre class="ods-pre">' + e(s.ops[pk]) + '</pre></details>').join('')
             : '')
-        + '<div style="margin:14px 0 24px;"><button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Someone rang? Save it as an enquiry</button></div>';
+        + '<div class="ods-btns" style="margin:14px 0 24px;">'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsEnquiry') + '>Someone rang? Save it as an enquiry</button>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('odsExpense') + '>Record an expense</button>'
+        + '</div>';
     return true;
 }
 // ── THE THREE CAPTURES — the writes a cottage doorstep actually needs, and
@@ -17156,6 +17165,46 @@ async function odsDepConfirmRun() {
             toast('Not done — ' + String((e && e.message) || 'the server refused').slice(0, 140));
         }
     }
+}
+// An expense, recorded at the door — "paid the cleaner £60 cash" is exactly
+// the write a no-signal morning produces, and the server half has been
+// ledger-safe since the queue shipped; this is the missing affordance. Same
+// payload as addExpense (the online form), through the same queueOrPost, so
+// it carries an op_id from birth and replays exactly once.
+async function odsExpense() {
+    const s = chbSnapRead(true) || {};
+    const cots = s.cots || {};
+    const propOpts = [{ value: '', label: 'General (no cottage)' }]
+        .concat(Object.keys(cots).map((k) => ({ value: k, label: cots[k] })));
+    const vals = await glassForm(
+        'It saves to this phone if there’s no signal, and posts itself when you’re back on.',
+        [
+            { id: 'amount', label: 'Amount (£)', type: 'text', value: '' },
+            { id: 'cat', label: 'Category', type: 'select', options: EXPENSE_CATS.map((c) => ({ value: c, label: c })) },
+            { id: 'desc', label: 'What it was', type: 'text', value: '' },
+            { id: 'prop', label: 'Cottage', type: 'select', options: propOpts },
+            { id: 'date', label: 'Date', type: 'date', value: todayDashed() },
+        ],
+        { title: 'Record an expense', okLabel: 'Record it' },
+    );
+    if (vals === null) return;
+    const amount = Math.round((parseFloat(vals.amount) || 0) * 100) / 100;
+    if (!(amount > 0)) {
+        glassAlert('Enter an amount greater than zero.');
+        return;
+    }
+    const res = await queueOrPost('expenses.php', {
+        action: 'add',
+        date: /^\d{4}-\d{2}-\d{2}$/.test(vals.date || '') ? vals.date : todayDashed(),
+        category: vals.cat || 'General',
+        amount,
+        prop: vals.prop || '',
+        description: String(vals.desc || '').slice(0, 200),
+        recurring: 0,
+    }, 'Expense — ' + (vals.cat || 'General'));
+    toast(res && res.queued
+        ? 'Saved on this phone — it posts itself when the signal returns.'
+        : 'Expense recorded.');
 }
 // A phone enquiry, jotted at the door — saved as an ENQUIRY, never a booking:
 // approval re-checks the calendar under book_lock, so dates that went to
