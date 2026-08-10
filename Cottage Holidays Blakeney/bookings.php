@@ -572,6 +572,12 @@ if ($action === 'delete') {
 // *-lib.php extractions exist for).
 
 if ($action === 'add') {
+    // Exactly-once for a hand-retried save: the client stamps a DETERMINISTIC
+    // op_id (chbOpFor — same form, same id; any edit, a fresh one), so a retry
+    // whose first attempt landed but lost its reply is answered from the
+    // ledger instead of double-adding the booking. Warn/clash/error exits
+    // below store nothing — a refusal must re-run (the op-ledger rule).
+    $opTok = op_claim($in);
     $propKey = clean($in['prop_key'] ?? '');
     $rate = get_rate($propKey);
     if (!$rate) {
@@ -743,10 +749,15 @@ if ($action === 'add') {
         ($priorStays > 0 ? 'Repeat guest booked — ' . $name . ' (' . ($priorStays + 1) . ' stays)' : 'Booking created — ' . $name),
         ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $newId, 'meta' => ['detail' => trim($checkIn . ' → ' . $checkOut)]],
     );
-    json_out(['ok' => true, 'id' => $newId, 'email' => $emailResult]);
+    json_out(op_finish($opTok, ['ok' => true, 'id' => $newId, 'email' => $emailResult]));
 }
 
 if ($action === 'update') {
+    // Same exactly-once posture as 'add'. The write itself is absolute values,
+    // so a double-apply would be harmless — what the ledger buys here is the
+    // retry being ANSWERED (with `material` intact) instead of re-walking the
+    // whole warn ladder against the row it already changed.
+    $opTok = op_claim($in);
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -1003,7 +1014,7 @@ if ($action === 'update') {
         || (int) $adults !== (int) ($b['adults'] ?? 0)
         || (int) $children !== (int) ($b['children'] ?? 0)
         || $priceOverride !== $oldOverride;
-    json_out(['ok' => true, 'material' => $material]);
+    json_out(op_finish($opTok, ['ok' => true, 'material' => $material]));
 }
 
 // Lightweight save of the owner-only staff note (from the booking details modal).

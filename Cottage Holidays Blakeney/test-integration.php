@@ -1419,6 +1419,45 @@ it_check('…and the refusal is NOT stored — the replay re-refuses, never repl
 $r = http($admin, 'POST', '/expenses.php', ['action' => 'add', 'category' => 'General', 'description' => 'op ledger loose id', 'amount' => 3, 'date' => '2026-08-01', 'op_id' => 'x']);
 it_check('a malformed op_id degrades to a plain write', ($r['json']['ok'] ?? false) === true, $r['raw']);
 
+// (g) THE ONLINE WRITE PATHS — bookings 'add' and 'update' joined the ledger
+// (the ambiguous timeout exists on good WiFi too; the client's chbOpFor
+// stamps a deterministic id). Two sends of one add = ONE booking; and the
+// clash LADDER shares an id: the refusal stores nothing, the override write
+// stores, and a replay of the whole ladder is answered at post one.
+$op5 = 'op-int-' . bin2hex(random_bytes(6));
+$addCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE name = 'Op Direct Add'")->fetchColumn();
+$mkAdd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => '2027-07-10', 'check_out' => '2027-07-13', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op5]);
+$r = $mkAdd();
+it_check('a booking add with an op_id applies once', ($r['json']['ok'] ?? false) && $addCount() === 1, $r['raw']);
+$newBid = (int) ($r['json']['id'] ?? 0);
+$r = $mkAdd();
+it_check('…and a hand retry lands ONE booking, not two', $addCount() === 1 && ($r['json']['replayed'] ?? false) === true && (int) ($r['json']['id'] ?? 0) === $newBid, 'rows=' . $addCount() . ' ' . $r['raw']);
+
+// (h) 'update' replays with its verdict intact (`material` rides the stored
+// response), and the row is not re-walked through the warn ladder.
+$op6 = 'op-int-' . bin2hex(random_bytes(6));
+$mkUpd = fn() => http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $newBid, 'prop_key' => $propKey, 'name' => 'Op Direct Add', 'check_in' => '2027-07-11', 'check_out' => '2027-07-14', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op6]);
+$r = $mkUpd();
+it_check('an update with an op_id applies (dates moved = material)', ($r['json']['ok'] ?? false) && ($r['json']['material'] ?? false) === true, $r['raw']);
+$r = $mkUpd();
+it_check('…and its replay is answered from the ledger, material intact', ($r['json']['replayed'] ?? false) === true && ($r['json']['material'] ?? false) === true, $r['raw']);
+$ci2 = (string) $rootDb->query("SELECT check_in FROM bookings WHERE id = $newBid")->fetchColumn();
+it_check('…with the row exactly as the first write left it', $ci2 === '2027-07-11', 'check_in=' . $ci2);
+
+// (i) THE CLASH LADDER UNDER ONE ID: the refusal exit stores NOTHING (a
+// refusal must re-run), the override write stores, and the retried ladder is
+// then answered at its first post — no duplicate even though the retry never
+// re-sent override_clash.
+$op7 = 'op-int-' . bin2hex(random_bytes(6));
+$ladCount = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE name = 'Op Ladder Add'")->fetchColumn();
+$ladder = fn(array $extra = []) => http($admin, 'POST', '/bookings.php', array_merge(['action' => 'add', 'prop_key' => $propKey, 'name' => 'Op Ladder Add', 'check_in' => '2027-07-11', 'check_out' => '2027-07-12', 'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'op_id' => $op7], $extra));
+$r = $ladder();
+it_check('post one of the ladder is refused as a clash (stored nothing)', ($r['json']['clash'] ?? false) === true && $ladCount() === 0, $r['raw']);
+$r = $ladder(['override_clash' => true]);
+it_check('the override post writes the booking under the same id', ($r['json']['ok'] ?? false) && $ladCount() === 1, $r['raw']);
+$r = $ladder();
+it_check('a retried ladder is answered at post ONE — no clash prompt, no duplicate', ($r['json']['replayed'] ?? false) === true && $ladCount() === 1, 'rows=' . $ladCount() . ' ' . $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
