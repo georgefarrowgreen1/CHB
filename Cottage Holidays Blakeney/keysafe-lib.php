@@ -108,6 +108,10 @@ function keysafe_read($raw)
         'setAt' => is_string($d['setAt'] ?? null) ? $d['setAt'] : '',
         'forBooking' => (int) ($d['forBooking'] ?? 0),
         'forStay' => $ref($d['forStay'] ?? ''),
+        // The per-cottage on/off switch (Settings → cottage → Private notes).
+        // Default ON: only an explicit false disables, so every record from
+        // before the toggle existed keeps working and garbage reads as on.
+        'enabled' => !(isset($d['enabled']) && $d['enabled'] === false),
         'history' => $hist,
     ];
 }

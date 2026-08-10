@@ -84,6 +84,12 @@ ok2('a direct stay ref round-trips', keysafe_read(['code' => '4821', 'forStay' =
 ok2('a garbage ref reads as none', keysafe_read(['code' => '4821', 'forStay' => '<script>x'])['forStay'] === '');
 ok2('an over-long ref reads as none', keysafe_read(['code' => '4821', 'forStay' => 'o:' . str_repeat('9', 60)])['forStay'] === '');
 ok2('history rows carry their ref through the sanitiser', keysafe_read(['code' => '4821', 'history' => [['code' => '9265', 'forStay' => 'o:2026-08-01']]])['history'][0]['forStay'] === 'o:2026-08-01');
+// The per-cottage switch: default ON — a record from before the toggle
+// existed keeps working, and only an explicit false turns it off.
+ok2('a record with no switch reads as ENABLED', keysafe_read(['code' => '4821'])['enabled'] === true);
+ok2('an explicit false disables', keysafe_read(['code' => '4821', 'enabled' => false])['enabled'] === false);
+ok2('garbage in the switch reads as enabled (never off by accident)', keysafe_read(['code' => '4821', 'enabled' => 'nope'])['enabled'] === true);
+ok2('the empty record is enabled', keysafe_read(null)['enabled'] === true);
 
 echo "§4 the reveal window, both sides of both boundaries\n";
 // KEYSAFE_REVEAL_DAYS = 2: check-in 2026-08-14 → visible from 2026-08-12.

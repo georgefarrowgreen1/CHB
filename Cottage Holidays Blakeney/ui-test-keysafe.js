@@ -36,6 +36,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (apiDead) return route.abort();
     if (url.includes('keysafe.php')) {
       if (b.action === 'state') return json({ ok: true, safes: { '21a': SAFE, 'jollyboat': SAFE_JB }, revealDays: 2 });
+      if (b.action === 'set_enabled') {
+        if (b.prop_key === 'jollyboat') { SAFE_JB = Object.assign({}, SAFE_JB, { enabled: !!b.enabled }); return json({ ok: true, safe: SAFE_JB }); }
+        SAFE = Object.assign({}, SAFE, { enabled: !!b.enabled }); return json({ ok: true, safe: SAFE });
+      }
       if (b.action === 'confirm') {
         const upd = (r) => Object.assign({}, r, { code: b.code, setAt: new Date().toISOString(), forBooking: b.booking_id, forStay: b.stay_ref || '', history: (r.code ? [{ code: r.code, setAt: r.setAt, forBooking: r.forBooking, forStay: r.forStay || '', guest: r.forBooking === 1 ? 'Hannah Whitlock' : '' }] : []).concat(r.history) });
         if (b.prop_key === 'jollyboat') { SAFE_JB = upd(SAFE_JB); return json({ ok: true, safe: SAFE_JB }); }
@@ -174,6 +178,39 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'and once the safe is set for them, the duty is gone');
   ok(/code on the safe ✓/.test(await page.evaluate(() => document.querySelectorAll('.ks-card')[1].textContent)),
     'the card flips — the platform stay wears the same ✓ a direct one does');
+
+  console.log('§7 the per-cottage switch (Settings → cottage → Private notes)');
+  // Reset 21a to "rotation pending" so the duty is live, then switch OFF.
+  SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, forStay: 'b:1', history: [], name: '21A Westgate', enabled: true };
+  await page.evaluate(async () => { __keysafe = null; await keysafeLoad(); });
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 1, '(fixture) the rotation duty is live');
+  // The REAL settings checkbox drives the switch (openArea → accommodations
+  // index → the cottage → Private notes, the poorsignal §9d idiom).
+  // openArea's post-load repaint re-shows the INDEX, so drilling in the same
+  // breath gets undone — open, let it settle, then drill (what a thumb does).
+  await page.evaluate(async () => { await openArea(); });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); settingsOpenAccomSec('21a', 'opsnotes'); });
+  await page.waitForTimeout(500);
+  const cb = page.locator('#ks-toggle-21a');
+  ok(await cb.isChecked(), 'the Private-notes section carries the keeper toggle, ON by default');
+  await cb.click();
+  await page.waitForTimeout(700);
+  ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled === false), 'unticking it turns the keeper OFF for that cottage');
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 0, '…and the rotation duty stands down');
+  ok(await page.evaluate(() => {
+    const rows = [{ pk: '21a', cot: '21A', dbId: 2, nm: 'Marcus', ci: (window.todayDashed)(), co: '', due: 0, dep: 0 }];
+    return !/key safe/i.test(odsDutiesHtml(rows));
+  }), 'the offline sheet mints nothing for it either');
+  await page.evaluate(async () => { await openKeysafe(); });
+  await page.waitForTimeout(700);
+  const offCard = await page.evaluate(() => (document.querySelector('.ks-card.ks-off') || {}).textContent || '');
+  ok(/Keeper is off for this cottage/.test(offCard) && /guests are shown nothing/.test(offCard), 'the page card says it is off — and what that means');
+  ok(/Turn on/.test(offCard), '…with the way back on, never a dead end');
+  await page.locator('.ks-card.ks-off button', { hasText: 'Turn on' }).click();
+  await page.waitForTimeout(700);
+  ok(await page.evaluate(() => (__keysafe['21a'] || {}).enabled !== false), 'Turn on restores it');
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /21A/.test(x.label)).length) === 1, '…duty and all — the record was kept, not erased');
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nKEYSAFE UI PASSED ✅');
   await done(fails);
