@@ -133,7 +133,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await page.evaluate(() => document.body.classList.contains('offline-snap')), 'the offline-snap state is on');
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet rendered from the snapshot');
   const sheet = await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent || '');
-  ok(/No connection/.test(sheet) && /saved (this morning|today|yesterday) at /.test(sheet), 'the marker says what this is and when it was saved, in the day\'s terms');
+  ok(/Offline/.test(sheet) && /saved (this morning|today|yesterday) at /.test(sheet), 'the marker says what this is and when it was saved, in the day\'s terms');
   ok(/Marcus Ellery/.test(sheet) && /£340\.00 to collect/.test(sheet), 'the arriving guest and his balance are on it — the bookingDue figure, deposit folded in');
   ok(/Late arrival — after 18:00/.test(sheet), 'the note that matters this morning survived');
   ok(/Key safe 9999/.test(sheet.replace(/\s+/g, ' ')) || await page.evaluate(() => { const o = document.querySelector('#offline-daysheet .ods-ops'); return o ? /Key safe 9999/.test(o.textContent) : false; }), 'the cottage notes are readable on it');
@@ -752,6 +752,121 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await page.evaluate(() => !document.body.classList.contains('offline-snap') && !document.getElementById('offline-daysheet')),
     'the first live probe swaps it all back — sheet gone, live Today');
   ok(await dockVis('view-inbox'), 'and the full menu returns');
+
+  // ── §20 THE OFFLINE EXPERIENCE — the machinery made visible: the banner's
+  //     living freshness + probe whisper, the queue in words (sheet section +
+  //     pill tray), the reconnect play-by-play, needs-signal titles, the
+  //     assistant's offline landing, the A2HS nudge and the guest note.
+  console.log('§20 the offline experience');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(); // fresh hint + snapshot
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  // (a) the banner's living parts + the entrance + an empty queue section
+  ok(await page.evaluate(() => /just now|min ago/.test((document.getElementById('ods-fresh') || {}).textContent || '')),
+    'the banner carries a LIVE freshness readout, not just a timestamp');
+  ok(await page.evaluate(() => !document.querySelector('.ods-mark.is-stale')), 'a fresh snapshot is not graded stale');
+  ok(await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).classList.contains('ods-enter')),
+    'the takeover is a moment — the sheet enters, it does not jump-cut');
+  ok(await page.evaluate(() => (document.getElementById('ods-queue') || {}).style.display === 'none'),
+    'with nothing queued, no queue section poses as content');
+  // (b) the probe is visible where it matters — AFTER the boot's own loadData
+  // has failed and re-rendered the sheet (its innerHTML rebuild would wipe the
+  // probe text written between the two renders)
+  await settle(3500);
+  await page.evaluate(() => { chbNetProbe(); });
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => /checking/.test((document.getElementById('ods-probe') || {}).textContent || '')),
+    'a probe in flight says "checking the connection…" on the banner');
+  // (g) a dimmed Tier-C control explains itself on hover
+  ok(await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.setAttribute('data-act', 'requestPayment');
+    document.body.appendChild(b);
+    b.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    const t = b.getAttribute('title') || '';
+    b.remove();
+    return /Needs signal/.test(t);
+  }), 'a dimmed money control grows a "needs signal" title under the pointer');
+  // (c) a queued capture shows up IN WORDS — on the sheet and behind the pill
+  await page.locator('#offline-daysheet button', { hasText: 'Record an expense' }).click();
+  await page.waitForTimeout(400);
+  await gdSet('amount', '25');
+  await gdSet('desc', 'Cleaner top-up');
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1200);
+  ok(await page.evaluate(() => {
+    const q = document.getElementById('ods-queue');
+    return !!q && q.style.display !== 'none' && /Waiting to send/.test(q.textContent) && /Expense/.test(q.textContent) && /posts itself/.test(q.textContent);
+  }), 'the sheet lists the queued write in words — what, when, and what happens next');
+  await page.locator('#offline-pill').click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => {
+    const m = document.getElementById('glass-dialog-msg');
+    return !!m && /Waiting to send/.test(m.textContent || '') && /Expense/.test(m.textContent || '');
+  }), 'tapping the pill opens the same tray from anywhere');
+  await page.evaluate(() => glassDialogResolve(true));
+  await page.waitForTimeout(300);
+  // (d) a stale snapshot is GRADED, not just dated
+  await page.evaluate(() => {
+    __chbSnapCache.at = Date.now() - 7 * 3600e3;
+    renderOfflineDaySheet();
+  });
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => !!document.querySelector('.ods-mark.is-stale') && /h ago/.test((document.getElementById('ods-fresh') || {}).textContent || '')),
+    'a 7-hour-old sheet turns the banner amber and says so');
+  await page.evaluate(() => { __chbSnapCache.at = Date.now(); renderOfflineDaySheet(); });
+  // (e) the assistant's landing has an offline board, attributed
+  await page.evaluate(() => openCmdK());
+  await page.waitForTimeout(900);
+  ok(await page.evaluate(() => {
+    const t = (document.getElementById('cmdk') || {}).textContent || '';
+    return /From the saved day sheet/.test(t) && / in · /.test(t);
+  }), 'the landing leads with the saved day — counts and money, each attributed to the sheet');
+  await page.evaluate(() => closeCmdK());
+  // (i) the A2HS nudge — once, and only where it is true
+  ok(await page.evaluate(() => {
+    isAppleTouchDevice = () => true;
+    isStandalonePwa = () => false;
+    localStorage.removeItem('chb-a2hs-nudged');
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    odsA2hsNudge();
+    return /Add to Home Screen/.test((document.getElementById('app-toasts') || {}).textContent || '');
+  }), 'an un-installed Apple device gets the Add-to-Home-Screen tip');
+  ok(await page.evaluate(() => {
+    document.querySelectorAll('.toast').forEach((t) => t.remove());
+    odsA2hsNudge();
+    return !/Add to Home Screen/.test((document.getElementById('app-toasts') || {}).textContent || '');
+  }), '…exactly once — the second call says nothing');
+  // (f) the reconnect play-by-play: the flush is VISIBLE, then everything swaps
+  apiDead = false;
+  await page.evaluate(() => chbNetProbe());
+  let syncSeen = false;
+  for (let t = 0; t < 20 && !syncSeen; t++) {
+    await page.waitForTimeout(300);
+    syncSeen = await page.evaluate(() => {
+      const el = document.getElementById('oq-sync');
+      return !!el && el.classList.contains('show') && /sent ✓|Sending/.test(el.textContent || '');
+    });
+  }
+  ok(syncSeen, 'the sync strip narrates the replay ("Sending 1 of 1 — …" → "sent ✓")');
+  await page.waitForTimeout(3000);
+  ok(await page.evaluate(() => !document.getElementById('offline-daysheet')), '(fixture) the sheet swapped for live Today');
+  // (h) a GUEST is told once, kindly
+  await page.evaluate(() => forceAdminLogout());
+  await page.waitForTimeout(400);
+  apiDead = true;
+  await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); window.dispatchEvent(new Event('offline')); });
+  await page.waitForTimeout(500);
+  ok(await page.evaluate(() => /availability and booking need a connection/.test((document.getElementById('app-toasts') || {}).textContent || '')),
+    'a guest going offline is told the saved pages still work — once');
+  await page.evaluate(() => { document.querySelectorAll('.toast').forEach((t) => t.remove()); window.dispatchEvent(new Event('offline')); });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => !/availability and booking/.test((document.getElementById('app-toasts') || {}).textContent || '')),
+    '…and never nagged again this session');
+  apiDead = false;
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
