@@ -607,6 +607,63 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     });
   }), 'logout deletes the at-rest key — a fresh sign-in mints a fresh one');
 
+  // ── §17 THE ASSISTANT ANSWERS OFFLINE — from the day sheet. On an offline
+  //     BOOT the stores are empty, so the store-backed families would report a
+  //     business with no bookings (the poor-signal lie, in the assistant); the
+  //     snapshot tier answers arrivals/departures/money/names instead, each
+  //     attributed to the saved sheet — and the SERVER tiers are refused up
+  //     front rather than spending timeouts per keystroke.
+  console.log('§17 the assistant answers offline');
+  apiDead = false;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle();                       // fresh sign-in + snapshot
+  apiDead = true;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await settle(3500);
+  ok(await page.evaluate(() => !!document.getElementById('offline-daysheet') && document.body.classList.contains('net-off')),
+    '(fixture) offline boot, day sheet up, verdict off');
+  const askOff = async (q) => {
+    await page.evaluate((q2) => {
+      openCmdK();
+      const el = document.getElementById('cmdk-input');
+      if (el) el.value = q2;
+      cmdkSearchCore(q2, false);
+    }, q);
+    await page.waitForTimeout(600);
+    return page.evaluate(() => (__cmdkResults || []).map((r) => (r.label || '') + ' ¦ ' + (r.sub || '')).join('\n'));
+  };
+  const arr = await askOff('who arrives today');
+  ok(/Marcus arrives today\./.test(arr), 'arrivals are answered by NAME from the saved sheet');
+  ok(/From the saved day sheet/.test(arr), '…and the answer says where it came from');
+  const owed = await askOff('who owes me money');
+  ok(/£340\.00 to collect — Marcus £340\.00\./.test(owed), 'the money question answers with the sheet\'s own figures');
+  const nm = await askOff('hannah');
+  ok(/Hannah Whitlock — 21A Westgate/.test(nm) && /07700 900110/.test(nm),
+    'a name lookup returns the phone number and the stay — with no data at all');
+  // the server tiers are refused up front, not timed out
+  const preSearch = posts.filter((p2) => p2.__f === 'search.php').length;
+  await page.evaluate(() => cmdkDeepOpen());
+  await page.waitForTimeout(400);
+  ok(posts.filter((p2) => p2.__f === 'search.php').length === preSearch,
+    '"search everything" while known-off sends NOTHING — refused up front');
+  ok(await page.evaluate(() => __cmdkDeepErr !== null), '…and lands on the honest error state, instantly');
+  // The tier can NEVER shadow live data — TWO gates, each tested where it
+  // bites. NB the second is the one that matters: the first draft only tested
+  // online, and deleting the stores gate left it green because the verdict
+  // gate answered first (the mis-aimed-break-test lesson).
+  apiDead = false;
+  await page.evaluate(() => closeCmdK());
+  await page.evaluate(() => odsRetry());
+  await settle(2500);
+  ok(await page.evaluate(() => chbSnapAnswers('who arrives today') === null),
+    'online, the verdict gate abstains');
+  apiDead = true;
+  await page.evaluate(() => apiPost('bookings.php', { action: 'history', id: 2 }).catch(() => {}));
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => document.body.classList.contains('net-off') && chbSnapAnswers('who arrives today') === null),
+    'offline MID-SESSION with stores loaded it still abstains — live data stays in charge');
+  apiDead = false;
+
   console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nOFFLINE SUITE PASSED ✅');
   await done(fails);
 })();

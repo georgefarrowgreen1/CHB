@@ -4146,6 +4146,18 @@ both ways in §17b). The shape:
   today's (break-tested); the weather payload carries dated days, so it survives the
   roll-over on its own. chbSnapWrite carries `prev.coast` forward, or every rebuild
   between patches would throw away what the offline morning needs.
+- **THE ASSISTANT ANSWERS OFFLINE, FROM THE DAY SHEET** (`chbSnapAnswers`, consulted
+  FIRST in cmdkBuildResults; gated by ui-test-offline §17). On an offline BOOT the
+  stores are empty, so every store-backed family would report a business with no
+  bookings — the poor-signal lie, in the assistant. The snapshot tier answers the
+  day-sheet questions (arrivals/departures/staying/money/a name, with the phone
+  number), each attributed "From the saved day sheet". **Two abstain gates, and the
+  break-test lesson lives in the second**: the verdict gate (online → null) and the
+  stores gate (offline MID-SESSION with stores loaded → null, live data stays in
+  charge) — the first draft only tested online, and deleting the stores gate left it
+  green because the verdict gate answered first. Test each gate where it bites.
+  `cmdkServerSearch` and `cmdkDeepFetch` refuse up front while known-off (the deep one
+  onto its existing honest error state) instead of spending 5s timeouts per keystroke.
 - **NB ui-test-poorsignal §7 must DRAIN the recovery's own reads before seeding** —
   chbNetRecover's fire-and-forget initBackOffice issues loadDepositReturns, and under
   CI's 3-suite load its generic 200 landed MID-SEED and wiped the fixture (the check
