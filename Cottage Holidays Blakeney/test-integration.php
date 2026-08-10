@@ -1478,6 +1478,70 @@ $r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' =
 $evFiles2 = glob($work . '/uploads/deposit-evidence-' . $evBid2 . '-*.jpg') ?: [];
 it_check('a MALFORMED photo is ignored and the refund still stands (best-effort contract)', ($r['json']['ok'] ?? false) && count($evFiles2) === 0, $r['raw'] . ' files=' . count($evFiles2));
 
+// ══════════════════════════════════════════════════════════════════════════
+// §18 THE KEY SAFE KEEPER — the reveal gate and the replay, against the real
+// stack (encrypted content row, op ledger, the payload the guest's page
+// reads). The rule under test is the owner's own: the guest is shown a code
+// ONLY once the safe is confirmed set FOR their booking and arrival is near.
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA718 the key safe keeper\n";
+
+// A guest arriving TOMORROW — inside the reveal window (2 days) from today.
+$ksIn = date('Y-m-d', time() + 86400);
+$ksOut = date('Y-m-d', time() + 4 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Keysafe Guest','ks@gmail.com','$ksIn','$ksOut',2,0,'paid',300,300,300,0,3)");
+$ksBid = (int) $rootDb->lastInsertId();
+// …and one arriving in a MONTH — a confirmed code must still not show yet.
+$ksFarIn = date('Y-m-d', time() + 30 * 86400);
+$ksFarOut = date('Y-m-d', time() + 33 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Keysafe Far','ksfar@gmail.com','$ksFarIn','$ksFarOut',2,0,'paid',300,300,300,0,3)");
+$ksFarBid = (int) $rootDb->lastInsertId();
+$ksPayload = fn($bid) => http($admin, 'GET', '/my-bookings.php?acctpreview=' . $bid)['json']['bookings'][0] ?? [];
+
+// (a) BEFORE any confirm: the payload carries no code and no promise.
+$bk = $ksPayload($ksBid);
+it_check('before any confirm, the guest page gets NO code and NO promised date', ($bk['door_code'] ?? null) === null && ($bk['door_code_from'] ?? null) === null, json_encode([$bk['door_code'] ?? 'absent', $bk['door_code_from'] ?? 'absent']));
+
+// (b) A junk code is refused; nothing is stored.
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '1234', 'booking_id' => $ksBid]);
+it_check('a junk code (1234) is refused in words', ($r['json']['error'] ?? '') !== '' && $r['code'] === 400, $r['raw']);
+
+// (c) The confirm writes the record — and the guest INSIDE the window sees it.
+$ksOp = 'op-int-' . bin2hex(random_bytes(6));
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '4821', 'booking_id' => $ksBid, 'op_id' => $ksOp]);
+it_check('the owner’s confirm records the safe', ($r['json']['ok'] ?? false) && ($r['json']['safe']['code'] ?? '') === '4821', $r['raw']);
+$bk = $ksPayload($ksBid);
+it_check('…and the guest arriving tomorrow now sees 4821 on their page', ($bk['door_code'] ?? null) === '4821', json_encode($bk['door_code'] ?? 'absent'));
+
+// (d) The row is ENCRYPTED at rest — the raw content value never contains the code.
+$ksRaw = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'keysafe-$propKey'")->fetchColumn();
+it_check('the stored record is ciphertext (no plaintext 4821 in the content table)', $ksRaw !== '' && strpos($ksRaw, '4821') === false, substr($ksRaw, 0, 40));
+
+// (e) …and the activity log records THAT it rotated, never the code.
+$ksLog = (string) $rootDb->query("SELECT summary FROM activity_log WHERE action = 'keysafe.rotate' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('the activity log names the rotation without the code', $ksLog !== '' && strpos($ksLog, '4821') === false, $ksLog);
+
+// (f) The replay applies ONCE: same op_id → answered from the ledger, and the
+// history did not grow a duplicate row.
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '4821', 'booking_id' => $ksBid, 'op_id' => $ksOp]);
+$ksState = http($admin, 'POST', '/keysafe.php', ['action' => 'state'])['json']['safes'][$propKey] ?? [];
+it_check('a replayed confirm is answered from the ledger, history unchanged', ($r['json']['replayed'] ?? false) === true && count($ksState['history'] ?? []) === 0, 'hist=' . count($ksState['history'] ?? []) . ' ' . $r['raw']);
+
+// (g) The wrong DIRECTION of the gate: a confirmed code for a guest a MONTH
+// out shows NO code — only the dated promise.
+$r = http($admin, 'POST', '/keysafe.php', ['action' => 'confirm', 'prop_key' => $propKey, 'code' => '7302', 'booking_id' => $ksFarBid, 'op_id' => 'op-int-' . bin2hex(random_bytes(6))]);
+it_check('(fixture) rotated for the far-out guest', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$bk = $ksPayload($ksFarBid);
+$ksFrom = date('Y-m-d', strtotime($ksFarIn . ' 12:00:00 UTC') - 2 * 86400);
+it_check('a guest a month out gets NO code, only the date it will appear', ($bk['door_code'] ?? null) === null && ($bk['door_code_from'] ?? null) === $ksFrom, json_encode([$bk['door_code'] ?? 'absent', $bk['door_code_from'] ?? 'absent']));
+// …and the rotation moved the SAFE, so the near guest's page stops showing a
+// code the safe no longer carries (forBooking is someone else now).
+$bk = $ksPayload($ksBid);
+it_check('the near guest no longer sees the superseded code', ($bk['door_code'] ?? null) === null, json_encode($bk['door_code'] ?? 'absent'));
+// …and the history now names the first rotation's guest.
+$ksState = http($admin, 'POST', '/keysafe.php', ['action' => 'state'])['json']['safes'][$propKey] ?? [];
+it_check('the history names who had the previous code', ($ksState['history'][0]['guest'] ?? '') === 'Keysafe Guest' && ($ksState['history'][0]['code'] ?? '') === '4821', json_encode($ksState['history'][0] ?? null));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

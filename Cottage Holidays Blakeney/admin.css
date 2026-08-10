@@ -4826,3 +4826,97 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   gap: 8px;
   margin-top: 9px;
 }
+
+/* ── THE KEY SAFE KEEPER (view-keysafe — the key in the dock). One card per
+   cottage: hairline kv rows (the hub's grouped-row shape), the code in the
+   serif at figure size (the one-big-figure register), history behind a
+   <details> because the everyday question is "what is it NOW". ── */
+.ks-card {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border-radius: var(--r-lg);
+}
+.ks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ks-head .prop-tag {
+  margin-bottom: 0;
+}
+.ks-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.86rem;
+}
+.ks-kv:last-of-type {
+  border-bottom: 0;
+}
+.ks-k {
+  color: var(--text-muted);
+  min-width: 0;
+}
+.ks-k small,
+.ks-v small {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+.ks-v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ks-code {
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  letter-spacing: 0.18em;
+  color: var(--accent-text);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm, 12px);
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+.ks-hist summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 8px 0 2px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.ks-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+.ks-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px 6px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.ks-table td {
+  padding: 7px 8px 7px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-variant-numeric: tabular-nums;
+}
+.ks-table .ks-code {
+  font-size: 0.95rem;
+}
+.ks-note {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  margin: 10px 0 0;
+}

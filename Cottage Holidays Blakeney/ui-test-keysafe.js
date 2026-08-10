@@ -1,0 +1,152 @@
+// THE KEY SAFE KEEPER, in a real browser against a stubbed keysafe.php:
+//  §1 the key is in the dock and opens its own page
+//  §2 the page states the record: code, who it's set for, what the guest sees
+//  §3 the rotate flow — a fresh code offered, junk refused, and ONLY the
+//     confirm posts (with an op_id); the card flips to "code on the safe ✓"
+//  §4 the rotation DUTY on Needs-you — red when the next guest's reveal
+//     window is open, gone once the safe is confirmed
+//  §5 the offline shape: the day sheet's duty wiring, and a dead-link capture
+//     queues the confirm exactly once (one op_id across every attempt)
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
+let fails = 0;
+const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
+
+(async () => {
+  const { page, base, done } = await boot({ viewport: { width: 1280, height: 950 } });
+  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+
+  // Hannah left this morning (her code is still on the safe); Marcus arrives
+  // TOMORROW — inside the 2-day reveal window, so the duty must be red.
+  const BOOKINGS = [
+    { id: 1, prop_key: '21a', name: 'Hannah Whitlock', email: 'h@x.co', phone: '', address: '', postcode: '', check_in: d(-5), check_out: d(0), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-9), agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30), hold_status: 'none', notes: '' },
+    { id: 2, prop_key: '21a', name: 'Marcus Ellery', email: 'm@x.co', phone: '', address: '', postcode: '', check_in: d(1), check_out: d(4), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-9), agreed_total: 440, agreed_per_night: 130, agreed_nights: 3, agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(-30), hold_status: 'none', notes: '' },
+  ];
+  // The stubbed safe record: still set for HANNAH (booking 1).
+  let SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, history: [{ code: '3074', setAt: d(-15) + 'T09:00:00Z', forBooking: 0, guest: 'Priya Raman' }], name: '21A Westgate' };
+  const confirms = []; // every confirm POST the wire sees
+  let apiDead = false;
+  await page.route(/\.php/, (route) => {
+    const url = route.request().url();
+    const post = route.request().postData() || '';
+    const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    let b = {}; try { b = JSON.parse(post || '{}'); } catch (e) {}
+    if (url.includes('keysafe.php') && b.action === 'confirm') confirms.push(b);
+    if (apiDead) return route.abort();
+    if (url.includes('keysafe.php')) {
+      if (b.action === 'state') return json({ ok: true, safes: { '21a': SAFE }, revealDays: 2 });
+      if (b.action === 'confirm') {
+        SAFE = Object.assign({}, SAFE, { code: b.code, setAt: new Date().toISOString(), forBooking: b.booking_id, history: [{ code: '9265', setAt: SAFE.setAt, forBooking: 1, guest: 'Hannah Whitlock' }].concat(SAFE.history) });
+        return json({ ok: true, safe: SAFE });
+      }
+    }
+    if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
+    if (url.includes('bookings.php')) {
+      if (b.action === 'email_logs') return json({ ok: true, logs: {} });
+      if (b.action === 'history') return json({ ok: true, history: [] });
+      return json({ bookings: BOOKINGS });
+    }
+    return json({ ok: true, bookings: BOOKINGS, enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] });
+  });
+
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
+  await page.evaluate(() => window.loadAdminBundle());
+  await page.waitForTimeout(800);
+  await page.evaluate(async () => { await openBookings(); });
+  await page.waitForTimeout(1600);
+
+  console.log('§1 the key in the dock, the page behind it');
+  const dockKey = page.locator('.admin-dock-btn[data-view="view-keysafe"]');
+  ok(await dockKey.count() === 1, 'the dock carries a Key safes button');
+  ok((await dockKey.getAttribute('aria-label')) === 'Key safes', '…named, not just an icon');
+  await dockKey.click();
+  await page.waitForTimeout(900);
+  ok(await page.evaluate(() => document.getElementById('view-keysafe').classList.contains('active')), 'tapping it lands on the key safe page');
+
+  console.log('§2 the page states the record');
+  const body = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
+  ok(/9265/.test(body), 'the current code is stated');
+  ok(/Hannah Whitlock/.test(body) || /for Hannah/.test(body), '…and who the safe is set for');
+  ok(/Marcus Ellery/.test(body), 'the next guest is named');
+  ok(/no code set for them/.test(body), '…with the honest state: no code on the safe for them yet');
+  ok(/nowhere yet — the code appears only after you confirm/.test(body), 'and the guest-visibility line says the reveal waits on the confirm');
+  ok(/Priya Raman/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the history names who had which code');
+
+  console.log('§3 the rotate flow');
+  await page.locator('#keysafe-body button', { hasText: 'Rotate the code' }).click();
+  await page.waitForTimeout(400);
+  const pre = await page.evaluate(() => (document.getElementById('gdf-code') || {}).value || '');
+  ok(/^\d{4}$/.test(pre), 'a fresh 4-digit code is filled in (' + pre + ')');
+  ok(await page.evaluate((c) => !keysafeBad(c), pre), '…and it is never junk');
+  // Junk typed by hand is refused, and NOTHING was posted.
+  await page.evaluate(() => { document.getElementById('gdf-code').value = '1234'; });
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => (document.getElementById('glass-dialog-msg') || {}).textContent || ''), '(fixture) an alert answered');
+  ok(confirms.length === 0, 'a junk code posts NOTHING — the refusal happens before the wire');
+  await page.evaluate(() => glassDialogResolve(true));
+  await page.waitForTimeout(300);
+  // The real rotation: overtype a chosen code, confirm.
+  await page.locator('#keysafe-body button', { hasText: 'Rotate the code' }).click();
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { document.getElementById('gdf-code').value = '4826'; });
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(900);
+  ok(confirms.length === 1 && confirms[0].code === '4826' && confirms[0].booking_id === 2, 'the confirm posts the code FOR the next booking');
+  ok(typeof confirms[0].op_id === 'string' && confirms[0].op_id.length > 6, '…stamped with an op_id (the offline replay contract)');
+  const body2 = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
+  ok(/4826/.test(body2) && /code on the safe ✓/.test(body2), 'the card flips: 4826, on the safe for Marcus');
+  ok(/on their booking page now|on their booking page from/.test(body2), '…and says where (and when) Marcus sees it');
+  ok(/Hannah Whitlock/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the superseded code joined the history under Hannah’s name');
+
+  console.log('§4 the rotation duty on Needs-you');
+  // Reset the record to "still Hannah's" and reload the mirror: the duty fires.
+  SAFE = { code: '9265', setAt: d(-8) + 'T09:00:00Z', forBooking: 1, history: [], name: '21A Westgate' };
+  await page.evaluate(async () => { __keysafe = null; await keysafeLoad(); });
+  const duties = await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe'));
+  const duty0 = duties[0] || {};
+  ok(duties.length === 1, 'one rotation duty for the cottage');
+  ok(duty0.sev === 'danger', '…RED — Marcus arrives tomorrow, his reveal window is open and empty');
+  ok(/Rotate 21A/.test(duty0.label || '') && /Marcus Ellery/.test(duty0.sub || ''), 'it names the cottage and the guest');
+  await page.evaluate(async () => { await openBookings(); renderNeedsYou(); });
+  await page.waitForTimeout(600);
+  ok(await page.evaluate(() => /Rotate 21A/.test((document.getElementById('needs-you-list') || {}).textContent || '')), 'and it renders on Today’s strip');
+  // Confirmed for Marcus → the duty stands down (never nags a done job).
+  await page.evaluate(() => { __keysafe['21a'] = Object.assign({}, __keysafe['21a'], { code: '4826', forBooking: 2 }); });
+  ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe').length) === 0, 'once the safe is set for him, the duty is gone');
+  // …and no mirror means NO duty — never a duty from ignorance.
+  ok(await page.evaluate(() => { const keep = __keysafe; __keysafe = null; const n = chbDuties().filter((x) => x.kind === 'keysafe').length; __keysafe = keep; return n; }) === 0, 'an unloaded mirror mints no duty');
+
+  console.log('§5 the offline shape');
+  // (a) the day sheet's duty wiring: a row arriving today whose booking the
+  // safe isn't set for → a keysafe duty routed to the CAPTURE.
+  const sheetDuty = await page.evaluate(() => {
+    __keysafe = { '21a': { code: '9265', forBooking: 1, history: [], name: '21A Westgate' } };
+    const rows = [{ pk: '21a', cot: '21A Westgate', dbId: 2, nm: 'Marcus Ellery', ci: (window.todayDashed)(), co: '', due: 0, dep: 0 }];
+    return odsDutiesHtml(rows);
+  });
+  ok(/Rotate 21A Westgate’s key safe/.test(sheetDuty) && /odsKeysafe/.test(sheetDuty), 'the sheet mints the duty and routes it to the offline capture');
+  ok(/ny-danger/.test(sheetDuty), '…red on arrival day');
+  ok(await page.evaluate(() => { const rows = [{ pk: '21a', cot: '21A', dbId: 1, nm: 'Hannah', ci: (window.todayDashed)(), co: '', due: 0, dep: 0 }]; return !/key safe/.test(odsDutiesHtml(rows)); }), 'a row the safe IS set for mints nothing');
+  // (b) the capture queues the confirm EXACTLY once — one op_id, however many
+  // wire attempts a dead link produces.
+  apiDead = true;
+  confirms.length = 0;
+  // NOT awaited — odsKeysafe resolves only when its dialog is answered, and
+  // the next lines are what answer it (awaiting would deadlock the suite).
+  page.evaluate(() => odsKeysafe('21a')).catch(() => {});
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { document.getElementById('gdf-code').value = '5917'; });
+  await page.locator('#glass-dialog-ok').click();
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => oqFlush());
+  await page.waitForTimeout(1200);
+  const ids = [...new Set(confirms.map((c) => c.op_id))];
+  ok(confirms.length >= 1 && ids.length === 1, `every wire attempt carries ONE op_id (${confirms.length} attempt(s), ${ids.length} id) — the ledger's exactly-once contract`);
+  ok(await page.evaluate(() => (__keysafe['21a'] || {}).code === '5917'), 'the local mirror updated at once — the sheet stops nagging before the signal returns');
+  apiDead = false;
+
+  console.log(fails ? `\n${fails} CHECK(S) FAILED ❌` : '\nKEYSAFE UI PASSED ✅');
+  await done(fails);
+})();

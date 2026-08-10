@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 444;
+const ADMIN_BUNDLE_V = 445;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 164;
+const ADMIN_CSS_V = 165;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -141,7 +141,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","confirmReturnSettled","timelineToday","inboxFolder","mailboxTab","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openKeysafe","renderKeysafe","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveBacsDetails","saveDepositPct","saveGoogleReviewUrl","saveSquareLocation","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -1772,6 +1772,11 @@ function mapBookingFromApi(row) {
         // A single "one payment" consent in trouble — no schedule block, but it
         // must not read as healthy (the monthly plan carries its own trouble).
         autopayTrouble: row.autopay_trouble && typeof row.autopay_trouble === 'object' ? row.autopay_trouble : null,
+        // The door code (my-bookings.php only) — present ONLY once the owner
+        // has confirmed the safe is set for THIS stay and arrival is near;
+        // doorCodeFrom is the date it will appear once a confirmed code exists.
+        doorCode: typeof row.door_code === 'string' && row.door_code !== '' ? row.door_code : '',
+        doorCodeFrom: row.door_code_from ? String(row.door_code_from).slice(0, 10) : '',
         // The raw plan columns (owner rows carry them via SELECT *): the back
         // office derives DISPLAY from these; every charged figure stays
         // server-derived.
@@ -1867,7 +1872,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-keysafe'];
 // Account preview (admin-only, read-only): opening the app with
 // ?acctpreview=<bookingId> — inside a sandboxed iframe the owner launches from the
 // back office — renders THAT customer's account exactly as the customer sees it.
@@ -2214,6 +2219,11 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-activity-log') {
         try {
             renderActivityLog();
+        } catch (e) {}
+    }
+    if (viewId === 'view-keysafe') {
+        try {
+            renderKeysafe();
         } catch (e) {}
     }
     if (viewId === 'view-cottages') {
@@ -4167,6 +4177,7 @@ async function renderGuestBookings() {
                                 <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
                             </div>
                         </div>
+                        ${guestDoorCodeHtml(b)}
                         <div class="instay-tides" style="margin-top:12px;"></div>
                         <div class="hub-grid">
                             <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
@@ -4274,6 +4285,26 @@ function guestPlanBlockHtml(p, payToken, dbId) {
             ${fix}
         </div>`;
 }
+// The door code on the guest's own page — the surface the arrival email's
+// "your entry details appear on your booking page" sentence points at. The
+// server (my-bookings.php) only sends `doorCode` once the owner has confirmed
+// the safe is SET for this stay and arrival is near, so rendering is simply:
+// show what we were sent, promise only what carries a date, say nothing
+// otherwise. Never cached client-side beyond the payload it rode in on.
+function guestDoorCodeHtml(b) {
+    if (b.doorCode) {
+        return `<div class="hub-doorcode" role="group" aria-label="Your door code">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4.5"/><path d="M11.5 11.5 20 3"/><path d="M16.5 6.5 19 9"/><path d="M14 9l2 2"/></svg>
+                <span class="hub-doorcode-lbl">Key safe code</span>
+                <span class="hub-doorcode-fig">${escapeHtml(b.doorCode)}</span>
+            </div>`;
+    }
+    if (b.doorCodeFrom) {
+        return `<div class="hub-doorcode is-wait"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="14" r="4.5"/><path d="M11.5 11.5 20 3"/><path d="M16.5 6.5 19 9"/></svg><span class="hub-doorcode-lbl">Your key safe code appears here from ${escapeHtml(fmtDate(b.doorCodeFrom))}</span></div>`;
+    }
+    return '';
+}
+
 function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const days = nightsBetween(todayDashed(), b.checkIn);
     const big = days <= 0 ? '!' : String(days);
@@ -4359,6 +4390,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <div class="hub-count" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
             </div>
             ${cta ? `<div class="hub-cta">${cta}</div>` : ''}
+            ${guestDoorCodeHtml(b)}
             <div class="hub-grid">
                 <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                 <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
@@ -11743,6 +11775,9 @@ function glassDialog(opts) {
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
                                 (f.min != null ? ` min="${f.min}"` : '') +
                                 (f.step != null ? ` step="${f.step}"` : '') +
+                                // Prefill (the key safe dialog's generated code) —
+                                // additive: absent def renders exactly as before.
+                                (f.def != null ? ` value="${escapeHtml(String(f.def))}"` : '') +
                                 ` placeholder="${escapeHtml(f.placeholder || '')}">` +
                                 // Per-field HINT (date inputs ignore placeholders).
                                 (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '')
@@ -16205,7 +16240,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'strip14';
+    const BUILD = 'keeper15';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

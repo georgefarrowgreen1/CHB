@@ -188,6 +188,17 @@
              #sec-follow-ups). -->
     </template>
 
+<template data-view="view-keysafe">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin: 0 0 5px;">Key safes</h1>
+                <p class="lead" style="text-align: left; margin: 0;">A fresh code every changeover. Nothing is recorded — and the guest is shown nothing — until you confirm the safe is set.</p>
+            </div>
+        </div>
+        <div id="keysafe-body"><!-- injected by renderKeysafe() --></div>
+</template>
+
 <template data-view="view-accounts">
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->

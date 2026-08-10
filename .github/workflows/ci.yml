@@ -112,6 +112,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-weather.php
 
+      - name: Key safe keeper (bad codes, generation, sanitiser, the reveal window)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-keysafe.php
+
       - name: SMS settings (config const still wins, the auth token never leaves the server)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-sms.php
