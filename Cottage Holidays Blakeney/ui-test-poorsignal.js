@@ -168,6 +168,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     }
     ok(drained, "the email-log read has landed, so the fixture below is not racing it");
 
+    // The SAME drain for deposit_returns. The live-net recovery (chbNetUp →
+    // chbNetRecover → initBackOffice, fire-and-forget) was kicked off by the
+    // good-link section above, and its own loadDepositReturns can land MID-SEED
+    // below — measured in CI under 3-suite load: the generic 200 wiped the
+    // seeded map and the check read £0 while the app code was correct. Wait for
+    // the verdict to settle, then issue-and-await the read ourselves so nothing
+    // of ours is still in flight when the fixture is seeded.
+    await page.waitForFunction(() => !document.body.classList.contains('net-off'), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => loadDepositReturns());
+
     // ── 7. The same rule, everywhere else that caches server data ───────────
     // Found by auditing for the loadData shape. Each of these emptied its own
     // store in the catch, and each lie is different: expenses at zero make the
