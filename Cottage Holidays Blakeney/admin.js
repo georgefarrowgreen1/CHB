@@ -11531,9 +11531,10 @@ async function renderPricingCoach() {
     }
     const sugg = Array.isArray(d.suggestions) ? d.suggestions : [];
     const sig = d.signals || {};
-    const intro = `<p style="font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;line-height:1.5;">Ideas from your own bookings &amp; demand — nothing changes until you tap <strong>Apply</strong>.</p>`;
+    // The pulse leads (the landing anatomy): what the ideas are drawn from.
+    const intro = `<p class="mo-pulse" style="margin:2px 0 10px;">Ideas from your own bookings &amp; demand — nothing changes until you tap <strong>Apply</strong>.</p>`;
     const since = sig.searches60
-        ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:-4px 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
+        ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
         : '';
     // Demand radar strip: the weeks guests actually searched for, with the
     // unmet portion flagged in amber — a glance at where interest lands.
@@ -11543,15 +11544,15 @@ async function renderPricingCoach() {
         .sort((a, b) => (a.week || '').localeCompare(b.week || ''));
     const radar = radarWeeks.length
         ? `
-                <div class="accounts-stat" style="max-width:640px;margin:0 0 16px;">
-                    <div style="font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">Demand radar · weeks guests searched for</div>
+                <div class="acr-cap">Demand radar · weeks guests searched for</div>
+                <div class="acr-well pc-well" style="max-width:640px;margin:0 0 16px;">
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">${radarWeeks
                         .map((w) => {
                             const wc = new Date(
                                 String(w.week).replace(' ', 'T'),
                             ).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
                             const unmet = w.missed > 0;
-                            return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;padding:6px 12px;border-radius:var(--r-pill);background:var(--glass-bg);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'var(--glass-border)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
+                            return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;padding:6px 12px;border-radius:var(--r-pill);background:rgba(0,0,0,0.18);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'color-mix(in srgb, var(--text-light) 9%, transparent)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
                         })
                         .join('')}</div>
                 </div>`
@@ -11561,24 +11562,23 @@ async function renderPricingCoach() {
             intro +
             since +
             radar +
-            `<div class="accounts-stat" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
+            `<div class="acr-well pc-well" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
         return;
     }
-    const badge = (op) =>
-        op
-            ? `<span style="background:rgba(76,175,80,0.18);color:#7FD68A;font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Opportunity</span>`
-            : `<span style="background:var(--glass-border);color:var(--text-muted);font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Insight</span>`;
+    // The verdict capsule vocabulary the rest of the back office wears —
+    // an OPPORTUNITY is a green verdict, an insight the quiet grey one.
+    const badge = (op) => (op ? stCap('ok', 'opportunity') : stCap('unk', 'insight'));
     const card = (s) => {
         const op = s.severity === 'opportunity';
         const applyBtn = s.apply
             ? `<button class="btn-sm btn-edit" ${chbAttrs('applyPricingSuggestion', String(s.prop_key), String(s.apply.field), Number(s.apply.value), String(s.id))}>Apply${s.apply.field === 'weekendPct' ? ' — set ' + Number(s.apply.value) + '% weekend' : ''}</button>`
             : '';
-        return `<div class="accounts-stat" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
-                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">
+        return `<div class="acr-well pc-well" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
                         <strong style="font-size:0.98rem;">${escapeHtml(s.title)}</strong>${badge(op)}
                     </div>
                     <p style="font-size:0.86rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">${escapeHtml(s.detail)}</p>
-                    ${applyBtn ? `<div style="margin-top:12px;">${applyBtn}</div>` : ''}
+                    ${applyBtn ? `<div class="acw-acts" style="margin-top:12px;">${applyBtn}</div>` : ''}
                 </div>`;
     };
     wrap.innerHTML = intro + since + radar + sugg.map(card).join('');
@@ -11594,7 +11594,7 @@ async function applyPricingSuggestion(propKey, field, value, id) {
         });
         const el = document.getElementById('psug-' + id);
         if (el)
-            el.innerHTML = `<p style="font-size:0.92rem;color:#7FD68A;margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
+            el.innerHTML = `<p style="font-size:0.92rem;color:var(--ok-text);margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
         try {
             toast('Weekend pricing updated.');
         } catch (e) {}
@@ -14934,7 +14934,9 @@ async function renderMoneyFeed() {
         return;
     }
     if (!list.length) {
-        el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3><div class="accounts-empty">No card payments yet. Card deposits, balances and refunds will appear here.</div>`;
+        // No repeated h3 — the section's own page title already says
+        // "Recent payments" directly above (it read as a stutter on a phone).
+        el.innerHTML = `<div class="accounts-empty">No card payments yet. Card deposits, balances and refunds will appear here.</div>`;
         return;
     }
     let grossIn = 0,
@@ -14984,27 +14986,29 @@ async function renderMoneyFeed() {
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
-                    <span class="feed-amt" style="${isReturn ? 'color:var(--danger);' : 'color:var(--ok);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
+                    <span class="feed-amt" style="${isReturn ? 'color:var(--danger-text);' : 'color:var(--ok-text);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
                     <span class="feed-status" role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>
                 </div>`;
         })
         .join('');
-    // Gross / fees / net reconciliation across the shown card payments.
+    // Gross / fees / net reconciliation across the shown card payments — a
+    // captioned WELL with each figure on its own labelled row (the unified
+    // anatomy; the three inline spans wrapped unevenly at phone width). The
+    // ink stays the tokens' text variants — --ok/--danger are FILLS.
     const recon =
         grossIn > 0
-            ? `<div class="mo-card" style="margin:-2px 0 12px;">
-                <div class="mo-card-title">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
-                <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:0.9rem;margin-top:6px;">
-                    <span style="color:var(--text-muted);">Gross<strong style="color:var(--text-light);margin-left:6px;">${gbp(grossIn)}</strong></span>
-                    <span style="color:var(--text-muted);">Square fees<strong style="color:var(--danger);margin-left:6px;">− ${gbp(feeSum)}</strong></span>
-                    <span style="color:var(--text-muted);">Net payout<strong style="color:var(--ok);margin-left:6px;">${gbp(Math.max(0, grossIn - feeSum))}</strong></span>
-                </div>
-                ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:6px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
-            </div>`
+            ? `<div class="acr-cap">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
+               <div class="acr-well mf-recon">
+                    <div class="mf-line"><span>Gross</span><span class="acw-fig">${gbp(grossIn)}</span></div>
+                    <div class="mf-line"><span>Square fees</span><span class="acw-fig" style="color:var(--danger-text);">− ${gbp(feeSum)}</span></div>
+                    <div class="mf-line"><span>Net payout</span><span class="acw-fig" style="color:var(--ok-text);">${gbp(Math.max(0, grossIn - feeSum))}</span></div>
+                    ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:8px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
+               </div>`
             : '';
-    el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3>
-                ${recon}
-                <div class="feed-list glass-panel">${rows}</div>`;
+    // No repeated h3 — the section's page title already reads "Recent payments".
+    el.innerHTML = `${recon}
+                <div class="acr-cap">The latest money in</div>
+                <div class="feed-list mf-list">${rows}</div>`;
 }
 // Projected revenue + occupancy by month from confirmed upcoming bookings.
 function renderMoneyForecast() {
@@ -18024,7 +18028,11 @@ function renderKeysafe() {
             + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span>'
                 : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
             + (next
-                ? '<div class="ks-kv"><span class="ks-k">' + (next.checkIn <= today ? 'They see it' : e((next.name || 'They').split(' ')[0]) + ' sees it') + '</span><span class="ks-v"><small>'
+                // ks-prose: this value is a SENTENCE, and a sentence right-aligned
+                // beside a wrapping label reads as broken (owner screenshot: "They /
+                // see it" split over two lines against ragged right-aligned prose).
+                // The row stacks — label above, prose below, both left-aligned.
+                ? '<div class="ks-kv ks-prose"><span class="ks-k">' + (next.checkIn <= today ? 'They see it' : e((next.name || 'They').split(' ')[0]) + ' sees it') + '</span><span class="ks-v"><small>'
                     + (next.ota
                         // A platform guest has no account here, so the reveal
                         // cannot reach them — the platform's own thread can.
@@ -18032,7 +18040,7 @@ function renderKeysafe() {
                         : nextMine
                             ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
                             : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
-                : '<div class="ks-kv"><span class="ks-k">Anyone sees it</span><span class="ks-v"><small>no — with no booking, the reveal stays closed</small></span></div>')
+                : '<div class="ks-kv ks-prose"><span class="ks-k">Anyone sees it</span><span class="ks-v"><small>no — with no booking, the reveal stays closed</small></span></div>')
             + '<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ' + chbAttrs('keysafeRotate', String(pk)) + '>Rotate the code</button></div>'
             + ((rec.history || []).length
                 ? '<details class="ks-hist"><summary>Who had which code</summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'

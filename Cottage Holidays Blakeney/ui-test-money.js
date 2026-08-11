@@ -296,6 +296,53 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await secCheck('expenses', /boiler service|expense/i, 'Expenses (seeded row listed)');
   await secCheck('pricingcoach', /pricing|suggestion|coach|demand|not enough/i, 'Pricing coach');
 
+  console.log('recent payments + pricing coach wear the unified anatomy (owner-asked)');
+  const skin = await page.evaluate(async () => {
+    const realPost = window.apiPost, realGet = window.apiGet;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('bookings.php') && body.action === 'recent_payments') return { payments: [
+        { created_at: '2026-08-07 10:00:00', name: 'Jean Robinson', prop_key: '21a', kind: 'balance', amount: 525, fee: 8.4, status: 'COMPLETED' },
+        { created_at: '2026-07-17 10:00:00', name: 'Richard Berry', prop_key: '21a', kind: 'damages_return', amount: -75, fee: null, status: 'PENDING' },
+      ] };
+      return realPost(url, body);
+    };
+    window.apiGet = async (url) => {
+      if (String(url).includes('pricing-suggest.php')) return { suggestions: [
+        { id: 's1', prop_key: '21a', severity: 'opportunity', title: 'Raise the weekend uplift', detail: 'Strong weekend demand.', apply: { field: 'weekendPct', value: 30 } },
+        { id: 's2', prop_key: '21a', severity: 'insight', title: 'Midweek gaps cluster', detail: 'A midweek offer would fill them.' },
+      ], signals: { searches60: 12, noResult60: 3, searchWeeks: [{ week: '2026-08-10', count: 9, missed: 5 }] } };
+      return realGet(url);
+    };
+    await renderMoneyFeed();
+    await new Promise((r) => setTimeout(r, 150));
+    const feed = document.getElementById('money-feed');
+    const listEl = feed.querySelector('.feed-list');
+    const recent = {
+      noStutter: !feed.querySelector('h3'),
+      figs: feed.querySelectorAll('.mf-recon .acw-fig').length,
+      welled: listEl ? parseFloat(getComputedStyle(listEl).borderRadius) >= 12 && getComputedStyle(listEl).borderStyle !== 'none' : false,
+      rows: feed.querySelectorAll('.feed-row').length,
+    };
+    await renderPricingCoach();
+    await new Promise((r) => setTimeout(r, 150));
+    const pc = document.getElementById('pricingcoach-body');
+    const w = pc.querySelector('.pc-well');
+    const coach = {
+      cap: !!pc.querySelector('.acr-cap'),
+      opp: !!pc.querySelector('.pc-well .st-cap.is-ok .st-tick'),
+      insight: !!pc.querySelector('.pc-well .st-cap.is-unk'),
+      well: w ? getComputedStyle(w).borderStyle !== 'none' : false,
+      apply: !!pc.querySelector('.pc-well [data-act="applyPricingSuggestion"]'),
+    };
+    window.apiPost = realPost;
+    window.apiGet = realGet;
+    return { recent, coach };
+  });
+  ok(skin.recent.noStutter && skin.recent.figs === 3 && skin.recent.welled && skin.recent.rows === 2,
+    `Recent payments: no repeated heading, three recon figures in a well (${skin.recent.figs}), the feed framed (${skin.recent.rows} rows)`);
+  ok(skin.coach.cap && skin.coach.opp && skin.coach.insight && skin.coach.well && skin.coach.apply,
+    'Pricing coach: caption + wells + ✓ opportunity / quiet insight capsules + Apply intact');
+
   // ---- 4. actions ----
   console.log('4. money actions');
   await page.evaluate(() => accountsOpen('payments'));
