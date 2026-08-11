@@ -12672,28 +12672,28 @@ async function loadGuestList() {
     const repeats = guests.filter((g) => g.repeat).length;
     const repeatPct = Math.round((repeats / guests.length) * 100);
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '—';
+    // Person rows in ONE well (the approved realistic demo, replacing the
+    // sideways-scrolling 5-column table): the guest leads with the Returning
+    // chip, the facts as the sub, lifetime spend as the serif figure. Same
+    // data-gemail hooks, same actions, same handlers.
     box.innerHTML = `
                 <p style="color:var(--text-muted);font-size:0.82rem;margin:0 0 10px;">${guests.length} past guest${guests.length === 1 ? '' : 's'} · ${repeatPct}% have stayed more than once · ranked by lifetime spend</p>
-                <table class="accounts-table">
-                    <thead><tr><th>Guest</th><th class="num">Stays</th><th class="num">Lifetime spend</th><th>Last stay</th><th>Favourite</th><th></th></tr></thead>
-                    <tbody>
+                <div class="acr-well">
                         ${guests
                             .map(
-                                (g) => `<tr data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
-                            <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:0.72rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
-                            <td class="num">${g.stays}</td>
-                            <td class="num">${gbp(g.ltv || 0)}</td>
-                            <td>${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'}</td>
-                            <td>${escapeHtml(propName(g.fav_prop))}</td>
-                            <td class="num" style="white-space:nowrap;">
+                                (g) => `<div class="acw-prow" data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
+                            <div class="acr-row" style="padding-bottom:4px;">
+                                <span class="acr-lbl">${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<small>${g.stays} stay${g.stays === 1 ? '' : 's'} · last ${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'} · favourite: ${escapeHtml(propName(g.fav_prop))} · ${escapeHtml(g.email || '')}</small></span>
+                                <span class="acw-fig">${gbp(g.ltv || 0).replace('.00', '')}</span>
+                            </div>
+                            <div class="acw-acts" style="border-top:0;padding-top:0;">
                                 <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('reinviteGuest', CHB_SELF)} title="Email this guest a returning-guest invitation">Invite back</button>
                                 ${g.has_account ? `<button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('resetGuestPassword', CHB_SELF)}>Reset password</button>` : ''}
-                            </td>
-                        </tr>`,
+                            </div>
+                        </div>`,
                             )
                             .join('')}
-                    </tbody>
-                </table>`;
+                </div>`;
 }
 // One-tap "invite back": email a past guest the returning-guest re-invitation.
 async function reinviteGuest(btn) {
@@ -19402,17 +19402,18 @@ function renderChatAnswersEditor() {
     const host = document.getElementById('chat-answers-editor');
     if (!host) return;
     host.innerHTML =
-        '<h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 4px;">Instant chat answers</h3>' +
-        '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Shown the moment a guest taps a quick-question chip in the website chat, so common questions answer themselves. Leave blank to use the default.</p>' +
+        '<div class="acr-cap">The chat\u2019s quick-question chips — blank uses the default</div>' +
+        '<div class="acr-well">' +
         CHAT_FAQ_ORDER.map((which) => {
             const f = CHAT_FAQ[which];
             const val =
                 siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
             return (
-                `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">${escapeHtml(f.q)}</label>` +
+                `<div class="acw-frow"><label>\u201c${escapeHtml(f.q)}\u201d</label>` +
                 `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
             );
-        }).join('');
+        }).join('') +
+        '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:0.72rem;">✓ Saves by itself as you edit</span></div></div>';
 }
 // Away / auto-reply settings: enable, message, and optional office hours.
 function renderChatAwayEditor() {
@@ -20459,27 +20460,31 @@ async function loadWaitlist() {
         });
         return;
     }
-    wrap.innerHTML = rows
-        .map((w) => {
-            const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
-            const dates =
-                w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
-            const notified = w.notified_at
-                ? `<span style="color:var(--ok-text);">Notified ${fmtDate(String(w.notified_at).slice(0, 10))}</span>`
-                : '<span style="color:var(--text-muted);">Waiting</span>';
-            return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
-                    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
-                        <div><span class="prop-tag tag-${w.prop_key}">${escapeHtml((propertyMeta[w.prop_key] || {}).short || w.prop_key)}</span> <strong>${escapeHtml(name)}</strong> · ${escapeHtml(dates)}</div>
-                        <div style="font-size:0.78rem;">${notified}</div>
+    // One well of person-rows (the approved realistic demo): the guest leads,
+    // the facts as the sub, their state as a capsule — same actions, same ids.
+    wrap.innerHTML =
+        '<div class="acr-well" style="max-width:640px;">' +
+        rows
+            .map((w) => {
+                const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
+                const dates =
+                    w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
+                const cap = w.notified_at
+                    ? stCap('ok', 'Notified ' + fmtDate(String(w.notified_at).slice(0, 10)))
+                    : stCap('unk', 'Waiting');
+                return `<div class="acw-prow">
+                    <div class="acr-row" style="padding-bottom:4px;">
+                        <span class="acr-lbl">${escapeHtml(w.name || '—')}<small>${escapeHtml(name)} · ${escapeHtml(dates)} · ${escapeHtml(w.email || '')}${w.note ? ' · ' + escapeHtml(w.note) : ''}</small></span>
+                        ${cap}
                     </div>
-                    <div style="font-size:0.86rem;color:var(--text-muted);margin-top:6px;">${escapeHtml(w.name || '—')} · ${escapeHtml(w.email || '')}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>
-                    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+                    <div class="acw-acts" style="border-top:0;padding-top:0;">
                         <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Email "dates available"</button>
                         <button class="btn-sm btn-delete" ${chbAttrs('deleteWaitlist', w.id)}>Remove</button>
                     </div>
                 </div>`;
-        })
-        .join('');
+            })
+            .join('') +
+        '</div>';
 }
 // ---- Newsletter (Manage → Newsletter) ----
 async function loadNewsletter() {
@@ -21823,18 +21828,17 @@ async function loadGuestReviewModeration() {
         ? pending
               .map(
                   (r) => `
-                <div id="modrev-${r.id}" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+                <div id="modrev-${r.id}" class="acw-qrow">
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
-                        <strong>${escapeHtml(r.name)}</strong>
-                        <span style="color:var(--text-muted);">${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</span>
-                        <span class="star-static">${stars(r.stars)}</span>
-                        <span style="color:var(--warn);">pending</span>
+                        <span class="star-static" style="color:var(--accent-text);">${stars(r.stars)}</span>
+                        ${stCap('warn', 'waiting')}
                     </div>
-                    <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(r.review_text)}”</div>
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
-                        <button class="btn-sm btn-delete" ${chbAttrs('deleteGuestReview', r.id)}>Delete</button>
+                    <div style="font-size:0.88rem;margin:7px 0 3px;line-height:1.5;">“${escapeHtml(r.review_text)}”</div>
+                    <div style="font-size:0.73rem;color:var(--text-muted);">${escapeHtml(r.name)} · ${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</div>
+                    <div class="acw-modacts">
+                        <button class="mod-ok" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
+                        <button class="mod-no" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
+                        <button class="mod-mut" ${chbAttrs('deleteGuestReview', r.id)}>Delete</button>
                     </div>
                 </div>`,
               )

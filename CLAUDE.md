@@ -429,6 +429,17 @@ save paths byte-identical); quiet/available hours are `select.acw-pill`s; the
 Payments deposit % is an `occStep` stepper (bumps the input only — Save stays
 the write, the guest-limits model). Gated by ui-test-manage §6 (6 checks;
 the notify switches and the deposit stepper break-tested).
+**Batch 2 — moderation queues + people lists**: the pending-review items are
+moderation rows (`.acw-qrow` + `.acw-modacts` verdict pills, the star line in
+accent-text, the waiting state a capsule); Waitlist and Guest accounts are
+person-rows in one well (`.acw-prow` — the guest leads, facts as the sub,
+state/lifetime-spend on the right; Guest accounts DROPPED its
+sideways-scrolling 5-column table, keeping the data-gemail hooks and both
+actions, Reset password still only where an account exists); Instant chat
+answers is one well of labelled boxes with the default as placeholder and the
+saves-by-itself whisper. Gated by ui-test-manage §7 (5 checks, fixture-fed
+waitlist/guest_crm routes; the Waiting capsule's tone and the verdict pills
+each break-tested).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 

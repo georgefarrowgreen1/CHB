@@ -28,6 +28,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         : [{ pk: '21a', name: '21A Westgate', ageHours: 0.4, failing: 0 }, { pk: 'jollyboat', name: 'Jollyboat', ageHours: 0.6, failing: 0 }],
     });
     if (url.includes('reviews.php')) return json({ ok: true, reviews: [{ id: 1, status: 'pending', prop: '21a', name: 'Margaret', text: 'Lovely.' }] });
+    if (url.includes('waitlist.php')) return json({ ok: true, waitlist: [
+      { id: 1, prop_key: '21a', name: 'Sarah Pemberton', email: 'sarah@example.com', check_in: '2026-08-14', check_out: '2026-08-18', notified_at: null },
+      { id: 2, prop_key: 'jollyboat', name: 'Priya Patel', email: 'priya@example.com', check_in: null, check_out: null, notified_at: '2026-08-09 10:00:00' },
+    ]});
+    if (url.includes('auth.php') && b.action === 'guest_crm') return json({ ok: true, guests: [
+      { name: 'Debbie McGoldrick', email: 'debbie@example.com', stays: 4, ltv: 2840, last_stay: '2026-06-10', fav_prop: 'jollyboat', repeat: true, has_account: true },
+      { name: 'Tom Harding', email: 'tom@example.com', stays: 1, ltv: 440, last_stay: '2026-04-02', fav_prop: '21a', repeat: false, has_account: false },
+    ]});
     if (url.includes('photos.php')) return json({ ok: true, photos: [] });
     if (url.includes('experiences.php')) return json({ ok: true, experiences: [] });
     if (url.includes('ical-import.php')) {
@@ -370,6 +378,41 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the input only — Save stays the write (${p1.pay.bumped})`);
   ok(p1.pay.twofa, 'Security: two-step sign-in is the switch on the real toggle');
   ok(p1.away.sw && p1.away.pills === 2, 'Away auto-reply: the switch + hour pills on the real save keys');
+
+  console.log('§7 moderation queues + people lists wear the anatomy (batch 2)');
+  const p2 = await page.evaluate(async () => {
+    settingsOpen('chat-answers');
+    const ca = { frows: document.querySelectorAll('#chat-answers-editor .acr-well .acw-frow').length, saves: /Saves by itself/.test((document.getElementById('chat-answers-editor') || {}).textContent || '') };
+    settingsOpen('waitlist');
+    await new Promise((r) => setTimeout(r, 350));
+    const wl = {
+      rows: document.querySelectorAll('#waitlist-body .acr-well .acw-prow').length,
+      notified: !!document.querySelector('#waitlist-body .st-cap.is-ok'),
+      waiting: !!document.querySelector('#waitlist-body .st-cap.is-unk'),
+      acts: !!document.querySelector('#waitlist-body [data-act="notifyWaitlist"]') && !!document.querySelector('#waitlist-body [data-act="deleteWaitlist"]'),
+    };
+    settingsOpen('guests');
+    await new Promise((r) => setTimeout(r, 350));
+    const ga = {
+      rows: document.querySelectorAll('#guest-admin-list .acw-prow').length,
+      fig: /£2,840/.test((document.getElementById('guest-admin-list') || {}).textContent || ''),
+      hooks: !!document.querySelector('#guest-admin-list .acw-prow[data-gemail="debbie@example.com"]'),
+      resetOnlyWithAccount: document.querySelectorAll('#guest-admin-list [data-act="resetGuestPassword"]').length === 1,
+    };
+    settingsOpen('reviews');
+    await new Promise((r) => setTimeout(r, 350));
+    const rv = {
+      qrow: !!document.querySelector('#guest-review-moderation .acw-qrow'),
+      cap: !!document.querySelector('#guest-review-moderation .st-cap.is-warn'),
+      pills: !!document.querySelector('#guest-review-moderation .acw-modacts .mod-ok') && !!document.querySelector('#guest-review-moderation .acw-modacts .mod-no'),
+    };
+    return { ca, wl, ga, rv };
+  });
+  ok(p2.ca.frows >= 3 && p2.ca.saves, `Instant chat answers: the chips' questions as labelled boxes in a well (${p2.ca.frows})`);
+  ok(p2.wl.rows === 2 && p2.wl.notified && p2.wl.waiting && p2.wl.acts, 'Waitlist: person rows with truth-telling capsules + the real actions');
+  ok(p2.ga.rows === 2 && p2.ga.fig && p2.ga.hooks, 'Guest accounts: person rows with serif lifetime spend + the data-gemail hooks');
+  ok(p2.ga.resetOnlyWithAccount, 'Reset password only offered where an account exists');
+  ok(p2.rv.qrow && p2.rv.cap && p2.rv.pills, 'Reviews: the pending item is a moderation row with verdict pills');
 
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);

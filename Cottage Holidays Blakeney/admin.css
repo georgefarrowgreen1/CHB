@@ -4634,6 +4634,17 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .settings-sec .accounts-stat { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 14px; }
 .settings-sec .accounts-stat .label { font-size: 0.67rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
 .settings-sec .modal-label, .settings-sec .host-edit-label { font-size: 0.72rem; color: var(--text-muted); }
+/* person-rows inside a well (waitlist, guest accounts): a row + its quiet
+   action line as one unit, hairline-separated. */
+.acw-prow + .acw-prow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+/* moderation item rows (reviews, and any queue that adopts them): the quote
+   leads, the verdict pills sit in one quiet action line. */
+.acw-qrow { border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 13px 14px; margin-bottom: 10px; }
+.acw-modacts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; padding: 7px 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.acw-modacts .mod-no { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.acw-modacts .mod-mut { color: var(--text-muted); }
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
