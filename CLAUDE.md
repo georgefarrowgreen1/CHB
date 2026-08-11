@@ -4560,6 +4560,16 @@ ui-test-yourstay §20 (the guest renderer shows what the server sent, promises o
 dated `door_code_from`, and says NOTHING otherwise — no empty row, no guess). NB
 ui-test-yourstay's `openPage(guest, …)` takes a guest OBJECT; `true` crashes
 renderGuestBookings on `currentGuest.name.split`.
+**THE PAGE WEARS THE FOLD ANATOMY** (the approved demo): each cottage is ONE
+verdict fold group — `✓ Code on the safe` / `△ rotate now` / grey
+not-recorded/no-upcoming capsules (stCap), the sub telling the story ("Priya
+Patel · arrives 12/08 · code is still Dan's") — with the code (the page's serif
+figure), the guest-visibility line, Rotate and the encrypted history folded
+under. A safe due a rotation HOISTS its whole group into Needs attention
+(never repeated below). `.ks-card` stays on the group as the suite's locator;
+real clicks on Rotate open the fold first (ui-test-keysafe's `openKsFold`).
+Gated by §2b (pulse, hoist, red capsule, fold round-trip — hoist and tone each
+break-tested). Presentation only: every keeper rule below is untouched.
 **PLATFORM STAYS ROTATE TOO** (owner: "it needs to look at external bookings too" —
 the first cut read only dbBookings, so a cottage with an Airbnb arrival tomorrow said
 "no upcoming booking"). `keysafeNextBooking` unions direct bookings with OTA

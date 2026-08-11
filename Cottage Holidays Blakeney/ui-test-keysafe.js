@@ -81,7 +81,41 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/nowhere yet — the code appears only after you confirm/.test(body), 'and the guest-visibility line says the reveal waits on the confirm');
   ok(/Priya Raman/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the history names who had which code');
 
+  console.log('§2b the fold anatomy — verdicts first, exceptions hoisted');
+  const anat = await page.evaluate(() => {
+    const host = document.getElementById('keysafe-body');
+    const caps = [...host.querySelectorAll('.bhub-grpcap')].map((c) => c.textContent.trim());
+    const attnCapIdx = caps.indexOf('Needs attention');
+    const due = host.querySelector('.ks-card');
+    return {
+      pulse: (host.querySelector('.mo-pulse') || {}).textContent || '',
+      caps,
+      // Marcus arrives inside the window with no code set — 21A must be the
+      // EXCEPTION, hoisted above "The safes" with the red warning capsule.
+      dueIs21a: !!(due && /21A/.test(due.textContent)),
+      dueBad: !!(due && due.querySelector('.st-cap.is-bad .st-wic')),
+      dueBefore: attnCapIdx === 0,
+      foldClosed: !!(due && due.querySelector('.bhub-fold') && due.querySelector('.bhub-fold').hidden),
+    };
+  });
+  ok(/needs? a new code/.test(anat.pulse), `the pulse states the day's work (${anat.pulse})`);
+  ok(anat.dueBefore && anat.caps.includes('The safes'), `the due safe hoists above The safes (${anat.caps.join(' / ')})`);
+  ok(anat.dueIs21a && anat.dueBad, 'the exception wears the red warning capsule');
+  ok(anat.foldClosed, 'the record folds — the verdict is the row');
+  const foldRt = await page.evaluate(() => {
+    bhubFoldToggle('ks-21a');
+    const open = !document.getElementById('bhub-fold-ks-21a').hidden
+      && !!document.querySelector('#bhub-fold-ks-21a .ks-code');
+    bhubFoldToggle('ks-21a');
+    return { open, closed: document.getElementById('bhub-fold-ks-21a').hidden };
+  });
+  ok(foldRt.open && foldRt.closed, 'the fold opens onto the code and closes again');
+
+  // Folds decide VISIBILITY: a real click on Rotate needs its cottage's fold
+  // open (the way an owner reaches it). Idempotent — never closes an open one.
+  const openKsFold = (pk) => page.evaluate((k) => { const f = document.getElementById('bhub-fold-ks-' + k); if (f && f.hidden) bhubFoldToggle('ks-' + k); }, pk);
   console.log('§3 the rotate flow');
+  await openKsFold('21a');
   await page.locator('.ks-card', { hasText: '21A' }).locator('button', { hasText: 'Rotate the code' }).click();
   await page.waitForTimeout(400);
   const pre = await page.evaluate(() => (document.getElementById('gdf-code') || {}).value || '');
@@ -96,6 +130,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => glassDialogResolve(true));
   await page.waitForTimeout(300);
   // The real rotation: overtype a chosen code, confirm.
+  await openKsFold('21a');
   await page.locator('.ks-card', { hasText: '21A' }).locator('button', { hasText: 'Rotate the code' }).click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '4826'; });
@@ -104,7 +139,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(confirms.length === 1 && confirms[0].code === '4826' && confirms[0].booking_id === 2, 'the confirm posts the code FOR the next booking');
   ok(typeof confirms[0].op_id === 'string' && confirms[0].op_id.length > 6, '…stamped with an op_id (the offline replay contract)');
   const body2 = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
-  ok(/4826/.test(body2) && /code on the safe ✓/.test(body2), 'the card flips: 4826, on the safe for Marcus');
+  ok(/4826/.test(body2) && /Code on the safe/.test(body2), 'the card flips: 4826, on the safe for Marcus');
   ok(/on their booking page now|on their booking page from/.test(body2), '…and says where (and when) Marcus sees it');
   ok(/Hannah Whitlock/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the superseded code joined the history under Hannah’s name');
 
@@ -167,6 +202,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!otaDuty && otaDuty.sev === 'danger', 'the rotation duty fires for the platform stay (red — they arrive tomorrow)');
   confirms.length = 0;
   const jbCard = page.locator('.ks-card', { hasText: 'Jollyboat' });
+  await openKsFold('jollyboat');
   await jbCard.locator('button', { hasText: 'Rotate the code' }).click();
   await page.waitForTimeout(400);
   await page.evaluate(() => { document.getElementById('gdf-code').value = '6183'; });
@@ -176,8 +212,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the confirm identifies the stay by ref, not a booking id (${confirms[0] && confirms[0].stay_ref})`);
   ok(await page.evaluate(() => chbDuties().filter((x) => x.kind === 'keysafe' && /Jollyboat/.test(x.label)).length) === 0,
     'and once the safe is set for them, the duty is gone');
-  ok(/code on the safe ✓/.test(await page.evaluate(() => document.querySelectorAll('.ks-card')[1].textContent)),
-    'the card flips — the platform stay wears the same ✓ a direct one does');
+  ok(await page.evaluate(() => { const c = [...document.querySelectorAll('.ks-card')].find((x) => /Jollyboat/.test(x.textContent)); return !!(c && /Code on the safe/.test(c.textContent) && c.querySelector('.st-cap.is-ok .st-tick')); }),
+    'the card flips — the platform stay wears the same ✓ capsule a direct one does');
 
   console.log('§7 the per-cottage switch (Settings → cottage → Private notes)');
   // Reset 21a to "rotation pending" so the duty is live, then switch OFF.
