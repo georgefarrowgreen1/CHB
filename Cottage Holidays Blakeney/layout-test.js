@@ -289,7 +289,7 @@ async function waitForServer(url, tries = 40) {
       // without anything noticing: iOS won't shrink a date control below its
       // intrinsic width, and Chromium never reproduces it. The WebKit leg is the
       // one that matters here.
-      { key: 'admin-block-dates', open: "(async () => { openBlockDates(); await new Promise(r => setTimeout(r, 350)); })()", mustSee: ['#glass-dialog-fields', '#gdf-from', '#gdf-to'] },
+      { key: 'admin-block-dates', open: "(async () => { openBlockDates(); await new Promise(r => setTimeout(r, 350)); })()", mustSee: ['#glass-dialog-fields', '#gdf-prop', '#gdf-range'] },
       { key: 'admin-close-dialog', open: "(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); })()", mustSee: ['#bookings-list'] },
       // The crown's assistant sheet — the only route to search now the dock knot
       // is retired, so its open state has to be measured like any other screen.

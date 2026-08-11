@@ -165,6 +165,85 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(a1.active === 'view-backoffice' && a1.rows === 2, `openBookings lands on the dashboard with the list rendered (${a1.active}, ${a1.rows} rows)`);
   ok(a1.wsVisible, 'and scrolls to the bookings workspace');
 
+  console.log('5. Block-out dates: the BUILT-IN calendar over the glass dialog');
+  // The dates open openFieldDatePicker in admin mode — never a native
+  // input[type=date] — raised ABOVE the dialog (z 6000 vs the picker's home
+  // 2100), with Enter/Escape routed to the PICKER while it's up: unguarded,
+  // Escape answered the FORM underneath and cancelled it under the calendar.
+  await page.evaluate(() => { openBlockDates(); });
+  await page.waitForTimeout(400);
+  const bd1 = await page.evaluate(() => ({
+    open: document.getElementById('glass-dialog').classList.contains('open'),
+    noNative: !document.querySelector('#glass-dialog-fields input[type="date"]'),
+    trigger: !!document.getElementById('gdf-range'),
+  }));
+  ok(bd1.open && bd1.noNative && bd1.trigger, 'the dialog opens with a daterange trigger and NO native date input');
+  await page.evaluate(() => document.getElementById('gdf-range').click());
+  await page.waitForTimeout(300);
+  const bd2 = await page.evaluate(() => {
+    const dp = document.getElementById('date-picker');
+    return {
+      open: dp.classList.contains('open'),
+      admin: dp.classList.contains('dp-admin'),
+      lifted: dp.classList.contains('dp-over-glass'),
+      z: parseInt(getComputedStyle(dp).zIndex, 10),
+      gz: parseInt(getComputedStyle(document.getElementById('glass-dialog')).zIndex, 10),
+      // The chosen cottage's stays shade the calendar — the cue this dialog
+      // exists for. The fixture's First Guest starts in 5 days.
+      crossed: document.querySelectorAll('#dp-grid .dp-booked').length,
+    };
+  });
+  ok(bd2.open && bd2.admin && bd2.lifted && bd2.z > bd2.gz, `the picker opens in admin mode ABOVE the dialog (${bd2.z} > ${bd2.gz})`);
+  ok(bd2.crossed >= 3, `…with the chosen cottage's stays shaded (${bd2.crossed} crossed nights)`);
+  // Escape closes the PICKER and the form survives underneath.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  const bd3 = await page.evaluate(() => ({
+    dp: document.getElementById('date-picker').classList.contains('open'),
+    gd: document.getElementById('glass-dialog').classList.contains('open'),
+    focused: (document.activeElement || {}).id,
+  }));
+  ok(!bd3.dp && bd3.gd, 'Escape closes the picker; the form survives underneath');
+  ok(bd3.focused === 'gdf-range', `…and focus returns to the trigger (${bd3.focused})`);
+  // Pick a clear range for real, Done, then Block — the payload is the picker's.
+  await page.evaluate(() => document.getElementById('gdf-range').click());
+  await page.waitForTimeout(250);
+  const picks = await page.evaluate((iso) => {
+    const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) { c.click(); return true; } return false; };
+    return [tap(iso.a), tap(iso.b)];
+  }, { a: (() => { const t = new Date(); t.setDate(t.getDate() + 40); return t.toISOString().slice(0, 10); })(), b: (() => { const t = new Date(); t.setDate(t.getDate() + 42); return t.toISOString().slice(0, 10); })() });
+  // +40 days may sit in next month's grid — page forward until both taps land.
+  if (!(picks[0] && picks[1])) {
+    await page.evaluate(() => dpChangeMonth(1));
+    await page.waitForTimeout(150);
+    await page.evaluate((iso) => {
+      const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) c.click(); };
+      tap(iso.a); tap(iso.b);
+    }, { a: (() => { const t = new Date(); t.setDate(t.getDate() + 40); return t.toISOString().slice(0, 10); })(), b: (() => { const t = new Date(); t.setDate(t.getDate() + 42); return t.toISOString().slice(0, 10); })() });
+  }
+  await page.evaluate(() => { const b = document.querySelector('#date-picker [data-act="dpDone"]'); if (b) b.click(); });
+  await page.waitForTimeout(250);
+  const blocks = [];
+  await page.evaluate(() => {
+    const realPost = window.apiPost;
+    window.__bdPosts = [];
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('ical-import.php') && body.action === 'add_block') { window.__bdPosts.push(body); return { ok: true }; }
+      return realPost(url, body);
+    };
+  });
+  const bd4 = await page.evaluate(() => ({
+    lbl: (document.getElementById('gdf-range-lbl') || {}).textContent || '',
+    ci: dpVal('gdf-range-ci'),
+    co: dpVal('gdf-range-co'),
+  }));
+  ok(/→/.test(bd4.lbl) && bd4.ci && bd4.co && bd4.co > bd4.ci, `Done writes the range back and the trigger repaints (${bd4.ci} → ${bd4.co})`);
+  await page.evaluate(() => document.getElementById('glass-dialog-ok').click());
+  await page.waitForTimeout(400);
+  const bd5 = await page.evaluate(() => window.__bdPosts);
+  ok(bd5.length === 1 && bd5[0].check_in === bd4.ci && bd5[0].check_out === bd4.co && bd5[0].prop,
+    `Block posts the picked range through the same add_block payload (${bd5.length ? bd5[0].check_in + '→' + bd5[0].check_out : 'none'})`);
+
   console.log(fails ? `MERGED WORKSPACE TEST FAILED ❌ (${fails})` : 'MERGED WORKSPACE TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
