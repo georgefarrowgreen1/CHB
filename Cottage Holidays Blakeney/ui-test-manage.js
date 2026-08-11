@@ -337,6 +337,40 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(wc.foldsClosed, 'both groups start folded');
   ok(wc.fieldInFold && wc.imgBtnInFold, 'the real ce-<key> editors + Replace-image live inside the folds');
 
+  console.log('§6 the settings pages wear the unified anatomy (switch sheets + forms)');
+  const p1 = await page.evaluate(async () => {
+    settingsOpen('follow-ups');
+    const fu = {
+      ids: !!document.querySelector('#sec-follow-ups .chb-switch #enq-nudge-toggle') && !!document.querySelector('#sec-follow-ups .chb-switch #anniv-nudge-toggle'),
+      well: !!document.querySelector('#sec-follow-ups .acr-well'),
+    };
+    settingsOpen('notify');
+    await new Promise((r) => setTimeout(r, 300));
+    const nf = {
+      rows: document.querySelectorAll('#notify-prefs-body .acr-row .chb-switch input').length,
+      quiet: document.querySelectorAll('#notify-prefs-body select.acw-pill').length,
+    };
+    settingsOpen('sms');
+    const sms = { sw: !!document.querySelector('#sec-sms .chb-switch #sms-on'), wells: document.querySelectorAll('#sec-sms .acr-well').length, token: (document.getElementById('sms-token') || {}).type };
+    settingsOpen('payments');
+    await new Promise((r) => setTimeout(r, 300));
+    const dep = document.getElementById('sq-deposit-pct');
+    dep.value = '25';
+    const plus = [...document.querySelectorAll('#sec-payments [data-act="occStep"]')].find((b) => (b.getAttribute('aria-label') || '').includes('more'));
+    plus.click();
+    await new Promise((r) => setTimeout(r, 120));
+    const pay = { bumped: dep.value, twofa: !!document.querySelector('#sec-security .chb-switch #admin-2fa-toggle') };
+    settingsOpen('chat-away');
+    const away = { sw: !!document.querySelector('#chat-away-editor .chb-switch input[data-key="chat-away-enabled"]'), pills: document.querySelectorAll('#chat-away-editor select.acw-pill').length };
+    return { fu, nf, sms, pay, away };
+  });
+  ok(p1.fu.ids && p1.fu.well, 'Follow-up emails: the REAL toggles wear the switch, in a well');
+  ok(p1.nf.rows === 4 && p1.nf.quiet === 2, `Notifications: the four categories are switch rows + quiet-hour pills (${p1.nf.rows}/${p1.nf.quiet})`);
+  ok(p1.sms.sw && p1.sms.wells === 2 && p1.sms.token === 'password', `Text messages: switch + two wells, the token stays write-only (${p1.sms.wells})`);
+  ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the input only — Save stays the write (${p1.pay.bumped})`);
+  ok(p1.pay.twofa, 'Security: two-step sign-in is the switch on the real toggle');
+  ok(p1.away.sw && p1.away.pills === 2, 'Away auto-reply: the switch + hour pills on the real save keys');
+
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

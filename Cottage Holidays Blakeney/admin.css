@@ -4626,6 +4626,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 @media (prefers-reduced-motion: reduce) {
   .chb-switch-track, .chb-switch-track::after { transition: none; }
 }
+/* The remaining settings pages (approved realistic demo): one re-skin turns
+   every .accounts-stat INSIDE a settings section into the unified well — the
+   Money screens' .accounts-stat (gated .headline etc.) live outside
+   .settings-sec and are untouched. Labels drop the letterspaced caps for the
+   captions' voice; field labels take the frow look. */
+.settings-sec .accounts-stat { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 14px; }
+.settings-sec .accounts-stat .label { font-size: 0.67rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.settings-sec .modal-label, .settings-sec .host-edit-label { font-size: 0.72rem; color: var(--text-muted); }
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
