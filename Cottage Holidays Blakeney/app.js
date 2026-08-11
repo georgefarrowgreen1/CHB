@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 464;
+const ADMIN_BUNDLE_V = 465;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 180;
+const ADMIN_CSS_V = 181;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -10560,14 +10560,18 @@ function accomImages(k) {
         : ((propertyContent[k] || {}).images || []).slice();
 }
 function accomPhotoRow(k, url, i, n) {
-    return `<div class="content-edit-row accom-photo-row">
-                <div class="exp-edit-thumb" style="background-image:url('${escapeHtml(url)}');"></div>
-                <div class="accom-photo-label">Photo ${i + 1}${i === 0 ? ' <span style="color:var(--accent-text);">· main</span>' : ''}</div>
-                <div class="accom-photo-actions">
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomReplacePhoto', String(k), i)}>Replace</button>
-                    <button class="btn-sm btn-delete" ${chbAttrs('accomRemovePhoto', String(k), i)}>Remove</button>
+    // A grid CELL now (the unified editors): thumb + MAIN badge + order
+    // number, the same four actions as compact glyphs beneath. Classes and
+    // data-acts unchanged — accomSavePhotos re-renders through this composer,
+    // so reorder/replace/remove keep working on every repaint.
+    return `<div class="content-edit-row accom-photo-row acp-cell">
+                <div class="exp-edit-thumb acp-thumb" style="background-image:url('${escapeHtml(url)}');">${i === 0 ? '<span class="acp-main">MAIN</span>' : ''}<span class="acp-n">${i + 1}</span></div>
+                <div class="accom-photo-label sr-only">Photo ${i + 1}${i === 0 ? ' · main' : ''}</div>
+                <div class="accom-photo-actions acp-acts">
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move photo ${i + 1} earlier" title="Move earlier">↑</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move photo ${i + 1} later" title="Move later">↓</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomReplacePhoto', String(k), i)} aria-label="Replace photo ${i + 1}" title="Replace">⟳</button>
+                    <button class="btn-sm btn-delete" ${chbAttrs('accomRemovePhoto', String(k), i)} aria-label="Remove photo ${i + 1}" title="Remove">✕</button>
                 </div></div>`;
 }
 async function accomSavePhotos(k, imgs) {
@@ -16251,7 +16255,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'unifyacc39';
+    const BUILD = 'unifyaccb40';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

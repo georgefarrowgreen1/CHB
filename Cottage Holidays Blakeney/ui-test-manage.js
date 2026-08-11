@@ -282,6 +282,40 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(uni.seasonRow, 'the seasons rows quote the store: label, DD/MM/YYYY dates, serif £/night');
   ok(uni.pinUnset === 'unk', 'the location pin capsule reads "Not set" while no pin is stored');
 
+  console.log('§4d photos are a GRID, the home-page card previews the real tile');
+  const pb = await page.evaluate(async () => {
+    settingsOpenAccom('21a');
+    const grid = document.getElementById('accom-photos-21a');
+    const cells = grid ? grid.querySelectorAll('.acp-cell') : [];
+    const posts = [];
+    const origPost = window.apiPost;
+    window.apiPost = async (url, body) => { posts.push({ url, body }); return { ok: true }; };
+    // The preview follows the inputs through the REAL input dispatcher.
+    const ck = cardKeys('21a');
+    const tIn = document.getElementById('ce-' + ck.title);
+    tIn.value = 'The Flint Loft';
+    tIn.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 120));
+    const pvLive = (document.getElementById('acw-hc-t-21a') || {}).textContent;
+    // Save card posts BOTH keys through contentEditSave.
+    await acwCardSave('21a');
+    const saved = posts.filter((x) => x.url === 'content.php' && x.body && x.body.action === 'set').map((x) => x.body.key);
+    window.apiPost = origPost;
+    return {
+      gridDisplay: grid ? getComputedStyle(grid).display : '',
+      cells: cells.length,
+      mainFirst: cells.length ? !!cells[0].querySelector('.acp-main') && !cells[1].querySelector('.acp-main') : false,
+      acts: cells.length ? ['accomMovePhoto', 'accomReplacePhoto', 'accomRemovePhoto'].every((fn) => cells[0].querySelector(`[data-act="${fn}"]`)) : false,
+      pvLive,
+      saved,
+    };
+  });
+  ok(pb.gridDisplay === 'grid' && pb.cells >= 3, `the gallery is a grid of cells (${pb.cells})`);
+  ok(pb.mainFirst, 'MAIN badges the first photo and only the first');
+  ok(pb.acts, 'each cell keeps reorder / replace / remove on the real data-acts');
+  ok(pb.pvLive === 'The Flint Loft', `the tile preview follows the title as you type (${pb.pvLive})`);
+  ok(pb.saved.length === 2, `Save card writes both content keys (${pb.saved.join(', ')})`);
+
   console.log('§5 Website content: two verdict groups, the real editors inside');
   await page.evaluate(() => settingsOpen('content'));
   await page.waitForTimeout(400);
