@@ -10078,6 +10078,17 @@ async function openBookingHub(bookingId, quiet) {
         // notification URL (?open=booking-42) speak one vocabulary.
         chbNavRemember('booking-' + (b && b.dbId != null ? b.dbId : bookingId));
         window.scrollTo({ top: 0 });
+        // The condensed bar names the RECORD, not the screen type: mid-scroll
+        // the identity row (cottage tag + guest name) is under the fixed
+        // header, so "Booking" answered the wrong question — whose page is
+        // this. Standalone only — a docked pane leaves the workspace's title.
+        try {
+            // FIRST name only: the condensed slot is ~56px at 390px (crown
+            // + five dock icons take the rest), so a full name clips to "Deb…".
+            const t = document.getElementById('admin-head-title');
+            const first = String(b.name || '').trim().split(/\s+/)[0];
+            if (t && first) t.textContent = first;
+        } catch (e) {}
     }
     renderBookingHub();
 
@@ -10102,7 +10113,8 @@ async function openBookingHub(bookingId, quiet) {
                 const act = document.getElementById('bhub-activity-sum');
                 if (act) act.textContent = hubActivitySum(r || {});
                 const em = document.getElementById('bhub-emails-sum');
-                if (em && !em.textContent) em.textContent = hubEmailsSum(r || {});
+                // A capsule (markup), so innerHTML — the slot is empty until filled.
+                if (em && !em.textContent) em.innerHTML = hubEmailsSum(r || {});
             })
             .catch(() => {
                 const el2 = document.getElementById('hub-history');
@@ -10157,7 +10169,7 @@ function hubEmailsSum(r) {
         .filter((x) => /^email\./.test(String(x.action || '')))
         .reduce((a, x) => (!a || String(x.at || '') > String(a.at || '') ? x : a), null);
     if (!e) return 'Nothing sent yet';
-    return /confirmation/i.test(String(e.summary || '')) ? 'Confirmation sent ✓' : 'Sent ✓';
+    return /confirmation/i.test(String(e.summary || '')) ? stCap('ok', 'Confirmation sent') : stCap('ok', 'Sent');
 }
 function bookingHubBack() {
     const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-backoffice';
@@ -10610,7 +10622,7 @@ function renderBookingHub() {
     // shut on them. Read BEFORE the payline composes (it renders the state).
     const moreWasOpen = (() => { const m = document.getElementById('bhub-money-more'); return !!m && !m.hidden; })();
     const paylineMain = (label, ok2) =>
-        `<div class="bhub-payline-main"><span class="bhub-payline-label"${ok2 ? ' style="color:var(--ok);"' : ''}>${label}</span></div>`;
+        `<div class="bhub-payline-main"><span class="bhub-payline-label">${label}</span></div>`;
     // The payline IS the money group's disclosure row now (the demo's Money
     // card): tapping it unfolds the full maths, the plan and the quiet money
     // actions. It keeps class bhub-disclose-btn + the bhubMoneyExpand act so
@@ -10620,7 +10632,7 @@ function renderBookingHub() {
     const payRow = (inner) =>
         `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${inner}<span class="bhub-chev" aria-hidden="true">›</span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
     const payline = gt.fullyPaid
-        ? payRow(`${paylineMain('Paid in full', true)}<span class="bhub-payline-fig" style="color:var(--ok);">${gbp(gt.total)} ✓</span>`)
+        ? payRow(`${paylineMain('Paid in full')}<span class="bhub-payline-fig">${gbp(gt.total)} <span class="bhub-payok" aria-hidden="true">✓</span></span>`)
         : gt.paid > 0.001
           ? payRow(`${paylineMain('Received so far')}<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span>`)
           : payRow(`${paylineMain('Total')}<span class="bhub-payline-fig">${gbp(gt.total)}</span>`);
@@ -10775,8 +10787,8 @@ function renderBookingHub() {
     // ---- Emails — the summary states the latest send (hub_bundle fills
     // #bhub-emails-sum when the booking itself can't answer). ----
     const emailsSum = b.email
-        ? (b.preArrivalSent ? '<span class="bhub-sum-ok">Arrival info sent ✓</span>' : '<span class="bhub-sum-val" id="bhub-emails-sum"></span>')
-        : '<span class="bhub-sum-warn">No email on file</span>';
+        ? (b.preArrivalSent ? stCap('ok', 'Arrival info sent') : '<span class="bhub-sum-val" id="bhub-emails-sum"></span>')
+        : stCap('warn', 'No email on file');
     const emailsFold = b.email
         ? `<div class="bhub-btn-row bhub-act-links" style="margin-top:0;">
                         ${
@@ -10843,8 +10855,8 @@ function renderBookingHub() {
     const regOkForSum = b.regSubmitted && bookingRegComplete(b);
     const missingFacts = [!b.termsAcceptedAt, !b.noDogsAt, !regOkForSum].filter(Boolean).length;
     const guestSum = missingFacts === 0
-        ? '<span class="bhub-sum-ok">All recorded ✓</span>'
-        : `<span class="bhub-sum-warn">${missingFacts} not recorded</span>`;
+        ? stCap('ok', 'All recorded')
+        : stCap('warn', missingFacts + ' not recorded');
     const guestFold = `
             ${noContact}
             <div class="bhub-kvs">
@@ -23144,6 +23156,13 @@ async function openEnquiryHub(enqId) {
         if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: enqId });
         chbNavRemember('enquiry-' + enqId);
         window.scrollTo({ top: 0 });
+        // The condensed bar names the record (the booking hub's rule).
+        try {
+            const t = document.getElementById('admin-head-title');
+            const nm = (enquiries.find((x) => String(x.id) === String(enqId)) || {}).name;
+            const first = String(nm || '').trim().split(/\s+/)[0];
+            if (t && first) t.textContent = first;
+        } catch (e) {}
     }
     renderEnquiryHub();
 }
@@ -23297,7 +23316,7 @@ function renderEnquiryHub() {
     const quoteGrp = bhubFoldGrp('equote',
         `<span class="bhub-payline-label">Quote${e.priceOverride != null ? '' : ' · site price'}</span>`,
         quoteSub ? escapeHtml(quoteSub) : '',
-        total != null ? `<span class="bhub-payline-fig">${gbp(total)}</span>` : '<span class="bhub-sum-warn">Price unavailable</span>',
+        total != null ? `<span class="bhub-payline-fig">${gbp(total)}</span>` : stCap('warn', 'Price unavailable'),
         quoteRows);
     // ---- A returning guest announces themselves; a first-timer says nothing
     // (the exception rule — an empty dossier is noise). ----
@@ -23311,8 +23330,8 @@ function renderEnquiryHub() {
     const kvDot = (okBit) => `<span class="bhub-chip-dot ${okBit ? 'is-ok' : 'is-bad'}" aria-hidden="true"></span>`;
     const kv = (label, val) => (val ? `<div class="bhub-kv"><span class="bhub-kv-label">${label}</span><span class="bhub-kv-val">${val}</span></div>` : '');
     const factsSum = e.noDogsAt
-        ? '<span class="bhub-sum-ok">All recorded ✓</span>'
-        : '<span class="bhub-sum-warn">1 not recorded</span>';
+        ? stCap('ok', 'All recorded')
+        : stCap('warn', '1 not recorded');
     const factsGrp = bhubFoldGrp('efacts', 'Guest details', '', factsSum, `
             <div class="bhub-kvs">
                 ${kv('Email', e.email ? `<button class="bhub-kv-act" ${chbAttrs('openEnquiryEmail', String(e.id))} title="Email the guest — opens the site's composer">${escapeHtml(e.email)}</button>` : '')}

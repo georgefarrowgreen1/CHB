@@ -1486,7 +1486,8 @@ body.owner-mode #admin-head-title {
   font-family: var(--font-serif);
   font-size: 1rem;
   color: var(--text-light);
-  padding: 0 8px;
+  /* 4px, not 8: the slot is ~56px at 390px — 8px ellipsized "Debbie". */
+  padding: 0 4px;
   opacity: 0;
   transform: translateY(6px);
   pointer-events: none;
@@ -4484,6 +4485,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-fold-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .bhub-sum-ok { color: var(--ok-text); font-size: 0.85rem; }
 .bhub-sum-warn { color: var(--warn-text); font-size: 0.85rem; }
+/* The settled payline's ONE green mark (serif = money, colour = the mark). */
+.bhub-payok { color: var(--ok-text); }
 .bhub-sum-val { color: var(--text-muted); font-size: 0.85rem; }
 .bhub-chev { color: var(--text-muted); font-size: 1.05rem; transition: transform 0.18s ease; }
 .bhub-fold-row[aria-expanded="true"] .bhub-chev { transform: rotate(90deg); }
