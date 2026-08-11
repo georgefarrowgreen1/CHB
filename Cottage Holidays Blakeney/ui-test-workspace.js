@@ -176,8 +176,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     open: document.getElementById('glass-dialog').classList.contains('open'),
     noNative: !document.querySelector('#glass-dialog-fields input[type="date"]'),
     trigger: !!document.getElementById('gdf-range'),
+    // The house calendar GLYPH, not the 📅 emoji (which paints in platform
+    // colours — iOS rendered a red "July 17" on the owner's phone).
+    glyph: !!document.querySelector('#gdf-range .gdf-cal svg.ic'),
+    noEmoji: !/📅/.test((document.getElementById('gdf-range') || {}).textContent || ''),
   }));
   ok(bd1.open && bd1.noNative && bd1.trigger, 'the dialog opens with a daterange trigger and NO native date input');
+  ok(bd1.glyph && bd1.noEmoji, 'the trigger wears the house calendar glyph, not the platform emoji');
   await page.evaluate(() => document.getElementById('gdf-range').click());
   await page.waitForTimeout(300);
   const bd2 = await page.evaluate(() => {

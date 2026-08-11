@@ -11800,7 +11800,9 @@ function glassDialog(opts) {
                                     label +
                                     `<input type="hidden" id="gdf-${f.id}-ci" value="${escapeHtml(v.from || '')}">` +
                                     `<input type="hidden" id="gdf-${f.id}-co" value="${escapeHtml(v.to || '')}">` +
-                                    `<button type="button" class="input-glass gdf-daterange" id="gdf-${f.id}" data-act="gdfOpenDates" data-args='${JSON.stringify([String(f.id)])}'><span id="gdf-${f.id}-lbl">${lbl}</span><span class="gdf-cal" aria-hidden="true">📅</span></button>` +
+                                    // The house calendar GLYPH, never the 📅 emoji — an emoji paints in
+                                    // platform colours (iOS renders a red "July 17"), the BHUB_IC lesson.
+                                    `<button type="button" class="input-glass gdf-daterange" id="gdf-${f.id}" data-act="gdfOpenDates" data-args='${JSON.stringify([String(f.id)])}'><span id="gdf-${f.id}-lbl">${lbl}</span><span class="gdf-cal" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span></button>` +
                                     (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '')
                                 );
                             }
