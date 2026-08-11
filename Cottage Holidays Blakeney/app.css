@@ -1152,7 +1152,9 @@ body.light-mode ::-webkit-scrollbar-thumb {
   width: 19px;
   height: 19px;
   display: block;
-  color: var(--accent);
+  /* --accent-text, not --accent: bare accent sits under the 3:1 non-text bar
+     on the light surface (the cmdk glyphs' lesson — a11y §2 ratchets this). */
+  color: var(--accent-text);
 }
 .gdf-daterange {
   width: 100%;
