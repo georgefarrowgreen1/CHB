@@ -4558,6 +4558,24 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* Ink + outline only — no accent tint under accent-text (the §1b pair rule). */
 .acr-badge { display: inline-flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; padding: 6px 12px; }
 .acr-badge.is-none { color: var(--text-muted); border-color: color-mix(in srgb, var(--text-light) 9%, transparent); font-weight: 400; }
+/* iOS-style on/off switch (owner-asked; the keysafe keeper first). The REAL
+   checkbox sits ON TOP at full size (opacity 0) so gates that click/read it
+   by id keep working; the track + thumb underneath draw the state. The row's
+   label is the touch target, so the 44px floor holds. */
+:root {
+  --sw-thumb: #fff; /* the switch thumb — white in both themes, the iOS look */
+}
+.chb-switch-row { display: flex; align-items: flex-start; gap: 12px; font-size: 0.85rem; margin-bottom: 14px; cursor: pointer; }
+.chb-switch { position: relative; flex: 0 0 auto; width: 46px; height: 28px; margin-top: 1px; }
+.chb-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.chb-switch-track { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text-light) 16%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); transition: background 0.25s; pointer-events: none; }
+.chb-switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--sw-thumb); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.3s var(--spring); }
+.chb-switch input:checked + .chb-switch-track { background: var(--ok); border-color: transparent; }
+.chb-switch input:checked + .chb-switch-track::after { transform: translateX(18px); }
+.chb-switch input:focus-visible + .chb-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .chb-switch-track, .chb-switch-track::after { transition: none; }
+}
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
