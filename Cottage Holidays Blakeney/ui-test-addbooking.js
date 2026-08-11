@@ -47,8 +47,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     secs: Array.from(document.querySelectorAll('#edit-modal .modal-sec')).map((s) => s.textContent.trim()),
     xUp: (() => { const x = document.querySelector('#edit-modal .modal-x'); const r = x ? x.getBoundingClientRect() : { width: 0, height: 0 }; return r.width >= 24 && r.height >= 24; })(),
     nameLabel: (document.querySelector('label[for="modal-name"]') || {}).textContent || '',
+    // THE STAY LEADS (the approved demo): the first column holds the cottage +
+    // dates — the decision — with the guest's identity second.
+    stayFirst: !!document.querySelector('#edit-modal .modal-col:first-child #modal-property'),
   }));
-  ok(s1.secs.join('|') === 'Guest|Stay|Money|Notes', `four sections in order (${s1.secs.join('|')})`);
+  ok(s1.secs.join('|') === 'The stay|The guest|Money|Notes', `four sections, the stay leading (${s1.secs.join('|')})`);
+  ok(s1.stayFirst, 'the first column holds the cottage + dates — the decision leads');
   ok(s1.xUp, 'the ✕ close is in the header at ≥24px');
   ok(s1.nameLabel === 'Name', `the name label stopped repeating the section (${s1.nameLabel})`);
 
@@ -65,8 +69,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
     dot: !!document.querySelector('.mav-strip-dot'),
     gridUp: !!document.querySelector('#modal-availability .mav-grid'),
+    // The VERDICT capsule on the dates row (break-tested: deleting capSet's
+    // fill in updateModalAvailability fails both capsule checks).
+    cap: (document.getElementById('modal-date-verdict') || {}).textContent || '',
+    capOk: !!document.querySelector('#modal-date-trigger .modal-date-verdict.is-ok'),
   }));
   ok(/^Free /.test(s2.txt) && s2.dot && !s2.clashDot, `free dates → green summary (${s2.txt.slice(0, 40)})`);
+  ok(s2.capOk && /free/.test(s2.cap), `and the dates row wears the ✓ free capsule (${s2.cap})`);
   ok(/next booking starts/.test(s2.txt), 'and it names when the next booking starts');
   ok(!s2.gridUp, 'the grid stays folded until asked for');
   await page.click('.mav-toggle');
@@ -86,8 +95,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     txt: (document.querySelector('.mav-strip-txt') || {}).textContent || '',
     clashDot: !!document.querySelector('.mav-strip-dot.is-clash'),
     warn: (document.querySelector('.mav-clash') || {}).textContent || '',
+    capWarn: !!document.querySelector('#modal-date-trigger .modal-date-verdict.is-warn'),
+    footSub: (document.getElementById('modal-foot-sub') || {}).textContent || '',
   }));
   ok(/^Overlaps Booked Guest/.test(s2b.txt) && s2b.clashDot, `overlapping dates → red summary naming the blocker (${s2b.txt.slice(0, 40)})`);
+  ok(s2b.capWarn, 'the dates-row capsule flips to ⚠ overlaps');
+  ok(/Overlaps Booked Guest/.test(s2b.footSub), `and the foot's sub carries the warning (${s2b.footSub.slice(0, 44)})`);
   ok(/confirm at save/.test(s2b.warn), 'and the confirm-at-save warning renders with it');
 
   // ---------- 3. the money controls display all the time ----------
@@ -108,15 +121,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `the shouted labels stay short label + quiet hint (${s3.hints} hints)`);
   // The plan is a Standard | Custom TOGGLE: Standard states the LIVE site
   // terms in a sentence and hides the fields; Custom reveals them; flipping
-  // back WIPES what was typed.
-  const t1 = await page.evaluate(() => ({
-    stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
-    pressed: document.getElementById('modal-plan-std-btn').getAttribute('aria-pressed') === 'true',
-    fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
-    line: (document.getElementById('modal-plan-std-line') || {}).textContent || '',
-  }));
+  // back WIPES what was typed. With NOTHING priced yet the line falls back to
+  // the site-standard sentence (the computed brief is §3b's job).
+  const t1 = await page.evaluate(() => {
+    document.getElementById('modal-checkin').value = '';
+    document.getElementById('modal-checkout').value = '';
+    updateModalPrice();
+    return {
+      stdOn: document.getElementById('modal-plan-std-btn').classList.contains('is-on'),
+      pressed: document.getElementById('modal-plan-std-btn').getAttribute('aria-pressed') === 'true',
+      fieldsHidden: document.getElementById('modal-plan-custom').style.display === 'none',
+      line: (document.getElementById('modal-plan-std-line') || {}).textContent || '',
+    };
+  });
   ok(t1.stdOn && t1.pressed && t1.fieldsHidden, 'the plan opens on Standard, fields folded');
-  ok(/25% deposit/.test(t1.line) && /30 days/.test(t1.line), `the Standard line quotes the live site terms (${t1.line.slice(0, 50)})`);
+  ok(/25% deposit/.test(t1.line) && /30 days/.test(t1.line), `unpriced, the line quotes the live site terms (${t1.line.slice(0, 50)})`);
   await page.click('#modal-plan-custom-btn');
   const t2 = await page.evaluate(() => ({
     on: document.getElementById('modal-plan-custom-btn').classList.contains('is-on'),
@@ -146,6 +165,153 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return '';
   });
   ok(/calc\(/.test(datePin), `the empty-date height pin stands in the stylesheet (${datePin})`);
+
+  // ---------- 3b. the plan brief speaks the derivation ----------
+  // Every figure below is computed IN THE GATE from the page's own
+  // priceBreakdown — equality of derivations, never hardcoded pounds. The
+  // brief's first payment must be the plan deposit + the refundable ride
+  // pay.php bundles with it (break-tested: dropping `+ m.dep` from
+  // modalPlanFacts fails the first-payment equality here AND the prefill).
+  console.log('3b. plan brief + window rule');
+  const exp = (ci, co, pct) => page.evaluate((f) => {
+    const p = priceBreakdown('21a', 2, 0, f.ci, f.co, null);
+    const dep = p.damagesDeposit || 0;
+    const planDep = Math.round(p.total * f.pct) / 100;
+    const g = (n) => gbp(n);
+    return { first: g(Math.round((planDep + dep) * 100) / 100), planDep: g(planDep), balance: g(Math.round((p.total - planDep) * 100) / 100), full: g(Math.round((p.total + dep) * 100) / 100) };
+  }, { ci, co, pct });
+  // Outside the 30-day window → the staged plan with its due date.
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(60), co: d(63) });
+  const e1 = await exp(d(60), d(63), 25);
+  const b1 = await page.evaluate(() => ({
+    line: document.getElementById('modal-plan-std-line').textContent,
+    sub: document.getElementById('modal-foot-sub').textContent,
+    due: fmtDate(ukShiftDays(document.getElementById('modal-checkin').value, -30)),
+  }));
+  ok(b1.line.includes(`First payment ${e1.first}`) && b1.line.includes(`25% deposit ${e1.planDep}`) && b1.line.includes(`balance ${e1.balance} due by ${b1.due}`),
+    `outside the window the brief states first payment / deposit / balance / date (${b1.line.slice(0, 76)}…)`);
+  ok(b1.sub.includes(`First payment ${e1.first}`) && b1.sub.includes(b1.due), `and the foot sub carries the same facts (${b1.sub})`);
+  // Inside the 30-day window → the full amount is asked up front (the live
+  // booking_payment_kind rule, mirrored with the strict standard boundary).
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(10), co: d(13) });
+  const e2 = await exp(d(10), d(13), 100);
+  const b2 = await page.evaluate(() => ({
+    line: document.getElementById('modal-plan-std-line').textContent,
+    sub: document.getElementById('modal-foot-sub').textContent,
+  }));
+  ok(/full amount is asked up front/.test(b2.line) && b2.line.includes(`first payment ${e2.first}`),
+    `inside 30 days the brief flips to full-up-front (${b2.line.slice(0, 72)}…)`);
+  ok(/Full amount up front/.test(b2.sub), `and the foot sub says so (${b2.sub})`);
+  // A CUSTOM percentage follows into the brief — stepped, not typed: the pct
+  // stepper starts from the site standard (25 + 5 + 5 = 35).
+  await page.click('#modal-plan-custom-btn');
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(60), co: d(63) });
+  await page.click('#modal-plan-custom [data-arg="pct"][data-arg2="5"]');
+  await page.click('#modal-plan-custom [data-arg="pct"][data-arg2="5"]');
+  const e3 = await exp(d(60), d(63), 35);
+  const b3 = await page.evaluate(() => ({
+    pct: document.getElementById('modal-plan-pct').value,
+    line: document.getElementById('modal-plan-std-line').textContent,
+  }));
+  ok(b3.pct === '35', `the pct stepper steps from the site standard (${b3.pct})`);
+  ok(b3.line.includes(`35% deposit`) && b3.line.includes(`First payment ${e3.first}`), `and the brief follows the custom plan (${b3.line.slice(0, 66)}…)`);
+  await page.click('#modal-plan-std-btn'); // back to standard (wipes)
+
+  // ---------- 3c. party steppers + the payment segment ----------
+  console.log('3c. steppers + payment segment');
+  // Adults caps at the cottage's occupancy (21A tops out at 2) — the + stops
+  // offering, TYPING past stays possible (the server confirm is the override).
+  const st1 = await page.evaluate(() => {
+    const plus = document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="1"]');
+    plus.click();
+    return {
+      val: document.getElementById('modal-adults').value,
+      plusDisabled: plus.disabled,
+      minus: document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').disabled,
+      occNote: document.getElementById('modal-occ-note').textContent,
+    };
+  });
+  ok(st1.val === '2' && st1.plusDisabled, `+ stops at 21A's occupancy (adults ${st1.val}, + disabled ${st1.plusDisabled})`);
+  ok(/Sleeps up to 2/.test(st1.occNote), `the occupancy note names the cottage's limit (${st1.occNote})`);
+  const st2 = await page.evaluate(() => {
+    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').click();
+    const a = document.getElementById('modal-adults').value;
+    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="adults"][data-arg2="-1"]').click();
+    return { after: a, floor: document.getElementById('modal-adults').value };
+  });
+  ok(st2.after === '1' && st2.floor === '1', `− steps down and floors at 1 (${st2.after}/${st2.floor})`);
+  await page.evaluate(() => { document.getElementById('modal-adults').value = '2'; updateModalPrice(); });
+  // The deposit stepper steps the REAL input from the cottage default.
+  const st3 = await page.evaluate(() => {
+    document.querySelector('#edit-modal [data-act="modalStep"][data-arg="dmg"][data-arg2="25"]').click();
+    return document.getElementById('modal-damages-deposit').value;
+  });
+  ok(parseFloat(st3) > 0, `the deposit stepper fills the real input from the cottage default (£${st3})`);
+  await page.evaluate(() => { document.getElementById('modal-damages-deposit').value = ''; updateModalPrice(); });
+  // The payment segment writes the hidden select, reveals the fields, and in
+  // ADD mode prefills the amount with the plan's own first payment.
+  const p1 = await page.evaluate(() => {
+    document.querySelector('#modal-pay-seg [data-arg="deposit"]').click();
+    return {
+      sel: document.getElementById('modal-payment').value,
+      detailsUp: document.getElementById('modal-payment-details').style.display !== 'none',
+      amt: document.getElementById('modal-deposit-amount').value,
+      on: document.querySelector('#modal-pay-seg [data-arg="deposit"]').classList.contains('is-on'),
+    };
+  });
+  const e4 = await exp(d(60), d(63), 25);
+  ok(p1.sel === 'deposit' && p1.detailsUp && p1.on, 'tapping "Deposit paid" sets the select and reveals the inline fields');
+  ok('£' + p1.amt === e4.first.replace(',', ''), `and prefills the amount with the plan's first payment (£${p1.amt} = ${e4.first})`);
+  // Dates change → OUR prefill follows the plan (a typed figure would not).
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(90), co: d(94) });
+  const e5 = await page.evaluate((f) => {
+    const p = priceBreakdown('21a', 2, 0, f.ci, f.co, null);
+    const dep = p.damagesDeposit || 0;
+    return (Math.round(p.total * 25) / 100 + dep).toFixed(2);
+  }, { ci: d(90), co: d(94) });
+  const p2 = await page.evaluate(() => document.getElementById('modal-deposit-amount').value);
+  ok(p2 === e5, `the auto prefill re-derives when the dates move (£${p2})`);
+  // A figure the OWNER types is theirs — never clobbered by a re-derivation.
+  await page.evaluate(() => { document.getElementById('modal-deposit-amount').value = '123.00'; });
+  await page.evaluate((f) => {
+    document.getElementById('modal-checkin').value = f.ci;
+    document.getElementById('modal-checkout').value = f.co;
+    updateModalPrice();
+  }, { ci: d(60), co: d(63) });
+  ok(await page.evaluate(() => document.getElementById('modal-deposit-amount').value) === '123.00',
+    'a typed amount is never clobbered by the plan');
+  // "Nothing yet" folds the fields; a PROGRAMMATIC select write + change event
+  // repaints the segment (the offline suite's path — the select stays truth).
+  const p3 = await page.evaluate(() => {
+    document.querySelector('#modal-pay-seg [data-arg="unpaid"]').click();
+    const hidden = document.getElementById('modal-payment-details').style.display === 'none';
+    const sel = document.getElementById('modal-payment');
+    sel.value = 'paid';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    return { hidden, paidOn: document.querySelector('#modal-pay-seg [data-arg="paid"]').classList.contains('is-on') };
+  });
+  ok(p3.hidden, '"Nothing yet" folds the inline fields away');
+  ok(p3.paidOn, 'a programmatic select write repaints the segment — the select stays the source of truth');
+  await page.evaluate(() => { modalPayMode('unpaid'); });
+  // The foot button names the ACTION in add mode.
+  ok(await page.evaluate(() => document.getElementById('modal-save-btn').textContent) === 'Add booking',
+    'the foot button says what it will do — Add booking');
 
   // ---------- 4. the sticky footer mirrors the price box ----------
   console.log('4. sticky footer');
