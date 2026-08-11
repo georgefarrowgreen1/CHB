@@ -4558,6 +4558,35 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* Ink + outline only — no accent tint under accent-text (the §1b pair rule). */
 .acr-badge { display: inline-flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; padding: 6px 12px; }
 .acr-badge.is-none { color: var(--text-muted); border-color: color-mix(in srgb, var(--text-light) 9%, transparent); font-weight: 400; }
+/* ---- The rest of the cottage editors on the same vocabulary (approved
+   demo): label-above FIELD rows, quiet action rows at a well's foot, pill
+   time fields, day chips, and the shared list/faq/welcome row composers
+   FLATTENED inside a well (they keep their classes + data-attrs, so every
+   add-row handler and collect function is untouched). ---- */
+.acw-frow { padding: 11px 14px 12px; }
+.acw-frow label { display: block; font-size: 0.73rem; color: var(--text-muted); margin-bottom: 6px; }
+.acw-frow .input-glass { width: 100%; margin: 0; }
+.acw-frow + .acw-frow, .acw-frow + .acr-row, .acr-row + .acw-frow, .acw-frow + .acw-acts, .acr-row + .acw-acts, .acw-list + .acw-acts, .acw-days + .acw-acts { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+.acw-acts { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; }
+.acw-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 6px 0; font-weight: 600; text-transform: none; letter-spacing: normal; font-size: 0.85rem; }
+.acw-acts .btn-edit { color: var(--accent-text); }
+.acw-acts .btn-delete { color: var(--danger-text); }
+.acw-tip { display: block; margin-top: 7px; font-size: 0.72rem; line-height: 1.5; color: var(--ok-text); }
+.acw-pill { flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 14px; color: var(--text-light); font-family: var(--font-serif); font-size: 0.98rem; appearance: none; -webkit-appearance: none; }
+.acw-fig { font-family: var(--font-serif); font-size: 1rem; flex: 0 0 auto; }
+.acw-fig small { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-sans); }
+/* day chips: the checkbox fills its label (the chb-switch trick), the chip
+   look rides :has(:checked) */
+.acw-days { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; }
+.acw-days .day-check { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 36px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); color: var(--text-muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.acw-days .day-check input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.acw-days .day-check:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent-text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.acw-days .day-check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the shared row composers, flattened inside a well */
+.acr-well .list-edit-row { margin: 0; padding: 4px 8px 4px 14px; }
+.acr-well .list-edit-row + .list-edit-row, .acr-well .faq-row + .faq-row, .acr-well .welcome-row + .welcome-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+.acr-well .list-edit-row .input-glass { border: 0; background: none; box-shadow: none; }
+.acr-well .faq-row, .acr-well .welcome-row { border: 0; background: none; border-radius: 0; padding: 11px 14px; margin: 0; box-shadow: none; }
 /* iOS-style on/off switch (owner-asked; the keysafe keeper first). The REAL
    checkbox sits ON TOP at full size (opacity 0) so gates that click/read it
    by id keep working; the track + thumb underneath draw the state. The row's

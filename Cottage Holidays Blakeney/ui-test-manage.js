@@ -233,6 +233,55 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(acr.badgeOff, 'a lower Airbnb price honestly shows no badge');
   ok(!/is-on/.test(acr.lmHalf) && /is-on/.test(acr.lmOn.cls) && acr.lmOn.txt.includes(acr.lmWant), `the last-minute status arms only with BOTH set, quoting the model (${acr.lmOn.txt})`);
 
+  console.log('§4c every section on the unified anatomy: wells, right rail, real saves');
+  const uni = await page.evaluate(async () => {
+    siteContent['amenities-21a'] = ['Wood-burning stove', 'Walled courtyard'];
+    siteContent['faqs-21a'] = [{ icon: '', q: 'Is there parking?', a: 'One bay outside.' }];
+    propertySeasons['21a'] = [{ label: 'School summer', start_date: '2026-07-18', end_date: '2026-09-01', couple_rate: 175 }];
+    settingsOpenAccom('21a');
+    const detail = document.getElementById('accom-detail');
+    // Every rebuilt section renders captioned wells (through the closed folds).
+    const welled = ['text', 'house', 'safety', 'seasons', 'arrival', 'location', 'local', 'faq', 'welcome', 'opsnotes'].filter((id) => {
+      const f = document.getElementById('bhub-fold-ac-21a-' + id);
+      return f && f.querySelector('.acr-cap') && f.querySelector('.acr-well');
+    });
+    // Verdicts count the loaded stores.
+    const cap = (id) => ((detail.querySelector(`[data-grp="ac-21a-${id}"] .st-cap`) || {}).textContent || '').trim();
+    const verdicts = { text: cap('text'), seasons: cap('seasons'), faq: cap('faq') };
+    // The house steppers write through the SAME updateRuleField save.
+    const minBtn = document.querySelector('#bhub-fold-ac-21a-house .acr-step button:last-child');
+    const before = propertyRates['21a'].minNights || 1;
+    minBtn.click();
+    await new Promise((r) => setTimeout(r, 150));
+    const stepped = { mirror: propertyRates['21a'].minNights, input: (document.getElementById('acw-21a-minNights') || {}).value };
+    ruleStep('21a', 'minNights', -1);
+    // A day chip is a REAL checkbox filling its label — clicking it toggles
+    // the arrival-day rule through the existing handler.
+    const dayInp = document.querySelectorAll('#bhub-fold-ac-21a-house .acw-days .day-check input')[5];
+    const hadFri = (propertyRates['21a'].arrivalDays || []).includes(5);
+    dayInp.click();
+    await new Promise((r) => setTimeout(r, 120));
+    const friFlipped = (propertyRates['21a'].arrivalDays || []).includes(5) !== hadFri;
+    dayInp.click();
+    // occStep bumps the input ONLY — Save guest limits stays the write.
+    const occBefore = (document.getElementById('occ-adults-21a') || {}).value;
+    occStep('occ-adults-21a', 1, 1);
+    const occ = { bumped: (document.getElementById('occ-adults-21a') || {}).value, mirror: (occupancyLimits['21a'] || { maxAdults: occBefore }).maxAdults };
+    occStep('occ-adults-21a', -1, 1);
+    // The seasons row quotes the store's own figure, DD/MM/YYYY dates.
+    const seasonRow = (document.getElementById('bhub-fold-ac-21a-seasons') || {}).textContent || '';
+    // Location's pin capsule tells the truth both ways.
+    const pinUnset = ((document.querySelector('[data-grp="ac-21a-location"] ~ * , #bhub-fold-ac-21a-location') && document.getElementById('bhub-fold-ac-21a-location').querySelector('.st-cap.is-unk')) ? 'unk' : 'other');
+    return { welled: welled.length, verdicts, stepped, before, friFlipped, occ, occBefore, seasonRow: /School summer/.test(seasonRow) && /£175/.test(seasonRow) && /18\/07\/2026/.test(seasonRow), pinUnset };
+  });
+  ok(uni.welled === 10, `all ten rebuilt sections render captioned wells (${uni.welled})`);
+  ok(/2 features/.test(uni.verdicts.text) && /1 season/.test(uni.verdicts.seasons) && /1 answer/.test(uni.verdicts.faq), `the fold verdicts count the loaded stores (${uni.verdicts.text} / ${uni.verdicts.seasons} / ${uni.verdicts.faq})`);
+  ok(uni.stepped.mirror === uni.before + 1 && String(uni.stepped.input) === String(uni.before + 1), `the min-nights stepper writes the input AND the rule mirror (${uni.stepped.mirror})`);
+  ok(uni.friFlipped, 'a day chip click toggles the arrival-day rule through the real checkbox');
+  ok(String(uni.occ.bumped) === String(parseInt(uni.occBefore, 10) + 1) && String(uni.occ.mirror) === String(uni.occBefore), 'occupancy steppers bump the input only — Save guest limits stays the write');
+  ok(uni.seasonRow, 'the seasons rows quote the store: label, DD/MM/YYYY dates, serif £/night');
+  ok(uni.pinUnset === 'unk', 'the location pin capsule reads "Not set" while no pin is stored');
+
   console.log('§5 Website content: two verdict groups, the real editors inside');
   await page.evaluate(() => settingsOpen('content'));
   await page.waitForTimeout(400);

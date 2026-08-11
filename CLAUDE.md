@@ -391,6 +391,22 @@ the `.rate-prop` glass panel spent 26px a side and starved the labels
 with NO accent tint under `--accent-text`, so a11y §1b never meets an
 unmeasured pair. `acrSync` repaints derived TEXT only, never inputs — a
 re-render mid-keystroke is the bank-details trap.
+**AND EVERY OTHER SECTION WEARS THE SAME VOCABULARY** (approved 11-section
+demo; PR-A = the ten field/list sections, PR-B = photos grid + home-card
+preview). Captioned wells (`.acr-cap`/`.acr-well`), label-above field rows
+(`.acw-frow`), quiet sentence-case action rows (`.acw-acts`), pill time
+fields, day CHIPS (the checkbox fills its label — the chb-switch trick — so
+`toggleArrivalDay` fires untouched), steppers on min/max nights
+(`ruleStep` → the SAME `updateRuleField` save) and occupancy (`occStep`
+bumps the INPUT only — "Save guest limits" stays the validated write), the
+location pin as a status capsule, seasons as label + DD/MM/YYYY +
+serif-£/night rows, and fold VERDICTS counting only stores already in hand
+(features/safety/seasons/faq/welcome/pin/arrival — an unloaded mirror mints
+no claim). The shared row composers (`listRowHtml`/`faqRowHtml`/
+`welcomeRowHtml`) kept their classes + data-attrs and are FLATTENED by
+CSS scoped under `.acr-well`, so every add-row handler and collect
+function is untouched. Gated by ui-test-manage §4c (7 checks; the stepper
+write, the day chip and the verdict counts each break-tested).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 
