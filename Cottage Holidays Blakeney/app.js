@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 471;
+const ADMIN_BUNDLE_V = 475;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -11800,7 +11800,9 @@ function glassDialog(opts) {
                                     label +
                                     `<input type="hidden" id="gdf-${f.id}-ci" value="${escapeHtml(v.from || '')}">` +
                                     `<input type="hidden" id="gdf-${f.id}-co" value="${escapeHtml(v.to || '')}">` +
-                                    `<button type="button" class="input-glass gdf-daterange" id="gdf-${f.id}" data-act="gdfOpenDates" data-args='${JSON.stringify([String(f.id)])}'><span id="gdf-${f.id}-lbl">${lbl}</span><span class="gdf-cal" aria-hidden="true">📅</span></button>` +
+                                    // The house calendar GLYPH, never the 📅 emoji — an emoji paints in
+                                    // platform colours (iOS renders a red "July 17"), the BHUB_IC lesson.
+                                    `<button type="button" class="input-glass gdf-daterange" id="gdf-${f.id}" data-act="gdfOpenDates" data-args='${JSON.stringify([String(f.id)])}'><span id="gdf-${f.id}-lbl">${lbl}</span><span class="gdf-cal" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span></button>` +
                                     (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '')
                                 );
                             }
@@ -16358,7 +16360,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'blockcal47';
+    const BUILD = 'mailwatch51';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

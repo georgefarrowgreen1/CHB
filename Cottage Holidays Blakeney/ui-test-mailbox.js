@@ -646,6 +646,75 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(wide2.landingHidden && wide2.switchShown && wide2.enqInMain, 'at ≥1200px the landing hides and the folder divs sit back beside the rail');
 
+  console.log('§11 THE MAIL WATCH: new customer email surfaces without opening the mailbox');
+  await page.setViewportSize({ width: 900, height: 900 });
+  await page.waitForTimeout(300);
+  // (a) The landing verdict is HONEST about the server's own count: with the
+  // reply-poll's store carrying 3 waiting and the mailbox never fetched, "not
+  // checked yet" was the landing lying in the cautious direction.
+  const mw1 = await page.evaluate(() => {
+    window.__mbxOpenedOnceSave = __mbxOpenedOnce;
+    __mbxOpenedOnce = false;
+    // FREEZE loadData for this section: nav('view-inbox') fires openInbox, whose
+    // unawaited loadData re-derives __newMailPre from the fixture's generic
+    // bootstrap (null) MID-CHECK — measured, it clobbered the fresh count set by
+    // the very chbMailCheck under test. §11 tests the mail watch, not loadData.
+    window.__ldSave = window.loadData;
+    window.loadData = async () => ({ ok: true, failed: [] });
+    window.__newMailPre = { count: 3, items: [{ name: 'Anne Betts', from: 'anne@x.com', subject: 'Parking at Pimpernel' }] };
+    nav('view-inbox');
+    inboxVerdicts();
+    return {
+      fig: (document.getElementById('iv-sum-email') || {}).textContent || '',
+      sub: (document.getElementById('iv-sub-email') || {}).textContent || '',
+      warn: !!document.querySelector('#iv-sum-email .st-cap.is-warn, #iv-sum-email.is-warn') || /3 new/.test((document.getElementById('iv-sum-email') || {}).textContent || ''),
+    };
+  });
+  ok(/3 new/.test(mw1.fig), `the unfetched mailbox verdict states the server's own count (${mw1.fig.trim()})`);
+  ok(/Anne Betts/.test(mw1.sub) && /Parking/.test(mw1.sub), `…naming the latest sender (${mw1.sub.trim()})`);
+  // …and with NO known count, unknown stays a stated third state.
+  const mw0 = await page.evaluate(() => {
+    window.__newMailPre = null;
+    inboxVerdicts();
+    return (document.getElementById('iv-sum-email') || {}).textContent || '';
+  });
+  ok(/not checked yet/.test(mw0), `no known count → the honest "not checked yet" survives (${mw0.trim()})`);
+  // (b) The RESUME probe checks immediately when stale: nudges the reply-poll,
+  // re-reads the cheap count, and repaints the surfaces in place.
+  const mw2 = await page.evaluate(async () => {
+    const realPost = window.apiPost;
+    const hits = [];
+    window.apiPost = async (url, body) => {
+      hits.push({ url: String(url), action: (body || {}).action || '' });
+      if (String(url).includes('mailbox.php') && body && body.action === 'new')
+        return { ok: true, new: { count: 2, items: [{ name: 'Richard Berry', from: 'rb@x.com', subject: 'Arrival time' }] } };
+      if (String(url).includes('mailbox-read.php')) return { ok: true };
+      return realPost(url, body);
+    };
+    chbMailWatch(); // idempotent — already armed by initBackOffice
+    const armedOnce = (() => { const t = __mailWatchT; chbMailWatch(); return __mailWatchT === t; })();
+    __mailWatchAt = 0; // stale, so the resume probe fires NOW
+    document.dispatchEvent(new Event('visibilitychange'));
+    // Poll rather than a fixed beat — under the battery's contention a 250ms
+    // wait raced the two awaited stub calls (measured: passed solo, failed in
+    // the concurrent run).
+    for (let i = 0; i < 40 && !(window['__newMailPre'] && window['__newMailPre'].count === 2); i++)
+        await new Promise((r) => setTimeout(r, 100));
+    window.apiPost = realPost;
+    return {
+      armedOnce,
+      polled: hits.some((h) => h.url.includes('mailbox-read.php')),
+      counted: hits.some((h) => h.url.includes('mailbox.php') && h.action === 'new'),
+      pre: window.__newMailPre,
+      fig: (document.getElementById('iv-sum-email') || {}).textContent || '',
+    };
+  });
+  ok(mw2.polled && mw2.counted, 'resume nudges the reply-poll AND re-reads the cheap count');
+  ok(mw2.pre && mw2.pre.count === 2, 'the fresh count lands in __newMailPre');
+  ok(/2 new/.test(mw2.fig), `…and the landing verdict repaints in place (${mw2.fig.trim()})`);
+  ok(mw2.armedOnce, 'the watch arms once per page — a re-init cannot double the timer');
+  await page.evaluate(() => { __mbxOpenedOnce = window.__mbxOpenedOnceSave; window.__newMailPre = null; window.loadData = window.__ldSave; });
+
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

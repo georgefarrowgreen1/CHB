@@ -9593,11 +9593,23 @@ function inboxVerdicts() {
         : 'guest chat lands here');
     // Email — the mailbox is LAZY: before the first open there is no count to
     // claim, and inventing "nothing new" would be an unchecked assertion.
+    // BUT THE SERVER'S OWN COUNT IS NOT AN INVENTION: the reply-poll keeps
+    // mailbox-new, and __newMailPre carries it (bootstrap + the mail watch) —
+    // so "not checked yet" over 3 known waiting emails was the landing lying
+    // in the cautious direction. The known count leads; unknown stays stated.
     if (!__mbxOpenedOnce) {
-        // Unknown is a STATED third state, not an absence (the sweep's
-        // "Square hasn't said" rule, in miniature).
-        fig('iv-sum-email', 'unk', 'not checked yet');
-        sub('iv-sub-email', 'tap to check the mailbox');
+        const pre = window['__newMailPre'];
+        const preN = pre && pre.count > 0 ? pre.count : 0;
+        if (preN) {
+            fig('iv-sum-email', 'warn', `${preN} new`);
+            const it = (pre.items || [])[0] || {};
+            sub('iv-sub-email', `${it.name || it.from || 'A customer'} · ${it.subject || ''}`.slice(0, 70));
+        } else {
+            // Unknown is a STATED third state, not an absence (the sweep's
+            // "Square hasn't said" rule, in miniature).
+            fig('iv-sum-email', 'unk', 'not checked yet');
+            sub('iv-sub-email', 'tap to check the mailbox');
+        }
     } else {
         const mbxN = chip('ifold-count-mbx');
         fig('iv-sum-email', mbxN ? 'warn' : 'ok', mbxN ? `${mbxN} new` : 'Nothing new');
@@ -19030,6 +19042,11 @@ async function initBackOffice() {
     try {
         keysafeLoad().then(() => renderNeedsYou());
     } catch (e) {}
+    // The mail watch — new customer email raises its push/duty without the
+    // owner opening the mailbox (armed once per page; timer + resume probes).
+    try {
+        chbMailWatch();
+    } catch (e) {}
     try {
         renderNeedsYou();
     } catch (e) {}
@@ -24844,6 +24861,46 @@ function mailboxTab(tab) {
 function mailboxSearch(q) {
     __mbxQuery = (q || '').toLowerCase();
     renderMailboxList(true);
+}
+// ---- THE MAIL WATCH: new customer email reaches the owner WITHOUT opening
+// the mailbox. The reply-poll already detects/stores/pushes, but its only
+// unattended trigger was the DAILY cron. This nudges it every
+// CHB_MAIL_WATCH_MS (server throttle + lock make repeats cheap), then
+// re-reads the CHEAP count (mailbox.php 'new' — DB only) into __newMailPre
+// so the duty, landing verdict and Email chip repaint in place; resume
+// probes check immediately when stale.
+const CHB_MAIL_WATCH_MS = 5 * 60 * 1000;
+let __mailWatchT = null;
+let __mailWatchAt = 0;
+async function chbMailCheck() {
+    __mailWatchAt = Date.now();
+    try {
+        await apiPost('mailbox-read.php', {});
+    } catch (e) {}
+    try {
+        const r = await apiPost('mailbox.php', { action: 'new' });
+        if (r && r.new) {
+            window['__newMailPre'] = r.new;
+            try { renderNeedsYou(); } catch (e) {}
+            try { inboxVerdicts(); } catch (e) {}
+            // The Email folder chip, only while the mailbox itself is unfetched —
+            // once it is, renderMailboxList's unseen count owns the chip.
+            const chip = document.getElementById('ifold-count-mbx');
+            if (chip && !__mbxOpenedOnce) chip.textContent = r.new.count > 0 ? String(r.new.count) : '';
+        }
+    } catch (e) {}
+}
+function chbMailWatch() {
+    if (__mailWatchT) return; // armed once per page
+    __mailWatchT = setInterval(() => {
+        if (document.visibilityState === 'visible' && !document.body.classList.contains('net-off')) chbMailCheck();
+    }, CHB_MAIL_WATCH_MS);
+    const resume = () => {
+        if (document.visibilityState !== 'visible') return;
+        if (Date.now() - __mailWatchAt > CHB_MAIL_WATCH_MS) chbMailCheck();
+    };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('pageshow', resume);
 }
 function renderMailboxList(keepSearchFocus) {
     const el = document.getElementById('mailbox-body');

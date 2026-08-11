@@ -170,6 +170,14 @@ function mbx_retr($uid)
 
 // ---- actions ----------------------------------------------------------------
 
+// The CHEAP question: how many customer emails are waiting, from the store the
+// reply-poll already keeps (mailbox-new minus mailbox-seen). DB only — no POP3
+// round trip — so the client's periodic check can ask it freely; the poll
+// itself is nudged separately (mailbox-read.php, throttled server-side).
+if ($action === 'new') {
+    json_out(['ok' => true, 'new' => mailbox_new_pending()]);
+}
+
 if ($action === 'list') {
     [$fp, $uidl] = mbx_open_listed();
     // Newest last in POP3 numbering — page through 30 at a time.

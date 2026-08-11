@@ -373,6 +373,12 @@ chk('…and mailbox.php delegates to it',
     strpos(file_get_contents(__DIR__ . '/mailbox.php'), 'return mailbox_seen_uids();') !== false);
 chk('the boot payload carries it (no extra request)',
     strpos(file_get_contents(__DIR__ . '/admin-bootstrap.php'), "'newMail' => \$newMail") !== false);
+// The mail watch's cheap re-read: mailbox.php answers 'new' from the SAME
+// pending derivation (DB only, no POP3) — the client's periodic check and the
+// boot payload can never disagree about how many are waiting.
+chk("mailbox.php routes 'new' through mailbox_new_pending",
+    strpos($mbx, "if (\$action === 'new') {") !== false
+    && strpos($mbx, "json_out(['ok' => true, 'new' => mailbox_new_pending()]);") !== false);
 
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);
