@@ -4645,6 +4645,15 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .acw-modacts .mod-no { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .acw-modacts .mod-mut { color: var(--text-muted); }
+/* Batch 3 — the data pages join the anatomy by framing, not rebuild: the
+   all-cottages seasons grid sits in a well with hairline rows; the pricing
+   lead + analytics/diagnostics cards were converted by the .accounts-stat
+   re-skin above. Scoped to the settings sections throughout. */
+#season-grid-wrap { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 10px 12px; overflow-x: auto; }
+#season-grid-wrap .sg-table th { font-size: 0.62rem; letter-spacing: 0.06em; color: var(--text-muted); }
+#season-grid-wrap .sg-table td { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+#season-grid-wrap .sg-table .input-glass { border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); background: rgba(0, 0, 0, 0.18); border-radius: 9px; }
+#pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: 0.67rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold

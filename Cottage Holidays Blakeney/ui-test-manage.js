@@ -414,6 +414,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p2.ga.resetOnlyWithAccount, 'Reset password only offered where an account exists');
   ok(p2.rv.qrow && p2.rv.cap && p2.rv.pills, 'Reviews: the pending item is a moderation row with verdict pills');
 
+  console.log('§8 the data pages join by framing (batch 3)');
+  const p3 = await page.evaluate(async () => {
+    settingsOpen('seasongrid');
+    await new Promise((r) => setTimeout(r, 300));
+    const gw = document.getElementById('season-grid-wrap');
+    const grid = { framed: gw ? getComputedStyle(gw).borderRadius === '15px' : false, table: !!(gw && gw.querySelector('.sg-table')), save: !!document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"], #sec-seasongrid button') };
+    settingsOpen('pricing');
+    await new Promise((r) => setTimeout(r, 300));
+    const pb = document.getElementById('pricing-body');
+    const pricing = { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => getComputedStyle(l).textTransform === 'uppercase') : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
+    return { grid, pricing };
+  });
+  ok(p3.grid.framed && p3.grid.table && p3.grid.save, 'the all-cottages seasons grid sits in a well, table + save intact');
+  ok(p3.pricing.has && p3.pricing.caps, 'Pricing wears the caption vocabulary over its idea rows');
+
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

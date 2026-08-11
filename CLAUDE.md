@@ -440,6 +440,13 @@ answers is one well of labelled boxes with the default as placeholder and the
 saves-by-itself whisper. Gated by ui-test-manage §7 (5 checks, fixture-fed
 waitlist/guest_crm routes; the Waiting capsule's tone and the verdict pills
 each break-tested).
+**Batch 3 — the data pages join by FRAMING, not rebuild**: the all-cottages
+seasons grid sits in a well (`#season-grid-wrap`, table + Save intact),
+Pricing's section labels take the caption vocabulary, and the pages already
+carrying gated verdict structures from earlier overhauls (Status's hero,
+the activity feed, the cancel radiogroup, Analytics) were converted by the
+`.accounts-stat` re-skin alone. Gated by ui-test-manage §8 (grid well
+break-tested). That completes the approved 22-page demo.
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 
