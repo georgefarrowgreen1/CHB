@@ -141,6 +141,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const body2 = await page.evaluate(() => document.getElementById('keysafe-body').textContent);
   ok(/4826/.test(body2) && /Code on the safe/.test(body2), 'the card flips: 4826, on the safe for Marcus');
   ok(/on their booking page now|on their booking page from/.test(body2), '…and says where (and when) Marcus sees it');
+  // The sees-it value is a SENTENCE, and a sentence right-aligned beside a
+  // wrapping label read as broken (owner screenshot) — the row stacks.
+  ok((await page.evaluate(() => { const el = document.querySelector('.ks-kv.ks-prose'); return el ? getComputedStyle(el).flexDirection : 'missing'; })) === 'column',
+    'the sees-it prose row stacks under its label instead of ragged right-alignment');
   ok(/Hannah Whitlock/.test(await page.evaluate(() => { const dt = document.querySelector('#keysafe-body details'); dt.open = true; return dt.textContent; })), 'the superseded code joined the history under Hannah’s name');
 
   console.log('§4 the rotation duty on Needs-you');

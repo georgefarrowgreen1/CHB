@@ -4520,6 +4520,18 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
 #calendar-list .bhub-fold-grp { max-width: 640px; margin-bottom: 16px; } /* owner-asked: clear air between the cottages */
+/* Pricing coach + Recent payments wear the unified anatomy (owner-asked).
+   pc-well/mf-recon reuse the .acr-well ink-mix ground; the feed keeps its
+   gated row classes and takes the well framing by CSS alone. */
+.pc-well { padding: 14px 16px; }
+.pc-well .acw-acts { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding-top: 12px; }
+.mf-recon { max-width: 640px; padding: 4px 16px; margin: 0 0 16px; }
+.mf-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; font-size: 0.88rem; color: var(--text-muted); }
+.mf-line + .mf-line { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.mf-line .acw-fig { font-size: 1.05rem; color: var(--text-light); }
+.mf-recon .os-sub { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 0 6px; margin-top: 0; }
+.mf-list { max-width: 680px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; }
+.mf-list .feed-row { border-top-color: color-mix(in srgb, var(--text-light) 7%, transparent); }
 /* The cottage page: one fold group per section, the real editor inside. */
 #accom-detail { display: flex; flex-direction: column; gap: 12px; }
 #accom-detail .settings-group { margin-bottom: 0; }
@@ -5224,6 +5236,10 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .ks-kv:last-of-type {
   border-bottom: 0;
 }
+/* A prose value stacks under its label, left-aligned — a sentence right-aligned
+   beside a wrapping label read as broken (owner screenshot). */
+.ks-kv.ks-prose { flex-direction: column; align-items: flex-start; gap: 3px; }
+.ks-kv.ks-prose .ks-v { text-align: left; }
 .ks-k {
   color: var(--text-muted);
   min-width: 0;
