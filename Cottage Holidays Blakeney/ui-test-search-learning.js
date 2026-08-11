@@ -34,14 +34,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       hasMiss: /gift vouchers/.test(body ? body.textContent : ''),
       hasTaught: /money coming in/.test(body ? body.textContent : ''),
       hasSuppressed: /literal thing/.test(body ? body.textContent : ''),
-      sections: [...(body ? body.querySelectorAll('.settings-section-label') : [])].map((e) => e.textContent),
+      grps: [...(body ? body.querySelectorAll('.bhub-fold-grp') : [])].map((g) => g.getAttribute('data-grp')),
+      teachWarn: !!(body && body.querySelector('[data-grp="sl-teach"] .st-cap.is-warn .st-wic')),
+      teachSub: body ? ((body.querySelector('[data-grp="sl-teach"] .bhub-fold-sub') || {}).textContent || '') : '',
+      taughtOk: !!(body && body.querySelector('[data-grp="sl-taught"] .st-cap.is-ok .st-tick')),
+      foldsClosed: body ? [...body.querySelectorAll('.bhub-fold')].every((f) => f.hidden) : false,
     };
   });
   ok(s.view === 'view-settings' && s.shown, `the Manage section opens (${s.view})`);
   ok(/Search learning/.test(s.title), `panel title reads "Search learning" (${s.title})`);
   ok(s.stats.join(',') === '1,1,1', `status tiles count taught/literal/dead-ends (${s.stats.join(',')})`);
-  ok(s.hasMiss && s.hasTaught && s.hasSuppressed, 'all three lists render their seeded entries');
-  ok(s.sections.length === 3, `three grouped panels (${s.sections.join(' / ')})`);
+  ok(s.hasMiss && s.hasTaught && s.hasSuppressed, 'all three lists render their seeded entries (through the folds)');
+  ok(s.grps.join(',') === 'sl-teach,sl-taught,sl-literal', `the three lists are verdict fold groups (${s.grps.join(',')})`);
+  ok(s.teachWarn && /gift vouchers/.test(s.teachSub), `waiting teach-work wears the amber capsule and quotes the miss (${s.teachSub})`);
+  ok(s.taughtOk, 'the taught list wears the green ✓ count');
+  ok(s.foldsClosed, 'every group starts folded');
 
   // 2) Teach the dead-end: pick a "Means: …" suggestion (or synthesize one).
   const taught = await page.evaluate(() => {
@@ -51,10 +58,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       missGone: !chbMissList().some((m) => m.t === 'gift vouchers'), // no longer a dead-end
       nowTaught: chbNluLearned().some((x) => x.t === 'gift vouchers'), // joined the learned set
       inTaughtPanel: /means .revenue this year./.test(body.textContent), // and shows in the taught panel
+      capOk: !!body.querySelector('[data-grp="sl-teach"] .st-cap.is-ok'), // the verdict stands down
     };
   });
   ok(taught.missGone, 'teaching the dead-end clears it from the dead-end list');
   ok(taught.nowTaught && taught.inTaughtPanel, 'the taught phrase joins the learned set + shows under "taught"');
+  ok(taught.capOk, 'the teach verdict flips to the green capsule (nothing waiting)');
 
   // 3) Un-teach + Restore.
   const cleaned = await page.evaluate(() => {
@@ -106,9 +115,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   const guest = await page.evaluate(() => {
     const body = document.getElementById('search-learning-body').textContent;
-    return { hasPanel: /Guests asked these/.test(body), hasQ: /is there a hairdryer/.test(body), mostAskedFirst: body.indexOf('hairdryer') < body.indexOf('travel cot') };
+    const host = document.getElementById('search-learning-body');
+    return { hasPanel: /Guests asked these/.test(body), hasQ: /is there a hairdryer/.test(body), mostAskedFirst: body.indexOf('hairdryer') < body.indexOf('travel cot'), grpWarn: !!host.querySelector('[data-grp="sl-guest"] .st-cap.is-warn') };
   });
   ok(guest.hasPanel && guest.hasQ, 'guest questions render in their own panel');
+  ok(guest.grpWarn, '…as a verdict fold group wearing the amber count');
   ok(guest.mostAskedFirst, 'the most-asked guest question sorts first');
 
   const dismissed = await page.evaluate(() => {

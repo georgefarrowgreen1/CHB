@@ -350,8 +350,16 @@ below are untouched. **Calendar feeds** (`renderCalendarList`) is one verdict
 fold group per cottage — freshness capsule from `__feedStatusPre`, Run-the-sync
 + the feed-link editor inside the fold, the per-cottage editor unchanged behind
 `settingsOpenCalendar`. Gated by **`ui-test-manage.js`** (threshold + calendar
-tone break-tested). PR-3 (Search learning / Website content) follows the
-approved demo.
+tone break-tested).
+**Search learning + Website content wear the anatomy too.** The four teach
+lists (`renderSearchLearning`) are verdict fold groups — waiting teach-work an
+amber capsule quoting the top miss, the reference lists grey counts, the
+status card + probe above as the page's pulse; teaching the last dead-end
+flips the capsule green (gated both ways). `loadContentEditor` is two groups
+(Images / Text & wording) counting the real fields, every `ce-<key>` id
+unchanged inside the fold so `contentEditSave`/`contentEditImage` and
+poorsignal's direct calls work untouched. Gated by ui-test-search-learning
+(capsule + fold checks re-aimed) and ui-test-manage §5, break-tested.
 **The cottage page is fold groups with the REAL editors inside**
 (`settingsOpenAccom` — the 13-section menu→subpage hop is gone; each
 ACCOM_SECTIONS entry is a `bhub-fold-grp.ac-card` whose fold holds

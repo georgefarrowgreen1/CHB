@@ -11465,22 +11465,17 @@ function renderSearchLearning() {
     // answer on the cottage's FAQ (or a dismiss). Only shown when there are any.
     let guestQs = [];
     try { guestQs = slGuestQuestions(); } catch (e) {}
-    const guestPanel = guestQs.length
-        ? `<div class="settings-section-label">Guests asked these</div>
-           <section class="glass-panel sl-card">
-             <p class="sl-note" style="margin:0 0 12px;">Questions guests typed that the instant-answer assistant couldn't answer. Add an answer and the next guest asking gets it on the spot — no message to you.</p>
-             ${guestQs.slice(0, 20).map((r) => {
-                const nm = (propertyMeta[r.prop] || {}).name || '';
-                return `<div class="sl-row">
-                    <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
-                    <div class="sl-row-acts">
-                        <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
-                        <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
-                    </div>
-                </div>`;
-             }).join('')}
-           </section>`
-        : '';
+    const guestRows = `<p class="sl-note" style="margin:0 0 12px;">Questions guests typed that the instant-answer assistant couldn't answer. Add an answer and the next guest asking gets it on the spot — no message to you.</p>` +
+        guestQs.slice(0, 20).map((r) => {
+            const nm = (propertyMeta[r.prop] || {}).name || '';
+            return `<div class="sl-row">
+                <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
+                <div class="sl-row-acts">
+                    <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
+                    <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
+                </div>
+            </div>`;
+        }).join('');
 
     // 4) Made literal — suppressed phrasings, each restorable.
     const supRows = suppressed.length
@@ -11490,16 +11485,24 @@ function renderSearchLearning() {
             </div>`).join('')
         : `<p class="sl-empty">None. If you ever tell search to “use the literal words”, that phrasing is remembered here so you can undo it.</p>`;
 
-    wrap.innerHTML = `
-        ${statusHtml}
-        ${probeHtml}
-        <div class="settings-section-label">Teach the assistant</div>
-        <section class="glass-panel sl-card">${missRows}</section>
-        ${guestPanel}
-        <div class="settings-section-label">What you've taught it</div>
-        <section class="glass-panel sl-card">${learnRows}</section>
-        <div class="settings-section-label">Made literal</div>
-        <section class="glass-panel sl-card">${supRows}</section>`;
+    // The four lists are VERDICT fold groups now (the fold anatomy): the
+    // summary row states the conclusion, the working rows fold under it.
+    // Teach-work waiting wears the amber capsule; the reference lists are
+    // grey counts. The status card + probe stay above as the page's pulse.
+    const teachSum = misses.length ? stCap('warn', misses.length + ' waiting') : stCap('ok', 'nothing waiting');
+    const teachSub = misses.length
+        ? `“${esc(misses[0].t)}”${misses.length > 1 ? ' + ' + (misses.length - 1) + ' more' : ''} found nothing`
+        : 'recent searches all found something';
+    const guestSum = stCap('warn', guestQs.length + ' unanswered');
+    const guestSub = `“${esc((guestQs[0] || {}).q || '')}” — one tap makes it an instant answer`;
+    const taughtSum = learned.length ? stCap('ok', learned.length + ' phrasing' + (learned.length === 1 ? '' : 's')) : stCap('unk', 'none yet');
+    const supSum = suppressed.length ? stCap('unk', String(suppressed.length)) : stCap('unk', 'none');
+    wrap.innerHTML =
+        statusHtml + probeHtml +
+        bhubFoldGrp('sl-teach', 'Teach the assistant', teachSub, teachSum, `<div class="sl-fold-body">${missRows}</div>`) +
+        (guestQs.length ? bhubFoldGrp('sl-guest', 'Guests asked these', guestSub, guestSum, `<div class="sl-fold-body">${guestRows}</div>`) : '') +
+        bhubFoldGrp('sl-taught', 'What you’ve taught it', 'wording you’ve tagged “Means: …”', taughtSum, `<div class="sl-fold-body">${learnRows}</div>`) +
+        bhubFoldGrp('sl-literal', 'Made literal', 'phrasings searched word-for-word', supSum, `<div class="sl-fold-body">${supRows}</div>`);
 }
 
 // ---- Money → Pricing coach (data-driven suggestions; apply is opt-in) ----
@@ -11640,37 +11643,40 @@ function loadContentEditor() {
     const texts = [...document.querySelectorAll('[data-edit-text]')].filter((el) => !skip(el));
     const seen = new Set();
     const label = (k) => CONTENT_LABELS[k] || k;
-    let html =
-        '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 18px;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>';
-    if (imgs.length) {
-        html +=
-            '<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Images</h3>';
-        imgs.forEach((el) => {
-            const k = el.getAttribute('data-edit-img');
-            if (seen.has(k)) return;
-            seen.add(k);
-            html +=
-                `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(contentBgUrl(el))}');"></div>` +
-                `<div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">${escapeHtml(label(k))}</div>` +
-                `<button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(k))}>Replace image</button></div></div>`;
-        });
-    }
-    html +=
-        '<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:22px 0 12px;">Text</h3>';
+    // Two verdict fold groups (the fold anatomy) with the REAL editors inside —
+    // every field keeps its ce-<key> id, so contentEditSave/contentEditImage
+    // and the poorsignal gate's direct calls work unchanged inside the fold.
+    let imgRows = '';
+    imgs.forEach((el) => {
+        const k = el.getAttribute('data-edit-img');
+        if (seen.has(k)) return;
+        seen.add(k);
+        imgRows +=
+            `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(contentBgUrl(el))}');"></div>` +
+            `<div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">${escapeHtml(label(k))}</div>` +
+            `<button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(k))}>Replace image</button></div></div>`;
+    });
+    const nImgs = seen.size;
+    let textRows = '';
+    let nTexts = 0;
     texts.forEach((el) => {
         const k = el.getAttribute('data-edit-text');
         if (seen.has(k)) return;
         seen.add(k);
+        nTexts++;
         const val = (el.textContent || '').trim();
         const field =
             val.length > 60
                 ? `<textarea class="input-glass" id="ce-${k}" rows="2" style="resize:vertical;">${escapeHtml(val)}</textarea>`
                 : `<input type="text" class="input-glass" id="ce-${k}" value="${escapeHtml(val)}">`;
-        html +=
+        textRows +=
             `<div style="margin-bottom:14px;max-width:640px;"><label class="modal-label" for="ce-${k}">${escapeHtml(label(k))}</label>${field}` +
             `<button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(k))}>Save</button></div>`;
     });
-    wrap.innerHTML = html;
+    wrap.innerHTML =
+        '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>' +
+        bhubFoldGrp('wc-images', 'Images', 'the hero banner &amp; site-wide pictures', stCap(nImgs ? 'ok' : 'unk', nImgs ? nImgs + ' image' + (nImgs === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${imgRows}</div>`) +
+        bhubFoldGrp('wc-text', 'Text &amp; wording', 'site name, menu labels, hero words', stCap(nTexts ? 'ok' : 'unk', nTexts ? nTexts + ' field' + (nTexts === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${textRows}</div>`);
 }
 // The green border is a CLAIM, so it waits for the save. It used to flash on a
 // rejected write (saveContent rethrows; the catch swallowed it) — the same defect

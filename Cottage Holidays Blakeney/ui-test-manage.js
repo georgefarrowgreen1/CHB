@@ -177,6 +177,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(clear, 'the deep link scrolls the fold clear of the fixed header');
 
+  console.log('§5 Website content: two verdict groups, the real editors inside');
+  await page.evaluate(() => settingsOpen('content'));
+  await page.waitForTimeout(400);
+  const wc = await page.evaluate(() => {
+    const w = document.getElementById('content-editor');
+    return {
+      grps: [...w.querySelectorAll('.bhub-fold-grp')].map((g) => g.getAttribute('data-grp')),
+      textCap: ((w.querySelector('[data-grp="wc-text"] .st-cap') || {}).textContent || ''),
+      imgCap: ((w.querySelector('[data-grp="wc-images"] .st-cap') || {}).textContent || ''),
+      foldsClosed: [...w.querySelectorAll('.bhub-fold')].every((f) => f.hidden),
+      // The REAL fields keep their ce-<key> ids inside the fold, so
+      // contentEditSave and the poorsignal gate's direct calls still work.
+      fieldInFold: !!w.querySelector('#bhub-fold-wc-text input[id^="ce-"], #bhub-fold-wc-text textarea[id^="ce-"]'),
+      imgBtnInFold: !!w.querySelector('#bhub-fold-wc-images [data-act="contentEditImage"]'),
+    };
+  });
+  ok(wc.grps.includes('wc-images') && wc.grps.includes('wc-text'), `Images + Text are verdict fold groups (${wc.grps.join(',')})`);
+  ok(/field/.test(wc.textCap) && /image|none found/.test(wc.imgCap), `the capsules count the real fields (${wc.textCap.trim()} / ${wc.imgCap.trim()})`);
+  ok(wc.foldsClosed, 'both groups start folded');
+  ok(wc.fieldInFold && wc.imgBtnInFold, 'the real ce-<key> editors + Replace-image live inside the folds');
+
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

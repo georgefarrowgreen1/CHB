@@ -4524,6 +4524,12 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    fixed header, not under it (the app.css anchored-scroll pattern). */
 .ac-card { width: 100%; scroll-margin-top: calc(100px + var(--safe-t)); }
 .ac-fold-body { padding-top: 2px; }
+/* Search learning + Website content: the same 12px verdict rail, every fold
+   group full-width (cross-axis auto margins cancel stretch — the rail rule). */
+#search-learning-body, #content-editor { display: flex; flex-direction: column; gap: 12px; }
+#search-learning-body > *, #content-editor > * { width: 100%; }
+#search-learning-body .sl-card { margin: 0; }
+.sl-fold-body { padding-top: 2px; }
 
 /* ---- The Inbox landing (THE THREE ANSWERS, stacked <1200px): one flex
    column at the hub's 12px rhythm; the existing folder lists live INSIDE the
