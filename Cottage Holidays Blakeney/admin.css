@@ -4519,7 +4519,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 @media (min-width: 900px) {
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
-#calendar-list .bhub-fold-grp { max-width: 640px; }
+#calendar-list .bhub-fold-grp { max-width: 640px; margin-bottom: 16px; } /* owner-asked: clear air between the cottages */
 /* The cottage page: one fold group per section, the real editor inside. */
 #accom-detail { display: flex; flex-direction: column; gap: 12px; }
 #accom-detail .settings-group { margin-bottom: 0; }
