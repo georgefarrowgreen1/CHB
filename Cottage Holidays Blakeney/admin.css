@@ -5018,21 +5018,13 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
    cottage: hairline kv rows (the hub's grouped-row shape), the code in the
    serif at figure size (the one-big-figure register), history behind a
    <details> because the everyday question is "what is it NOW". ── */
-.ks-card {
-  padding: 16px 18px;
-  margin-bottom: 14px;
-  border-radius: var(--r-lg);
-}
-.ks-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.ks-head .prop-tag {
-  margin-bottom: 0;
-}
+/* The page is one 640px rail at the fold rhythm; each cottage is a fold
+   group (.ks-card kept as the suite's locator). The old card/head geometry
+   went with the flat cards. */
+#keysafe-body { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+#keysafe-body .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
+#keysafe-body .mo-pulse { margin: 2px 0 0; }
+.ks-card .prop-tag { margin-bottom: 0; }
 .ks-kv {
   display: flex;
   justify-content: space-between;
@@ -5055,14 +5047,17 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   font-weight: 400;
   font-size: 0.78rem;
 }
+/* The label's provenance line stacks under it — inline it ran into the
+   label ("Safe is set tosince 05/08", caught on the build's screenshot). */
+.ks-k small { display: block; margin-top: 2px; }
 .ks-v {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .ks-code {
   font-family: var(--font-serif);
-  font-size: 1.25rem;
-  letter-spacing: 0.18em;
+  font-size: 1.6rem;
+  letter-spacing: 0.3em;
   color: var(--accent-text);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-sm, 12px);
@@ -5094,6 +5089,7 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   padding: 3px 8px 6px 0;
   border-bottom: 1px solid var(--glass-border);
 }
+.ks-table .ks-code { font-size: 0.95rem; letter-spacing: 0.18em; }
 .ks-table td {
   padding: 7px 8px 7px 0;
   border-bottom: 1px solid var(--glass-border);

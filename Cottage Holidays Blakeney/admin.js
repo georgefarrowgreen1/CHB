@@ -17715,14 +17715,21 @@ function renderKeysafe() {
     }
     const e = escapeHtml;
     const today = todayDashed();
-    host.innerHTML = Object.keys(__keysafe).map((pk) => {
+    // The fold anatomy (the approved demo): each cottage is ONE verdict row —
+    // ✓ Code on the safe / △ rotate now / honest grey — with the code, who
+    // it's for, the guest-visibility line, Rotate and the history folded
+    // under it. A safe whose next arrival is inside the rotation window is
+    // an EXCEPTION: its whole group hoists into Needs attention (never
+    // repeated below). Every keeper rule is untouched — presentation only.
+    const groups = Object.keys(__keysafe).map((pk) => {
         const rec = __keysafe[pk] || {};
         // Switched off: HIDDEN from this page entirely (owner-asked — no
         // off-card, no footnote). The way back on is the Settings checkbox.
-        if (rec.enabled === false) return '';
+        if (rec.enabled === false) return null;
         const next = keysafeNextBooking(pk);
         const nextMine = keysafeSetFor(rec, next);
         const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
+        const due = !!(next && !nextMine && soon);
         const forGuest = (() => {
             if ((rec.forStay || '').charAt(0) === 'o') return 'a platform guest';
             if (!rec.forBooking) return '';
@@ -17732,18 +17739,29 @@ function renderKeysafe() {
             return h && Number(h.forBooking) === Number(rec.forBooking) ? h.guest || '' : '';
         })();
         const revealFrom = next ? fmtDate(ukShiftDays(next.checkIn, -__keysafeDays)) : '';
-        return '<div class="glass-panel ks-card">'
-            + '<div class="ks-head"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span>'
-            + '<button class="btn-sm btn-edit" ' + chbAttrs('keysafeRotate', String(pk)) + '>Rotate the code</button></div>'
-            + '<div class="ks-kv"><span class="ks-k">Safe is set to</span><span class="ks-v">'
-            + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span> <small>' + (rec.setAt ? 'since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) : '') + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>'
+        // The verdict — and the sub tells the story: who's coming, and whose
+        // code is on the dial.
+        const cap = !rec.code
+            ? stCap('unk', 'not recorded yet')
+            : !next
+              ? stCap('unk', 'no upcoming booking')
+              : nextMine
+                ? stCap('ok', 'Code on the safe')
+                : due
+                  ? stCap('bad', 'rotate now')
+                  : stCap('warn', 'new code needed');
+        const sub = next
+            ? e((next.name || 'Next guest') + ' · ' + (next.checkIn <= today ? 'in residence' : 'arrives ' + fmtDate(next.checkIn)))
+                + (nextMine ? '' : forGuest ? e(' · code is still ' + forGuest + '’s') : ' · no code set for them')
+            : rec.setAt
+              ? e('last set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : ''))
+              : 'rotate it once and the keeper takes over';
+        const fold =
+            '<div class="ks-kv"><span class="ks-k">Safe is set to' + (rec.code && rec.setAt ? '<small>since ' + e(fmtDate(String(rec.setAt).slice(0, 10))) + (forGuest ? ' · for ' + e(forGuest) : '') + '</small>' : '') + '</span><span class="ks-v">'
+            + (rec.code ? '<span class="ks-code">' + e(rec.code) + '</span>'
                 : '<small>not recorded yet — rotate it once and the keeper takes over</small>') + '</span></div>'
             + (next
-                ? '<div class="ks-kv"><span class="ks-k">' + e(next.name || 'Next guest') + ' <small>' + (next.checkIn <= today ? 'in residence' : 'arrives ' + e(fmtDate(next.checkIn))) + '</small></span><span class="ks-v">'
-                    + (nextMine
-                        ? '<span class="bhub-chip is-ok">code on the safe ✓</span>'
-                        : '<span class="bhub-chip is-warn">no code set for them' + (soon ? ' — due now' : '') + '</span>') + '</span></div>'
-                    + '<div class="ks-kv"><span class="ks-k">They see it</span><span class="ks-v"><small>'
+                ? '<div class="ks-kv"><span class="ks-k">' + (next.checkIn <= today ? 'They see it' : e((next.name || 'They').split(' ')[0]) + ' sees it') + '</span><span class="ks-v"><small>'
                     + (next.ota
                         // A platform guest has no account here, so the reveal
                         // cannot reach them — the platform's own thread can.
@@ -17751,14 +17769,31 @@ function renderKeysafe() {
                         : nextMine
                             ? (next.checkIn <= today || keysafeRevealOpen(next, today) ? 'on their booking page now' : 'on their booking page from ' + e(revealFrom))
                             : 'nowhere yet — the code appears only after you confirm the safe is set') + '</small></span></div>'
-                : '<div class="ks-kv"><span class="ks-k">Next guest</span><span class="ks-v"><small>no upcoming booking</small></span></div>')
+                : '<div class="ks-kv"><span class="ks-k">Anyone sees it</span><span class="ks-v"><small>no — with no booking, the reveal stays closed</small></span></div>')
+            + '<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ' + chbAttrs('keysafeRotate', String(pk)) + '>Rotate the code</button></div>'
             + ((rec.history || []).length
                 ? '<details class="ks-hist"><summary>Who had which code</summary><table class="ks-table"><tr><th>Code</th><th>Guest</th><th>Until</th></tr>'
                     + rec.history.map((h) => '<tr><td><span class="ks-code">' + e(h.code) + '</span></td><td>' + e(h.guest || ((h.forStay || '').charAt(0) === 'o' ? 'Platform guest' : '—')) + '</td><td>' + e(h.setAt ? fmtDate(String(h.setAt).slice(0, 10)) : '—') + '</td></tr>').join('')
                     + '</table><p class="ks-note">Stored encrypted, like your private cottage notes. The log says which code was live and when it changed — your record if entry is ever disputed.</p></details>'
-                : '')
-            + '</div>';
-    }).join('') || '<p class="lead" style="text-align:left;">No cottages yet.</p>';
+                : '');
+        const key = 'ks-' + pk;
+        const open = __bhubOpenFolds.has(key);
+        const html = '<section class="bhub-card glass-panel bhub-fold-grp ks-card" data-grp="' + e(key) + '">'
+            + '<button type="button" class="bhub-fold-row" ' + chbAttrs('bhubFoldToggle', key) + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="bhub-fold-' + e(key) + '">'
+            + '<span class="bhub-fold-lbl"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span><small class="bhub-fold-sub">' + sub + '</small></span>'
+            + '<span class="bhub-fold-right">' + cap + '<span class="bhub-chev" aria-hidden="true">›</span></span></button>'
+            + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '>' + fold + '</div></section>';
+        return { due, html };
+    }).filter(Boolean);
+    const dueN = groups.filter((g) => g.due).length;
+    const pulse = groups.length
+        ? `<div class="mo-pulse">${dueN ? (dueN === 1 ? 'One safe needs a new code.' : dueN + ' safes need a new code.') : 'Nothing to rotate — every safe with a guest coming is set.'}</div>`
+        : '';
+    host.innerHTML = groups.length
+        ? pulse
+            + (dueN ? '<span class="bhub-grpcap is-attn">Needs attention</span>' + groups.filter((g) => g.due).map((g) => g.html).join('') : '')
+            + `<span class="bhub-grpcap">The safes</span>` + (groups.filter((g) => !g.due).map((g) => g.html).join('') || '<p class="ks-note" style="margin:4px 2px;">Every safe is above, waiting on a new code.</p>')
+        : '<p class="lead" style="text-align:left;">No cottages yet.</p>';
 }
 // The guest-side reveal window, mirrored for DISPLAY only (my-bookings.php
 // owns the real gate) — from revealDays before check-in through check-out.
