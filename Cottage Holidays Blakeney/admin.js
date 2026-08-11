@@ -9317,9 +9317,55 @@ let __mbxOpenedOnce = false;
 function inboxRemember() {
     chbNavRemember('inbox:' + __inboxFolder + (__inboxFolder === 'email' && __mbxTab === 'sent' ? ':sent' : ''));
 }
+// Stacked (<1200px) the Inbox is THE THREE ANSWERS: the folder switch hides,
+// each #inbox-folder-* div re-parents INTO its landing fold (the
+// #booking-hub-content trick), and the folds are an ACCORDION driven by the
+// same __inboxFolder/display machinery the wide layout uses.
+function inboxStacked() {
+    return !window.matchMedia('(min-width: 1200px)').matches;
+}
+// Crossing 1200px live (rotating an iPad): re-seat the folder divs for the
+// new layout — the same live re-parenting the hubs' panes already do.
+try {
+    window.matchMedia('(min-width: 1200px)').addEventListener('change', () => {
+        if ((document.querySelector('.page-view.active') || {}).id === 'view-inbox') inboxFolder(__inboxFolder);
+        else inboxLayoutSync();
+    });
+} catch (e) {}
+function inboxLayoutSync() {
+    const main = document.getElementById('inbox-main');
+    if (!main || !document.getElementById('inbox-landing')) return;
+    const stacked = inboxStacked();
+    ['enquiries', 'messages', 'email'].forEach((f) => {
+        const div = document.getElementById('inbox-folder-' + f);
+        const fold = document.getElementById('iv-fold-' + f);
+        if (!div || !fold) return;
+        if (stacked) {
+            if (div.parentElement !== fold) fold.appendChild(div);
+        } else if (div.parentElement === fold) {
+            main.appendChild(div);
+        }
+    });
+}
+// A fold-row tap: second tap on the OPEN answer closes it; otherwise the tap is
+// exactly a folder switch.
+function ivToggle(which) {
+    const fold = document.getElementById('iv-fold-' + which);
+    if (fold && !fold.hidden) {
+        fold.hidden = true;
+        const row = document.querySelector(`#inbox-landing .bhub-fold-row[data-arg="${which}"]`);
+        if (row) row.setAttribute('aria-expanded', 'false');
+        const div = document.getElementById('inbox-folder-' + which);
+        if (div) div.style.display = 'none';
+        return;
+    }
+    inboxFolder(which);
+}
 function inboxFolder(which) {
     if (!['enquiries', 'messages', 'email'].includes(which)) which = 'enquiries';
     __inboxFolder = which;
+    inboxLayoutSync();
+    const stacked = inboxStacked();
     document.querySelectorAll('#inbox-folders [data-ifolder]').forEach((b) => {
         const on = b.dataset.ifolder === which;
         b.classList.toggle('is-on', on);
@@ -9328,6 +9374,10 @@ function inboxFolder(which) {
     ['enquiries', 'messages', 'email'].forEach((f) => {
         const el = document.getElementById('inbox-folder-' + f);
         if (el) el.style.display = f === which ? '' : 'none';
+        const fold = document.getElementById('iv-fold-' + f);
+        const row = document.querySelector(`#inbox-landing .bhub-fold-row[data-arg="${f}"]`);
+        if (fold) fold.hidden = !(stacked && f === which);
+        if (row) row.setAttribute('aria-expanded', stacked && f === which ? 'true' : 'false');
     });
     // Apple-Mail desktop: the reading pane serves EVERY folder — the enquiry
     // hub, the docked chat window, or the email reader — so swap its content
@@ -9382,6 +9432,9 @@ function inboxFolder(which) {
 // the same counts the folder chips show (enquiries live; chats/emails read
 // from their chips so this never re-fetches anything).
 function inboxSubline() {
+    // The verdicts render FIRST — the declined branch below returns early,
+    // and a subline about the drawer must not freeze the landing's counts.
+    inboxVerdicts();
     const el = document.getElementById('inbox-subline');
     if (!el) return;
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
@@ -9402,6 +9455,79 @@ function inboxSubline() {
         return;
     }
     el.textContent = parts.length ? parts.join(' · ') : 'All caught up — nothing needs a reply.';
+}
+// The landing's verdicts + exceptions — composed from the SAME stores and
+// chips the badges and subline read; rides inboxSubline so it re-renders
+// whenever the counts change.
+function inboxVerdicts() {
+    if (!document.getElementById('inbox-landing')) return;
+    const fig = (id, text, tone) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        el.className = 'bhub-payline-fig iv-fig' + (tone ? ' is-' + tone : '');
+    };
+    const sub = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+    const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
+    // Enquiries — the waiting queue itself.
+    const enqs = Array.isArray(enquiries) ? enquiries : [];
+    fig('iv-sum-enquiries', enqs.length ? `${enqs.length} waiting` : '0 waiting ✓', enqs.length ? 'warn' : 'ok');
+    // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
+    const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
+    const nDecl = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
+    sub('iv-sub-enquiries', newest
+        ? `${newest.name || 'Guest'} · ${newest.received ? relTime(newest.received) : 'new'}`
+        : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
+    // Messages — unread count from the same chip loadAdminMessages writes.
+    const msgN = chip('ifold-count-msg');
+    fig('iv-sum-messages', msgN ? `${msgN} unread` : 'all read ✓', msgN ? 'warn' : 'ok');
+    const threads = Array.isArray(__msgThreads) ? __msgThreads : [];
+    const unreadT = threads.find((t) => (t.unread || 0) > 0) || threads[0];
+    sub('iv-sub-messages', unreadT
+        ? `${unreadT.name || unreadT.email || 'Visitor'} · ${(unreadT.last_body || '').slice(0, 60)}`
+        : 'guest chat lands here');
+    // Email — the mailbox is LAZY: before the first open there is no count to
+    // claim, and inventing "nothing new" would be an unchecked assertion.
+    if (!__mbxOpenedOnce) {
+        fig('iv-sum-email', '', '');
+        sub('iv-sub-email', 'tap to check the mailbox');
+    } else {
+        const mbxN = chip('ifold-count-mbx');
+        fig('iv-sum-email', mbxN ? `${mbxN} new` : 'nothing new ✓', mbxN ? 'warn' : 'ok');
+        const latest = (Array.isArray(__mbxMessages) ? __mbxMessages : []).find((m) => !m.seen);
+        sub('iv-sub-email', latest
+            ? `${(mbxSender(latest.fromRaw, latest.from).name || latest.from || '')} · ${latest.subject || ''}`.slice(0, 70)
+            : 'no unread customer mail');
+    }
+    // Exceptions — an enquiry that has waited past the amber flag doesn't hide
+    // behind a fold; it is a red row with the reply actions under it. A clean
+    // morning renders no red section at all.
+    const attn = document.getElementById('iv-attn');
+    if (attn) {
+        const stale = enqs.filter((e) => enquiryAgeDays(e) >= ENQUIRY_STALE_DAYS).slice(0, 3);
+        attn.innerHTML = stale.length
+            ? `<span class="bhub-grpcap is-attn">Needs attention</span>` + stale.map((e, i) => {
+                  const meta = propertyMeta[e.propKey];
+                  let est = '';
+                  try {
+                      const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
+                      est = e.priceOverride != null ? gbp(e.priceOverride) : pr && pr.total > 0 ? gbp(pr.total) : '';
+                  } catch (err) {}
+                  return bhubFoldGrp('iva' + i,
+                      `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Waiting ${enquiryAgeDays(e)} days — ${escapeHtml(e.name || 'Guest')}`,
+                      escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${e.received ? ' · asked ' + relTime(e.received) : ''}`),
+                      est ? `<span class="bhub-sum-val">${est} stay</span>` : '',
+                      `${(e.message || '').trim() ? `<div class="bhub-mut" style="margin-bottom:4px;">&ldquo;${escapeHtml((e.message || '').trim().slice(0, 160))}&rdquo;</div>` : ''}
+                       <div class="bhub-btn-row bhub-act-links">
+                          <button class="bhub-actlink" ${chbAttrs('openEnquiryHub', String(e.id))}>Open the enquiry</button>
+                          <button class="bhub-actlink" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>
+                       </div>`);
+              }).join('')
+            : '';
+    }
 }
 
 // ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
@@ -22580,6 +22706,18 @@ function declinedInboxHtml() {
                 // vocabulary; DD/MM/YYYY is for comparing dates, not "how long ago".
                 const when = e.declinedAt ? relTime(e.declinedAt) : '';
                 const msg = (e.message || '').trim();
+                // The one fact worth re-checking on a decline: has the calendar
+                // moved since? Words on the dates line, NOT a third pill — a
+                // third pill at 390px squeezed the cottage name to 24px (the
+                // exact defect this drawer's gate exists to stop).
+                let nowTxt = '';
+                try {
+                    const av = enquiryAvailability(e);
+                    if (av && (e.checkIn || '') >= todayDashed())
+                        nowTxt = av.free
+                            ? ' · <span style="color:var(--ok-text);">dates still free</span>'
+                            : ' · <span style="color:var(--warn-text);">dates now taken</span>';
+                } catch (err) {}
                 return `
             <div class="bk-row glass-panel enq-declined-row">
                 <span class="bk-row-body">
@@ -22590,7 +22728,7 @@ function declinedInboxHtml() {
                         }</span>
                     </span>
                     <strong class="bk-row-name">${escapeHtml(e.name || 'Guest')}</strong>
-                    <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests || '')}</span>
+                    <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests || '')}${nowTxt}</span>
                     ${
                         msg
                             ? `<span class="enq-declined-msg" title="${escapeHtml(msg)}">&ldquo;${escapeHtml(msg)}&rdquo;</span>`
@@ -22627,6 +22765,9 @@ async function restoreDeclinedEnquiry(dbId, name) {
 }
 function renderInbox() {
     refreshInboxBadge();
+    // Place the folder divs for the current width (into the landing's folds
+    // when stacked, back beside the rail when wide) BEFORE anything reads them.
+    inboxLayoutSync();
     inboxSubline();
     const list = document.getElementById('inbox-list');
     // The switch is ALWAYS rendered — including on inbox zero, which is exactly
@@ -22651,6 +22792,10 @@ function renderInbox() {
     if (enqHead && enqHead.firstChild && enqHead.firstChild.nodeType === 3) {
         enqHead.firstChild.nodeValue = __inboxTab === 'declined' ? 'Declined enquiries ' : 'Enquiries ';
     }
+    // Stacked, the landing's FOLD LABEL is the visible heading (the h2 hides
+    // inside the fold) — it follows the same rule: name the list beneath it.
+    const ivLbl = document.getElementById('iv-lbl-enquiries');
+    if (ivLbl) ivLbl.textContent = __inboxTab === 'declined' ? 'Declined enquiries' : 'Enquiries';
     if (__inboxTab === 'declined') {
         list.innerHTML = tabBar + declinedInboxHtml();
         return;
@@ -24083,10 +24228,32 @@ function mbxContextHtml(fromEmail, shownName) {
     });
     const name = g.name || g.email;
     const named = String(shownName || '').trim().toLowerCase() === String(name).trim().toLowerCase();
-    return `<div class="mbx-ctx">
-        <span class="mbx-cap">Known guest${named ? '' : ' · ' + mbxEsc(name)}</span>
-        ${chips.join('')}
-    </div>`;
+    // The guest-match is a VERDICT row with the stays folded under it — the
+    // message leads, and checking their booking mid-read is one tap. The
+    // verdict figure is bookingDue, the one owner-facing "still to collect".
+    const up = g.bookings
+        .filter(({ b }) => (b.checkOut || '') >= today)
+        .sort((a, z) => (a.b.checkIn || '').localeCompare(z.b.checkIn || ''))[0];
+    let verdict = '';
+    if (up) {
+        try {
+            const dg = bookingDue(up.pk, up.b);
+            verdict = dg && dg.balance > 0.005
+                ? `<span class="iv-fig is-warn mbx-ctx-fig">${gbp(dg.balance)} to pay</span>`
+                : '<span class="iv-fig is-ok mbx-ctx-fig">Paid in full ✓</span>';
+        } catch (err) {}
+    }
+    const meta = up ? propertyMeta[up.pk] || { name: up.pk } : null;
+    const subTxt = up
+        ? `${meta.name} · ${fmtStayRange(up.b.checkIn, up.b.checkOut)}`
+        : `${g.bookings.length ? g.bookings.length + ' past stay' + (g.bookings.length > 1 ? 's' : '') : 'enquiry on file'}`;
+    return `<details class="mbx-ctx-d">
+        <summary class="mbx-ctx-drow">
+            <span class="mbx-ctx-lbl">${up ? 'Their booking' : 'Known guest'}${named ? '' : ' · ' + mbxEsc(name)}<small>${mbxEsc(subTxt)}</small></span>
+            <span class="mbx-ctx-right">${verdict}<span class="bhub-chev" aria-hidden="true">›</span></span>
+        </summary>
+        <div class="mbx-ctx">${chips.join('')}</div>
+    </details>`;
 }
 async function loadMailbox() {
     const el = document.getElementById('mailbox-body');
@@ -24330,8 +24497,13 @@ function mbxEarlierHtml(uid) {
     if (!t || t.msgs.length < 2) return '';
     const rest = t.msgs.filter((m) => String(m.uid) !== String(uid));
     if (!rest.length) return '';
-    return `<div class="mbx-earlier">
-        <span class="mbx-cap">Earlier in this conversation</span>
+    // The chain FOLDS — a long thread must never bury the new question. The
+    // sub carries the one fact worth surfacing closed: an unread earlier email.
+    return `<details class="mbx-ctx-d mbx-earlier">
+        <summary class="mbx-ctx-drow">
+            <span class="mbx-ctx-lbl">Earlier in this conversation<small>${rest.length} email${rest.length > 1 ? 's' : ''}${rest.some((m) => !m.seen) ? ' · one is unread' : ''}</small></span>
+            <span class="mbx-ctx-right"><span class="bhub-chev" aria-hidden="true">›</span></span>
+        </summary>
         <div class="mbx-chain">
             ${rest
                 .map((m) => {
@@ -24345,7 +24517,7 @@ function mbxEarlierHtml(uid) {
                 })
                 .join('')}
         </div>
-    </div>`;
+    </details>`;
 }
 async function mailboxOpen(uid) {
     const dock = mbxPaneDock();
@@ -24541,7 +24713,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[ivToggle, shareStayDetails, draftBookingReply, editPaymentPlan, sendPaymentReminder, crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveInstalFloor, instalFloorPreview, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable

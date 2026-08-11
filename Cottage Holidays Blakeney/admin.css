@@ -4505,6 +4505,41 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }
 
+/* ---- The Inbox landing (THE THREE ANSWERS, stacked <1200px): one flex
+   column at the hub's 12px rhythm; the existing folder lists live INSIDE the
+   folds (re-parented by inboxLayoutSync), so their own headings hide — the
+   fold label carries the name. ≥1200px the landing hides and the Apple-Mail
+   rail | list | pane layout is untouched. ---- */
+#inbox-landing { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 18px; }
+#inbox-landing .bhub-fold-grp { width: 100%; }
+#inbox-landing .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
+#inbox-landing .bo-sec-title { display: none; }
+#iv-attn { display: flex; flex-direction: column; gap: 12px; }
+#iv-attn:empty { display: none; }
+.iv-fig { font-size: 1.05rem; }
+.iv-fig.is-warn { color: var(--warn-text); }
+.iv-fig.is-ok { color: var(--ok-text); }
+@media (min-width: 1200px) { #inbox-landing { display: none; } }
+@media (max-width: 1199px) { #inbox-folders { display: none; } }
+
+/* The email reader's two folds (guest-match verdict + the earlier chain) —
+   a details wearing the fold-row anatomy inside the reader card. */
+.mbx-ctx-d { border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); margin: 12px 0; }
+.mbx-ctx-d + .mbx-ctx-d, .mbx-text + .mbx-ctx-d { border-top: none; }
+.mbx-ctx-drow {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 10px 2px; cursor: pointer; list-style: none;
+}
+.mbx-ctx-drow::-webkit-details-marker { display: none; }
+.mbx-ctx-lbl { font-weight: 600; font-size: 0.92rem; min-width: 0; }
+.mbx-ctx-lbl small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbx-ctx-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.mbx-ctx-fig { font-size: 0.85rem; font-weight: 600; }
+.mbx-ctx-d .bhub-chev { transition: transform 0.18s ease; }
+.mbx-ctx-d[open] > .mbx-ctx-drow .bhub-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .mbx-ctx-d .bhub-chev { transition: none; } }
+.mbx-ctx-d .mbx-ctx, .mbx-ctx-d .mbx-chain { padding: 0 2px 10px; }
+
 /* ---- Money landing + Income & tax folds: one centred 640px column (the
    overview spans both desktop columns, so children centre themselves). A
    landing booking row is a <button> wearing the kv anatomy (full UA reset —

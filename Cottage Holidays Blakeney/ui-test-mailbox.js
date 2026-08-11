@@ -133,13 +133,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(600);
 
   console.log('2b. guest context + attachments');
+  // The guest-match is a VERDICT FOLD now — the summary names the match, the
+  // hub chips sit in the fold beneath it (in the DOM whether open or closed).
   const ctx = await page.evaluate(() => ({
-    match: /Known guest/.test((document.querySelector('.mbx-ctx') || {}).textContent || ''),
-    chip: !!document.querySelector('.mbx-ctx .bhub-stay-row'),
+    match: /Their booking|Known guest/.test((document.querySelector('.mbx-ctx-d') || {}).textContent || ''),
+    chip: !!document.querySelector('.mbx-ctx-d .bhub-stay-row'),
+    closed: !(document.querySelector('.mbx-ctx-d') || {}).open,
     att: ((document.querySelector('.mbx-att') || {}).textContent || '').trim(),
     attHref: (document.querySelector('.mbx-att') || {}).getAttribute?.('href') || '',
   }));
-  ok(ctx.match && ctx.chip, 'sender recognised — guest match card with a hub chip');
+  ok(ctx.match && ctx.chip, 'sender recognised — guest-match fold with a hub chip');
+  ok(ctx.closed, 'the guest-match starts folded — the message leads');
   ok(/directions\.pdf/.test(ctx.att) && /34 KB/.test(ctx.att), `attachment listed with size (${ctx.att})`);
   ok(/action=attachment&uid=u1&i=0/.test(ctx.attHref), 'attachment download link correct');
   await page.evaluate(() => document.querySelector('.mbx-ctx .bhub-stay-row').click());
@@ -383,9 +387,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
     await page.waitForTimeout(700);
     return page.evaluate(() => {
+      // Geometry needs the PAINT — open the fold the way an owner does.
+      const d = document.querySelector('.mbx-ctx-d');
+      if (d) d.open = true;
       const ctx = document.querySelector('.mbx-ctx');
       const row = ctx && ctx.querySelector('.bhub-stay-row');
-      const cap = ctx && ctx.querySelector('.mbx-cap');
+      const cap = document.querySelector('.mbx-ctx-drow');
       if (!row || !cap) return null;
       const rr = row.getBoundingClientRect();
       const cr = cap.getBoundingClientRect();
@@ -418,6 +425,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { mailboxCollapse(); const b = document.querySelector('#mailbox-body .bk-row'); b && b.click(); });
   await page.waitForTimeout(700);
   const squeezed = await page.evaluate(() => {
+    const d = document.querySelector('.mbx-ctx-d');
+    if (d) d.open = true;
     const row = document.querySelector('.mbx-ctx .bhub-stay-row');
     if (!row) return null;
     const tag = row.querySelector('.prop-tag');
@@ -447,7 +456,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(!!m && m.widestGap <= 24,
       `${tag}: they are packed inline, not flung to the corners (widest gap ${m ? m.widestGap : '?'}px)`);
     ok(!!m && m.dateH <= m.lineH + 4, `${tag}: the dates never fragment (${m ? m.dateH + 'px vs ' + m.lineH : '?'})`);
-    ok(!!m && m.capAbove, `${tag}: "Known guest" stays above the box`);
+    ok(!!m && m.capAbove, `${tag}: the fold's verdict row stays above the opened box`);
   }
 
   // ---- THE DECLINED DRAWER SAYS WHAT IT IS ---------------------------------
@@ -546,6 +555,71 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(wide.beside && !wide.clipped, 'on a wide column the button is beside the row, still unclipped');
+
+  // ---- THE THREE ANSWERS: stacked (<1200px) the folder switch becomes three
+  // verdict fold groups; the folder lists re-parent INTO the folds so every
+  // list and handler above kept working untouched. ----
+  console.log('10. the three-answers landing (stacked)');
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { inboxFolder('enquiries'); });
+  await page.waitForTimeout(300);
+  const land = await page.evaluate(() => {
+    const landing = document.getElementById('inbox-landing');
+    const vis = (el) => !!(el && el.getClientRects().length);
+    return {
+      landingShown: vis(landing),
+      switchHidden: !vis(document.getElementById('inbox-folders')),
+      grps: landing ? landing.querySelectorAll('.bhub-fold-grp').length : 0,
+      enqInFold: (document.getElementById('inbox-folder-enquiries') || {}).parentElement === document.getElementById('iv-fold-enquiries'),
+      enqOpen: !(document.getElementById('iv-fold-enquiries') || { hidden: true }).hidden,
+      msgClosed: (document.getElementById('iv-fold-messages') || {}).hidden === true,
+      enqFig: (document.getElementById('iv-sum-enquiries') || {}).textContent || '',
+      listVisible: vis(document.getElementById('inbox-list')),
+    };
+  });
+  ok(land.landingShown && land.switchHidden, 'the landing replaces the folder switch below 1200px');
+  ok(land.grps >= 3, `three verdict groups render (${land.grps})`);
+  ok(land.enqInFold && land.enqOpen && land.listVisible, 'inboxFolder() opens its fold with the real list inside');
+  ok(land.msgClosed, 'the other answers stay folded (accordion)');
+  ok(/0 waiting ✓/.test(land.enqFig), `the enquiries verdict reads the real queue (${land.enqFig})`);
+  // A second tap on the open answer CLOSES it (ivToggle round trip).
+  const rt = await page.evaluate(() => {
+    document.querySelector('#inbox-landing .bhub-fold-row[data-arg="enquiries"]').click();
+    const closed = (document.getElementById('iv-fold-enquiries') || {}).hidden === true;
+    document.querySelector('#inbox-landing .bhub-fold-row[data-arg="enquiries"]').click();
+    return { closed, reopened: !(document.getElementById('iv-fold-enquiries') || { hidden: true }).hidden };
+  });
+  ok(rt.closed && rt.reopened, 'a fold row toggles its answer open and closed');
+  // The exception rule, both ways: a stale enquiry raises a red row above the
+  // answers; clearing it stands the section down.
+  const attn = await page.evaluate((old) => {
+    enquiries.push({ id: 'e99', dbId: 99, propKey: '21a', name: 'Laura Hicks', email: 'l@x.com', checkIn: old.ci, checkOut: old.co, adults: 2, children: 0, guests: '2 adults', message: 'Is Jollyboat free?', received: old.made });
+    renderInbox();
+    const up = {
+      row: /Waiting \d+ days — Laura Hicks/.test((document.getElementById('iv-attn') || {}).textContent || ''),
+      cap: /Needs attention/.test((document.getElementById('iv-attn') || {}).textContent || ''),
+      fig: (document.getElementById('iv-sum-enquiries') || {}).textContent || '',
+    };
+    enquiries.pop();
+    renderInbox();
+    const down = ((document.getElementById('iv-attn') || {}).textContent || '').trim() === '';
+    return { up, down };
+  }, { ci: d(30), co: d(33), made: d(-4) });
+  ok(attn.up.row && attn.up.cap, 'a stale enquiry raises the Needs-attention row');
+  ok(/1 waiting/.test(attn.up.fig), `…and the verdict counts it (${attn.up.fig})`);
+  ok(attn.down, 'answering it stands the red section down');
+  // WIDE: the landing hides and the rail | list | pane layout is untouched.
+  await page.setViewportSize({ width: 1300, height: 900 });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => inboxFolder('enquiries'));
+  await page.waitForTimeout(200);
+  const wide2 = await page.evaluate(() => ({
+    landingHidden: !(document.getElementById('inbox-landing') || {}).getClientRects().length,
+    switchShown: !!(document.getElementById('inbox-folders') || {}).getClientRects().length,
+    enqInMain: (document.getElementById('inbox-folder-enquiries') || {}).parentElement === document.getElementById('inbox-main'),
+  }));
+  ok(wide2.landingHidden && wide2.switchShown && wide2.enqInMain, 'at ≥1200px the landing hides and the folder divs sit back beside the rail');
 
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);

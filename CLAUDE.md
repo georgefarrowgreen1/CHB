@@ -333,6 +333,39 @@ the click is guarded).
 - The Move-money-out screen itself was deliberately left as-is this pass — it already
   had its answer-first rebuild (see the sweep notes).
 
+## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
+
+Stacked, the folder switch hides and each folder becomes a verdict fold group
+(`#inbox-landing` in admin-views.html; summaries by `inboxVerdicts()`, which RIDES
+`inboxSubline()` — and must run ABOVE its declined early-return, or the drawer freezes
+the landing's counts: shipped that way for one gate-run, caught by the new gate).
+Gated by ui-test-mailbox §10 (each break-tested; a dead fold-opener kills the suite at
+its own click).
+- **The folder divs re-parent INTO the folds** (`inboxLayoutSync`, the
+  `#booking-hub-content` trick) so every list, gate and handler is untouched;
+  `inboxFolder(which)` stays the ONE switch — stacked it opens that fold (accordion)
+  with the SAME display toggling the wide layout uses, so restore targets
+  (`inbox:email:sent`), the dock and every caller work unchanged. `ivToggle` closes an
+  open answer on the second tap. Crossing 1200px live re-seats the divs (matchMedia
+  change listener). The folder h2s hide inside the landing (CSS) — the FOLD LABEL is
+  the visible heading and renderInbox renames it "Declined enquiries" with the tab.
+- **The verdicts read the stores the badges already read** (enquiries.length, the
+  `ifold-count-*` chips, `__msgThreads`/`__mbxMessages`), so the four surfaces cannot
+  disagree. The Email verdict says "tap to check the mailbox" until the lazy first
+  fetch — inventing "nothing new" before asking would be an unchecked assertion.
+- **Exceptions**: enquiries past `ENQUIRY_STALE_DAYS` are red fold rows in `#iv-attn`
+  with Open + ✨ Draft under them; the mapper's timestamp is **`received`**
+  (date-only) — `createdAt` does not exist on the client shape.
+- **The destinations wear the anatomy too**: the chat thread's guest context folds
+  CLOSED with a paid-state pill on the summary (app.js `openMessageThread` — the
+  conversation is the work); the email reader's guest-match is a verdict row
+  ("Their booking · Paid in full ✓" via `bookingDue`) with the hub chips folded, and
+  the chain folds behind "Earlier in this conversation · N emails" (`.mbx-ctx-d`).
+  The declined drawer KEEPS its gated row anatomy (#164) and gains the one new fact —
+  "dates still free / now taken" as words on the dates line, NOT a third pill: a
+  third pill at 390px squeezed the cottage name to 24px and the drawer's own gate
+  caught it.
+
 ## The guest's invoice: ONE document, two presentations
 
 **AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style

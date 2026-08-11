@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 454;
+const ADMIN_BUNDLE_V = 455;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 170;
+const ADMIN_CSS_V = 171;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -10391,8 +10391,19 @@ async function openMessageThread(threadId) {
             const bk = bookingCtxHtml(r.bookings || []);
             const nBk = (r.bookings || []).length;
             const summary = `${t.is_guest ? 'Registered guest' : 'Website visitor'}${t.email ? ' · ' + escapeHtml(t.email) : ''}`;
-            ctx.innerHTML = `<details class="msg-ctx-d"${nBk ? ' open' : ''}>
-                        <summary class="msg-ctx-sum"><span class="msg-ctx-sum-txt">${summary}</span>${nBk ? `<span class="msg-ctx-pill">${nBk} booking${nBk > 1 ? 's' : ''}</span>` : ''}<span class="msg-ctx-caret" aria-hidden="true">▾</span></summary>
+            // The reference folds CLOSED — the conversation is the work (the
+            // enquiry page's message rule). The summary carries the verdict:
+            // one upcoming stay states its paid state, so checking the balance
+            // mid-chat is one tap, not a trip to Today.
+            const today2 = todayDashed();
+            const ups = (r.bookings || []).filter((b2) => (b2.check_out || '') >= today2);
+            const pill = ups.length === 1
+                ? (String(ups[0].payment || '') === 'paid'
+                    ? '<span class="msg-ctx-pill is-ok">Paid in full ✓</span>'
+                    : '<span class="msg-ctx-pill is-due">Balance to pay</span>')
+                : nBk ? `<span class="msg-ctx-pill">${nBk} booking${nBk > 1 ? 's' : ''}</span>` : '';
+            ctx.innerHTML = `<details class="msg-ctx-d">
+                        <summary class="msg-ctx-sum"><span class="msg-ctx-sum-txt">${summary}</span>${pill}<span class="msg-ctx-caret" aria-hidden="true">▾</span></summary>
                         <div class="msg-ctx-body">
                             ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
                             <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
@@ -16240,7 +16251,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'moneygaps29';
+    const BUILD = 'inboxthree30';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
