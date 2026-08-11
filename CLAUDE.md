@@ -350,8 +350,25 @@ below are untouched. **Calendar feeds** (`renderCalendarList`) is one verdict
 fold group per cottage — freshness capsule from `__feedStatusPre`, Run-the-sync
 + the feed-link editor inside the fold, the per-cottage editor unchanged behind
 `settingsOpenCalendar`. Gated by **`ui-test-manage.js`** (threshold + calendar
-tone break-tested). PR-2 (cottage editors-in-folds + one Save bar) and PR-3
-(Search learning / Website content) follow the approved demo.
+tone break-tested). PR-3 (Search learning / Website content) follows the
+approved demo.
+**The cottage page is fold groups with the REAL editors inside**
+(`settingsOpenAccom` — the 13-section menu→subpage hop is gone; each
+ACCOM_SECTIONS entry is a `bhub-fold-grp.ac-card` whose fold holds
+`accomSectionHtml(k, s.id)` unchanged, so every editor id, save button and
+in-place refresh (`accom-photos-<k>` etc.) works inside the fold). Verdicts
+only where a real one is cheaply derivable — the photo-count capsule and the
+nightly rate as a serif figure; **the client rate field is `coupleRate`
+(camelCase), not the server's `couple_rate`** — inventing the rest would be
+claims. `settingsOpenAccomSec(k, sec)` is a DEEP LINK now: render the page,
+open that fold, scroll to it — so every existing route (help topics, search
+dossiers, keysafe's Settings link) lands on the working editor. Two traps,
+both gated in ui-test-manage §4: `.ac-card` needs
+`scroll-margin-top: calc(100px + var(--safe-t))` (the app.css anchored-scroll
+pattern) or block:'start' buries the fold row you just opened UNDER the fixed
+header (caught on the build's own screenshot); and the unified Save bar +
+steppers from the refined demo are a stated follow-up — each section keeps its
+own validated save buttons this pass.
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 

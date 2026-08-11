@@ -4517,6 +4517,13 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
 #calendar-list .bhub-fold-grp { max-width: 640px; }
+/* The cottage page: one fold group per section, the real editor inside. */
+#accom-detail { display: flex; flex-direction: column; gap: 12px; }
+#accom-detail .settings-group { margin-bottom: 0; }
+/* scroll-margin: a deep link's block:'start' scroll must land BELOW the
+   fixed header, not under it (the app.css anchored-scroll pattern). */
+.ac-card { width: 100%; scroll-margin-top: calc(100px + var(--safe-t)); }
+.ac-fold-body { padding-top: 2px; }
 
 /* ---- The Inbox landing (THE THREE ANSWERS, stacked <1200px): one flex
    column at the hub's 12px rhythm; the existing folder lists live INSIDE the
