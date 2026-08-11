@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 470;
+const ADMIN_BUNDLE_V = 471;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -11785,6 +11785,25 @@ function glassDialog(opts) {
                             if (f.type === 'file') {
                                 return label + `<input class="input-glass" id="gdf-${f.id}" type="file" accept="image/*" capture="environment">`;
                             }
+                            // 'daterange': the BUILT-IN calendar, never a native
+                            // input[type=date]. A trigger opens openFieldDatePicker
+                            // (admin mode, raised above this dialog); resolves
+                            // {from, to}; `propFrom` names the cottage select
+                            // whose stays shade the calendar.
+                            if (f.type === 'daterange') {
+                                __gdfDate[f.id] = f;
+                                const v = f.value && typeof f.value === 'object' ? f.value : {};
+                                const lbl = v.from && v.to
+                                    ? `${dpPretty(v.from)}  →  ${dpPretty(v.to)}`
+                                    : escapeHtml(f.empty || 'Pick the dates');
+                                return (
+                                    label +
+                                    `<input type="hidden" id="gdf-${f.id}-ci" value="${escapeHtml(v.from || '')}">` +
+                                    `<input type="hidden" id="gdf-${f.id}-co" value="${escapeHtml(v.to || '')}">` +
+                                    `<button type="button" class="input-glass gdf-daterange" id="gdf-${f.id}" data-act="gdfOpenDates" data-args='${JSON.stringify([String(f.id)])}'><span id="gdf-${f.id}-lbl">${lbl}</span><span class="gdf-cal" aria-hidden="true">📅</span></button>` +
+                                    (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '')
+                                );
+                            }
                             return (
                                 label +
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
@@ -11800,6 +11819,7 @@ function glassDialog(opts) {
                         })
                         .join('');
                     opts.fields.forEach((f) => {
+                        if (f.type === 'daterange') return; // its value rode the markup
                         const el = document.getElementById('gdf-' + f.id);
                         if (el && f.value != null) el.value = String(f.value);
                     });
@@ -11819,6 +11839,10 @@ function glassDialog(opts) {
                 if (isForm && ok) {
                     formVals = {};
                     opts.fields.forEach((f) => {
+                        if (f.type === 'daterange') {
+                            formVals[f.id] = { from: dpVal('gdf-' + f.id + '-ci'), to: dpVal('gdf-' + f.id + '-co') };
+                            return;
+                        }
                         const el = /** @type {HTMLInputElement|null} */ (document.getElementById('gdf-' + f.id));
                         formVals[f.id] = el ? (f.type === 'file' ? (el.files && el.files[0]) || null : el.value) : '';
                     });
@@ -11845,6 +11869,29 @@ function glassDialog(opts) {
 }
 function glassDialogResolve(ok) {
     if (__glassDlgResolve) __glassDlgResolve(ok);
+}
+// ---- The daterange field's opener (data-act on its trigger); specs kept by
+// field id at render time. Admin mode, raised above the dialog; Done writes
+// back through the hidden inputs like any field target.
+let __gdfDate = {};
+function gdfOpenDates(id) {
+    const f = __gdfDate[id] || {};
+    const sel = f.propFrom ? /** @type {HTMLSelectElement|null} */ (document.getElementById('gdf-' + f.propFrom)) : null;
+    openFieldDatePicker({
+        ci: `gdf-${id}-ci`,
+        co: `gdf-${id}-co`,
+        trigger: `gdf-${id}`,
+        admin: true,
+        both: true,
+        prop: sel ? sel.value : null,
+        startHint: f.startHint,
+        endHint: f.endHint,
+        bothMsg: f.bothMsg,
+        onDone: (ci, co) => {
+            const lbl = document.getElementById(`gdf-${id}-lbl`);
+            if (lbl) lbl.innerText = ci && co ? `${dpPretty(ci)}  →  ${dpPretty(co)}` : f.empty || 'Pick the dates';
+        },
+    });
 }
 function glassAlert(message) {
     return glassDialog({ type: 'alert', message });
@@ -12055,6 +12102,9 @@ function toast(message, type, action) {
 document.addEventListener('keydown', (e) => {
     const o = document.getElementById('glass-dialog');
     if (!o || !o.classList.contains('open')) return;
+    // The calendar is on top of this dialog: Enter/Escape belong to IT — Escape
+    // here would cancel the form the owner is mid-way through, under the picker.
+    if (dpOverGlass()) return;
     if (e.key === 'Enter') {
         e.preventDefault();
         glassDialogResolve(true);
@@ -12118,9 +12168,11 @@ function topOpenDialog() {
     return null;
 }
 document.addEventListener('keydown', (e) => {
-    // While the glass dialog is open, let its own handler manage the keys.
+    // While the glass dialog is open, let its own handler manage the keys —
+    // UNLESS the calendar is raised above it (a daterange field), which this
+    // handler owns: topOpenDialog answers the picker first.
     const gd = document.getElementById('glass-dialog');
-    if (gd && gd.classList.contains('open')) return;
+    if (gd && gd.classList.contains('open') && !dpOverGlass()) return;
     const m = topOpenDialog();
     if (!m) return;
     // The picker's grid owns the arrow keys wherever focus sits inside it, so the first
@@ -12477,12 +12529,29 @@ function refreshModalDateTrigger() {
     }
 }
 function closeDatePicker() {
-    document.getElementById('date-picker').classList.remove('open');
+    const dp = document.getElementById('date-picker');
+    // Raised ABOVE the glass dialog (a daterange field)? Hand focus back to the
+    // trigger inside the still-open form — Escape would otherwise strand focus
+    // on <body> behind a dialog the owner is mid-way through.
+    const overGlass = dp.classList.contains('dp-over-glass');
+    dp.classList.remove('open');
+    dp.classList.remove('dp-over-glass');
+    if (overGlass && dpTarget && dpTarget.trigger) {
+        const t = document.getElementById(dpTarget.trigger);
+        if (t) try { t.focus(); } catch (e) {}
+    }
     // Hand the picker back to the page's cottage: a CANCELLED waitlist pick would else
     // leave the enquiry form shading someone else's bookings, looking perfectly normal.
     dpProp = null;
     dpTarget = null;
     __dpFocusDay = null; // the next open seats its own tab stop
+}
+// TRUE while the built-in calendar is raised ABOVE the glass dialog (opened
+// from a daterange field): the two key handlers below defer to the picker for
+// as long as it is up, or Escape would answer the FORM under the calendar.
+function dpOverGlass() {
+    const dp = document.getElementById('date-picker');
+    return !!(dp && dp.classList.contains('open') && dp.classList.contains('dp-over-glass'));
 }
 
 // THE PAST IS NOT ON OFFER. Paging was unbounded and ‹ was never disabled, so a guest
@@ -12544,11 +12613,12 @@ function renderDatePicker() {
     // four modes: only the enquiry form REFUSES a crossed night. The hero search, the
     // waitlist and the chat check take any future date, and admin overlaps on purpose.
     const legend = document.getElementById('dp-legend');
-    // An admin FIELD target shades nothing (no one cottage is chosen), so a legend
-    // about crossed dates would describe nothing on screen — say nothing instead.
+    // A prop-less admin FIELD target (seasons) shades nothing, so a legend about
+    // crossed dates would describe nothing on screen — say nothing instead. One
+    // that names a cottage (the block dialog) crosses like the booking modal.
     if (legend)
         legend.innerText =
-            dpMode === 'admin' && dpTarget
+            dpMode === 'admin' && dpTarget && !dpProp
                 ? ''
                 : dpMode === 'enquiry'
                   ? 'Crossed-out dates aren’t available'
@@ -12575,9 +12645,18 @@ function renderDatePicker() {
     let cells = '';
     for (let i = 0; i < offset; i++) cells += `<div class="dp-day dp-empty"></div>`;
     const pickingEnd = !!(dpState.start && !dpState.end);
-    // The modal's cottage only means something when the picker IS the modal's — an
-    // admin field target (seasons, all cottages at once) shades no one cottage's stays.
-    const adminConflicts = dpMode === 'admin' && !dpTarget ? modalStayConflicts() : null;
+    // The modal's cottage only means something when the picker IS the modal's. An
+    // admin field target shades ITS OWN cottage's stays when it names one (the
+    // block dialog — seeing what's taken is the point) and nothing when it spans
+    // the fleet (the seasons editor — one cottage's crosses would mislead).
+    const adminConflicts =
+        dpMode === 'admin'
+            ? dpTarget
+                ? dpProp && propertyMeta[dpProp]
+                    ? { propKey: dpProp, bookings: dbBookings[dpProp] || [], blocks: dbBlocks[dpProp] || [] }
+                    : null
+                : modalStayConflicts()
+            : null;
     // Guest check-in picker only: block a free night that can't fit the cottage's
     // minimum stay (a 1-night hole between bookings) — see dpCheckinFits.
     const guestPick = dpMode !== 'admin' && dpMode !== 'search';
@@ -13127,9 +13206,15 @@ function openFieldDatePicker(target) {
     dpState.end = dpVal(dpTarget.co) || null;
     const seed = dpParse(dpState.start) || dpToday0();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
-    document.getElementById('date-picker').classList.toggle('dp-admin', !!dpTarget.admin);
+    const dp = document.getElementById('date-picker');
+    dp.classList.toggle('dp-admin', !!dpTarget.admin);
+    // Opened FROM a glass dialog (a daterange field): the picker's normal home
+    // is z 2100 under the dialog's 6000, so it lifts above it for this open —
+    // detected, never declared, so a field can't forget to say so.
+    const gd = document.getElementById('glass-dialog');
+    dp.classList.toggle('dp-over-glass', !!(gd && gd.classList.contains('open')));
     renderDatePicker();
-    document.getElementById('date-picker').classList.add('open');
+    dp.classList.add('open');
 }
 // One wording for every trigger's label.
 function dpFieldLabel(ci, co, empty) {
@@ -16273,7 +16358,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'coachfeed46';
+    const BUILD = 'blockcal47';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

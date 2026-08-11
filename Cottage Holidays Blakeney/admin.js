@@ -19071,7 +19071,8 @@ async function initBackOffice() {
 async function openBlockDates(prefill) {
     const pf = prefill && typeof prefill === 'object' ? prefill : {};
     // ONE dialog: pick the cottage from a dropdown (no typed keys) and the
-    // dates from native pickers.
+    // dates on the BUILT-IN calendar (a daterange field — admin mode, the
+    // chosen cottage's stays shaded; never the device's blind date control).
     // THE OK BUTTON NAMES WHAT IT DOES — the house convention for a glass dialog,
     // and here it is load-bearing: the guided walkthrough's one step says "tap
     // Block", and against the default "OK" that instruction named a button the
@@ -19084,13 +19085,23 @@ async function openBlockDates(prefill) {
             value: pf.prop && propertyMeta[pf.prop] ? pf.prop : undefined,
             options: Object.keys(propertyMeta).map((k) => ({ value: k, label: propertyMeta[k].name })),
         },
-        { id: 'from', label: 'First blocked night', type: 'date', value: pf.from || todayDashed() },
-        { id: 'to', label: 'Free again from (checkout morning)', type: 'date', value: pf.to || undefined },
+        {
+            id: 'range',
+            label: 'Nights to block',
+            type: 'daterange',
+            value: { from: pf.from || '', to: pf.to || '' },
+            propFrom: 'prop',
+            empty: 'Pick the nights to block',
+            startHint: 'Pick the first blocked night',
+            endHint: 'Now pick the morning it’s free again',
+            bothMsg: 'Pick the free-again morning too',
+            hint: 'The second date is the checkout morning — the cottage is free again from then.',
+        },
     ], { okLabel: BLOCK_DATES_OK });
     if (vals === null) return;
     const key = (vals.prop || '').trim();
-    const from = (vals.from || '').trim();
-    const to = (vals.to || '').trim();
+    const from = ((vals.range && vals.range.from) || '').trim();
+    const to = ((vals.range && vals.range.to) || '').trim();
     if (!propertyMeta[key]) {
         glassAlert('Please pick a cottage.');
         return;

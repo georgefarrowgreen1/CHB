@@ -1140,6 +1140,31 @@ body.light-mode ::-webkit-scrollbar-thumb {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+/* Raised from a glass-dialog daterange field: the picker's normal 2100 sits
+   UNDER the dialog's 6000, so it lifts for that open (class set and removed by
+   openFieldDatePicker/closeDatePicker — detected, never declared). */
+.datepicker-pop.dp-over-glass {
+  z-index: 6100;
+}
+/* The daterange trigger inside a glass form — the enquiry form's own
+   date-range-trigger anatomy, on the dialog's tighter rhythm. */
+.gdf-daterange {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid var(--glass-border);
+  color: var(--text-light);
+  padding: 13px 15px;
+  border-radius: var(--r-sm);
+  margin-bottom: 6px;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
 .datepicker-pop.open {
   display: flex;
   /* Visible base state; entrance animation is decorative (no forwards fill). */

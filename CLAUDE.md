@@ -4087,6 +4087,20 @@ no money by design — chasing is the payments-due cron's job, not its.
   Completed (see `paymentStatusLabel`). Both helpers live in **app.js** (the hub
   ledger renders from app.js, which must not reach admin globals). Gated by
   `test-webhook.php` (signature) + smoke (dot/label mapping).
+- **A GLASS FORM PICKS DATES ON THE BUILT-IN CALENDAR** (`type: 'daterange'` in
+  glassDialog; opener `gdfOpenDates`; Block-out-dates is the consumer; gated by
+  ui-test-workspace §5, three break-tests). A trigger button + two hidden inputs,
+  resolving `{from, to}`; `propFrom` names a sibling select whose cottage SHADES
+  the calendar (admin+target with a prop builds conflicts from dbBookings/dbBlocks;
+  the prop-less seasons target still shades nothing and shows no legend). THE KNOT
+  IS Z-ORDER AND KEYS: `#glass-dialog` is z 6000 against the picker's 2100, so
+  `openFieldDatePicker` lifts it (`.dp-over-glass`, 6100 — DETECTED from the open
+  dialog, never declared) and BOTH key handlers defer while it's up (`dpOverGlass()`):
+  the glass dialog's own Enter/Escape listener would otherwise answer the FORM
+  under the calendar (break-tested — Escape cancelled the whole dialog), and the
+  topOpenDialog listener early-returns while a glass dialog is open, so unguarded
+  it never saw the picker at all (break-tested — Escape did nothing). Escape then
+  closes the picker and closeDatePicker hands focus back to the trigger.
 - **iOS date/time inputs won't shrink.** A native `input[type=date]` on iOS has an
   INTRINSIC minimum width (its rendered date text + the control's internal padding)
   and ignores both `width: 100%` and `min-width: 0`, so in a narrow panel it overhangs
