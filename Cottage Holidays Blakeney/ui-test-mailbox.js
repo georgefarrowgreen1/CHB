@@ -582,7 +582,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(land.grps >= 3, `three verdict groups render (${land.grps})`);
   ok(land.enqInFold && land.enqOpen && land.listVisible, 'inboxFolder() opens its fold with the real list inside');
   ok(land.msgClosed, 'the other answers stay folded (accordion)');
-  ok(/0 waiting ✓/.test(land.enqFig), `the enquiries verdict reads the real queue (${land.enqFig})`);
+  ok(/0 waiting/.test(land.enqFig), `the enquiries verdict reads the real queue (${land.enqFig})`);
+  // The capsule ladder: clear wears the ✓, unknown is STATED (the mailbox is
+  // lazy — before the first fetch "nothing new" would be an unchecked claim),
+  // and each answer carries its identity glyph.
+  const caps = await page.evaluate(() => {
+    // The suite opened the mailbox earlier — rewind the lazy flag so the
+    // pre-first-fetch state is the one under test, then restore it.
+    const was = __mbxOpenedOnce;
+    /* eslint-disable-next-line no-global-assign */ __mbxOpenedOnce = false;
+    inboxVerdicts();
+    const emailUnk = /not checked yet/.test((document.getElementById('iv-sum-email') || {}).textContent || '')
+      && /is-unk/.test(((document.querySelector('#iv-sum-email .st-cap') || {}).className || ''));
+    /* eslint-disable-next-line no-global-assign */ __mbxOpenedOnce = was;
+    inboxVerdicts();
+    return {
+      enqTone: ((document.querySelector('#iv-sum-enquiries .st-cap') || {}).className || ''),
+      enqTick: !!document.querySelector('#iv-sum-enquiries .st-tick'),
+      emailUnk,
+      glyphs: document.querySelectorAll('#inbox-landing .iv-lic').length,
+    };
+  });
+  ok(/is-ok/.test(caps.enqTone) && caps.enqTick, `a clear verdict is a green capsule wearing the ✓ (${caps.enqTone.trim()})`);
+  ok(caps.emailUnk, 'the unchecked mailbox is a STATED muted capsule, not a blank');
+  ok(caps.glyphs === 3, `each answer carries its identity glyph (${caps.glyphs})`);
   // A second tap on the open answer CLOSES it (ivToggle round trip).
   const rt = await page.evaluate(() => {
     document.querySelector('#inbox-landing .bhub-fold-row[data-arg="enquiries"]').click();
@@ -600,6 +623,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       row: /Waiting \d+ days — Laura Hicks/.test((document.getElementById('iv-attn') || {}).textContent || ''),
       cap: /Needs attention/.test((document.getElementById('iv-attn') || {}).textContent || ''),
       fig: (document.getElementById('iv-sum-enquiries') || {}).textContent || '',
+      warnCap: !!document.querySelector('#iv-sum-enquiries .st-cap.is-warn .st-wic') && !document.querySelector('#iv-sum-enquiries .st-tick'),
     };
     enquiries.pop();
     renderInbox();
@@ -608,6 +632,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }, { ci: d(30), co: d(33), made: d(-4) });
   ok(attn.up.row && attn.up.cap, 'a stale enquiry raises the Needs-attention row');
   ok(/1 waiting/.test(attn.up.fig), `…and the verdict counts it (${attn.up.fig})`);
+  ok(attn.up.warnCap, 'a busy verdict wears the warning triangle, not the ✓');
   ok(attn.down, 'answering it stands the red section down');
   // WIDE: the landing hides and the rail | list | pane layout is untouched.
   await page.setViewportSize({ width: 1300, height: 900 });

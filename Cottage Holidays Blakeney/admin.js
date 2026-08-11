@@ -9324,6 +9324,21 @@ function inboxRemember() {
 function inboxStacked() {
     return !window.matchMedia('(min-width: 1200px)').matches;
 }
+// STATUS CAPSULES — the serif is for money; a STATE is a capsule. ✓ when
+// clear, a stroke-drawn warning triangle when something needs the owner
+// (never the ⚠ emoji — platform colours), muted for not-yet-known. Callers
+// pass pre-escaped text.
+const CHB_IC_WARN =
+    '<svg class="st-wic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 L21.5 20 H2.5 Z"/><path d="M12 9.5v4.5"/><path d="M12 17.2v.1"/></svg>';
+function stCap(tone, text) {
+    const mark =
+        tone === 'ok'
+            ? '<span class="st-tick" aria-hidden="true">✓</span>'
+            : tone === 'warn' || tone === 'bad'
+              ? CHB_IC_WARN
+              : '';
+    return `<span class="st-cap is-${tone}">${mark}${text}</span>`;
+}
 // Crossing 1200px live (rotating an iPad): re-seat the folder divs for the
 // new layout — the same live re-parenting the hubs' panes already do.
 try {
@@ -9461,11 +9476,9 @@ function inboxSubline() {
 // whenever the counts change.
 function inboxVerdicts() {
     if (!document.getElementById('inbox-landing')) return;
-    const fig = (id, text, tone) => {
+    const fig = (id, tone, text) => {
         const el = document.getElementById(id);
-        if (!el) return;
-        el.textContent = text;
-        el.className = 'bhub-payline-fig iv-fig' + (tone ? ' is-' + tone : '');
+        if (el) el.innerHTML = tone ? stCap(tone, text) : '';
     };
     const sub = (id, text) => {
         const el = document.getElementById(id);
@@ -9474,7 +9487,7 @@ function inboxVerdicts() {
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
     // Enquiries — the waiting queue itself.
     const enqs = Array.isArray(enquiries) ? enquiries : [];
-    fig('iv-sum-enquiries', enqs.length ? `${enqs.length} waiting` : '0 waiting ✓', enqs.length ? 'warn' : 'ok');
+    fig('iv-sum-enquiries', enqs.length ? 'warn' : 'ok', enqs.length ? `${enqs.length} waiting` : '0 waiting');
     // The mapper's timestamp is `received` (date-only) — createdAt does not exist.
     const newest = enqs.slice().sort((a, z) => String(z.received || '').localeCompare(String(a.received || '')))[0];
     const nDecl = Array.isArray(__declinedEnq) ? __declinedEnq.length : 0;
@@ -9483,7 +9496,7 @@ function inboxVerdicts() {
         : nDecl ? `the Declined drawer keeps ${nDecl}` : 'new enquiries land here the moment they arrive');
     // Messages — unread count from the same chip loadAdminMessages writes.
     const msgN = chip('ifold-count-msg');
-    fig('iv-sum-messages', msgN ? `${msgN} unread` : 'all read ✓', msgN ? 'warn' : 'ok');
+    fig('iv-sum-messages', msgN ? 'warn' : 'ok', msgN ? `${msgN} unread` : 'All read');
     const threads = Array.isArray(__msgThreads) ? __msgThreads : [];
     const unreadT = threads.find((t) => (t.unread || 0) > 0) || threads[0];
     sub('iv-sub-messages', unreadT
@@ -9492,11 +9505,13 @@ function inboxVerdicts() {
     // Email — the mailbox is LAZY: before the first open there is no count to
     // claim, and inventing "nothing new" would be an unchecked assertion.
     if (!__mbxOpenedOnce) {
-        fig('iv-sum-email', '', '');
+        // Unknown is a STATED third state, not an absence (the sweep's
+        // "Square hasn't said" rule, in miniature).
+        fig('iv-sum-email', 'unk', 'not checked yet');
         sub('iv-sub-email', 'tap to check the mailbox');
     } else {
         const mbxN = chip('ifold-count-mbx');
-        fig('iv-sum-email', mbxN ? `${mbxN} new` : 'nothing new ✓', mbxN ? 'warn' : 'ok');
+        fig('iv-sum-email', mbxN ? 'warn' : 'ok', mbxN ? `${mbxN} new` : 'Nothing new');
         const latest = (Array.isArray(__mbxMessages) ? __mbxMessages : []).find((m) => !m.seen);
         sub('iv-sub-email', latest
             ? `${(mbxSender(latest.fromRaw, latest.from).name || latest.from || '')} · ${latest.subject || ''}`.slice(0, 70)
@@ -9517,9 +9532,9 @@ function inboxVerdicts() {
                       est = e.priceOverride != null ? gbp(e.priceOverride) : pr && pr.total > 0 ? gbp(pr.total) : '';
                   } catch (err) {}
                   return bhubFoldGrp('iva' + i,
-                      `<span class="bhub-chip-dot is-bad" aria-hidden="true"></span>Waiting ${enquiryAgeDays(e)} days — ${escapeHtml(e.name || 'Guest')}`,
+                      `Waiting ${enquiryAgeDays(e)} days — ${escapeHtml(e.name || 'Guest')}`,
                       escapeHtml(`${meta ? meta.name : e.propKey} · ${fmtStayRange(e.checkIn, e.checkOut)}${e.received ? ' · asked ' + relTime(e.received) : ''}`),
-                      est ? `<span class="bhub-sum-val">${est} stay</span>` : '',
+                      stCap('bad', est ? est + ' stay' : 'needs a reply'),
                       `${(e.message || '').trim() ? `<div class="bhub-mut" style="margin-bottom:4px;">&ldquo;${escapeHtml((e.message || '').trim().slice(0, 160))}&rdquo;</div>` : ''}
                        <div class="bhub-btn-row bhub-act-links">
                           <button class="bhub-actlink" ${chbAttrs('openEnquiryHub', String(e.id))}>Open the enquiry</button>
@@ -14372,9 +14387,9 @@ function renderMoneyOverview() {
         const remind = !r.arranged && squareAdminEnabled && r.b.email && (r.b.balanceRequestedAt || r.b.depositRequestedAt)
             ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(r.b.id))}>Send a reminder</button>` : '';
         attnRows += bhubFoldGrp('mood' + i,
-            `${kvDot('is-bad')}Overdue — ${escapeHtml(r.b.name || 'Guest')}`,
+            `Overdue — ${escapeHtml(r.b.name || 'Guest')}`,
             escapeHtml(why + (r.b.balanceRemindedAt ? ' · reminded ' + fmtDate(String(r.b.balanceRemindedAt).slice(0, 10)) : '')),
-            `<span class="bhub-payline-fig" style="color:var(--warn-text);">${gbp(r.dg.balance)}</span>`,
+            stCap('bad', gbp(r.dg.balance)),
             `<div class="bhub-btn-row bhub-act-links">${remind}
                 ${!r.arranged && squareAdminEnabled && r.b.email ? `<button class="bhub-actlink" ${chbAttrs('requestPayment', String(r.b.id), 'balance')}>Request by card</button>` : ''}
                 <button class="bhub-actlink" ${chbAttrs('openBookingHub', String(r.b.id))}>Open the booking</button>
@@ -14397,14 +14412,14 @@ function renderMoneyOverview() {
         : bhubFoldGrp('mocollect', '<span style="color:var(--ok);">To collect</span>',
             // "Paid up" is a claim — with an overdue row above it would be false.
             overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
-            `<span class="bhub-payline-fig" style="color:var(--ok);">£0.00 ✓</span>`,
+            stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
     const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok);">To move out</span>', 'what Square has paid in, net of fees',
-        `<span class="bhub-payline-fig" id="mo-move-fig"><span class="bhub-sum-val">working it out…</span></span>`,
+        `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
     const backGrp = bhubFoldGrp('moback', 'To give back', 'refundable deposits still held',
-        `<span class="bhub-payline-fig" id="mo-back-fig"><span class="bhub-sum-val">…</span></span>`,
+        `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
         `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
     const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
@@ -14481,11 +14496,11 @@ function moAsyncFill() {
             const moveFig = document.getElementById('mo-move-fig');
             const moveRows = document.getElementById('mo-move-rows');
             if (P && P.known > 0 && Number(P.inBank) > 0) {
-                moveFig.innerHTML = gbp(Number(P.inBank));
+                moveFig.innerHTML = `<span class="bhub-payline-fig">${gbp(Number(P.inBank))}</span>`;
                 const items = (P.items && P.items.inBank) || [];
                 if (moveRows) moveRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}</span></div>`).join('') || '<div class="bhub-mut">Details on the Move money out screen.</div>';
             } else {
-                moveFig.innerHTML = '<span class="bhub-sum-val">' + (P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen') + '</span>';
+                moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
                 if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
             }
             // To give back — the ring-fenced deposits with their states.
@@ -14493,12 +14508,12 @@ function moAsyncFill() {
             const backRows = document.getElementById('mo-back-rows');
             if (backFig && L && !L.error) {
                 const items = L.items || [];
-                backFig.innerHTML = items.length ? gbp(Number(L.net || 0)) : '<span class="bhub-sum-val" style="color:var(--ok);">none held ✓</span>';
+                backFig.innerHTML = items.length ? `<span class="bhub-payline-fig">${gbp(Number(L.net || 0))}</span>` : stCap('ok', 'None held');
                 const today2 = todayDashed();
                 const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok);">ready to return</span>');
                 if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.amount) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
             } else if (backFig) {
-                backFig.innerHTML = '<span class="bhub-sum-val">couldn’t work it out</span>';
+                backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';
             }
             // The books — the SERVER'S net (rental + kept − fees − expenses),
@@ -14521,9 +14536,9 @@ function moAsyncFill() {
                 const total = unk.reduce((s2, it) => s2 + (Number(it.movable != null ? it.movable : it.amount) || 0), 0);
                 const oldDays = unk.reduce((m, it) => { const dsrc = it.paid_on || it.created_at; return Math.max(m, dsrc ? Math.round((new Date(todayDashed()).getTime() - new Date(String(dsrc).slice(0, 10)).getTime()) / 864e5) : 0); }, 0);
                 if (oldDays > 7) {
-                    holder.innerHTML = bhubFoldGrp('mounk', `<span class="bhub-chip-dot is-warn" aria-hidden="true"></span>Square hasn’t said`,
+                    holder.innerHTML = bhubFoldGrp('mounk', `Square hasn’t said`,
                         `a ${oldDays}-day-old charge isn’t in the payout data — it should be by now`,
-                        `<span class="bhub-payline-fig">${gbp(total)}</span>`,
+                        stCap('warn', gbp(total)),
                         `${unk.slice(0, 3).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${escapeHtml(it.kind || 'payment')}</span><span class="bhub-kv-val">${gbp(Number(it.movable != null ? it.movable : it.amount) || 0)}${it.paid_on ? ' · taken ' + fmtDate(String(it.paid_on).slice(0, 10)) : ''}</span></div>`).join('')}
                          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Check Square now — on Move money out</button></div>`);
                     const cap = document.getElementById('mo-attn-cap');
@@ -14533,7 +14548,7 @@ function moAsyncFill() {
         })
         .catch(() => {
             const moveFig = document.getElementById('mo-move-fig');
-            if (__moFillStamp === stamp && moveFig) moveFig.innerHTML = '<span class="bhub-sum-val">couldn’t load</span>';
+            if (__moFillStamp === stamp && moveFig) moveFig.innerHTML = stCap('unk', 'couldn’t load');
         });
     apiPost('bookings.php', { action: 'recent_payments' })
         .then((r) => {
@@ -24239,8 +24254,8 @@ function mbxContextHtml(fromEmail, shownName) {
         try {
             const dg = bookingDue(up.pk, up.b);
             verdict = dg && dg.balance > 0.005
-                ? `<span class="iv-fig is-warn mbx-ctx-fig">${gbp(dg.balance)} to pay</span>`
-                : '<span class="iv-fig is-ok mbx-ctx-fig">Paid in full ✓</span>';
+                ? stCap('warn', `${gbp(dg.balance)} to pay`)
+                : stCap('ok', 'Paid in full');
         } catch (err) {}
     }
     const meta = up ? propertyMeta[up.pk] || { name: up.pk } : null;
