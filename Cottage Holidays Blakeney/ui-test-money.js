@@ -153,6 +153,14 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(ov.grps.includes('mood0'), 'the overdue booking is an exception row, not a queue row');
   ok(/To collect/.test(ov.collect) && /overdue one is above/.test(ov.collect), `To collect never claims "paid up" over an overdue row (${ov.collect.slice(0, 90)})`);
   ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
+  // The exception's figure is a red capsule carrying the warning triangle —
+  // and it is the row's ONE mark (the label's red dot came off with it).
+  const capChk = await page.evaluate(() => ({
+    badCap: !!document.querySelector('#money-overview [data-grp="mood0"] .st-cap.is-bad .st-wic'),
+    dotGone: !document.querySelector('#money-overview [data-grp="mood0"] .bhub-fold-lbl .bhub-chip-dot'),
+    unkCaps: document.querySelectorAll('#money-overview .st-cap.is-unk').length,
+  }));
+  ok(capChk.badCap && capChk.dotGone, 'the overdue figure is a red warning capsule, and it is the row\'s one mark');
   ok(ov.pulse, 'the pulse line is present');
   ok(ov.gaps.length >= 5 && ov.gaps.every((g) => g >= 8), `every block has breathing room between it and the next (${ov.gaps.join(',')})`);
   ok(ov.rails.lefts.length === 1 && ov.rails.rights.length === 1, `every card stands on ONE rail (lefts ${ov.rails.lefts.join('/')}, rights ${ov.rails.rights.join('/')})`);
