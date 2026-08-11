@@ -440,13 +440,43 @@ answers is one well of labelled boxes with the default as placeholder and the
 saves-by-itself whisper. Gated by ui-test-manage §7 (5 checks, fixture-fed
 waitlist/guest_crm routes; the Waiting capsule's tone and the verdict pills
 each break-tested).
-**Batch 3 — the data pages join by FRAMING, not rebuild**: the all-cottages
-seasons grid sits in a well (`#season-grid-wrap`, table + Save intact),
-Pricing's section labels take the caption vocabulary, and the pages already
-carrying gated verdict structures from earlier overhauls (Status's hero,
-the activity feed, the cancel radiogroup, Analytics) were converted by the
-`.accounts-stat` re-skin alone. Gated by ui-test-manage §8 (grid well
-break-tested). That completes the approved 22-page demo.
+**Batch 3 — the data pages join by FRAMING, not rebuild**: Pricing's section
+labels take the caption vocabulary, and the pages already carrying gated
+verdict structures from earlier overhauls (Status's hero, the activity feed,
+the cancel radiogroup, Analytics) were converted by the `.accounts-stat`
+re-skin alone. Gated by ui-test-manage §8. That completed the approved
+22-page demo; the seasons grid it framed was then REBUILT outright (below).
+**SEASONAL RATES ARE SEASON CARDS** (approved demo; `seasonCardHtml`/
+`renderSeasonGrid`/`sgSync` in admin.js, `.sg-*` in admin.css — the old
+`.sg-table` CSS left app.css entirely, guests stop paying for it). One card
+per season: serif name + remove ✕ in the head, dates as pills, a £-pill row
+per cottage, a foot NAMING who keeps their base rate (a silent empty cell
+reads as an oversight), a sticky save bar counting unsaved changes, and
+cards flow two-up ≥901px. `saveSeasonGrid` kept its per-cottage save loop +
+partial reporting (iterating `.sg-band` divs now — poorsignal §9's fixture
+injects that shape, a `<tr>` in a div body is parser-stripped). Traps, all
+gated in ui-test-manage §8 and break-tested:
+- **The dates open the BUILT-IN calendar, never a native input[type=date]**
+  (owner-asked). `openFieldDatePicker` gained `admin: true` — dpMode 'admin'
+  with a dpTarget: past dates pickable (a running season's start is one), no
+  guest rules, no per-cottage prices/crosses (`modalStayConflicts` is only
+  consulted when there is NO target — the modal's cottage means nothing on an
+  all-cottage band, and the legend says '' because nothing is crossed), and
+  dpDone routes admin-with-target through the FIELD write. Optional target
+  words: `startHint`/`endHint`/`bothMsg`.
+- **A season's end date is INCLUSIVE** (`coupleRateForNight`: start <= night
+  <= end), unlike a checkout — the card counts `nightsBetween + 1` ("July
+  01→31" is 31 nights) and the picker takes `inclusive: true` so its own
+  hint cannot state a different number (both sides break-tested).
+- **A HIDDEN input's `.value` writes the ATTRIBUTE** (spec "default" mode),
+  so `defaultValue` moves with it and a defaultValue-based change counter
+  never fires for the picker's write — the date fields carry `data-orig`
+  instead (measured; the visible inputs stay on defaultValue).
+- **A foot note asserted by textContent is vacuous** — break-testing found
+  the check green with the foot `display:none`; the gate reads it only when
+  painted.
+- The price input needs `min-height: 40px` INSIDE its 42px pill or a11y §5
+  fails it at 21px (the pill is not the control; the input is).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 

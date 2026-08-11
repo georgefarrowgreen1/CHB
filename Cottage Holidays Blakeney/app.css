@@ -5873,88 +5873,8 @@ body.owner-mode .chat-widget {
   color: var(--danger-text);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
-.sg-table {
-  border-collapse: collapse;
-  /* Size to the columns (dates + a cell per cottage) and scroll inside the
-     overflow-x wrapper, rather than stretching a few cells apart when there are
-     only one or two rows. */
-  width: auto;
-  min-width: max-content;
-}
-.sg-table th {
-  text-align: left;
-  font-size: 0.68rem;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 4px 6px 8px;
-}
-.sg-table td {
-  padding: 4px 6px;
-  vertical-align: middle;
-}
-.sg-table .input-glass {
-  margin: 0;
-}
-.sg-table .sg-rate {
-  width: 84px;
-}
-/* Phone: the wide season × cottage table can't fit, so reflow each season into
-   a stacked card with labelled rows (the cottage rate cells were scrolling
-   off-screen, leaving the editor looking empty). */
-@media (max-width: 640px) {
-  .sg-table,
-  .sg-table tbody,
-  .sg-table tr,
-  .sg-table td {
-    display: block;
-    width: 100%;
-    min-width: 0;
-  }
-  .sg-table thead {
-    display: none;
-  }
-  .sg-table .sg-band {
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    background: var(--glass-bg);
-    padding: 8px 14px;
-    margin-bottom: 12px;
-  }
-  .sg-table td {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 7px 0;
-  }
-  .sg-table td + td {
-    border-top: 1px solid var(--glass-border);
-  }
-  .sg-table td::before {
-    content: attr(data-label);
-    font-size: 0.74rem;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    color: var(--text-muted);
-    flex: 0 0 auto;
-  }
-  .sg-table td .input-glass {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-width: 62%;
-  }
-  .sg-table .sg-rate {
-    width: auto;
-  }
-  .sg-table td.sg-del {
-    justify-content: flex-end;
-    padding-top: 10px;
-  }
-  .sg-table td.sg-del::before {
-    content: none;
-  }
-}
+/* (The season grid's .sg-table CSS lived here for years — the editor is season
+   CARDS now, admin-only, styled in admin.css so guests stop paying for it.) */
 .bo-search-empty {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -5982,8 +5902,8 @@ body.owner-mode .chat-widget {
 .settings-sec {
   max-width: 640px;
 }
-/* The all-cottages season grid needs the row width (label + dates + one
-           column per cottage) — let just this panel use the page. */
+/* The all-cottages season CARDS flow two-up on desktop — let just this
+           panel take the width for the second column. */
 #sec-seasongrid {
   max-width: 1000px;
 }
