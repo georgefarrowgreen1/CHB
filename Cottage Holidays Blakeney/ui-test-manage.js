@@ -132,6 +132,51 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(detail.shown && detail.listHidden, 'Edit-feed-links still opens the cottage’s own editor');
 
+  console.log('§4 the cottage page: every section a fold group, the REAL editor inside');
+  await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); });
+  await page.waitForTimeout(500);
+  const cot = await page.evaluate(() => {
+    const detail = document.getElementById('accom-detail');
+    const grps = [...detail.querySelectorAll('.bhub-fold-grp')].map((g) => g.getAttribute('data-grp'));
+    return {
+      grps: grps.length,
+      hasRates: grps.includes('ac-21a-rates'),
+      rateFig: /£130/.test((detail.querySelector('[data-grp="ac-21a-rates"] .bhub-fold-right') || {}).textContent || ''),
+      photosCap: ((detail.querySelector('[data-grp="ac-21a-photos"] .st-cap') || {}).textContent || ''),
+      foldsClosed: [...detail.querySelectorAll('.bhub-fold')].every((f) => f.hidden),
+      // The REAL editor lives in the fold (in the DOM even while closed).
+      textEditor: !!detail.querySelector('#bhub-fold-ac-21a-text input, #bhub-fold-ac-21a-text textarea'),
+      removeRow: /Remove this accommodation/.test(detail.textContent),
+    };
+  });
+  ok(cot.grps >= 10, `every section renders as a fold group (${cot.grps})`);
+  ok(cot.hasRates && cot.rateFig, 'the Rates row carries the real nightly figure');
+  ok(/none yet|photo/.test(cot.photosCap), `the Photos verdict counts the gallery (${cot.photosCap.trim()})`);
+  ok(cot.foldsClosed, 'every section starts folded');
+  ok(cot.textEditor, 'the REAL text editor lives inside its fold');
+  ok(cot.removeRow, 'the private/remove controls survive below the groups');
+  // A deep link lands with THAT fold open and everything else closed.
+  const deep = await page.evaluate(() => {
+    settingsOpenAccomSec('21a', 'rates');
+    const f = document.getElementById('bhub-fold-ac-21a-rates');
+    return {
+      open: !!(f && !f.hidden && f.getClientRects().length),
+      othersClosed: [...document.querySelectorAll('#accom-detail .bhub-fold')].filter((x) => !x.hidden).length === 1,
+      editor: !!(f && f.querySelector('input')),
+    };
+  });
+  ok(deep.open && deep.editor, 'a deep link opens that fold onto its working editor');
+  ok(deep.othersClosed, '…and only that fold');
+  // The deep link's scroll must land the fold row BELOW the fixed header —
+  // block:'start' with no scroll-margin buries the row you just opened.
+  await page.waitForTimeout(1000); // the smooth scroll settles
+  const clear = await page.evaluate(() => {
+    const grp = document.querySelector('#accom-detail [data-grp="ac-21a-rates"]');
+    const hdr = document.querySelector('header');
+    return grp && grp.getBoundingClientRect().top >= (hdr ? hdr.getBoundingClientRect().bottom : 0) - 1;
+  });
+  ok(clear, 'the deep link scrolls the fold clear of the fixed header');
+
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

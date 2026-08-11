@@ -12164,17 +12164,35 @@ function settingsOpenAccom(k) {
                             <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger-text);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
-        detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(
-            (s) =>
-                `<button class="settings-row" ${chbAttrs('settingsOpenAccomSec', String(k), String(s.id))}>
-                        <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.ic}</svg></span>
-                        <span class="settings-row-main"><span class="settings-row-label">${s.label}</span><span class="settings-row-sub">${s.sub}</span></span><span class="settings-row-chev">›</span>
-                    </button>`,
+        // THE FOLD ANATOMY (the approved demo): every section is a verdict
+        // fold group with its REAL editor inside — the menu→subpage hop is
+        // gone, and each editor's own ids, save buttons and in-place
+        // refreshes (accom-photos-<k> etc.) work unchanged inside the fold.
+        // Verdicts only where a real one is cheaply derivable: the photo
+        // count and the nightly rate; inventing the rest would be claims.
+        const r = propertyRates[k] || defaultRates[k] || {};
+        let nPhotos = 0;
+        try { nPhotos = (accomImages(k) || []).length; } catch (e) {}
+        const right = (id) => {
+            if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
+            if (id === 'rates' && r.coupleRate) return `<span style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
+            return '';
+        };
+        detail.innerHTML = ACCOM_SECTIONS.map((s) => {
+            const key = 'ac-' + k + '-' + s.id;
+            const open = __bhubOpenFolds.has(key);
+            return `<section class="bhub-card glass-panel bhub-fold-grp ac-card" data-grp="${escapeHtml(key)}">
+                <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${escapeHtml(key)}">
+                    <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
+                    <span class="bhub-fold-right">${right(s.id)}<span class="bhub-chev" aria-hidden="true">›</span></span>
+                </button>
+                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="rate-prop ac-fold-body">${accomSectionHtml(k, s.id)}</div></div>
+            </section>`;
         // privateRow was BUILT AND NEVER INTERPOLATED — the whole make-private control
         // (a working setAccommodationPrivate, the `unlisted` column, the public site
         // honouring it) had no way in. Third time this shape has been found here: see
         // the mailbox's Sent list and the status page. The affordance IS the fix.
-        ).join('')}</div>${privateRow}${removeRow}`;
+        }).join('') + privateRow + removeRow;
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
@@ -12191,21 +12209,18 @@ function settingsGotoAccomSec(k, sec) {
     if (list) list.style.display = 'none';
     settingsOpenAccomSec(k, sec);
 }
+// A section is a FOLD on the cottage's one page now — deep links (search,
+// history restore, the keysafe toggle's route) land on the page with that
+// fold open and scrolled to, instead of a separate subpage.
 function settingsOpenAccomSec(k, sec) {
+    settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
-    const detail = document.getElementById('accom-detail');
-    if (detail) {
-        detail.style.display = '';
-        detail.innerHTML = `<div class="rate-prop">${accomSectionHtml(k, sec)}</div>`;
-    }
-    const meta = ACCOM_SECTIONS.find((s) => s.id === sec);
-    const name = propertyMeta[k] ? propertyMeta[k].name : k;
-    const title = document.getElementById('settings-panel-title');
-    if (title)
-        title.innerHTML = `${escapeHtml(name)} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
-    settingsBackTarget = () => settingsOpenAccom(k);
+    const key = 'ac-' + k + '-' + sec;
+    const fold = document.getElementById('bhub-fold-' + key);
+    if (fold && fold.hidden) bhubFoldToggle(key);
     __settingsPath = { section: 'accom', prop: k, accomSec: sec };
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const grp = document.querySelector(`#accom-detail [data-grp="${key}"]`);
+    if (grp) setTimeout(() => { try { grp.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }, 60);
 }
 function renderCalendarList() {
     const list = document.getElementById('calendar-list');
