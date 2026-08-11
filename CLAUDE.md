@@ -333,6 +333,26 @@ the click is guarded).
 - The Move-money-out screen itself was deliberately left as-is this pass — it already
   had its answer-first rebuild (see the sweep notes).
 
+## Manage leads with VERDICTS above the untouched toolbox
+
+`manageVerdicts()` (admin.js → `#manage-verdicts`, first child of the settings
+index; spans both desktop columns). A pulse line, then EXCEPTIONS (a stopped
+cron; each troubled feed with why-it-matters + `runSync` one tap inside the
+fold), then Running-for-you groups — **System check** (only what is ambiently
+KNOWN: daily jobs + feeds; backups/push/payments belong to the full check,
+which asks), **To approve** (`__nyMod` counts; `openArea()` now fire-and-forgets
+`refreshModerationCounts()` so the counts are fresh on open — its tail
+re-renders the verdicts), **Your assistant** (`chbMissList` + `slGuestQuestions`).
+Every figure reads the store its existing badge/pill reads — `chbFeedTrouble()`
+is shared with the search foot and the Today duty, so breaking its threshold
+fails the landing's own gate (proven in the break-test). The toolbox rows
+below are untouched. **Calendar feeds** (`renderCalendarList`) is one verdict
+fold group per cottage — freshness capsule from `__feedStatusPre`, Run-the-sync
++ the feed-link editor inside the fold, the per-cottage editor unchanged behind
+`settingsOpenCalendar`. Gated by **`ui-test-manage.js`** (threshold + calendar
+tone break-tested). PR-2 (cottage editors-in-folds + one Save bar) and PR-3
+(Search learning / Website content) follow the approved demo.
+
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 
 Stacked, the folder switch hides and each folder becomes a verdict fold group
