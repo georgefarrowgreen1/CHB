@@ -15474,19 +15474,19 @@ function renderNotifyPrefs() {
                 }),
             )
             .join('');
+    // Switch rows in the unified well (the approved realistic demo) — same
+    // checkboxes, same saveNotifyPref, drawn as the keeper's toggle.
     box.innerHTML =
+        `<div class="acr-well">` +
         NOTIFY_CATS.map(
             ([k, label]) =>
-                `<label style="display:flex;align-items:center;gap:10px;min-height:44px;">
-                    <input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)}>
-                    <span>${escapeHtml(label)}</span>
-                </label>`,
+                `<div class="acr-row"><span class="acr-lbl">${escapeHtml(label)}</span><span class="chb-switch"><input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)} aria-label="${escapeHtml(label)}"><span class="chb-switch-track" aria-hidden="true"></span></span></div>`,
         ).join('') +
-        `<div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
-            <span style="font-size:0.85rem;color:var(--text-muted);">Quiet hours</span>
-            <select class="input-glass field-sm" style="width:auto;margin:0;" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
-            <span style="font-size:0.8rem;color:var(--text-muted);">to</span>
-            <select class="input-glass field-sm" style="width:auto;margin:0;" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
+        `<div class="acr-row"><span class="acr-lbl">Quiet hours<small>urgent alerts always get through</small></span>
+            <span style="display:flex;gap:6px;align-items:center;">
+            <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
+            <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
+            </span></div>
         </div>`;
 }
 async function saveNotifyPref(key, value) {
@@ -19432,14 +19432,16 @@ function renderChatAwayEditor() {
         return o;
     };
     host.innerHTML =
-        '<h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 4px;">Away auto-reply</h3>' +
-        '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Automatically acknowledge a guest who messages when you can’t reply straight away. Sent at most once every few hours per conversation, and never right after you’ve replied.</p>' +
-        `<label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled"> Turn on away auto-reply</label>` +
-        `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Auto-reply message</label>` +
-        `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>` +
-        `<label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Only auto-reply outside these hours (optional)</label>` +
-        `<div style="display:flex;align-items:center;gap:10px;"><select class="input-glass" style="flex:1;width:auto;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select class="input-glass" style="flex:1;width:auto;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select></div>` +
-        `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;">e.g. 09:00 to 18:00 — the auto-reply only fires outside that window. Leave both as “—” to auto-reply any time you haven’t just replied.</p>`;
+        '<div class="acr-cap">Sent at most once every few hours — never right after you\u2019ve replied</div>' +
+        `<div class="acr-well">
+            <div class="acr-row"><span class="acr-lbl">Turn on away auto-reply</span><span class="chb-switch"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled" aria-label="Turn on away auto-reply"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
+            <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We\u2019re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
+            <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
+                <span style="display:flex;gap:6px;align-items:center;">
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
+                </span></div>
+        </div>`;
 }
 function toggleArchivedMessages() {
     __msgShowArchived = !__msgShowArchived;

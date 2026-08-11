@@ -419,6 +419,16 @@ The web section's inputs ride `chbInput('acwCardSync')` (an inline
 preview, and `acwCardSave` writes BOTH card keys through `contentEditSave`.
 Gated by ui-test-manage §4d (5 checks; the preview-follows and MAIN-badge
 each break-tested).
+**THE SETTINGS PAGES WEAR IT TOO** (approved realistic 22-page demo; batch 1 =
+switch sheets + settings forms). ONE re-skin converts every `.accounts-stat`
+INSIDE `.settings-sec` into the unified well — the Money screens'
+`.accounts-stat` (gated `.headline`) live outside `.settings-sec` and are
+untouched. Every on/off is the keeper's `.chb-switch` on its REAL checkbox
+(notify categories, sms-on, 2fa, chat-away, both follow-up nudges — ids and
+save paths byte-identical); quiet/available hours are `select.acw-pill`s; the
+Payments deposit % is an `occStep` stepper (bumps the input only — Save stays
+the write, the guest-limits model). Gated by ui-test-manage §6 (6 checks;
+the notify switches and the deposit stepper break-tested).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 
