@@ -12193,7 +12193,7 @@ function settingsOpenAccom(k) {
         try { nPhotos = (accomImages(k) || []).length; } catch (e) {}
         const right = (id) => {
             if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
-            if (id === 'rates' && r.coupleRate) return `<span style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
+            if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
             return '';
         };
         detail.innerHTML = ACCOM_SECTIONS.map((s) => {
@@ -12204,13 +12204,14 @@ function settingsOpenAccom(k) {
                     <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
                     <span class="bhub-fold-right">${right(s.id)}<span class="bhub-chev" aria-hidden="true">›</span></span>
                 </button>
-                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="rate-prop ac-fold-body">${accomSectionHtml(k, s.id)}</div></div>
+                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="${s.id === 'rates' ? 'acr-body' : 'rate-prop ac-fold-body'}">${accomSectionHtml(k, s.id)}</div></div>
             </section>`;
         // privateRow was BUILT AND NEVER INTERPOLATED — the whole make-private control
         // (a working setAccommodationPrivate, the `unlisted` column, the public site
         // honouring it) had no way in. Third time this shape has been found here: see
         // the mailbox's Sent list and the status page. The affordance IS the fix.
         }).join('') + privateRow + removeRow;
+        acrSync(k, true); // paint the derived lines (quiet — no whisper on open)
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
@@ -12230,6 +12231,74 @@ function settingsGotoAccomSec(k, sec) {
 // A section is a FOLD on the cottage's one page now — deep links (search,
 // history restore, the keysafe toggle's route) land on the page with that
 // fold open and scrolled to, instead of a separate subpage.
+// ---- Rates steppers + live lines. Every derived figure QUOTES the model
+// (weekend = nightlyRateFor's maths, badge = renderLocalGuide's string —
+// gated by equality of derivations). acrSync repaints derived TEXT only,
+// never the inputs, so typing is never clobbered mid-keystroke.
+function acrStep(k, field, delta) {
+    const r = propertyRates[k] || defaultRates[k] || {};
+    const caps = { weekendPct: 200, lastminPct: 90, lastminDays: 60 };
+    let v = Math.max(0, Math.round(((parseFloat(r[field]) || 0) + (parseFloat(delta) || 0)) * 10) / 10);
+    if (caps[field] != null) v = Math.min(caps[field], v);
+    dpSetVal('acr-' + k + '-' + field, String(v)); // the typed .value helper
+    return acrType(k, field, v);
+}
+async function acrType(k, field, value) {
+    await updateRate(k, field, value); // the existing instant-save path
+    acrSync(k);
+}
+function acrOta(k, value) {
+    // MIRROR FIRST (the saveHostText pattern): saveContent never writes
+    // siteContent, and acrSync reads the mirror — without this the badge
+    // preview lagged one edit behind what was typed.
+    siteContent['ota-price-' + k] = value;
+    saveLocalContent('ota-price-' + k, value);
+    acrSync(k);
+}
+function acrSync(k, quiet) {
+    const r = propertyRates[k] || defaultRates[k] || {};
+    const couple = parseFloat(r.coupleRate) || 0;
+    const wk = document.getElementById('acr-wk-sub-' + k);
+    if (wk) {
+        const pct = parseFloat(r.weekendPct) || 0;
+        wk.innerHTML = pct > 0
+            ? `Fri &amp; Sat nights become <em>${gbp(couple * (1 + pct / 100)).replace('.00', '')}</em>`
+            : 'Off — weekends price like any other night';
+    }
+    const lm = document.getElementById('acr-lm-sub-' + k);
+    if (lm) {
+        const pct = parseFloat(r.lastminPct) || 0;
+        const days = parseFloat(r.lastminDays) || 0;
+        const on = pct > 0 && days > 0;
+        lm.className = on ? 'is-on' : '';
+        lm.textContent = on
+            ? `On — a stay arriving inside ${days} day${days === 1 ? '' : 's'} is ${gbp(couple * (1 - pct / 100)).replace('.00', '')}/night.`
+            : 'Off — a hands-off way to fill near-term gaps. Both above 0 turns it on.';
+    }
+    const badge = document.getElementById('acr-badge-' + k);
+    if (badge) {
+        // renderLocalGuide's own gate AND its own words, verbatim.
+        const ota = parseFloat(siteContent['ota-price-' + k]);
+        if (ota > 0 && couple > 0 && ota > couple) {
+            badge.className = 'acr-badge';
+            badge.textContent = `Save ${gbp(ota - couple)}/night booking direct`;
+        } else {
+            badge.className = 'acr-badge is-none';
+            badge.textContent = ota > 0 ? 'No badge — the Airbnb price isn\u2019t higher than yours' : 'No badge until a price is set';
+        }
+    }
+    const fig = document.getElementById('ac-fig-' + k);
+    if (fig && couple > 0) fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span>`;
+    if (!quiet) {
+        const sv = document.getElementById('ac-saved-' + k);
+        if (sv) {
+            sv.classList.add('on');
+            clearTimeout(__acrSavedT[k]);
+            __acrSavedT[k] = setTimeout(() => sv.classList.remove('on'), 1500);
+        }
+    }
+}
+const __acrSavedT = {};
 function settingsOpenAccomSec(k, sec) {
     settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
@@ -19521,19 +19590,48 @@ function accomSectionHtml(k, sec) {
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save features</button>
                         </div>`;
         }
-        case 'rates':
+        case 'rates': {
+            // The REFINED editor (approved demo): right-rail steppers, live
+            // lines that QUOTE the model (acrSync). Typing rides acrType →
+            // the same updateRate instant-save the old fields used.
+            const acr = (field, label, sub, unit, step, max, subId) => `
+                    <div class="acr-row">
+                        <span class="acr-lbl">${label}<small${subId ? ` id="${subId}"` : ''}>${sub}</small></span>
+                        <span class="acr-step">
+                            <button type="button" ${chbAttrs('acrStep', String(k), field, String(-step))} aria-label="${label} — less">−</button>
+                            <span class="acr-val">${unit === '£' ? '<span class="acr-unit">£</span>' : ''}<input id="acr-${k}-${field}" type="number" min="0"${max ? ` max="${max}"` : ''} step="${step}" value="${r[field] || 0}" ${chbChange('acrType', String(k), field, CHB_VALUE)} aria-label="${label}">${unit !== '£' ? `<span class="acr-unit">${unit}</span>` : ''}</span>
+                            <button type="button" ${chbAttrs('acrStep', String(k), field, String(step))} aria-label="${label} — more">+</button>
+                        </span>
+                    </div>`;
+            const otaVal = siteContent['ota-price-' + k] != null ? siteContent['ota-price-' + k] : '';
             return `
-                    <div class="rate-field"><label>Couple / night — 2 adults (£)</label><input type="number" min="0" step="1" value="${r.coupleRate}" ${chbChange('updateRate', String(k), 'coupleRate', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" ${chbChange('updateRate', String(k), 'extraAdultRate', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" ${chbChange('updateRate', String(k), 'childRate', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" ${chbChange('updateRate', String(k), 'damagesDeposit', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" ${chbChange('updateRate', String(k), 'transactionPct', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Weekend uplift (%) — Fri &amp; Sat <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="200" step="1" value="${r.weekendPct || 0}" ${chbChange('updateRate', String(k), 'weekendPct', CHB_VALUE)} placeholder="e.g. 20"></div>
-                    <div class="rate-field"><label>Last-minute discount (%) <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="90" step="1" value="${r.lastminPct || 0}" ${chbChange('updateRate', String(k), 'lastminPct', CHB_VALUE)} placeholder="e.g. 15"></div>
-                    <div class="rate-field"><label>…for stays starting within (days)</label><input type="number" min="0" max="60" step="1" value="${r.lastminDays || 0}" ${chbChange('updateRate', String(k), 'lastminDays', CHB_VALUE)} placeholder="e.g. 10"></div>
-                    <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 8px;">Automatically takes the % off the nightly rate for any stay whose check-in is within this many days — a hands-off way to fill near-term gaps. Both 0 to turn off.</p>
-                    <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-' + k] != null ? siteContent['ota-price-' + k] : ''}" placeholder="e.g. 165" ${chbChange('saveLocalContent', `ota-price-${k}`, CHB_VALUE)}></div>
-                    <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">If set and higher than your couple rate, a "Save £X/night booking direct" badge shows on the cottage page.</p>`;
+                    <div class="acr-cap">Your price</div>
+                    <div class="acr-well">
+                        ${acr('coupleRate', 'Couple per night', 'two adults — every quote starts here', '£', 5)}
+                        ${acr('extraAdultRate', 'Extra adult', 'per night, on top', '£', 5)}
+                        ${acr('childRate', 'Child', 'per night — under 16', '£', 5)}
+                    </div>
+                    <div class="acr-cap">Weekends &amp; last minute</div>
+                    <div class="acr-well">
+                        ${acr('weekendPct', 'Weekend uplift', '', '%', 5, 200, `acr-wk-sub-${k}`)}
+                        ${acr('lastminPct', 'Last-minute discount', 'off the nightly rate', '%', 5, 90)}
+                        ${acr('lastminDays', '…for stays arriving within', 'days of today', 'd', 1, 60)}
+                        <div class="acr-status"><small id="acr-lm-sub-${k}"></small></div>
+                    </div>
+                    <div class="acr-cap">Deposit &amp; fee</div>
+                    <div class="acr-well">
+                        ${acr('damagesDeposit', 'Damages deposit', 'charged with the first payment, refunded after checkout', '£', 5)}
+                        ${acr('transactionPct', 'Transaction fee', 'added to the guest&rsquo;s total', '%', 0.5)}
+                    </div>
+                    <div class="acr-cap">Book-direct badge</div>
+                    <div class="acr-well">
+                        <div class="acr-row">
+                            <span class="acr-lbl">Airbnb price<small>what the same night costs there</small></span>
+                            <label class="acr-ota"><span class="acr-unit">£</span><input id="acr-${k}-ota" type="number" min="0" step="1" value="${escapeHtml(String(otaVal))}" placeholder="—" ${chbChange('acrOta', String(k), CHB_VALUE)} aria-label="Airbnb price for comparison"></label>
+                        </div>
+                        <div class="acr-preview"><div class="acr-pvcap">On the cottage page, guests see:</div><span class="acr-badge" id="acr-badge-${k}"></span></div>
+                    </div>`;
+        }
         case 'house':
             return `
                     <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" ${chbChange('updateRuleField', String(k), 'checkInTime', CHB_VALUE)} style="text-align:left;width:130px;"></div>

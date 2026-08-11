@@ -4527,6 +4527,39 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    fixed header, not under it (the app.css anchored-scroll pattern). */
 .ac-card { width: 100%; scroll-margin-top: calc(100px + var(--safe-t)); }
 .ac-fold-body { padding-top: 2px; }
+/* The rates editor (approved demo): wells + right-rail steppers. Grounds mix
+   the INK at low strength so one value serves both themes. */
+/* FLAT body — the .rate-prop panel spent 26px a side and starved the labels. */
+.acr-body { padding-top: 2px; }
+.acr-lbl { flex: 1 1 auto; }
+.acr-cap { font-size: 0.68rem; letter-spacing: 0.09em; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 14px 2px 6px; }
+.acr-well { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
+.acr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+.acr-row + .acr-row, .acr-row + .acr-status { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
+.acr-lbl { font-size: 0.9rem; min-width: 0; }
+.acr-lbl small { display: block; font-size: 0.73rem; color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
+.acr-lbl small em { font-style: normal; color: var(--accent-text); font-weight: 600; }
+.acr-step { display: flex; align-items: center; flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 3px; }
+.acr-step button { width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--accent-text); font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.acr-step button:active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.acr-val { display: flex; align-items: baseline; justify-content: center; gap: 1px; min-width: 54px; }
+.acr-val input { width: 46px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.acr-val input::-webkit-outer-spin-button, .acr-val input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.acr-unit { font-size: 0.72rem; color: var(--text-muted); }
+.acr-status { padding: 9px 14px 11px; }
+.acr-status small { font-size: 0.73rem; line-height: 1.5; color: var(--text-muted); }
+.acr-status small.is-on { color: var(--ok-text); }
+.acr-ota { display: flex; align-items: center; gap: 2px; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 0 14px; height: 42px; flex: 0 0 102px; }
+.acr-ota:focus-within { border-color: var(--accent); }
+.acr-ota input { width: 100%; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: right; outline: none; appearance: textfield; -moz-appearance: textfield; }
+.acr-ota input::-webkit-outer-spin-button, .acr-ota input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.acr-preview { margin: 0 14px 12px; border-top: 1px dashed color-mix(in srgb, var(--text-light) 9%, transparent); padding-top: 10px; }
+.acr-pvcap { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 7px; }
+/* Ink + outline only — no accent tint under accent-text (the §1b pair rule). */
+.acr-badge { display: inline-flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; padding: 6px 12px; }
+.acr-badge.is-none { color: var(--text-muted); border-color: color-mix(in srgb, var(--text-light) 9%, transparent); font-weight: 400; }
+.ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
+.ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
    group full-width (cross-axis auto margins cancel stretch — the rail rule). */
 #search-learning-body, #content-editor { display: flex; flex-direction: column; gap: 12px; }

@@ -177,6 +177,62 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(clear, 'the deep link scrolls the fold clear of the fixed header');
 
+  console.log('§4b the rates editor: right-rail steppers, live lines quote the MODEL');
+  const acr = await page.evaluate(async () => {
+    const fold = document.getElementById('bhub-fold-ac-21a-rates');
+    const caps = fold.querySelectorAll('.acr-cap').length;
+    const steps = fold.querySelectorAll('.acr-step').length;
+    // Every stepper is the last child of its row — the right rail.
+    const onRail = [...fold.querySelectorAll('.acr-row')].every((row) => {
+      const last = row.lastElementChild;
+      return last && (last.classList.contains('acr-step') || last.classList.contains('acr-ota'));
+    });
+    // The + stepper: real dispatcher click, then the mirror, the input and
+    // the fold verdict must all agree.
+    const plus = [...fold.querySelectorAll('.acr-row')][0].querySelector('.acr-step button:last-child');
+    plus.click();
+    await new Promise((r) => setTimeout(r, 250));
+    const stepped = {
+      input: (document.getElementById('acr-21a-coupleRate') || {}).value,
+      mirror: propertyRates['21a'].coupleRate,
+      fig: ((document.getElementById('ac-fig-21a') || {}).textContent || '').trim(),
+      whisper: !!document.querySelector('#ac-saved-21a.on'),
+    };
+    // The weekend line quotes the REAL engine: nightlyRateFor on a season-less
+    // Saturday — equality of DERIVATIONS, not a number written down.
+    await acrType('21a', 'weekendPct', 20);
+    const wkModel = gbp(nightlyRateFor('2026-08-15', propertyRates['21a'], [])).replace('.00', '');
+    const wkSub = (document.getElementById('acr-wk-sub-21a') || {}).textContent || '';
+    // The badge is renderLocalGuide's own words, both ways.
+    acrOta('21a', '165');
+    const bOn = document.getElementById('acr-badge-21a');
+    const badgeOn = { text: bOn.textContent, none: bOn.classList.contains('is-none') };
+    const badgeWant = `Save ${gbp(165 - propertyRates['21a'].coupleRate)}/night booking direct`;
+    acrOta('21a', '50');
+    const badgeOff = document.getElementById('acr-badge-21a').classList.contains('is-none');
+    // The last-minute pair's shared status flips with BOTH above zero.
+    await acrType('21a', 'lastminPct', 15);
+    const lmHalf = (document.getElementById('acr-lm-sub-21a') || {}).className;
+    await acrType('21a', 'lastminDays', 7);
+    const lmEl = document.getElementById('acr-lm-sub-21a');
+    const lmOn = { cls: lmEl.className, txt: lmEl.textContent };
+    const lmWant = gbp(propertyRates['21a'].coupleRate * 0.85).replace('.00', '');
+    // restore
+    await acrType('21a', 'weekendPct', 0); await acrType('21a', 'lastminPct', 0);
+    await acrType('21a', 'lastminDays', 0); await acrType('21a', 'coupleRate', 130);
+    acrOta('21a', '');
+    return { caps, steps, onRail, stepped, wkModel, wkSub, badgeOn, badgeWant, badgeOff, lmHalf, lmOn, lmWant };
+  });
+  ok(acr.caps === 4 && acr.steps === 8, `four captioned wells, eight steppers (${acr.caps}/${acr.steps})`);
+  ok(acr.onRail, 'every control sits on the right rail');
+  ok(String(acr.stepped.input) === '135' && acr.stepped.mirror === 135, `the + stepper writes the input AND the mirror (${acr.stepped.input}/${acr.stepped.mirror})`);
+  ok(/£135/.test(acr.stepped.fig), `the fold verdict follows the couple rate (${acr.stepped.fig})`);
+  ok(acr.stepped.whisper, 'a change whispers ✓ Saved');
+  ok(acr.wkSub.includes(acr.wkModel), `the weekend line quotes nightlyRateFor's own figure (${acr.wkModel} in "${acr.wkSub}")`);
+  ok(acr.badgeOn.text === acr.badgeWant && !acr.badgeOn.none, `the badge is renderLocalGuide's exact string (${acr.badgeOn.text})`);
+  ok(acr.badgeOff, 'a lower Airbnb price honestly shows no badge');
+  ok(!/is-on/.test(acr.lmHalf) && /is-on/.test(acr.lmOn.cls) && acr.lmOn.txt.includes(acr.lmWant), `the last-minute status arms only with BOTH set, quoting the model (${acr.lmOn.txt})`);
+
   console.log('§5 Website content: two verdict groups, the real editors inside');
   await page.evaluate(() => settingsOpen('content'));
   await page.waitForTimeout(400);

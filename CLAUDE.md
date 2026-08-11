@@ -374,9 +374,23 @@ dossiers, keysafe's Settings link) lands on the working editor. Two traps,
 both gated in ui-test-manage §4: `.ac-card` needs
 `scroll-margin-top: calc(100px + var(--safe-t))` (the app.css anchored-scroll
 pattern) or block:'start' buries the fold row you just opened UNDER the fixed
-header (caught on the build's own screenshot); and the unified Save bar +
-steppers from the refined demo are a stated follow-up — each section keeps its
-own validated save buttons this pass.
+header (caught on the build's own screenshot).
+**The RATES section is the REFINED editor** (owner-approved demo, three
+rounds): captioned wells (Your price / Weekends & last minute / Deposit & fee
+/ Book-direct badge), every control a stepper on the RIGHT RAIL (`acrStep`,
+typing rides `acrType` → the SAME `updateRate` instant-save), serif money,
+and live consequence lines via `acrSync` that must QUOTE THE MODEL: the
+weekend figure is `nightlyRateFor`'s own maths and the badge is
+`renderLocalGuide`'s exact string — gated by EQUALITY OF DERIVATIONS in
+ui-test-manage §4b (9 checks; weekend/stepper/badge each break-tested).
+Three traps: `saveContent` never writes the `siteContent` mirror, so `acrOta`
+mirrors FIRST or the badge preview lags one edit behind (caught by the gate's
+first run); the rates fold body is FLAT (`.acr-body`) because wrapping it in
+the `.rate-prop` glass panel spent 26px a side and starved the labels
+(measured on the build's own screenshot); and `.acr-badge` is ink + outline
+with NO accent tint under `--accent-text`, so a11y §1b never meets an
+unmeasured pair. `acrSync` repaints derived TEXT only, never inputs — a
+re-render mid-keystroke is the bank-details trap.
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 
