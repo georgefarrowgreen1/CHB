@@ -414,20 +414,125 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p2.ga.resetOnlyWithAccount, 'Reset password only offered where an account exists');
   ok(p2.rv.qrow && p2.rv.cap && p2.rv.pills, 'Reviews: the pending item is a moderation row with verdict pills');
 
-  console.log('§8 the data pages join by framing (batch 3)');
+  console.log('§8 the data pages join by framing (batch 3) — seasons as CARDS');
   const p3 = await page.evaluate(async () => {
+    // Seed one season so the render is deterministic: every cottage priced except
+    // the LAST — the blank one is what the foot note exists to explain.
+    const keys = liveCottageKeys();
+    const last = keys[keys.length - 1];
+    keys.forEach((k, ix) => {
+      propertySeasons[k] = ix < keys.length - 1
+        ? [{ label: 'July', start_date: '2027-07-01', end_date: '2027-07-31', couple_rate: 175 }]
+        : [];
+    });
     settingsOpen('seasongrid');
     await new Promise((r) => setTimeout(r, 300));
     const gw = document.getElementById('season-grid-wrap');
-    const grid = { framed: gw ? getComputedStyle(gw).borderRadius === '15px' : false, table: !!(gw && gw.querySelector('.sg-table')), save: !!document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"], #sec-seasongrid button') };
+    const card = gw ? gw.querySelector('.sg-band') : null;
+    const cs = card ? getComputedStyle(card) : null;
+    const blankName = (propertyMeta[last] && propertyMeta[last].name) || last;
+    const grid = {
+      cards: gw ? gw.querySelectorAll('.sg-band').length : 0,
+      welled: cs ? parseFloat(cs.borderRadius) >= 12 && cs.borderStyle !== 'none' : false,
+      rows: card ? card.querySelectorAll('.sg-row').length === keys.length : false,
+      // 31 nights, NOT 30: a season's end date is INCLUSIVE (coupleRateForNight),
+      // unlike a checkout, and the card must count the way the price model reads.
+      len: card ? (card.querySelector('.sg-len') || {}).textContent : '',
+      noNative: !document.querySelector('#sec-seasongrid input[type="date"]'),
+      save: !!document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"]'),
+      count: (document.getElementById('sg-count') || {}).textContent || '',
+      // Read the foot only if it's PAINTED — textContent passes through
+      // display:none, and a hidden explanation explains nothing (break-tested).
+      foot: (() => {
+        const f = card && card.querySelector('.sg-foot');
+        return f && getComputedStyle(f).display !== 'none' ? f.textContent : '';
+      })(),
+      footNames: blankName,
+      msg0: (document.getElementById('season-grid-msg') || {}).textContent || '',
+    };
+    return grid;
+  });
+  ok(p3.cards === 1 && p3.welled && p3.rows, `seasons render as cards — one per band, welled, a price row per cottage`);
+  ok(p3.len === '31 nights', `the card counts the season's nights INCLUSIVELY ("${p3.len}")`);
+  ok(p3.noNative, 'no native input[type=date] anywhere in the section — the built-in calendar is the only date control');
+  ok(p3.save && /1 season/.test(p3.count), `save intact + the caption counts ("${p3.count}")`);
+  ok(p3.foot.includes(p3.footNames) && /base rate/.test(p3.foot), `a blank price is explained in the card's foot ("${p3.foot}")`);
+  ok(/Nothing changed yet/.test(p3.msg0), 'the save bar starts honest — nothing changed yet');
+
+  // The date pills open the BUILT-IN calendar in admin mode and write back through
+  // it — driven by real clicks, because calling openSeasonDates directly would prove
+  // the function while the trigger wiring rots (the maybeRestoreView lesson).
+  const p3b = await page.evaluate(async () => {
+    const trig = document.querySelector('#season-grid-body .sg-dates');
+    trig.click();
+    await new Promise((r) => setTimeout(r, 150));
+    const dp = document.getElementById('date-picker');
+    const opened = dp.classList.contains('open');
+    const adminMode = dp.classList.contains('dp-admin');
+    const legend = (document.getElementById('dp-legend') || {}).textContent || '';
+    // Walk to July 2027 and re-pick the whole band one day shorter (1st → 30th).
+    dpState.view = new Date(2027, 6, 1);
+    renderDatePicker();
+    const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) c.click(); };
+    tap('2027-07-01');
+    tap('2027-07-30');
+    await new Promise((r) => setTimeout(r, 50));
+    const hint = (document.getElementById('dp-hint') || {}).textContent || '';
+    const doneBtn = document.querySelector('#date-picker [data-act="dpDone"]');
+    if (doneBtn) doneBtn.click();
+    await new Promise((r) => setTimeout(r, 100));
+    const i = document.querySelector('#season-grid-body .sg-band').getAttribute('data-sg-i');
+    return {
+      opened, adminMode, legend,
+      closed: !dp.classList.contains('open'),
+      hint, // the picker's own count must agree with the card: inclusive
+      co: dpVal(`sg-co-${i}`),
+      pills: (document.getElementById(`sg-trig-${i}`) || {}).textContent || '',
+      len: (document.getElementById(`sg-len-${i}`) || {}).textContent || '',
+      msg: (document.getElementById('season-grid-msg') || {}).textContent || '',
+    };
+  });
+  ok(p3b.opened && p3b.adminMode, 'tapping the date pills opens the built-in calendar in admin mode');
+  ok(p3b.legend === '', 'no legend about crossed dates — nothing is crossed on an all-cottage band');
+  ok(/30 nights/.test(p3b.hint), `the picker's own hint counts inclusively too ("${p3b.hint}")`);
+  ok(p3b.closed && p3b.co === '2027-07-30', `Done writes the range back through the hidden fields (${p3b.co})`);
+  ok(/30\/07\/2027/.test(p3b.pills) && p3b.len === '30 nights', `…and the card repaints — pills DD/MM/YYYY + "${p3b.len}"`);
+  ok(/1 change to save/.test(p3b.msg), `the save bar counts a moved range as ONE change ("${p3b.msg}")`);
+
+  // The save path is unchanged: per-cottage seasons_save, blank prices omitted.
+  const p3c = await page.evaluate(async () => {
+    const keys = liveCottageKeys();
+    const realPost = window.apiPost;
+    const posts = [];
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('rates.php') && body.action === 'seasons_save') { posts.push(body); return { ok: true }; }
+      return realPost(url, body);
+    };
+    document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"]').click();
+    await new Promise((r) => setTimeout(r, 300));
+    window.apiPost = realPost;
+    const by = {};
+    posts.forEach((p) => { by[p.prop_key] = p.seasons; });
+    return {
+      n: posts.length,
+      k: keys.length,
+      first: (by[keys[0]] || [])[0] || null,
+      blankOmitted: (by[keys[keys.length - 1]] || []).length === 0,
+      msg: (document.getElementById('season-grid-msg') || {}).textContent || '',
+    };
+  });
+  ok(p3c.n === p3c.k && p3c.first && p3c.first.start === '2027-07-01' && p3c.first.end === '2027-07-30' && p3c.first.rate === 175,
+    `Save posts every cottage through the same seasons_save payload (${p3c.n} of ${p3c.k})`);
+  ok(p3c.blankOmitted, 'a blank price saves NOTHING for that cottage — base rate by omission');
+  ok(/Saved for all cottages/.test(p3c.msg), `…and reports it ("${p3c.msg}")`);
+
+  const p3d = await page.evaluate(async () => {
     settingsOpen('pricing');
     await new Promise((r) => setTimeout(r, 300));
     const pb = document.getElementById('pricing-body');
-    const pricing = { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => getComputedStyle(l).textTransform === 'uppercase') : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
-    return { grid, pricing };
+    return { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => getComputedStyle(l).textTransform === 'uppercase') : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
   });
-  ok(p3.grid.framed && p3.grid.table && p3.grid.save, 'the all-cottages seasons grid sits in a well, table + save intact');
-  ok(p3.pricing.has && p3.pricing.caps, 'Pricing wears the caption vocabulary over its idea rows');
+  ok(p3d.has && p3d.caps, 'Pricing wears the caption vocabulary over its idea rows');
 
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);

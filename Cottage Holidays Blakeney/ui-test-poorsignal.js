@@ -300,11 +300,12 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         let said = '';
         const realAlert = window.glassAlert;
         window.glassAlert = (m) => { said = m; return Promise.resolve(true); };
-        // A grid with one real row, so there is something to save for every cottage.
+        // A grid with one real card, so there is something to save for every cottage.
+        // (The editor is season CARDS now — saveSeasonGrid iterates .sg-band divs.)
         const body = document.getElementById('season-grid-body');
         if (body) {
-            const cells = keys.map((k) => `<td><input data-sg-prop="${k}" value="150"></td>`).join('');
-            body.innerHTML = `<tr><td><input data-sg="label" value="Test"></td><td><input data-sg="start" value="2027-06-01"></td><td><input data-sg="end" value="2027-06-30"></td>${cells}</tr>`;
+            const cells = keys.map((k) => `<input data-sg-prop="${k}" value="150">`).join('');
+            body.innerHTML = `<div class="sg-band"><input data-sg="label" value="Test"><input data-sg="start" value="2027-06-01"><input data-sg="end" value="2027-06-30">${cells}</div>`;
         }
         await saveSeasonGrid();
         window.apiPost = realPost;

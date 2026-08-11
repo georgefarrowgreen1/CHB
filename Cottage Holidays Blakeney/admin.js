@@ -22066,51 +22066,161 @@ function seasonGridBands() {
     );
     return [...bands.values()].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
 }
-function seasonGridRowHtml(b) {
+// Each season is ONE CARD (the approved demo): serif name + remove ✕ in the head,
+// the dates as pills opening the BUILT-IN calendar (openFieldDatePicker, admin mode —
+// NEVER a native input[type=date]), a £-pill row per cottage, and a foot that SAYS
+// what a blank price means. NB a season's end date is INCLUSIVE (coupleRateForNight:
+// start <= night <= end), unlike a checkout — so the card counts nightsBetween + 1
+// and the picker gets `inclusive: true` so its hint cannot state a different number.
+let __sgSeq = 0; // per-card ids — survive add/remove without renumbering
+let __sgRemoved = 0; // pre-existing cards deleted since render; part of the change count
+function sgPillsHtml(ci, co) {
+    if (ci && co)
+        return `<span class="sg-dt">${fmtDate(ci)}</span><span class="sg-arr" aria-hidden="true">→</span><span class="sg-dt">${fmtDate(co)}</span>`;
+    return `<span class="sg-dt sg-dt-empty">Pick the season dates</span>`;
+}
+function sgLenText(ci, co) {
+    if (!ci || !co || co < ci) return '';
+    const n = nightsBetween(ci, co) + 1; // end date inclusive — see the block comment
+    return `${n} night${n === 1 ? '' : 's'}`;
+}
+function seasonCardHtml(b) {
+    const i = __sgSeq++;
     const keys = liveCottageKeys();
     return `
-                <tr class="sg-band">
-                    <td data-label="Season"><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer" aria-label="Season name"></td>
-                    <td data-label="From"><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start" aria-label="Season start date"></td>
-                    <td data-label="Until"><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end" aria-label="Season end date"></td>
-                    ${keys.map((k) => `<td data-label="${escapeHtml(propertyMeta[k].short || propertyMeta[k].name || k)}"><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
-                    <td class="sg-del"><button class="btn-sm btn-delete" data-act="closestRemove" data-sel="tr" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
-                </tr>`;
+                <div class="sg-band" data-sg-i="${i}"${b.isNew ? ' data-sg-new="1"' : ''}>
+                    <div class="sg-head">
+                        <input type="text" class="sg-name" id="sg-nm-${i}" value="${escapeHtml(b.label)}" data-sg="label" placeholder="Name this season" aria-label="Season name" ${chbInput('sgSync')}>
+                        <button type="button" class="sg-del" ${chbAttrs('sgRemove', String(i))} aria-label="Remove this season everywhere" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    </div>
+                    <input type="hidden" id="sg-ci-${i}" value="${b.start || ''}" data-orig="${b.start || ''}" data-sg="start">
+                    <input type="hidden" id="sg-co-${i}" value="${b.end || ''}" data-orig="${b.end || ''}" data-sg="end">
+                    <button type="button" class="sg-dates" id="sg-trig-${i}" ${chbAttrs('openSeasonDates', String(i))}>${sgPillsHtml(b.start, b.end)}</button>
+                    <div class="sg-len" id="sg-len-${i}">${sgLenText(b.start, b.end)}</div>
+                    <div class="sg-rows">${keys
+                        .map(
+                            (k) => `
+                        <label class="sg-row">
+                            <span class="sg-cot"><span class="legend-swatch swatch-${k}"></span>${escapeHtml(propertyMeta[k].name)}</span>
+                            <span class="sg-price"><span aria-hidden="true">£</span><input type="number" min="0" step="1" placeholder="base" id="sg-p-${i}-${k}" value="${b.rates[k] || ''}" data-sg-prop="${k}" aria-label="${escapeHtml(propertyMeta[k].name)} nightly rate for this season — blank keeps the base rate" ${chbInput('sgSync')}></span>
+                        </label>`,
+                        )
+                        .join('')}</div>
+                    <div class="sg-foot" id="sg-foot-${i}" style="display:none;"></div>
+                </div>`;
 }
 function renderSeasonGrid() {
     const wrap = document.getElementById('season-grid-wrap');
     if (!wrap) return;
-    const keys = liveCottageKeys();
     const bands = seasonGridBands();
+    __sgSeq = 0;
+    __sgRemoved = 0;
     wrap.innerHTML = `
-                <div style="overflow-x:auto;">
-                <table class="sg-table">
-                    <thead><tr>
-                        <th style="min-width:120px;">Season</th><th>From</th><th>Until</th>
-                        ${keys.map((k) => `<th style="min-width:86px;"><span class="prop-tag tag-${k}">${propertyMeta[k].short}</span></th>`).join('')}
-                        <th></th>
-                    </tr></thead>
-                    <tbody id="season-grid-body">${
-                        bands.length
-                            ? bands.map(seasonGridRowHtml).join('')
-                            : seasonGridRowHtml({ label: '', start: '', end: '', rates: {} })
-                    }</tbody>
-                </table>
+                <div class="acr-cap" id="sg-count"></div>
+                <div class="sg-cards" id="season-grid-body">${
+                    bands.length
+                        ? bands.map(seasonCardHtml).join('')
+                        : seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true })
+                }</div>
+                <div class="sg-actions"><button type="button" class="sg-add" data-act="addSeasonGridRow">＋ Add a season</button></div>
+                <div id="sg-savebar">
+                    <span id="season-grid-msg" role="status"></span>
+                    <button type="button" class="sg-save" data-act="saveSeasonGrid">Save all cottages</button>
                 </div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
-                    <button class="btn-sm btn-edit" data-act="addSeasonGridRow">+ Add a season</button>
-                    <button class="btn-glass" style="width:auto;padding:11px 24px;" data-act="saveSeasonGrid">Save all cottages</button>
-                    <span id="season-grid-msg" style="font-size:0.82rem;align-self:center;"></span>
-                </div>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:12px 0 0;max-width:640px;">Each cell is that cottage's nightly couple rate for the season. Leave a cell blank and the cottage keeps its normal base rate for those dates. Deleting a row removes the season from every cottage when you save.</p>`;
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:12px 0 0;max-width:640px;">Leave a price blank and that cottage keeps its normal base rate for those dates. Removing a card removes the season from every cottage when you save.</p>`;
+    sgSync();
 }
 function addSeasonGridRow() {
     const body = document.getElementById('season-grid-body');
-    if (body)
-        body.insertAdjacentHTML(
-            'beforeend',
-            seasonGridRowHtml({ label: '', start: '', end: '', rates: {} }),
-        );
+    if (!body) return;
+    body.insertAdjacentHTML(
+        'beforeend',
+        seasonCardHtml({ label: '', start: '', end: '', rates: {}, isNew: true }),
+    );
+    sgSync();
+    const nm = body.lastElementChild && body.lastElementChild.querySelector('.sg-name');
+    if (nm instanceof HTMLElement) nm.focus();
+}
+function sgRemove(i) {
+    const card = document.querySelector(`.sg-band[data-sg-i="${i}"]`);
+    if (!card) return;
+    // Only a card that EXISTED at render counts as a change — binning a blank
+    // card you just added leaves nothing to save.
+    if (!card.hasAttribute('data-sg-new')) __sgRemoved++;
+    card.remove();
+    sgSync();
+}
+function openSeasonDates(i) {
+    openFieldDatePicker({
+        ci: `sg-ci-${i}`,
+        co: `sg-co-${i}`,
+        trigger: `sg-trig-${i}`,
+        admin: true, // owner surface: past dates pickable, no guest rules, no prices
+        both: true, // half a season is not a season
+        inclusive: true, // the hint counts nights the way the season will
+        startHint: 'Pick the season’s first night',
+        endHint: 'Now pick its last night',
+        bothMsg: 'Pick the last night too',
+        onDone: () => sgSync(),
+    });
+}
+// "Changed" rides the browser's own baseline — an input's defaultValue IS the
+// rendered value — so the count needs no bookkeeping beyond __sgRemoved.
+// EXCEPT the hidden date fields: a hidden input's value is in the spec's
+// "default" mode, so writing .value writes the ATTRIBUTE and defaultValue moves
+// with it (measured — the picker's write never registered as a change). Those
+// two carry their baseline in data-orig instead.
+function sgChanged(id) {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (!el) return false;
+    const base = el.type === 'hidden' ? el.getAttribute('data-orig') || '' : el.defaultValue || '';
+    return el.value.trim() !== base.trim();
+}
+function sgSync() {
+    const body = document.getElementById('season-grid-body');
+    if (!body) return;
+    const keys = liveCottageKeys();
+    const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k;
+    const cards = body.querySelectorAll('.sg-band');
+    let changes = __sgRemoved;
+    cards.forEach((card) => {
+        const i = card.getAttribute('data-sg-i');
+        const ci = dpVal(`sg-ci-${i}`),
+            co = dpVal(`sg-co-${i}`);
+        const trig = document.getElementById(`sg-trig-${i}`);
+        if (trig) trig.innerHTML = sgPillsHtml(ci, co);
+        const len = document.getElementById(`sg-len-${i}`);
+        if (len) len.textContent = sgLenText(ci, co);
+        // A moved date range is ONE change however both ends moved.
+        if (sgChanged(`sg-nm-${i}`)) changes++;
+        if (sgChanged(`sg-ci-${i}`) || sgChanged(`sg-co-${i}`)) changes++;
+        keys.forEach((k) => {
+            if (sgChanged(`sg-p-${i}-${k}`)) changes++;
+        });
+        // The foot names who keeps their base rate — display and arithmetic agree.
+        const blank = keys.filter((k) => !dpVal(`sg-p-${i}-${k}`).trim());
+        const foot = document.getElementById(`sg-foot-${i}`);
+        if (foot) {
+            const names = blank.map(nm);
+            const list =
+                names.length > 1
+                    ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+                    : names[0] || '';
+            foot.textContent = !blank.length
+                ? ''
+                : blank.length === keys.length
+                  ? 'No prices yet — every cottage keeps its base rate for these dates.'
+                  : `${list} keep${blank.length === 1 ? 's its' : ' their'} base rate for these dates.`;
+            foot.style.display = blank.length ? '' : 'none';
+        }
+    });
+    const count = document.getElementById('sg-count');
+    if (count) count.textContent = `${cards.length} season${cards.length === 1 ? '' : 's'}`;
+    const msg = document.getElementById('season-grid-msg');
+    if (msg) {
+        msg.style.color = '';
+        msg.textContent = changes ? `${changes} change${changes === 1 ? '' : 's'} to save` : 'Nothing changed yet';
+    }
 }
 async function saveSeasonGrid() {
     const body = document.getElementById('season-grid-body');
@@ -22118,16 +22228,16 @@ async function saveSeasonGrid() {
     const keys = liveCottageKeys();
     const perProp = {};
     keys.forEach((k) => (perProp[k] = []));
-    for (const tr of body.querySelectorAll('tr')) {
+    for (const card of body.querySelectorAll('.sg-band')) {
         const get = (sel) => {
-            const el = tr.querySelector(sel);
+            const el = card.querySelector(sel);
             return el ? el.value.trim() : '';
         };
         const label = get('[data-sg="label"]'),
             start = get('[data-sg="start"]'),
             end = get('[data-sg="end"]');
         const rates = keys.map((k) => {
-            const el = tr.querySelector(`[data-sg-prop="${k}"]`);
+            const el = card.querySelector(`[data-sg-prop="${k}"]`);
             return { k, rate: el ? parseFloat(el.value) || 0 : 0 };
         });
         if (!start && !end && !label && rates.every((r) => !r.rate)) continue; // fully empty row
@@ -22185,12 +22295,15 @@ async function saveSeasonGrid() {
     const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k;
     const list = (ks) => ks.map(nm).join(', ');
     if (!failedKeys.length) {
-        if (msg) {
-            msg.textContent = 'Saved for all cottages ✓';
-            msg.style.color = 'var(--ok-text)';
-            setTimeout(() => {
-                msg.textContent = '';
-            }, 4000);
+        // Fresh baseline: re-render from the saved propertySeasons so the change
+        // counter returns to zero (defaultValue is the render, and the render is now
+        // what the server holds). After a deliberate Save, never mid-keystroke — the
+        // bank-details trap doesn't apply to a tap the owner just made.
+        renderSeasonGrid();
+        const m2 = document.getElementById('season-grid-msg');
+        if (m2) {
+            m2.textContent = 'Saved for all cottages ✓';
+            m2.style.color = 'var(--ok-text)';
         }
         toast('Seasonal rates saved for all cottages.');
         return;

@@ -4649,10 +4649,39 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    all-cottages seasons grid sits in a well with hairline rows; the pricing
    lead + analytics/diagnostics cards were converted by the .accounts-stat
    re-skin above. Scoped to the settings sections throughout. */
-#season-grid-wrap { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: 15px; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 10px 12px; overflow-x: auto; }
-#season-grid-wrap .sg-table th { font-size: 0.62rem; letter-spacing: 0.06em; color: var(--text-muted); }
-#season-grid-wrap .sg-table td { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
-#season-grid-wrap .sg-table .input-glass { border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); background: rgba(0, 0, 0, 0.18); border-radius: 9px; }
+/* Season CARDS (the approved demo) — one card per season: serif name + ✕ in the
+   head, the date range as pills on a button that opens the BUILT-IN calendar,
+   one hairline row per cottage with the price in a £ pill on the right rail,
+   and a foot naming who keeps their base rate. Ink-mix wells so one value
+   serves both themes (the .acr-well precedent). Desktop flows the cards
+   two-up; the sticky save bar counts unsaved changes. */
+.sg-cards { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 901px) { .sg-cards { grid-template-columns: repeat(2, 1fr); align-items: start; } }
+.sg-band { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); overflow: hidden; }
+.sg-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 2px 16px; }
+.sg-name { flex: 1 1 auto; min-width: 0; border: 0; background: none; font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); padding: 6px 0; }
+.sg-name::placeholder { color: var(--text-muted); font-style: italic; }
+.sg-del { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--danger-text); cursor: pointer; }
+.sg-del .ic { width: 15px; height: 15px; }
+.sg-dates { display: flex; align-items: center; gap: 8px; width: calc(100% - 32px); margin: 0 16px 2px; min-height: 44px; padding: 0; border: 0; background: none; font: inherit; color: var(--text-light); cursor: pointer; }
+.sg-dt { flex: 1 1 auto; text-align: center; background: rgba(0, 0, 0, 0.18); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 10px; font-family: var(--font-serif); font-size: 0.95rem; }
+.sg-dt-empty { color: var(--text-muted); font-family: inherit; font-size: 0.88rem; }
+.sg-arr { flex: 0 0 auto; color: var(--text-muted); }
+.sg-len { text-align: center; font-size: 0.72rem; color: var(--text-muted); padding: 0 16px 10px; min-height: 1em; }
+.sg-rows { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.sg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
+.sg-row + .sg-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
+.sg-cot { display: flex; align-items: center; gap: 9px; font-size: 0.9rem; font-weight: 500; min-width: 0; }
+.sg-cot .legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.sg-price { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; width: 112px; min-height: 42px; padding: 0 14px; background: rgba(0, 0, 0, 0.18); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; color: var(--text-muted); font-size: 0.85rem; }
+.sg-price input { width: 100%; min-width: 0; min-height: 40px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: right; font-variant-numeric: tabular-nums; }
+.sg-price input::placeholder { color: var(--text-muted); font-family: var(--font-sans); font-size: 0.85rem; }
+.sg-foot { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 16px 10px; font-size: 0.74rem; color: var(--text-muted); }
+.sg-actions { margin-top: 14px; }
+.sg-add { border: 0; background: none; color: var(--accent-text); font-size: 0.9rem; font-weight: 600; cursor: pointer; padding: 10px 2px; min-height: 44px; }
+#sg-savebar { position: sticky; bottom: calc(10px + var(--safe-b)); z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 8px 8px 16px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: var(--shadow-soft); }
+#season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; color: var(--text-muted); }
+.sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.9rem; font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
 #pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: 0.67rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }

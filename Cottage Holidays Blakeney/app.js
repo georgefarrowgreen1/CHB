@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 467;
+const ADMIN_BUNDLE_V = 468;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 184;
+const ADMIN_CSS_V = 185;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -12508,7 +12508,10 @@ function renderDatePicker() {
         year: 'numeric',
     });
     const hint = document.getElementById('dp-hint');
-    if (!dpState.start) hint.innerText = 'Select your check-in date';
+    // A field target may bring its own words (startHint/endHint — "check-in" is wrong
+    // for a season) and `inclusive: true` when its END date is inclusive (season
+    // bands), so the hint's night count cannot disagree with the card reading it back.
+    if (!dpState.start) hint.innerText = (dpTarget && dpTarget.startHint) || 'Select your check-in date';
     else if (!dpState.end) {
         // SAY HOW FAR THEY CAN GO. Everything past the next booking is refused, and
         // a guest who turns the page has no way to know why the month went quiet.
@@ -12516,9 +12519,11 @@ function renderDatePicker() {
         // through, so a ceiling there states a limit that is not applied.
         const capped = dpMode === 'enquiry';
         const stop = capped ? dpNextBookedStart(dpState.start) : null;
-        hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
+        hint.innerText =
+            (dpTarget && dpTarget.endHint) ||
+            'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
-        const n = nightsBetween(dpState.start, dpState.end);
+        const n = nightsBetween(dpState.start, dpState.end) + (dpTarget && dpTarget.inclusive ? 1 : 0);
         const span = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
         // IN THE HINT, not a line of its own: the hint is already the one role="status"
         // region, so the figure is announced for free and the stay is not said twice.
@@ -12539,11 +12544,15 @@ function renderDatePicker() {
     // four modes: only the enquiry form REFUSES a crossed night. The hero search, the
     // waitlist and the chat check take any future date, and admin overlaps on purpose.
     const legend = document.getElementById('dp-legend');
+    // An admin FIELD target shades nothing (no one cottage is chosen), so a legend
+    // about crossed dates would describe nothing on screen — say nothing instead.
     if (legend)
         legend.innerText =
-            dpMode === 'enquiry'
-                ? 'Crossed-out dates aren’t available'
-                : 'Crossed-out dates are already booked — you can still pick them';
+            dpMode === 'admin' && dpTarget
+                ? ''
+                : dpMode === 'enquiry'
+                  ? 'Crossed-out dates aren’t available'
+                  : 'Crossed-out dates are already booked — you can still pick them';
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
     if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
@@ -12566,7 +12575,9 @@ function renderDatePicker() {
     let cells = '';
     for (let i = 0; i < offset; i++) cells += `<div class="dp-day dp-empty"></div>`;
     const pickingEnd = !!(dpState.start && !dpState.end);
-    const adminConflicts = dpMode === 'admin' ? modalStayConflicts() : null;
+    // The modal's cottage only means something when the picker IS the modal's — an
+    // admin field target (seasons, all cottages at once) shades no one cottage's stays.
+    const adminConflicts = dpMode === 'admin' && !dpTarget ? modalStayConflicts() : null;
     // Guest check-in picker only: block a free night that can't fit the cottage's
     // minimum stay (a 1-night hole between bookings) — see dpCheckinFits.
     const guestPick = dpMode !== 'admin' && dpMode !== 'search';
@@ -12871,7 +12882,9 @@ function dpClear() {
 }
 
 function dpDone() {
-    if (dpMode === 'admin') {
+    // Admin WITHOUT a target is the Add/Edit Booking modal; admin WITH one (the
+    // seasons editor) falls through to the field-target write below.
+    if (dpMode === 'admin' && !dpTarget) {
         document.getElementById('modal-checkin').value = dpState.start || '';
         document.getElementById('modal-checkout').value = dpState.end || '';
         refreshModalDateTrigger();
@@ -12881,7 +12894,7 @@ function dpDone() {
         } catch (e) {}
         return;
     }
-    if (dpMode === 'fields') {
+    if (dpMode === 'fields' || (dpMode === 'admin' && dpTarget)) {
         const t = dpTarget || {};
         // BOTH OR NEITHER. On these surfaces half a range means something the label does
         // not say — the waitlist stores it as an OPEN-DATED wait (see waitlist.php) and
@@ -12891,9 +12904,11 @@ function dpDone() {
         if (t.both && !!dpState.start !== !!dpState.end) {
             const hint = document.getElementById('dp-hint');
             if (hint)
-                hint.innerText = t.emptyOk
-                    ? 'Pick a check-out date too — or Clear dates to wait for any dates'
-                    : 'Pick a check-out date too';
+                hint.innerText =
+                    t.bothMsg ||
+                    (t.emptyOk
+                        ? 'Pick a check-out date too — or Clear dates to wait for any dates'
+                        : 'Pick a check-out date too');
             return;
         }
         dpSetVal(t.ci, dpState.start || '');
@@ -13097,7 +13112,10 @@ function wlRefreshDateTrigger() {
 function openFieldDatePicker(target) {
     dpTarget = target || null;
     if (!dpTarget) return;
-    dpMode = 'fields';
+    // An OWNER field target (`admin: true` — the seasons editor) runs in admin mode:
+    // past dates pickable (a running season's start is one), no guest rules, no
+    // per-cottage prices — while still writing to the target's fields on Done.
+    dpMode = dpTarget.admin ? 'admin' : 'fields';
     dpProp = dpTarget.prop || null;
     // Refresh THAT cottage's booked nights (renderDatePicker repaints when it lands).
     if (dpProp) {
@@ -13109,7 +13127,7 @@ function openFieldDatePicker(target) {
     dpState.end = dpVal(dpTarget.co) || null;
     const seed = dpParse(dpState.start) || dpToday0();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
-    document.getElementById('date-picker').classList.remove('dp-admin');
+    document.getElementById('date-picker').classList.toggle('dp-admin', !!dpTarget.admin);
     renderDatePicker();
     document.getElementById('date-picker').classList.add('open');
 }
@@ -16255,7 +16273,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'managepages43';
+    const BUILD = 'seasoncards44';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
