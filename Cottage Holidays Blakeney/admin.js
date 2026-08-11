@@ -12192,8 +12192,22 @@ function settingsOpenAccom(k) {
         let nPhotos = 0;
         try { nPhotos = (accomImages(k) || []).length; } catch (e) {}
         const right = (id) => {
-            if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
-            if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
+            // Verdicts only where a real one is cheaply derivable from a store
+            // already in hand — an unloaded mirror mints no claim.
+            try {
+                if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
+                if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
+                if (id === 'text') {
+                    const ams = Array.isArray(siteContent['amenities-' + k]) ? siteContent['amenities-' + k] : ((propertyContent[k] || {}).amenities || []);
+                    return ams.length ? stCap('ok', ams.length + ' feature' + (ams.length === 1 ? '' : 's')) : '';
+                }
+                if (id === 'safety') { const n = accomSafetyList(k).length; return n ? stCap('ok', n + ' item' + (n === 1 ? '' : 's')) : stCap('unk', 'none yet'); }
+                if (id === 'seasons') { const n = (propertySeasons[k] || []).length; return n ? stCap('ok', n + ' season' + (n === 1 ? '' : 's')) : ''; }
+                if (id === 'faq') { const n = (Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).length; return n ? stCap('ok', n + ' answer' + (n === 1 ? '' : 's')) : stCap('unk', 'none yet'); }
+                if (id === 'welcome') { const n = (Array.isArray(adminPrivateContent['welcome-' + k]) ? adminPrivateContent['welcome-' + k] : []).length; return n ? stCap('ok', n + ' section' + (n === 1 ? '' : 's')) : ''; }
+                if (id === 'location') return geoVal(k) ? stCap('ok', 'Pin set') : '';
+                if (id === 'arrival') return (adminPrivateContent['arrival-' + k] || '').trim() ? stCap('ok', 'Written') : '';
+            } catch (e) {}
             return '';
         };
         detail.innerHTML = ACCOM_SECTIONS.map((s) => {
@@ -12204,7 +12218,7 @@ function settingsOpenAccom(k) {
                     <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
                     <span class="bhub-fold-right">${right(s.id)}<span class="bhub-chev" aria-hidden="true">›</span></span>
                 </button>
-                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="${s.id === 'rates' ? 'acr-body' : 'rate-prop ac-fold-body'}">${accomSectionHtml(k, s.id)}</div></div>
+                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="${['web', 'photos'].includes(s.id) ? 'rate-prop ac-fold-body' : 'acr-body'}">${accomSectionHtml(k, s.id)}</div></div>
             </section>`;
         // privateRow was BUILT AND NEVER INTERPOLATED — the whole make-private control
         // (a working setAccommodationPrivate, the `unlisted` column, the public site
@@ -12299,6 +12313,20 @@ function acrSync(k, quiet) {
     }
 }
 const __acrSavedT = {};
+// House-rules steppers: ruleStep writes through the SAME updateRuleField save
+// the typed input uses; occStep only bumps the input — Save guest limits
+// stays the explicit, validated write it always was.
+function ruleStep(k, field, delta) {
+    const r = propertyRates[k] || {};
+    const min = field === 'minNights' ? 1 : 0;
+    const v = Math.max(min, (parseInt(r[field], 10) || min) + (parseInt(delta, 10) || 0));
+    dpSetVal('acw-' + k + '-' + field, String(v));
+    updateRuleField(k, field, v);
+}
+function occStep(id, delta, min) {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(id));
+    if (el) el.value = String(Math.max(parseInt(min, 10) || 0, (parseInt(el.value, 10) || 0) + (parseInt(delta, 10) || 0)));
+}
 function settingsOpenAccomSec(k, sec) {
     settingsOpenAccom(k);
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
@@ -19572,23 +19600,23 @@ function accomSectionHtml(k, sec) {
             const ams = Array.isArray(siteContent['amenities-' + k])
                 ? siteContent['amenities-' + k]
                 : def.amenities || [];
-            return `<label class="modal-label" style="margin-top:0;">Title</label>
-                        <input type="text" class="input-glass" id="accom-t-title-${k}" value="${escapeHtml(tv('title', def.title))}">
-                        <label class="modal-label">Subtitle</label>
-                        <input type="text" class="input-glass" id="accom-t-subtitle-${k}" value="${escapeHtml(tv('subtitle', ''))}">
-                        <label class="modal-label">Price tagline</label>
-                        <input type="text" class="input-glass" id="accom-t-tagline-${k}" value="${escapeHtml(tv('tagline', ''))}">
-                        <label class="modal-label">Description</label>
-                        <textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea>
-                        <label class="modal-label">Location blurb</label>
-                        <input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}">
-                        <div style="margin-top:10px;"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;margin-left:8px;"></span></div>
-                        <div class="rule-divider">Features <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(the pills on the cottage page)</span></div>
-                        <div id="accom-am-rows-${k}">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
-                        <div style="display:flex;gap:10px;margin-top:8px;">
+            return `<div class="acr-cap">On the cottage page</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><label for="accom-t-title-${k}">Title</label><input type="text" class="input-glass" id="accom-t-title-${k}" value="${escapeHtml(tv('title', def.title))}"></div>
+                        <div class="acw-frow"><label for="accom-t-subtitle-${k}">Subtitle</label><input type="text" class="input-glass" id="accom-t-subtitle-${k}" value="${escapeHtml(tv('subtitle', ''))}"></div>
+                        <div class="acw-frow"><label for="accom-t-tagline-${k}">Price tagline</label><input type="text" class="input-glass" id="accom-t-tagline-${k}" value="${escapeHtml(tv('tagline', ''))}"></div>
+                        <div class="acw-frow"><label for="accom-t-desc-${k}">Description</label><textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea></div>
+                        <div class="acw-frow"><label for="accom-t-location-${k}">Location blurb</label><input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}"></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;"></span></div>
+                    </div>
+                    <div class="acr-cap">Features — the pills guests see</div>
+                    <div class="acr-well">
+                        <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
+                        <div class="acw-acts">
                             <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add feature</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save features</button>
-                        </div>`;
+                        </div>
+                    </div>`;
         }
         case 'rates': {
             // The REFINED editor (approved demo): right-rail steppers, live
@@ -19633,13 +19661,19 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         }
         case 'house':
+            // Steppers ride ruleStep → the SAME updateRuleField save; typed
+            // input keeps its own chbChange, so nothing about saving moved.
             return `
-                    <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" ${chbChange('updateRuleField', String(k), 'checkInTime', CHB_VALUE)} style="text-align:left;width:130px;"></div>
-                    <div class="rate-field"><label>Check-out time</label><input type="time" value="${r.checkOutTime || '10:00'}" ${chbChange('updateRuleField', String(k), 'checkOutTime', CHB_VALUE)} style="text-align:left;width:130px;"></div>
-                    <div class="rate-field"><label>Minimum nights</label><input type="number" min="1" step="1" value="${r.minNights || 1}" ${chbChange('updateRuleField', String(k), 'minNights', CHB_VALUE)}></div>
-                    <div class="rate-field"><label>Maximum nights <span style="opacity:0.7;">(0 = no limit)</span></label><input type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)}></div>
-                    <div style="margin-top:6px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:8px;">Allowed arrival days <span style="opacity:0.7;">(none ticked = any day)</span></label>
-                        <div class="arrival-days">${[
+                    <div class="acr-cap">Times &amp; length of stay</div>
+                    <div class="acr-well">
+                        <div class="acr-row"><span class="acr-lbl">Check-in from</span><input type="time" class="acw-pill" value="${r.checkInTime || '15:00'}" ${chbChange('updateRuleField', String(k), 'checkInTime', CHB_VALUE)} aria-label="Check-in time"></div>
+                        <div class="acr-row"><span class="acr-lbl">Check-out by</span><input type="time" class="acw-pill" value="${r.checkOutTime || '10:00'}" ${chbChange('updateRuleField', String(k), 'checkOutTime', CHB_VALUE)} aria-label="Check-out time"></div>
+                        <div class="acr-row"><span class="acr-lbl">Minimum nights</span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '-1')} aria-label="Minimum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-minNights" type="number" min="1" step="1" value="${r.minNights || 1}" ${chbChange('updateRuleField', String(k), 'minNights', CHB_VALUE)} aria-label="Minimum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'minNights', '1')} aria-label="Minimum nights — more">+</button></span></div>
+                        <div class="acr-row"><span class="acr-lbl">Maximum nights<small>0 = no limit</small></span><span class="acr-step"><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '-1')} aria-label="Maximum nights — fewer">−</button><span class="acr-val"><input id="acw-${k}-maxNights" type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)} aria-label="Maximum nights"></span><button type="button" ${chbAttrs('ruleStep', String(k), 'maxNights', '1')} aria-label="Maximum nights — more">+</button></span></div>
+                    </div>
+                    <div class="acr-cap">Arrival days — none ticked = any day</div>
+                    <div class="acr-well">
+                        <div class="arrival-days acw-days">${[
                             'Sun',
                             'Mon',
                             'Tue',
@@ -19654,58 +19688,72 @@ function accomSectionHtml(k, sec) {
                             )
                             .join('')}</div>
                     </div>
-                    <div class="rule-divider">Guest limits</div>
+                    <div class="acr-cap">Guest limits</div>
                     ${(() => {
                         const o = occupancyLimits[k] || {
                             maxAdults: 2,
                             maxChildren: 0,
                             maxTotal: 2,
                         };
+                        const occ = (id, label, min, val, sub) => `<div class="acr-row"><span class="acr-lbl">${label}${sub ? `<small>${sub}</small>` : ''}</span><span class="acr-step"><button type="button" ${chbAttrs('occStep', id, '-1', String(min))} aria-label="${label} — fewer">−</button><span class="acr-val"><input id="${id}" type="number" min="${min}" step="1" value="${val}" aria-label="${label}"></span><button type="button" ${chbAttrs('occStep', id, '1', String(min))} aria-label="${label} — more">+</button></span></div>`;
                         return `
-                    <div class="rate-field"><label>Max adults</label><input type="number" min="1" step="1" id="occ-adults-${k}" value="${o.maxAdults}"></div>
-                    <div class="rate-field"><label>Max children</label><input type="number" min="0" step="1" id="occ-children-${k}" value="${o.maxChildren}"></div>
-                    <div class="rate-field"><label>Max guests in total</label><input type="number" min="1" step="1" id="occ-total-${k}" value="${o.maxTotal}"></div>
-                    <div style="margin-top:8px;"><button class="btn-sm btn-edit" ${chbAttrs('saveOccupancy', String(k))}>Save guest limits</button></div>`;
+                    <div class="acr-well">
+                        ${occ(`occ-adults-${k}`, 'Max adults', 1, o.maxAdults, '')}
+                        ${occ(`occ-children-${k}`, 'Max children', 0, o.maxChildren, 'under 16')}
+                        ${occ(`occ-total-${k}`, 'Max guests in total', 1, o.maxTotal, '')}
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('saveOccupancy', String(k))}>Save guest limits</button></div>
+                    </div>`;
                     })()}
-                    <div class="rule-divider">House rules <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(extra bullets shown to guests)</span></div>
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Shown under "House rules" on the cottage page, after the check-in/out and guest lines. Add or remove rules with the ＋ / − buttons.</label>
-                    <div id="accom-houserules-rows-${k}">${houseRulesList(k)
-                        .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
-                        .join('')}</div>
-                    <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save</button>
+                    <div class="acr-cap">Extra house rules — bullets guests see</div>
+                    <div class="acr-well">
+                        <div id="accom-houserules-rows-${k}" class="acw-list">${houseRulesList(k)
+                            .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
+                            .join('')}</div>
+                        <div class="acw-acts">
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save</button>
+                        </div>
                     </div>`;
         case 'safety':
             return `
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">These appear under "Safety &amp; property" on the cottage page. Add or remove items with the ＋ / − buttons.</label>
-                    <div id="accom-safety-rows-${k}">${accomSafetyList(k)
-                        .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
-                        .join('')}</div>
-                    <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>＋ Add item</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
+                    <div class="acr-cap">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page</div>
+                    <div class="acr-well">
+                        <div id="accom-safety-rows-${k}" class="acw-list">${accomSafetyList(k)
+                            .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
+                            .join('')}</div>
+                        <div class="acw-acts">
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>＋ Add item</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
+                        </div>
                     </div>`;
         case 'seasons':
             // Read-only here: seasonal pricing has ONE editor — the all-cottage
             // grid — so two editors can't drift apart. This just shows what
             // applies to this cottage and links to the grid.
+            // Read-only by design (ONE grid edits all cottages, so two editors
+            // can't drift) — but the rows read like the Money screens now.
             return `
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Higher (or lower) nightly rates for date ranges — school summer, Christmas… Edited for all cottages together in one grid.</label>
+                    <div class="acr-cap">Applying to this cottage</div>
+                    <div class="acr-well">
                     ${
                         (propertySeasons[k] || []).length
                             ? (propertySeasons[k] || [])
                                   .map(
                                       (s) =>
-                                          `<div style="font-size:0.85rem;color:var(--text-light);margin-bottom:6px;">${escapeHtml(s.label || 'Season')} · ${escapeHtml(s.start_date || '')} → ${escapeHtml(s.end_date || '')} · <strong>${s.couple_rate ? gbp(s.couple_rate) + '/night' : 'base rate'}</strong></div>`,
+                                          `<div class="acr-row"><span class="acr-lbl">${escapeHtml(s.label || 'Season')}<small>${escapeHtml(fmtDate(s.start_date))} → ${escapeHtml(fmtDate(s.end_date))}</small></span><span class="acw-fig">${s.couple_rate ? gbp(parseFloat(s.couple_rate)).replace('.00', '') + '<small>/night</small>' : '<small>base rate</small>'}</span></div>`,
                                   )
                                   .join('')
-                            : '<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">No seasonal rates set for this cottage.</p>'
+                            : '<div class="acr-row"><span class="acr-lbl" style="color:var(--text-muted);font-weight:400;">No seasonal rates set for this cottage.</span></div>'
                     }
-                    <button class="btn-sm btn-edit" style="margin-top:6px;" data-act="settingsOpen" data-arg="seasongrid">Edit seasonal rates — all cottages →</button>`;
+                        <div class="acw-acts"><button class="btn-sm btn-edit" data-act="settingsOpen" data-arg="seasongrid">Edit seasonal rates — all cottages →</button></div>
+                    </div>`;
         case 'arrival':
             return `
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)}>${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
+                    <div class="acr-cap">Directions, key collection, wifi — private to booked guests</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><textarea rows="5" class="input-glass" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)} aria-label="Arrival info">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea>
+                        <small class="acw-tip">✓ Saves by itself — emailed before check-in, and unlocks on the guest&rsquo;s account at the cottage door (see Location)</small></div>
+                    </div>`;
         case 'opsnotes':
             // The OWNER'S operational card — the facts needed standing AT the
             // cottage: key safe, stopcock, fuse board, boiler reset, meters,
@@ -19716,47 +19764,65 @@ function accomSectionHtml(k, sec) {
             // burst pipe with no signal still finds the stopcock.
             return `
                     <label class="chb-switch-row"><span class="chb-switch"><input type="checkbox" id="ks-toggle-${k}" ${!__keysafe || !__keysafe[k] || __keysafe[k].enabled !== false ? 'checked' : ''} ${chbChange('keysafeSetEnabled', String(k), CHB_CHECKED)}><span class="chb-switch-track" aria-hidden="true"></span></span><span>Key safe keeper — a fresh code every changeover, shown to the guest only once you confirm the safe is set</span></label>
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">For you only — never shown to guests. Key safe code, stopcock, fuse board, boiler reset, meter locations, cleaner's number, bin days. Saved to your phone with the day sheet, so it's readable at the cottage door with no signal.</label><textarea rows="10" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)}>${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea></div>`;
+                    <div class="acr-cap">For you only — never shown to guests</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><textarea rows="10" class="input-glass" placeholder="Key safe 0000 — where it is\nStopcock — where it is\nBoiler — make, where, how to reset\nCleaner — name and number\nBins — which day" ${chbChange('saveOpsNotes', String(k), CHB_VALUE)} aria-label="Private cottage notes">${escapeHtml(adminPrivateContent['ops-' + k] || '')}</textarea>
+                        <small class="acw-tip">✓ Saves by itself — carried in your phone&rsquo;s offline day sheet, readable at the door with no signal</small></div>
+                    </div>`;
         case 'location':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)}>${escapeHtml(r.address || '')}</textarea></div>
-                    <div class="rule-divider">Key-code unlock location</div>
-                    <div>
-                        <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">The cottage's GPS spot. When a guest with a current booking is within 25m of here, the arrival info unlocks on their account page. Stand at the cottage and tap the button.</label>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                    <div class="acr-cap">Address — shown to guests</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><textarea rows="2" class="input-glass" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)} aria-label="Address">${escapeHtml(r.address || '')}</textarea></div>
+                    </div>
+                    <div class="acr-cap">Key-code unlock spot</div>
+                    <div class="acr-well">
+                        <div class="acr-row"><span class="acr-lbl">GPS pin<small>within 25m unlocks the arrival info on the guest&rsquo;s phone — stand at the cottage and tap the button</small></span><span class="st-cap ${geoVal(k) ? 'is-ok' : 'is-unk'}">${geoVal(k) ? '<span class="st-tick" aria-hidden="true">✓</span>' : ''}<span id="geo-status-${k}">${geoStatusText(k)}</span></span></div>
+                        <div class="acw-acts">
                             <button class="btn-sm btn-edit" ${chbAttrs('captureGeo', String(k))}>${IC_PIN} Use my current location</button>
-                            <span id="geo-status-${k}" style="font-size:0.8rem;color:var(--text-muted);">${geoStatusText(k)}</span>
                             <button class="btn-sm btn-delete" ${chbAttrs('clearGeo', String(k))}>Clear</button>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                            <input type="number" step="any" inputmode="decimal" id="geo-lat-${k}" placeholder="Latitude" value="${geoVal(k) ? geoVal(k).lat : ''}" style="background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:8px 10px;border-radius:10px;width:150px;font-family:var(--font-sans);">
-                            <input type="number" step="any" inputmode="decimal" id="geo-lng-${k}" placeholder="Longitude" value="${geoVal(k) ? geoVal(k).lng : ''}" style="background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:8px 10px;border-radius:10px;width:150px;font-family:var(--font-sans);">
-                            <button class="btn-sm btn-edit" ${chbAttrs('saveGeoManual', String(k))}>Save coordinates</button>
+                        <div class="acw-frow"><label>Or paste coordinates<small style="display:block;font-weight:400;margin-top:2px;">in Google Maps, right-click the spot and tap the latitude/longitude to copy</small></label>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <input type="number" step="any" inputmode="decimal" class="input-glass" id="geo-lat-${k}" placeholder="Latitude" value="${geoVal(k) ? geoVal(k).lat : ''}" style="width:140px;" aria-label="Latitude">
+                                <input type="number" step="any" inputmode="decimal" class="input-glass" id="geo-lng-${k}" placeholder="Longitude" value="${geoVal(k) ? geoVal(k).lng : ''}" style="width:140px;" aria-label="Longitude">
+                                <button class="btn-sm btn-edit" ${chbAttrs('saveGeoManual', String(k))}>Save</button>
+                            </div>
                         </div>
-                        <p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;">Tip: in Google Maps, right-click the exact spot and click the latitude/longitude at the top of the menu to copy it, then paste here.</p>
                     </div>`;
         case 'local':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the Experiences page (one shared note across the whole site).</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)}>${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Accessibility — steps, parking distance, ground-floor sleeping, bathroom layout. Shown on the cottage page.</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)}>${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea></div>`;
+                    <div class="acr-cap">Dark skies — shown on Experiences, site-wide</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><textarea rows="3" class="input-glass" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)} aria-label="Dark skies note">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
+                    </div>
+                    <div class="acr-cap">Accessibility — shown on the cottage page</div>
+                    <div class="acr-well">
+                        <div class="acw-frow"><textarea rows="4" class="input-glass" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)} aria-label="Accessibility">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea>
+                        <small class="acw-tip">Steps, parking distance, ground-floor sleeping, bathroom layout — both save by themselves</small></div>
+                    </div>`;
         case 'faq':
             return `
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">FAQ shown in this cottage's bookings (the "Good to Know" button).</label>
-                    <div id="faq-editor-${k}">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
-                    <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>＋ Add question</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
+                    <div class="acr-cap">Instant answers — the &ldquo;Good to know&rdquo; guests see, and the chat assistant&rsquo;s script</div>
+                    <div class="acr-well">
+                        <div id="faq-editor-${k}" class="acw-list">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
+                        <div class="acw-acts">
+                            <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>＋ Add question</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
+                        </div>
                     </div>`;
         case 'welcome': {
             const secs = Array.isArray(adminPrivateContent['welcome-' + k])
                 ? adminPrivateContent['welcome-' + k]
                 : [];
             return `
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">A private in-stay guide your guests can open during their stay (Wi-Fi, how things work, bins, parking, heating, local tips, checkout). Kept private — only shown to guests who've booked this cottage.</label>
-                    <div id="welcome-editor-${k}">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
-                    <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>＋ Add section</button>
-                        <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
+                    <div class="acr-cap">Private — only guests who&rsquo;ve booked this cottage see it</div>
+                    <div class="acr-well">
+                        <div id="welcome-editor-${k}" class="acw-list">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
+                        <div class="acw-acts">
+                            <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>＋ Add section</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
+                        </div>
                     </div>`;
         }
         default:
