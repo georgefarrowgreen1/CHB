@@ -1879,7 +1879,22 @@ button is a filled accent pill in sentence case (`BHUB_IC_PHONE`/`BHUB_IC_MAIL`
 are the dock's bespoke stroke glyphs — the emoji painted in platform colours).
 Gated by ui-test-hub §A1b (fold round-trip + persistence, the exception rule
 both ways, needs-attention appears/completes/stands-down — all break-tested in
-isolation, four fired). Then the guest/intel grid cards; the payments
+isolation, four fired).
+**THE HUB WEARS THE CAPSULES TOO** (owner screenshot: the whole settled payline
+painted status green, three green marks on one row). The fold summaries ride
+`stCap` — Guest details' count as the amber-triangle/green-✓ capsule (both
+hubs), Emails' "Arrival info sent"/"Confirmation sent"/"No email on file"
+(`hubEmailsSum` returns MARKUP now, so its slot is set via innerHTML), the
+enquiry quote's "Price unavailable" — and the settled payline keeps serif +
+house ink with the ✓ (`.bhub-payok`) as the ONE green mark, the
+serif-is-money/capsule-is-state rule. **The condensed bar names the RECORD**:
+mid-scroll the identity row (cottage tag + name) is under the fixed header and
+"Booking" answered the wrong question — `openBookingHub`/`openEnquiryHub`
+overwrite `#admin-head-title` with the guest's FIRST name (standalone only —
+a docked pane keeps the workspace's title; the slot is ~56px at 390px beside
+the crown + five dock icons, so a full name clipped to "Deb…" and the title's
+padding is 4px so "Debbie" paints whole). Gated in ui-test-hub (capsules both
+ways, figure ink equals label ink, the ✓ mark, the title), each break-tested. Then the guest/intel grid cards; the payments
 block folds to ONE `.bhub-payline` in EVERY state (settled "Paid in full £X ✓",
 part-paid "Received so far £X of £Y", untouched "Total £Y" — label left with
 the deposit state + the plan's one-line brief (`hubPlanBrief` — same

@@ -152,9 +152,13 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     regRow: [...document.querySelectorAll('.bhub-kv')].some((r) => /Register/i.test((r.querySelector('.bhub-kv-label') || {}).textContent || '')),
     regCard: Array.from(document.querySelectorAll('.bhub-card-title')).some((t) => /Guest register/.test(t.textContent || '')),
     notes: (document.querySelector('[id^="bk-notes-"]') || {}).value || '',
+    // Mid-scroll the identity row is under the fixed header, so the condensed
+    // bar names the RECORD, not the screen type.
+    headTitle: ((document.getElementById('admin-head-title') || {}).textContent || '').trim(),
   }));
   ok(a.active === 'view-booking-hub', `hub view active (${a.active})`);
   ok(a.name === 'Walk-in Guest', `guest name in header (${a.name})`);
+  ok(a.headTitle === 'Walk-in', `the condensed bar names the guest, first name (${a.headTitle})`);
   ok(a.noStrips, 'the journey pill strips are gone — the stage is a caption');
   ok(/^Next · 2 of \d · Deposit$/.test(a.cap), `unpaid → the card's cap names the stage with its counter (${a.cap})`);
   ok(/ · 3 nights · /.test(a.sub) && / · in 15:00 \/ out 10:00$/.test(a.sub) && !/→/.test(a.sub),
@@ -238,11 +242,16 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     const all = sum();
     b.termsAcceptedAt = null; renderBookingHub();
     const one = sum();
+    const capSel = '[data-grp="guest"] .st-cap';
+    b.termsAcceptedAt = keep.t; b.regSubmitted = true; b.regCount = 2; renderBookingHub();
+    const allCap = !!document.querySelector(capSel + '.is-ok .st-tick');
+    b.termsAcceptedAt = null; renderBookingHub();
+    const oneCap = !!document.querySelector(capSel + '.is-warn .st-wic');
     b.termsAcceptedAt = keep.t; b.regSubmitted = keep.s; b.regCount = keep.c; renderBookingHub();
-    return { all, one };
+    return { all, one, allCap, oneCap };
   });
-  ok(/All recorded ✓/.test(excep.all), `everything in → ONE green summary row (${excep.all})`);
-  ok(/1 not recorded/.test(excep.one), `un-record one fact → the summary counts it (${excep.one})`);
+  ok(/All recorded/.test(excep.all) && excep.allCap, `everything in → ONE green ✓ capsule (${excep.all})`);
+  ok(/1 not recorded/.test(excep.one) && excep.oneCap, `un-record one fact → the amber capsule counts it, triangle on (${excep.one})`);
   // (3) Needs attention: an outstanding register surfaces as its own red row
   // with its fix actions folded under; completing it removes the whole
   // section; and when the TO-DO CARD already carries the register ask, the
@@ -706,6 +715,20 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   });
   ok(fold.folded && fold.rows === 1 && /Paid in full/.test(fold.line), `settled money folds to one payline (${fold.rows} row)`);
   ok(fold.moreClosed, 'the money fold starts closed');
+  // INK DISCIPLINE (the capsules pass): the serif figure keeps the HOUSE ink —
+  // the one green thing on a settled payline is the ✓ mark. Painting the
+  // whole row status-green is what the owner's screenshot showed.
+  const payInk = await page.evaluate(() => {
+    const fig = document.querySelector('.bhub-payline-fig');
+    const lbl = document.querySelector('.bhub-payline-label');
+    return {
+      figInk: fig ? getComputedStyle(fig).color : '',
+      lblInk: lbl ? getComputedStyle(lbl).color : '',
+      mark: !!document.querySelector('.bhub-payline-fig .bhub-payok'),
+    };
+  });
+  ok(payInk.figInk === payInk.lblInk, `the settled figure wears the house ink, not status green (${payInk.figInk})`);
+  ok(payInk.mark, 'the ✓ is the one green mark on the payline');
   // The full breakdown DISCLOSES IN PLACE now (the iOS restyle retired the
   // old #breakdown-modal pop-up): the fold opens under the payline with the
   // full maths, the payline itself stays the one row, and the control reports
