@@ -9194,6 +9194,92 @@ async function openArea() {
     const sBox = document.getElementById('settings-search');
     if (sBox) sBox.value = '';
     applyAreaFilter();
+    // The To-approve verdict counts the moderation queues — refresh them as
+    // the page opens (fire-and-forget: its tail re-renders the verdicts, the
+    // navigate-first rule holds).
+    try { refreshModerationCounts(); } catch (e) {}
+}
+// ---- MANAGE'S VERDICTS — the state that lived in pills and badges, said
+// once above the untouched toolbox (the approved demo). Every figure reads
+// the SAME store its existing badge reads: the cron + feed health from the
+// bootstrap payload, moderation counts from __nyMod, the teach loop from
+// chbMissList/slGuestQuestions — no new requests, and no surface can
+// disagree with another. Only what is ambiently KNOWN is claimed: backups,
+// push and the payments link belong to the full System check, which asks.
+function manageVerdicts() {
+    const host = document.getElementById('manage-verdicts');
+    if (!host) return;
+    const e = escapeHtml;
+    const cron = /** @type {any} */ (window).__cronStatusPre;
+    const cronStale = !!(cron && cron.stale);
+    const cronAgo = cron && cron.everRan
+        ? (cron.ageHours >= 48 ? Math.round(cron.ageHours / 24) + ' days ago' : Math.round(cron.ageHours) + ' hours ago')
+        : 'never run';
+    let trouble = [];
+    try { trouble = chbFeedTrouble(); } catch (err) {}
+    const mod = __nyMod || { rev: 0, ph: 0, exp: 0 };
+    const modN = (mod.rev || 0) + (mod.ph || 0) + (mod.exp || 0);
+    let misses = [];
+    try { misses = chbMissList() || []; } catch (err) {}
+    let guestQ = [];
+    try { guestQ = slGuestQuestions() || []; } catch (err) {}
+    const teachN = misses.length + guestQ.length;
+
+    const stoppedN = (cronStale ? 1 : 0) + trouble.length;
+    const parts = [];
+    if (stoppedN) parts.push(stoppedN === 1 ? 'one automation needs a look' : stoppedN + ' automations need a look');
+    if (modN) parts.push(modN === 1 ? '1 approval waiting' : modN + ' approvals waiting');
+    if (teachN) parts.push(teachN === 1 ? '1 search to teach' : teachN + ' searches to teach');
+    const pulse = parts.length
+        ? parts.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.'
+        : 'Everything the site runs by itself is running.';
+
+    // Exceptions — the faults that can cost real money lead; a clean day
+    // renders no red at all.
+    let attn = '';
+    if (cronStale) {
+        attn += bhubFoldGrp('mgcron', 'Daily automation looks stopped', e('last ran ' + cronAgo), stCap('bad', 'stopped'),
+            `<div class="bhub-mut" style="margin-bottom:4px;">The daily jobs send arrival emails, chase payments and keep the calendar healthy — none of that happens while this is stopped.</div>
+             <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Open System check</button></div>`);
+    }
+    trouble.slice(0, 2).forEach((f, i) => {
+        attn += bhubFoldGrp('mgfeed' + i, `Calendar sync has stalled — ${e(f.name)}`, e(f.ago),
+            stCap(f.failing ? 'bad' : 'warn', f.failing ? 'failing' : f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : Math.round(f.ageHours) + ' hours'),
+            `<div class="bhub-mut" style="margin-bottom:4px;">A stalled feed can double-book you — the calendar stops seeing ${e(f.name)}’s platform stays.</div>
+             <div class="bhub-btn-row bhub-act-links">
+                <button class="bhub-actlink" ${chbAttrs('runSync', String(f.pk))}>Run the sync now</button>
+                <button class="bhub-actlink" ${chbAttrs('settingsOpen', 'calendar')}>Open calendar feeds</button>
+             </div>`);
+    });
+
+    const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds — the full check covers the rest',
+        stoppedN ? stCap('warn', stoppedN + ' stopped') : stCap('ok', 'All running'),
+        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
+         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Full system check</button></div>`);
+    const modGrp = bhubFoldGrp('mgmod', 'To approve', 'reviews, guest photos, things to do',
+        modN ? stCap('warn', modN + ' waiting') : stCap('ok', 'Nothing waiting'),
+        `<div class="ks-kv"><span class="ks-k">Reviews</span><span class="ks-v"><small>${mod.rev ? mod.rev + ' waiting' : 'none'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Guest photos</span><span class="ks-v"><small>${mod.ph ? mod.ph + ' waiting' : 'none'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Things to do</span><span class="ks-v"><small>${mod.exp ? mod.exp + ' waiting' : 'none'}</small></span></div>
+         <div class="bhub-btn-row bhub-act-links">
+            ${mod.rev ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'reviews')}>Approve reviews</button>` : ''}
+            ${mod.ph ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'photos')}>Approve photos</button>` : ''}
+            ${mod.exp ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'experiences')}>Approve things to do</button>` : ''}
+            ${!modN ? `<button class="bhub-actlink" ${chbAttrs('settingsOpen', 'reviews')}>Open reviews</button>` : ''}
+         </div>`);
+    const topMiss = misses[0];
+    const learnGrp = bhubFoldGrp('mglearn', 'Your assistant',
+        topMiss ? e('“' + String(topMiss.t || '').slice(0, 42) + '” found nothing') : guestQ[0] ? e('“' + String(guestQ[0].q || '').slice(0, 42) + '” from guest chat') : 'teach it once and it answers for ever',
+        teachN ? stCap('warn', teachN + ' to teach') : stCap('ok', 'Nothing to teach'),
+        `<div class="ks-kv"><span class="ks-k">Dead-end searches</span><span class="ks-v"><small>${misses.length || 'none'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Guests asked these</span><span class="ks-v"><small>${guestQ.length || 'none'}</small></span></div>
+         <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'search-learning')}>Open Search learning</button></div>`);
+
+    host.innerHTML = `<div class="mo-pulse">${e(pulse)}</div>
+        ${attn ? '<span class="bhub-grpcap is-attn">Needs attention</span>' + attn : ''}
+        <span class="bhub-grpcap">Running for you</span>${sysGrp}${modGrp}${learnGrp}
+        <span class="bhub-grpcap">The toolbox</span>`;
 }
 // Show the full Manage index (all groups) + set the header; called on open and
 // on returning from a drill-down panel. The per-area hiding is gone — the name
@@ -9208,6 +9294,9 @@ function applyAreaFilter() {
     // Lead the cottages family with its key numbers (occupancy glance).
     try {
         renderCottagesOverview();
+    } catch (e) {}
+    try {
+        manageVerdicts();
     } catch (e) {}
     const h = document.querySelector('#view-settings .dashboard-header h1');
     if (h) h.textContent = 'Manage';
@@ -12127,7 +12216,37 @@ function renderCalendarList() {
     }
     if (list) {
         list.style.display = '';
-        list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenCalendar')}</div>`;
+        // Each cottage is a VERDICT fold group — freshness as the capsule,
+        // read off the SAME bootstrap payload the status line reads, so the
+        // two cannot disagree. Run-the-sync sits inside the fold; the feed
+        // links keep their own editor behind it.
+        const feeds = /** @type {any} */ (window).__feedStatusPre || [];
+        const byPk = {};
+        (Array.isArray(feeds) ? feeds : []).forEach((f) => { byPk[f.pk] = f; });
+        list.innerHTML = `<p class="mo-pulse" style="margin:2px 0 10px;">Airbnb and Booking.com stays flow into your calendar through these.</p>`
+            + Object.keys(propertyMeta).map((k) => {
+                const f = byPk[k];
+                const agoTxt = f ? (f.ageHours >= 48 ? Math.round(f.ageHours / 24) + ' days' : f.ageHours >= 1.5 ? Math.round(f.ageHours) + ' hours' : 'minutes') : '';
+                const cap = !f
+                    ? stCap('unk', 'no feed yet')
+                    : f.failing
+                      ? stCap('bad', 'failing')
+                      : f.ageHours >= 36
+                        ? stCap('warn', agoTxt)
+                        : stCap('ok', f.ageHours < 1.5 ? 'just now' : agoTxt + ' ago');
+                const sub = !f
+                    ? 'add an Airbnb or Booking.com link'
+                    : f.failing
+                      ? 'a source is failing — run it and check the link'
+                      : 'last imported ' + agoTxt + ' ago';
+                return bhubFoldGrp('cal-' + k,
+                    `<span class="prop-tag tag-${escapeHtml(k)}">${escapeHtml((propertyMeta[k] || {}).name || k)}</span>`,
+                    escapeHtml(sub), cap,
+                    `<div class="bhub-btn-row bhub-act-links">
+                        <button class="bhub-actlink" ${chbAttrs('runSync', String(k))}>Run the sync now</button>
+                        <button class="bhub-actlink" ${chbAttrs('settingsOpenCalendar', String(k))}>Edit feed links</button>
+                     </div>`);
+            }).join('');
     }
     settingsBackTarget = () => settingsShowIndex();
     const title = document.getElementById('settings-panel-title');
@@ -23930,6 +24049,9 @@ async function refreshModerationCounts() {
     __nyMod = { rev, ph, exp };
     try {
         renderNeedsYou();
+    } catch (e) {}
+    try {
+        manageVerdicts();
     } catch (e) {}
     // Approvals now surface in Marketing's "To approve" rows (the badges above
     // point there) — the dashboard's Today panel is gone.

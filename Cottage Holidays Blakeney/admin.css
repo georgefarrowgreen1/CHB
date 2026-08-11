@@ -4505,6 +4505,19 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* Destructive row: danger ink, same anatomy — iOS's red row. */
 .bhub-actlink.is-danger { color: var(--danger-text); }
 
+/* ---- Manage's verdicts (above the untouched toolbox) + the calendar-feeds
+   verdict list: the landing rhythm again — one flex column, 12px gaps, and
+   the verdicts span both desktop columns of the settings index. ---- */
+#manage-verdicts { display: flex; flex-direction: column; gap: 12px; margin: 0 0 14px; }
+#manage-verdicts:empty { display: none; }
+#manage-verdicts .bhub-grpcap { margin-top: 6px; margin-bottom: -4px; }
+#manage-verdicts .mo-pulse { margin: 2px 0 0; }
+#manage-verdicts .bhub-fold-grp { width: 100%; }
+@media (min-width: 900px) {
+  .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
+}
+#calendar-list .bhub-fold-grp { max-width: 640px; }
+
 /* ---- The Inbox landing (THE THREE ANSWERS, stacked <1200px): one flex
    column at the hub's 12px rhythm; the existing folder lists live INSIDE the
    folds (re-parented by inboxLayoutSync), so their own headings hide — the
