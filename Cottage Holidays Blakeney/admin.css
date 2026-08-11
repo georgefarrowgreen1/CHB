@@ -4587,6 +4587,27 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acr-well .list-edit-row + .list-edit-row, .acr-well .faq-row + .faq-row, .acr-well .welcome-row + .welcome-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 .acr-well .list-edit-row .input-glass { border: 0; background: none; box-shadow: none; }
 .acr-well .faq-row, .acr-well .welcome-row { border: 0; background: none; border-radius: 0; padding: 11px 14px; margin: 0; box-shadow: none; }
+/* the photo GRID: 3-up cells, MAIN badged on the first, the four actions as
+   compact glyphs under each thumb — same composer, same data-acts */
+.acp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 14px; }
+.acp-cell { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; background: none; }
+.acp-thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; background-size: cover; background-position: center; }
+.acp-main { position: absolute; left: 5px; top: 5px; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
+.acp-n { position: absolute; right: 5px; bottom: 4px; font-size: 0.66rem; color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
+/* (0,2,0) on purpose — app.css's .content-edit-row .accom-photo-actions
+   sets wrap and would win at equal specificity. 4 × 22px fits the ~91px cell. */
+.acp-cell .acp-acts { display: flex; justify-content: center; gap: 0; flex-wrap: nowrap; margin: 0; }
+.acp-cell .acp-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 4px 0; min-width: 22px; width: 22px; font-size: 0.85rem; line-height: 1; margin: 0; }
+.acp-acts .btn-edit { color: var(--accent-text); }
+.acp-acts .btn-delete { color: var(--danger-text); }
+.acp-acts .btn-sm[disabled] { opacity: 0.3; }
+/* the home-page-card LIVE PREVIEW (the badge trick) + its photo row */
+.acw-thumb { width: 54px; height: 42px; border-radius: 9px; background-size: cover; background-position: center; flex: 0 0 auto; }
+.acw-linkbtn { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-weight: 600; text-transform: none; letter-spacing: normal; font-size: 0.85rem; padding: 6px 0; }
+.acw-homecard { max-width: 250px; border-radius: 14px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
+.acw-hc-img { height: 92px; background-size: cover; background-position: center; background-color: color-mix(in srgb, var(--text-light) 8%, transparent); }
+.acw-hc-t { padding: 9px 12px 3px; font-family: var(--font-serif); font-size: 0.95rem; color: var(--text-light); }
+.acw-hc-m { padding: 0 12px 10px; font-size: 0.72rem; color: var(--text-muted); }
 /* iOS-style on/off switch (owner-asked; the keysafe keeper first). The REAL
    checkbox sits ON TOP at full size (opacity 0) so gates that click/read it
    by id keep working; the track + thumb underneath draw the state. The row's

@@ -407,6 +407,18 @@ no claim). The shared row composers (`listRowHtml`/`faqRowHtml`/
 CSS scoped under `.acr-well`, so every add-row handler and collect
 function is untouched. Gated by ui-test-manage §4c (7 checks; the stepper
 write, the day chip and the verdict counts each break-tested).
+**PR-B: photos are a GRID and the home-page card previews the real tile.**
+`accomPhotoRow` (app.js) renders a grid CELL — MAIN badged on the first,
+order number, the four actions as compact glyphs — same classes and
+data-acts, so `accomSavePhotos`' re-render keeps reorder/replace/remove
+working. NB `.acp-cell .acp-acts` is (0,2,0) ON PURPOSE: app.css's
+`.content-edit-row .accom-photo-actions` sets `flex-wrap: wrap` and wins at
+equal specificity — measured, the ✕ wrapped onto its own line in every cell.
+The web section's inputs ride `chbInput('acwCardSync')` (an inline
+`oninput=` is CSP-blocked — the invoice-print lesson) into a live tile
+preview, and `acwCardSave` writes BOTH card keys through `contentEditSave`.
+Gated by ui-test-manage §4d (5 checks; the preview-follows and MAIN-badge
+each break-tested).
 
 ## The Inbox is THREE ANSWERS below 1200px — and the wide three-pane is untouched
 

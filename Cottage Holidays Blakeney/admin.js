@@ -12218,7 +12218,7 @@ function settingsOpenAccom(k) {
                     <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
                     <span class="bhub-fold-right">${right(s.id)}<span class="bhub-chev" aria-hidden="true">›</span></span>
                 </button>
-                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="${['web', 'photos'].includes(s.id) ? 'rate-prop ac-fold-body' : 'acr-body'}">${accomSectionHtml(k, s.id)}</div></div>
+                <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="acr-body">${accomSectionHtml(k, s.id)}</div></div>
             </section>`;
         // privateRow was BUILT AND NEVER INTERPOLATED — the whole make-private control
         // (a working setAccommodationPrivate, the `unlisted` column, the public site
@@ -12313,6 +12313,20 @@ function acrSync(k, quiet) {
     }
 }
 const __acrSavedT = {};
+// The home-page-card preview mirrors what the ce- inputs hold — display only,
+// the tile itself still renders from siteContent via applyContentOverrides.
+function acwCardSync(k) {
+    const ck = cardKeys(k);
+    const t = document.getElementById('acw-hc-t-' + k);
+    const m = document.getElementById('acw-hc-m-' + k);
+    if (t) t.textContent = dpVal('ce-' + ck.title);
+    if (m) m.textContent = dpVal('ce-' + ck.meta);
+}
+async function acwCardSave(k) {
+    const ck = cardKeys(k);
+    await contentEditSave(ck.title);
+    await contentEditSave(ck.meta);
+}
 // House-rules steppers: ruleStep writes through the SAME updateRuleField save
 // the typed input uses; occStep only bumps the input — Save guest limits
 // stays the explicit, validated write it always was.
@@ -19576,22 +19590,25 @@ function accomSectionHtml(k, sec) {
             };
             const imgEl = document.querySelector('[data-edit-img="' + ck.img + '"]');
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
-            return `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 14px;">How this cottage appears on the home page (the tile guests tap). Its detail-page photos &amp; text are in the Photos and Text tabs.</p>
-                        <div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
-                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(ck.img))}>Replace image</button></div></div>
-                        <label class="modal-label" for="ce-${ck.title}">Home-page title</label>
-                        <input type="text" class="input-glass" id="ce-${ck.title}" value="${escapeHtml(curText(ck.title))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(ck.title))}>Save</button>
-                        <label class="modal-label" for="ce-${ck.meta}">Home-page subtitle</label>
-                        <input type="text" class="input-glass" id="ce-${ck.meta}" value="${escapeHtml(curText(ck.meta))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(ck.meta))}>Save</button>`;
+            return `<div class="acr-cap">The tile guests tap — its detail-page photos &amp; text live in Photos and Text</div>
+                    <div class="acr-well">
+                        <div class="acr-row"><div class="exp-edit-thumb acw-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
+                            <span class="acr-lbl" style="flex:1;">Home-page photo</span><button class="btn-sm btn-edit acw-linkbtn" ${chbAttrs('contentEditImage', String(ck.img))}>Replace…</button></div>
+                        <div class="acw-frow"><label for="ce-${ck.title}">Title</label><input type="text" class="input-glass" id="ce-${ck.title}" value="${escapeHtml(curText(ck.title))}" ${chbInput('acwCardSync', String(k))}></div>
+                        <div class="acw-frow"><label for="ce-${ck.meta}">Subtitle</label><input type="text" class="input-glass" id="ce-${ck.meta}" value="${escapeHtml(curText(ck.meta))}" ${chbInput('acwCardSync', String(k))}></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('acwCardSave', String(k))}>Save card</button></div>
+                        <div class="acr-preview"><div class="acr-pvcap">On the home page, guests see:</div>
+                            <div class="acw-homecard"><div class="acw-hc-img" style="background-image:url('${escapeHtml(imgUrl)}');"></div><div class="acw-hc-t" id="acw-hc-t-${k}">${escapeHtml(curText(ck.title))}</div><div class="acw-hc-m" id="acw-hc-m-${k}">${escapeHtml(curText(ck.meta))}</div></div>
+                        </div>
+                    </div>`;
         }
         case 'photos': {
             const imgs = accomImages(k);
-            return `<label class="modal-label" style="margin-top:0;">Gallery photos (shown on the cottage page, in this order)</label>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Add, replace, reorder or remove. The first photo is the main image.</p>
-                        <div id="accom-photos-${k}">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);">No photos yet — add the first below.</p>'}</div>
-                        <button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button>`;
+            return `<div class="acr-cap">Gallery — the first photo is the main image</div>
+                    <div class="acr-well">
+                        <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
+                    </div>`;
         }
         case 'text': {
             const def = propertyContent[k] || {};
