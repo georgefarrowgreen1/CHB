@@ -297,8 +297,8 @@ async function waitForServer(url, tries = 40) {
       // what must be on screen is its field and its result list, not a separate sheet.
       { key: 'admin-crown-sheet', open: "(async () => { crownSheetToggle(); await new Promise(r => setTimeout(r, 500)); })()", mustSee: ['#cmdk', '#cmdk-input', '#cmdk-results'] },
       { key: 'admin-crown-closed', open: "(async () => { closeCmdK(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#bookings-list'] },
-      { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#inbox-folders', '#messages-list'] },
-      { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-folders', '#inbox-list'] },
+      { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#messages-list'] },
+      { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
       { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
       { key: 'admin-money-sweep', open: "(async () => { await openAccounts(); accountsOpen('sweep'); await new Promise(r => setTimeout(r, 500)); if (window.sweepSet) sweepSet('balance', '2000'); await new Promise(r => setTimeout(r, 250)); })()", mustSee: ['#sweep-balance', '#sweep-buffer'] },

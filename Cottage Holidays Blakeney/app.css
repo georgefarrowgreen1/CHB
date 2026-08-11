@@ -4824,6 +4824,10 @@ body.light-mode .tag-pimpernel {
   padding: 2px 9px;
   border-radius: var(--r-pill);
 }
+/* The summary's paid-state verdict — status ink on its own tint (the pairs
+   a11y-test §1b already measures). */
+.msg-ctx-pill.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.msg-ctx-pill.is-due { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .msg-ctx-caret {
   flex-shrink: 0;
   color: var(--text-muted);
