@@ -1540,12 +1540,74 @@
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
-            <!-- Sectioned form: Guest | Stay side by side ≥901px, Money + Notes
-                 full-width beneath. Every field id and handler is unchanged —
-                 only the grouping is new. -->
+            <!-- Sectioned form, THE STAY FIRST (the approved demo): cottage,
+                 dates and party decide the price and whether the booking can
+                 exist — the guest's name can wait, the calendar can't. Stay |
+                 Guest side by side ≥901px, Money + Notes full-width beneath.
+                 Every field id and handler is unchanged — only the order and
+                 the controls' clothes are new. -->
             <div class="modal-cols">
             <div class="modal-col">
-            <div class="modal-sec">Guest</div>
+            <div class="modal-sec">The stay</div>
+            <label class="modal-label" for="modal-property">Property</label>
+            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
+                <option value="21a">21A Westgate</option>
+                <option value="jollyboat">Jollyboat</option>
+                <option value="pimpernel">Pimpernel</option>
+                <option value="__new__">➕ New property…</option>
+            </select>
+            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
+
+            <!-- Same clickable glass calendar the customer site uses (admin mode:
+                 taken nights shaded from loaded data, everything still pickable —
+                 the availability strip + server clash confirm guard the save).
+                 The VERDICT capsule on the row answers free/overlaps at a glance;
+                 the strip below still names the blocker and holds the grid. -->
+            <label class="modal-label">Stay Dates</label>
+            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker" aria-label="Select the stay dates">
+                <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
+                <span class="modal-date-verdict" id="modal-date-verdict" style="display:none;"></span>
+                <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+            </button>
+            <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
+            <!-- Live availability for the chosen cottage: ONE summary line
+                 (free / overlaps, next booking) with the six-week grid behind
+                 its Calendar toggle — visible BEFORE saving either way. -->
+            <div id="modal-availability" style="display:none;"></div>
+
+            <!-- Party as steppers, capped at the cottage's own occupancy where
+                 it's known — TYPING past the cap stays possible (the server's
+                 occupancy confirm is the deliberate override). -->
+            <div class="modal-steprow">
+                <span class="modal-step-lbl"><label for="modal-adults">Adults</label><small id="modal-occ-note"></small></span>
+                <span class="modal-step">
+                    <button type="button" data-act="modalStep" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">−</button>
+                    <input type="number" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice">
+                    <button type="button" data-act="modalStep" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
+                </span>
+            </div>
+            <div class="modal-steprow">
+                <span class="modal-step-lbl"><label for="modal-children">Children</label></span>
+                <span class="modal-step">
+                    <button type="button" data-act="modalStep" data-arg="children" data-arg2="-1" aria-label="Fewer children">−</button>
+                    <input type="number" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
+                    <button type="button" data-act="modalStep" data-arg="children" data-arg2="1" aria-label="More children">+</button>
+                </span>
+            </div>
+            <div class="modal-2col">
+                <div>
+                    <label class="modal-label" for="modal-checkin-time">Check-in time</label>
+                    <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
+                </div>
+                <div>
+                    <label class="modal-label" for="modal-checkout-time">Check-out time</label>
+                    <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
+                </div>
+            </div>
+            </div>
+
+            <div class="modal-col">
+            <div class="modal-sec">The guest</div>
             <label class="modal-label" for="modal-name">Name</label>
             <div class="modal-name-wrap">
                 <input type="text" class="input-glass" id="modal-name" autocomplete="off" data-act-input="modalNameSuggest" data-pass="value">
@@ -1569,53 +1631,6 @@
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
             </div>
-
-            <div class="modal-col">
-            <div class="modal-sec">Stay</div>
-            <label class="modal-label" for="modal-property">Property</label>
-            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
-                <option value="21a">21A Westgate</option>
-                <option value="jollyboat">Jollyboat</option>
-                <option value="pimpernel">Pimpernel</option>
-                <option value="__new__">➕ New property…</option>
-            </select>
-            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
-
-            <!-- Same clickable glass calendar the customer site uses (admin mode:
-                 taken nights shaded from loaded data, everything still pickable —
-                 the availability strip + server clash confirm guard the save). -->
-            <label class="modal-label">Stay Dates</label>
-            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker" aria-label="Select the stay dates">
-                <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
-                <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
-            </button>
-            <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
-            <!-- Live availability for the chosen cottage: ONE summary line
-                 (free / overlaps, next booking) with the six-week grid behind
-                 its Calendar toggle — visible BEFORE saving either way. -->
-            <div id="modal-availability" style="display:none;"></div>
-
-            <div class="modal-2col">
-                <div>
-                    <label class="modal-label" for="modal-adults">Adults</label>
-                    <input type="number" class="input-glass" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice">
-                </div>
-                <div>
-                    <label class="modal-label" for="modal-children">Children</label>
-                    <input type="number" class="input-glass" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
-                </div>
-            </div>
-            <div class="modal-2col">
-                <div>
-                    <label class="modal-label" for="modal-checkin-time">Check-in time</label>
-                    <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
-                </div>
-                <div>
-                    <label class="modal-label" for="modal-checkout-time">Check-out time</label>
-                    <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
-                </div>
-            </div>
-            </div>
             </div>
 
             <div class="modal-sec" id="modal-sec-money">Money</div>
@@ -1624,8 +1639,16 @@
             </div>
 
             <div id="modal-payment-group">
-                <label class="modal-label" for="modal-payment">Payment Status</label>
-                <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails">
+                <label class="modal-label" id="modal-payment-label" for="modal-payment">Payment so far</label>
+                <!-- Segment is the visible control; the SELECT stays the source
+                     of truth (every programmatic write + save path reads it) —
+                     modalPaySync repaints the segment from its value. -->
+                <div class="hs-mode" id="modal-pay-seg" role="group" aria-labelledby="modal-payment-label" style="margin-bottom:10px;">
+                    <button type="button" class="hs-mode-btn is-on" data-act="modalPayMode" data-arg="unpaid" aria-pressed="true">Nothing yet</button>
+                    <button type="button" class="hs-mode-btn" data-act="modalPayMode" data-arg="deposit" aria-pressed="false">Deposit paid</button>
+                    <button type="button" class="hs-mode-btn" data-act="modalPayMode" data-arg="paid" aria-pressed="false">Paid in full</button>
+                </div>
+                <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails" style="display:none;" aria-hidden="true" tabindex="-1">
                     <option value="unpaid">Unpaid</option>
                     <option value="deposit">Deposit Paid</option>
                     <option value="paid">Paid in Full</option>
@@ -1648,8 +1671,14 @@
             </div>
 
             <div id="modal-deposit-group">
-                <label class="modal-label" for="modal-damages-deposit">Refundable damages deposit (£)</label>
-                <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" data-act-input="updateModalPrice">
+                <div class="modal-steprow">
+                    <span class="modal-step-lbl"><label class="modal-label" for="modal-damages-deposit" style="margin:0;">Refundable damages deposit (£)</label></span>
+                    <span class="modal-step">
+                        <button type="button" data-act="modalStep" data-arg="dmg" data-arg2="-25" aria-label="Less deposit">−</button>
+                        <input type="number" id="modal-damages-deposit" min="0" step="5" placeholder="75" data-act-input="updateModalPrice">
+                        <button type="button" data-act="modalStep" data-arg="dmg" data-arg2="25" aria-label="More deposit">+</button>
+                    </span>
+                </div>
                 <p class="modal-hint">Charged with the first payment, refunded after the stay &mdash; not income.</p>
             </div>
 
@@ -1670,11 +1699,15 @@
                     <div class="modal-2col">
                         <div>
                             <label class="modal-label" for="modal-plan-pct">Deposit %</label>
-                            <input type="number" class="input-glass" id="modal-plan-pct" min="1" max="100" step="any" placeholder="e.g. 30">
+                            <span class="modal-step">
+                                <button type="button" data-act="modalStep" data-arg="pct" data-arg2="-5" aria-label="Smaller deposit percentage">−</button>
+                                <input type="number" id="modal-plan-pct" min="1" max="100" step="any" placeholder="30" data-act-input="updateModalPrice">
+                                <button type="button" data-act="modalStep" data-arg="pct" data-arg2="5" aria-label="Bigger deposit percentage">+</button>
+                            </span>
                         </div>
                         <div>
                             <label class="modal-label" for="modal-plan-due">Balance due by</label>
-                            <input type="date" class="input-glass" id="modal-plan-due">
+                            <input type="date" class="input-glass" id="modal-plan-due" data-act-change="updateModalPrice">
                         </div>
                     </div>
                     <p class="modal-hint">Leave a field blank to keep that half standard. You can change the plan later from the booking&rsquo;s page.</p>
@@ -1699,6 +1732,11 @@
                     <span class="modal-foot-fig" id="modal-foot-fig">&mdash;</span>
                 </div>
                 <button class="btn-glass" id="modal-save-btn" data-act="saveModal">Save</button>
+                <!-- The living sub: first payment + due date (or the clash
+                     warning) — filled by modalFootSync, add mode only. A FULL-
+                     WIDTH second line of the bar, so a long sentence can never
+                     widen the no-shrink figure wrapper past the box. -->
+                <span class="modal-foot-sub" id="modal-foot-sub" style="display:none;"></span>
             </div>
         </div>
     </div>
@@ -1826,7 +1864,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=798"></script>
+    <script defer src="app.js?v=799"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

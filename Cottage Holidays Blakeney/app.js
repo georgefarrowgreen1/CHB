@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 475;
+const ADMIN_BUNDLE_V = 476;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 187;
+const ADMIN_CSS_V = 188;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -15078,7 +15078,63 @@ function applyModalPropertyMode() {
     // must stand down too (Save relabels to Next — the button itself stays).
     setDisp('modal-foot-total', !custom);
     const btn = document.getElementById('modal-save-btn');
-    if (btn) btn.textContent = custom ? 'Next →' : 'Save';
+    // The button names the ACTION (the figure beside it carries the money —
+    // a label repeating a hostile-length total would blow the bar, §4).
+    if (btn) btn.textContent = custom ? 'Next →' : (modeEl && modeEl.value === 'add' ? 'Add booking' : 'Save');
+}
+
+// ---- Add/Edit modal steppers ----
+// Each bumps its REAL input (setModalFields / walks / typing keep working).
+// The PARTY caps at the cottage's occupancy where known — typing past stays
+// possible, the server's occupancy confirm being the deliberate override.
+function modalStep(field, delta) {
+    const ids = { adults: 'modal-adults', children: 'modal-children', dmg: 'modal-damages-deposit', pct: 'modal-plan-pct' };
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById(ids[field] || ''));
+    if (!el) return;
+    const d = Number(delta) || 0;
+    const cur = parseFloat(el.value);
+    const propKey = currentModalProperty().key;
+    const lim = propKey ? occupancyLimits[propKey] : null;
+    let v;
+    if (field === 'adults') {
+        const kids = Math.max(0, parseInt(dpVal('modal-children'), 10) || 0);
+        v = (isNaN(cur) ? 2 : cur) + d;
+        if (lim) v = Math.min(v, lim.maxAdults, Math.max(1, (lim.maxTotal || 99) - kids));
+        v = Math.max(1, v);
+    } else if (field === 'children') {
+        const ads = Math.max(1, parseInt(dpVal('modal-adults'), 10) || 1);
+        v = (isNaN(cur) ? 0 : cur) + d;
+        if (lim) v = Math.min(v, lim.maxChildren, Math.max(0, (lim.maxTotal || 99) - ads));
+        v = Math.max(0, v);
+    } else if (field === 'dmg') {
+        // Blank means "the cottage default applies" — step FROM that default.
+        const def = propKey && propertyRates[propKey] ? parseFloat(propertyRates[propKey].damagesDeposit) || 0 : 0;
+        v = Math.max(0, (isNaN(cur) ? def : cur) + d);
+    } else {
+        // Deposit % — blank is the site standard; step from it, clamp 5–95.
+        const base = isNaN(cur) ? paymentTerms.depositPct || 25 : cur;
+        v = Math.max(5, Math.min(95, base + d));
+    }
+    el.value = String(v);
+    updateModalPrice();
+}
+// Derived state only — the disabled marks on the ± buttons and the occupancy
+// note under Adults. Never writes an input (the acrSync rule).
+function modalStepSync() {
+    const propKey = currentModalProperty().key;
+    const lim = propKey ? occupancyLimits[propKey] : null;
+    const ads = Math.max(1, parseInt(dpVal('modal-adults'), 10) || 1);
+    const kids = Math.max(0, parseInt(dpVal('modal-children'), 10) || 0);
+    const setBtns = (arg, canDown, canUp) => {
+        document.querySelectorAll(`#edit-modal [data-act="modalStep"][data-arg="${arg}"]`).forEach((b) => {
+            const up = (Number(b.getAttribute('data-arg2')) || 0) > 0;
+            /** @type {HTMLButtonElement} */ (b).disabled = up ? !canUp : !canDown;
+        });
+    };
+    setBtns('adults', ads > 1, !lim || (ads < lim.maxAdults && ads + kids < (lim.maxTotal || 99)));
+    setBtns('children', kids > 0, !lim || (kids < lim.maxChildren && ads + kids < (lim.maxTotal || 99)));
+    const note = document.getElementById('modal-occ-note');
+    if (note) note.textContent = lim && typeof occupancyHint === 'function' ? occupancyHint(propKey) : '';
 }
 
 // Step 2: open the "Set up new property" page (reset to sensible defaults, or the
@@ -15340,7 +15396,10 @@ function setModalFields(f) {
     document.getElementById('modal-payment').value = f.payment || 'unpaid';
     // Inline payment details (amount / date / method) — prefill from the booking.
     const amtEl = document.getElementById('modal-deposit-amount');
-    if (amtEl) amtEl.value = f.depositPaid > 0 ? f.depositPaid : '';
+    if (amtEl) {
+        amtEl.value = f.depositPaid > 0 ? f.depositPaid : '';
+        delete amtEl.dataset.auto; // a fresh open owns no prefill yet
+    }
     const pdEl = document.getElementById('modal-payment-date');
     if (pdEl) pdEl.value = f.paymentDate || '';
     const pmEl = document.getElementById('modal-payment-method');
@@ -15415,9 +15474,25 @@ function mavToggle() {
 function updateModalAvailability() {
     const el = document.getElementById('modal-availability');
     if (!el) return;
+    // The verdict capsule on the dates row: ✓ free / ⚠ overlaps at a glance
+    // (the strip below still NAMES the blocker and holds the grid).
+    const cap = document.getElementById('modal-date-verdict');
+    const capSet = (clash, has) => {
+        __modalClash = has ? clash : null;
+        if (!cap) return;
+        if (!has) {
+            cap.style.display = 'none';
+            cap.textContent = '';
+            return;
+        }
+        cap.style.display = '';
+        cap.className = 'modal-date-verdict ' + (clash ? 'is-warn' : 'is-ok');
+        cap.textContent = clash ? '⚠ overlaps' : '✓ free';
+    };
     const hide = () => {
         el.style.display = 'none';
         el.innerHTML = '';
+        capSet(null, false);
     };
     if (!isAuthenticated) return hide();
     const conflicts = modalStayConflicts();
@@ -15442,6 +15517,7 @@ function updateModalAvailability() {
         .concat(conflicts.blocks.map((b) => b.checkIn))
         .filter((d0) => d0 && d0 >= (hasDates ? co : todayDashed()))
         .sort()[0] || null;
+    capSet(clashWith, hasDates);
     const stripTxt = !hasDates
         ? 'Pick the dates to check availability'
         : (clashWith ? `Overlaps ${clashWith}` : `Free ${fmtStayRange(ci, co)}`)
@@ -15485,13 +15561,13 @@ function updateModalAvailability() {
 }
 
 // The plan's Standard | Custom toggle (hs-mode vocabulary). Flipping BACK to
-// Standard wipes the fields — a reverted plan must never ride the save.
+// Standard wipes the fields — a reverted plan must never ride the save. The
+// brief line under it renders in BOTH modes now (it states the first payment,
+// which every plan has); only the pct/due fields fold.
 function modalPlanMode(mode) {
     const custom = mode === 'custom';
     const wrap = document.getElementById('modal-plan-custom');
     if (wrap) wrap.style.display = custom ? '' : 'none';
-    const stdLine = document.getElementById('modal-plan-std-line');
-    if (stdLine) stdLine.style.display = custom ? 'none' : '';
     const sb = document.getElementById('modal-plan-std-btn');
     const cb = document.getElementById('modal-plan-custom-btn');
     if (sb) { sb.classList.toggle('is-on', !custom); sb.setAttribute('aria-pressed', String(!custom)); }
@@ -15502,11 +15578,61 @@ function modalPlanMode(mode) {
         const d0 = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
         if (d0) d0.value = '';
     }
+    try { updateModalPrice(); } catch (e) {}
+}
+
+// What updateModalPriceCore worked out, for the brief / foot sub / prefill —
+// never a second price derivation (§C3). `total` = the RENTAL frame the plan's
+// pct bites on; `dep` = the refundable that rides the FIRST payment.
+let __modalMoney = null;
+// Who the chosen dates overlap (updateModalAvailability's whole-stay walk).
+let __modalClash = null;
+// The plan's money facts. The window test mirrors
+// booking_within_balance_window: a CUSTOM due date INCLUSIVE, standard strict.
+function modalPlanFacts() {
+    const m = __modalMoney;
+    if (!m || !(m.total > 0) || !m.checkIn) return null;
+    const custom = !!document.querySelector('#modal-plan-custom-btn.is-on');
+    const pctEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-pct'));
+    const dueEl = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-plan-due'));
+    const pctRaw = custom && pctEl && pctEl.value !== '' ? parseFloat(pctEl.value) : NaN;
+    const pct = pctRaw > 0 && pctRaw <= 100 ? pctRaw : paymentTerms.depositPct || 25;
+    const customDue = custom && dueEl && /^\d{4}-\d{2}-\d{2}$/.test(dueEl.value) ? dueEl.value : '';
+    const due = customDue || ukShiftDays(m.checkIn, -(paymentTerms.balanceDays || 30));
+    const t = todayDashed();
+    const full = customDue ? t >= customDue : t > due;
+    const planDep = full ? m.total : Math.round(m.total * pct) / 100;
+    return {
+        full,
+        pct,
+        planDep,
+        first: Math.round((planDep + m.dep) * 100) / 100,
+        balance: Math.round((m.total - planDep) * 100) / 100,
+        due,
+    };
+}
+// The plan line speaks the derivation — first payment as the card takes it,
+// balance + date, "full amount up front" inside the window; site standard
+// while nothing is priced.
+function modalPlanBrief() {
+    const line = document.getElementById('modal-plan-std-line');
+    if (!line) return;
+    const f = modalPlanFacts();
+    if (!f) {
+        line.textContent = `The site standard — ${paymentTerms.depositPct || 25}% deposit now, the balance due ${paymentTerms.balanceDays || 30} days before arrival.`;
+        return;
+    }
+    const dep = __modalMoney.dep;
+    line.textContent = f.full
+        ? `Arrival is inside the ${paymentTerms.balanceDays || 30}-day window, so the full amount is asked up front — first payment ${gbp(f.first)}${dep > 0 ? ` (stay ${gbp(__modalMoney.total)} + ${gbp(dep)} refundable)` : ''}.`
+        : `First payment ${gbp(f.first)} — ${f.pct}% deposit ${gbp(f.planDep)}${dep > 0 ? ` + ${gbp(dep)} refundable` : ''} · balance ${gbp(f.balance)} due by ${fmtDate(f.due)}.`;
 }
 
 // The sticky footer's figure MIRRORS the price box's own rendered total —
 // read back, never recomputed, so the two surfaces can't quote different
-// numbers (the §C3 discipline). No total row → an honest dash.
+// numbers (the §C3 discipline). No total row → an honest dash. The SUB line
+// beneath it is the add-mode consequence: the clash warning, or the plan's
+// first payment + due date (the same facts the plan brief states).
 function modalFootSync() {
     const fig = document.getElementById('modal-foot-fig');
     if (!fig) return;
@@ -15515,6 +15641,22 @@ function modalFootSync() {
     const cap = document.getElementById('modal-foot-cap');
     const lbl = document.querySelector('#modal-price-box .price-row.total span:first-child');
     if (cap) cap.textContent = lbl ? lbl.textContent : 'Total';
+    const sub = document.getElementById('modal-foot-sub');
+    if (!sub) return;
+    let txt = '';
+    if (dpVal('modal-mode') === 'add') {
+        if (__modalClash) txt = `⚠ Overlaps ${__modalClash} — you'll be asked to confirm`;
+        else if (__modalMoney) {
+            const f = modalPlanFacts();
+            if (f) txt = f.full ? `Full amount up front — first payment ${gbp(f.first)}` : `First payment ${gbp(f.first)} · balance due ${fmtDate(f.due)}`;
+        } else if (amt) {
+            txt = '';
+        } else {
+            txt = 'Pick the dates to price the stay';
+        }
+    }
+    sub.textContent = txt;
+    sub.style.display = txt ? '' : 'none';
 }
 
 // Live total inside the Add/Edit modal
@@ -15523,11 +15665,29 @@ function updateModalPrice() {
     try {
         modalFootSync();
     } catch (e) {}
+    try {
+        modalStepSync();
+        modalPlanBrief();
+        // A prefilled amount follows the plan while still OURS (data-auto);
+        // a figure the owner typed over is never touched.
+        const amt = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-deposit-amount'));
+        if (
+            amt && amt.dataset.auto && amt.value === amt.dataset.auto &&
+            dpVal('modal-mode') === 'add' && dpVal('modal-payment') === 'deposit'
+        ) {
+            const f = modalPlanFacts();
+            if (f && f.first.toFixed(2) !== amt.value) {
+                amt.value = f.first.toFixed(2);
+                amt.dataset.auto = amt.value;
+            }
+        }
+    } catch (e) {}
 }
 function updateModalPriceCore() {
     try {
         updateModalAvailability();
     } catch (e) {}
+    __modalMoney = null; // refilled below only when a fresh stay is priced
     const box = document.getElementById('modal-price-box');
     if (!box) return;
     const cur = currentModalProperty();
@@ -15605,6 +15765,10 @@ function updateModalPriceCore() {
         }
     }
     const depAmt = displayDepositAmt(p, holdSt);
+    // The plan brief / foot sub / prefill read THIS, never a re-derivation:
+    // the rental frame the plan's percentage bites on, and the refundable
+    // deposit that rides the first payment.
+    __modalMoney = { total: override !== null ? override : p.total, dep: depAmt, checkIn };
     let rows = `
                 <div class="price-row"><span>${perNightLabel} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
@@ -15727,19 +15891,12 @@ function lockBookingMove(lock) {
     }
 }
 
-// Payment + notes labelling differs slightly between modes
+// Payment + notes labelling differs slightly between modes. Enquiry mode has
+// no payment, so the WHOLE group hides (segment, hidden select, inline fields).
 function togglePaymentField(show) {
-    const sel = document.getElementById('modal-payment');
-    const lbl = sel.previousElementSibling; // its <label>
-    sel.style.display = show ? 'block' : 'none';
-    if (lbl && lbl.classList.contains('modal-label')) lbl.style.display = show ? 'block' : 'none';
-    if (!show) {
-        // Enquiry mode has no payment — hide the inline details too.
-        const det = document.getElementById('modal-payment-details');
-        if (det) det.style.display = 'none';
-    } else {
-        togglePaymentDetails();
-    }
+    const grp = document.getElementById('modal-payment-group');
+    if (grp) grp.style.display = show ? '' : 'none';
+    if (show) togglePaymentDetails();
     // Relabel the notes field
     const notesLabel = document.getElementById('modal-notes').previousElementSibling;
     if (notesLabel) notesLabel.innerText = show ? 'Staff Notes' : 'Guest Message';
@@ -15758,6 +15915,37 @@ function togglePaymentDetails() {
     // Default the payment date to today the first time it's revealed.
     const pd = document.getElementById('modal-payment-date');
     if (pd && det.style.display !== 'none' && !pd.value) pd.value = todayDashed();
+    modalPaySync(); // keep the visible segment in step with the select
+}
+// Paint the "Payment so far" segment from the hidden select — the select stays
+// the source of truth (setModalFields and every save path read/write it), so a
+// programmatic write + change event repaints exactly like a tap.
+function modalPaySync() {
+    const v = dpVal('modal-payment') || 'unpaid';
+    document.querySelectorAll('#modal-pay-seg .hs-mode-btn').forEach((b) => {
+        const on = b.getAttribute('data-arg') === v;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', String(on));
+    });
+}
+// A segment tap: set the select, reveal the fields — and in ADD mode prefill
+// the amount with what the card would actually take (the plan's first payment,
+// refundable deposit folded in). Only over a blank field or our OWN previous
+// prefill (data-auto): a figure the owner typed is theirs and never clobbered.
+function modalPayMode(status) {
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('modal-payment'));
+    if (!sel) return;
+    sel.value = status;
+    togglePaymentDetails();
+    const amt = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-deposit-amount'));
+    if (status === 'deposit' && amt && dpVal('modal-mode') === 'add' && (amt.value === '' || amt.value === amt.dataset.auto)) {
+        const f = modalPlanFacts();
+        if (f) {
+            amt.value = f.first.toFixed(2);
+            amt.dataset.auto = amt.value;
+        }
+    }
+    updateModalPrice();
 }
 
 // Save a booking (add/update) through the soft warnings the server can raise:
@@ -16360,7 +16548,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mailwatch51';
+    const BUILD = 'addbook01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

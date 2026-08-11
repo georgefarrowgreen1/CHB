@@ -4843,7 +4843,44 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
     color: var(--text-muted); white-space: nowrap;
 }
 .modal-foot-fig { font-family: var(--font-serif); font-size: 1.2rem; color: var(--text-light); white-space: nowrap; }
+/* The consequence line: first payment + due date, or the clash warning —
+   filled by modalFootSync, add mode only. A full-width SECOND LINE of the
+   bar (the foot wraps): inside the no-shrink figure wrapper a long sentence
+   pushed the bar past the box edge (measured in the gate's own §4). */
+.modal-foot { flex-wrap: wrap; }
+.modal-foot-sub {
+    flex: 1 1 100%; order: 3; margin-top: -4px;
+    font-size: 0.7rem; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .modal-foot .btn-glass { flex: 1; min-height: 46px; margin-left: auto; }
+/* ---- Add/Edit booking steppers + the dates verdict (the approved demo) ---- */
+.modal-steprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.modal-step-lbl { flex: 1 1 auto; min-width: 0; }
+.modal-step-lbl .modal-label, .modal-steprow .modal-label { margin: 0; }
+.modal-step-lbl small { display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.modal-step {
+    display: inline-flex; align-items: center; flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); border-radius: 999px;
+}
+.modal-step button {
+    width: 42px; height: 40px; border: 0; background: none; border-radius: 999px;
+    color: var(--accent-text); font-size: 1.2rem; line-height: 1; cursor: pointer; font-family: inherit;
+}
+.modal-step button:disabled { color: var(--text-muted); opacity: 0.4; cursor: default; }
+.modal-step input {
+    /* height 40 = the pill's own — and WCAG 2.5.8's 24px floor (a11y §5). */
+    width: 58px; height: 40px; border: 0; background: none; text-align: center; padding: 0;
+    color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem;
+    font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
+}
+.modal-step input::-webkit-outer-spin-button, .modal-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* The verdict capsule on the dates row — ✓ free / ⚠ overlaps, the a11y §1b
+   discovered pair (status ink on its own tint). The trigger's text yields. */
+#modal-date-trigger .date-range-text { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-date-verdict { flex: 0 0 auto; font-size: 0.72rem; font-weight: 600; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.modal-date-verdict.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.modal-date-verdict.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 16%, transparent); }
 /* The availability SUMMARY strip — the grid sits behind its Calendar toggle. */
 .mav-strip {
     display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-light);

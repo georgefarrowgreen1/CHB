@@ -5878,7 +5878,7 @@ const CHB_WALK = {
         { sel: '#modal-date-trigger', say: 'Tap here to pick the check-in and check-out dates.', until: () => coachVal('#modal-checkin') !== '' && coachVal('#modal-checkout') !== '' },
         { sel: '#modal-name', say: 'Type the guest’s name — past guests suggest as you type.', until: () => coachVal('#modal-name').length > 1 },
         { sel: '#modal-email', say: 'Add their email so booking emails reach them.', until: () => /@/.test(coachVal('#modal-email')) },
-        { sel: '#modal-save-btn', say: 'Tap Save — you can take payment straight after.' },
+        { sel: '#modal-save-btn', say: 'Tap Add booking — you can take payment straight after.' },
     ] },
     'block-dates': {
         mark: () => coachBlockN(),
