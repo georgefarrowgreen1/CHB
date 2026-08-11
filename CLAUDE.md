@@ -4658,8 +4658,11 @@ platform guest** (forBooking 0 never matches a real booking id): the card and bo
 dialogs say to share the code in the platform's message thread instead, which is the
 honest version of "they see it". Gated by ui-test-keysafe §6 (break-tested: deleting
 the dbBlocks loop fails all five) + test-integration §18h + the lib's ref cases.
-**THE KEEPER IS A PER-COTTAGE SWITCH** (owner-asked; the checkbox lives in Settings →
-cottage → Private notes, `#ks-toggle-<pk>`). A switched-off cottage is **HIDDEN from
+**THE KEEPER IS A PER-COTTAGE SWITCH** (owner-asked; the control lives in Settings →
+cottage → Private notes, `#ks-toggle-<pk>` — an iOS-style ON/OFF SWITCH now,
+`.chb-switch`: the REAL checkbox sits on top at full size with opacity 0 so
+gates that click/read it by id keep working, the track + thumb underneath draw
+the state, and a failed save still puts the input back). A switched-off cottage is **HIDDEN from
 the key screen entirely — no off-card, no footnote** (both were built and removed at
 the owner's ask); the Settings checkbox is the one way back on. `enabled` rides the
 SAME record — default ON, only an

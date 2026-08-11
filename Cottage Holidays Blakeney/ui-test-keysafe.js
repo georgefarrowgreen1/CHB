@@ -229,6 +229,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { settingsOpen('accom'); settingsOpenAccom('21a'); settingsOpenAccomSec('21a', 'opsnotes'); });
   await page.waitForTimeout(500);
   const cb = page.locator('#ks-toggle-21a');
+  // The keeper control is an on/off SWITCH now (owner-asked): the real
+  // checkbox stays on top at full size, the track underneath draws the state.
+  const sw = await page.evaluate(() => {
+    const inp = document.getElementById('ks-toggle-21a');
+    const wrap = inp && inp.closest('.chb-switch');
+    const track = wrap && wrap.querySelector('.chb-switch-track');
+    const ir = inp ? inp.getBoundingClientRect() : null;
+    return { track: !!track, covers: !!(ir && wrap && ir.width >= 40 && ir.height >= 24) };
+  });
+  ok(sw.track && sw.covers, 'the keeper is a switch — track drawn, the real checkbox covering it');
   ok(await cb.isChecked(), 'the Private-notes section carries the keeper toggle, ON by default');
   await cb.click();
   await page.waitForTimeout(700);
