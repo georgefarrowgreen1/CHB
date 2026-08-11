@@ -4509,14 +4509,29 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    overview spans both desktop columns, so children centre themselves). A
    landing booking row is a <button> wearing the kv anatomy (full UA reset —
    the .cmdk-qa-row lesson): guest as label, figure right. */
-#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap {
-  max-width: 640px; margin-left: auto; margin-right: auto;
+/* width:100% is load-bearing on every rail item: in the flex column below,
+   cross-axis AUTO margins cancel align-items:stretch, so without it each
+   card shrink-wraps its own content (measured — ragged widths at 390px). */
+#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap,
+#money-overview > .glass-panel {
+  width: 100%; max-width: 640px; margin-left: auto; margin-right: auto;
 }
+/* The landing is a flex column with the hub's ONE 12px gap (nothing else
+   supplies it here — on the hub the grid does). Captions keep the 20/8
+   rhythm via longhand top/bottom margins, because a margin SHORTHAND would
+   silently overwrite the auto centring above (the .mo-pulse lesson). */
+#money-overview { display: flex; flex-direction: column; gap: 12px; }
+#money-overview .bhub-grpcap { width: 100%; margin-top: 8px; margin-bottom: -4px; }
+/* [hidden] must actually hide: .bhub-grpcap's display:block out-ranks the
+   UA rule, so the empty Needs-attention caption painted over a clean day. */
+.bhub-grpcap[hidden] { display: none; }
+/* An empty async holder must not spend a flex gap slot. */
+#mo-attn-async:empty { display: none; }
 /* Income & tax's folds share the drill-down panel's LEFT rail (the headline
    and year select above them are left-aligned) — centring only these made
    two columns of one page. */
 #accounts-content .bhub-fold-grp { max-width: 640px; }
-.mo-pulse { font-size: 0.9rem; color: var(--text-muted); max-width: 640px; margin: 2px auto 0; }
+.mo-pulse { font-size: 0.9rem; color: var(--text-muted); width: 100%; max-width: 640px; margin: 2px auto 0; }
 .mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; }
 @media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
 /* Every row in these folds names a GUEST (or a Due-now marker) — sentence

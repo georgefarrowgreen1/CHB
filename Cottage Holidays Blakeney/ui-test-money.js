@@ -124,11 +124,22 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     const foldsOpen = el ? Array.from(el.querySelectorAll('.bhub-fold')).filter((f) => !f.hidden).length : 0;
     const collect = el ? ((el.querySelector('[data-grp="mocollect"]') || {}).textContent || '').replace(/,/g, '') : '';
     const cap = document.getElementById('mo-attn-cap');
+    const grpEls = el ? Array.from(el.querySelectorAll('.bhub-fold-grp')).filter((e) => e.getClientRects().length) : [];
+    const gaps = [];
+    for (let i = 1; i < grpEls.length; i++) gaps.push(Math.round(grpEls[i].getBoundingClientRect().top - grpEls[i - 1].getBoundingClientRect().bottom));
+    // One rail: every card shares one left and one right edge (cross-axis
+    // auto margins cancel flex stretch, which shrink-wrapped each card).
+    const lefts = new Set(grpEls.map((e) => Math.round(e.getBoundingClientRect().left)));
+    const rights = new Set(grpEls.map((e) => Math.round(e.getBoundingClientRect().right)));
     return {
-      grps, foldsOpen, collect,
+      grps, foldsOpen, collect, gaps,
+      rails: { lefts: [...lefts], rights: [...rights] },
       overdueRow: ((el.querySelector('[data-grp="mood0"]') || {}).textContent || '').replace(/,/g, ''),
       pulse: !!(el && el.querySelector('.mo-pulse')),
-      attnHidden: !cap || cap.hidden,
+      // The PAINT, not the attribute — display:block on the caption used to
+      // out-rank [hidden], so an empty NEEDS ATTENTION shipped while the
+      // attribute-based check stayed green.
+      attnHidden: !cap || cap.getClientRects().length === 0,
       books: (document.getElementById('mo-books-fig') || {}).textContent || '',
       recent: (document.getElementById('mo-recent-sum') || {}).textContent || '',
     };
@@ -143,6 +154,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/To collect/.test(ov.collect) && /overdue one is above/.test(ov.collect), `To collect never claims "paid up" over an overdue row (${ov.collect.slice(0, 90)})`);
   ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
   ok(ov.pulse, 'the pulse line is present');
+  ok(ov.gaps.length >= 5 && ov.gaps.every((g) => g >= 8), `every block has breathing room between it and the next (${ov.gaps.join(',')})`);
+  ok(ov.rails.lefts.length === 1 && ov.rails.rights.length === 1, `every card stands on ONE rail (lefts ${ov.rails.lefts.join('/')}, rights ${ov.rails.rights.join('/')})`);
   // The books figure is the SERVER'S net once the async fill lands
   // (656.20 rental + 50 kept − 9.80 fees − 120 expenses = 576.40).
   ok(/£576\.40/.test(ov.books.replace(/,/g, '')), `The books shows the server net (${ov.books})`);
@@ -158,15 +171,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     b.checkIn = ci; b.checkOut = co;
     renderMoneyOverview();
     const txt = () => ((document.getElementById('money-overview') || {}).textContent || '').replace(/,/g, '');
+    // Painted, not the attribute — the [hidden] caption used to render.
+    const capShown = () => { const c = document.getElementById('mo-attn-cap'); return !!(c && c.getClientRects().length); };
     const down = {
-      cap: !(document.getElementById('mo-attn-cap') || { hidden: true }).hidden,
+      cap: capShown(),
       row: /Overdue — Owes Money/.test(txt()),
       collect: ((document.querySelector('#money-overview [data-grp="mocollect"]') || {}).textContent || '').replace(/,/g, ''),
     };
     Object.assign(b, keep);
     renderMoneyOverview();
     const up = {
-      cap: !(document.getElementById('mo-attn-cap') || { hidden: true }).hidden,
+      cap: capShown(),
       row: /Overdue — Owes Money/.test(txt()),
     };
     return { down, up };
