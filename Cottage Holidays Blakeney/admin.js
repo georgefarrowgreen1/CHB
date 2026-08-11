@@ -22759,18 +22759,30 @@ function moneyShort(v) {
     return v >= 1000 ? '£' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : '£' + Math.round(v);
 }
 // Vertical bars: items = [{label, short, value}].
+// Vertical bars: items = [{short, label, value}]. Bar heights are PIXELS, never a
+// percentage — the bar sits in an auto-height flex column, and a % height against
+// an indefinite parent resolves to nothing: measured, every chart this composer
+// ever drew painted its bars at 0px on every browser (three surfaces — only the
+// labels showed, which read as "no graph"). And a DENSE window (the 30-day daily
+// trend gives each column ~4px at phone width) drops the per-bar value labels
+// (the title tooltip keeps the figure) and thins the axis to ~8 ticks + the last,
+// or 31 nowrap labels overprint into an unreadable digit soup.
 function osVBars(items, fmt) {
     if (!items || !items.length) return '';
     const peak = Math.max(1, ...items.map((i) => i.value || 0));
+    const AREA = 96; // px of bar under the value label, inside the 140px row
+    const dense = items.length > 14;
+    const every = dense ? Math.ceil(items.length / 8) : 1;
     return (
-        `<div style="display:flex;align-items:flex-end;gap:8px;height:140px;margin:12px 0 2px;">` +
+        `<div style="display:flex;align-items:flex-end;gap:${dense ? 3 : 8}px;height:140px;margin:12px 0 2px;">` +
         items
-            .map((i) => {
-                const h = Math.max(3, Math.round(((i.value || 0) / peak) * 100));
+            .map((i, ix) => {
+                const h = Math.max(3, Math.round(((i.value || 0) / peak) * AREA));
+                const tick = !dense || ix % every === 0 || ix === items.length - 1;
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
-                    <span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>
-                    <div style="width:100%;max-width:36px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}%;"></div>
-                    <span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${escapeHtml(i.short || i.label)}</span>
+                    ${dense ? '' : `<span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
+                    <div class="osv-bar" style="width:100%;max-width:36px;min-width:2px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}px;"></div>
+                    <span class="osv-tick" style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${tick ? escapeHtml(i.short || i.label) : ''}</span>
                 </div>`;
             })
             .join('') +

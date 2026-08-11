@@ -118,7 +118,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(500);
   const cal = await page.evaluate(() => {
     const list = document.getElementById('calendar-list');
+    // The cottages breathe (owner-asked): measured air between VERTICALLY
+    // consecutive cards. At desktop width the settings section flows in CSS
+    // columns, so DOM order is not screen order — group by column (left edge),
+    // sort by top, and measure within each column.
+    const cards = list ? [...list.querySelectorAll('.bhub-fold-grp')] : [];
+    const byCol = {};
+    cards.forEach((el) => {
+      const b = el.getBoundingClientRect();
+      (byCol[Math.round(b.left / 50)] = byCol[Math.round(b.left / 50)] || []).push(b);
+    });
+    let minGap = 999;
+    Object.values(byCol).forEach((col) => {
+      col.sort((a, b) => a.top - b.top);
+      for (let i = 1; i < col.length; i++) minGap = Math.min(minGap, col[i].top - col[i - 1].bottom);
+    });
     return {
+      minGap,
       grps: list ? list.querySelectorAll('.bhub-fold-grp').length : 0,
       jbWarn: !!list.querySelector('[data-grp="cal-jollyboat"] .st-cap.is-warn .st-wic'),
       a21ok: !!list.querySelector('[data-grp="cal-21a"] .st-cap.is-ok .st-tick'),
@@ -128,6 +144,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(cal.grps >= 2, `every cottage is a verdict group (${cal.grps})`);
+  ok(cal.minGap >= 12, `…with clear air between the cottages (${Math.round(cal.minGap)}px)`);
   ok(cal.jbWarn && cal.a21ok, 'the stalled feed wears the triangle, the fresh one the ✓');
   ok(/last imported 3 days ago/.test(cal.jbSub), `the sub states the staleness (${cal.jbSub})`);
   ok(cal.runInFold && cal.editRoute, 'Run-the-sync + the feed-link editor sit inside the fold');
@@ -533,6 +550,52 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => getComputedStyle(l).textTransform === 'uppercase') : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
   });
   ok(p3d.has && p3d.caps, 'Pricing wears the caption vocabulary over its idea rows');
+
+  console.log('§9 the analytics VISITS trend is a GRAPH — bars PAINT, a dense axis thins');
+  // The bars are measured, not asserted from markup: the old composer set each
+  // bar's height as a PERCENTAGE of an auto-height flex column, which resolves
+  // to nothing — every chart it ever drew painted its bars at 0px and only the
+  // labels showed, which is exactly what a class check could never see.
+  const p5 = await page.evaluate(async () => {
+    const realGet = window.apiGet;
+    window.apiGet = async (url) => {
+      const m = /days=(\d+)/.exec(String(url));
+      if (String(url).includes('track.php')) {
+        const n = m && m[1] === '7' ? 7 : 30;
+        const daily = Array.from({ length: n }, (_, i) => ({
+          date: `2026-07-${String(i + 1).padStart(2, '0')}`,
+          views: i === n - 1 ? 120 : 10 + i,
+        }));
+        return { days: n, totalViews: 500, uniqueVisitors: 100, bookings: 2, enquiries: 1, visitorMix: { new: 90, returning: 10 }, daily, pages: [], sources: [], devices: [], searches: [] };
+      }
+      return realGet(url);
+    };
+    settingsOpen('analytics');
+    await new Promise((r) => setTimeout(r, 600));
+    const read = () => {
+      const bars = [...document.querySelectorAll('#analytics-body .osv-bar')].map((el) => el.getBoundingClientRect().height);
+      const col = document.querySelector('#analytics-body .osv-bar');
+      return {
+        n: bars.length,
+        min: Math.min(...bars),
+        max: Math.max(...bars),
+        ticks: [...document.querySelectorAll('#analytics-body .osv-tick')].filter((el) => el.textContent.trim()).length,
+        colKids: col ? col.parentElement.children.length : 0, // 2 dense (no value label), 3 with it
+      };
+    };
+    const dense = read();
+    await loadAnalytics(7);
+    await new Promise((r) => setTimeout(r, 400));
+    const sparse = read();
+    window.apiGet = realGet;
+    return { dense, sparse };
+  });
+  ok(p5.dense.n === 30 && p5.dense.min >= 3 && p5.dense.max > p5.dense.min * 5,
+    `30 days: every bar paints, heights proportional (${Math.round(p5.dense.min)}–${Math.round(p5.dense.max)}px)`);
+  ok(p5.dense.ticks <= 12 && p5.dense.colKids === 2,
+    `…dense window thins the axis and drops per-bar values (${p5.dense.ticks} ticks)`);
+  ok(p5.sparse.n === 7 && p5.sparse.min >= 3 && p5.sparse.ticks === 7 && p5.sparse.colKids === 3,
+    `7 days: every day labelled with its value, bars still paint (${p5.sparse.ticks} ticks)`);
 
   console.log(fails ? `MANAGE CHECK FAILED ❌ (${fails})` : 'MANAGE CHECK PASSED ✅');
   await done(fails);
