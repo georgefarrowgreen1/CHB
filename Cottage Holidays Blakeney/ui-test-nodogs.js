@@ -130,7 +130,96 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(450);
   ok(sent().length === before, '…so the next send is blocked until it is ticked again');
 
-  console.log('7. the owner can SEE it on the booking, at arrival time');
+  console.log('7. the dates verdict: the submit-time clash check, surfaced at choose-time');
+  // The capsule and submitEnquiry's "just been taken" refusal read the SAME
+  // store with the SAME overlap test (enqFirstProblem), so drive both from one
+  // seeded availability range and assert they agree.
+  const verdict = async (ci, co, ranges) => page.evaluate(({ ci, co, ranges }) => {
+    activeFrontProperty = 'jollyboat';
+    if (ranges === null) delete propertyAvailability.jollyboat;
+    else propertyAvailability.jollyboat = ranges;
+    document.getElementById('enq-checkin').value = ci;
+    document.getElementById('enq-checkout').value = co;
+    updateEnquiryPrice();
+    const cap = document.getElementById('enq-avail-cap');
+    return {
+      capShown: cap.style.display !== 'none',
+      capText: cap.textContent,
+      capClass: cap.className,
+      wait: document.getElementById('enq-wait-row').style.display !== 'none',
+      sched: (document.querySelector('.enq-sched') || {}).innerText || '',
+      box: (document.getElementById('enq-price-box') || {}).innerText || '',
+    };
+  }, { ci, co, ranges });
+  const free = await verdict(d(40), d(43), [{ start: d(50), end: d(55) }]);
+  ok(free.capShown && /available/.test(free.capText) && /\bok\b/.test(free.capClass),
+    `free dates → ✓ available (${free.capText})`);
+  ok(!free.wait, '…and no waitlist row');
+  const taken = await verdict(d(49), d(52), [{ start: d(50), end: d(55) }]);
+  ok(taken.capShown && /taken/.test(taken.capText) && /warn/.test(taken.capClass),
+    `overlapping dates → ⚠ taken (${taken.capText})`);
+  ok(taken.wait, '…and the waitlist is offered in place');
+  ok(!taken.sched, '…and a taken stay gets NO payment schedule');
+  // The honesty gate: availability never fetched → the capsule says NOTHING,
+  // because "✓ available" before asking would be an unchecked assertion.
+  const unknown = await verdict(d(40), d(43), null);
+  ok(!unknown.capShown, 'availability not yet loaded → no capsule at all');
+  // The waitlist button routes to the REAL join, prefilled with these dates.
+  // NB the suite never OPENS the enquiry modal (the form is driven hidden), so
+  // this is a synthetic click — it still bubbles through the data-act
+  // dispatcher, which is the wiring under test.
+  await verdict(d(49), d(52), [{ start: d(50), end: d(55) }]);
+  await page.evaluate(() => document.querySelector('#enq-wait-row button').click());
+  await page.waitForTimeout(300);
+  const wl = await page.evaluate(() => ({
+    open: document.getElementById('waitlist-modal').classList.contains('open'),
+    prop: (document.getElementById('wl-prop') || {}).value,
+    ci: (document.getElementById('wl-checkin') || {}).value,
+  }));
+  ok(wl.open && wl.prop === 'jollyboat' && wl.ci === d(49),
+    `the waitlist opens prefilled (${wl.prop} from ${wl.ci})`);
+  await page.evaluate(() => closeWaitlistModal());
+
+  console.log('8. the payment schedule speaks the published plan, and it adds up');
+  // Outside the balance window: deposit + balance rows, and the COHERENCE
+  // property — deposit + balance = the estimate's own total (read from the
+  // RENDERED rows, so reverting the renderer cannot pass).
+  const money = (s) => parseFloat(String(s).replace(/[£,]/g, ''));
+  const far = await verdict(d(60), d(63), []); // 3 nights × £130 + £50 fee = £440
+  ok(/On booking/i.test(far.sched) && /balance/i.test(far.sched),
+    'outside the window → deposit row + balance row');
+  const mDep = far.sched.match(/25% deposit £([\d.,]+)/);
+  const mBal = far.sched.match(/£([\d.,]+) balance/);
+  const mTot = far.box.match(/From\s*£([\d.,]+)/);
+  ok(mDep && mBal && mTot && Math.abs(money(mDep[1]) + money(mBal[1]) - money(mTot[1])) < 0.01,
+    `deposit ${mDep && mDep[1]} + balance ${mBal && mBal[1]} = total ${mTot && mTot[1]}`);
+  // innerText reflects the CSS text-transform (the when-column renders
+  // uppercase) so the match is case-insensitive — and en-GB's short month is
+  // FOUR letters for September ("Sept"), so \w{3} alone fails one month a year.
+  ok(/By \d{1,2} \w{3,4} \d{4}/i.test(far.sched), 'the balance row names its DATE');
+  // Inside the window (check-in under 30 days out): the full amount, honestly.
+  const near = await verdict(d(10), d(13), []);
+  ok(/in full/i.test(near.sched) && !/balance/i.test(near.sched),
+    'inside the window → full amount on booking, no balance row');
+
+  console.log('9. the living line under Send enquiry shares the refusal ladder');
+  // Same state → the line and the submit refusal say the SAME sentence: fill
+  // everything but the party message, read both, compare.
+  await fill(true, true);
+  await page.evaluate(() => { document.getElementById('enq-message').value = ''; enqLiveSync(); });
+  const lineMissing = await page.evaluate(() => document.getElementById('enq-live-sub').textContent);
+  await send();
+  ok(lineMissing === (await msg()),
+    `the line and the refusal are one sentence (${lineMissing.slice(0, 50)}…)`);
+  ok(/about your party/i.test(lineMissing), '…and it names the party field here');
+  // Everything in → the line restates the no-payment promise WITH the figure.
+  await fill(true, true);
+  await page.evaluate(() => enqLiveSync());
+  const lineReady = await page.evaluate(() => document.getElementById('enq-live-sub').textContent);
+  ok(/No payment now — £[\d.,]+ once we confirm/.test(lineReady),
+    `ready → the first payment's figure in the promise (${lineReady.slice(0, 60)})`);
+
+  console.log('10. the owner can SEE it on the booking, at arrival time');
   // Storing it on the booking is only worth anything if it is on screen where the
   // owner looks when the guest turns up. Driven through the real hub rather than
   // asserting the field, because a value nothing renders is the same as no value.

@@ -11169,6 +11169,9 @@ function enquireContinue() {
     setEnqStep(2);
     const box = document.querySelector('.enquire-box');
     if (box) box.scrollTop = 0;
+    try {
+        enqLiveSync();
+    } catch (e) {}
 }
 
 // ---- Guest photos: admin moderation (Manage → Guest photos) ----
@@ -14457,6 +14460,155 @@ function applySavedEdits() {
     });
 }
 
+// ---- Enquiry form: dates verdict + spoken payment schedule + living send line
+// (the owner-approved booking-flow demo). The verdict is submitEnquiry's
+// "just been taken" last-look SURFACED at choose-time — same overlap test,
+// same store — so the capsule and the refusal can never disagree.
+
+// 'free' | 'taken' | null. Null when the dates are incomplete OR availability
+// was never fetched for this cottage: an ABSENT key means we never asked, and
+// claiming "✓ available" before asking would be an unchecked assertion (an
+// empty array is a real answer — loaded, nothing booked).
+function enqClashState(checkIn, checkOut) {
+    if (!checkIn || !checkOut || checkOut <= checkIn) return null;
+    const ranges = propertyAvailability[activeFrontProperty];
+    if (!Array.isArray(ranges)) return null;
+    return ranges.some((r) => r.start < checkOut && r.end > checkIn) ? 'taken' : 'free';
+}
+function enqAvailSync(state) {
+    const cap = document.getElementById('enq-avail-cap');
+    if (cap) {
+        if (state === 'free' || state === 'taken') {
+            cap.style.display = '';
+            cap.className = 'enq-cap ' + (state === 'taken' ? 'warn' : 'ok');
+            cap.textContent = state === 'taken' ? '⚠ dates taken' : '✓ available';
+        } else cap.style.display = 'none';
+    }
+    const wait = document.getElementById('enq-wait-row');
+    if (wait) wait.style.display = state === 'taken' ? '' : 'none';
+}
+// Taken dates offer the EXISTING waitlist join, prefilled, in place — a dead
+// end that names its way out.
+function enqWaitlist() {
+    openWaitlistModal({
+        prop: activeFrontProperty,
+        checkIn: dpVal('enq-checkin'),
+        checkOut: dpVal('enq-checkout'),
+    });
+}
+// What the FIRST card payment will take: the site deposit % of the estimate —
+// the FULL amount inside the balance window (pricing.php's standard path,
+// strict boundary) — plus the refundable deposit pay.php bundles with it.
+// Reads paymentTerms, the same published schedule the terms clauses render.
+function enqDepositDue(p, checkIn) {
+    const days = parseInt(paymentTerms.balanceDays, 10) || 30;
+    const pctN = Number(paymentTerms.depositPct);
+    const pct = pctN > 0 && pctN <= 100 ? pctN : 25;
+    const inWindow = nightsBetween(todayDashed(), checkIn) < days;
+    const dep = inWindow ? p.rentalTotal : Math.round(p.rentalTotal * pct) / 100;
+    return { days, pct, inWindow, dep, first: dep + (Number(p.damagesDeposit) || 0) };
+}
+// The payment plan as three quiet timeline rows: what's taken on booking, the
+// balance BY ITS DATE, and the refundable deposit coming back. Caller gates it
+// on the rules passing and the dates being free — a stay the form will refuse
+// gets no schedule (the picker's own no-price-on-a-refused-stay rule).
+function enqScheduleHtml(p, checkIn) {
+    if (!p || !(p.rentalTotal > 0)) return '';
+    const due = enqDepositDue(p, checkIn);
+    const dmg = Number(p.damagesDeposit) || 0;
+    const refund = dmg > 0 ? ` + ${gbp(dmg)} refundable deposit` : '';
+    const row = (solid, when, what) =>
+        `<div class="enq-sched-row"><span class="enq-sched-dot${solid ? '' : ' ghost'}" aria-hidden="true"></span><span class="enq-sched-when">${when}</span><span class="enq-sched-what">${what}</span></div>`;
+    let h = '';
+    if (due.inWindow) {
+        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — your stay in full <small>(arrival is under ${due.days} days away)</small>${refund}`);
+    } else {
+        h += row(true, 'On booking', `<strong>${gbp(due.first)}</strong> — ${due.pct}% deposit ${gbp(due.dep)}${refund}`);
+        h += row(false, `By ${escapeHtml(dpPretty(ukShiftDays(checkIn, -due.days)))}`, `${gbp(p.rentalTotal - due.dep)} balance <small>— we’ll remind you, nothing to set up</small>`);
+    }
+    if (dmg > 0) h += row(false, 'After you go', `${gbp(dmg)} refundable deposit returned`);
+    return `<div class="enq-sched">${h}</div>`;
+}
+// ONE ladder for "what still stops this enquiry sending", in the order the
+// fields appear. submitEnquiry() REFUSES on it and the living line under the
+// send button NAMES it, so the two can never tell the guest different things.
+// Returns { msg, focus?, clash? } or null when the enquiry is sendable.
+function enqFirstProblem(propKey) {
+    const val = (id) => dpVal(id).trim();
+    const name = val('enq-name');
+    const email = val('enq-email');
+    const phone = val('enq-phone');
+    const address = val('enq-address');
+    const postcode = normalizeUkPostcode(dpVal('enq-postcode'));
+    const checkIn = val('enq-checkin');
+    const checkOut = val('enq-checkout');
+    const adults = Math.max(1, parseInt(val('enq-adults'), 10) || 0);
+    const children = Math.max(0, parseInt(val('enq-children'), 10) || 0);
+    const message = val('enq-message');
+    if (!name || !checkIn || !checkOut) return { msg: 'Please fill in your name and both dates.' };
+    if (!address) return { msg: 'Please enter your UK address.' };
+    // We must be able to reply: an email or a phone number is required, and a
+    // typed email has to look like one (the server re-checks both).
+    if (!email && !phone)
+        return { msg: 'Please give an email address or phone number so we can reply.', focus: 'enq-email' };
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))
+        return { msg: 'That email address doesn’t look right — please check it.', focus: 'enq-email' };
+    if (!isUkPostcode(postcode)) return { msg: 'Please enter a valid UK postcode.' };
+    if (!message)
+        return { msg: 'Please tell us a little about your party before sending your enquiry.', focus: 'enq-message' };
+    if (checkOut <= checkIn) return { msg: 'Your check-out date must be after your check-in date.' };
+    const ruleErr = checkBookingRules(propKey, checkIn, checkOut);
+    if (ruleErr) return { msg: ruleErr };
+    const occErr = checkOccupancy(propKey, adults, children);
+    if (occErr) return { msg: occErr };
+    // Checked FIRST because it sits above the terms: pointing at the second
+    // unticked box while the first is also unticked sends the guest back twice.
+    const dogsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-nodogs'));
+    if (!dogsBox || !dogsBox.checked)
+        return { msg: 'Please confirm you will not be bringing a dog before sending your enquiry.' };
+    const termsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-terms'));
+    if (!termsBox || !termsBox.checked)
+        return { msg: 'Please read and accept the Booking Terms & Conditions before sending your enquiry.' };
+    // Last look at the availability data we hold before posting — a tab that
+    // sat open while someone else booked gets a clear message here instead of
+    // a server rejection (the server re-checks authoritatively either way).
+    const knownRanges = propertyAvailability[propKey] || [];
+    if (knownRanges.some((r) => r.start < checkOut && r.end > checkIn))
+        return { msg: 'Sorry, those dates have just been taken — please choose different dates.', clash: true };
+    return null;
+}
+// The living line under Send enquiry: the FIRST thing still needed (the exact
+// sentence the submit refusal would show), or the no-payment promise restated
+// WITH the figure the card will take once the owner confirms.
+function enqLiveSync() {
+    const el = document.getElementById('enq-live-sub');
+    if (!el) return;
+    const prob = enqFirstProblem(activeFrontProperty);
+    if (prob) {
+        el.textContent = prob.msg;
+        return;
+    }
+    let line = 'No payment now — we usually reply within a few hours to confirm availability.';
+    const ci = dpVal('enq-checkin');
+    const co = dpVal('enq-checkout');
+    if (ci && co && co > ci) {
+        const adults = Math.max(1, parseInt(dpVal('enq-adults'), 10) || 0);
+        const children = Math.max(0, parseInt(dpVal('enq-children'), 10) || 0);
+        const p = priceBreakdown(activeFrontProperty, adults, children, ci, co);
+        if (p && p.rentalTotal > 0)
+            line = `No payment now — ${gbp(enqDepositDue(p, ci).first)} once we confirm your dates, and nothing is charged until then.`;
+    }
+    el.textContent = line;
+}
+// The postcode field's two data-act slots are taken by postcodeRecognize, so
+// this wrapper keeps the living line in step with it (one attribute per kind).
+function enqPostcode(inputId, statusId, onBlur) {
+    postcodeRecognize(inputId, statusId, onBlur);
+    try {
+        enqLiveSync();
+    } catch (e) {}
+}
+
 function updateEnquiryPrice() {
     try {
         const m = document.getElementById('enquire-modal');
@@ -14490,8 +14642,12 @@ function updateEnquiryPrice() {
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
         box.innerHTML = `<p style="color: var(--text-light); font-size: 0.95rem; text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size: 0.8rem;">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+        enqAvailSync(null);
         try {
             updateBookBar();
+        } catch (e) {}
+        try {
+            enqLiveSync();
         } catch (e) {}
         return;
     }
@@ -14501,13 +14657,25 @@ function updateEnquiryPrice() {
     if (p.extraAdults > 0)
         extras.push(`${p.extraAdults} extra adult${p.extraAdults === 1 ? '' : 's'}`);
     if (children > 0) extras.push(`${children} child${children === 1 ? '' : 'ren'}`);
+    // The verdict capsule + the schedule. A stay the rules refuse, or whose
+    // dates are TAKEN, gets no payment schedule — pricing a stay we won't
+    // confirm states a plan that doesn't exist. The After-you-go row makes the
+    // old "refunded after your stay" caveat sentence redundant when it renders.
+    const avail = enqClashState(checkIn, checkOut);
+    enqAvailSync(avail);
+    const ruleErr = checkBookingRules(activeFrontProperty, checkIn, checkOut);
+    const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
                 <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
                 ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
-                <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
+                ${sched}
+                <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
         updateBookBar();
+    } catch (e) {}
+    try {
+        enqLiveSync();
     } catch (e) {}
 }
 
@@ -14641,71 +14809,18 @@ async function submitEnquiry(propKey) {
     const message = document.getElementById('enq-message').value.trim();
 
     setEnqMsg('details', '');
-    if (!name || !checkIn || !checkOut) {
-        setEnqMsg('details', 'Please fill in your name and both dates.');
-        return;
-    }
-    if (!address) {
-        setEnqMsg('details', 'Please enter your UK address.');
-        return;
-    }
-    // We must be able to reply: an email or a phone number is required, and a
-    // typed email has to look like one (the server re-checks both).
-    if (!email && !phone) {
-        setEnqMsg('details', 'Please give an email address or phone number so we can reply.');
-        document.getElementById('enq-email').focus();
-        return;
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-        setEnqMsg('details', 'That email address doesn’t look right — please check it.');
-        document.getElementById('enq-email').focus();
-        return;
-    }
-    if (!isUkPostcode(postcode)) {
-        setEnqMsg('details', 'Please enter a valid UK postcode.');
-        return;
-    }
-    if (!message) {
-        setEnqMsg('details', 'Please tell us a little about your party before sending your enquiry.');
-        document.getElementById('enq-message').focus();
-        return;
-    }
-    if (checkOut <= checkIn) {
-        setEnqMsg('details', 'Your check-out date must be after your check-in date.');
-        return;
-    }
-    const ruleErr = checkBookingRules(propKey, checkIn, checkOut);
-    if (ruleErr) {
-        setEnqMsg('details', ruleErr);
-        return;
-    }
-    const occErr = checkOccupancy(propKey, adults, children);
-    if (occErr) {
-        setEnqMsg('details', occErr);
-        return;
-    }
-    // Checked FIRST because it sits above the terms: pointing at the second
-    // unticked box while the first is also unticked sends the guest back twice.
-    const dogsBox = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-nodogs'));
-    if (!dogsBox || !dogsBox.checked) {
-        setEnqMsg('details', 'Please confirm you will not be bringing a dog before sending your enquiry.');
-        return;
-    }
-    const termsBox = document.getElementById('enq-terms');
-    if (!termsBox || !termsBox.checked) {
-        setEnqMsg(
-            'details',
-            'Please read and accept the Booking Terms & Conditions before sending your enquiry.',
-        );
-        return;
-    }
-    // Last look at the availability data we hold before posting — a tab that
-    // sat open while someone else booked gets a clear message here instead of
-    // a server rejection (the server re-checks authoritatively either way).
-    const knownRanges = propertyAvailability[propKey] || [];
-    if (knownRanges.some((r) => r.start < checkOut && r.end > checkIn)) {
-        setEnqMsg('details', 'Sorry, those dates have just been taken — please choose different dates.');
-        loadAvailability(propKey);
+    // ONE ladder, shared with the living line under the send button — see
+    // enqFirstProblem for the checks and their order.
+    const prob = enqFirstProblem(propKey);
+    if (prob) {
+        setEnqMsg('details', prob.msg);
+        if (prob.focus) {
+            const f = document.getElementById(prob.focus);
+            if (f) f.focus();
+        }
+        // Stale-tab clash: refresh what we hold so the picker can show why
+        // (the server re-checks authoritatively either way).
+        if (prob.clash) loadAvailability(propKey);
         return;
     }
 
@@ -16548,7 +16663,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'uipass1';
+    const BUILD = 'enqflow1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
