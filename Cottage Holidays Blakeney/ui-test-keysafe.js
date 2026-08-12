@@ -56,6 +56,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return json({ ok: true, bookings: BOOKINGS, enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] });
   });
 
+  // PIN THE TIME OF DAY (same calendar day, fixed hour — the yourstay rule):
+  // Hannah's fixture checks out TODAY at 10:00, and keysafeDue reads the
+  // clock against that departure, so an unpinned run would flip §4's verdict
+  // with CI's wall clock. Noon = the departing guest has gone; §4c drives
+  // both sides of the boundary itself by overriding ukNowMinutes.
+  await page.clock.setFixedTime((() => { const t = new Date(); t.setHours(12, 0, 0, 0); return t; })());
   await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
@@ -226,6 +232,49 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return out;
   });
   ok(!!t4 && t4.sev === 'warn', `a far-off arrival stays amber until the reveal window opens (${t4 && t4.sev})`);
+
+  console.log('§4c …and the DEPARTURE TIME on changeover morning (owner, 07:37)');
+  // At breakfast the departing guest is still behind the door until their
+  // check-out time — "rotate now" in red is asking for a lock-out. The ask
+  // stays AMBER and says when it becomes possible; the hour passing flips it
+  // red with the plain arrival wording. Break-tested: deleting keysafeDue's
+  // keysafeDeparting/ukNowMinutes guard reproduces the 07:37 red alarm.
+  const t5 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    const sh = (n) => ukShiftDays(t, n);
+    dbBookings.scratch = [
+      { dbId: 86, name: 'Morning Leaver', checkIn: sh(-3), checkOut: t, checkOutTime: '10:00' },
+      { dbId: 87, name: 'Afternoon Guest', checkIn: t, checkOut: sh(3) },
+    ];
+    dbBlocks.scratch = [];
+    __keysafe.scratch = { code: '5917', setAt: '', forBooking: 999, forStay: 'b:999', enabled: true, history: [], name: 'Scratch Cottage' };
+    const real = window.ukNowMinutes;
+    const duty = () => chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || {};
+    window.ukNowMinutes = () => 7 * 60 + 37; // the screenshot's clock
+    const at737 = duty();
+    renderKeysafe();
+    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
+    const cap737 = card ? (card.querySelector('.st-cap') || {}).textContent || '' : '';
+    const capWarn = !!(card && card.querySelector('.st-cap.is-warn'));
+    const sub737 = card ? (card.querySelector('.bhub-fold-sub') || {}).textContent || '' : '';
+    window.ukNowMinutes = () => 10 * 60 + 1; // they're out
+    const at1001 = duty();
+    // An OTA departure carries no times — the house 10:00 stands in.
+    dbBookings.scratch = [{ dbId: 88, name: 'Afternoon Guest', checkIn: t, checkOut: sh(3) }];
+    dbBlocks.scratch = [{ id: 2, source: 'airbnb', checkIn: sh(-2), checkOut: t }];
+    window.ukNowMinutes = () => 9 * 60;
+    const ota = duty();
+    window.ukNowMinutes = real;
+    delete dbBookings.scratch; delete dbBlocks.scratch; delete __keysafe.scratch;
+    renderKeysafe();
+    return { at737: { sev: at737.sev, sub: at737.sub }, cap737, capWarn, sub737, at1001: { sev: at1001.sev, sub: at1001.sub }, ota: { sev: ota.sev, sub: ota.sub } };
+  });
+  ok(t5.at737.sev === 'warn' && /Morning Leaver leaves at 10:00 — rotate once they’ve gone/.test(t5.at737.sub),
+    `07:37 on changeover day: amber, and the sub says when it becomes possible (${(t5.at737.sub || '').slice(0, 62)})`);
+  ok(t5.capWarn && /rotate after 10:00/.test(t5.cap737), `the page capsule names the hour too (${t5.cap737})`);
+  ok(/rotate after Morning Leaver leaves at 10:00/.test(t5.sub737), `…and its sub names who's still in (${t5.sub737.slice(0, 68)})`);
+  ok(t5.at1001.sev === 'danger' && /arrives today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
+  ok(t5.ota.sev === 'warn' && /leaves at 10:00/.test(t5.ota.sub), `an OTA departure defaults to the house 10:00 (${t5.ota.sev})`);
 
   console.log('§5 the offline shape');
   // (a) the day sheet's duty wiring: a row arriving today whose booking the
