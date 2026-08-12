@@ -11093,6 +11093,9 @@ function openEnquireModal() {
     applyOccupancyToForm(key); // ensure steppers/children reflect this cottage's limits
     refreshDateTrigger();
     updateEnquiryPrice();
+    try {
+        enqWelcomeSync(); // the returning-guest banner (says nothing when unsure)
+    } catch (e) {}
     const m = document.getElementById('enquire-modal');
     overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
@@ -14460,6 +14463,88 @@ function applySavedEdits() {
     });
 }
 
+// ---- Enquiry form: the personable layer (the owner-approved demo — warm
+// family-business voice, not a named host, and never an invented fact).
+
+// Month notes: one quiet seasonal line under the party steppers. Defaults here;
+// the owner can override via the PUBLIC content key 'enq-month-notes', one note
+// per line as "<month number>: <sentence>" (e.g. "9: September is ..."). A
+// month with no note says nothing — silence beats filler.
+const ENQ_MONTH_NOTES = {
+    9: 'September is a quiet favourite here — thinner crowds, golden light over the marshes',
+    10: 'October brings big skies and cosy evenings — good walking weather',
+    11: 'November is peaceful — the coast largely to yourselves',
+    12: 'December means bracing walks and warm pubs',
+};
+function enqMonthNote(m) {
+    const raw = typeof siteContent === 'object' && siteContent && siteContent['enq-month-notes'];
+    if (typeof raw === 'string' && raw.trim()) {
+        const line = raw.split('\n').map((l) => l.match(/^\s*(\d{1,2})\s*:\s*(.+)$/)).find((x) => x && +x[1] === m);
+        if (line) return line[2].trim();
+        return ''; // an override REPLACES the defaults — a blank month is a decision
+    }
+    return ENQ_MONTH_NOTES[m] || '';
+}
+function enqOrdinalWord(n) {
+    return ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'][n - 1] || n + 'th';
+}
+// The welcome-back banner: a signed-in guest with a COMPLETED stay behind them
+// is recognised, plainly. Their own my-bookings session (__wbStays, the
+// welcome-back cache) is the source — nothing new is exposed. Null cache (not
+// loaded / fetch failed) says nothing rather than guessing first-timer.
+function enqWelcomeSync() {
+    const el = document.getElementById('enq-wb');
+    if (!el) return;
+    let html = '';
+    if (currentGuest && Array.isArray(__wbStays)) {
+        const today = todayDashed();
+        const past = __wbStays.filter((s) => s.checkOut && s.checkOut <= today).length;
+        if (past >= 1) {
+            const first = (currentGuest.name || '').trim().split(/\s+/)[0];
+            html = `Welcome back${first ? ', <b>' + escapeHtml(first) + '</b>' : ''} — this would be your <b>${enqOrdinalWord(past + 1)} stay</b> with us, so your details are already filled in.`;
+        }
+    }
+    el.innerHTML = html;
+    el.style.display = html ? '' : 'none';
+}
+// The quiet reaction to the chosen stay — deterministic template lines (the
+// enquiry-drafter pattern): the month note, and "made for two" only when the
+// cottage's real occupancy limit IS two. Suppressed while the dates are taken
+// or refused — remarking on a stay we can't take reads as not listening.
+function enqReactSync(show, adults, children) {
+    const el = document.getElementById('enq-react');
+    if (!el) return;
+    const bits = [];
+    if (show) {
+        const ci = dpVal('enq-checkin');
+        const note = ci ? enqMonthNote(+ci.split('-')[1]) : '';
+        if (note) bits.push(note + '.');
+        const lim = occupancyLimits[activeFrontProperty] || {};
+        const name = (propertyMeta[activeFrontProperty] || {}).name;
+        if (lim.maxTotal === 2 && adults === 2 && children === 0 && name)
+            bits.push(`${name} is made for two — you’ve sized it just right.`);
+    }
+    el.textContent = bits.join(' ');
+    el.style.display = bits.length ? '' : 'none';
+}
+// The in-flow quick-ask: guestFaqAnswer — the same on-device matcher the guest
+// chat runs — surfaced at the moment of doubt. A confident match answers
+// instantly; a miss is honest about needing a person AND feeds the owner's
+// teach loop (guestFaqMissRecord), exactly as the chat's fall-through does.
+function enqFaqAsk() {
+    const q = dpVal('enq-faq-q').trim();
+    const box = document.getElementById('enq-faq-a');
+    if (!q || !box) return;
+    const hit = guestFaqAnswer(q);
+    if (hit) {
+        box.innerHTML = `${escapeHtml(hit.a)}<small>From the cottage guide — instant. Not quite what you asked? Add it to your enquiry message and we’ll answer properly.</small>`;
+    } else {
+        box.innerHTML = `We’ll answer that one ourselves — add it to your enquiry message and it’ll be covered in our reply.<small>The guide answers the common ones (parking, wifi, beaches) instantly.</small>`;
+        guestFaqMissRecord(q, activeFrontProperty);
+    }
+    box.style.display = '';
+}
+
 // ---- Enquiry form: dates verdict + spoken payment schedule + living send line
 // (the owner-approved booking-flow demo). The verdict is submitEnquiry's
 // "just been taken" last-look SURFACED at choose-time — same overlap test,
@@ -14584,6 +14669,15 @@ function enqLiveSync() {
     const el = document.getElementById('enq-live-sub');
     if (!el) return;
     const prob = enqFirstProblem(activeFrontProperty);
+    // The ONE status circle, on the Your-details heading: red ring while
+    // anything still stops the send, green ✓ when the same ladder that guards
+    // submitEnquiry says it would go — one derivation, so the circle and the
+    // refusal can never disagree.
+    const dotEl = document.getElementById('enq-details-dot');
+    if (dotEl) {
+        dotEl.classList.toggle('done', !prob);
+        dotEl.classList.toggle('todo', !!prob);
+    }
     if (prob) {
         el.textContent = prob.msg;
         return;
@@ -14644,6 +14738,9 @@ function updateEnquiryPrice() {
         box.innerHTML = `<p style="color: var(--text-light); font-size: 0.95rem; text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size: 0.8rem;">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
         enqAvailSync(null);
         try {
+            enqReactSync(false, adults, children);
+        } catch (e) {}
+        try {
             updateBookBar();
         } catch (e) {}
         try {
@@ -14664,6 +14761,9 @@ function updateEnquiryPrice() {
     const avail = enqClashState(checkIn, checkOut);
     enqAvailSync(avail);
     const ruleErr = checkBookingRules(activeFrontProperty, checkIn, checkOut);
+    try {
+        enqReactSync(!ruleErr && avail !== 'taken', adults, children);
+    } catch (e) {}
     const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
                 <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
@@ -14889,6 +14989,21 @@ async function submitEnquiry(propKey) {
     const acctStep = document.getElementById('enquire-step-account');
     if (!currentGuest && acctStep) {
         __enqAcct = { name, email, phone, address, postcode };
+        // The enquiry said back — cottage · dates · party · estimate — so the
+        // guest leaves this screen knowing exactly what they asked for.
+        const sum = document.getElementById('enq-sent-sum');
+        if (sum) {
+            try {
+                const pk = propKey || activeFrontProperty;
+                const pName = (propertyMeta[pk] || {}).name || pk || '';
+                const pb = priceBreakdown(pk, adults, children, checkIn, checkOut);
+                const ppl = adults + children;
+                sum.innerHTML = `<span>${escapeHtml(pName)} · ${escapeHtml(dpPretty(checkIn))} → ${escapeHtml(dpPretty(checkOut))} · ${ppl} guest${ppl === 1 ? '' : 's'}</span><span style="font-weight:600;">${gbp(pb.rentalTotal)}</span>`;
+                sum.style.display = '';
+            } catch (e) {
+                sum.style.display = 'none'; // a receipt that can't be computed says nothing
+            }
+        }
         // If this email already has an account, show "sign in" instead of "create".
         const exists = !!(enqResp && enqResp.account_exists);
         const newBlk = document.getElementById('enq-acct-new');
@@ -16663,7 +16778,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'enqflow1';
+    const BUILD = 'enqwarm1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

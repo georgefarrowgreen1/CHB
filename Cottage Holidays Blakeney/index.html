@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=260">
+    <link rel="stylesheet" href="app.css?v=261">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -749,10 +749,17 @@
                             <div class="enq-summary-rating" id="enq-sum-rating"></div>
                         </div>
                     </div>
+                    <!-- People behind the form, without fronting one person. -->
+                    <div class="enq-host">
+                        <span class="enq-host-ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/><path d="M10 19v-5h4v5"/></svg></span>
+                        <span><span class="enq-host-t">Family-run, here in Blakeney</span><span class="enq-host-s">Every enquiry is read by a person, and we usually reply within a few hours.</span></span>
+                    </div>
+                    <div class="enq-wb" id="enq-wb" style="display:none;"></div>
+
                     <h3 style="font-family: var(--font-serif); font-size: 1.4rem; margin: 18px 0 2px;" id="prop-price-heading"></h3>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 16px;" id="prop-price-tagline">per couple</p>
 
-                    <div class="enq-field-label">Dates</div>
+                    <div class="enq-field-label">When would you like to come?</div>
                     <button type="button" class="date-range-trigger" id="enq-date-trigger" data-act="openDatePicker">
                         <span class="date-range-text" id="enq-date-display">Select your stay dates</span>
                         <span class="enq-cap ok" id="enq-avail-cap" style="display:none;"></span>
@@ -762,7 +769,7 @@
                     <div id="enq-wait-row" class="enq-wait-row" style="display:none;" role="status">Those dates are taken — <button type="button" data-act="enqWaitlist">join the waitlist</button> and we&rsquo;ll email you if they free up.</div>
                     <p id="enq-rules-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -8px 0 14px;"></p>
 
-                    <div class="enq-field-label">Guests</div>
+                    <div class="enq-field-label">Who’s coming?</div>
                     <input type="hidden" id="enq-adults" value="2">
                     <input type="hidden" id="enq-children" value="0">
                     <div class="enq-guests">
@@ -784,12 +791,23 @@
                         </div>
                     </div>
                     <p id="enq-occupancy-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 14px;"></p>
+                    <p class="enq-react" id="enq-react" style="display:none;"></p>
 
                     <div class="enq-field-label">Estimated price</div>
                     <div class="price-box" id="enq-price-box">
                         <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
                     </div>
                     <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>No payment now — we'll confirm your dates &amp; price by email.</span></div>
+
+                    <!-- The in-flow quick-ask: guestFaqAnswer, the chat's on-device matcher,
+                         surfaced at the moment of doubt. -->
+                    <div class="enq-field-label">Got a quick question?</div>
+                    <div class="enq-faq-a" id="enq-faq-a" style="display:none;" role="status" aria-live="polite"></div>
+                    <div class="enq-faq-ask">
+                        <input type="text" class="input-glass" id="enq-faq-q" placeholder="Parking? Wifi? The beach?" aria-label="Ask a quick question about the cottage" style="margin-bottom:0;">
+                        <button type="button" class="btn-glass" data-act="enqFaqAsk">Ask</button>
+                    </div>
+                    <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Answered instantly from the cottage's own guide — anything it can't answer reaches us with your enquiry.</p>
                     <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
                     <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;margin-top:18px;" data-act="enquireContinue">Continue</button>
                 </div>
@@ -797,7 +815,8 @@
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
                     <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" data-act-keydown="activate" data-act="enquireBack">← Back</span>
-                    <h2 class="section-title" style="font-size:1.6rem;margin:0 0 18px;text-align:left;">Your details</h2>
+                    <h2 class="section-title" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
                     <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
@@ -843,6 +862,13 @@
                      has already been sent by this point, so this step is entirely optional. -->
                 <div id="enquire-step-account" style="display:none;">
                     <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>Enquiry sent — we'll confirm availability by email.</span></div>
+                    <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
+                    <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
+                    <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
+                        <div class="enq-sched-row"><span class="enq-sched-dot" aria-hidden="true"></span><span class="enq-sched-when">Now</span><span class="enq-sched-what">We read your enquiry and check your dates</span></div>
+                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Today</span><span class="enq-sched-what">An email confirming your dates &amp; price, with a secure payment link</span></div>
+                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Then</span><span class="enq-sched-what">Pay the deposit and the cottage is yours — we'll look after the rest</span></div>
+                    </div>
                     <!-- New guest: set a password to create an account -->
                     <div id="enq-acct-new">
                         <h2 class="section-title" style="font-size:1.5rem;margin:18px 0 6px;text-align:left;">Create your account</h2>
@@ -1867,7 +1893,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=804"></script>
+    <script defer src="app.js?v=805"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

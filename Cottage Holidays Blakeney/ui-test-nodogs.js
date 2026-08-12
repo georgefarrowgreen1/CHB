@@ -147,7 +147,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       capText: cap.textContent,
       capClass: cap.className,
       wait: document.getElementById('enq-wait-row').style.display !== 'none',
-      sched: (document.querySelector('.enq-sched') || {}).innerText || '',
+      // Scoped to the price box: step 3's what-happens-next rows share the
+      // .enq-sched anatomy, and an unscoped query would read those instead.
+      sched: (document.querySelector('#enq-price-box .enq-sched') || {}).innerText || '',
       box: (document.getElementById('enq-price-box') || {}).innerText || '',
     };
   }, { ci, co, ranges });
@@ -218,6 +220,93 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const lineReady = await page.evaluate(() => document.getElementById('enq-live-sub').textContent);
   ok(/No payment now — £[\d.,]+ once we confirm/.test(lineReady),
     `ready → the first payment's figure in the promise (${lineReady.slice(0, 60)})`);
+
+  console.log('11. the personable layer: trust note, welcome-back, reaction, quick-ask, circle, receipt');
+  // The trust note is static markup on step 1 — people behind the form.
+  const host = await page.evaluate(() => (document.querySelector('.enq-host') || {}).textContent || '');
+  ok(/Family-run/i.test(host) && /read by a person/i.test(host), 'the family-run trust note is on the form');
+  // Welcome-back: recognised from the guest's OWN stays cache. Two past stays
+  // → "third stay"; upcoming-only → nothing (a first booking isn't "back");
+  // null cache → nothing (unknown says nothing rather than guessing).
+  const wb = (stays) => page.evaluate((s) => {
+    currentGuest = { name: 'Sarah Pemberton', email: 's@example.com' };
+    __wbStays = s;
+    enqWelcomeSync();
+    const el = document.getElementById('enq-wb');
+    return { shown: el.style.display !== 'none', text: el.textContent };
+  }, stays);
+  const wb2 = await wb([{ propKey: 'jollyboat', checkIn: d(-40), checkOut: d(-37) }, { propKey: 'jollyboat', checkIn: d(-20), checkOut: d(-17) }]);
+  ok(wb2.shown && /Welcome back, Sarah/.test(wb2.text) && /third stay/.test(wb2.text),
+    `two past stays → "${wb2.text.slice(0, 60)}"`);
+  const wbUp = await wb([{ propKey: 'jollyboat', checkIn: d(20), checkOut: d(23) }]);
+  ok(!wbUp.shown, 'an upcoming-only first booking is NOT "back"');
+  const wbNull = await wb(null);
+  ok(!wbNull.shown, 'an unloaded cache says nothing rather than guessing');
+  await page.evaluate(() => { currentGuest = null; __wbStays = null; });
+  // The reaction note: month note via the OWNER OVERRIDE (clock-proof — the
+  // override names the month the seeded stay is in) + made-for-two when the
+  // cottage's real limit IS two. Suppressed while the dates are taken.
+  const react = (noteMonth, maxTotal, ranges) => page.evaluate(({ noteMonth, maxTotal, ranges, ci, co }) => {
+    activeFrontProperty = 'jollyboat';
+    propertyAvailability.jollyboat = ranges;
+    siteContent['enq-month-notes'] = noteMonth + ': A test month note about the light';
+    occupancyLimits.jollyboat = { maxAdults: 2, maxChildren: 0, maxTotal: maxTotal };
+    document.getElementById('enq-adults').value = 2;
+    document.getElementById('enq-children').value = 0;
+    document.getElementById('enq-checkin').value = ci;
+    document.getElementById('enq-checkout').value = co;
+    updateEnquiryPrice();
+    const el = document.getElementById('enq-react');
+    return { shown: el.style.display !== 'none', text: el.textContent };
+  }, { noteMonth, maxTotal, ranges, ci: d(40), co: d(43) });
+  const stayMonth = +d(40).split('-')[1];
+  const r1 = await react(stayMonth, 2, []);
+  ok(r1.shown && /test month note/.test(r1.text) && /made for two/.test(r1.text),
+    `free dates → the note + made-for-two (${r1.text.slice(0, 60)}…)`);
+  const r2 = await react(stayMonth === 1 ? 2 : stayMonth - 1, 4, []);
+  ok(!r2.shown, 'no note for this month + a bigger cottage → silence, not filler');
+  const r3 = await react(stayMonth, 2, [{ start: d(41), end: d(42) }]);
+  ok(!r3.shown, 'taken dates → no remark (we can’t take the stay)');
+  await page.evaluate(() => { delete siteContent['enq-month-notes']; propertyAvailability.jollyboat = []; });
+  // The quick-ask: the REAL guestFaqAnswer over the cottage's own FAQ content;
+  // a miss is honest AND feeds the owner's teach loop (guest-faq.php record).
+  const askResult = (q) => page.evaluate((q) => {
+    siteContent['faqs-jollyboat'] = [{ q: 'Is there a telescope?', a: 'Yes — a telescope lives in the snug.' }];
+    document.getElementById('enq-faq-q').value = q;
+    enqFaqAsk();
+    return (document.getElementById('enq-faq-a') || {}).textContent || '';
+  }, q);
+  const hitA = await askResult('do you have a telescope?');
+  ok(/telescope lives in the snug/.test(hitA), 'a confident match answers from the cottage guide');
+  const missCountBefore = posts.filter((p) => p.__url === 'guest-faq.php').length;
+  const missA = await askResult('can we moor a narrowboat overnight?');
+  await page.waitForTimeout(300);
+  ok(/answer that one ourselves/i.test(missA), 'a miss is honest about needing a person');
+  ok(posts.filter((p) => p.__url === 'guest-faq.php').length > missCountBefore,
+    '…and the missed question feeds the owner’s teach loop');
+  // The ONE status circle shares submitEnquiry's ladder: red while the send
+  // would be refused, green exactly when it would go.
+  await fill(true, true);
+  await page.evaluate(() => { document.getElementById('enq-message').value = ''; enqLiveSync(); });
+  const dotRed = await page.evaluate(() => document.getElementById('enq-details-dot').classList.contains('todo'));
+  ok(dotRed, 'party missing → the circle is the red ring');
+  await fill(true, true);
+  await page.evaluate(() => enqLiveSync());
+  const dotGreen = await page.evaluate(() => document.getElementById('enq-details-dot').classList.contains('done'));
+  ok(dotGreen, 'everything sendable → the circle is the green ✓');
+  // The receipt: a successful anonymous send lands on step 3 with the enquiry
+  // said back — cottage, dates, a £ figure — above the what-happens-next rows.
+  await send();
+  const sent11 = await page.evaluate(() => ({
+    step: document.getElementById('enquire-step-account').style.display,
+    sum: (document.getElementById('enq-sent-sum') || {}).textContent || '',
+    sumShown: (document.getElementById('enq-sent-sum') || {}).style.display !== 'none',
+    steps: (document.querySelector('#enquire-step-account .enq-sched') || {}).textContent || '',
+  }));
+  ok(sent11.step === '' && sent11.sumShown && /Jollyboat/.test(sent11.sum) && /£[\d.,]+/.test(sent11.sum),
+    `sent → the receipt says the enquiry back (${sent11.sum.replace(/\s+/g, ' ').slice(0, 60)})`);
+  ok(/We read your enquiry/.test(sent11.steps) && /payment link/.test(sent11.steps),
+    '…above the what-happens-next steps');
 
   console.log('10. the owner can SEE it on the booking, at arrival time');
   // Storing it on the booking is only worth anything if it is on screen where the
