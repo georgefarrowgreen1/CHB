@@ -539,6 +539,16 @@ async function cmdkPricingMerge() {
 // cmdkPricingMerge: stamp-guarded, and silent when there is nothing it can stand
 // behind. No `safe` figure without a balance — that is the owner's to supply.
 const CHB_SWEEP_Q = /how much.{0,20}(can i (move|transfer|withdraw|take)|safe to (move|transfer|withdraw))|safe to (move|transfer|withdraw)|what can i (move|transfer|withdraw|take out)|(move|transfer|withdraw).{0,14}(money|funds|cash) out/;
+// ---- SCOPE-BATCH families (branches in cmdkIntent 0b9): deterministic
+// keyword phrasings; an unloaded store never mints a claim (expenses/waitlist
+// fetch stamp-guarded, the sweep pattern).
+const CHB_RATING_Q = /(average|overall|my|our) (rating|review score|star rating)|what('s| is) (my|our|the) rating|how (are|good are) (my|our|the) reviews|review (average|score)|average stars/;
+const CHB_EXPENSE_Q = /\b(spent|spend|spending|expenses?|outgoings)\b.{0,32}\b(this|last|year|month|total|on)\b|how much (did|have) (i|we) spen|total (expenses?|costs?|spend)|\bcosts? this (year|month)\b/;
+const CHB_PLAN_Q = /who('s| is) on (a )?(payment plan|instalments?|installments?)|payment plans? (running|active|due)|next (instalment|installment|collection)|automatic payments? (running|due|coming)|\binstalments? due\b/;
+const CHB_LAPSED_Q = /\blapsed\b|(stayed|came|visited).{0,26}(hasn't|haven't|not|never).{0,16}(book|back|return)|(hasn't|haven't).{0,12}(rebooked|come back|returned|booked again)|win.?back|past guests? who/;
+// NB bare "who's waiting" is the ENQUIRIES ground (golden-pinned) — this only
+// fires on the list's own name or a space/dates/cancellation object.
+const CHB_WAITLIST_Q = /\bwait.?list\b|waiting list|who('s| is) waiting for (a |the )?(space|dates|cancellation|cottage)/;
 let __cmdkSweepStamp = 0;
 async function cmdkSweepMerge() {
     const stamp = ++__cmdkSweepStamp;
@@ -568,6 +578,33 @@ async function cmdkSweepMerge() {
     if (__cmdkResults.some((x) => x && x.id === 'sweep-answer')) return;
     __cmdkResults = cmdkArrangeWide([row].concat(__cmdkResults).slice(0, 34), 34);
     cmdkRender(true);
+}
+// Expenses asked before Payments was opened: fill via the REAL loader, then
+// re-run the query so the family answers from the store.
+let __cmdkExpStamp = 0;
+let __expTried = false; // one fetch per session — an EMPTY store after a real try means "nothing logged", not "not loaded"
+async function cmdkExpensesMerge() {
+    const stamp = ++__cmdkExpStamp;
+    const gen = __cmdkQueryGen;
+    try { await loadExpenses(); } catch (e) { return; }
+    __expTried = true;
+    if (stamp !== __cmdkExpStamp || gen !== __cmdkQueryGen) return;
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input'));
+    if (el) cmdkSearchCore(el.value, true);
+}
+// WAITLIST rows live server-side only (the Manage people list fetches them on
+// open) — cache one admin read for the session, then answer synchronously.
+let __wlCache = null;
+let __cmdkWlStamp = 0;
+async function cmdkWaitlistMerge() {
+    const stamp = ++__cmdkWlStamp;
+    const gen = __cmdkQueryGen;
+    let r = null;
+    try { r = await apiGet('waitlist.php'); } catch (e) { return; }
+    if (stamp !== __cmdkWlStamp || gen !== __cmdkQueryGen) return;
+    __wlCache = Array.isArray(r && r.waitlist) ? r.waitlist : Array.isArray(r && r.rows) ? r.rows : [];
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input'));
+    if (el) cmdkSearchCore(el.value, true);
 }
 // Proper English ordinal — 1st/2nd/3rd/4th…, with the 11th/12th/13th
 // exceptions (the inline 2/3 patches emitted "21th"-style labels).
@@ -910,6 +947,12 @@ function cmdkPrefillAddBooking(p) {
 // the normal answers/actions). Runs FIRST in cmdkIntent so a fully-specified
 // command beats the generic "open the form" action.
 function cmdkCommand(q, today) {
+    // Compound suffix — "move bob to 19 aug and send the confirmation": the
+    // clause is STRIPPED before the name captures and NOTED on the proposal.
+    // Honest: a dates change is MATERIAL, so saving already raises the re-send
+    // ask — the note says where it appears, never promising an auto-send.
+    let andConfirm = false;
+    q = String(q || '').replace(/[,;]?\s*(?:and|then)\s+(?:re-?)?send\s+(?:(?:him|her|them)\s+)?(?:the\s+)?(?:new\s+|updated\s+)?confirmation(?:\s+email)?\s*$/, () => { andConfirm = true; return ''; }).trim();
     const dates = cmdkParseDates(q, today);
     const pk = cmdkCottageFor(q);
     const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
@@ -989,11 +1032,13 @@ function cmdkCommand(q, today) {
         if (!newOut || newOut <= newIn) return null;
         const conflict = cmdkBookClash(hit.pk, newIn, newOut, b.id);
         const nights = Math.round((new Date(newOut + 'T00:00:00') - new Date(newIn + 'T00:00:00')) / 864e5);
+        let pSub = conflict
+            ? `⚠ Clashes with ${conflict.name} (${fmtDate(conflict.checkIn)}–${fmtDate(conflict.checkOut)}) — the editor opens anyway so you can adjust`
+            : 'Free ✓ · opens the editor pre-filled — nothing changes until you save';
+        if (andConfirm) pSub += ' · saving offers to re-send their confirmation';
         return cmd(
             `${verb} ${b.name}: ${fmtDate(newIn)} → ${fmtDate(newOut)} (${nights} night${nights === 1 ? '' : 's'})`,
-            conflict
-                ? `⚠ Clashes with ${conflict.name} (${fmtDate(conflict.checkIn)}–${fmtDate(conflict.checkOut)}) — the editor opens anyway so you can adjust`
-                : 'Free ✓ · opens the editor pre-filled — nothing changes until you save',
+            pSub,
             () => { closeCmdK(); cmdkPrefillEditDates(b.id, newIn, newOut); },
         );
     };
@@ -4602,6 +4647,84 @@ function cmdkIntent(q) {
         return [head].concat(stayRows());
     }
 
+    // 0b9) SCOPE-BATCH families — reputation, expenses, plans, lapsed,
+    // waitlist. DELIBERATELY ABOVE insights: CHB_LAPSED_Q must beat the repeat
+    // family's \brebook, and insights' generic tail would otherwise claim any
+    // INSIGHTS_RE-shaped query these declined.
+    {
+        const pn = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+        if (CHB_RATING_Q.test(q)) {
+            const rows = (typeof allReviews === 'function' ? allReviews() : []).filter((r) => r && r.stars);
+            if (!rows.length)
+                return [{ type: 'figure', id: 'rep', label: 'No reviews yet', sub: 'Nothing to average — reviews appear here once approved', run: () => { closeCmdK(); openArea(); settingsOpen('reviews'); } }];
+            const st = (r) => Math.max(1, Math.min(5, parseInt(r.stars) || 5));
+            const avg = rows.reduce((s, r) => s + st(r), 0) / rows.length;
+            const byPk = {};
+            rows.forEach((r) => { if (r.prop) (byPk[r.prop] = byPk[r.prop] || []).push(st(r)); });
+            const go = () => { closeCmdK(); openArea(); settingsOpen('reviews'); };
+            const head = { type: 'figure', id: 'rep', label: `★ ${avg.toFixed(2)} average across ${rows.length} review${rows.length === 1 ? '' : 's'}`, sub: 'Every review shown on the site', run: go };
+            return [head].concat(Object.keys(byPk).map((k) => ({ type: 'answer', id: 'rep-' + k, label: `${pn(k)} · ★ ${(byPk[k].reduce((s, n) => s + n, 0) / byPk[k].length).toFixed(2)}`, sub: `${byPk[k].length} review${byPk[k].length === 1 ? '' : 's'}`, run: go })));
+        }
+        if (CHB_EXPENSE_Q.test(q) && ((allExpenses || []).length || __expTried)) {
+            const go = () => { closeCmdK(); cmdkOpenAccounts('expenses'); };
+            if (!(allExpenses || []).length)
+                return [{ type: 'figure', id: 'exp', label: 'No expenses logged yet', sub: 'Log costs under Payments → Expenses and this will add them up', run: go }];
+            // The books speak tax years, so this does too — named in the label.
+            const y0 = taxYearStartOf(todayDashed());
+            const year = /last year/.test(q) ? y0 - 1 : y0;
+            const pool = expensesForYear(year);
+            const yLbl = `tax year ${year}/${String((year + 1) % 100).padStart(2, '0')}`;
+            const cat = (typeof EXPENSE_CATS !== 'undefined' ? EXPENSE_CATS : []).find((c) => q.includes(String(c).toLowerCase()));
+            const sum = (xs) => Math.round(xs.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0) * 100) / 100;
+            if (cat) {
+                const rows = pool.filter((x) => String(x.category || '') === cat);
+                return [{ type: 'figure', id: 'exp', label: `${gbp(sum(rows))} on ${String(cat).toLowerCase()} · ${yLbl}`, sub: `${rows.length} expense${rows.length === 1 ? '' : 's'} · ${gbp(sum(pool))} across everything`, run: go }];
+            }
+            const byCat = {};
+            pool.forEach((x) => { const c = String(x.category || 'Other'); byCat[c] = (byCat[c] || 0) + (parseFloat(x.amount) || 0); });
+            const ranked = Object.keys(byCat).map((c) => ({ c, v: Math.round(byCat[c] * 100) / 100 })).sort((a, b) => b.v - a.v);
+            const head = { type: 'figure', id: 'exp', label: `${gbp(sum(pool))} spent · ${yLbl}`, sub: `${pool.length} expense${pool.length === 1 ? '' : 's'} logged${ranked.length ? ' · biggest: ' + ranked[0].c.toLowerCase() : ''}`, run: go };
+            return [head].concat(ranked.slice(0, 5).map((r) => ({ type: 'answer', id: 'exp-' + r.c, label: `${r.c} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (sum(pool) || 1))}% of the year's spend`, run: go })));
+        }
+        if (CHB_PLAN_Q.test(q) && typeof chbAutopayRows === 'function') {
+            const rows = chbAutopayRows();
+            if (!rows.length)
+                return [{ type: 'figure', id: 'plan', label: 'No automatic payment plans running', sub: 'Plans start when a guest opts in while paying their deposit', run: () => { closeCmdK(); cmdkOpenAccounts('recent'); } }];
+            const head = { type: 'figure', id: 'plan', label: `${rows.length} payment plan${rows.length === 1 ? '' : 's'} running`, sub: rows[0].next ? `Next collection ${fmtDate(rows[0].next)} — ${rows[0].name}, ${gbp(rows[0].fig)}` : 'Collections run on their due dates', run: () => { closeCmdK(); cmdkOpenAccounts('recent'); } };
+            return [head].concat(rows.slice(0, 6).map((r) => ({ type: 'answer', id: 'plan-' + r.id, label: `${r.name} · ${gbp(r.fig)}${r.next ? ' on ' + fmtDate(r.next) : ''}`, sub: `${r.prop} · ${r.prog}`, run: () => { closeCmdK(); openBookingHub(r.id, false); } })));
+        }
+        if (CHB_LAPSED_Q.test(q) && typeof chbCustomers === 'function') {
+            const today = todayDashed();
+            const cutoff = ukShiftDays(today, -180);
+            const lapsed = chbCustomers()
+                .filter((c) => c.last && c.last <= cutoff && !c.stays.some((s) => s.checkIn && s.checkIn > today))
+                .sort((a, b) => b.revenue - a.revenue);
+            const goG = () => { closeCmdK(); openArea(); settingsOpen('guests'); };
+            if (!lapsed.length)
+                return [{ type: 'figure', id: 'lapsed', label: 'No lapsed guests', sub: 'Everyone who stayed over six months ago either rebooked or is booked in', run: goG }];
+            const head = { type: 'figure', id: 'lapsed', label: `${lapsed.length} past guest${lapsed.length === 1 ? '' : 's'} haven’t rebooked`, sub: 'Stayed over six months ago, nothing upcoming — worth a friendly nudge', run: goG };
+            return [head].concat(lapsed.slice(0, 6).map((c) => ({
+                type: 'guest', id: 'lapsed-' + c.key, _customer: true,
+                label: c.name || '(no name)',
+                sub: `${c.stays.length} stay${c.stays.length === 1 ? '' : 's'} · ${gbp(c.revenue)} lifetime · last ${fmtDate(c.last)}`,
+                actions: c.latestId != null ? [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } }] : undefined,
+                run: () => openCustomer(c.key),
+            })));
+        }
+        if (CHB_WAITLIST_Q.test(q) && Array.isArray(__wlCache)) {
+            const go = () => { closeCmdK(); openArea(); settingsOpen('waitlist'); };
+            if (!__wlCache.length)
+                return [{ type: 'figure', id: 'wl', label: 'Nobody on the waitlist', sub: 'Guests join it when their dates are taken', run: go }];
+            const head = { type: 'figure', id: 'wl', label: `${__wlCache.length} waiting for a space`, sub: 'Told automatically the moment matching dates free up', run: go };
+            return [head].concat(__wlCache.slice(0, 6).map((w, i) => ({
+                type: 'answer', id: 'wl-' + i,
+                label: `${w.name || w.email || 'A guest'}${w.prop_key || w.prop ? ' · ' + pn(w.prop_key || w.prop) : ''}`,
+                sub: w.check_in && w.check_out ? `${fmtDate(w.check_in)} – ${fmtDate(w.check_out)}` : 'Any dates — open-ended wait',
+                run: go,
+            })));
+        }
+    }
+
     // 0c) Business insights — revenue, occupancy, nights, average rate, best month,
     // top cottage — computed from the live bookings (locked agreedPrice attributed
     // to the stay's check-in). Rendered as a figure card that opens Payments.
@@ -6067,6 +6190,9 @@ function chbFrameCompose(slots) {
 }
 // One-slot patch: the WHOLE remaining text must be exactly a period, a marked
 // cottage, or a metric — anything more is a standalone question, not a patch.
+// ONE two-slot exception: cottage + period together ("just jollyboat last
+// year") — both halves must parse EXACTLY, the cottage half still marked.
+// Metric never joins a pair: metric + period is a full question.
 function chbConvPatch(s, marked) {
     const period = chbFramePeriod(s);
     if (period) return { period };
@@ -6074,6 +6200,16 @@ function chbConvPatch(s, marked) {
     if (prop && (marked || /^(?:just|only|at|for|on)\s/.test(s))) return { prop };
     const metric = chbFrameMetric(s);
     if (metric) return { metric };
+    const words = s.split(/\s+/);
+    for (let i = 1; i < words.length; i++) {
+        const a = words.slice(0, i).join(' '), b = words.slice(i).join(' ');
+        for (const [pd, pr] of [[a, b], [b, a]]) {
+            const per2 = chbFramePeriod(pd);
+            if (!per2) continue;
+            const prop2 = chbFrameProp(pr);
+            if (prop2 && (marked || /^(?:just|only|at|for|on)\s/.test(pr))) return { period: per2, prop: prop2 };
+        }
+    }
     return null;
 }
 function chbConvResolve(q0) {
@@ -6701,6 +6837,11 @@ function cmdkSearchCore(q, allowCorrect) {
             // "how much can I move out" is a QUESTION, so it gets an answer rather
             // than a link to the screen that holds the answer.
             if (CHB_SWEEP_Q.test(ql)) { try { cmdkSweepMerge(); } catch (e) {} }
+            // Store-filling merges for the scope-batch families: fire only while
+            // the store is genuinely UNLOADED, so a filled (even empty) store
+            // answers synchronously and the fetch can never loop.
+            if (CHB_EXPENSE_Q.test(ql) && !__expTried && !(allExpenses || []).length) { try { cmdkExpensesMerge(); } catch (e) {} }
+            if (CHB_WAITLIST_Q.test(ql) && !Array.isArray(__wlCache)) { try { cmdkWaitlistMerge(); } catch (e) {} }
             // A name-ish query (not a question) also groups the WHOLE bookings history
             // into unified customers server-side, so a PAST guest not held in the
             // browser still surfaces as one person (deduped against the in-memory ones).

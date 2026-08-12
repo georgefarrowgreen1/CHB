@@ -2716,6 +2716,132 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     } else fail('chbAutopayRows / hubPlanMonthlyHtml missing from the bundle');
 
+    // ---- 43. SCOPE BATCH — five new deterministic families (reputation,
+    // expenses, payment plans, lapsed guests, waitlist), the two-slot
+    // conversational patch (cottage + period together) and the compound
+    // command suffix ("…and send the confirmation"). Each family answers only
+    // from a store already in hand — the zero states are asserted as such. ----
+    console.log('\n== §43 Scope batch: new families + two-slot patch + compound suffix ==');
+    if (typeof ctx.cmdkIntent === 'function' && typeof ctx.chbConvPatch === 'function') {
+        const d43 = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+        const head43 = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? `[${r[0].type}/${r[0].id}] ${r[0].label} | ${r[0].sub || ''}` : '(none)'; };
+        const rows43 = (q) => ctx.cmdkIntent(q) || [];
+        // A) REPUTATION — averages what allReviews() already holds; a review
+        // with no cottage still counts in the overall figure (the stranded-
+        // review lesson: it must not deflate anything, but the average is of
+        // ALL reviews). No date claims — review dates are unreliable.
+        vm.runInContext(`publicGuestReviews = [
+            { stars: 5, prop: 'jollyboat', text: 'Lovely', name: 'A' },
+            { stars: 4, prop: 'jollyboat', text: 'Nice', name: 'B' },
+            { stars: 3, prop: '', text: 'Fine', name: 'C' } ];
+            siteContent.reviews = [{ stars: 5, prop: '21a', text: 'Great', name: 'D', source: 'Airbnb' }];`, ctx);
+        let h43 = head43('what is my average rating');
+        check('§43A rating: overall average across ALL four reviews (4.25)', /★ 4\.25 average across 4 reviews/.test(h43), h43);
+        const repRows = rows43('how are my reviews');
+        check('§43A rating: per-cottage rows for the assigned reviews only', repRows.some((r) => /Jollyboat · ★ 4\.50/.test(r.label || '')) && repRows.some((r) => /21A[^·]* · ★ 5\.00/.test(r.label || '')), repRows.map((r) => r.label).join(' ; '));
+        vm.runInContext('publicGuestReviews = []; siteContent.reviews = [];', ctx);
+        h43 = head43('what is my average rating');
+        check('§43A rating: zero state says there is nothing to average', /No reviews yet/.test(h43), h43);
+        // B) EXPENSES — tax-year framed (the books speak tax years), category
+        // drill-down, and the store gate: unloaded (never tried) stays SILENT,
+        // a tried-and-empty store answers "nothing logged".
+        vm.runInContext('allExpenses = []; __expTried = false;', ctx);
+        h43 = head43('how much have i spent this year');
+        check('§43B expenses: an UNLOADED store mints no claim', !/spent|expense/i.test(h43) || h43 === '(none)', h43);
+        const y43 = ctx.taxYearStartOf(ctx.todayDashed());
+        vm.runInContext(`allExpenses = [
+            { id: 1, date: '${ctx.todayDashed()}', amount: 120.5, category: 'Cleaning', note: 'End of stay' },
+            { id: 2, date: '${ctx.todayDashed()}', amount: 80, category: 'Maintenance', note: 'Boiler' },
+            { id: 3, date: '${y43 - 1}-06-01', amount: 999, category: 'Cleaning', note: 'Old year' } ];`, ctx);
+        h43 = head43('how much have i spent this year');
+        check('§43B expenses: current tax year total excludes last year’s row', new RegExp(`£200\\.50 spent · tax year ${y43}/`).test(h43), h43);
+        h43 = head43('total expenses last year');
+        check('§43B expenses: "last year" is the PREVIOUS tax year', new RegExp(`£999\\.00 spent · tax year ${y43 - 1}/`).test(h43), h43);
+        h43 = head43('how much did we spend on cleaning this year');
+        check('§43B expenses: a named category answers with its own figure', /£120\.50 on cleaning/.test(h43), h43);
+        vm.runInContext('allExpenses = []; __expTried = true;', ctx);
+        h43 = head43('total expenses this year');
+        check('§43B expenses: tried-and-empty answers "nothing logged"', /No expenses logged yet/.test(h43), h43);
+        vm.runInContext('__expTried = false;', ctx);
+        // C) PAYMENT PLANS — rides chbAutopayRows (the ONE derivation the hub
+        // and Money already read), leading with the next collection.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat = [{ id: 95, dbId: 95, name: 'Poppy Field', email: 'pg@x.co', checkIn: '${d43(30)}', checkOut: '${d43(33)}',
+                adults: 2, children: 0, payment: 'deposit', depositPaid: 175, holdStatus: 'none',
+                agreedPrice: { total: 700, perNight: 233.33, nights: 3, txnFee: 0, damagesDeposit: 0 },
+                autopayConsentAt: '2026-01-01 10:00:00', autopayRevokedAt: '', autopayDue: '${d43(20)}',
+                autopayInstalments: 0, autopayAmount: 0, autopayAttempts: 0 }];
+            __cmdkCustomers = null;`, ctx);
+        h43 = head43('who is on a payment plan');
+        check('§43C plans: one running plan, next collection named with the figure', /1 payment plan running/.test(h43) && /Poppy Field, £525\.00/.test(h43), h43);
+        const planRows = rows43('payment plans running');
+        check('§43C plans: the row routes to the booking with the plan’s own progress', planRows.length >= 2 && /Poppy Field · £525\.00/.test(planRows[1].label || '') && /one payment, on the due date/.test(planRows[1].sub || ''), JSON.stringify(planRows[1] || null));
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+        h43 = head43('who is on a payment plan');
+        check('§43C plans: zero state says how plans start', /No automatic payment plans running/.test(h43), h43);
+        // D) LAPSED GUESTS — customer directory (strong identity), stayed >6
+        // months ago, nothing upcoming; a guest with a future stay never lists.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat = [
+                { id: 96, dbId: 96, name: 'Long Ago', email: 'la@x.co', checkIn: '${d43(-300)}', checkOut: '${d43(-296)}', adults: 2, children: 0, payment: 'paid', agreedPrice: { total: 800 } },
+                { id: 97, dbId: 97, name: 'Long Ago', email: 'la@x.co', checkIn: '${d43(-500)}', checkOut: '${d43(-497)}', adults: 2, children: 0, payment: 'paid', agreedPrice: { total: 500 } },
+                { id: 98, dbId: 98, name: 'Coming Back', email: 'cb@x.co', checkIn: '${d43(-400)}', checkOut: '${d43(-396)}', adults: 2, children: 0, payment: 'paid', agreedPrice: { total: 600 } },
+                { id: 99, dbId: 99, name: 'Coming Back', email: 'cb@x.co', checkIn: '${d43(10)}', checkOut: '${d43(13)}', adults: 2, children: 0, payment: 'deposit', depositPaid: 100, agreedPrice: { total: 600 } } ];
+            __cmdkCustomers = null;`, ctx);
+        h43 = head43('past guests who haven’t rebooked');
+        check('§43D lapsed: counts ONLY the guest with nothing upcoming', /1 past guest haven’t rebooked|1 past guest/.test(h43), h43);
+        const lapRows = rows43('lapsed guests');
+        const lapRow = lapRows.find((r) => r.type === 'guest');
+        check('§43D lapsed: the row is the CUSTOMER with lifetime stats + an Email action', !!lapRow && /Long Ago/.test(lapRow.label) && /2 stays · £1,300\.00 lifetime/.test(lapRow.sub || '') && Array.isArray(lapRow.actions) && lapRow.actions[0].key === 'email', lapRow ? lapRow.label + ' | ' + lapRow.sub : '(no guest row)');
+        check('§43D lapsed: the guest with a future stay is NOT offered a win-back', !lapRows.some((r) => /Coming Back/.test(r.label || '')), lapRows.map((r) => r.label).join(' ; '));
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+        // E) WAITLIST — answers from the session cache; unloaded stays silent;
+        // "who's waiting for a reply" is the ENQUIRIES ground and must not fire.
+        vm.runInContext('__wlCache = null;', ctx);
+        h43 = head43('who is on the waitlist');
+        check('§43E waitlist: an UNLOADED cache mints no claim', h43 === '(none)' || !/waiting for a space/.test(h43), h43);
+        vm.runInContext(`__wlCache = [
+            { id: 1, prop_key: 'jollyboat', name: 'Wendy Wait', email: 'w@x.co', check_in: '${d43(30)}', check_out: '${d43(34)}' },
+            { id: 2, prop_key: '', name: '', email: 'open@x.co', check_in: null, check_out: null } ];`, ctx);
+        h43 = head43('who is on the waitlist');
+        check('§43E waitlist: counts the entries and says what happens next', /2 waiting for a space/.test(h43) && /Told automatically/.test(h43), h43);
+        const wlRows = rows43('waiting list');
+        check('§43E waitlist: a dated entry names guest, cottage and dates', wlRows.some((r) => /Wendy Wait · Jollyboat/.test(r.label || '') && / – /.test(r.sub || '')), wlRows.map((r) => (r.label || '') + '|' + (r.sub || '')).join(' ; '));
+        check('§43E waitlist: an open-ended entry says so rather than inventing dates', wlRows.some((r) => /open@x\.co/.test(r.label || '') && /open-ended wait/.test(r.sub || '')), wlRows.map((r) => r.sub).join(' ; '));
+        check('§43E waitlist: "who’s waiting for a reply" stays the enquiries question', vm.runInContext(`!CHB_WAITLIST_Q.test("who's waiting for a reply") && CHB_WAITLIST_Q.test('who is waiting for a space')`, ctx) === true);
+        vm.runInContext('__wlCache = null;', ctx);
+        // F) TWO-SLOT conversational patch — cottage + period land TOGETHER
+        // ("just jollyboat last year"); the marker rule holds on the pair, and
+        // metric + period is still a full question, never a patch.
+        let p43 = ctx.chbConvPatch('just jollyboat last year', false);
+        check('§43F patch: "just jollyboat last year" patches BOTH slots', !!p43 && p43.period === 'last year' && p43.prop === 'jollyboat', JSON.stringify(p43));
+        p43 = ctx.chbConvPatch('august at jollyboat', false);
+        check('§43F patch: "august at jollyboat" pairs month + marked cottage', !!p43 && p43.period === 'in august' && p43.prop === 'jollyboat', JSON.stringify(p43));
+        p43 = ctx.chbConvPatch('jollyboat last year', false);
+        check('§43F patch: a BARE cottage in the pair still needs its marker', p43 === null, JSON.stringify(p43));
+        p43 = ctx.chbConvPatch('jollyboat last year', true);
+        check('§43F patch: …which a lead-in ("and …") supplies', !!p43 && p43.period === 'last year' && p43.prop === 'jollyboat', JSON.stringify(p43));
+        p43 = ctx.chbConvPatch('revenue last year', false);
+        check('§43F patch: metric + period is a FULL question, never a pair', p43 === null, JSON.stringify(p43));
+        vm.runInContext(`__cmdkFrame = { slots: { metric: 'revenue', period: 'this year', prop: null }, at: Date.now() }`, ctx);
+        const cv43 = ctx.chbConvResolve('just jollyboat last year');
+        check('§43F patch: the resolver composes both slots into one canonical query', !!cv43 && cv43.q === 'jollyboat earned last year' && cv43.slots.period === 'last year' && cv43.slots.prop === 'jollyboat', JSON.stringify(cv43));
+        vm.runInContext('__cmdkFrame = null;', ctx);
+        // G) COMPOUND SUFFIX — "…and send the confirmation" strips before the
+        // name captures and the proposal SAYS where the re-send ask appears
+        // (saving a material edit already raises it — nothing auto-sends).
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat = [{ id: 94, dbId: 94, name: 'Bob Carter', email: 'bc@x.co', checkIn: '${d43(21)}', checkOut: '${d43(24)}', adults: 2, children: 0, payment: 'deposit', depositPaid: 100, agreedPrice: { total: 500 } }];`, ctx);
+        let cRow = (ctx.cmdkCommand('move bob back a week and send the confirmation', ctx.todayDashed()) || [])[0];
+        check('§43G suffix: the move still parses with the clause attached', !!cRow && /^Move Bob Carter:/.test(cRow.label || ''), cRow ? cRow.label : '(none)');
+        check('§43G suffix: …and the proposal notes the re-send ask', !!cRow && /saving offers to re-send their confirmation/.test(cRow.sub || ''), cRow ? cRow.sub : '(none)');
+        cRow = (ctx.cmdkCommand('extend bob by 2 nights, then resend the confirmation email', ctx.todayDashed()) || [])[0];
+        check('§43G suffix: "then resend … email" variant strips too', !!cRow && /^Extend Bob Carter:/.test(cRow.label || '') && /re-send their confirmation/.test(cRow.sub || ''), cRow ? (cRow.label + ' | ' + cRow.sub) : '(none)');
+        cRow = (ctx.cmdkCommand('move bob back a week', ctx.todayDashed()) || [])[0];
+        check('§43G suffix: a plain move carries NO re-send note', !!cRow && !/re-send/.test(cRow.sub || ''), cRow ? cRow.sub : '(none)');
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+    } else fail('cmdkIntent / chbConvPatch missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

@@ -3151,6 +3151,31 @@ occupancy, `top line` → revenue, `how's trade` / `state of play` → the pulse
 a none-example (measured: collides with "who checks out before noon"); the intent tier
 already answers it end-to-end, so the tier-3 model-level accept is harmless.
 
+**Scope batch — five more deterministic families + two structural widenings** (admin.js,
+gated by search-test §43). The families (`CHB_RATING_Q` / `CHB_EXPENSE_Q` / `CHB_PLAN_Q` /
+`CHB_LAPSED_Q` / `CHB_WAITLIST_Q`, branch 0b9 in cmdkIntent): **reputation** (allReviews()
+averaged overall + per cottage — an unassigned review still counts overall, and no date
+claims because review dates are unreliable), **expenses** (tax-year framed like the books,
+`expensesForYear`/`taxYearStartOf`, category drill-down against `EXPENSE_CATS`), **payment
+plans** (`chbAutopayRows` — the hub/Money derivation, never a second one), **lapsed guests**
+(`chbCustomers`, last stay >180 days, nothing upcoming, Email action per row) and
+**waitlist** (a session cache filled by `cmdkWaitlistMerge`). Three placement rules, each
+learned by a failing gate: **0b9 sits ABOVE the insights branch** — CHB_LAPSED_Q must beat
+the repeat family's `\brebook` ("who HASN'T rebooked" is the lapsed question), and insights'
+generic tail would otherwise claim any INSIGHTS_RE-shaped query these declined; **bare
+"who's waiting" stays the enquiries answer** (golden-pinned) — CHB_WAITLIST_Q requires the
+list's own name or a space/dates object; and the expenses/waitlist stores **fetch
+stamp-guarded from cmdkSearchCore only while genuinely unloaded** (`__expTried` /
+`Array.isArray(__wlCache)` — a tried-and-EMPTY store answers "nothing logged", an unloaded
+one stays silent; the loop-proofing is the gate condition, not the merge). Structural:
+**`chbConvPatch` takes ONE two-slot pair** — cottage + period together ("just jollyboat
+last year"), both halves parsing exactly, the cottage half still marked; metric never joins
+a pair, so a full question is still never a refinement. And **`cmdkCommand` strips a
+compound suffix** ("…and send the confirmation") before the guest-name captures and notes
+it on the move/extend proposal — honest because a dates change is MATERIAL, so saving
+already raises the re-send ask; the note says where it appears, never promising an
+auto-send.
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,
