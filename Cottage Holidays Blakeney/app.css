@@ -2641,12 +2641,8 @@ a.card {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Roomy gaps above (below the close X) and below (before the summary card) so the
-     step row has clear breathing room and doesn't feel crowded.
-     No right inset: the close (X) is a normal in-flow button that sits on its own
-     line ABOVE this row (never absolutely positioned), so nothing overlaps here —
-     the row gets the full width, which is what keeps the three labels from
-     clipping on narrow phones. */
+  /* No right inset: the close X is in-flow on its own line above, so this row
+     gets the full width — which is what keeps the three labels from clipping. */
   margin: 26px 0 24px;
 }
 .enq-prog-step {
@@ -2660,12 +2656,9 @@ a.card {
   padding-left: 26px;
   transition: color 0.3s var(--fluid-bezier);
 }
-/* Narrow phones: the three labels + connectors must FIT, never clip — shrink
-   the type and tuck the gaps instead of cutting off "Account". The label size
-   is FLUID rather than a tuned constant: the connectors are flex:1 so they
-   shrink to nothing first, after which the nowrap labels are the floor and any
-   fixed size eventually clips. Scaling with the viewport keeps the row intact
-   all the way down to the narrowest phones instead of fitting one test width. */
+/* Narrow phones: the label size is FLUID, not a tuned constant — the flex:1
+   connectors shrink to nothing first, then the nowrap labels are the floor, so
+   any fixed size eventually clips "Account" at SOME width. */
 @media (max-width: 480px) {
   .enq-progress {
     gap: 6px;
@@ -2740,6 +2733,131 @@ a.card {
   letter-spacing: 1px;
   color: var(--text-muted);
   margin: 18px 0 6px;
+}
+/* The enquiry form's personable layer (the approved demo): the family-run
+   trust note, the returning-guest banner, the quiet seasonal reaction, the
+   in-flow quick-ask, the Your-details status circle and the sent receipt. */
+.enq-host {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.12);
+}
+.enq-host-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.enq-host-t {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.enq-host-s {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: 1px;
+}
+.enq-wb {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--info-bg);
+  border: 1px solid color-mix(in srgb, var(--info) 40%, transparent);
+  font-size: 0.84rem;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+.enq-wb b {
+  color: var(--info-text);
+}
+.enq-react {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: -6px 0 14px;
+}
+.enq-faq-ask {
+  display: flex;
+  gap: 8px;
+}
+.enq-faq-ask input {
+  flex: 1;
+  min-width: 0;
+}
+.enq-faq-ask .btn-glass {
+  padding: 10px 20px;
+  flex: 0 0 auto;
+}
+.enq-faq-a {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-light);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--glass-border);
+  margin-bottom: 8px;
+}
+.enq-faq-a small {
+  color: var(--text-muted);
+  display: block;
+  margin-top: 4px;
+}
+/* ONE status circle on the Your-details heading — the hub's dot vocabulary
+   (green recorded, red outstanding): a red ring while anything still stops
+   the send, a green ✓ when the shared ladder says it would go. */
+.enq-dot {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  vertical-align: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+.enq-dot.todo {
+  border: 1.5px solid color-mix(in srgb, var(--danger) 65%, transparent);
+}
+.enq-dot.done {
+  border: 1.5px solid color-mix(in srgb, var(--ok) 50%, transparent);
+  /* 14%, not 20: --ok-text is tuned for the capsules' 14% tint and a deeper
+     fill drops it to 4.45:1 in light mode (a11y §1b measured it). */
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok-text);
+}
+.enq-dot.done::after {
+  content: '✓';
+}
+.enq-sent-sum {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.86rem;
+  color: var(--text-light);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  margin-top: 12px;
 }
 /* Dates verdict capsule on the enquiry trigger + the in-place waitlist offer +
    the spoken payment schedule (the approved booking-flow demo). */
