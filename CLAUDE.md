@@ -4721,10 +4721,16 @@ The pieces: **keysafe-lib.php** (pure — `keysafe_bad` refuses runs/repeats/jun
 `keysafe_generate` excludes this cottage's recent codes AND the other cottages' current
 ones, the reveal window; gated by test-keysafe.php, CI-wired), **keysafe.php** (admin,
 route_actions; `confirm` rides the op ledger so the offline capture replays exactly
-once), the **duty** (`chbDuties` kind `keysafe`: fires when `forBooking` ≠ the stay in
-residence / arriving next — `keysafeNextBooking`, ONE definition the page, duty and
-dialog all read; RED once the next guest's reveal window is open; an unloaded mirror
-mints NO duty — never from ignorance), and the **offline capture** (`odsKeysafe`:
+once), the **duty** (`chbDuties` kind `keysafe`, TIME-AWARE via **`keysafeDue`** —
+ONE derivation the duty, the page's capsule/sub and its pulse all read: a guest IN
+RESIDENCE whose code isn't recorded is SCHEDULED ("rotate at changeover", amber on
+the page, NO strip row — rotating mid-stay locks out the guest using the code; the
+owner's screenshot was two RED rows about in-residence Airbnb guests). Because
+`keysafeNextBooking` drops the departing stay on checkout morning, the ask fires
+exactly at changeover, named for the INCOMING guest — RED when their reveal window
+is open or they arrive today, amber further out; an unloaded mirror mints NO duty —
+never from ignorance; the day sheet was already arrival-window-only, no change),
+and the **offline capture** (`odsKeysafe`:
 on-device `crypto.getRandomValues`, queued confirm, local mirror update so the sheet
 stops nagging before the signal returns; the mirror rides the snapshot as `ks`,
 last-seen kept like the ops notes). Gated by ui-test-keysafe.js (38 checks; §5b's

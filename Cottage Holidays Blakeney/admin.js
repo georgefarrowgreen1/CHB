@@ -17305,22 +17305,22 @@ function chbDuties() {
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
-    // 1a-ks) A KEY SAFE DUE A ROTATION. The record says which booking the
-    // safe is set FOR; when that isn't the stay in residence / arriving next,
-    // the code a past guest holds still opens the door. Red once the next
-    // guest's reveal window is open (their booking page is due the code and
-    // has nothing to show). No mirror loaded → no duty — never from ignorance.
+    // 1a-ks) A KEY SAFE DUE A ROTATION — TIME-AWARE (keysafeDue, the one
+    // derivation). A rotation lands on the strip only when it can be DONE:
+    // never while the unrotated safe's guest is still in residence (their
+    // code is the one on the dial — the page schedules it for changeover
+    // instead), red when the incoming guest's reveal window is open or they
+    // arrive today, amber further out. No mirror → no duty, never from
+    // ignorance.
     try {
         if (__keysafe) Object.keys(__keysafe).forEach((pk) => {
-            const rec = __keysafe[pk] || {};
-            if (rec.enabled === false) return; // switched off for this cottage
-            const next = keysafeNextBooking(pk);
-            if (!next || keysafeSetFor(rec, next)) return;
-            const soon = dpParse(next.checkIn).getTime() - t0 <= __keysafeDays * dayMs;
+            const d0 = keysafeDue(pk, __keysafe[pk] || {});
+            if (d0.state !== 'due' && d0.state !== 'later') return;
+            const next = d0.next;
             out.push({
-                kind: 'keysafe', sev: soon ? 'danger' : 'warn', ic: 'alert',
+                kind: 'keysafe', sev: d0.state === 'due' ? 'danger' : 'warn', ic: 'alert',
                 label: `Rotate ${pname(pk)}’s key safe`,
-                sub: `${next.name || 'The next guest'} ${next.checkIn <= today ? 'is in residence' : 'arrives ' + fmtDate(next.checkIn)} — their code isn’t on the safe yet`,
+                sub: `${next.name || 'The next guest'} arrives ${next.checkIn === today ? 'today' : fmtDate(next.checkIn)} — their code isn’t on the safe yet`,
                 act: 'Rotate', go: chbAttrs('openKeysafe'),
                 board: 'today', scope: 'bookings',
                 run: () => { closeCmdK(); openKeysafe(); },
@@ -17979,6 +17979,23 @@ function keysafeSetFor(rec, next) {
     if (!rec || !rec.code || !next) return false;
     return next.ota ? (rec.forStay || '') === next.ref : Number(rec.forBooking) === Number(next.dbId);
 }
+// TIME-BASED: a rotation is only ASKED FOR when it can be done. A stay under
+// way is USING the code on the dial — rotating mid-stay locks its guest out —
+// so an unrotated occupied safe is SCHEDULED ('inres'), never an alarm.
+// keysafeNextBooking drops the departing stay on checkout morning, so the ask
+// fires at changeover, named for the INCOMING guest: 'due' (red) once their
+// reveal window is open or they arrive today, 'later' (amber) further out.
+// ONE derivation — duty, page capsule/sub and pulse all read this.
+function keysafeDue(pk, rec) {
+    if (!rec || rec.enabled === false) return { state: 'off', next: null };
+    const next = keysafeNextBooking(pk);
+    if (!next) return { state: 'none', next: null };
+    if (keysafeSetFor(rec, next)) return { state: 'ok', next };
+    const today = todayDashed();
+    if (next.checkIn < today) return { state: 'inres', next };
+    const soon = dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
+    return { state: soon ? 'due' : 'later', next };
+}
 async function openKeysafe() {
     nav('view-keysafe'); // navigate first, load second — the poor-signal rule
     renderKeysafe();
@@ -18005,10 +18022,13 @@ function renderKeysafe() {
         // Switched off: HIDDEN from this page entirely (owner-asked — no
         // off-card, no footnote). The way back on is the Settings checkbox.
         if (rec.enabled === false) return null;
-        const next = keysafeNextBooking(pk);
-        const nextMine = keysafeSetFor(rec, next);
-        const soon = next && dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
-        const due = !!(next && !nextMine && soon);
+        // The TIME-AWARE verdict (keysafeDue — the same derivation the duty
+        // reads): only 'due' is the alarm that hoists; an unrotated safe
+        // whose guest is still IN residence is scheduled for changeover.
+        const d0 = keysafeDue(pk, rec);
+        const next = d0.next;
+        const nextMine = d0.state === 'ok';
+        const due = d0.state === 'due';
         const forGuest = (() => {
             if ((rec.forStay || '').charAt(0) === 'o') return 'a platform guest';
             if (!rec.forBooking) return '';
@@ -18028,10 +18048,23 @@ function renderKeysafe() {
                 ? stCap('ok', 'Code on the safe')
                 : due
                   ? stCap('bad', 'rotate now')
-                  : stCap('warn', 'new code needed');
+                  : d0.state === 'inres'
+                    ? stCap('warn', 'rotate at changeover')
+                    : stCap('warn', 'new code needed');
+        // The sub tells the TIMED story: an in-residence guest names the day
+        // the rotation becomes possible; an arrival names the day it's needed.
+        const whenTxt = next
+            ? next.checkIn < today
+                ? 'in residence until ' + fmtDate(next.checkOut)
+                : next.checkIn === today
+                  ? 'arrives today'
+                  : 'arrives ' + fmtDate(next.checkIn)
+            : '';
         const sub = next
-            ? e((next.name || 'Next guest') + ' · ' + (next.checkIn <= today ? 'in residence' : 'arrives ' + fmtDate(next.checkIn)))
-                + (nextMine ? '' : forGuest ? e(' · code is still ' + forGuest + '’s') : ' · no code set for them')
+            ? e((next.name || 'Next guest') + ' · ' + whenTxt)
+                + (nextMine ? ''
+                    : d0.state === 'inres' ? e(' · rotate once they’ve gone')
+                    : forGuest ? e(' · code is still ' + forGuest + '’s') : ' · no code set for them')
             : rec.setAt
               ? e('last set ' + fmtDate(String(rec.setAt).slice(0, 10)) + (forGuest ? ' · for ' + forGuest : ''))
               : 'rotate it once and the keeper takes over';
