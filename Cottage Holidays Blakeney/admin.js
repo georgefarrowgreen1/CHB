@@ -9230,9 +9230,12 @@ function manageVerdicts() {
     if (stoppedN) parts.push(stoppedN === 1 ? 'one automation needs a look' : stoppedN + ' automations need a look');
     if (modN) parts.push(modN === 1 ? '1 approval waiting' : modN + ' approvals waiting');
     if (teachN) parts.push(teachN === 1 ? '1 search to teach' : teachN + ' searches to teach');
+    // Scoped to what this pulse measures — "everything is running" sat
+    // beside the health pill's "1 thing needs a look" (the FULL check's
+    // knowledge), two verdicts about one screen disagreeing.
     const pulse = parts.length
         ? parts.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.'
-        : 'Everything the site runs by itself is running.';
+        : 'Daily jobs and calendar feeds are running.';
 
     // Exceptions — the faults that can cost real money lead; a clean day
     // renders no red at all.
@@ -12544,7 +12547,7 @@ function calendarPropBoxHtml(key, label, data) {
                     <div style="margin-top:2px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('runSync', String(key))}>Sync now</button>
-                        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
+                        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;white-space:nowrap;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
                     </div>
                     <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
                 </div>`;
@@ -13319,8 +13322,8 @@ async function renderSweep(refetch) {
         box.innerHTML = `<div class="accounts-empty">Couldn't work out the deposits still owed back, so there's no safe figure to give you. Try again in a moment.</div>`;
         return;
     }
-    const gbp = (n) => '£' + Number(n || 0).toFixed(2);
-    // Starts from what the owner last stated, ROLLED FORWARD by what Square has done
+    // (The GLOBAL gbp renders every figure here — a comma-less local shadow
+    // painted £1852.62 on the headline.) Starts from what the owner last stated, ROLLED FORWARD by what Square has done
     // since (payouts_balance_estimate) — an estimate, and labelled as one.
     const est = (L.balance && L.balance.estimate) || null;
     if (__sweepBalance === '' && est && !__sweepBalTouched) __sweepBalance = String(est.estimate.toFixed(2));
@@ -13760,7 +13763,6 @@ async function sweepMarkTransferred() {
     const P = (__sweepLiab && __sweepLiab.payouts) || null;
     const items = (P && P.items && P.items.inBank) || [];
     if (!items.length) return;
-    const gbp = (n) => '£' + Number(n || 0).toFixed(2);
     const ok = await glassConfirm(
         `Mark ${gbp(P.inBank)} as transferred out?\n\n${items.length === 1 ? 'This payment stops' : 'These ' + items.length + ' payments stop'} counting towards what you can move. You can put ${items.length === 1 ? 'it' : 'them'} back if you change your mind.`,
         'Yes, I have transferred it',
@@ -14651,7 +14653,7 @@ function renderMoneyOverview() {
     // The pulse line — money in this month, paced against last year to the
     // same point (the yoy derivation above).
     const monthIn = months[11] ? months[11].received : 0;
-    const pulse = `${gbp(monthIn)} in this month${yoy.revLast > 0 ? ` · ${revDelta.txt} vs last year to this point` : receivedTY > 0 ? ` · ${gbp(receivedTY)} received in ${taxYearShort(curTY)}` : ''}`;
+    const pulse = `${monthIn > 0.005 ? gbp(monthIn) + ' in this month' : 'Nothing in yet this month'}${yoy.revLast > 0 ? ` · ${revDelta.txt} vs last year to this point` : receivedTY > 0 ? ` · ${gbp(receivedTY)} received in ${taxYearShort(curTY)}` : ''}`;
 
     // Exceptions first — a clean day renders no red section at all. The
     // Square-hasn't-said row joins asynchronously (its data is the payout
@@ -14685,9 +14687,11 @@ function renderMoneyOverview() {
             escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' due now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' not due yet' : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
         : bhubFoldGrp('mocollect', '<span style="color:var(--ok);">To collect</span>',
-            // "Paid up" is a claim — with an overdue row above it would be false.
+            // "Paid up" is a claim — with an overdue row above, the sub AND
+            // the capsule both stand down (green ✓ beside a red exception is
+            // the colour contradicting the words).
             overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
-            stCap('ok', 'Paid up'),
+            overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
     const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok);">To move out</span>', 'what Square has paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
@@ -14891,7 +14895,7 @@ function renderMoneyPanel() {
     // Collected-vs-owed at a glance: a donut beside the headline figure.
     const owedBanner = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
                 ${osDonut(collectedPct, 'var(--accent)')}
-                <div style="min-width:0;">${owedText}
+                <div style="min-width:0;flex:1 1 220px;">${owedText}
                     <div class="os-sub" style="margin-top:4px;">${gbp(receivedTotal)} collected of ${gbp(receivedTotal + owedTotal)} due on upcoming stays</div>
                 </div></div>`;
     // Find-rows, not action cards: the booking hub's Money card is the ONE
