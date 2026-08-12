@@ -385,6 +385,10 @@ body.light-mode {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* Three pills crushed the IDENTITY pill to one letter at 390px (the
+     no-shrink chips took the row; the ellipsised tag absorbed it all) —
+     wrapping drops the extra chip to a second line instead. */
+  flex-wrap: wrap;
 }.bk-row-top .bk-chip {
   flex-shrink: 0;
   white-space: nowrap;

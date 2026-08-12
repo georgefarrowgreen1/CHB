@@ -142,6 +142,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       attnHidden: !cap || cap.getClientRects().length === 0,
       books: (document.getElementById('mo-books-fig') || {}).textContent || '',
       recent: (document.getElementById('mo-recent-sum') || {}).textContent || '',
+      // The CAPSULE must not assert what the sub avoids: a green "✓ Paid up"
+      // beside a red overdue exception is the colour contradicting the words.
+      collectGreenCap: !!el.querySelector('[data-grp="mocollect"] .st-cap.is-ok'),
+      collectCapTxt: ((el.querySelector('[data-grp="mocollect"] .st-cap') || {}).textContent || '').trim(),
     };
   });
   ok(['mocollect', 'momove', 'moback', 'mobooks', 'morecent', 'motrends'].every((k) => ov.grps.includes(k)), `the five verdicts + trends render (${ov.grps.join(',')})`);
@@ -152,6 +156,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!ov.attnHidden, 'the overdue balance raises the Needs-attention caption');
   ok(ov.grps.includes('mood0'), 'the overdue booking is an exception row, not a queue row');
   ok(/To collect/.test(ov.collect) && /overdue one is above/.test(ov.collect), `To collect never claims "paid up" over an overdue row (${ov.collect.slice(0, 90)})`);
+  // …and neither does its capsule (break-tested: reverting the capsule to the
+  // unconditional green stCap('ok','Paid up') fails this while the sub check
+  // above stays green — the sub was fixed first and the capsule shipped on).
+  ok(!ov.collectGreenCap && /nothing due/.test(ov.collectCapTxt), `the capsule follows the sub — grey "nothing due", never a green ✓ over an overdue row (${ov.collectCapTxt})`);
   ok(/Overdue — Owes Money/.test(ov.overdueRow) && /£490/.test(ov.overdueRow), `the exception row names the guest at the deposit-folded £490 (${ov.overdueRow.slice(0, 80)})`);
   // The exception's figure is a red capsule carrying the warning triangle —
   // and it is the row's ONE mark (the label's red dot came off with it).
@@ -365,6 +373,30 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // rental £440 + £50 damages deposit = £490, matching the row's chip.
   ok(/£490/.test(pay1.owedLine), `owed banner equals the sum of its rows, £490 (${pay1.owedLine.trim().slice(0, 60)})`);
   ok(/£100/.test(pay1.depQueue) && pay1.depReturnBtn && pay1.depKeepBtn, 'deposits-to-return queue: £100 held + Return/Keep buttons');
+  // THE IDENTITY PILL SURVIVES THREE PILLS AT PHONE WIDTH (the UI pass:
+  // "Pimpernel" crushed to "P" under paid-state + arrives-soon chips — the
+  // no-shrink chips took the row and the ellipsised tag absorbed it all).
+  // The arrives-soon chip is INJECTED (the §14 discipline): the fixture's
+  // ower arrives in 20 days so the real row never carries it, and the first
+  // draft of this check passed with the fix deleted. Break-tested: removing
+  // .bk-row-top's flex-wrap reproduces the crush against the injected chip.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const tagFit = await page.evaluate(() => {
+    const row = document.querySelector('#money-panel .bk-row .bk-row-top');
+    const tag = row && row.querySelector('.prop-tag');
+    if (!row || !tag) return null;
+    const chip = document.createElement('span');
+    chip.className = 'bk-chip danger';
+    chip.innerHTML = '<span class="bk-dot"></span>Arrives in 4d';
+    row.appendChild(chip);
+    const out = { txt: tag.textContent, clipped: tag.scrollWidth > tag.clientWidth + 1 };
+    chip.remove();
+    return out;
+  });
+  ok(!!tagFit && !tagFit.clipped, `the cottage pill never crushes under the status chips (${tagFit && tagFit.txt} fits)`);
+  await page.setViewportSize({ width: 1280, height: 950 });
+  await page.waitForTimeout(300);
 
   // row → hub → Record payment (glass form) → posts set_payment → paid
   await page.click('#money-panel .bk-row');
@@ -1252,7 +1284,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const sB = await sweepText();
   const balVal = await page.inputValue('#sweep-balance');
   ok(balVal === '2530.13', `the field starts from the rolled-forward figure (${balVal})`);
-  ok(/estimate/.test(sB) && /£2000\.00 you told me/.test(sB), 'labelled an estimate, from the figure they stated');
+  // £2,000.00 — the HOUSE gbp with its thousands separator: two local
+  // comma-less shadows of the formatter painted £1852.62 on the sweep's own
+  // headline (the UI pass) and this check had pinned the shadow's format.
+  ok(/estimate/.test(sB) && /£2,000\.00 you told me/.test(sB), 'labelled an estimate, from the figure they stated');
   ok(/plus £604\.05 Square has paid in since/.test(sB) && /less £73\.92 it has taken back/.test(sB), 'and it shows its working both ways');
   ok(/Remember this balance/.test(sB), 'with a way to store the corrected figure');
   // Typing must never be overwritten by a re-render.
