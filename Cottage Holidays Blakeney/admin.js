@@ -6686,12 +6686,27 @@ function chbHistoryClean(q) {
 // as before, and an index built pre-encoder rebuilds once it arrives (the
 // CHB_HIST.enc stamp). On any load failure it stands down for the session.
 const CHB_ENC = {
-    url: 'encoder.onnx?v=1',
+    // bge-small-en-v1.5 int8 (~34MB, MIT) — replaced all-MiniLM-L6-v2 after a
+    // 22-query history bench through THIS pipeline: 22/22 top-1 / MRR 1.000 vs
+    // MiniLM's 21/22 / .977, perfect on the zero-lexical-overlap hard set,
+    // ~30ms/embed. Same 384 dims + the SAME bert-base-uncased vocab, so
+    // encoder-vocab.json and the index plumbing are untouched.
+    url: 'encoder.onnx?v=2',
     vocabUrl: 'encoder-vocab.json?v=1',
     ortUrl: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js',
     ortSri: 'sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp',
-    ver: 1, // stamps CHB_HIST.enc so pre-encoder indexes rebuild once it lands
-    thresh: 0.3, // MiniLM cosine floor — genuine matches ~0.35-0.55, unrelated mostly <0.25 (bench-swept)
+    ver: 2, // stamps CHB_HIST.enc so MiniLM-built indexes rebuild once bge lands
+    // bge cosines run HOT and tight: bench-swept floor. 0.50 keeps the
+    // borderline genuine matches (pet→labrador measured 0.501) at the cost of
+    // ONE synthetic unrelated top (0.51) leaking — and truly unrelated queries
+    // rarely reach this ranking at all, because cmdkSemanticHistory only fires
+    // for history-SHAPED queries. 0.52 rejected 8/8 unrelated but dropped the
+    // pet-class recalls; MiniLM's old 0.30 would admit most unrelated outright.
+    thresh: 0.5,
+    // bge is trained with an instruction prefix on the QUERY side only —
+    // passages embed bare. Skipping it costs measured recall (13/14 → 14/14
+    // on the first bench cut).
+    qPrefix: 'Represent this sentence for searching relevant passages: ',
     st: null, loading: false, failed: false,
 };
 // BERT WordPiece against the encoder's own vocab (ids differ from Darkstar's
@@ -6898,7 +6913,7 @@ async function cmdkSemanticHistory(ql) {
     // keyword-stripped bag chbHistoryClean produces for the LIKE/static path
     // (the style mismatch is exactly what a sentence transformer handles worst).
     const rows = (CHB_HIST.enc && CHB_ENC.st)
-        ? chbHistoryRank(await CHB_ENC.st.embed(String(ql || '').trim()), 5)
+        ? chbHistoryRank(await CHB_ENC.st.embed(CHB_ENC.qPrefix + String(ql || '').trim()), 5)
         : chbHistorySemantic(chbHistoryClean(ql), 5);
     if (stamp !== __cmdkSemStamp || gen !== __cmdkQueryGen) return; // the query embed awaited — re-check
     if (!rows.length) return;

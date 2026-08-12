@@ -2801,10 +2801,29 @@ So "did any guests complain about noise" finds a review that says "the neighbour
 
 **Darkstar-C** (admin.js) — the CONTEXTUAL sentence encoder that upgrades the history
 meaning-index. Where the static Darkstar table is an order-blind mean of word vectors,
-this is a full transformer: **all-MiniLM-L6-v2** (Apache-2.0), quantised int8 ONNX —
-committed + deployed as **`encoder.onnx`** (~23MB, versioned by `?v=` in `CHB_ENC.url`)
+this is a full transformer: **bge-small-en-v1.5** (MIT), quantised int8 ONNX —
+committed + deployed as **`encoder.onnx`** (~34MB, versioned by `?v=` in `CHB_ENC.url`)
 with its BERT WordPiece vocab in **`encoder-vocab.json`** (ids differ from Darkstar's
-trimmed table — the tokenizers can't be shared; `chbEncTokens`). Runtime is
+trimmed table — the tokenizers can't be shared; `chbEncTokens`). It replaced
+all-MiniLM-L6-v2 on a 22-query history bench through the REAL chbEncLoad pipeline:
+**22/22 top-1 / MRR 1.000 vs 21/22 / .977**, perfect on the zero-lexical-overlap hard
+set, ~30ms/embed. Three facts a future swap must keep: **the QUERY side carries bge's
+instruction prefix** (`CHB_ENC.qPrefix`, applied at the ONE query-embed site in
+cmdkSemanticHistory — passages embed bare; skipping it cost a measured recall point);
+**the threshold is 0.50, not MiniLM's 0.30** (bge cosines run hot and tight — swept:
+0.50 keeps the borderline genuine matches, pet→labrador measured 0.501, at the cost
+of ONE synthetic unrelated top at 0.51; 0.52 rejected 8/8 unrelated but dropped the
+pet-class recalls, and truly unrelated queries rarely reach this ranking because
+cmdkSemanticHistory only fires for history-SHAPED queries. MiniLM's 0.30 would admit
+most unrelated outright); and the vocab is byte-identical bert-base-uncased, so
+encoder-vocab.json did not change. `CHB_ENC.ver` 2 rebuilds MiniLM-built indexes.
+**The STATIC table was benched for the same upgrade and REFUSED** — darkstar.bin is
+potion-base-8M (Model2Vec, see darkstar-build.js); potion-base-32M (63k×512, 31.6MB)
+was built and run through search-test §20: it produced a WRONG INTENT ("expected
+guests for tonight"→upcoming bookings) that NO margin setting fixes (min/noneMargin/
+veto swept — a proximity inversion, not a threshold miss) and its best recall (110)
+trails the 8M's 111. The corpus is precision-tuned to the 8M geometry; don't retry a
+bigger table without planning a corpus retune. Runtime is
 **onnxruntime-web** (MIT) SRI-pinned from jsdelivr — the CSP already allows it
 (script/connect: jsdelivr; WASM under 'unsafe-eval'; `ort.env.wasm.proxy=true` runs
 inference in a blob worker so index builds never jank the UI; numThreads=1 — no
