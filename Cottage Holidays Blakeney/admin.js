@@ -17968,13 +17968,13 @@ function keysafeNextBooking(pk) {
     let best = null;
     ((dbBookings || {})[pk] || []).forEach((b) => {
         if (!b || !b.checkIn || !b.checkOut || b.checkOut <= today) return;
-        if (!best || b.checkIn < best.checkIn) best = { dbId: b.dbId, name: b.name || '', checkIn: b.checkIn, checkOut: b.checkOut, ota: false, ref: 'b:' + b.dbId };
+        if (!best || b.checkIn < best.checkIn) best = { dbId: b.dbId, name: b.name || '', checkIn: b.checkIn, checkOut: b.checkOut, inAt: b.checkInTime || '15:00', ota: false, ref: 'b:' + b.dbId };
     });
     ((dbBlocks || {})[pk] || []).forEach((bl) => {
         if (!isOtaBlock(bl) || bl.checkOut <= today) return;
         if (!best || bl.checkIn < best.checkIn) {
             const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'Platform';
-            best = { dbId: 0, name: src + ' guest', checkIn: bl.checkIn, checkOut: bl.checkOut, ota: true, ref: 'o:' + bl.checkIn };
+            best = { dbId: 0, name: src + ' guest', checkIn: bl.checkIn, checkOut: bl.checkOut, inAt: '15:00', ota: true, ref: 'o:' + bl.checkIn };
         }
     });
     return best;
@@ -18018,6 +18018,13 @@ function keysafeDue(pk, rec) {
     if (keysafeSetFor(rec, next)) return { state: 'ok', next };
     const today = todayDashed();
     if (next.checkIn < today) return { state: 'inres', next };
+    // The ARRIVAL side of the same clock: past today's check-in time the
+    // guest is behind the door too — scheduled, never red "now" (OTA
+    // arrivals carry no time: the house 15:00).
+    if (next.checkIn === today) {
+        const im = String(next.inAt || '15:00').split(':');
+        if (ukNowMinutes() >= (parseInt(im[0], 10) || 0) * 60 + (parseInt(im[1], 10) || 0)) return { state: 'inres', next };
+    }
     const soon = dpParse(next.checkIn).getTime() - dpParse(today).getTime() <= __keysafeDays * 86400e3;
     if (!soon) return { state: 'later', next };
     const dep = keysafeDeparting(pk);
@@ -18087,7 +18094,7 @@ function renderKeysafe() {
         // The sub tells the TIMED story: an in-residence guest names the day
         // the rotation becomes possible; an arrival names the day it's needed.
         const whenTxt = next
-            ? next.checkIn < today
+            ? d0.state === 'inres' || next.checkIn < today
                 ? 'in residence until ' + fmtDate(next.checkOut)
                 : next.checkIn === today
                   ? 'arrives today'
