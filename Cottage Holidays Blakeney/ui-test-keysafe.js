@@ -166,6 +166,67 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // …and no mirror means NO duty — never a duty from ignorance.
   ok(await page.evaluate(() => { const keep = __keysafe; __keysafe = null; const n = chbDuties().filter((x) => x.kind === 'keysafe').length; __keysafe = keep; return n; }) === 0, 'an unloaded mirror mints no duty');
 
+  console.log('§4b the rotation is TIME-AWARE (keysafeDue — owner screenshot)');
+  // A guest IN RESIDENCE is USING the code on the dial — rotating mid-stay
+  // locks them out, so the strip must never ask for it (the screenshot showed
+  // two RED "rotate now" rows about Airbnb guests still in the cottages).
+  // Break-tested: deleting keysafeDue's `checkIn < today` branch fails the
+  // no-duty check AND flips the capsule back to the red alarm.
+  const t1 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    const sh = (n) => ukShiftDays(t, n);
+    dbBookings.scratch = [{ dbId: 81, name: 'Mid Stay', checkIn: sh(-1), checkOut: sh(2) }];
+    dbBlocks.scratch = [];
+    __keysafe.scratch = { code: '5917', setAt: '', forBooking: 999, forStay: 'b:999', enabled: true, history: [], name: 'Scratch Cottage' };
+    renderKeysafe();
+    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
+    return {
+      state: keysafeDue('scratch', __keysafe.scratch).state,
+      duty: chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label)).length,
+      capWarn: !!(card && card.querySelector('.st-cap.is-warn')),
+      capTxt: card ? (card.querySelector('.st-cap') || {}).textContent || '' : '',
+      sub: card ? (card.querySelector('.bhub-fold-sub') || {}).textContent || '' : '',
+      until: fmtDate(sh(2)),
+    };
+  });
+  ok(t1.state === 'inres' && t1.duty === 0, `a guest in residence mints NO rotation duty — never rotate under a mid-stay guest (${t1.state}, ${t1.duty})`);
+  ok(t1.capWarn && /rotate at changeover/.test(t1.capTxt), `the page schedules it instead — "${t1.capTxt}" in amber, not the red alarm`);
+  ok(t1.sub.includes('in residence until ' + t1.until) && /rotate once they’ve gone/.test(t1.sub), `and the sub names the day the rotation becomes possible (${t1.sub.slice(0, 70)})`);
+  // CHANGEOVER MORNING: the leaver drops out at checkout, so the ask fires
+  // exactly when it can be done — named for the INCOMING guest, red because
+  // their reveal window is open.
+  const t2 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    const sh = (n) => ukShiftDays(t, n);
+    dbBookings.scratch = [
+      { dbId: 82, name: 'Leaver', checkIn: sh(-3), checkOut: t },
+      { dbId: 83, name: 'Incoming Guest', checkIn: sh(1), checkOut: sh(4) },
+    ];
+    const d0 = chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || null;
+    return d0 && { sev: d0.sev, sub: d0.sub };
+  });
+  ok(!!t2 && t2.sev === 'danger' && /Incoming Guest/.test(t2.sub), `changeover morning: the duty fires red, named for the incoming guest (${t2 && t2.sub.slice(0, 50)})`);
+  // ARRIVAL DAY reads "arrives today" — never "is in residence" of a guest
+  // who can't get in without the new code.
+  const t3 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    dbBookings.scratch = [{ dbId: 84, name: 'Today Guest', checkIn: t, checkOut: ukShiftDays(t, 3) }];
+    const d0 = chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || null;
+    return d0 && { sev: d0.sev, sub: d0.sub };
+  });
+  ok(!!t3 && t3.sev === 'danger' && /arrives today/.test(t3.sub), `an arrival-day rotation is red and says so (${t3 && t3.sub.slice(0, 46)})`);
+  // A FAR arrival is amber — real, not an alarm (the reveal window decides).
+  const t4 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    dbBookings.scratch = [{ dbId: 85, name: 'Far Guest', checkIn: ukShiftDays(t, 10), checkOut: ukShiftDays(t, 13) }];
+    const d0 = chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || null;
+    const out = d0 && { sev: d0.sev };
+    delete dbBookings.scratch; delete dbBlocks.scratch; delete __keysafe.scratch;
+    renderKeysafe();
+    return out;
+  });
+  ok(!!t4 && t4.sev === 'warn', `a far-off arrival stays amber until the reveal window opens (${t4 && t4.sev})`);
+
   console.log('§5 the offline shape');
   // (a) the day sheet's duty wiring: a row arriving today whose booking the
   // safe isn't set for → a keysafe duty routed to the CAPTURE.
