@@ -276,6 +276,38 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(t5.at1001.sev === 'danger' && /arrives today/.test(t5.at1001.sub), `10:01: they're out — red, plain arrival wording (${t5.at1001.sev})`);
   ok(t5.ota.sev === 'warn' && /leaves at 10:00/.test(t5.ota.sub), `an OTA departure defaults to the house 10:00 (${t5.ota.sev})`);
 
+  console.log('§4d …and the ARRIVAL time — the other side of the same clock');
+  // Once today's guest's check-in time has passed they're behind the door
+  // too: the rotation window was this morning, and red "now" would lock THEM
+  // out. Break-tested: deleting keysafeDue's arrival-time branch leaves the
+  // 15:30 case red all evening.
+  const t6 = await page.evaluate(() => {
+    const t = (window.todayDashed)();
+    const sh = (n) => ukShiftDays(t, n);
+    dbBookings.scratch = [{ dbId: 89, name: 'Teatime Guest', checkIn: t, checkOut: sh(3), checkInTime: '15:00' }];
+    dbBlocks.scratch = [];
+    __keysafe.scratch = { code: '5917', setAt: '', forBooking: 999, forStay: 'b:999', enabled: true, history: [], name: 'Scratch Cottage' };
+    const real = window.ukNowMinutes;
+    const duty = () => chbDuties().filter((x) => x.kind === 'keysafe' && /scratch/i.test(x.label))[0] || null;
+    window.ukNowMinutes = () => 14 * 60; // 14:00 — the changeover window
+    const before = { state: keysafeDue('scratch', __keysafe.scratch).state, duty: duty() };
+    window.ukNowMinutes = () => 15 * 60 + 30; // 15:30 — they're in
+    const after = { state: keysafeDue('scratch', __keysafe.scratch).state, duty: duty() };
+    renderKeysafe();
+    const card = [...document.querySelectorAll('.ks-card')].find((c) => /Scratch Cottage/.test(c.textContent));
+    const sub = card ? (card.querySelector('.bhub-fold-sub') || {}).textContent || '' : '';
+    window.ukNowMinutes = real;
+    delete dbBookings.scratch; delete dbBlocks.scratch; delete __keysafe.scratch;
+    renderKeysafe();
+    return { before, after, sub, until: fmtDate(sh(3)) };
+  });
+  ok(t6.before.state === 'due' && !!t6.before.duty && t6.before.duty.sev === 'danger',
+    `14:00 on arrival day: the changeover window — red rotate (${t6.before.state})`);
+  ok(t6.after.state === 'inres' && !t6.after.duty,
+    `15:30: they're behind the door — no duty, scheduled instead (${t6.after.state})`);
+  ok(t6.sub.includes('in residence until ' + t6.until) && /rotate once they’ve gone/.test(t6.sub),
+    `and the page treats them as in residence (${t6.sub.slice(0, 66)})`);
+
   console.log('§5 the offline shape');
   // (a) the day sheet's duty wiring: a row arriving today whose booking the
   // safe isn't set for → a keysafe duty routed to the CAPTURE.
