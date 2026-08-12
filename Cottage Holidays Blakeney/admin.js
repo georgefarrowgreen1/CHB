@@ -2605,10 +2605,73 @@ function chbModelStatusEls() {
 // is gone, so the streaming, the chunk reassembly and the wire-vs-decompressed
 // clamp all went with it — none of it was doing anything else. Search works
 // lexically the whole time a model is in flight, so there is nothing to report.
-async function chbFetchBuf(url) {
+// onProgress is OPT-IN and only the encoder's query-blocked fetch passes one —
+// the boot-time darkstar load stays silent on purpose (the removed ring's
+// ruling: never report background work nobody is waiting for). content-length
+// is WIRE bytes while chunks arrive DECOMPRESSED, so the fraction clamps at 1.
+async function chbFetchBuf(url, onProgress) {
     const r = await fetch(url);
     if (!r.ok) throw new Error('http ' + r.status);
-    return r.arrayBuffer();
+    if (!onProgress || !r.body || !r.body.getReader) return r.arrayBuffer();
+    const total = +r.headers.get('content-length') || 0;
+    const reader = r.body.getReader();
+    const chunks = [];
+    let got = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.byteLength;
+        if (total) onProgress(Math.min(1, got / total));
+    }
+    const out = new Uint8Array(got);
+    let o = 0;
+    chunks.forEach((c) => { out.set(c, o); o += c.byteLength; });
+    return out.buffer;
+}
+// ---- PROGRESS LIVES IN THE KNOT'S OWN LINE (the approved demo). The mark's
+// stroke is the progress track: a lit segment TRAVELS it while an answer is in
+// flight (chbKnotBusy — toggled ONLY by cmdkSetLoading, so the knot and the
+// sweep bar are one fact), and it DRAWS ITSELF to the real byte fraction during
+// the one download a query waits on (chbKnotLoad, from chbEncLoad). Colour
+// stays the model-state language — progress is motion on the stroke. ----
+function chbKnotSeat() {
+    const ml = document.getElementById('cmdk-ml');
+    if (!ml) return null;
+    if (ml.querySelector('.knot-live')) return ml;
+    const base = ml.querySelector('.cmdk-search-ic');
+    if (!base) return null;
+    const live = /** @type {SVGSVGElement} */ (base.cloneNode(true));
+    live.classList.add('knot-live');
+    live.setAttribute('aria-hidden', 'true'); // pure decoration — the sweep bar's role=status rows announce the wait
+    ml.appendChild(live);
+    const path = live.querySelector('path');
+    const len = path && path.getTotalLength ? path.getTotalLength() : 0;
+    if (len) {
+        // px UNITS are load-bearing: a unitless number inside the keyframe's
+        // calc() fails to parse as a dash-offset and the travel silently never
+        // moves (measured in the demo before this shipped).
+        ml.style.setProperty('--klen', len + 'px');
+        ml.style.setProperty('--kseg', len * 0.14 + 'px');
+        ml.style.setProperty('--kgap', len * 0.86 + 'px');
+    }
+    return ml;
+}
+function chbKnotBusy(on) {
+    const ml = chbKnotSeat();
+    if (ml) ml.classList.toggle('knot-busy', !!on);
+}
+function chbKnotLoad(frac) {
+    const ml = chbKnotSeat();
+    if (!ml) return;
+    if (frac == null) {
+        ml.classList.remove('knot-load');
+        ml.style.removeProperty('--kdone');
+        return;
+    }
+    const len = parseFloat(ml.style.getPropertyValue('--klen')) || 0;
+    ml.classList.add('knot-load');
+    ml.style.setProperty('--kdone', len * Math.max(0, Math.min(1, frac)) + 'px');
 }
 // Learning indicator: the assistant mark flashes ORANGE while the model absorbs
 // new inputs (a taught phrasing, a suppression, a cross-device merge) and
@@ -6763,7 +6826,15 @@ async function chbEncLoad() {
         // bytes to ort — the file is ~23MB, so the ring is the whole story.
         const [tokens, onnxBuf] = await Promise.all([
             fetch(CHB_ENC.vocabUrl).then((r) => { if (!r.ok) throw new Error('vocab http ' + r.status); return r.json(); }),
-            chbFetchBuf(CHB_ENC.url),
+            // The one download a query genuinely waits on: the knot draws
+            // itself to the real byte fraction — but ONLY while the search
+            // window is open (a background load stays silent, the removed
+            // ring's ruling).
+            chbFetchBuf(CHB_ENC.url, (f) => {
+                try {
+                    if (cmdkIsOpen()) chbKnotLoad(f);
+                } catch (e) {}
+            }),
         ]);
         const session = await ort.InferenceSession.create(new Uint8Array(onnxBuf), { executionProviders: ['wasm'] });
         const vocab = new Map();
@@ -6788,7 +6859,12 @@ async function chbEncLoad() {
         CHB_ENC.st = { embed, vocab };
     } catch (e) {
         CHB_ENC.failed = true; // stand down — the static path keeps serving
-    } finally { CHB_ENC.loading = false; }
+    } finally {
+        CHB_ENC.loading = false;
+        try {
+            chbKnotLoad(null); // the draw clears on success AND failure — a stuck part-drawn knot is a lie
+        } catch (e) {}
+    }
 }
 // ---- TRUE semantic recall over history. The on-device Darkstar model already
 // embeds text (darkstarVec = L2-normalised mean of token vectors); we fetch a
@@ -8037,10 +8113,15 @@ function cmdkSyncActive() {
     if (__cmdkSel >= 0 && __cmdkResults[__cmdkSel]) inp.setAttribute('aria-activedescendant', 'cmdk-opt-' + __cmdkSel);
     else inp.removeAttribute('aria-activedescendant');
 }
-// Toggle the slim federated-search progress sweep under the search field.
+// Toggle the slim federated-search progress sweep under the search field —
+// AND the knot's travelling segment, here in the one place, so the bar and
+// the mark can never disagree about whether work is in flight.
 function cmdkSetLoading(on) {
     const p = document.getElementById('cmdk-progress');
     if (p) p.classList.toggle('is-loading', !!on);
+    try {
+        chbKnotBusy(on);
+    } catch (e) {}
 }
 function cmdkRender(preserveScroll) {
     // A late async merge (server / semantic / pricing / directory rows landing

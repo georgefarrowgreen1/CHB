@@ -1664,6 +1664,55 @@ body.owner-mode header.header-condensed .logo-mark {
   color: var(--accent);
   transition: color 0.35s var(--fluid-bezier), opacity 0.35s var(--fluid-bezier);
 }
+/* PROGRESS LIVES IN THE KNOT'S OWN LINE. .knot-live is a runtime CLONE of the
+   mark (chbKnotSeat — one source of truth for the path) overlaid on it:
+   .knot-busy sends a lit segment TRAVELLING the stroke while cmdkSetLoading's
+   signal is up (the sweep bar and the knot are one fact, toggled in one
+   place); .knot-load DRAWS the stroke to the real byte fraction of the
+   encoder download (chbKnotLoad). Colour is untouched — the state language
+   rides currentColor into both copies, so progress and state compose.
+   --klen/--kseg/--kgap/--kdone carry px units: a unitless calc() in the
+   keyframe fails to parse as a dash-offset and the travel never moves. */
+#cmdk-ml .knot-live {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+#cmdk-ml .knot-live path {
+  stroke-dasharray: var(--kseg) var(--kgap);
+}
+#cmdk-ml.knot-busy .cmdk-search-ic:not(.knot-live),
+#cmdk-ml.knot-load .cmdk-search-ic:not(.knot-live) {
+  opacity: 0.25; /* the resting mark becomes the track under the live stroke */
+}
+#cmdk-ml.knot-busy .knot-live,
+#cmdk-ml.knot-load .knot-live {
+  visibility: visible;
+}
+#cmdk-ml.knot-busy .knot-live path {
+  animation: chb-knot-travel 1.6s linear infinite;
+}
+@keyframes chb-knot-travel {
+  to {
+    stroke-dashoffset: calc(-1 * var(--klen));
+  }
+}
+#cmdk-ml.knot-load .knot-live path {
+  animation: none; /* determinate wins if both classes are ever up */
+  stroke-dasharray: var(--kdone, 0px) var(--klen);
+  transition: stroke-dasharray 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The travel is decoration (the sweep bar's role=status rows carry the
+     news) — stand down to a firmer track. The determinate DRAW stays: it is
+     information, not decoration. */
+  #cmdk-ml.knot-busy .knot-live path {
+    animation: none;
+  }
+  #cmdk-ml.knot-busy .cmdk-search-ic:not(.knot-live) {
+    opacity: 0.6;
+  }
+}
 #cmdk-ml:not([data-mstate=""]) .cmdk-search-ic {
   color: inherit;
   opacity: 1;

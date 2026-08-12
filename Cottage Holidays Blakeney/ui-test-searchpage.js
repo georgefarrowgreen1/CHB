@@ -2005,6 +2005,88 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     && cats.jumpHome.join('|') !== cats.jumpAll.join('|'),
     `CATS: the landing's Jump-to is still shaped by the workspace ([${cats && cats.jumpHome}] vs [${cats && cats.jumpAll}])`);
 
+  // ---- 23. PROGRESS IN THE KNOT — the mark's own stroke is the progress
+  // track (the approved demo). Travel while cmdkSetLoading's signal is up
+  // (the knot and the sweep bar are ONE fact), determinate draw for the
+  // encoder download, px-unit custom props (a unitless calc() keyframe
+  // silently never moves — the demo's own measured bug), reduced-motion
+  // asserted via the CSSOM (Chromium's emulation lies about durations). ----
+  console.log('\n== 23. progress lives in the knot ==');
+  await page.evaluate(() => openCmdK());
+  await page.waitForTimeout(200);
+  const knot = await page.evaluate(async () => {
+    const out = {};
+    cmdkSetLoading(true);
+    const ml = document.getElementById('cmdk-ml');
+    out.busy = ml.classList.contains('knot-busy');
+    out.barOn = document.getElementById('cmdk-progress').classList.contains('is-loading');
+    out.clones = ml.querySelectorAll('.knot-live').length;
+    chbKnotSeat(); // idempotent — a second seat must not add a second clone
+    out.clonesAfterReseat = ml.querySelectorAll('.knot-live').length;
+    out.ariaHidden = ml.querySelector('.knot-live').getAttribute('aria-hidden') === 'true';
+    out.lenPx = /px$/.test(ml.style.getPropertyValue('--klen').trim());
+    // The travel must actually MOVE (the class alone passed while the px bug
+    // stood): sample the live path's dash-offset across a beat.
+    const p = ml.querySelector('.knot-live path');
+    const a = getComputedStyle(p).strokeDashoffset;
+    await new Promise((r) => setTimeout(r, 300));
+    out.moves = getComputedStyle(p).strokeDashoffset !== a;
+    out.trackDim = +getComputedStyle(ml.querySelector('.cmdk-search-ic:not(.knot-live)')).opacity < 0.5;
+    cmdkSetLoading(false);
+    out.busyCleared = !ml.classList.contains('knot-busy') && !document.getElementById('cmdk-progress').classList.contains('is-loading');
+    // Determinate draw: the real fraction lands as --kdone, clears on null.
+    chbKnotLoad(0.4);
+    const len = parseFloat(ml.style.getPropertyValue('--klen'));
+    const done = parseFloat(ml.style.getPropertyValue('--kdone'));
+    out.draw = ml.classList.contains('knot-load') && Math.abs(done - len * 0.4) < 1;
+    chbKnotLoad(null);
+    out.drawCleared = !ml.classList.contains('knot-load') && !ml.style.getPropertyValue('--kdone');
+    // Reduced motion: the rule that blanks the TRAVEL exists in the stylesheet
+    // (read selectorText first — modern Chromium gives every style rule a
+    // cssRules list, and recursing on that first skips them all).
+    out.rmRule = false;
+    for (const sheet of document.styleSheets) {
+      let rules = [];
+      try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (const r of rules) {
+        if (r.media && /prefers-reduced-motion/.test(r.media.mediaText)) {
+          for (const rr of r.cssRules || []) {
+            if (rr.selectorText && /knot-busy .knot-live path/.test(rr.selectorText) && /none/.test(rr.style.animation + rr.style.animationName)) out.rmRule = true;
+          }
+        }
+      }
+    }
+    // chbFetchBuf streams REAL progress: a stubbed two-chunk body with a
+    // content-length must report rising, clamped fractions and reassemble.
+    const oldFetch = window.fetch;
+    window.fetch = async () => new Response(new ReadableStream({
+      start(c) { c.enqueue(new Uint8Array([1, 2, 3])); c.enqueue(new Uint8Array([4, 5])); c.close(); },
+    }), { status: 200, headers: { 'content-length': '5' } });
+    const fracs = [];
+    const buf = await chbFetchBuf('x.bin', (f) => fracs.push(f));
+    window.fetch = oldFetch;
+    out.stream = fracs.length >= 2 && fracs[0] < fracs[1] && fracs.every((f) => f <= 1)
+      && new Uint8Array(buf).join(',') === '1,2,3,4,5';
+    return out;
+  });
+  ok(knot.busy && knot.barOn, 'cmdkSetLoading lights the knot AND the sweep bar — one fact, one toggle');
+  ok(knot.clones === 1 && knot.clonesAfterReseat === 1 && knot.ariaHidden,
+    'ONE aria-hidden live clone, and re-seating never adds a second');
+  ok(knot.lenPx, 'the length custom props carry px units (a unitless keyframe calc() never moves)');
+  ok(knot.moves, 'the lit segment actually TRAVELS the stroke (dash-offset changes between frames)');
+  ok(knot.trackDim, 'the resting mark dims to a track beneath the live stroke');
+  ok(knot.busyCleared, 'the signal down clears the knot and the bar together');
+  ok(knot.draw && knot.drawCleared, 'the determinate draw lands the real fraction and clears on null');
+  ok(knot.rmRule, 'reduced motion blanks the travel via a real stylesheet rule');
+  ok(knot.stream, 'chbFetchBuf streams rising clamped fractions and reassembles the bytes');
+  // The deliberate omission, gated: the boot-time darkstar load must pass NO
+  // progress callback (the removed ring's ruling — never report background
+  // work nobody is waiting for); the encoder's query-blocked fetch must.
+  const src = await page.evaluate(() => fetch('admin.js').then((r) => r.text()));
+  ok(/chbFetchBuf\(DARKSTAR\.url\)/.test(src), 'darkstar’s boot load stays SILENT (no progress callback)');
+  ok(/chbFetchBuf\(CHB_ENC\.url,\s*\(f\)/.test(src), '…while the encoder’s query-blocked fetch reports real bytes');
+  await page.evaluate(() => closeCmdK());
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
