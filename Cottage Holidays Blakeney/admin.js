@@ -10025,9 +10025,20 @@ function renderBookings() {
             }
         });
         sum.textContent = rows.length
-            ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` +
-              (owed > 0.005 ? ` · £${Math.round(owed).toLocaleString('en-GB')} still to collect` : '')
+            ? `· ${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}`
             : '';
+        // The money moved from summary PROSE into the caption's VERDICT capsule —
+        // COMPUTED from the rows on screen, never asserted (the To-collect
+        // zero-state rule): money due anywhere in the list keeps it amber, and
+        // only a list with nothing owed earns the ✓. An empty list claims nothing.
+        const verd = document.getElementById('bookings-verdict');
+        if (verd) {
+            verd.innerHTML = !rows.length
+                ? ''
+                : owed > 0.005
+                    ? stCap('warn', `£${Math.round(owed).toLocaleString('en-GB')} to collect`)
+                    : stCap('ok', 'All paid up');
+        }
     }
     if (!rows.length) {
         list.innerHTML =
@@ -17971,8 +17982,15 @@ function todayOpsLine() {
     });
     const { parts, owed } = chbOpsParts(tuples);
     if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
+    // The day's VERDICT rides the line as the house capsule — but only the ✓,
+    // and only when the Needs-you strip below is empty: with duties present the
+    // strip carries the state, and a capsule repeating its badge is noise.
+    let cap = '';
+    try {
+        if (!(needsYouItems() || []).length) cap = ' <span class="st-cap is-ok ops-cap"><span class="st-tick" aria-hidden="true">✓</span>Nothing needs you</span>';
+    } catch (e) {}
     // innerHTML: every part is generated (counts + the owed button) — no user text.
-    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today') + cap;
 }
 // Unified back office: load data once, render calendar and inbox.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -23091,7 +23109,7 @@ function timelineToday() {
 function openBookingsNeedsPay() {
     Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} });
 }
-function tlAddAt(propKey, iso) {
+function tlAddAt(propKey, iso, checkoutIso) {
     openAddBooking();
     const sel = document.getElementById('modal-property');
     if (sel && propertyMeta[propKey]) {
@@ -23099,12 +23117,70 @@ function tlAddAt(propKey, iso) {
         sel.value = propKey;
     }
     document.getElementById('modal-checkin').value = iso;
-    document.getElementById('modal-checkout').value = '';
+    document.getElementById('modal-checkout').value = checkoutIso || '';
     try {
         applyModalPropertyMode();
         refreshModalDateTrigger();
         updateModalPrice();
     } catch (e) {}
+}
+// ---- Two-tap RANGE selection (the approved Today demo): first tap MARKS a
+// night, second on the same lane completes — chooser offers Add booking or
+// Block dates. Same night twice = one night; a crossing range refuses and
+// NAMES the stay; a different lane restarts; Escape clears the mark.
+let __tlSel = null;
+function tlPaintSel() {
+    document.querySelectorAll('#cal-body .tl-cell.is-selstart').forEach((c) => c.classList.remove('is-selstart'));
+    if (!__tlSel) return;
+    const cell = document.querySelector(`#cal-body .tl-cell[data-pk="${CSS.escape(__tlSel.pk)}"][data-iso="${__tlSel.iso}"]`);
+    if (cell) cell.classList.add('is-selstart');
+}
+function tlCellTap(pk, iso) {
+    if (!__tlSel || __tlSel.pk !== pk) {
+        __tlSel = { pk, iso };
+        tlPaintSel();
+        toast('First night marked — tap the last night (the same night again books one night)');
+        return;
+    }
+    const first = __tlSel.iso <= iso ? __tlSel.iso : iso;
+    const last = __tlSel.iso <= iso ? iso : __tlSel.iso;
+    const out = ukShiftDays(last, 1); // checkout morning = the day after the last night
+    __tlSel = null;
+    tlPaintSel();
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    const clash = cmdkBookClash(pk, first, out, null);
+    if (clash) {
+        glassAlert(`Those nights aren't all free — that range crosses ${clash.name ? clash.name + '’s stay' : 'an imported stay'} at ${nm} (${fmtDate(clash.checkIn)} → ${fmtDate(clash.checkOut)}). Pick different nights.`);
+        return;
+    }
+    const nights = Math.max(1, Math.round((dpParse(out).getTime() - dpParse(first).getTime()) / 864e5));
+    glassDialog({
+        type: 'form',
+        title: `${nights} night${nights === 1 ? '' : 's'} on ${nm}`,
+        message: `${fmtDate(first)} → ${fmtDate(out)} — those nights are free. What would you like to do with them?`,
+        okLabel: 'Continue',
+        fields: [{ id: 'what', label: 'Do what?', type: 'select', options: [
+            { value: 'book', label: 'Add a booking' },
+            { value: 'block', label: 'Block these dates' },
+        ] }],
+    }).then((vals) => {
+        if (!vals) return; // backed out — nothing marked, nothing saved
+        if (vals.what === 'block') openBlockDates({ prop: pk, from: first, to: out });
+        else tlAddAt(pk, first, out);
+    });
+}
+// Spark tap: re-derive the plan at tap time, CONFIRM before saving (a 24px
+// mark must never apply a price change on a stray touch); live → Rates.
+function tlGapTap(pk, iso) {
+    const g = chbGapScan().find((x) => x.pk === pk && x.from === iso);
+    const plan = g && chbGapPlan(g);
+    const nm = (propertyMeta[pk] || {}).name || pk;
+    if (!plan) { toast('That gap has changed — the board will refresh'); try { renderCalendar(); } catch (e) {} return; }
+    if (plan.kind === 'live') { nyOfferRates(); return; }
+    glassConfirm(
+        `Offer the ${g.nights}-night gap on ${nm} at £${plan.offer}/night? ${fmtStayRange(g.from, g.to)} · ${plan.pct}% off the usual £${plan.cur}. Saves a dated offer you can undo.`,
+        'Set the offer',
+    ).then((ok) => { if (ok) nyGapOffer(pk, iso); });
 }
 // Keep the header label in sync with the month under the left edge.
 function tlSyncMonthLabel() {
@@ -23325,7 +23401,36 @@ function renderCalendar() {
     const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     const idxOf = (ds) => Math.round((dpParse(ds) - dpParse(dates[0])) / 864e5);
 
-    // Header lane: day cells (dow letter + number; month name on the 1st).
+    // Private (unlisted) cottages are managed off to the side — they don't earn a
+    // lane on the operational timeline (their bookings still live in the Bookings
+    // list below). Archived (removed) cottages are hidden too.
+    const keys = Object.keys(propertyMeta).filter((k) => {
+        const m = propertyMeta[k];
+        return m && !m.unlisted && !m.archived;
+    });
+    // Per-lane night maps, ONE derivation shared by the header (pips + ↺)
+    // and the lanes (cell ownership) — the two cannot disagree.
+    const laneData = {};
+    keys.forEach((k) => {
+        const takenBy = new Map();
+        const starts = new Set(), ends = new Set();
+        const markNights = (ci, co, id) => {
+            if (!ci || !co) return;
+            starts.add(ci); ends.add(co);
+            for (let s = ci; s < co; s = ukShiftDays(s, 1)) {
+                if (!takenBy.has(s)) takenBy.set(s, id);
+            }
+        };
+        (dbBookings[k] || []).forEach((b) => markNights(b.checkIn, b.checkOut, b.id));
+        (dbBlocks[k] || []).forEach((bl) => markNights(bl.checkIn, bl.checkOut, ''));
+        laneData[k] = { takenBy, starts, ends };
+    });
+    const occOf = (ds) => keys.reduce((n, k) => n + (laneData[k].takenBy.has(ds) ? 1 : 0), 0);
+    const chgOf = (ds) => keys.some((k) => laneData[k].starts.has(ds) && laneData[k].ends.has(ds));
+
+    // Header lane: day cells + OCCUPANCY PIPS (one segment per cottage, filled
+    // when taken) and the ↺ changeover mark (someone leaves AND arrives).
+    // Decorative duplicates of the lanes below, so aria-hidden.
     let head = '';
     for (let i = 0; i < N; i++) {
         const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
@@ -23335,36 +23440,27 @@ function renderCalendar() {
         // is-mstart draws the month-boundary rule down the whole column, so
         // mid-scroll you can SEE where a month turns, not just read the label.
         const mstart = d.getDate() === 1 && i > 0;
-        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i>${d.getDate()}</span>`;
+        const occ = occOf(dates[i]);
+        const pips = `<u class="tl-occ" aria-hidden="true">${keys.map((_, p) => `<s class="${p < occ ? 'f' : ''}"></s>`).join('')}</u>`;
+        const chg = chgOf(dates[i]) ? '<span class="tl-chg" aria-hidden="true" title="Changeover day">↺</span>' : '';
+        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}${chg}<i>${dows[d.getDay()]}</i>${d.getDate()}${pips}</span>`;
     }
-
-    // Private (unlisted) cottages are managed off to the side — they don't earn a
-    // lane on the operational timeline (their bookings still live in the Bookings
-    // list below). Archived (removed) cottages are hidden too.
-    const keys = Object.keys(propertyMeta).filter((k) => {
-        const m = propertyMeta[k];
-        return m && !m.unlisted && !m.archived;
-    });
     const lock =
         '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
+    // Sellable gaps, once for the whole board (chbGapScan — the ONE gap rule the
+    // brief and Pricing already read), rendered as ✦ sparks inside their lanes.
+    let tlGaps = [];
+    try { tlGaps = chbGapScan(); } catch (e) {}
     const rows = keys
         .map((k) => {
             const meta = propertyMeta[k] || { name: k, short: k };
-            // WHICH NIGHTS ARE TAKEN, and by whom. Bars inset half a day at each end
-            // so a changeover reads as shared, leaving a bare strip on the check-in
-            // AND checkout day; both offered "add a booking here". The checkout one
-            // is right (that night IS free); the check-in one prefilled a stay on a
-            // night already sold, which the server then refuses. End-exclusive, the
-            // same model as the guest picker, so the two calendars agree.
-            const takenBy = new Map();
-            const markNights = (ci, co, id) => {
-                if (!ci || !co) return;
-                for (let s = ci; s < co; s = ukShiftDays(s, 1)) {
-                    if (!takenBy.has(s)) takenBy.set(s, id);
-                }
-            };
-            (dbBookings[k] || []).forEach((b) => markNights(b.checkIn, b.checkOut, b.id));
-            (dbBlocks[k] || []).forEach((bl) => markNights(bl.checkIn, bl.checkOut, ''));
+            // WHICH NIGHTS ARE TAKEN, and by whom (laneData, shared with the
+            // header). Bars inset half a day at each end so a changeover reads
+            // as shared, leaving a bare strip on the check-in AND checkout day.
+            // A taken strip opens that booking; a FREE strip starts the two-tap
+            // range (tlCellTap) — first night, last night, then the chooser.
+            // End-exclusive, the same model as the guest picker.
+            const takenBy = laneData[k].takenBy;
             let cells = '';
             for (let i = 0; i < N; i++) {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
@@ -23383,8 +23479,9 @@ function renderCalendar() {
                     act = ` ${chbAttrs('openBookingHub', String(owner))} data-act-keydown="activate" role="button" tabindex="0" aria-label="${escapeHtml(bk.name || 'Guest')} at ${escapeHtml(meta.name)} on ${fmtDate(dates[i])}" title="${escapeHtml(bk.name || 'Guest')} — ${fmtDate(dates[i])}"`;
                 else if (takenBy.has(dates[i])) act = ` title="Booked — ${fmtDate(dates[i])}"`;
                 else
-                    act = ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`;
-                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${act}></span>`;
+                    act = ` ${chbAttrs('tlCellTap', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Pick ${fmtDate(dates[i])} at ${escapeHtml(meta.name)} — tap a second night to book or block a range" title="Free — tap to start a range at ${escapeHtml(meta.name)}, ${fmtDate(dates[i])}"`;
+                const selMark = __tlSel && __tlSel.pk === k && __tlSel.iso === dates[i] ? ' is-selstart' : '';
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}${selMark}" data-pk="${escapeHtml(k)}" data-iso="${dates[i]}" style="grid-column:${i + 1}"${act}></span>`;
             }
             let bars = '';
             // Bars run noon-to-noon (check-in afternoon → checkout morning): the
@@ -23418,6 +23515,14 @@ function renderCalendar() {
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
                 bars += `<span class="tl-bar tl-ext${sp.clip}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
+            // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);
+            // tap → the priced offer via tlGapTap, the strip's own plumbing.
+            tlGaps.filter((g) => g.pk === k && idxOf(g.to) > 0 && idxOf(g.from) < N).forEach((g) => {
+                const s0 = Math.max(0, idxOf(g.from));
+                const e0 = Math.min(N, idxOf(g.to));
+                if (e0 <= s0) return;
+                bars += `<button type="button" class="tl-spark" style="grid-column:${s0 + 1}/${e0 + 1}" ${chbAttrs('tlGapTap', String(g.pk), String(g.from))} aria-label="Sellable ${g.nights}-night gap at ${escapeHtml(meta.name)}, ${fmtDate(g.from)} to ${fmtDate(g.to)} — tap for the offer" title="${g.nights}-night gap — tap for the offer">✦</button>`;
+            });
             const priv = meta.unlisted ? lock : '';
             // The lane label carries the cottage's accent dot, tying it to its bars.
             const dot = `<span class="tl-label-dot" style="background:${meta.accent || 'var(--accent)'}"></span>`;
@@ -23437,6 +23542,11 @@ function renderCalendar() {
     </div>`;
     if (!host.__tlScroll) {
         host.__tlScroll = true;
+        // Escape abandons a half-made range selection (only when one is armed,
+        // so this never competes with the dialog/picker Escape handlers).
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && __tlSel) { __tlSel = null; tlPaintSel(); }
+        });
         // rAF-latch the scroll work: a fling fires dozens of scroll events/sec and
         // each did a getComputedStyle read (tlDayW) + a label write, forcing layout
         // thrash. Coalesce to at most one update per frame.

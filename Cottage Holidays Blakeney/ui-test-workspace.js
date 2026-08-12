@@ -111,9 +111,63 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(lane.checkinLeftHalf === 'openBookingHub',
     `the exposed strip of a check-in day belongs to that stay, not to a new one (${lane.checkinLeftHalf})`);
   ok(lane.insideBar === 'openBookingHub', `the bar itself still opens the booking (${lane.insideBar})`);
-  ok(lane.checkoutRightHalf === 'tlAddAt',
-    `a checkout day still offers a booking — that night IS free (${lane.checkoutRightHalf})`);
-  ok(lane.freeDay === 'tlAddAt', `and a genuinely free day still does (${lane.freeDay})`);
+  ok(lane.checkoutRightHalf === 'tlCellTap',
+    `a checkout day still starts a range — that night IS free (${lane.checkoutRightHalf})`);
+  ok(lane.freeDay === 'tlCellTap', `and a genuinely free day still does (${lane.freeDay})`);
+
+  // 1c) TWO-TAP RANGE (the approved Today demo): the first tap ARMS a night
+  // (visible mark, nothing opens), the second on the same lane completes the
+  // range and the chooser offers Add booking / Block dates for exactly those
+  // dates; a range crossing a stay REFUSES and names whose stay it crosses.
+  console.log('1c. two-tap range: arm, choose, and the honest refusal');
+  const rng = await page.evaluate(async () => {
+    const free = Array.from(document.querySelectorAll('#cal-body .tl-cell[data-act]'))
+      .filter((c) => (c.getAttribute('data-act') || '') === 'tlCellTap');
+    if (free.length < 2) return { err: 'no free cells' };
+    // Two free nights on the SAME lane, adjacent in the list (same data-pk).
+    const pk = free[0].getAttribute('data-pk');
+    const laneFree = free.filter((c) => c.getAttribute('data-pk') === pk);
+    laneFree[0].click();
+    await new Promise((r) => setTimeout(r, 200));
+    const armed = !!document.querySelector('#cal-body .tl-cell.is-selstart');
+    const openedEarly = !!document.querySelector('#glass-dialog.open, .modal-overlay.open');
+    laneFree[1].click();
+    await new Promise((r) => setTimeout(r, 300));
+    const dlg = document.getElementById('glass-dialog');
+    const dlgOpen = !!(dlg && getComputedStyle(dlg).display !== 'none' && dlg.textContent.includes('free'));
+    const hasChooser = !!document.querySelector('#gdf-what');
+    const options = hasChooser ? [...document.querySelectorAll('#gdf-what option')].map((o) => o.textContent) : [];
+    // Back out — nothing marked, nothing saved.
+    try { glassDialogResolve(false); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 150));
+    const cleared = !document.querySelector('#cal-body .tl-cell.is-selstart');
+    return { armed, openedEarly, dlgOpen, options, cleared };
+  });
+  ok(!rng.err && rng.armed && !rng.openedEarly, `first tap ARMS the night — a mark, not a modal (${JSON.stringify({ armed: rng.armed, early: rng.openedEarly })})`);
+  ok(rng.dlgOpen && rng.options.length === 2 && /booking/i.test(rng.options[0]) && /block/i.test(rng.options[1]),
+    `second tap opens the chooser with both actions (${(rng.options || []).join(' / ')})`);
+  ok(rng.cleared, 'backing out clears the mark — nothing saved');
+  const refuse = await page.evaluate(async () => {
+    // The FIRST and LAST free cells on the lane: with two stays seeded
+    // mid-window, the widest range must cross one — it has to refuse and
+    // name whose stay it crosses.
+    const cells = Array.from(document.querySelectorAll('#cal-body .tl-cell[data-act="tlCellTap"]'))
+      .filter((c) => c.getAttribute('data-pk') === '21a');
+    if (cells.length < 2) return { err: 'no free cells' };
+    cells[0].click();
+    await new Promise((r) => setTimeout(r, 150));
+    cells[cells.length - 1].click();
+    await new Promise((r) => setTimeout(r, 300));
+    const dlg = document.getElementById('glass-dialog');
+    const txt = dlg ? dlg.textContent : '';
+    const refused = /aren't all free|crosses/.test(txt);
+    const named = /First Guest|Second Guest|stay/.test(txt);
+    try { glassDialogResolve(false); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 150));
+    return { refused, named };
+  });
+  ok(!refuse.err && refuse.refused, 'a range crossing a stay is refused, not silently clipped');
+  ok(refuse.named, '…and the refusal names whose stay it crosses');
 
   console.log('2. timeline bar tap swaps the docked hub + scrolls to it');
   await page.evaluate(() => {

@@ -747,6 +747,121 @@ body.light-mode .ny-act {
   border-left-color: var(--warn);
 }.tl-bar.tl-pay-danger {
   border-left-color: var(--danger);
+}
+/* Money-state DOT on unsettled direct bars — the rows' amber/red vocabulary;
+   settled stays get none (quiet is the reward). */
+.tl-bar.tl-pay-warn::before,
+.tl-bar.tl-pay-danger::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.tl-bar.tl-pay-warn::before { background: var(--warn); }
+.tl-bar.tl-pay-danger::before { background: var(--danger); }
+/* OCCUPANCY PIPS under each day header — one segment per cottage, filled
+   when taken. Decorative (aria-hidden). */
+.tl-day .tl-occ {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  text-decoration: none;
+}
+.tl-day .tl-occ s {
+  display: block;
+  width: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-light) 9%, transparent);
+  text-decoration: none;
+}
+.tl-day .tl-occ s.f { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+.tl-day { padding-bottom: 9px; }
+/* ↺ on a changeover day — someone leaves AND someone arrives: the days that
+   need the key safe and the cleaner, readable in the header row. */
+.tl-day .tl-chg {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--info-text);
+}
+/* GAP SPARK — a sellable hole (chbGapScan); real button at the 24px floor. */
+.tl-spark {
+  grid-row: 1;
+  z-index: 2;
+  justify-self: center;
+  align-self: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.tl-spark:hover { transform: scale(1.2); }
+/* The armed first night of a two-tap range (tlCellTap). */
+.tl-cell.is-selstart {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+/* ---- TODAY wears the dashboard vocabulary (approved demo): one serif
+   identity, month as small caption-row serif, Bookings as caption + computed
+   capsule, sentence-case actions, timeline on the well ground. */
+#view-backoffice .cal-panel {
+  background: color-mix(in srgb, var(--text-light) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.cal-header-bar .cal-month-title {
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+.cal-actions .cal-add-btn {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 0.85rem;
+}
+.bk-caprow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 26px 0 10px;
+}
+.bk-caprow .bo-sec-title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+#bookings-summary {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+#bookings-verdict { margin-left: auto; }
+/* The day's ✓ capsule on the ops line (todayOpsLine — only when the Needs-you
+   strip below is empty; with duties present the strip carries the state). */
+#today-date .ops-cap {
+  margin-left: 8px;
+  vertical-align: 2px;
 }.tl-bar:not(.tl-ext):hover {
   transform: translateY(-1px);
   filter: brightness(1.08);
