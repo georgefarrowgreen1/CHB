@@ -4663,7 +4663,18 @@ function cmdkIntent(q) {
             rows.forEach((r) => { if (r.prop) (byPk[r.prop] = byPk[r.prop] || []).push(st(r)); });
             const go = () => { closeCmdK(); openArea(); settingsOpen('reviews'); };
             const head = { type: 'figure', id: 'rep', label: `★ ${avg.toFixed(2)} average across ${rows.length} review${rows.length === 1 ? '' : 's'}`, sub: 'Every review shown on the site', run: go };
-            return [head].concat(Object.keys(byPk).map((k) => ({ type: 'answer', id: 'rep-' + k, label: `${pn(k)} · ★ ${(byPk[k].reduce((s, n) => s + n, 0) / byPk[k].length).toFixed(2)}`, sub: `${byPk[k].length} review${byPk[k].length === 1 ? '' : 's'}`, run: go })));
+            return [head].concat(Object.keys(byPk).map((k) => {
+                const cAvg = byPk[k].reduce((s, n) => s + n, 0) / byPk[k].length;
+                return {
+                    type: 'answer', id: 'rep-' + k,
+                    label: `${pn(k)} · ★ ${cAvg.toFixed(2)}`,
+                    sub: `${byPk[k].length} review${byPk[k].length === 1 ? '' : 's'}`,
+                    // Capsule only where it states a safe fact; a low average
+                    // gets NONE — the figure already speaks.
+                    stcap: byPk[k].length < 5 ? { tone: 'unk', text: 'Few reviews' } : cAvg >= 4.5 ? { tone: 'ok', text: 'Strong' } : null,
+                    run: go,
+                };
+            }));
         }
         if (CHB_EXPENSE_Q.test(q) && ((allExpenses || []).length || __expTried)) {
             const go = () => { closeCmdK(); cmdkOpenAccounts('expenses'); };
@@ -4691,7 +4702,7 @@ function cmdkIntent(q) {
             if (!rows.length)
                 return [{ type: 'figure', id: 'plan', label: 'No automatic payment plans running', sub: 'Plans start when a guest opts in while paying their deposit', run: () => { closeCmdK(); cmdkOpenAccounts('recent'); } }];
             const head = { type: 'figure', id: 'plan', label: `${rows.length} payment plan${rows.length === 1 ? '' : 's'} running`, sub: rows[0].next ? `Next collection ${fmtDate(rows[0].next)} — ${rows[0].name}, ${gbp(rows[0].fig)}` : 'Collections run on their due dates', run: () => { closeCmdK(); cmdkOpenAccounts('recent'); } };
-            return [head].concat(rows.slice(0, 6).map((r) => ({ type: 'answer', id: 'plan-' + r.id, label: `${r.name} · ${gbp(r.fig)}${r.next ? ' on ' + fmtDate(r.next) : ''}`, sub: `${r.prop} · ${r.prog}`, run: () => { closeCmdK(); openBookingHub(r.id, false); } })));
+            return [head].concat(rows.slice(0, 6).map((r) => ({ type: 'answer', id: 'plan-' + r.id, label: `${r.name} · ${gbp(r.fig)}${r.next ? ' on ' + fmtDate(r.next) : ''}`, sub: `${r.prop} · ${r.prog}`, stcap: r.failed ? { tone: 'bad', text: 'Card declined' } : { tone: 'ok', text: 'On track' }, run: () => { closeCmdK(); openBookingHub(r.id, false); } })));
         }
         if (CHB_LAPSED_Q.test(q) && typeof chbCustomers === 'function') {
             const today = todayDashed();
@@ -5237,7 +5248,13 @@ function cmdkIntent(q) {
         // on the answer itself rather than one journey per guest. Null under two owers.
         const bulk = chbBulkBalanceAction(rows);
         if (bulk) head.actions = [bulk];
-        return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`)));
+        return [head].concat(rows.map((x) => {
+            const r = bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`);
+            // Due NOW = finished stay or inside the window — the hub's own
+            // derivation, so the capsule and the payask cannot disagree.
+            try { r.stcap = hasCheckedOut(x.b) || bookingInBalanceWindow(x.b) ? { tone: 'warn', text: 'Due now' } : { tone: 'unk', text: 'Not due yet' }; } catch (e) {}
+            return r;
+        }));
     }
     // 2) Leaving / checking out (today, or this week) — direct bookings AND OTA blocks.
     if (/\bleav|leaving|check.?out|checking out|departing|departure|checkout\b/.test(q)) {
@@ -8168,9 +8185,12 @@ function cmdkRowHtml(it, i, top) {
     // Highlight the matched terms — but not on computed summaries (answer/figure),
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
+    // Optional STATUS CAPSULE on the right rail (stCap — the Inbox/Money/
+    // keysafe capsules). Additive: a row without `stcap` is byte-identical.
+    const cap = it.stcap ? `<span class="cmdk-stcap">${stCap(it.stcap.tone, escapeHtml(String(it.stcap.text)))}</span>` : '';
     const row = `<button type="button" tabindex="-1" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
-                    <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>
+                    <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>${cap}
                 </button>`;
     // Help topics expand their numbered steps when selected (the Top Hit is
     // pre-selected, so the best answer opens straight away; the rest stay tidy).
@@ -8416,7 +8436,9 @@ function cmdkHeroFigure(label) {
     const esc = escapeHtml(String(label || ''));
     // First money amount, else a leading count ("3 guests arrive today"). Not global:
     // exactly one figure carries the answer, and marking every number is confetti.
-    return esc.replace(/£[\d,]+(?:\.\d{2})?|^[↑↓]?\s?\d+(?=\s)/, (m) => `<span class="cmdk-hero-fig">${m}</span>`);
+    // MONEY takes the house serif (serif = money, the payline's mark); a COUNT
+    // keeps the sans face via .cmdk-fig-n — a headcount is not money.
+    return esc.replace(/£[\d,]+(?:\.\d{2})?|^[↑↓]?\s?\d+(?=\s)/, (m) => `<span class="cmdk-hero-fig${m.indexOf('£') >= 0 ? '' : ' cmdk-fig-n'}">${m}</span>`);
 }
 function cmdkIsHeroRow(it) {
     return !!it && (it.type === 'answer' || it.type === 'figure') && !cmdkIsNoteRow(it);
@@ -8510,7 +8532,9 @@ function cmdkRenderInner() {
             sb +
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
             (P ? `<div class="cmdk-group-label">Pinned</div>${pinHtml}` : '') +
-            (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
+            // The greeting is SPOKEN, not a caption — the sentence-case pulse line
+            // the Manage and Money landings open with (§20 finds it by its words).
+            (B ? `<div class="cmdk-pulse">${cmdkGreeting()}.</div>${briefHtml}` : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
             // The landing's own dead end. It used to print the raw scope key

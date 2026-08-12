@@ -2196,13 +2196,23 @@ body.owner-mode .logo.ml-learning .logo-mark {
    this at 2.63:1 on the light search surface — under even the 3:1 non-text floor. The
    board captions are the same micro-label at full strength (6.06:1). */
 .cmdk-group-label {
-  /* was 0.64rem = 10.2px */
+  /* was 0.64rem = 10.2px; tracking matches the dashboard's .acr-cap (0.09em) so
+     the assistant's captions and the cottage editors' are ONE spec. */
   font-size: var(--cmdk-fs-micro);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 11px 12px 3px;
+}
+/* The landing's greeting is SPOKEN, not a caption — the same sentence-case pulse
+   line the Manage and Money landings open with. Body step, so §16b holds. */
+.cmdk-pulse {
+  font-size: var(--cmdk-fs-body);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-light);
+  padding: 10px 12px 2px;
 }
 /* ---- Deep Search ("search everything": full grouped/counted results) ---- */
 .cmdk-deep-cta {
@@ -3747,10 +3757,12 @@ body.cmdk-open {
 /* Measured at 390px: 453px for five facts, 91px each. Padding and the caption's
    leading came out; no type size and no tap target moved. §20b gates the chrome. */
 .cmdk-board {
-  background: var(--glass-hover);
-  /* No border: fill + hairline border + filled rows stacked three edges in ~90px.
-     iOS groups a list with FILL alone, rows separated by hairlines. */
-  border: 0;
+  /* The dashboard's WELL ground (.acr-well). The border returned WITH the
+     well: the old "no border" ruling was about fill + border + FILLED rows =
+     three edges; rows are flat now, so this is the same two edges every
+     other well has. */
+  background: color-mix(in srgb, var(--text-light) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
   border-radius: var(--r-lg);
   padding: 9px 0 6px;
   min-width: 0;
@@ -3795,7 +3807,7 @@ body.cmdk-open {
   padding: 0 22px;
   font-size: var(--cmdk-fs-micro);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.09em; /* the one caption track (.acr-cap) */
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -3804,6 +3816,16 @@ body.cmdk-open {
    figures want. The headline fact then reads at a glance; the rest stay row-sized. */
 .cmdk-board .cmdk-row-ic {
   display: none;
+}
+/* A row's STATUS CAPSULE (stCap). Right rail, never shrinks. Size restated
+   onto the window's own scale (.st-cap's 0.76rem is not a §16b step). */
+.cmdk-row .cmdk-stcap {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+}
+.cmdk-row .cmdk-stcap .st-cap {
+  font-size: var(--cmdk-fs-sub);
 }
 .cmdk-board > .cmdk-row:first-of-type .cmdk-row-label {
   font-size: var(--cmdk-fs-hero);
@@ -3842,8 +3864,16 @@ body.cmdk-open {
    ============================================================ */
 .cmdk-row.cmdk-hero {
   align-items: flex-start;
-  padding: 14px 12px 16px;
+  /* The VERDICT CARD (the hub payline's dressing). Rails (§18f/g): 3px margin
+     + 1px border + 8px padding = the old 12px inline padding, so the sentence
+     stays on rail 21. width stated because .cmdk-row is a 100%-width button. */
+  margin: 2px 3px 4px;
+  width: calc(100% - 6px);
+  padding: 13px 8px 15px;
   gap: 0;
+  background: color-mix(in srgb, var(--text-light) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
+  border-radius: var(--r-lg);
 }
 .cmdk-hero-main {
   display: flex;
@@ -3864,11 +3894,16 @@ body.cmdk-open {
 }
 /* At the SENTENCE'S size. It was 1.7em (1.5em on a phone), which made "£290.00"
    tower over the words either side and stopped the answer reading as a sentence.
-   Emphasis is weight + tabular figures instead. The old line-height/vertical-align/
-   letter-spacing here existed only to manage the oversized text, so they went too. */
+   Emphasis is weight + tabular figures — and for MONEY the house serif (the
+   payline's mark), still at the sentence's own size so §11 holds. A leading
+   COUNT keeps the sans face (.cmdk-fig-n): a headcount is not money. */
 .cmdk-hero-fig {
+  font-family: var(--font-serif);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+.cmdk-hero-fig.cmdk-fig-n {
+  font-family: var(--font-sans);
 }
 .cmdk-hero-sub {
   font-size: var(--cmdk-fs-sub);

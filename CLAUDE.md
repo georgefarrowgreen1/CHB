@@ -1407,15 +1407,17 @@ full-bleed decision, applied at the width where the condition recurs.
 blur / 10px spread, which painted a purple haze well beyond the panel and read as
 an artifact rather than a material. One hairline ring plus a 22px tight glow, hue
 still cycling, so ui-test-searchpage §17's "the painted shadow moves" holds.
-**A group is a FILL, not a card.** `.cmdk-board` carried a fill AND a hairline
-border AND filled rows inside it — three edges in ~90px, so the money row read as
-a card inside a card inside the panel. The border is gone, the group pads its
-CHILDREN rather than itself (so rows span it edge to edge), rows square off and
-are separated by hairlines, and the selected row is a full-width band. NB the
-caption's inline padding must equal the ROW's (22px), because §18f compares where
-the caption's text starts against the row LABEL, and a row's label begins at its
-padding edge once the answer glyph is hidden inside a group — 20px put the heading
-2px inside its own list.
+**A group is the dashboard's WELL now** (the UI pass below) — `.cmdk-board`
+carries the `.acr-well` ground (4% ink-mix fill + hairline border + `--r-lg`).
+The earlier "a group is a FILL, not a card — the border is gone" ruling was
+about fill + border + FILLED ROWS = three edges in ~90px; the rows went flat in
+that same pass, so the border's return is the same two edges every other well
+has, not the three that ruling banned. Rows still span the group edge to edge,
+square off, separate by hairlines, and the selected row is a full-width band.
+NB the caption's inline padding must equal the ROW's (22px), because §18f
+compares where the caption's text starts against the row LABEL, and a row's
+label begins at its padding edge once the answer glyph is hidden inside a
+group — 20px put the heading 2px inside its own list.
 **NO KEYBOARD CURSOR ON A TOUCH DEVICE, AND NO TILE BEHIND AN ICON.** The landing
 preselects row 0 so arrow keys have somewhere to start; on a phone there are no
 arrow keys, so it painted one row as chosen before the owner had chosen anything.
@@ -1519,6 +1521,27 @@ because a 1px border puts it a pixel out. `border: none` there is load-bearing: 
 outer boundary is what you compare against type, its content start is what you compare
 against other type. Conflating them made one draft call a correctly-aligned caption
 10px out and another call a panel sitting exactly on 21 a 5px miss.
+**THE UI PASS — search wears the dashboard's vocabulary** (approved live demo;
+CSS in admin.css's cmdk block + three composer touches; gated by the existing
+suite with two re-aims). The pop-out's anatomy is untouched — same rows at the
+same indices, same chips machinery — what changed is the clothes: the greeting
+is a spoken **`.cmdk-pulse`** line (body step, sentence case) instead of an
+uppercase caption (§20's greeting lookup reads `.cmdk-pulse, .cmdk-group-label`
+now); both caption specs take the `.acr-cap` track (0.09em) at the micro step;
+boards take the WELL ground (see the group note below); the HERO is a **verdict
+card** — well fill + border + `--r-lg` on the same full-width button, with the
+rail arithmetic 3px margin + 1px border + 8px padding = the old 12px inline
+padding, so the sentence stays on rail 21 and §18f/g pass untouched; the hero's
+MONEY figure takes the house serif (`--font-serif`) at the sentence's own size —
+§11's size-equality and weight-emphasis checks both still hold — while a leading
+COUNT keeps sans via `.cmdk-fig-n` (a headcount is not money); and rows accept an
+optional **`stcap: {tone, text}`** rendered as the `.st-cap` capsule on the right
+rail (restated to the sub step inside the window, because 0.76rem is not a §16b
+scale step). Wired additively: the owed rows ("Due now"/"Not due yet", judged by
+`hasCheckedOut || bookingInBalanceWindow` — the hub's own derivation, so capsule
+and payask can't disagree), the rating rows ("Strong"/"Few reviews" — a LOW
+average gets no capsule, the figure already speaks) and the plan rows ("On
+track"/"Card declined"). A row without `stcap` renders byte-identical.
 **"SEARCH EVERYTHING" OWNS THE RESULTS AREA WHILE IT RUNS** (`__cmdkDeepPending`,
 `__cmdkDeepErr`, `cmdkRenderDeepWait`, `cmdkDeepReset`; ui-test-searchpage §19). The
 2px sweep bar (`#cmdk-progress`) is real and does fire — the audit's "no loading state"
