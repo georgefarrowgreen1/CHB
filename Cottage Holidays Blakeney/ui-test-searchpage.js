@@ -1689,7 +1689,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await until(() => document.querySelectorAll('#cmdk .cmdk-group-label').length > 1);
     await new Promise((r) => setTimeout(r, 250));
     const box = document.getElementById('cmdk-results');
-    const heads = [...box.querySelectorAll('.cmdk-group-label')].map((e) => e.textContent.trim());
+    // The greeting is a spoken .cmdk-pulse line now, not a caption — the heads
+    // list takes both so the "day leads" ordering check keeps reading it.
+    const heads = [...box.querySelectorAll('.cmdk-pulse, .cmdk-group-label')].map((e) => e.textContent.trim());
     const rows = [...box.querySelectorAll('[role="option"]')].map((e) => ({
       idx: +(e.id || '').replace('cmdk-opt-', ''),
       top: e.getBoundingClientRect().top,
@@ -1821,7 +1823,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const tile1 = await page.evaluate(async () => {
     const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
     await new Promise((r) => setTimeout(r, 350));
-    const heads = [...document.querySelectorAll('#cmdk .cmdk-group-label')].map((e) => e.textContent.trim());
+    const heads = [...document.querySelectorAll('#cmdk .cmdk-pulse, #cmdk .cmdk-group-label')].map((e) => e.textContent.trim());
     const at = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
     // The row RENDERED under the Pinned heading must BE the pin. An array/slice
     // desync (reordering the concat without moving the slice bases) keeps the
