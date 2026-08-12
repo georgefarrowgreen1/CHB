@@ -252,14 +252,9 @@ body.light-mode {
   --text-light: #1b2a34; /* deep ink-slate (coastal, softer than black) */
   --text-muted: #52646e; /* slate — AA on the linen ground */
   --accent: #c6885e; /* a touch deeper rose-gold for contrast on light */
-  /* …but "a touch deeper" still isn't enough for WORDS: measured against the four
-     real surfaces of this theme (#fdfcfa cream, #f5f1e9 panel, white, #f0f0f0
-     band) #c6885e lands at 2.60–2.96:1, short of AA's 4.5. Same story the status
-     tints had, so it gets the same treatment — a text-only darker token, leaving
-     every accent fill/border/icon untouched. Deliberately a shade past the pass
-     mark (4.75:1 worst surface, 5.28:1 on the cream the site mostly is): the
-     value that lands exactly on 4.51 has no headroom, so any later tweak to a
-     surface would silently drop it back under AA. */
+  /* Accent as TEXT: #c6885e measures 2.60–2.96:1 on this theme's four real
+     surfaces, so WORDS take this darker token (4.75:1 worst case — a shade past
+     the mark, the house rule) while fills/borders/icons keep --accent. */
   --accent-text: #965c35;
   --accent-soft: rgba(198, 136, 94, 0.42);
   /* Status TEXT for the linen ground, tuned against the status TINT rather than the bare
@@ -478,16 +473,10 @@ select,
     transform: translateY(-5px);
     box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4), var(--glass-rim);
   }
-  /* …but .glass-panel is a MATERIAL and the lift above is an AFFORDANCE ("this card
-     responds to you"), so on things you don't click it was wrong twice over. It MOVED
-     them — the shared glass dialog measured top 377.3 → 372.3 as the pointer crossed
-     its edge, shifting its own buttons mid-reach — and it made them TRANSLUCENT
-     (--glass-hover: 0.78 → 0.92 light, 0.018 → 0.06 dark), which on
-     .acct-preview-shell undid the opaqueness that shell sets for itself, ghosting the
-     back office through behind the customer's name; the 5px lift also put the bar at
-     55px against a 59px notch inset. Scoped to modals / dialogs / overlay shells —
-     surfaces you read and act in. Decorative page panels keep the lift. See CLAUDE.md
-     ("a MATERIAL, not an affordance") for the full account. */
+  /* .glass-panel is a MATERIAL, the lift an AFFORDANCE — so modals / dialogs /
+     overlay shells (read-and-act surfaces) opt OUT of the hover lift here: it moved
+     them under the pointer and made opaque shells translucent. Decorative page
+     panels keep it. Full account in CLAUDE.md ("a MATERIAL, not an affordance"). */
   .modal-box:hover,
   .glass-dialog-box:hover,
   .reviews-modal-box:hover,
@@ -1331,15 +1320,11 @@ body.light-mode ::-webkit-scrollbar-thumb {
   border-color: var(--glass-border);
   font-weight: 600;
 }
-/* THE MIDDLE OF THE RANGE HAS TO BE VISIBLE. `rgba(255,255,255,0.07)` was a raw white
-   whatever the theme, so measured on rendered pixels an in-range night stood at 1.18:1
-   (dark) / 1.03:1 (light) against the unselected cells beside it — two pills with three
-   ordinary days between them. Selection is a state, so the band owes 1.4.11's 3:1 while its
-   number still owes AA: the ends' OWN pair at 65% measures band 7.71/3.89 and ink 7.47/5.44
-   (dark/light). Arithmetic, not taste — 60% clears both too but leaves light's ink 0.26
-   clear, and the house rule is a shade past the mark. The 4px gap is left open: bridging it
-   with a shadow from each neighbour paints every gap TWICE, making the joins darker than
-   the cells they join. Gated by ui-test-datepicker §18, on pixels. */
+/* THE MIDDLE OF THE RANGE HAS TO BE VISIBLE: the ends' OWN pair at 65% clears
+   1.4.11's 3:1 for the band AND keeps the day number at AA in both themes
+   (measured on pixels; the old raw-white 0.07 stood at 1.03:1 in light). Leave
+   the 4px gap open — bridging it paints every join twice, darker than the cells.
+   Gated by ui-test-datepicker §18; full account in CLAUDE.md. */
 .dp-day.dp-in-range {
   background: color-mix(in srgb, var(--text-light) 65%, transparent);
   color: var(--dark-grey);
@@ -2755,6 +2740,90 @@ a.card {
   letter-spacing: 1px;
   color: var(--text-muted);
   margin: 18px 0 6px;
+}
+/* Dates verdict capsule on the enquiry trigger + the in-place waitlist offer +
+   the spoken payment schedule (the approved booking-flow demo). */
+.enq-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.enq-cap.ok {
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+}
+.enq-cap.warn {
+  color: var(--warn-text);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+.enq-wait-row {
+  padding: 10px 14px;
+  border: 1px dashed var(--warn);
+  border-radius: var(--r-sm);
+  margin: -8px 0 16px;
+  font-size: 0.82rem;
+  color: var(--warn-text);
+  line-height: 1.5;
+}
+.enq-wait-row button {
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: var(--font-sans);
+  text-decoration: underline;
+  display: inline-block;
+  padding: 10px 4px;
+  margin: -10px -4px;
+}
+.enq-sched {
+  border-top: 1px solid var(--glass-border);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.enq-sched-row {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  align-items: baseline;
+}
+.enq-sched-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+  position: relative;
+  top: -1px;
+}
+.enq-sched-dot.ghost {
+  background: none;
+  border: 1.5px solid var(--text-muted);
+}
+.enq-sched-when {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: 0 0 92px;
+}
+.enq-sched-what {
+  font-size: 0.82rem;
+  flex: 1;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+.enq-sched-what small {
+  color: var(--text-muted);
 }
 .enq-cancel-note {
   display: flex;
