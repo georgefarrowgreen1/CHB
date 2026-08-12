@@ -3266,6 +3266,31 @@ leaving it inert would only move the defect, a live-looking strip that answers n
 and an imported platform stay just names itself, having no hub to open. Hit-tested at
 real pixels in §1b, because the defect is an exposed strip and no class check can see it.
 
+**TODAY WEARS THE VOCABULARY, AND THE CALENDAR WORKS HARDER** (approved live
+demo v3; gated by ui-test-workspace §1b/1c + ui-test-hub's calendar block, both
+re-aimed). One serif identity: the month is the timeline caption row's SMALL
+serif beside ‹ Today ›, "Bookings" is a caption row (`.bk-caprow` — the h2
+stays for the outline, restyled) with its count and a **COMPUTED verdict
+capsule** (renderBookings — money due anywhere in the visible rows keeps it
+amber; only a list with nothing owed earns ✓; empty claims nothing). The ops
+line gains the ✓ "Nothing needs you" capsule ONLY while `needsYouItems()` is
+empty — with duties present the strip carries the state. Actions go sentence
+case; `.cal-panel` takes the well ground. Calendar features, each on existing
+plumbing: **occupancy pips + ↺ changeover marks** in the header (laneData —
+ONE per-lane night derivation shared by header and lanes, so they cannot
+disagree; both aria-hidden decoration), **✦ gap sparks** (chbGapScan/chbGapPlan
+— tap CONFIRMS before nyGapOffer saves; a 24px mark must never apply a price
+on a stray touch; live offers route to Rates), **paid-state dots** on unsettled
+direct bars (CSS ::before on the existing tl-pay-warn/danger classes), and the
+**TWO-TAP RANGE** (`tlCellTap` replaces the free cell's instant tlAddAt): first
+tap ARMS a night (`.is-selstart`, state in `__tlSel`, repainted across
+re-renders, Escape clears), second tap on the same lane completes — the
+glassDialog chooser offers Add a booking (tlAddAt grew a checkout argument) or
+Block these dates; the same night twice books one night; a crossing range
+REFUSES via cmdkBookClash and NAMES whose stay it crosses; a different lane
+restarts there. NB ui-test-hub's old check clicked a `tlAddAt` cell and expected
+the modal — re-aimed to the two-tap + chooser flow, and ui-test-workspace §1c
+drives arm/choose/refuse with the back-out proving nothing saves.
 **THE CALENDAR CANNOT BE DOUBLE-BOOKED — and that is now GATED, which it was not**
 (test-integration §15, 26 checks against a real database through the real endpoints).
 The guards were all there and all correct; what was missing was any test of them, so

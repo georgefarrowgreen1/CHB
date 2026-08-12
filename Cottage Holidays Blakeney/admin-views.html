@@ -68,7 +68,7 @@
                         </div>
                     </div>
                     <div class="cal-actions">
-                        <button class="btn-glass btn-accent cal-add-btn" data-act="openAddBooking" data-edit-text="cal-add-btn">+ Add Booking</button>
+                        <button class="btn-glass btn-accent cal-add-btn" data-act="openAddBooking" data-edit-text="cal-add-btn">Add booking</button>
                         <button class="btn-glass cal-add-btn" data-act="openBlockDates">Block dates</button>
                         <div class="cal-updated">
                             <span id="cal-updated-text"></span>
@@ -95,8 +95,15 @@
              pane). Narrower screens keep the two-step list → hub flow. -->
         <div class="bk-split" id="bookings-workspace">
         <div id="bookings-main">
-            <h2 class="bo-sec-title">Bookings</h2>
-            <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
+            <!-- The caption row: heading + count on the left, the COMPUTED verdict
+                 capsule on the right (renderBookings derives it from the rows on
+                 screen — money due anywhere keeps it amber; it only reads paid-up
+                 when that is literally true of the list below). -->
+            <div class="bk-caprow">
+                <h2 class="bo-sec-title">Bookings</h2>
+                <span id="bookings-summary"></span>
+                <span id="bookings-verdict"></span>
+            </div>
             <!-- Per-page search removed — the back-office ⌘K search covers finding a
                  booking by guest, email or reference. The filters below stay. -->
             <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">

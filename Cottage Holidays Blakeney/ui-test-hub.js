@@ -1484,18 +1484,26 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   }));
   ok(cal.days > 100 && cal.bars > 0 && cal.barClick, `timeline rendered — booking bars open the hub (${cal.bars} bars)`);
   ok(cal.extBars > 0 && !cal.extClickable, `external bars greyed + display-only (${cal.extBars})`);
-  // A free day cell starts an Add Booking on that cottage/date.
-  await page.evaluate(() => {
-    const cell = Array.from(document.querySelectorAll('#cal-body .tl-cell[data-act="tlAddAt"]')).pop();
+  // A free day cell starts the TWO-TAP range (the approved Today demo): the
+  // same night twice books one night, and choosing "Add a booking" in the
+  // chooser prefills the form with BOTH dates.
+  await page.evaluate(async () => {
+    const cell = Array.from(document.querySelectorAll('#cal-body .tl-cell[data-act="tlCellTap"]')).pop();
+    cell.click();
+    await new Promise((r) => setTimeout(r, 150));
     cell.click();
   });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { const s = document.getElementById('gdf-what'); if (s) s.value = 'book'; glassDialogResolve(true); });
   await page.waitForTimeout(400);
   const gap = await page.evaluate(() => ({
     open: document.getElementById('edit-modal').classList.contains('open'),
     ci: document.getElementById('modal-checkin').value,
+    co: document.getElementById('modal-checkout').value,
     prop: document.getElementById('modal-property').value,
   }));
-  ok(gap.open && /^\d{4}-\d{2}-\d{2}$/.test(gap.ci) && gap.prop !== '', `gap tap prefills Add Booking (${gap.prop} · ${gap.ci})`);
+  ok(gap.open && /^\d{4}-\d{2}-\d{2}$/.test(gap.ci) && /^\d{4}-\d{2}-\d{2}$/.test(gap.co) && gap.prop !== '',
+    `two-tap range prefills Add Booking with both dates (${gap.prop} · ${gap.ci} → ${gap.co})`);
   await page.evaluate(() => closeModal());
   // Bar tap → the booking's hub (narrow → standalone screen).
   await page.evaluate(() => { nav('view-backoffice'); });
