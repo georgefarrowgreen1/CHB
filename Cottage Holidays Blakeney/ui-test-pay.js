@@ -848,7 +848,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  // State-wait (the unhurried-beat rule): openPayView hid the done panel, so
+  // its visibility means THIS payment finished — a fixed 700ms reads the
+  // PREVIOUS case's sentence mid-beat.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneMo = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/monthly payments are set up/.test(doneMo) && /£175\.00 on 28\/08\/2026/.test(doneMo),
     `a monthly consent's done screen confirms the schedule (${doneMo.slice(0, 90)})`);
@@ -861,7 +864,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneOne = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/collect the remaining £525\.00 automatically on 28\/10\/2026/.test(doneOne),
     `a one-payment consent confirms the collection (${doneOne.slice(0, 90)})`);
@@ -875,7 +878,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneFail = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/couldn't set up automatic payments/.test(doneFail) && /nothing else was charged/.test(doneFail),
     `a failed card-save is told to the guest, not just the log (${doneFail.slice(0, 90)})`);
@@ -883,7 +886,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneNone = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/We'll be in touch about the remaining balance/.test(doneNone),
     `no consent keeps the original sentence (${doneNone.slice(0, 80)})`);
