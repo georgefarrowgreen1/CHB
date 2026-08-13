@@ -2787,7 +2787,9 @@ a.card {
   font-size: 0.8rem;
   color: var(--text-muted);
   line-height: 1.5;
-  margin: -6px 0 14px;
+  /* The -6px top tucked this under the occupancy hint; with that line removed
+     (13 Aug) it pressed against the steppers — owner asked for air here. */
+  margin: 14px 0 14px;
 }
 .enq-faq-ask {
   display: flex;
