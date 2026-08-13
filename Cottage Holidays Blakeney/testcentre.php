@@ -114,36 +114,48 @@ if ($action === 'send_email') {
 //  My Stays shows the test booking and its emails reach the owner), then return
 //  a real magic-link URL that signs that guest in.
 // ---------------------------------------------------------------------------
-if ($action === 'guest_login') {
+// Create (or reuse) the owner-email test guest and return its meta — shared by
+// guest_login and the stage seeder (the chat thread and the pending review both
+// need a real guests row). Null when OWNER_NOTIFY_EMAIL is unset; each caller
+// says why in its own words.
+function tc_ensure_guest()
+{
     $owner = defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL ? OWNER_NOTIFY_EMAIL : '';
     if ($owner === '') {
+        return null;
+    }
+    $meta = tc_guest_meta();
+    if ($meta) {
+        return $meta;
+    }
+    $s = db()->prepare('SELECT id FROM guests WHERE email = ?');
+    $s->execute([$owner]);
+    $row = $s->fetch();
+    if ($row) {
+        $gid = (int) $row['id']; // reuse the owner's existing account
+        $created = false;
+    } else {
+        $pw = password_hash(bin2hex(random_bytes(9)), PASSWORD_DEFAULT);
+        db()
+            ->prepare('INSERT INTO guests (name, email, password_hash) VALUES (?,?,?)')
+            ->execute(['Test Centre (test guest)', $owner, $pw]);
+        $gid = (int) db()->lastInsertId();
+        $created = true;
+    }
+    tc_set_guest_meta($gid, $created, $owner);
+    return ['id' => $gid, 'created' => $created, 'email' => $owner];
+}
+
+if ($action === 'guest_login') {
+    $meta = tc_ensure_guest();
+    if (!$meta) {
         json_out([
             'ok' => false,
             'error' =>
                 'Set OWNER_NOTIFY_EMAIL in config.php first — the test guest uses it so its bookings & emails reach you.',
         ]);
     }
-    $meta = tc_guest_meta();
-    if (!$meta) {
-        $s = db()->prepare('SELECT id FROM guests WHERE email = ?');
-        $s->execute([$owner]);
-        $row = $s->fetch();
-        if ($row) {
-            $gid = (int) $row['id'];
-            $created = false;
-        }
-        // reuse the owner's existing account
-        else {
-            $pw = password_hash(bin2hex(random_bytes(9)), PASSWORD_DEFAULT);
-            db()
-                ->prepare('INSERT INTO guests (name, email, password_hash) VALUES (?,?,?)')
-                ->execute(['Test Centre (test guest)', $owner, $pw]);
-            $gid = (int) db()->lastInsertId();
-            $created = true;
-        }
-        tc_set_guest_meta($gid, $created, $owner);
-        $meta = ['id' => $gid, 'created' => $created, 'email' => $owner];
-    }
+    $owner = $meta['email'];
     // Make sure the test booking(s) belong to this guest's email so they appear in My Stays.
     try {
         db()
@@ -389,6 +401,218 @@ if ($action === 'seed_features') {
 }
 
 // ---------------------------------------------------------------------------
+//  Set the stage — a full pretend business in one tap, so every admin screen
+//  and duty has something real to say and the guest seat has stays to walk
+//  through: bookings in every money state, fresh/stale/declined enquiries, a
+//  chat thread, a pending review, expenses and a waitlist entry. Reversible:
+//  bookings/enquiries carry TEST_MARK in their invisible fields (notes /
+//  message) so the existing purge sweeps find them, and rows with no such
+//  field are id-tracked in the 'testcentre-staged' manifest. Every stay is
+//  priced with the REAL model (price_breakdown) so the money surfaces cohere,
+//  and never seeded over existing dates — a sandbox calendar must stay as
+//  double-booking-proof as the live one. Staging-only (guarded at the top).
+// ---------------------------------------------------------------------------
+if ($action === 'seed_stage') {
+    require_once __DIR__ . '/pricing.php';
+    $props = [];
+    try {
+        $props = db()
+            ->query('SELECT * FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')
+            ->fetchAll();
+    } catch (\Throwable $e) {
+    }
+    if (!$props) {
+        json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Manage → System check).']);
+    }
+    $P = fn($i) => $props[$i % count($props)];
+    $owner = defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL ? OWNER_NOTIFY_EMAIL : '';
+    $D = fn($n) => date('Y-m-d', strtotime(($n >= 0 ? '+' . $n : (string) $n) . ' days'));
+    $made = ['bookings' => 0, 'skipped' => 0, 'enquiries' => 0, 'expenses' => 0, 'waitlist' => 0, 'reviews' => 0, 'messages' => 0];
+    $man = ['expenses' => [], 'waitlist' => [], 'reviews' => [], 'messages' => []];
+
+    // One stay. opts: pay (fraction of the rental already in: 0 | 0.25 | 1),
+    // withDep (cash rail's bundled damages deposit — what makes a deposit
+    // RETURNABLE end to end with no Square charge behind it), email, method,
+    // paidOn/createdN (day offsets), arrival (window code), plan_pct + due.
+    $stay = function ($prop, $name, $ciN, $coN, $opts = []) use (&$made, $D) {
+        $ci = $D($ciN);
+        $co = $D($coN);
+        try {
+            if (dates_clash($prop['prop_key'], $ci, $co)) {
+                $made['skipped']++;
+                return 0;
+            }
+            $p = price_breakdown($prop, 2, 0, $ci, $co);
+            $frac = (float) ($opts['pay'] ?? 0);
+            $paid = round((float) $p['total'] * $frac, 2) + (!empty($opts['withDep']) ? (float) $p['damagesDeposit'] : 0);
+            $status = $frac >= 1 ? 'paid' : ($frac > 0 ? 'deposit' : 'unpaid');
+            db()->prepare(
+                'INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, notes,
+                    payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_per_night, agreed_nights,
+                    agreed_nightly, agreed_booking_fee, agreed_txn_pct, agreed_txn_fee, agreed_on, arrival_window,
+                    deposit_pct_override, balance_due_date, created_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            )->execute([
+                $prop['prop_key'],
+                $name,
+                $opts['email'] ?? '',
+                '07700 900123', // Ofcom's reserved drama range — never a real number
+                $ci,
+                $co,
+                2,
+                0,
+                'Seeded walkthrough ' . TEST_MARK,
+                $status,
+                $paid,
+                $paid > 0 ? ($opts['method'] ?? 'Card') : null,
+                $paid > 0 ? $D((int) ($opts['paidOn'] ?? 0)) : null,
+                $p['total'],
+                $p['perNight'],
+                $p['nights'],
+                $p['nightly'],
+                $p['damagesDeposit'],
+                $p['transactionPct'],
+                $p['txFee'],
+                date('Y-m-d'),
+                $opts['arrival'] ?? null,
+                $opts['plan_pct'] ?? null,
+                $opts['due'] ?? null,
+                $D((int) ($opts['createdN'] ?? 0)) . ' 10:00:00',
+            ]);
+            $made['bookings']++;
+            return (int) db()->lastInsertId();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    };
+    // The six money states an owner actually meets. Sofia, Daniel and Eleanor
+    // carry the OWNER email so the guest seat's My Stays shows an arrival-day
+    // stay (door-code companion), a balance to pay (the sandbox-card walk) and
+    // a finished one (review ask + deposit coming back).
+    $stay($P(0), 'Harriet Webb', -2, 2, ['pay' => 1, 'paidOn' => -20, 'createdN' => -60]);
+    $stay($P(1), 'Sofia Laurent', 0, 4, ['pay' => 1, 'email' => $owner, 'arrival' => '16-18', 'paidOn' => -15, 'createdN' => -45]);
+    $stay($P(2), 'Daniel Okafor', 10, 14, ['pay' => 0.25, 'email' => $owner, 'paidOn' => -8, 'createdN' => -30]);
+    $stay($P(0), 'Priya Chandra', 40, 44, ['plan_pct' => 30, 'due' => $D(19), 'createdN' => -5]);
+    $stay($P(1), 'Martin Gale', 2, 5, ['createdN' => -20]);
+    $stay($P(2), 'Eleanor Brady', -5, -1, ['pay' => 1, 'withDep' => true, 'method' => 'Cash', 'email' => $owner, 'paidOn' => -12, 'createdN' => -40]);
+
+    // Enquiries: one fresh, one gone stale (the red duty), one declined (the
+    // recovery drawer). Terms + no-dogs recorded so approval works end to end.
+    $ask = function ($prop, $name, $ciN, $coN, $msg, $createdN = 0, $declinedN = null) use (&$made, $D) {
+        try {
+            db()->prepare(
+                'INSERT INTO enquiries (prop_key, name, email, phone, check_in, check_out, adults, children, message,
+                    terms_accepted_at, terms_version, no_dogs_at, created_at, declined_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,NOW(),?,NOW(),?,?)',
+            )->execute([
+                $prop['prop_key'],
+                $name,
+                strtolower(str_replace(' ', '.', $name)) . '@example.com',
+                '07700 900456',
+                $D($ciN),
+                $D($coN),
+                2,
+                0,
+                $msg . ' ' . TEST_MARK,
+                'v1',
+                $D($createdN) . ' 09:30:00',
+                $declinedN === null ? null : $D($declinedN) . ' 17:00:00',
+            ]);
+            $made['enquiries']++;
+        } catch (\Throwable $e) {
+        }
+    };
+    $ask($P(0), 'Grace Holloway', 21, 25, "We'd love a few days by the coast — is the cottage free then?");
+    $ask($P(1), 'Tom Barrett', 35, 38, 'Hoping for a long weekend — do you allow late checkout?', -3);
+    $ask($P(2), 'Nina Perez', 8, 11, 'Any chance of a last-minute stay next week?', -5, -1);
+
+    // The chat thread and the pending review both hang off a real guests row —
+    // the owner-email test guest, so the guest seat sees its own thread too.
+    $g = tc_ensure_guest();
+    if ($g) {
+        try {
+            $ins = db()->prepare(
+                'INSERT INTO messages (guest_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?,?,?,?,?)',
+            );
+            foreach (
+                [
+                    ['guest', 'Hi — is there parking right by the cottage, or is it a walk with the bags?', 1, 1],
+                    ['admin', "There's a space directly outside, and an overflow spot two doors down — you'll be fine.", 1, 1],
+                    ['guest', 'Perfect, thank you! One more thing — do you have a travel cot we could borrow?', 0, 1],
+                ]
+                as $m
+            ) {
+                $ins->execute([$g['id'], $m[0], $m[1], $m[2], $m[3]]);
+                $man['messages'][] = (int) db()->lastInsertId();
+                $made['messages']++;
+            }
+        } catch (\Throwable $e) {
+        }
+        try {
+            db()->prepare(
+                "INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status) VALUES (?,?,5,?,'pending')
+                 ON DUPLICATE KEY UPDATE status = 'pending', review_text = VALUES(review_text)",
+            )->execute([
+                $g['id'],
+                $P(1)['prop_key'],
+                'A wonderful stay — the welcome book had everything and the beach walk from the door is glorious.',
+            ]);
+            $s = db()->prepare('SELECT id FROM guest_reviews WHERE guest_id = ? AND prop_key = ?');
+            $s->execute([$g['id'], $P(1)['prop_key']]);
+            $rid = (int) $s->fetchColumn();
+            if ($rid) {
+                $man['reviews'][] = $rid;
+                $made['reviews']++;
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
+    // Expenses (the books stop reading as a gross margin) + a waitlist entry
+    // asking for nights Sofia holds — which is what a waitlist is for.
+    try {
+        $ins = db()->prepare('INSERT INTO expenses (category, description, amount, prop_key, expense_date) VALUES (?,?,?,?,?)');
+        foreach (
+            [
+                ['Cleaning', 'Changeover clean', 85.0, $P(0)['prop_key'], $D(-10)],
+                ['Maintenance', 'Boiler service', 120.0, $P(1)['prop_key'], $D(-30)],
+                ['Laundry', 'Linen hire', 42.5, $P(2)['prop_key'], $D(-6)],
+            ]
+            as $e2
+        ) {
+            $ins->execute($e2);
+            $man['expenses'][] = (int) db()->lastInsertId();
+            $made['expenses']++;
+        }
+    } catch (\Throwable $e) {
+    }
+    try {
+        db()->prepare('INSERT INTO waitlist (prop_key, name, email, check_in, check_out, note) VALUES (?,?,?,?,?,?)')
+            ->execute([$P(1)['prop_key'], 'Olivia Fenwick', 'olivia.fenwick@example.com', $D(0), $D(4), 'Anniversary trip — any cancellation welcome']);
+        $man['waitlist'][] = (int) db()->lastInsertId();
+        $made['waitlist']++;
+    } catch (\Throwable $e) {
+    }
+
+    // The manifest MERGES with any earlier staging — overwriting it would
+    // orphan the previous round's id-tracked rows from the purge.
+    try {
+        $prev = content_json('testcentre-staged', []);
+        if (is_array($prev)) {
+            foreach ($man as $k => $ids) {
+                $man[$k] = array_values(array_unique(array_merge(array_map('intval', (array) ($prev[$k] ?? [])), $ids)));
+            }
+        }
+        db()->prepare(
+            "INSERT INTO content (item_key, item_value, updated_at) VALUES ('testcentre-staged', ?, NOW())
+             ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()",
+        )->execute([json_encode($man)]);
+    } catch (\Throwable $e) {
+    }
+    json_out(['ok' => true] + $made);
+}
+
+// ---------------------------------------------------------------------------
 //  Test data — list / delete / purge
 // ---------------------------------------------------------------------------
 function tc_test_bookings()
@@ -540,6 +764,23 @@ if ($action === 'purge_data') {
     }
     try {
         db()->prepare("DELETE FROM content WHERE item_key = 'testcentre-seeded'")->execute();
+    } catch (\Throwable $e) {
+    }
+    // Reverse the stage seeder's id-tracked rows (bookings/enquiries were
+    // already swept above by their TEST_MARK). Table names come from this
+    // fixed map and ids are int-cast — nothing owner-written reaches the SQL.
+    try {
+        $m2 = content_json('testcentre-staged', []);
+        if (is_array($m2)) {
+            foreach (['expenses' => 'expenses', 'waitlist' => 'waitlist', 'reviews' => 'guest_reviews', 'messages' => 'messages'] as $key => $table) {
+                $ids = array_values(array_filter(array_map('intval', (array) ($m2[$key] ?? []))));
+                if ($ids) {
+                    db()->prepare("DELETE FROM $table WHERE id IN (" . implode(',', array_fill(0, count($ids), '?')) . ')')
+                        ->execute($ids);
+                }
+            }
+        }
+        db()->prepare("DELETE FROM content WHERE item_key = 'testcentre-staged'")->execute();
     } catch (\Throwable $e) {
     }
     tc_remove_test_guest();

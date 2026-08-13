@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 486;
+const ADMIN_BUNDLE_V = 487;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1904,10 +1904,54 @@ function injectStagingBanner() {
     if (!IS_STAGING || document.getElementById('staging-banner')) return;
     const bar = document.createElement('div');
     bar.id = 'staging-banner';
-    bar.textContent =
-        'TEST COPY — practice only. Anything you do here will not affect your live site or real guests.';
+    // The seat switcher: past the staging gate there is no second secret worth
+    // asking for, so one tap swaps between the guest view and the back office
+    // (staging_admin_session server-side re-verifies the gate cookie).
+    bar.innerHTML =
+        '<span id="staging-banner-msg">TEST COPY — practice only, nothing here affects your live site.</span>' +
+        '<button id="staging-seat-btn" type="button"></button>';
     document.body.appendChild(bar);
     document.body.classList.add('has-staging-banner');
+    const btn = document.getElementById('staging-seat-btn');
+    if (btn) btn.addEventListener('click', () => stagingSeatSwitch(btn));
+    stagingSeatSync();
+    // owner-mode arrives after auth settles (and changes on every seat switch) —
+    // keep the label true to the seat rather than to the moment we injected.
+    try {
+        new MutationObserver(stagingSeatSync).observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
+    } catch (e) {}
+}
+function stagingSeatSync() {
+    const btn = document.getElementById('staging-seat-btn');
+    if (!btn) return;
+    btn.textContent = document.body.classList.contains('owner-mode')
+        ? 'Switch to guest view'
+        : 'Open the back office';
+}
+async function stagingSeatSwitch(btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Switching…';
+    }
+    try {
+        if (document.body.classList.contains('owner-mode')) {
+            await apiPost('auth.php', { action: 'admin_logout' }).catch(() => {});
+            // A fresh guest-seat visit should auto-sign the test guest back in.
+            try { sessionStorage.removeItem('chb-staging-noauto'); } catch (e) {}
+        } else {
+            await apiPost('auth.php', { action: 'staging_admin_session' });
+        }
+        location.reload(); // the boot owns everything after a seat change
+    } catch (e) {
+        if (btn) {
+            btn.disabled = false;
+            stagingSeatSync();
+        }
+        toast(e.message || "Couldn't switch — sign in at the staging gate first.");
+    }
 }
 if (IS_STAGING) {
     try {
@@ -5203,6 +5247,9 @@ async function openPayView(token, bookingId, kind) {
         if (!openLive()) return; // a newer open took over while we waited
         if (!cfg.enabled || !cfg.applicationId || !cfg.locationId)
             throw new Error('Online payment is not available right now.');
+        // Sandbox Square = a test environment by definition: say which card works.
+        const sandNote = document.getElementById('pay-sandbox-note');
+        if (sandNote) sandNote.style.display = cfg.environment === 'production' ? 'none' : '';
         const s = await apiPost('pay.php', {
             action: 'summary',
             booking_id: payState.bookingId,
@@ -17706,7 +17753,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payplan1';
+    const BUILD = 'stagewalk1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

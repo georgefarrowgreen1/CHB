@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=270">
+    <link rel="stylesheet" href="app.css?v=271">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -990,6 +990,10 @@
                              Card area stays UNBOXED (see .sq-card's note). -->
                         <div class="enq-field-label" id="sq-card-label">Card details</div>
                         <div id="sq-card" class="sq-card"></div>
+                        <!-- Shown only when Square is in SANDBOX (openPayView reads the
+                             config's environment) — the test card lives in Square's docs
+                             and nowhere on screen, so walking the flow meant guessing. -->
+                        <p class="pay-sandbox-note" id="pay-sandbox-note" style="display:none;"><b>Test mode — no real money.</b> Use card 4111&nbsp;1111&nbsp;1111&nbsp;1111 with any future expiry, any CVV and any postcode. Apple&nbsp;Pay and Google&nbsp;Pay don&rsquo;t appear in test mode.</p>
                         <p class="pay-msg" id="pay-msg" role="alert"></p>
                         <!-- THE WAIT IS NARRATED (payStepsArm/payStepGo, app.js): what's
                              happening while the charge runs, revealed only once the wait
@@ -1951,7 +1955,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=820"></script>
+    <script defer src="app.js?v=821"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

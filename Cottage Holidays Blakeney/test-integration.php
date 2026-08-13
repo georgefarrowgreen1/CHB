@@ -128,6 +128,10 @@ $WEBHOOK_KEY = 'chb-it-webhook-key-abcdef';
 $WEBHOOK_URL = $BASE . '/square-webhook.php';
 $cfg = preg_replace("/define\('SQUARE_WEBHOOK_SIGNATURE_KEY',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_SIGNATURE_KEY', '" . $WEBHOOK_KEY . "')", $cfg);
 $cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_URL', '" . $WEBHOOK_URL . "')", $cfg);
+// Staging-sandbox constants so §20 can drive the seat endpoint + Test-centre
+// seeder for real. These gate NOTHING else: every staging action also demands
+// a staging.* Host header, which no other section sends.
+$cfg .= "\ndefine('STAGING_SANDBOX', true);\ndefine('STAGING_GATE_USER', 'it-gate');\ndefine('STAGING_GATE_PASS', 'it-gate-pass');\n";
 file_put_contents($work . '/config.php', $cfg);
 
 // `exec` so php replaces the sh -c wrapper — proc_terminate must reach the
@@ -159,10 +163,13 @@ if (!$up) {
 it_check('php -S serves the app copy', true);
 
 // ---- HTTP client: cookie jar per persona + CSRF header on admin POSTs ----
-function http(&$jar, $method, $path, $body = null)
+function http(&$jar, $method, $path, $body = null, $host = null)
 {
     global $BASE;
     $headers = ['Accept: application/json'];
+    if ($host) {
+        $headers[] = 'Host: ' . $host; // §20: the staging endpoints key on the Host header
+    }
     if ($jar) {
         $headers[] = 'Cookie: ' . implode('; ', array_map(fn($k) => "$k={$jar[$k]}", array_keys($jar)));
     }
@@ -1606,6 +1613,66 @@ it_check('no guest session → 401', $r['code'] === 401, $r['raw']);
 $r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '']);
 it_check('an empty window clears the answer to NULL', ($r['json']['ok'] ?? false) === true
     && $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn() === null, $r['raw']);
+
+// ---- 20. Staging seats + the stage seeder --------------------------------
+// The one-tap "Back office" seat mints an ADMIN session, so its boundary gets
+// executable checks in every direction that matters: the staging Host, the
+// gate proof (cookie HMAC), and that success really is an admin session. Then
+// the Test centre's seed_stage / purge_data round-trip on the real database.
+echo "\n== 20. Staging seats + stage seeder ==\n";
+$STG_HOST = 'staging.chb-it.test';
+$gateCookie = hash_hmac('sha256', 'staging-gate|it-gate', $SECRET); // staging-gate.php's own recipe
+
+$sj = []; // fresh persona: gate passed, nothing else
+$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
+it_check('admin seat without the gate cookie → 403', $r['code'] === 403, $r['raw']);
+$sj = ['chb_staging_gate' => 'not-the-hmac'];
+$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
+it_check('a forged gate cookie → 403', $r['code'] === 403, $r['raw']);
+$sj = ['chb_staging_gate' => $gateCookie];
+$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session']); // ordinary host
+it_check('the right cookie on a NON-staging host → 403 (belt-and-braces)', $r['code'] === 403, $r['raw']);
+$r = http($sj, 'POST', '/auth.php', ['action' => 'staging_admin_session'], $STG_HOST);
+it_check('gate cookie + staging host → the seat opens', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$r = http($sj, 'POST', '/auth.php', ['action' => 'admin_status']);
+it_check('…and it is a REAL admin session', !empty($r['json']['admin']), $r['raw']);
+
+// The seeder: a full pretend business appears, and the purge takes all of it
+// back out. Driven with the $admin jar (a password-authenticated session) —
+// testcentre.php itself keys only on the Host + require_admin.
+$mark = '%[CHB-TEST]%';
+$q = fn($sql) => (int) $rootDb->query($sql)->fetchColumn();
+$b0 = $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'");
+$e0 = $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'");
+$x0 = $q('SELECT COUNT(*) FROM expenses');
+$w0 = $q('SELECT COUNT(*) FROM waitlist');
+$v0 = $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'");
+$r = http($admin, 'POST', '/testcentre.php', ['action' => 'seed_stage']);
+it_check('seed_stage on a non-staging host → 403', $r['code'] === 403, $r['raw']);
+$r = http($admin, 'POST', '/testcentre.php', ['action' => 'seed_stage'], $STG_HOST);
+it_check('seed_stage succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check(
+    'six stays seeded across the money states (none skipped on a quiet calendar)',
+    (int) ($r['json']['bookings'] ?? 0) + (int) ($r['json']['skipped'] ?? 0) === 6 && (int) ($r['json']['bookings'] ?? 0) >= 4,
+    $r['raw'],
+);
+it_check('the marker finds every seeded stay', $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'") - $b0 === (int) $r['json']['bookings'], '');
+it_check('three enquiries, one of them declined', $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'") - $e0 === 3
+    && $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark' AND declined_at IS NOT NULL") === 1, '');
+it_check('expenses + waitlist + a pending review landed', $q('SELECT COUNT(*) FROM expenses') - $x0 === 3
+    && $q('SELECT COUNT(*) FROM waitlist') - $w0 === 1
+    && $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'") - $v0 >= 1, '');
+// EVERY seeded stay carries a real price snapshot — the property that keeps
+// the money surfaces coherent, whichever stays survived the clash filter.
+$noSnap = $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark' AND (agreed_total IS NULL OR agreed_total <= 0)");
+it_check('every seeded stay carries a REAL price snapshot', $noSnap === 0, "unsnapshotted: $noSnap");
+$r = http($admin, 'POST', '/testcentre.php', ['action' => 'purge_data'], $STG_HOST);
+it_check('purge_data succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('…and the whole stage comes back out', $q("SELECT COUNT(*) FROM bookings WHERE notes LIKE '$mark'") === 0
+    && $q("SELECT COUNT(*) FROM enquiries WHERE message LIKE '$mark'") === 0
+    && $q('SELECT COUNT(*) FROM expenses') === $x0
+    && $q('SELECT COUNT(*) FROM waitlist') === $w0
+    && $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'") === $v0, '');
 
 echo "\n== Summary ==\n";
 if ($fail) {

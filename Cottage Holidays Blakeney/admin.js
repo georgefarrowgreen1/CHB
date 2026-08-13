@@ -21376,6 +21376,12 @@ let tcOwnerEmail = '';
 let tcSquare = { enabled: false, production: false };
 const TC_PAGES = [
     {
+        id: 'stage',
+        label: 'Set the stage',
+        sub: 'Fill staging with a realistic pretend business',
+        ic: '<path d="M4 20V9l8-5 8 5v11M9 20v-6h6v6"/>',
+    },
+    {
         id: 'features',
         label: 'Recent features',
         sub: 'Seed demo data to try the latest additions',
@@ -21440,12 +21446,74 @@ function tcOpen(page) {
     if (title)
         title.innerHTML = `${SETTINGS_TITLES.testcentre} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
     settingsBackTarget = () => renderTestCentreList();
-    if (page === 'features') detail.innerHTML = tcPageFeatures();
+    if (page === 'stage') detail.innerHTML = tcPageStage();
+    else if (page === 'features') detail.innerHTML = tcPageFeatures();
     else if (page === 'preview') detail.innerHTML = tcPagePreview();
     else if (page === 'emails') detail.innerHTML = tcPageEmails();
     else if (page === 'booking') tcRenderBooking();
     else if (page === 'data') tcRenderData();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// ---- Set the stage: a full pretend business, one tap ----
+function tcPageStage() {
+    const items = [
+        ['Today', 'A guest in residence, one arriving today (with an arrival window), and duties in the Needs-you strip.'],
+        ['Money', 'A part-paid balance to chase, an unpaid stay due now, a custom payment plan, and a cash deposit ready to hand back.'],
+        ['Inbox', 'A fresh enquiry, a stale one gone red, a declined one in the drawer, and an unread chat message.'],
+        ['Manage', 'A pending review to approve, logged expenses on the books, and a waitlist entry for taken nights.'],
+        ['Guest view', 'Switch seats (the banner button) — My Stays shows an arrival-day stay, a balance to pay with the test card, and a finished stay asking for a review.'],
+    ];
+    return `<div class="rate-prop">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">One tap fills staging with a realistic pretend business — bookings in every money state, enquiries, a chat, a review to moderate, expenses and a waitlist entry — so every screen has something real to say. Stays are priced with the real model and never seeded over existing dates. All of it is tagged and comes out again via <strong>Test data → Remove all</strong>.</p>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" ${chbAttrs('tcSeedStage', CHB_SELF)}>Set the stage</button>
+                <div id="tc-stage-msg" style="font-size:0.82rem;margin:8px 0 14px;"></div>
+                <div class="rule-divider">What you'll find</div>
+                <div class="settings-group">${items
+                    .map(
+                        ([t, d]) => `
+                    <div class="settings-row" style="cursor:default;align-items:flex-start;">
+                        <span class="settings-row-main"><span class="settings-row-label">${t}</span><span class="settings-row-sub" style="white-space:normal;">${d}</span></span>
+                    </div>`,
+                    )
+                    .join('')}</div></div>`;
+}
+async function tcSeedStage(btn) {
+    const msg = document.getElementById('tc-stage-msg');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Setting the stage…';
+    }
+    try {
+        const r = await apiPost('testcentre.php', { action: 'seed_stage' });
+        if (msg) {
+            if (r.ok) {
+                msg.style.color = '#7FD68A';
+                const skipped = r.skipped
+                    ? ` (${r.skipped} stay${r.skipped === 1 ? '' : 's'} skipped — those dates are already taken)`
+                    : '';
+                msg.innerHTML = `✓ The stage is set — ${r.bookings} booking${r.bookings === 1 ? '' : 's'}, ${r.enquiries} enquiries, a chat, a pending review, ${r.expenses} expenses and a waitlist entry${skipped}. Start on <strong>Today</strong>, then work through the list below.`;
+            } else {
+                msg.style.color = 'var(--danger)';
+                msg.textContent = r.error || 'Could not set the stage.';
+            }
+        }
+        try {
+            await loadData();
+        } catch (e) {}
+        try {
+            renderCalendar();
+        } catch (e) {}
+    } catch (e) {
+        if (msg) {
+            msg.style.color = 'var(--danger)';
+            msg.textContent = 'Could not set the stage: ' + (e.message || 'error');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Set the stage';
+        }
+    }
 }
 // ---- Recent features: seed demo data, then a checklist of what to try ----
 function tcPageFeatures() {
@@ -21651,6 +21719,7 @@ async function tcRenderBooking() {
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, CHB_SELF)}>Open pay page ↗</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcMarkPaid', b.id, CHB_SELF)}>Mark paid in full</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_confirmation', CHB_SELF)}>Email confirmation</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
@@ -21743,6 +21812,43 @@ async function tcCreateBooking(preset, btn) {
         show(e.message || "Couldn't create.", false);
     }
     if (btn) btn.disabled = false;
+}
+// Skip the payment and get to what comes after it: settle a TEST booking in
+// full through the same set_payment write recordPayment makes (deposit
+// bundled, the cash-rail shape), so the ledgers stay coherent and the
+// deposit-return / receipt / My-Stays states all become walkable.
+async function tcMarkPaid(id, btn) {
+    let old;
+    if (btn) {
+        btn.disabled = true;
+        old = btn.textContent;
+        btn.textContent = 'Marking…';
+    }
+    try {
+        const body = {
+            action: 'set_payment',
+            id,
+            payment: 'paid',
+            deposit_collected: true,
+            payment_date: todayDashed(),
+            payment_method: 'Card',
+        };
+        body.op_id = chbOpFor(['set_payment', body]);
+        await apiPost('bookings.php', body);
+        chbOpBump();
+        toast('Marked paid in full — deposit included. The pay page now reads settled.');
+        try {
+            await loadData();
+        } catch (e) {}
+        tcRenderBooking();
+        return;
+    } catch (e) {
+        glassAlert("Couldn't mark it paid: " + (e.message || 'error'));
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = old;
+    }
 }
 async function tcGuestLogin(btn) {
     if (

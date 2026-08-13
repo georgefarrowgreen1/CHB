@@ -912,6 +912,7 @@ function is_internal_content_key($key)
         // sender's name and subject line, so never on the anonymous GET.
         'mailbox-new',
         'testcentre-seeded', // demo-data manifest (testcentre.php)
+        'testcentre-staged', // stage-seeder manifest — ids the purge reverses (testcentre.php)
     ], true);
 }
 

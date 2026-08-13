@@ -4455,12 +4455,40 @@ no money by design — chasing is the payments-due cron's job, not its.
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.
 - Dev/CI-only files (`smoke-test.js`, `test-pricing.php`, `*.md`, `*.sql` are shipped
   for migrate but `.htaccess`-denied) are excluded from the deploy in `deploy.yml`.
-- **Staging sandbox** (optional, opt-in): `deploy.yml` has a `deploy-staging` job that
-  mirrors the same code to a `staging.<domain>` site with its OWN database + `config.php`
-  (Square sandbox + test email) — a true isolated environment. It's a no-op until the
-  `STAGING_SFTP_*` secrets are set (see `SETUP-STAGING.md`). On the staging host only,
-  `.htaccess` sends `X-Robots-Tag: noindex` and `app.js` (`IS_STAGING`) shows a STAGING
-  banner. Staging post-deploy is migrate-only (never fires owner notify/digest/nudge).
+- **Staging sandbox** (LIVE — probed 401-gated at staging.<domain>, tracking main):
+  `deploy.yml`'s `deploy-staging` job mirrors the same code to a `staging.<domain>` site
+  with its OWN database + `config.php` (Square sandbox + test email; see
+  `SETUP-STAGING.md`). On the staging host only, `.htaccess` routes the entry pages
+  through `staging-gate.php` (owner password → HMAC cookie), sends `X-Robots-Tag:
+  noindex`, and `app.js` (`IS_STAGING`) shows the banner. Post-deploy is migrate-only.
+  **The gate password is the ONLY credential — one door, two seats.** The banner carries
+  a seat switcher ("Open the back office" / "Switch to guest view"): `staging_admin_session`
+  (auth.php) mints the admin seat, gated on `STAGING_SANDBOX` (which site) AND
+  `staging_gate_passed()` (who is asking — the gate cookie's HMAC recomputed from
+  `STAGING_GATE_USER` + APP_SECRET, or the Basic header; fails CLOSED unconfigured).
+  The constant alone was NOT enough for an admin seat: API endpoints aren't behind the
+  gate's rewrite rules, so anyone who found the URL could otherwise mint a session on a
+  box with a working mailer. The guest seat was already frictionless
+  (`staging_guest_session`, low-power so constant+host suffice). If no admins row exists
+  the seat MINTS one with a random never-shown password — setup.php is not needed on
+  staging. Gated by test-integration §20, where each refusal is PAIRED with a success
+  differing in exactly one factor (cookie, host), so no check can be vacuous.
+  **"Set the stage" (Test centre) seeds a full pretend business**: six stays across the
+  money states (in residence · arriving today with an arrival window · part-paid balance
+  due · custom plan · unpaid due now · past CASH stay with the deposit bundled, so the
+  deposit-return flow walks end to end with NO Square charge behind it), three enquiries
+  (fresh/stale/declined), a chat thread + pending review (on the owner-email test guest
+  — three stays carry that email so the GUEST seat's My Stays is rich too), expenses and
+  a waitlist entry for taken nights. Every stay is priced with the REAL `price_breakdown`
+  (§20 asserts no seeded row lacks a snapshot) and `dates_clash`-checked — never seeded
+  over existing dates, `skipped` reported. Reversal: bookings/enquiries carry
+  `[CHB-TEST]` in notes/message (the existing purge sweeps); expenses/waitlist/reviews/
+  messages are id-tracked in internal key `testcentre-staged`, which MERGES on re-seed
+  (overwriting would orphan the previous round from the purge). "Mark paid in full" on
+  Test-centre booking rows rides the REAL `set_payment` write (deposit_collected, op
+  ledger id) so skipping the payment still leaves coherent ledgers. And the pay screen
+  names the sandbox test card (`#pay-sandbox-note`, shown when square-config's
+  environment ≠ production — hostname is the wrong key, sandbox IS the fact).
 
 **Dead code — what a sweep will re-flag, and why it ISN'T dead.** A naive
 "defined but never referenced" scan over this codebase returns a lot of noise, because
