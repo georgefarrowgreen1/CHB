@@ -844,11 +844,23 @@ real defect (below). Browser-verified in all three states on the ui-test-pay stu
 - **MONEY IN FLIGHT ANIMATES; money at rest is still.** The is-now dot pings
   (`pjPing`), a busy Pay button spins (`::before`) and shimmers (`::after`), success
   is a GREEN BEAT on the control before the done panel replaces it (`payBeat` —
-  ~650ms, skipped under reduced motion; '✓ Paid', or '✓ Hold placed' on the hold
+  ~1050ms, skipped under reduced motion; '✓ Paid', or '✓ Hold placed' on the hold
   branch), the receipt's tick draws itself (`payDraw` — a display flip restarts CSS
   animations, so no JS), and My Stays' plan dot pings only while the plan is NOT
   troubled (red is not "on its way"). All stand down under `prefers-reduced-motion`
   (`content: none` kills the busy pseudo-elements).
+- **THE UNHURRIED PAYMENT (approved tempo demo).** The SUCCESS choreography runs on
+  a slower clock — beat hold 650→1050ms, beat pop 0.45→0.7s, tick draw 0.5→0.9s
+  (delay 0.25s), halo 1.1→1.7s (delay 0.75s, scale 1.6), receipt cascade 0.7s with
+  the last line landing at 1.65s, steps unfold 0.7s, step pop 0.55s, journey ping
+  2.4→3.2s — while everything that runs during the WAIT keeps its speed (spinner
+  0.7s, sweep 1.1s, the narration's 400ms reveal), the DECLINE keeps its quick
+  settle (bad news is read, not savoured), and My Stays' plan dot keeps 2.4s (a
+  resting screen, not the moment of payment). The enquiry flow's beat (650ms) is
+  likewise untouched. NB any gate that reads the DONE PANEL after clicking Pay must
+  wait on STATE, not a fixed clock — two ui-test-pay sites raced the longer beat
+  and were re-aimed to `waitForFunction(pay-done visible)`; checks that only read
+  the captured charge POST are unaffected (the charge lands before the beat).
 - **`.pay-cta.is-paid` is 15% `--ok`, not stronger** — a11y §1b measured `--ok-text`
   on a 28% tint at **4.15:1** both themes; 15% reads 4.65/5.13. The §1b scanner
   found the pair the day it was written, which is that gate doing its job.

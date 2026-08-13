@@ -607,7 +607,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   await page.waitForTimeout(150);
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  // Sample by STATE, not the clock: the done panel appears only after the
+  // unhurried beat (1050ms hold), so a fixed wait races it.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const partCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
   ok(!!partCharge && partCharge.part_amount === 120, `the charge asks for the figure on the button (${partCharge && partCharge.part_amount})`);
   // The quote still covers the FULL charge — pay.php verifies it BEFORE taking
@@ -846,7 +848,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  // State-wait (the unhurried-beat rule): openPayView hid the done panel, so
+  // its visibility means THIS payment finished — a fixed 700ms reads the
+  // PREVIOUS case's sentence mid-beat.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneMo = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/monthly payments are set up/.test(doneMo) && /£175\.00 on 28\/08\/2026/.test(doneMo),
     `a monthly consent's done screen confirms the schedule (${doneMo.slice(0, 90)})`);
@@ -859,7 +864,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneOne = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/collect the remaining £525\.00 automatically on 28\/10\/2026/.test(doneOne),
     `a one-payment consent confirms the collection (${doneOne.slice(0, 90)})`);
@@ -873,7 +878,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     r.dispatchEvent(new Event('change', { bubbles: true }));
     document.getElementById('pay-btn').click();
   });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneFail = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/couldn't set up automatic payments/.test(doneFail) && /nothing else was charged/.test(doneFail),
     `a failed card-save is told to the guest, not just the log (${doneFail.slice(0, 90)})`);
@@ -881,7 +886,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const doneNone = await page.evaluate(() => (document.getElementById('pay-done-sub') || {}).textContent || '');
   ok(/We'll be in touch about the remaining balance/.test(doneNone),
     `no consent keeps the original sentence (${doneNone.slice(0, 80)})`);
@@ -1057,7 +1062,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // Happy path: tokenize (stub) → charge → receipt state.
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  // State-wait (the unhurried-beat rule above): done shows after the 1050ms hold.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const done = await page.evaluate(() => ({
     done: document.getElementById('pay-done').style.display !== 'none',
     sub: (document.getElementById('pay-done-sub') || {}).textContent || '',

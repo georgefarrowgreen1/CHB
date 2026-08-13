@@ -5102,8 +5102,10 @@ async function payBeat(label) {
         btn.classList.remove('is-busy');
         btn.classList.add('is-paid');
         btn.textContent = label || '✓ Paid';
+        // 1050ms, the approved unhurried tempo — the "it worked" breath before
+        // the receipt takes over (was 650; the WAIT before this is untouched).
         if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches))
-            await new Promise((r) => setTimeout(r, 650));
+            await new Promise((r) => setTimeout(r, 1050));
         btn.classList.remove('is-paid');
     } catch (e) {}
 }
@@ -17753,7 +17755,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'stagewalk1';
+    const BUILD = 'paytempo1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
