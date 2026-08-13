@@ -8286,10 +8286,14 @@ body.light-mode .feed-dot-bad {
    when-line, ONE payline with the breakdown folded under it, quiet action
    links (flatten-by-CSS — the buttons keep their classes + data-acts). The
    PENDING enquiry cards keep the old anatomy. ---- */
-.gb2 {
+/* Two classes on purpose: .guest-booking (later in this sheet, for the OLD
+   photo-flush anatomy the pending cards keep) sets padding: 0 and silently
+   zeroed a single-class .gb2 rule — the missing padding was the "everything
+   kisses the edge" scruffiness the owner reported. */
+.guest-booking.gb2 {
   position: relative;
   overflow: hidden;
-  padding: 20px 22px 14px;
+  padding: 24px 24px 16px;
 }
 .gb2-band {
   position: absolute;
@@ -8307,13 +8311,18 @@ body.light-mode .feed-dot-bad {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-light);
-  margin: 2px 0;
+  margin: 2px 0 5px;
 }
 .gb2-when {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: 16px;
 }
+/* THE AIR PASS (approved demo): one 24px padding rail, the money group in its
+   own inset WELL (the bkflow panel's ground, so the card reads as two soft
+   groups on one sheet), and a 16px beat between blocks. The payline + fold are
+   siblings, so the well is composed from the pair: the open payline squares
+   its bottom corners and the fold carries the well's lower half. */
 .gb2-payline {
   display: flex;
   align-items: center;
@@ -8321,17 +8330,22 @@ body.light-mode .feed-dot-bad {
   gap: 10px;
   width: 100%;
   min-height: 44px;
-  padding: 10px 2px;
+  padding: 13px 16px;
+  margin: 0 0 16px;
   cursor: pointer;
-  background: none;
-  border: none;
-  border-top: 1px solid var(--glass-border);
-  border-bottom: 1px solid var(--glass-border);
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
   color: var(--text-light);
   font-family: var(--font-sans);
   font-size: 0.86rem;
   font-weight: 600;
   text-align: left;
+}
+.gb2-payline.is-open {
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  margin-bottom: 0;
 }
 .gb2-payline:focus-visible {
   outline: 2px solid var(--accent-text);
@@ -8361,15 +8375,34 @@ body.light-mode .feed-dot-bad {
   transform: rotate(90deg);
 }
 .gb2-fold {
-  padding-top: 10px;
+  padding: 4px 16px 14px;
+  margin: 0 0 16px;
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid var(--glass-border);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+}
+/* Inside the well the price box loses its own panel — rows sit directly on
+   the well's ground, one container instead of a box in a box. */
+.gb2-fold .guest-price-box {
+  background: none;
+  border: none;
+  padding: 0;
+  max-width: none;
 }
 .gb2-addr {
   font-size: 0.76rem;
   color: var(--text-muted);
-  margin: 8px 2px 2px;
+  margin: 8px 0 0;
+}
+/* The booking-progress panel joins the 16px beat and matches the well's
+   internal air. */
+.gb2 .bkflow {
+  margin: 0 0 16px;
+  padding: 16px 18px 14px;
 }
 .gb2-cta {
-  margin: 12px 0 2px;
+  margin: 0 0 14px;
 }
 .gb2-again {
   display: block;
@@ -8393,11 +8426,11 @@ body.light-mode .feed-dot-bad {
   font-size: 0.76rem;
   color: var(--accent-text);
   text-align: center;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
 }
 .gb2-review {
-  margin: 12px 0 2px;
-  padding: 12px 14px;
+  margin: 0 0 16px;
+  padding: 16px 18px 14px;
   border: 1px dashed var(--glass-border);
   border-radius: var(--r-md);
 }
@@ -8408,8 +8441,8 @@ body.light-mode .feed-dot-bad {
 }
 .gb2-stars {
   display: flex;
-  gap: 2px;
-  margin: 4px 0 2px;
+  gap: 6px;
+  margin: 8px 0 6px;
 }
 .gb2-star {
   min-width: 44px;
@@ -8433,8 +8466,13 @@ body.light-mode .feed-dot-bad {
 .gb2-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 6px;
-  margin-top: 8px;
+  justify-content: flex-start; /* .card-actions centres; a quiet rail reads left */
+  gap: 4px 20px;
+  margin-top: 2px;
+  padding-top: 12px;
+  /* The quiet row stands behind its own hairline instead of hanging off the
+     block above (the air pass). */
+  border-top: 1px solid var(--glass-border);
 }
 .gb2-links .btn-sm {
   background: none;
@@ -8443,8 +8481,11 @@ body.light-mode .feed-dot-bad {
   color: var(--accent-text);
   font-weight: 600;
   font-size: 0.8rem;
-  padding: 11px 8px;
+  padding: 11px 0;
   min-height: 44px;
+  /* .card-actions stretches its buttons ≤640px (flex: 1 1 auto) — a stretched
+     quiet link reads as space-between and centres its own wrap row. */
+  flex: 0 0 auto;
   /* Quiet links speak sentence case — btn-sm's uppercase tracking is chrome. */
   text-transform: none;
   letter-spacing: 0;

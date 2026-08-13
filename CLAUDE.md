@@ -2963,6 +2963,19 @@ armed/trouble/owner-arranged judgements as the hub line via
   the real moderated form with the rating prefilled — one path), and older
   past stays sit behind ONE disclosure holding FULL cards, not one-liners, so
   a cottage whose only stay is old keeps its review form.
+  **THE AIR PASS (approved before/after demo) — and the padding that was never
+  there.** `.guest-booking { padding: 0 }` (the OLD photo-flush anatomy the
+  pending cards keep) sits LATER in app.css than the gb2 block, so the shipped
+  card's `padding: 20px 22px` computed to **0px** — the "everything kisses the
+  edge" scruffiness the owner reported was a specificity casualty, not a
+  design. The rule is `.guest-booking.gb2` now (0,2,0 wins whatever the
+  order). The pass itself: one 24px rail, the payline + fold composed into ONE
+  WELL (the `.bkflow` panel's own ground; the open payline squares its bottom
+  corners, the fold carries the well's lower half, and `.gb2-fold
+  .guest-price-box` loses its own panel — no box in a box), a 16px beat
+  between blocks, and the quiet links behind their own hairline with
+  `flex: 0 0 auto` — `.card-actions .btn-sm` stretches its buttons ≤640px,
+  which made the links read as space-between and centred their wrap row.
 
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
