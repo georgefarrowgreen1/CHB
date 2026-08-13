@@ -1564,6 +1564,49 @@ http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $
 $bk = $ksPayload($ksBid);
 it_check('back ON, the code returns — the record was kept, not erased', ($bk['door_code'] ?? null) === '2749', json_encode($bk['door_code'] ?? 'absent'));
 
+// ══════════════════════════════════════════════════════════════════════════
+// §19 THE MY STAYS COMPANION — the held-back door-code flag and the guest's
+// own arrival-window write, against the real endpoints (riding §18's state:
+// keeper ON, code 2749 confirmed for the NEAR guest).
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA719 the My Stays companion\n";
+
+// (a) door_code_pending: a stay whose code IS confirmed never reads pending;
+// an unconfirmed stay under an ON keeper reads pending with NO date and NO
+// code (the held-back card the demo was approved for); keeper OFF sends no
+// flag at all — the cottage may have no safe to promise.
+$bk = $ksPayload($ksBid);
+it_check('a confirmed code is never ALSO pending', ($bk['door_code_pending'] ?? true) === false, json_encode($bk['door_code_pending'] ?? 'absent'));
+$bk = $ksPayload($ksFarBid);
+it_check('an unconfirmed stay under an ON keeper reads pending — no date, no code',
+    ($bk['door_code_pending'] ?? false) === true && ($bk['door_code'] ?? null) === null && ($bk['door_code_from'] ?? null) === null,
+    json_encode([$bk['door_code_pending'] ?? 'absent', $bk['door_code'] ?? 'absent', $bk['door_code_from'] ?? 'absent']));
+http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $propKey, 'enabled' => false]);
+$bk = $ksPayload($ksFarBid);
+it_check('keeper OFF sends no pending flag — a held-back card would assert a safe', ($bk['door_code_pending'] ?? true) === false, json_encode($bk['door_code_pending'] ?? 'absent'));
+http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $propKey, 'enabled' => true]);
+
+// (b) The arrival-window write: a REAL guest session (register mints one, with
+// the csrf cookie the jar picks up), writing to THEIR OWN booking only.
+$gj = [];
+$r = http($gj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keysafe Guest', 'email' => 'ks@gmail.com',
+    'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+it_check('(fixture) a guest account for the booking email signs in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
+it_check('the guest stores their arrival window on their own booking', ($r['json']['ok'] ?? false) === true && ($r['json']['window'] ?? '') === '16-18', $r['raw']);
+$aw = $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn();
+it_check('…and the column carries the CODE, never a label', $aw === '16-18', var_export($aw, true));
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksFarBid, 'window' => '16-18']);
+it_check("someone else's booking is a 404, not a write", $r['code'] === 404, $r['raw']);
+it_check('…and their row is untouched', $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksFarBid")->fetchColumn() === null, '');
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => 'about 6ish']);
+it_check('free text is refused in words — only codes reach the column', $r['code'] === 400 && ($r['json']['error'] ?? '') !== '', $r['raw']);
+$r = http($guest, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
+it_check('no guest session → 401', $r['code'] === 401, $r['raw']);
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '']);
+it_check('an empty window clears the answer to NULL', ($r['json']['ok'] ?? false) === true
+    && $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn() === null, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

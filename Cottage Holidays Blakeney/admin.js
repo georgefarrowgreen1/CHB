@@ -11045,7 +11045,7 @@ function renderBookingHub() {
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${past ? ' · past stay' : ''}</div>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${b.arrivalWindow && b.arrivalWindow !== 'unsure' ? ' · ' + escapeHtml('arriving ' + arrivalWindowLabel(b.arrivalWindow)) : ''}${past ? ' · past stay' : ''}</div>
                     ${changeover}
                 </div>
                 ${editMenu}

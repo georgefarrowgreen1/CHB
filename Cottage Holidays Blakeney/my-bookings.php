@@ -85,6 +85,12 @@ function my_bookings_payload(string $email, bool $preview = false): array
         $bk['door_code_from'] = $ksMine && $bk['door_code'] === null && $bk['check_in'] >= $ksToday
             ? date('Y-m-d', strtotime($bk['check_in'] . ' 12:00:00 UTC') - KEYSAFE_REVEAL_DAYS * 86400)
             : null;
+        // THE HELD-BACK STATE — the keeper is ON for this cottage but no code is
+        // confirmed for THIS stay yet, so the guest page may say a code is coming
+        // WITHOUT a date (the dated promise stays door_code_from's, minted only by
+        // a real confirm). Keeper OFF sends nothing at all: the cottage may have
+        // no safe, and a held-back card would assert one.
+        $bk['door_code_pending'] = $ks['enabled'] && !$ksMine && $bk['check_in'] >= $ksToday;
         $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
         // WHEN the balance is due, DERIVED — deliberately its own field, not the
         // raw `balance_due_date` column beside it. That column is the per-booking
@@ -246,9 +252,56 @@ function my_bookings_payload(string $email, bool $preview = false): array
     ];
 }
 
+// Is an arrival-window value one of the CODES the picker sends? 'HH-HH' hour
+// band, 'late' (after the last band), 'unsure', or '' to clear — never free
+// text, so nothing guest-typed can reach the column. Pure, so the gate can
+// drive it without a database.
+function arrival_window_valid(string $win): bool
+{
+    return $win === '' || $win === 'late' || $win === 'unsure' || preg_match('/^\d{1,2}-\d{1,2}$/', $win) === 1;
+}
+
 // When another file includes this for the payload helper, stop before routing.
 if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'my-bookings.php') {
     return;
+}
+
+// ---- Guest write: "when will you arrive?" --------------------------------
+// POST {action:'set_arrival_window', id, window} — the ONE field a guest may
+// write on their own booking. Ownership is the signed-in guest's email against
+// the booking's; the value is a validated code. Idempotent by nature (an
+// absolute value), so it needs no op-ledger claim.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+    // Guest-session + SameSite=Lax cookies — the posture every guest write
+    // takes (reviews, messages, autopay consent). NB an X-CSRF-Token check was
+    // tried here and REVERTED: csrf_issue_cookie() only mints the cookie for
+    // ADMIN sessions by design, so the check refused every real guest client.
+    require_guest();
+    $in = body();
+    if (($in['action'] ?? '') !== 'set_arrival_window') {
+        json_out(['error' => 'Unknown action'], 400);
+    }
+    $gw = db()->prepare('SELECT email FROM guests WHERE id = ?');
+    $gw->execute([$_SESSION['guest_id']]);
+    $gEmail = (string) ($gw->fetchColumn() ?: '');
+    $bid = (int) ($in['id'] ?? 0);
+    $win = trim((string) ($in['window'] ?? ''));
+    if (!arrival_window_valid($win)) {
+        json_out(['error' => "That arrival time didn't look right — pick one of the options."], 400);
+    }
+    $own = db()->prepare('SELECT id FROM bookings WHERE id = ? AND LOWER(email) = LOWER(?)');
+    $own->execute([$bid, $gEmail]);
+    if (!$own->fetchColumn()) {
+        json_out(['error' => 'Unknown booking'], 404);
+    }
+    try {
+        db()->prepare('UPDATE bookings SET arrival_window = ? WHERE id = ?')
+            ->execute([$win === '' ? null : $win, $bid]);
+    } catch (\Throwable $e) {
+        // Pre-migration column — the picker simply isn't live on this install yet.
+        json_out(['error' => 'Not available just yet — try again after the next update.'], 500);
+    }
+    json_out(['ok' => true, 'window' => $win]);
 }
 
 // ---- Admin, read-only: view a customer's account (sandboxed preview) ----
