@@ -761,6 +761,46 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
   still holds — trim first, raise second — but expect the trim to buy less than it looks like
   it should, and don't cut load-bearing comments chasing it. Budget raised 230400 → 232100.
 
+## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
+
+Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`
+(app.js), styled in app.css's pay block. Gated by the existing ui-test-pay strings
+(all additive — its 60+ checks run untouched) plus a11y §1b, which caught the one
+real defect (below). Browser-verified in all three states on the ui-test-pay stubs.
+- **THE JOURNEY** (`payJourneyRender` → `#pay-journey`): deposit → balance → deposit
+  back as dotted rows with "you are here" marked, every figure re-using what the
+  amount note already derived (`payTotal`, the same `rest`, `paidSoFar`, and
+  `dep > 0 ? dep : depCharged` for the money that comes back) so the journey and the
+  hero cannot disagree — measured reconciling: £225 today + £525 balance = the £750
+  grand, and the £50 rides both sides. The legacy HOLD flow gets no journey (its
+  wording is its own era), and a one-row journey is hidden — it would state nothing
+  the hero hasn't. `payState.jBack`/`jDue` stash the two figures the done panel
+  needs, because it renders after the screen's locals are gone.
+- **THE STAY'S OWN COLOUR** (`#pay-stay-band` + `.pay-stay-cap`): the cottage accent
+  as a 4px band over the card, and the stage as a capsule beside the dates —
+  "✓ Dates confirmed" on a balance, "Dates held for you" (warn tint) on a deposit.
+  Safe to `insertAdjacentHTML` every open because `propEl.innerHTML` is rewritten
+  first; the hold flow gets neither.
+- **MONEY IN FLIGHT ANIMATES; money at rest is still.** The is-now dot pings
+  (`pjPing`), a busy Pay button spins (`::before`) and shimmers (`::after`), success
+  is a GREEN BEAT on the control before the done panel replaces it (`payBeat` —
+  ~650ms, skipped under reduced motion; '✓ Paid', or '✓ Hold placed' on the hold
+  branch), the receipt's tick draws itself (`payDraw` — a display flip restarts CSS
+  animations, so no JS), and My Stays' plan dot pings only while the plan is NOT
+  troubled (red is not "on its way"). All stand down under `prefers-reduced-motion`
+  (`content: none` kills the busy pseudo-elements).
+- **`.pay-cta.is-paid` is 15% `--ok`, not stronger** — a11y §1b measured `--ok-text`
+  on a 28% tint at **4.15:1** both themes; 15% reads 4.65/5.13. The §1b scanner
+  found the pair the day it was written, which is that gate doing its job.
+- **THE DONE PANEL SAYS WHAT HAPPENS NEXT** (`payDoneNextRender` → `#pay-done-next`):
+  received ✓ / the rest (autopay-arranged wording off `res.autopay`, else the
+  balance with its due date) / arrival details a week before / the deposit back —
+  paying never dead-ends. Additive beside the unchanged spoken sub, so every gate
+  reading `#pay-done-sub` still fires.
+- Deliberately NOT built (re-gate first): the two-option plan choice cards (the
+  consent radio flow is gate-pinned) and a two-line pay button (gates read
+  `btn.textContent` as one string).
+
 ## The cottage cards are ONE shape, whatever the cottages are called
 
 Reported from a phone: the cards don't lay out the same way. They didn't — and it was never

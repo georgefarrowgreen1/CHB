@@ -4580,6 +4580,76 @@ async function guestAutopayOff(token, bookingId) {
     }
 }
 
+// ---- THE JOURNEY (the approved payments demo): one row composer feeds the
+// pay screen's schedule AND the done panel's what-happens-next, so the promise
+// before paying and the promise after are one document. ----
+function payJourneyRow(state, lbl, sub, fig) {
+    return `<div class="pj-row is-${state}"><span class="pj-dot" aria-hidden="true"></span><span class="pj-main"><span class="pj-lbl">${escapeHtml(lbl)}</span>${sub ? `<span class="pj-sub">${escapeHtml(sub)}</span>` : ''}</span>${fig ? `<span class="pj-fig">${escapeHtml(fig)}</span>` : ''}</div>`;
+}
+function payJourneyRender(s, dep, depCharged, paidSoFar, payTotal) {
+    const wrap = document.getElementById('pay-journey');
+    const rowsEl = document.getElementById('pay-journey-rows');
+    if (!wrap || !rowsEl) return;
+    // The legacy hold flow keeps its own wording and gets no journey.
+    if (s.kind === 'hold') { wrap.style.display = 'none'; return; }
+    const rest = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
+    const backFig = dep > 0 ? dep : depCharged;
+    // Stashed for the done panel, which renders after the screen's locals are gone.
+    payState.jBack = backFig;
+    payState.jDue = s.balanceDueDate || '';
+    const remind = "we'll remind you";
+    const rows = [];
+    if (s.kind === 'deposit') {
+        rows.push(payJourneyRow('now', 'Today — deposit', 'Confirms your dates', gbp(payTotal)));
+        if (rest > 0.005)
+            rows.push(payJourneyRow('dim', 'Balance', s.balanceDueDate ? `Due by ${fmtDate(s.balanceDueDate)} — ${remind}` : `Before your stay — ${remind}`, gbp(rest)));
+    } else {
+        if (paidSoFar > 0.005)
+            rows.push(payJourneyRow('done', 'Already paid', backFig > 0.005 ? 'Including your refundable deposit' : '', gbp(paidSoFar)));
+        rows.push(payJourneyRow('now', 'Balance — today', '', gbp(payTotal)));
+    }
+    if (backFig > 0.005) rows.push(payJourneyRow('dim', 'Deposit back', '3–5 working days after checkout', gbp(backFig)));
+    // A one-row journey states nothing the hero hasn't — render only a real path.
+    if (rows.length < 2) { wrap.style.display = 'none'; return; }
+    rowsEl.innerHTML = rows.join('');
+    wrap.style.display = '';
+}
+// The green BEAT: success shows on the control that was pressed BEFORE the done
+// panel replaces it (the approved motion grammar). Instant under reduced motion.
+async function payBeat(label) {
+    try {
+        const btn = document.getElementById('pay-btn');
+        if (!btn) return;
+        btn.classList.remove('is-busy');
+        btn.classList.add('is-paid');
+        btn.textContent = label || '✓ Paid';
+        if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches))
+            await new Promise((r) => setTimeout(r, 650));
+        btn.classList.remove('is-paid');
+    } catch (e) {}
+}
+// WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
+// never dead-ends. Additive beside the (unchanged) spoken sub.
+function payDoneNextRender(res, rem) {
+    const el = document.getElementById('pay-done-next');
+    if (!el) return;
+    const apo = res && res.autopay;
+    const rows = [
+        payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
+    ];
+    if (rem > 0.005) {
+        rows.push(
+            apo && apo.ok
+                ? payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, '')
+                : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
+        );
+    }
+    rows.push(payJourneyRow('dim', 'Arrival details a week before', 'Directions, entry and everything you need', ''));
+    if (Number(payState.jBack || 0) > 0.005)
+        rows.push(payJourneyRow('dim', `${gbp(payState.jBack)} deposit back`, '3–5 working days after checkout', ''));
+    el.innerHTML = rows.join('');
+    el.style.display = '';
+}
 async function openPayView(token, bookingId, kind) {
     try {
         trackEvent('pay_start', '');
@@ -4766,6 +4836,29 @@ async function openPayView(token, bookingId, kind) {
             noteEl.textContent = bits.join(' ');
             noteEl.style.display = bits.length ? '' : 'none';
         }
+        // The cottage's colour opens the card, and the stay states its stage as
+        // the capsule beside the dates — the money follows the thing it buys.
+        try {
+            const band = document.getElementById('pay-stay-band');
+            const accent = s.propKey && typeof propertyMeta === 'object' && propertyMeta[s.propKey] && propertyMeta[s.propKey].accent;
+            if (band) {
+                band.style.display = accent ? '' : 'none';
+                if (accent) band.style.background = accent;
+            }
+            if (propEl && s.kind !== 'hold') {
+                propEl.insertAdjacentHTML(
+                    'beforeend',
+                    s.kind === 'balance'
+                        ? '<span class="pay-stay-cap">✓ Dates confirmed</span>'
+                        : '<span class="pay-stay-cap is-held">Dates held for you</span>',
+                );
+            }
+        } catch (e) {}
+        // THE JOURNEY: every figure re-uses what the note above derived, so the
+        // two cannot disagree (see payJourneyRender's header).
+        try {
+            payJourneyRender(s, dep, depCharged, paidSoFar, payTotal);
+        } catch (e) {}
         // SETTLE IT ALL NOW. booking_payment_kind already passes a requested
         // 'balance' through, so the whole amount was always chargeable — there
         // was simply no way to ask for it.
@@ -4869,6 +4962,7 @@ async function payWithToken(sourceId, partOverride) {
             kind: 'hold',
             source_id: sourceId,
         });
+        await payBeat('✓ Hold placed');
         document.getElementById('pay-body').style.display = 'none';
         // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
         // a change made while it is display:none is not reliably announced.
@@ -4912,6 +5006,7 @@ async function payWithToken(sourceId, partOverride) {
         }
         throw e;
     }
+    await payBeat();
     document.getElementById('pay-body').style.display = 'none';
     // Show what the card was CHARGED (incl. the bundled refundable deposit) —
     // quoting only the rental portion after a "Pay £450" button read like a
@@ -4942,6 +5037,8 @@ async function payWithToken(sourceId, partOverride) {
                   : apo && !apo.ok
                     ? `Thank you — ${took} received. We couldn't set up automatic payments just now — nothing else was charged, we'll email you before the balance is due, and you can pay any time from My Stays.`
                     : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
+    // What happens next, as the journey's own rows — additive beside the sub.
+    try { payDoneNextRender(res, rem); } catch (e) {}
     const restBtn = document.getElementById('pay-done-rest');
     if (restBtn) {
         restBtn.style.display = rem > 0.005 ? '' : 'none';
@@ -16778,7 +16875,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'todaywear1';
+    const BUILD = 'guestpay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
