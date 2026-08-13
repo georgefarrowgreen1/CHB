@@ -8282,6 +8282,193 @@ body.light-mode .feed-dot-bad {
     animation: pjPing 2.4s ease-out infinite;
   }
 }
+/* ---- The stay card, rebuilt (gb2): accent band + serif name, spoken
+   when-line, ONE payline with the breakdown folded under it, quiet action
+   links (flatten-by-CSS — the buttons keep their classes + data-acts). The
+   PENDING enquiry cards keep the old anatomy. ---- */
+.gb2 {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 22px 14px;
+}
+.gb2-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+.gb2-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-light);
+  margin: 2px 0;
+}
+.gb2-when {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.gb2-payline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 2px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border);
+  color: var(--text-light);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: left;
+}
+.gb2-payline:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+.gb2-tick {
+  color: var(--ok-text);
+}
+.gb2-plr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.gb2-fig {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.gb2-chev {
+  display: inline-block;
+  color: var(--text-muted);
+  transition: transform 0.25s var(--fluid-bezier);
+}
+.gb2-payline.is-open .gb2-chev {
+  transform: rotate(90deg);
+}
+.gb2-fold {
+  padding-top: 10px;
+}
+.gb2-addr {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 8px 2px 2px;
+}
+.gb2-cta {
+  margin: 12px 0 2px;
+}
+.gb2-again {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-light);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+}
+.gb2-again:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.gb2-ord {
+  font-size: 0.76rem;
+  color: var(--accent-text);
+  text-align: center;
+  margin: 8px 0 0;
+}
+.gb2-review {
+  margin: 12px 0 2px;
+  padding: 12px 14px;
+  border: 1px dashed var(--glass-border);
+  border-radius: var(--r-md);
+}
+.gb2-rev-t {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.gb2-stars {
+  display: flex;
+  gap: 2px;
+  margin: 4px 0 2px;
+}
+.gb2-star {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  font-size: 1.3rem;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.gb2-star:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+.gb2-rev-s {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+.gb2-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin-top: 8px;
+}
+.gb2-links .btn-sm {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 11px 8px;
+  min-height: 44px;
+  /* Quiet links speak sentence case — btn-sm's uppercase tracking is chrome. */
+  text-transform: none;
+  letter-spacing: 0;
+}
+.gb2-links .btn-sm .ic {
+  display: none;
+}
+.gb2-pastbtn {
+  display: block;
+  margin: 6px 2px;
+  min-height: 44px;
+  padding: 10px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.gb2-pastbtn:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
 .hub-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));

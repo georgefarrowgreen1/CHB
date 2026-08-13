@@ -45,7 +45,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         if (body.action === 'guest_status') return json({ ok: true, guest });
         return json({ ok: true, admin: false, guest: null });
       }
-      if (url.includes('my-bookings.php')) return json({ ok: true, bookings, enquiries: [], completed_stays: 0 });
+      if (url.includes('my-bookings.php')) return json({ ok: true, bookings, enquiries: [], completed_stays: (opts && opts.completed) || 0 });
       if (url.includes('rates.php')) return json({ properties: [
         { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
         { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 120, booking_fee: 50, max_adults: 2, max_children: 1, max_total: 3, sort_order: 2 },
@@ -250,6 +250,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     agreed_nightly: 390, agreed_booking_fee: 90, agreed_txn_pct: 0, agreed_txn_fee: 0,
     hold_status: 'charged', hold_amount: 50,
   })], { at: todayAt(9, 0) });
+  // The breakdown folds under the card's payline now — open it before an
+  // innerText read (the fold rule: visibility, never existence).
+  await page.click('.gb2-payline');
+  await page.waitForTimeout(150);
   const money = await page.evaluate(() => {
     const box = document.querySelector('.guest-price-box');
     return box ? box.innerText.replace(/\s+/g, ' ') : '';
@@ -271,6 +275,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     agreed_nightly: 910, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0,
     price_override: 700,
   })]);
+  await page.click('.gb2-payline'); // the breakdown folds under the payline — open first
+  await page.waitForTimeout(150);
   const custom = await page.evaluate(() => {
     const box = document.querySelector('.guest-price-box');
     return box ? box.innerText.replace(/\s+/g, ' ') : '';
@@ -698,6 +704,95 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     [mk('jollyboat', d(-1), d(3), Object.assign({ payment: 'paid' }, priced))], { at: todayAt(11, 0) });
   ok(await page.evaluate(() => !document.querySelector('.my-stay-hub:not(.my-stay-hub-soon) .hub-code')),
     'mid-stay with nothing released → no code card at all');
+  await page.close();
+
+  // 26) THE STAY CARD, REBUILT — accent band + serif name, spoken when-line,
+  // ONE payline whose fold holds the same guestPriceBoxHtml rows, quiet links.
+  console.log('26) the stay card rebuilt');
+  page = await openPage({ name: 'Card Guest', email: 'card@x.co' },
+    [mk('jollyboat', d(20), d(23), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced, { id: 5151 }))]);
+  const card = await page.evaluate(() => {
+    const c = document.querySelector('.guest-booking.gb2');
+    if (!c) return null;
+    const pl = c.querySelector('.gb2-payline');
+    return {
+      band: !!c.querySelector('.gb2-band'),
+      when: (c.querySelector('.gb2-when') || {}).textContent || '',
+      pl1: (pl.querySelector('.gb2-pl1') || {}).textContent || '',
+      fig: (pl.querySelector('.gb2-fig') || {}).textContent || '',
+      folded: (document.getElementById('gb2-fold-b5151') || {}).hidden,
+      links: [...c.querySelectorAll('.gb2-links .btn-sm')].map((b) => b.textContent.trim()),
+    };
+  });
+  ok(!!card && card.band, 'the card carries its cottage accent band');
+  ok(card && /^\w{3} \d+ \w+ → /.test(card.when) && /3 nights/.test(card.when) && /ref CHB-/.test(card.when),
+    `the when-line is spoken, with nights + ref (${card && card.when.slice(0, 60)})`);
+  ok(card && /Paid in full/.test(card.pl1) && card.fig === '£400.00', `the payline states the verdict + figure (${card && card.pl1} ${card && card.fig})`);
+  ok(card && card.folded === true, 'the breakdown starts folded');
+  await page.click('.gb2-payline');
+  await page.waitForTimeout(150);
+  const foldOpen = await page.evaluate(() => ({
+    hidden: (document.getElementById('gb2-fold-b5151') || {}).hidden,
+    exp: (document.querySelector('.gb2-payline') || { getAttribute: () => '' }).getAttribute('aria-expanded'),
+    box: !!document.querySelector('#gb2-fold-b5151 .guest-price-box'),
+    addr: /in 15:00 \/ out 10:00/.test((document.querySelector('.gb2-addr') || {}).textContent || ''),
+  }));
+  ok(foldOpen.hidden === false && foldOpen.exp === 'true' && foldOpen.box,
+    'the payline opens to the SAME price-box rows (one composer, folded)');
+  ok(foldOpen.addr, 'the address + in/out times live in the fold');
+  ok(card && card.links.length >= 3 && card.links.includes('Invoice') && card.links.includes('Terms'),
+    `the secondary actions are one quiet row (${card && card.links.join(' · ')})`);
+  await page.close();
+
+  // 27) AFTER THE STAY — star-tap review, Book again + the returning-guest
+  // ordinal, and older past stays behind one disclosure.
+  console.log('27) after the stay');
+  page = await openPage({ name: 'After Guest', email: 'after@x.co' }, [
+    mk('jollyboat', d(-6), d(-3), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+    mk('21a', d(-60), d(-57), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+    mk('jollyboat', d(-120), d(-117), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+  ]);
+  // completed_stays comes from the payload — re-stub it via the route? openPage
+  // sends completed_stays: 0, so the ordinal line must NOT render (never claim
+  // a count the server didn't give).
+  const after = await page.evaluate(() => {
+    const lead = document.querySelector('.gb-grid .gb2'); // first past card
+    return {
+      again: (document.querySelector('.gb2-again') || {}).textContent || '',
+      againCount: document.querySelectorAll('.gb2-again').length,
+      ord: (document.querySelector('.gb2-ord') || {}).textContent || '',
+      stars: lead ? lead.querySelectorAll('.gb2-star').length : 0,
+      pastBtn: (document.querySelector('.gb2-pastbtn') || {}).textContent || '',
+      foldHidden: (document.getElementById('gb2-pastfold') || {}).hidden,
+      foldCards: document.querySelectorAll('#gb2-pastfold .gb2').length,
+    };
+  });
+  ok(/Book Jollyboat again/.test(after.again) && after.againCount === 1,
+    `the just-finished stay leads with Book again, once (${after.again})`);
+  ok(after.ord === '', 'no ordinal line when the server counted no completed stays');
+  ok(after.stars === 5, `the review ask is five tappable stars (${after.stars})`);
+  ok(/Earlier stays \(2\)/.test(after.pastBtn) && after.foldHidden === true && after.foldCards === 2,
+    `older stays sit behind one disclosure (${after.pastBtn.trim()})`);
+  await page.click('.gb2-pastbtn');
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => (document.getElementById('gb2-pastfold') || {}).hidden === false),
+    'the disclosure opens to the full cards — nothing is lost, only folded');
+  // Star tap → the EXISTING review form opens with the rating prefilled.
+  await page.click('.gb2-stars .gb2-star:nth-child(4)');
+  await page.waitForTimeout(150);
+  const rev = await page.evaluate(() => ({
+    open: (document.getElementById('grf-jollyboat') || { style: {} }).style.display,
+    stars: (document.getElementById('grf-stars-jollyboat') || {}).value || '',
+    lit: document.querySelectorAll('.gb2-stars .gb2-star.is-on').length,
+  }));
+  ok(rev.open === 'block' && rev.stars === '4' && rev.lit === 4,
+    `a star tap opens the real form with the rating prefilled (${rev.stars} stars, ${rev.lit} lit)`);
+  await page.close();
+  // …and the ordinal line renders when the server HAS counted completed stays.
+  page = await openPage({ name: 'Third Timer', email: 'third@x.co' },
+    [mk('jollyboat', d(-6), d(-3), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))], { completed: 2 });
+  const ord2 = await page.evaluate(() => (document.querySelector('.gb2-ord') || {}).textContent || '');
+  ok(/This would be your third stay with us/.test(ord2), `the ordinal speaks the server's own count (${ord2})`);
   await page.close();
 
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');

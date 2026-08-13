@@ -2946,6 +2946,23 @@ armed/trouble/owner-arranged judgements as the hub line via
 - NB test-integration can mint a REAL guest session over HTTP —
   `auth.php guest_register` creates the session directly — which is how §19
   drives the write path end to end (ownership 404, junk 400, clear-to-NULL).
+- **PR-2: THE STAY CARD REBUILT + AFTER THE STAY** (ui-test-yourstay §26–27).
+  Booking cards are `.gb2` now: accent band (`--prop-<k>` inline var), serif
+  name (h3 + `.guest-status-badge` KEPT — §8–10 read them), spoken when-line,
+  and ONE payline ("Paid in full ✓" / "Paid £X — £Y to pay" / "Still to pay" —
+  the figure on the right is said once) whose fold holds the SAME
+  `guestPriceBoxHtml` rows, priceIsCustom branch and all — **§11/§12 open the
+  fold before their innerText reads** (the fold rule; hidden innerText loses
+  layout spacing, which is how the re-aim announced itself). Secondary actions
+  are one quiet row (`.gb2-links` flattens `btn-sm` by CSS — classes and
+  data-acts untouched, uppercase/tracking stripped, icons hidden). The PENDING
+  enquiry cards deliberately keep the old anatomy. After the stay: the
+  just-finished card leads with Book-again + the returning-guest ordinal
+  (`completed_stays`, the server's own count — no count sent, no claim), the
+  review ask is a star-tap card ONLY while no review exists (`gb2Star` opens
+  the real moderated form with the rating prefilled — one path), and older
+  past stays sit behind ONE disclosure holding FULL cards, not one-liners, so
+  a cottage whose only stay is old keeps its review form.
 
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
