@@ -4142,17 +4142,12 @@ async function renderGuestBookings() {
         const meta = propertyMeta[propKey];
         const r = propertyRates[propKey] || defaultRates[propKey];
         const addr = address || (r && r.address) || '';
-        const img = (propertyContent[propKey] && propertyContent[propKey].images[0]) || '';
         const p =
             b.agreedPrice ||
             priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
         const ps = paymentSummary(propKey, b);
         // Deposit folded into the shown total/paid/balance until it's refunded.
         const gt = displayGrand(p, ps, b.holdStatus, b);
-        // Derive the label from the reconciled summary so it can never
-        // contradict the balance shown below or on the PDF.
-        const payState = ps.fullyPaid ? 'paid' : ps.deposit > 0 ? 'deposit' : 'unpaid';
-        const pay = paymentMeta[payState];
         // "Departed" is time-aware: once the checkout date AND time have passed
         // (hasCheckedOut), the stay is over and drops to Past stays the same day —
         // not at the next midnight. The arrival edge stays date-based so the stay
@@ -4171,47 +4166,79 @@ async function renderGuestBookings() {
         if (showReview) reviewShown.add(propKey);
         const showPhoto = !upcoming && !photoShown.has(propKey);
         if (showPhoto) photoShown.add(propKey);
+        // THE STAY CARD, REBUILT (the approved companion demo): the cottage's
+        // accent band + serif name, a SPOKEN when-line, ONE payline stating the
+        // verdict with the full breakdown FOLDED under it — the SAME
+        // guestPriceBoxHtml rows, priceIsCustom branch and all, so every money
+        // gate keeps reading one composer (open the fold before reading
+        // innerText; textContent passes through hidden as ever) — and the
+        // secondary actions demoted to one quiet row. A primary control renders
+        // only when there's genuinely something to do.
+        const gnights = nightsBetween(b.checkIn, b.checkOut);
+        const spokenWhen = `${dpSpoken(b.checkIn)} → ${dpSpokenEnd(b.checkOut)}`;
+        const pl1 = gt.fullyPaid
+            ? `Paid in full <span class="gb2-tick">✓</span>`
+            : gt.paid > 0
+                ? `Paid ${gbp(gt.paid)} — ${gbp(gt.balance)} to pay`
+                : 'Still to pay'; // the figure on the right IS the number — say it once
+        const priceBox = guestPriceBoxHtml(p, {
+            dep: gt.dep,
+            total: gt.total,
+            extraRows:
+                gt.paid > 0
+                    ? `
+                <div class="price-row" style="color:var(--ok);"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
+                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:var(--ok);' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
+                    : '',
+        });
+        // The just-finished stay leads with Book again + the returning-guest
+        // ordinal (completed_stays is the server's own count); older past cards
+        // keep the quiet link. The review ask is a gentle star-tap card, only
+        // while no review exists — a submitted one keeps its status note.
+        const isLeadPast = !upcoming && pastCards.length === 0;
+        const ordWords = ['second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
+        const nextOrd = completedStays >= 1 && completedStays <= 9 ? ordWords[completedStays - 1] : '';
+        const bookAgainLead = isLeadPast
+            ? `<div class="gb2-cta">
+                <button type="button" class="gb2-again" ${chbAttrs('rebookCottage', String(propKey))}>Book ${escapeHtml(meta.name)} again</button>
+                ${nextOrd ? `<p class="gb2-ord">This would be your ${nextOrd} stay with us.</p>` : ''}
+            </div>`
+            : '';
+        const starsCard = showReview && !myGuestReviews[propKey]
+            ? `<div class="gb2-review">
+                <div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>
+                <div class="gb2-stars" role="group" aria-label="Rate your stay">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="gb2-star" aria-label="${n} star${n === 1 ? '' : 's'}" ${chbAttrs('gb2Star', String(propKey), n, CHB_SELF)}>☆</button>`).join('')}</div>
+                <p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>
+            </div>`
+            : '';
         const __card = `
-                <div class="glass-panel guest-booking">
-                    <div class="guest-booking-head">
-                        <div class="guest-booking-img" style="background-image:url('${img}');"></div>
-                        <div class="guest-booking-body">
-                            <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
-                            <div class="guest-ref">Booking ref ${bookingRef(b.id)}</div>
-                            <div class="guest-booking-cols">
-                            <div class="guest-detail-grid">
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkIn)} · ${escapeHtml(b.checkInTime || '15:00')}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(b.guests || '')}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Payment</span><span class="booking-detail-value" style="font-size:1rem;color:${pay.color};">${pay.label}</span></div>
-                                <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
-                            </div>
-                            ${guestPriceBoxHtml(p, {
-                                dep: gt.dep,
-                                total: gt.total,
-                                extraRows:
-                                    gt.paid > 0
-                                        ? `
-                                <div class="price-row" style="color:var(--ok);"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
-                                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:var(--ok);' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
-                                        : '',
-                            })}
-                            </div>
-                            ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
-                            <div class="card-actions">
-                                ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button>` : ''}
-                                <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
-                                <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
-                                <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
-                                ${upcoming ? faqBlockHtml(propKey) : ''}
-                                ${upcoming ? guestWelcomeButton(propKey) : ''}
-                                ${!upcoming ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg> Book again</button>` : ''}
-                                ${showReview ? guestReviewButton(propKey) : ''}
-                                ${showPhoto ? guestPhotoButton(propKey) : ''}
-                            </div>
-                            ${showReview ? guestReviewForm(propKey) : ''}
-                        </div>
+                <div class="glass-panel guest-booking gb2">
+                    <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
+                    <h3 class="gb2-name"><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
+                    <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · ref ${bookingRef(b.id)}</div>
+                    <button type="button" class="gb2-payline" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}>
+                        <span class="gb2-pl1">${pl1}</span>
+                        <span class="gb2-plr"><span class="gb2-fig">${gbp(gt.total)}</span> <span class="gb2-chev" aria-hidden="true">›</span></span>
+                    </button>
+                    <div class="gb2-fold" id="gb2-fold-${b.id}" hidden>
+                        ${priceBox}
+                        <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
                     </div>
+                    ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
+                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
+                    ${bookAgainLead}
+                    ${starsCard}
+                    <div class="card-actions gb2-links">
+                        <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}>Add to calendar</button>
+                        <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}">Terms</button>
+                        ${upcoming ? faqBlockHtml(propKey) : ''}
+                        ${upcoming ? guestWelcomeButton(propKey) : ''}
+                        ${!upcoming && !isLeadPast ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}>Book again</button>` : ''}
+                        ${showReview && myGuestReviews[propKey] ? guestReviewButton(propKey) : ''}
+                        ${showPhoto ? guestPhotoButton(propKey) : ''}
+                    </div>
+                    ${showReview ? guestReviewForm(propKey) : ''}
                 </div>`;
         (upcoming ? upcomingCards : pastCards).push(__card);
 
@@ -4258,6 +4285,17 @@ async function renderGuestBookings() {
     // Each section's cards sit in their own .gb-grid so the desktop two-up
     // layout works per section (an odd last card spans the full row).
     const gGrid = (cards) => `<div class="gb-grid">${cards.join('')}</div>`;
+    // PAST STAYS FOLD AWAY (the approved demo): the just-finished stay renders
+    // in full — it carries the refund tracker, the review ask and Book again —
+    // and everything older sits behind one disclosure, full cards kept (a
+    // cottage whose only stay is old keeps its review form; textContent reads
+    // pass through hidden, the fold rule).
+    const pastHtml = pastCards.length
+        ? gHdr('Past stays') + gGrid([pastCards[0]]) + (pastCards.length > 1
+            ? `<button type="button" class="gb2-pastbtn" aria-expanded="false" ${chbAttrs('gb2PastToggle', CHB_SELF)}>Earlier stays (${pastCards.length - 1}) ›</button>
+               <div id="gb2-pastfold" hidden>${gGrid(pastCards.slice(1))}</div>`
+            : '')
+        : '';
     // No stays at all: a clear next step instead of an empty page.
     const emptyState =
         !hubCards.length && !pendingHtml && !upcomingCards.length && !pastCards.length
@@ -4270,7 +4308,7 @@ async function renderGuestBookings() {
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '') +
-        (pastCards.length ? gHdr('Past stays') + gGrid(pastCards) : '') +
+        pastHtml +
         emptyState;
 
     // Fill any in-stay tide cards (mid-stay guests) and the pre-arrival
@@ -4561,6 +4599,45 @@ function guestDoorCodeHeroHtml(b) {
             </div>`;
     }
     return '';
+}
+// The stay card's payline fold + the past-stays disclosure + the star-tap
+// review opener (tab 3/4 of the approved demo). The fold decides VISIBILITY,
+// never existence — the price box's rows stay in the DOM for every
+// textContent gate; geometry/innerText reads open the fold first.
+function gb2Toggle(id, btn) {
+    const fold = document.getElementById('gb2-fold-' + id);
+    if (!fold) return;
+    fold.hidden = !fold.hidden;
+    if (btn && btn.setAttribute) {
+        btn.setAttribute('aria-expanded', fold.hidden ? 'false' : 'true');
+        btn.classList.toggle('is-open', !fold.hidden);
+    }
+}
+function gb2PastToggle(btn) {
+    const fold = document.getElementById('gb2-pastfold');
+    if (!fold) return;
+    fold.hidden = !fold.hidden;
+    if (btn && btn.setAttribute) {
+        btn.setAttribute('aria-expanded', fold.hidden ? 'false' : 'true');
+        btn.textContent = btn.textContent.replace(/[›⌄]\s*$/, fold.hidden ? '›' : '⌄');
+    }
+}
+// A tapped star opens the EXISTING moderated review form with the rating
+// prefilled — the form, its validation and reviews.php stay the one path.
+function gb2Star(propKey, n, btn) {
+    const wrap = btn && btn.closest ? btn.closest('.gb2-stars') : null;
+    if (wrap) {
+        Array.from(wrap.querySelectorAll('.gb2-star')).forEach((s, i) => {
+            s.textContent = i < n ? '★' : '☆';
+            s.classList.toggle('is-on', i < n);
+        });
+    }
+    const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('grf-stars-' + propKey));
+    if (sel) sel.value = String(n);
+    const f = document.getElementById('grf-' + propKey);
+    if (f) f.style.display = 'block';
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('grf-text-' + propKey));
+    if (ta) ta.focus();
 }
 function guestCopyCode(code, btn) {
     const say = (t) => {
@@ -17525,7 +17602,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mystays1';
+    const BUILD = 'mystays2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
