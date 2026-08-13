@@ -795,6 +795,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/This would be your third stay with us/.test(ord2), `the ordinal speaks the server's own count (${ord2})`);
   await page.close();
 
+  // 28) AN ARCHIVED COTTAGE'S BOOKING STILL RENDERS (reported live: the Annex
+  // was archived, propertyMeta had no entry, and one undefined meta.name threw
+  // mid-forEach — the guest's ENTIRE My Stays rendered empty, other cottages'
+  // stays included). The server's JOIN still names an archived cottage
+  // (property_name), so the card and the pre-arrival hub speak that; the live
+  // booking beside it is never collateral damage; Book again is withheld on a
+  // cottage with no page to land on.
+  console.log('28) a booking at an archived cottage');
+  page = await openPage({ name: 'George F', email: 'gf@x.co' }, [
+    Object.assign(mk('theannex', d(30), d(33), Object.assign({ payment: 'unpaid', pay_token: 'ta' }, priced)), { property_name: 'The Annex' }),
+    mk('jollyboat', d(60), d(63), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+    Object.assign(mk('theannex', d(-60), d(-57), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)), { property_name: 'The Annex' }),
+  ]);
+  const arch = await page.evaluate(() => ({
+    cards: document.querySelectorAll('.guest-booking').length,
+    names: [...document.querySelectorAll('.gb2-name')].map((n) => n.textContent.trim()),
+    hub: (document.querySelector('.my-stay-hub-soon .hub-title') || {}).textContent || '',
+    tl: !!document.querySelector('.my-stay-hub-soon .gtl'),
+    again: document.querySelectorAll('.gb2-again').length,
+    rebook: [...document.querySelectorAll('.gb2-links .btn-sm')].filter((b) => /Book again/.test(b.textContent)).length,
+  }));
+  ok(arch.cards === 3 && arch.names.some((n) => /The Annex/.test(n)) && arch.names.some((n) => /Jollyboat/.test(n)),
+    `every stay renders — the archived cottage speaks the server's own name (${arch.names.join(' · ')})`);
+  ok(/The Annex/.test(arch.hub) && arch.tl, `the pre-arrival hub + timeline stand for the archived cottage too (${arch.hub.trim()})`);
+  ok(arch.again === 0 && arch.rebook === 0, 'Book again is withheld — an archived cottage has no page to land on');
+  await page.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();
