@@ -3178,6 +3178,45 @@ a.card {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
+/* THE PLAN-FIRST STEPS (approved demo): numbered chips on step 1 (the plan
+   card's own cap) and step 2 (Pay today), the honest wallet stand-down note,
+   and the one consent sentence above the button. */
+.pay-step-n {
+  display: inline-block;
+  min-width: 17px;
+  height: 17px;
+  line-height: 17px;
+  margin-right: 7px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  color: var(--bg, #fff);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+  vertical-align: 1px;
+}
+.pay-today-cap {
+  margin-top: 4px;
+}
+.pay-walnote {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  margin-bottom: 14px;
+}
+.pay-consent {
+  font-size: 0.78rem;
+  color: var(--text-light);
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  margin: 12px 0 2px;
+}
 .pay-sec-amt:not(:empty)::before {
   content: ' · ';
   color: var(--text-muted);

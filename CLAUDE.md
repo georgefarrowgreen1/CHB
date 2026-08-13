@@ -906,10 +906,34 @@ real defect (below). Browser-verified in all three states on the ui-test-pay stu
   loading state is a skeleton in the coming screen's shape (`.pay-sk-box`). All
   motion stands down under reduced motion (the unfold's transition is explicitly
   none'd there).
-- **Deliberately not built**: the plan choice cards (consent radio flow is
-  gate-pinned — own PR) and the demo's "Sending your receipt…" animation (the server
+- **Deliberately not built**: the demo's "Sending your receipt…" animation (the server
   has already sent it by the time the response arrives; animating it would be the
-  invented progress the narration rules forbid).
+  invented progress the narration rules forbid). The plan choice cards, once deferred
+  here, are BUILT — see the plan-first block below.
+- **THE PLAN COMES FIRST, AND THE METHODS FOLLOW IT (the approved plan-first
+  demo).** `#pay-autopay` sits ABOVE the express checkout now: the plan is a
+  decision about the STAY, so it lives where every guest passes it — below the
+  card form, a wallet guest paid through the top buttons and never met it.
+  **`payMethodsSync()` is the one decider**: an automatic choice stands the
+  wallets down WITH the reason on screen (`#pay-walnote` — Square cannot keep a
+  WALLET card on file for merchant-initiated payments, verified against their
+  docs; the note names the way back), 'self' restores them, and the
+  divider/card-label pair are complements of ONE expression there (the
+  mountWallets one-label rule moved home — a late wallet mount calls sync, so
+  it can never resurrect buttons a chosen plan stood down). Step chips 1/2 ride
+  `#pay-ap-cap`/`#pay-today-cap` (step 2 only while step 1 shows; its figure is
+  read off the PAY BUTTON's own text — one source for the ask). **One consent
+  sentence** (`#pay-consent`) above the button restates the whole arrangement
+  per choice, so the wallet sheet and the card form make identical promises.
+  **The belt**: walletPay refuses a chosen plan BEFORE tokenize — consent must
+  never ride a wallet token (the save would fail and the guest would leave
+  believing a plan was arranged that was not). **The error is said once**: a
+  pure field-validation tokenize failure prints NO banner (Square's iframe
+  already says "Enter a valid card number" inline — ours restated it beneath,
+  two voices for one mistake); non-field failures keep the banner. Gated by
+  ui-test-pay's PLAN-FIRST block (DOM order, stand-down both ways, consent per
+  choice, the belt as a source assertion ordered before tokenize, both error
+  branches); the old `lblEl` source pin re-aimed to payMethodsSync.
 
 ## The cottage cards are ONE shape, whatever the cottages are called
 

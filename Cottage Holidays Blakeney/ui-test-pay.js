@@ -269,8 +269,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // ONE LABEL, NOT TWO. With a wallet up, "or pay by card" and "Card details"
   // are the same statement in adjacent lines.
   ok(cta.names === 1, `exactly one thing names the card field (${cta.names})`);
+  // Re-aimed to payMethodsSync (the plan-first build): the divider and the
+  // label are complements of ONE expression there, so they still cannot both
+  // show — and the expression now folds in the plan choice too.
   const appSrcCta = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
-  ok(/lblEl\.style\.display = any \? 'none' : ''/.test(appSrcCta), '…driven off the same flag as the divider, so they cannot both show');
+  ok(/show\('sq-or', wallets && !auto\);/.test(appSrcCta) && /show\('sq-card-label', !\(wallets && !auto\)\);/.test(appSrcCta),
+    '…driven as complements of one expression in payMethodsSync, so they cannot both show');
 
   // THE DEPOSIT ASK'S SUB-LINE ITEMISES TO ITS OWN HEADLINE. It used to read
   // "25% deposit · £750.00 total" under a £225.00 hero — the percentage was
@@ -1104,6 +1108,106 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(errStates.ran === 1, 'PAY-ERR: …and the button really runs the remedy it was given');
   ok(!errStates.terminal.shown,
     `PAY-ERR: a TERMINAL state does not (${errStates.terminal.msg.slice(0, 50)})`);
+
+  // ============================================================
+  // PLAN-FIRST (the approved demo): the plan is decided BEFORE the payment
+  // methods, and the methods honestly follow the choice — Square cannot keep a
+  // WALLET card on file, so an automatic plan stands the wallets down with the
+  // reason on screen; "I'll pay it myself" brings them back. One consent
+  // sentence above the button restates the arrangement whichever rail; a
+  // field-validation tokenize failure keeps ONE voice (Square's inline).
+  // ============================================================
+  console.log('PLAN-FIRST: the decision precedes the methods');
+  await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
+  await page.waitForTimeout(900);
+  // (a) DOM ORDER — the whole point: a wallet guest must pass the plan.
+  const pfOrder = await page.evaluate(() => {
+    const ap = document.getElementById('pay-autopay');
+    const ex = document.getElementById('pay-express');
+    return !!(ap && ex && ap.compareDocumentPosition(ex) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  ok(pfOrder, 'PLAN-FIRST: the plan card precedes the express checkout in the DOM');
+  // (b) The two step chips + step-2 caption while an offer is on screen.
+  const pfCaps = await page.evaluate(() => ({
+    n1: (document.querySelector('#pay-ap-cap .pay-step-n') || {}).textContent || '',
+    todayShown: (document.getElementById('pay-today-cap') || { style: {} }).style.display !== 'none',
+    n2: (document.querySelector('#pay-today-cap .pay-step-n') || {}).textContent || '',
+    amt: (document.getElementById('pay-today-amt') || {}).textContent || '',
+  }));
+  ok(pfCaps.n1 === '1' && pfCaps.todayShown && pfCaps.n2 === '2', `PLAN-FIRST: steps 1 and 2 are numbered (${pfCaps.n1}/${pfCaps.n2})`);
+  ok(/£\d/.test(pfCaps.amt), `PLAN-FIRST: step 2 names today's figure from the button's own ask (${pfCaps.amt})`);
+  // (c) THE STAND-DOWN, both ways. The harness mounts no real wallets, so the
+  // wallet flag is stubbed the way mountWallets would set it.
+  const pfAuto = await page.evaluate(() => {
+    payState.walletsAny = true;
+    payMethodsSync();
+    const vis = (id) => (document.getElementById(id) || { style: {} }).style.display !== 'none';
+    const before = { express: vis('pay-express'), note: vis('pay-walnote') };
+    const r = document.querySelector('input[name="pay-ap-choice"][value="monthly"]');
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    const during = { express: vis('pay-express'), note: vis('pay-walnote'), noteTxt: (document.getElementById('pay-walnote') || {}).textContent || '' };
+    const s = document.querySelector('input[name="pay-ap-choice"][value="self"]');
+    s.checked = true;
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    const after = { express: vis('pay-express'), note: vis('pay-walnote') };
+    return { before, during, after };
+  });
+  ok(pfAuto.before.express && !pfAuto.before.note, 'PLAN-FIRST: with wallets up and self chosen, express shows and no note');
+  ok(!pfAuto.during.express && pfAuto.during.note, 'PLAN-FIRST: choosing an automatic plan stands the wallets down WITH the note');
+  ok(/can't be stored for later payments/.test(pfAuto.during.noteTxt) && /I'll pay it myself/.test(pfAuto.during.noteTxt),
+    'PLAN-FIRST: …the note states the reason and names the way back');
+  ok(pfAuto.after.express && !pfAuto.after.note, 'PLAN-FIRST: choosing self brings the wallets straight back');
+  // (d) ONE CONSENT SENTENCE per choice, above the button.
+  const pfConsent = await page.evaluate(() => {
+    const read = () => (document.getElementById('pay-consent') || {}).textContent || '';
+    const pick = (v) => {
+      const r = document.querySelector(`input[name="pay-ap-choice"][value="${v}"]`);
+      r.checked = true;
+      r.dispatchEvent(new Event('change', { bubbles: true }));
+      return read();
+    };
+    return { self: pick('self'), one: pick('one'), monthly: pick('monthly') };
+  });
+  ok(/nothing is stored/i.test(pfConsent.self), `PLAN-FIRST: self consent promises nothing is stored (${pfConsent.self.slice(0, 48)}…)`);
+  ok(/kept securely on file for one payment of £525\.00 on 28\/10\/2026/.test(pfConsent.one),
+    `PLAN-FIRST: one-payment consent restates sum + day (${pfConsent.one.slice(20, 90)}…)`);
+  ok(/3 monthly payments of £175\.00/.test(pfConsent.monthly) && /before each one/.test(pfConsent.monthly),
+    `PLAN-FIRST: monthly consent restates the schedule (${pfConsent.monthly.slice(20, 90)}…)`);
+  // (e) THE BELT: consent must never ride a wallet token — a stale wallet tap
+  // with a plan chosen is refused in words, and nothing is charged.
+  const pfBelt = await page.evaluate(async () => {
+    window.__pfCharged = 0;
+    const origPost = window.apiPost;
+    // monthly is still chosen from (d)
+    // Drive the wallet handler the way a stale button would: mountWallets'
+    // walletPay closure is not reachable directly, so assert at its own gate —
+    // the source carries the refusal before any tokenize.
+    return {
+      choice: payState.autopayChoice,
+      src: true,
+    };
+  });
+  const appSrcPf = require('fs').readFileSync(__dirname + '/app.js', 'utf8');
+  ok(/autopayChoice === 'one' \|\| payState\.autopayChoice === 'monthly'\) \{\s*\n\s*setPayMsg\("Automatic payments need the card form below/.test(appSrcPf)
+    && appSrcPf.indexOf('Automatic payments need the card form below') < appSrcPf.indexOf('await wallet.tokenize()'),
+    'PLAN-FIRST: walletPay refuses a chosen plan BEFORE any tokenize — consent never rides a wallet token');
+  ok(pfBelt.choice === 'monthly', '(fixture) the plan really was still chosen when the belt was read');
+  // (f) THE ERROR IS SAID ONCE: a field-validation tokenize failure never
+  // reaches the banner — Square's inline message is the one voice.
+  const pfErr = await page.evaluate(async () => {
+    const saved = squareCard;
+    squareCard = { tokenize: async () => ({ status: 'Invalid', errors: [{ type: 'VALIDATION_ERROR', field: 'cardNumber', message: 'Credit card number is not valid' }] }) };
+    await submitPayment();
+    const banner = (document.getElementById('pay-msg') || {}).textContent || '';
+    squareCard = { tokenize: async () => ({ status: 'Invalid', errors: [{ type: 'SDK_ERROR', message: 'Something broke in the SDK' }] }) };
+    await submitPayment();
+    const banner2 = (document.getElementById('pay-msg') || {}).textContent || '';
+    squareCard = saved;
+    return { fieldBanner: banner, sdkBanner: banner2 };
+  });
+  ok(pfErr.fieldBanner === '', `PLAN-FIRST: a field-validation failure prints NO second banner (got "${pfErr.fieldBanner}")`);
+  ok(/Something broke in the SDK/.test(pfErr.sdkBanner), 'PLAN-FIRST: …while a non-field failure still reaches the banner');
 
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
   await harnessDone(fails);

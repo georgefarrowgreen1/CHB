@@ -5839,16 +5839,16 @@ function payAutopayRender() {
             'monthly',
             'Monthly',
             `${mo.n} × ${gbp(mo.per)}`,
-            'from the card you pay with today',
+            'from a card we keep securely on file',
             sel === 'monthly' ? `<span class="ap-rail">${rows}<span class="ap-sum">${sum}</span></span>` : '',
         );
     }
     wrap.style.display = '';
     wrap.innerHTML = `
-        <div class="pay-sec-cap" id="pay-ap-cap">${payState.apRepair ? "We couldn't use the card you saved before" : `The ${gbp(t.amount)} that's left`}</div>
+        <div class="pay-sec-cap" id="pay-ap-cap"><span class="pay-step-n" aria-hidden="true">1</span>${payState.apRepair ? "We couldn't use the card you saved before" : `The ${gbp(t.amount)} that's left`}</div>
         <p class="pay-ap-lead">Due by ${fmtDate(t.due)} — how would you like to handle it?</p>
         <div class="pay-ap-opts">
-            ${opt('self', "I'll pay it myself", '', "we'll email you when it's due", '')}
+            ${opt('self', "I'll pay it myself", '', "we'll email you when it's due — nothing is stored", '')}
             ${opt('one', 'One payment', gbp(t.amount), `taken automatically on ${fmtDate(t.due)}`, '')}
             ${monthly}
         </div>
@@ -5858,11 +5858,66 @@ function payAutopayRender() {
                 : sel === 'one'
                   ? "We'll email you 3 days before it's taken, and you can change your mind any time from My Stays."
                   : "Choose an automatic option and we'll email you before anything is taken — you can change your mind any time from My Stays."}</p>`;
+    payMethodsSync();
 }
 function payAutopayChoice() {
     const r = /** @type {HTMLInputElement|null} */ (document.querySelector('input[name="pay-ap-choice"]:checked'));
     payState.autopayChoice = r && (r.value === 'one' || r.value === 'monthly') ? r.value : 'self';
     payAutopayRender();
+}
+// THE METHODS FOLLOW THE CHOICE (the approved plan-first demo). An automatic
+// plan needs a card Square can keep on file, and Square cannot store a WALLET
+// card for merchant-initiated payments — so choosing one stands the wallets
+// down WITH THE REASON on screen (#pay-walnote) and the card form takes over;
+// "I'll pay it myself" brings them straight back. Also owns step 2's caption
+// and the one consent sentence above the button, so every method makes the
+// same promise. One place decides all of it, called from payAutopayRender and
+// mountWallets (a late wallet mount must respect an already-chosen plan).
+function payMethodsSync() {
+    const wrap = document.getElementById('pay-autopay');
+    const offered = !!(wrap && wrap.style.display !== 'none' && payState.autopayOffer);
+    const auto = offered && payState.autopayChoice !== 'self';
+    const wallets = !!payState.walletsAny;
+    const show = (id, on) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = on ? '' : 'none';
+    };
+    show('pay-express', wallets && !auto);
+    show('sq-or', wallets && !auto);
+    show('pay-walnote', wallets && auto);
+    // With the divider hidden the card label is the only thing naming the
+    // field again (mountWallets' one-label rule, restated for this state).
+    show('sq-card-label', !(wallets && !auto));
+    // Step 2's caption only while step 1 is on screen; it replaces the express
+    // caption then (one heading, not two, over the same buttons).
+    show('pay-today-cap', offered);
+    const exCap = document.getElementById('pay-express-cap');
+    if (exCap) exCap.style.display = offered ? 'none' : '';
+    const todayAmt = document.getElementById('pay-today-amt');
+    if (todayAmt) {
+        // The figure is the BUTTON's own — one source for the ask.
+        const m = ((document.getElementById('pay-btn') || {}).textContent || '').match(/£[\d,]+\.\d\d/);
+        todayAmt.textContent = m ? m[0] : '';
+    }
+    // The consent sentence — the whole arrangement, whichever rail.
+    const strip = document.getElementById('pay-consent');
+    if (strip) {
+        const t = payState.apTerms;
+        if (!offered || !t) {
+            strip.style.display = 'none';
+            strip.textContent = '';
+        } else {
+            const mo = payState.apMonthly;
+            const sel = payState.autopayChoice;
+            strip.style.display = '';
+            strip.textContent =
+                sel === 'one'
+                    ? `Today's payment, and your card is kept securely on file for one payment of ${gbp(t.amount)} on ${fmtDate(t.due)} — we'll email you before it's taken.`
+                    : sel === 'monthly' && mo
+                      ? `Today's payment, and your card is kept securely on file for ${mo.n} monthly payments of ${gbp(mo.per)}, first on ${fmtDate(mo.dates[0])} — we'll email you before each one.`
+                      : "Today's payment only — the rest stays yours to pay, we'll email you before it's due, and nothing is stored.";
+        }
+    }
 }
 // THE REPAIR CARD. Its one action stores a card (update_card) and touches NO
 // money; `doneSay` replaces it with the confirmation.
@@ -5939,6 +5994,16 @@ async function mountWallets(amountDue) {
     }
     const walletPay = async (wallet) => {
         setPayMsg('');
+        // THE BELT under payMethodsSync's braces: consent must never ride a
+        // wallet token (Square cannot store one, so the guest would leave
+        // believing a plan was arranged that the save then fails). The UI
+        // stands the wallets down when a plan is chosen; if a stale button is
+        // reached anyway, refuse in words rather than charge with a doomed
+        // consent attached.
+        if (payState.autopayChoice === 'one' || payState.autopayChoice === 'monthly') {
+            setPayMsg("Automatic payments need the card form below — or choose “I'll pay it myself” to use Apple Pay or Google Pay today.");
+            return;
+        }
         try {
             const result = await wallet.tokenize();
             if (result.status !== 'OK')
@@ -5998,18 +6063,15 @@ async function mountWallets(amountDue) {
     // The express panel exists only when a wallet does, and its caption names
     // the LIVE figure the buttons are priced to — the clearest statement of a
     // re-priced part payment, in words, directly above the buttons.
-    const exEl = document.getElementById('pay-express');
-    if (exEl) exEl.style.display = any ? '' : 'none';
     const exAmt = document.getElementById('pay-express-amt');
     if (exAmt) exAmt.textContent = any ? gbp(amountDue) : '';
-    const orEl = document.getElementById('sq-or');
-    if (orEl) orEl.style.display = any ? '' : 'none';
-    // ONE LABEL, NOT TWO. With a wallet mounted the divider already reads "or
-    // pay by card" and the heading directly beneath it said "Card details" —
-    // the same statement twice in adjacent lines. With no wallet there is no
-    // divider, and the heading is then the only thing naming the field.
-    const lblEl = document.getElementById('sq-card-label');
-    if (lblEl) lblEl.style.display = any ? 'none' : '';
+    // Whether wallets EXIST is decided here; whether they're currently SHOWN
+    // belongs to payMethodsSync, which folds in the plan choice (an automatic
+    // plan stands them down) and owns the one-label rule with it — a late
+    // mount landing after the guest already chose Monthly must not resurrect
+    // the buttons this line used to show unconditionally.
+    payState.walletsAny = any;
+    payMethodsSync();
 }
 // WHAT THE WALLET MUST CHARGE, RIGHT NOW: the slice when one is validly armed,
 // the full amount when the part row is closed, and NOTHING while the row is
@@ -6079,6 +6141,20 @@ async function submitPayment() {
         // check runs here (Square shows the challenge if the issuer asks).
         const result = await squareCard.tokenize(payVerificationDetails());
         if (result.status !== 'OK') {
+            // THE ERROR IS SAID ONCE. Square's own iframe already highlights a
+            // field problem inline ("Enter a valid card number.") — our banner
+            // then restated it in different words directly beneath, two voices
+            // for one mistake (owner screenshot). A pure FIELD-validation
+            // failure keeps the one voice Square already painted; anything
+            // else (network, 3DS, SDK) still reaches the banner below.
+            const fieldOnly =
+                Array.isArray(result.errors) &&
+                result.errors.length > 0 &&
+                result.errors.every((er) => er && (er.type === 'VALIDATION_ERROR' || er.field));
+            if (fieldOnly) {
+                payStepsEnd(false);
+                return; // finally still restores the button
+            }
             const m =
                 (result.errors && result.errors[0] && result.errors[0].message) ||
                 'Please check your card details and try again.';
@@ -17630,7 +17706,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mystays4';
+    const BUILD = 'payplan1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
