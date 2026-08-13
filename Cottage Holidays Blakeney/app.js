@@ -14907,12 +14907,12 @@ function applySavedEdits() {
 // the owner can override via the PUBLIC content key 'enq-month-notes', one note
 // per line as "<month number>: <sentence>" (e.g. "9: September is ..."). A
 // month with no note says nothing — silence beats filler.
-const ENQ_MONTH_NOTES = {
-    9: 'September is a quiet favourite here — thinner crowds, golden light over the marshes',
-    10: 'October brings big skies and cosy evenings — good walking weather',
-    11: 'November is peaceful — the coast largely to yourselves',
-    12: 'December means bracing walks and warm pubs',
-};
+// The DEFAULT notes were removed at the owner's ask (13 Aug screenshot —
+// "Remove this text"): out of the box every month says nothing. The override
+// key still works, because a note the owner writes themselves is their own
+// content, not ours — and ui-test-nodogs drives this feature through the
+// override, so the gate is untouched.
+const ENQ_MONTH_NOTES = /** @type {Record<number, string>} */ ({});
 function enqMonthNote(m) {
     const raw = typeof siteContent === 'object' && siteContent && siteContent['enq-month-notes'];
     if (typeof raw === 'string' && raw.trim()) {
@@ -15275,7 +15275,6 @@ function applyOccupancyToForm(propKey) {
     const lim = occupancyLimits[propKey];
     const aEl = document.getElementById('enq-adults');
     const cEl = document.getElementById('enq-children');
-    const hint = document.getElementById('enq-occupancy-hint');
     if (lim) {
         if (aEl) aEl.max = lim.maxAdults;
         if (cEl) cEl.max = lim.maxChildren;
@@ -15306,7 +15305,11 @@ function applyOccupancyToForm(propKey) {
     if (ac && aEl) ac.textContent = aEl.value;
     const cc = document.getElementById('enq-children-count');
     if (cc && cEl) cc.textContent = cEl.value;
-    if (hint) hint.innerText = occupancyHint(propKey);
+    // The occupancy line ("Sleeps up to 2 adults.") and its element were
+    // removed from the guest form at the owner's ask (13 Aug) — the steppers
+    // already clamp to the limit and the page header carries "Sleeps 2".
+    // occupancyHint itself stays: the admin Add Booking modal renders it,
+    // gated by ui-test-addbooking.
     const rHint = document.getElementById('enq-rules-hint');
     if (rHint) rHint.innerText = bookingRulesHint(propKey);
 }
@@ -17287,7 +17290,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bookflow1';
+    const BUILD = 'notrim1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
