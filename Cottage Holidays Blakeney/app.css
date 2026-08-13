@@ -257,15 +257,11 @@ body.light-mode {
      the mark, the house rule) while fills/borders/icons keep --accent. */
   --accent-text: #965c35;
   --accent-soft: rgba(198, 136, 94, 0.42);
-  /* Status TEXT for the linen ground, tuned against the status TINT rather than the bare
-     surface. These are text-only (fills use the base --ok/--warn/--danger), and they
-     almost always paint on a `color-mix(var(--<status>) 12–18%, transparent)` ground of
-     their own — 13 such pairs across app.css + admin.css — which is DARKER than the
-     surface beneath, so clearing AA on the surface does not mean clearing it where the
-     text appears. Measured on the worst light ground (cmdk panel, glass-over-cream, the
-     timeline's #f0f0f0 band): ok 4.23, warn 4.40, danger 4.30 — all UNDER AA in use while
-     each passed the surface-only check. a11y-test §1b measures the tinted pairing now.
-     Darkening is monotonically safe: every light ground is lighter than the text. */
+  /* Status TEXT, tuned against the status TINT it actually sits on (a
+     color-mix ground DARKER than the surface — clearing AA on the surface is
+     not clearing it in use; a11y-test §1b measures the tinted pairing). Fills
+     keep the base --ok/--warn/--danger. Darkening is monotonically safe:
+     every light ground is lighter than the text. */
   --ok-text: #29712d; /* 4.66:1 on its own 15% tint (was #2c7830 → 4.23) */
   --warn-text: #9c5300; /* 4.62:1 on its own 15% tint (was #a15600 → 4.40) */
   --danger-text: #bc2626; /* 4.66:1 on its own 15% tint (was #c62828 → 4.30) */
@@ -3359,6 +3355,17 @@ a.card {
   font-size: 0.73rem;
   color: var(--text-muted);
   text-align: center;
+}
+/* Sandbox-only: which test card works. --info stays a BORDER (a thing). */
+.pay-sandbox-note {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+  color: var(--text-light);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 .pay-msg {
   display: none;
@@ -10564,13 +10571,11 @@ body.light-mode .hs-field:hover {
   width: 12px;
   height: 12px;
 }
-/* ONE ANATOMY, WHATEVER THE COTTAGE IS CALLED. Name and rating were siblings in a WRAPPING
-   row, so the card's shape came down to a pixel comparison against an owner-editable name:
-   in 344px the three needed 379 / 343 / 362, giving cards of 413/380/413, and it flipped
-   with the screen too (all wrap at 390px, one inline at 402, two at 430). Jollyboat cleared
-   it by ONE pixel. The name owns its line now; the two REFERENCE facts share the one under
-   it, price and availability keep theirs. Flat 384px. Unscoped so the homepage grid, from
-   the same function, cannot drift. Gated by ui-test-cottagecards. */
+/* ONE ANATOMY, WHATEVER THE COTTAGE IS CALLED: the name owns its line, the two
+   REFERENCE facts share the one under it — never siblings in a wrapping row, or
+   the card's shape depends on an owner-editable name's width. Deliberately
+   UNSCOPED so the homepage grid (same function) cannot drift. Gated by
+   ui-test-cottagecards; the measured history is in CLAUDE.md. */
 .cott-facts {
   display: flex;
   align-items: baseline;
@@ -11067,15 +11072,20 @@ body.has-preview-banner {
   padding-top: 40px;
 }
 
-/* Staging site banner (shown on staging.<domain> only) */
+/* Staging banner: ONE fixed 38px row — the message truncates so the seat
+   button fits at every width and the header offset below stays true. */
 #staging-banner {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 99999;
-  text-align: center;
-  padding: 7px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 38px;
+  padding: 0 12px;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -11083,9 +11093,33 @@ body.has-preview-banner {
   color: #fff;
   border-bottom: 2px solid var(--warn-text);
   box-shadow: var(--shadow-soft);
+  box-sizing: border-box;
+}
+#staging-banner-msg {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#staging-seat-btn {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 body.has-staging-banner {
   padding-top: 38px;
+}
+/* Both fixed headers would slide UNDER the banner (z 99999 > 1500); margin
+   moves a fixed box, so one rule clears both. */
+body.has-staging-banner header {
+  margin-top: 38px;
 }
 
 /* The My-Stays "Account & settings" button is the desktop entry to the account

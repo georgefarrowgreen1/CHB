@@ -154,6 +154,41 @@ function admin_complete_login($uid)
     json_out(['ok' => true]);
 }
 
+// Did this request pass staging-gate.php? Two proofs, matching the gate's own
+// two ways in: the signed cookie its form login sets (HMAC of the gate username
+// with APP_SECRET — recomputed here, so the two files cannot disagree), or the
+// Basic-Auth header a native-dialog sign-in carries. Fails CLOSED when the gate
+// credentials are unset — an unconfigured gate must not mean an open one.
+function staging_gate_passed()
+{
+    $user = defined('STAGING_GATE_USER') ? (string) STAGING_GATE_USER : '';
+    $pass = defined('STAGING_GATE_PASS') ? (string) STAGING_GATE_PASS : '';
+    $secret = defined('APP_SECRET') ? (string) APP_SECRET : '';
+    if ($user === '' || $secret === '') {
+        return false;
+    }
+    $want = hash_hmac('sha256', 'staging-gate|' . $user, $secret);
+    if (isset($_COOKIE['chb_staging_gate']) && hash_equals($want, (string) $_COOKIE['chb_staging_gate'])) {
+        return true;
+    }
+    $bu = $_SERVER['PHP_AUTH_USER'] ?? null;
+    $bp = $_SERVER['PHP_AUTH_PW'] ?? null;
+    if ($bu === null) {
+        $hdr = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+        if (preg_match('/Basic\s+(.+)/i', $hdr, $m)) {
+            $dec = base64_decode($m[1], true);
+            if ($dec !== false && strpos($dec, ':') !== false) {
+                [$bu, $bp] = explode(':', $dec, 2);
+            }
+        }
+    }
+    return $pass !== '' &&
+        is_string($bu) &&
+        is_string($bp) &&
+        hash_equals($user, $bu) &&
+        hash_equals($pass, (string) $bp);
+}
+
 switch ($action) {
     // ---------------- ADMIN ----------------
     case 'admin_login':
@@ -654,6 +689,35 @@ switch ($action) {
                 'postcode' => $g['postcode'],
             ],
         ]);
+
+    // Staging sandbox ONLY: the one-tap "Back office" seat. The guest seat above
+    // needs no credential because a guest session is low-power; an ADMIN session
+    // is the whole back office AND a working mailer, so it demands proof the
+    // caller passed staging-gate.php — the STAGING_SANDBOX constant only proves
+    // which SITE this is, never who is asking. The gate password IS the admin
+    // credential on staging; there is no second secret worth asking for.
+    case 'staging_admin_session':
+        if (
+            !(defined('STAGING_SANDBOX') && STAGING_SANDBOX) ||
+            !preg_match('/(^|\.)staging\./i', $_SERVER['HTTP_HOST'] ?? '')
+        ) {
+            json_out(['error' => 'Not available'], 403);
+        }
+        if (!staging_gate_passed()) {
+            json_out(['error' => 'Sign in at the staging gate first, then try again.'], 403);
+        }
+        // First admin row; minted if setup.php was never run here — the password
+        // is random and never shown, because on staging the gate is the way in.
+        $row = db()
+            ->query('SELECT id FROM admins ORDER BY id LIMIT 1')
+            ->fetch();
+        if (!$row) {
+            db()
+                ->prepare('INSERT INTO admins (username, password_hash) VALUES (?,?)')
+                ->execute(['staging-owner', password_hash(bin2hex(random_bytes(18)), PASSWORD_DEFAULT)]);
+            $row = ['id' => (int) db()->lastInsertId()];
+        }
+        admin_complete_login((int) $row['id']); // json_out(['ok' => true]) and exits
 
     // ----------- ADMIN: manage guest accounts -----------
     case 'guest_list':
