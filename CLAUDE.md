@@ -761,6 +761,66 @@ deposit states, the money, contrast by arithmetic, the affordances, the ink lock
   still holds — trim first, raise second — but expect the trim to buy less than it looks like
   it should, and don't cut load-bearing comments chasing it. Budget raised 230400 → 232100.
 
+## The booking flow speaks and moves (the approved demo, built)
+
+The enquiry journey — picker → form → send → sent — wears the pay screens' spring
+grammar, so asking and paying feel like one product. Gated by ui-test-datepicker
+(two checks re-aimed, below) and browser-verified end to end (17 checks: voice,
+capsule, wave, receipts, narration, beat, sent moment).
+- **THE PICKER TALKS LIKE THE HOUSE on the guest surfaces** (`dpVoice` = not admin,
+  no field target — a target's own startHint/endHint still wins): "When would you
+  like to arrive?" → "**Mon 24 Aug** — lovely. Now the day you'll leave, anything up
+  to **Fri 28 Aug**" → the completed range with nights + figure + party. Dates are
+  SPOKEN (`dpSpoken`/`dpSpokenEnd` — weekday-named, year only when it isn't this
+  year's, and NB `toLocaleDateString` writes "Mon, 24 Aug": the comma is stripped).
+  This is the email date rule applied to the one screen that behaves like a
+  conversation; `dpPretty` stays for field labels and admin. The ceiling is still
+  stated only where enforced — its gate was re-aimed from `/28 Aug 2026/` to
+  `/28 Aug/` because dropping the current year is the point, not a regression.
+- **"✓ LOOKS FREE" ONLY WHERE IT IS TRUE BY THE MODE'S OWN RULES** (`.dp-cap-ok` in
+  the hint): the enquiry picker refuses crossed nights, so a completed range there
+  is clear — but a SEEDED range (the hero search seeds any dates) can cross a
+  booking, so the capsule re-sweeps the nights before claiming anything. The other
+  modes never claim it: a waitlist range is for the taken nights.
+- **MOTION IS EARNED PER PICK** (`dpState.animPick`/`animWave`, consumed by
+  renderDatePicker into `dp-anim`/`dp-wavef` grid classes): the selection pops, and
+  the range fills as a WAVE near-to-far (`--dpd` stagger inline per in-range cell,
+  capped 0.24s) — only on the render that completes it. A month page or price
+  repaint replays neither (gated). **§18's pixel checks needed a settle wait**: it
+  samples the grid straight after its picks, and mid-pop a scaled cell's pixels sit
+  at the wrong spot — all four pixel checks cried wolf the day the motion shipped.
+  Its question is the RESTING paint, so it waits 750ms; the re-aim is in the suite.
+- **THE DONE BUTTON IS THE RECEIPT** (enquiry only): a completed range flips it to
+  filled-accent "Continue" with dates + figure as a `.dp-done-sub` — which must be
+  `text-transform: none`: it inherits the button's uppercase + tracking and CLIPPED
+  the figure (measured on the build's own screenshot). Other modes keep plain Done —
+  a waitlist range is not a purchase.
+- **THE FORM ASSEMBLES ITSELF AROUND LANDED DATES**: dpDone (enquiry) writes the
+  SPOKEN range into `#enq-date-display`, re-adds `.enq-landed` on
+  **`#enquire-step-review`** (NB the step-1 container id — `enquire-step-dates` does
+  not exist, and the first draft silently cascaded nothing), and the price box /
+  reassurance / quick-ask cascade in on the spring. The step-1 Continue carries its
+  own receipt (`.enq-cta-sub`, "Mon 24 Aug → 27 Aug · £440.00 all in" — rental + the
+  refundable deposit, the price box's own framing), synced at the TOP of
+  updateEnquiryPrice before any early return so cleared dates strip it.
+- **THE SEND IS NARRATED** (`enqStepsShow`/`enqStepsEnd` in `#enq-steps` — the
+  pay screen's `.pay-steps` anatomy reused verbatim, one grammar): "Checking the
+  dates are still free" shows TICKED at the 400ms reveal because `enqFirstProblem`
+  really has just run the calendar check; "Sending your enquiry to George" covers
+  the POST. Success beats the button green ("✓ Sent", `.btn-accent.is-sent`,
+  650ms, skipped under reduced motion); a refusal folds the narration away before
+  the message settles in (`.enq-modal-msg.show` rides `paySettle`).
+- **THE SENT MOMENT** (step 3): the receipt's own drawn tick + halo
+  (`.pay-done-tick` reused — its draw/halo rules are class-scoped, and the step's
+  display flip restarts them), an "Enquiry sent" heading, and the step's blocks
+  (the note — now "George replies personally — usually the same day", the said-back
+  summary, the schedule rows) cascade in via nth-child delays. Signed-in guests
+  skip step 3 by design and keep toast + beat.
+- **Deliberately not changed**: the quick-ask placeholder ("Parking? Wifi? The
+  beach?" already carries the demo's voice), the steppers (already `.hs-step`),
+  and every refusal rule in the picker — this pass is connective tissue and motion
+  over the gated logic, not a rebuild of it.
+
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
 Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`

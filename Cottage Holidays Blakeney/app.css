@@ -3976,6 +3976,101 @@ a.card {
   .pay-tline { animation: payFlow 0.9s linear infinite; }
   @keyframes payFlow { to { background-position: 16px 0; } }
 }
+/* ---- THE BOOKING FLOW SPEAKS AND MOVES (the approved demo): the picker's
+   "Looks free" capsule, the receipt-carrying Continue buttons, the range wave,
+   the form cascading in around landed dates, and the enquiry send's green
+   beat. Same spring, same grammar as the pay screens. ---- */
+.dp-cap-ok {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  padding: 2px 9px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent);
+}
+/* Ready = filled: the one control that moves the guest on, carrying its own
+   receipt (dates + figure) so the last look before closing confirms it all. */
+#dp-done.is-ready {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.dp-done-sub {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.85;
+  margin-top: 1px;
+  /* The receipt reads as a sentence — the button's uppercase + tracking made
+     it wider than the control and clipped the figure (measured). */
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.enq-cta-sub {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.9;
+  margin-top: 2px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.btn-accent.is-sent {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  color: var(--ok-text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* The pick pops, the range fills as a WAVE near-to-far — both only on the
+     render dpPick flagged (dp-anim / dp-wavef), never on a month page. */
+  .dp-anim .dp-day.dp-start,
+  .dp-anim .dp-day.dp-end {
+    animation: payPop 0.4s var(--spring);
+  }
+  .dp-wavef .dp-day.dp-in-range {
+    animation: dpWave 0.3s var(--fluid-bezier) backwards;
+    animation-delay: var(--dpd, 0s);
+  }
+  @keyframes dpWave {
+    from { background: transparent; }
+  }
+  #date-picker .dp-day[data-act]:active {
+    transform: scale(0.94);
+    transition: transform 0.12s ease;
+  }
+  .dp-cap-ok,
+  #enq-avail-cap {
+    animation: payPop 0.4s var(--spring);
+  }
+  #dp-done.is-ready {
+    animation: payCasc 0.4s var(--spring);
+  }
+  .btn-accent.is-sent {
+    animation: payPop2 0.45s var(--spring);
+  }
+  /* Landed dates assemble the form around themselves, one block after another. */
+  .enq-landed .price-box { animation: payCasc 0.45s var(--spring) 0.05s backwards; }
+  .enq-landed .enq-cancel-note { animation: payCasc 0.45s var(--spring) 0.16s backwards; }
+  .enq-landed .enq-faq-ask { animation: payCasc 0.45s var(--spring) 0.26s backwards; }
+  /* A refusal settles in, it doesn't pop (the decline rule). */
+  .enq-modal-msg.show { animation: paySettle 0.5s var(--spring); }
+  /* The sent moment cascades behind its drawn tick (the tick + halo come free
+     from .pay-done-tick's own rules — a display flip restarts them). */
+  #enquire-step-account > *:nth-child(2) { animation: payCasc 0.5s var(--spring) 0.45s backwards; }
+  #enquire-step-account > *:nth-child(3) { animation: payCasc 0.5s var(--spring) 0.58s backwards; }
+  #enquire-step-account > *:nth-child(4) { animation: payCasc 0.5s var(--spring) 0.72s backwards; }
+  #enquire-step-account > *:nth-child(5) { animation: payCasc 0.5s var(--spring) 0.85s backwards; }
+  #enquire-step-account > *:nth-child(6) { animation: payCasc 0.5s var(--spring) 0.95s backwards; }
+}
 @media (prefers-reduced-motion: reduce) {
   .pay-cta.is-busy::before,
   .pay-cta.is-busy::after {

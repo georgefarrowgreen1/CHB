@@ -318,7 +318,10 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
 
   console.log('7. the hint says how far the guest can go');
   const hint = await page.evaluate(() => document.getElementById('dp-hint').innerText);
-  ok(/check-out/.test(hint) && /28 Aug 2026/.test(hint),
+  // Re-aimed for the spoken-voice hint (the approved booking-flow demo): the
+  // ceiling now reads "anything up to Fri 28 Aug" — weekday-named, the current
+  // year dropped. The FACT asserted is unchanged: the limit is NAMED.
+  ok(/leave|check-out/.test(hint) && /28 Aug/.test(hint),
     `it names the latest possible checkout rather than leaving them to find it (${hint})`);
   // …and once both ends are in, it counts the nights in words a person writes —
   // "night(s)" was a placeholder that shipped, on the one line confirming the stay
@@ -1286,6 +1289,12 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
       };
       return { s: read('24'), a: read('25'), b: read('26'), e: read('27'), free: read('05') };
     });
+    // The pick now animates (the selection pop + the range wave — the approved
+    // booking-flow motion). This section's question is the RESTING paint, so the
+    // screenshots wait for the ~0.5s of decoration to settle; sampling mid-pop
+    // reads a scaled cell's pixels at the wrong spot and cried wolf on all four
+    // pixel checks the day the motion shipped.
+    await page.waitForTimeout(750);
     // Vacuity guard: this whole section measures a SELECTED range, so if the picks did
     // not land there is nothing here to be legible and every check below would pass.
     ok(
