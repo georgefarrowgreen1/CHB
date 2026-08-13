@@ -800,6 +800,56 @@ real defect (below). Browser-verified in all three states on the ui-test-pay stu
 - Deliberately NOT built (re-gate first): the two-option plan choice cards (the
   consent radio flow is gate-pinned) and a two-line pay button (gates read
   `btn.textContent` as one string).
+- **THE WAIT IS NARRATED (v3 — the refined demo, built).** `#pay-steps` under the
+  card form: Preparing your payment → Checking with your bank → Taking the payment,
+  ticking on the REAL callbacks (step 1 covers `tokenize(verificationDetails)`, where
+  3-D Secure actually runs; step 2 turns when `payWithToken`'s charge posts). Three
+  rules, each in payStepsArm's header: it EARNS ITS PLACE (unfolds via a grid-rows
+  reveal only after 400ms of waiting — a fast payment never sees it), it ACKNOWLEDGES
+  TIME (a bank step still running at 2s changes its line to "still with your bank —
+  open your banking app"), and it NEVER INVENTS PROGRESS. Card path only — wallets
+  have their own sheet, the legacy hold keeps its wording. On failure the list folds
+  away before the message settles in (`.pay-msg.show` carries a damped-slide keyframe
+  now). ONE PULSE, ONE PLACE: payStepsArm swaps the journey's `is-now` ping for an
+  `is-run` spinner and payStepsEnd settles it to `is-done` (or restores it on
+  failure) — note a part-field re-render mid-charge would resurrect the ping
+  (harmless, display-only).
+- **THE JOURNEY FOLLOWS THE SLICE** (`payJourneyRowsFor` + `payJourneySync`, called
+  from payPartRender): arming a part payment used to re-price the hero, button and
+  wallets while the journey kept saying "Balance — today £525" — two statements of
+  one payment. The "you are here" row becomes "Today — part payment", the remainder
+  gets its own row with the due date, and closing the part row restores everything.
+  payState.jCtx is the stash (cleared on hold/hidden) so sync re-renders the same facts.
+- **AN ARRANGED BALANCE SAYS SO** (openPayView, gated `armed && !autopayRepair`): hero
+  label "Balance · already arranged", an `is-arr` journey row (sea-blue `--info` dot —
+  handled, not "you are here") naming the collection date, the button demoted to
+  `.pay-cta.is-quiet` "Pay £X now instead", and `#pay-armed-note` says what paying
+  early does. A TROUBLED armed plan (autopayRepair present) keeps the full-strength
+  ask — its affordance is the repair card, never "nothing to do". The armed chrome is
+  set BEFORE the partView snapshot so a part open/close round trip restores it.
+- **MONEY COMING BACK SHOWS ITS JOURNEY** (`guestDepositTrackerHtml`, past-stay cards
+  on My Stays): issued (= `hold_settled_at`, already in `SELECT b.*` — NO server
+  change) → your bank (+5 working days), solid fill = days behind you, "Day N of 3–5
+  working days" in words, retiring after 6 working days. Renders only for
+  `holdStatus 'returned'` with a real returned figure and a dated settle.
+- **THE RECEIPT LANDS WHERE ITS PROMISES LIVE** (`payDoneBackRetarget` on both done
+  branches): a signed-in guest's exit becomes "View your stay" → `payDoneStays`
+  (nav + a FRESH renderGuestBookings, so the card shows the payment that just
+  happened); an email-link guest keeps "Back to the site". NB `currentGuest` is a
+  `let` — a harness poking `window.currentGuest` cannot reach it, which is why the
+  signed-in branch is verified by calling the retarget helper, not by assignment.
+- **The Apple-polish motion set**: `payPop` on completed dots (steps + journey),
+  `payPop2` beat on `.pay-cta.is-paid`, a one-shot `payHalo` behind the receipt tick,
+  `payCasc` nth-child cascade on the done panel, `paySettle` on the decline message,
+  and journey/step separators inset to the text edge (`.pj-row + .pj-row::before` at
+  left 36px — the border-top rule is GONE, anything styling it must move too). The
+  loading state is a skeleton in the coming screen's shape (`.pay-sk-box`). All
+  motion stands down under reduced motion (the unfold's transition is explicitly
+  none'd there).
+- **Deliberately not built**: the plan choice cards (consent radio flow is
+  gate-pinned — own PR) and the demo's "Sending your receipt…" animation (the server
+  has already sent it by the time the response arrives; animating it would be the
+  invented progress the narration rules forbid).
 
 ## The cottage cards are ONE shape, whatever the cottages are called
 
