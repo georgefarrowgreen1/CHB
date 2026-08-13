@@ -8026,43 +8026,261 @@ body.light-mode .feed-dot-bad {
     display: none;
   }
 }
-/* The guest's door code — my-bookings.php sends it only once the owner has
-   confirmed the safe is set for this stay and arrival is near. */
-.hub-doorcode {
+/* ---- The My Stays companion (approved demo): the stay timeline, arrival
+   window, weather strip, extras asks and the arrival-day code hero. Token
+   colours only, so both themes hold. The door code follows the keeper's gate —
+   see guestStayTimelineHtml / guestDoorCodeHeroHtml. ---- */
+.gtl,
+.gslots,
+.gwx,
+.gxtra {
+  margin-top: 14px;
+}
+.gtl-cap {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.gtj {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 10px 14px;
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  align-items: flex-start;
+  gap: 11px;
+  padding: 9px 2px;
+  position: relative;
 }
-.hub-doorcode .ic {
-  width: 18px;
-  height: 18px;
+.gtj + .gtj::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--glass-border);
+}
+.gtj-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-top: 4px;
   flex: none;
-  color: var(--accent);
+  box-sizing: border-box;
+  border: 2px solid var(--glass-border);
+  background: transparent;
 }
-.hub-doorcode-lbl {
+.gtj.is-done .gtj-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.gtj.is-now .gtj-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.gtj.is-arr .gtj-dot {
+  background: var(--info);
+  border-color: var(--info);
+}
+.gtj-m {
   flex: 1;
   min-width: 0;
-  font-size: 0.82rem;
+}
+.gtj-l {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--text-light);
 }
-.hub-doorcode-fig {
-  font-family: var(--font-serif);
-  font-size: 1.5rem;
-  letter-spacing: 0.22em;
+.gtj-s {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.gtj-f {
+  font-size: 0.85rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-light);
+}
+.gtj.is-dim .gtj-l,
+.gtj.is-dim .gtj-f {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.gtj-code {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  letter-spacing: 0.2em;
   color: var(--accent-text);
 }
-.hub-doorcode.is-wait {
-  background: transparent;
-  border-style: dashed;
-}
-.hub-doorcode.is-wait .hub-doorcode-lbl {
+/* Arrival-window chips — real buttons at the house 44px touch floor. */
+.gslot-q {
+  font-size: 0.78rem;
   color: var(--text-muted);
+  margin: 0 0 8px;
+}
+.gslot-row,
+.gxtra-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gslot,
+.gxchip {
+  min-height: 44px;
+  padding: 8px 15px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-light);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+}
+.gslot.is-sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.gslot-note {
+  font-size: 0.76rem;
+  color: var(--ok-text);
+  min-height: 1em;
+  margin: 8px 0 0;
+}
+.gxchip.is-asked {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  border-color: var(--ok);
+  color: var(--ok-text);
+}
+.gxtra-note {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+/* Weather strip — the stay's own days, absent beyond the forecast horizon. */
+.gwx-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.gwx-d {
+  flex: 1 1 0;
+  min-width: 62px;
+  text-align: center;
+  padding: 9px 4px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+}
+.gwx-dn {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.gwx-ic {
+  display: block;
+  font-size: 1.15rem;
+  margin: 3px 0 1px;
+}
+.gwx-t {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.gwx-s {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gwx-note {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 7px;
+}
+/* Arrival-day door-code hero — digits only once the server released them; the
+   locked state (keeper on, unconfirmed, arrival day) masks the figure and
+   offers the honest way in. */
+.hub-code {
+  margin-top: 12px;
+  padding: 14px;
+  text-align: center;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.hub-code-cap {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ok-text);
+}
+.hub-code-fig {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
+  color: var(--text-light);
+  margin: 3px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+.hub-code-sub {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  max-width: 40ch;
+  margin: 0 auto;
+}
+.hub-code-copy {
+  display: inline-block;
+  margin-top: 9px;
+  min-height: 40px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ok-text);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.hub-code.is-locked {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--glass-border);
+}
+.hub-code.is-locked .hub-code-cap {
+  color: var(--text-muted);
+}
+.hub-code-fig.is-masked {
+  color: var(--text-muted);
+  letter-spacing: 0.4em;
+}
+.hub-code.is-locked .hub-code-copy {
+  color: var(--text-light);
+  border-color: var(--glass-border);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gtj.is-now .gtj-dot {
+    animation: pjPing 2.4s ease-out infinite;
+  }
 }
 .hub-grid {
   display: grid;

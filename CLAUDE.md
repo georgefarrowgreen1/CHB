@@ -2907,6 +2907,46 @@ Add-details link to `b.regUrl`; else "you're all set"), and planning tiles reusi
 endpoints. Gated by ui-test-yourstay.js (countdown wording, balance/all-set states, Tomorrow at
 +1 day, only-soonest, past-only + logged-out show nothing).
 
+**The My Stays companion** (app.js — the approved demo's PR-1; gated by
+ui-test-yourstay §21–25 + test-integration §19). The pre-arrival hub carries a
+STAY TIMELINE ("Your road to Blakeney", `guestStayTimelineHtml`) — booking
+confirmed / paid-so-far / the NOW money row / arrival details / door code /
+your stay / deposit back — where EVERY figure comes from the derivations the
+card already trusts (`displayGrand` + `guestPayCta`; §21 asserts the now-row's
+figure EQUALS the Pay button's), and the money row follows the same
+armed/trouble/owner-arranged judgements as the hub line via
+`guestAutopayTroubleOf` (ONE definition, both readers).
+- **THE DOOR CODE IS SECURITY-GATED BY THE KEEPER'S OWN RULE, in three layers**:
+  digits only when the server released them (`door_code`), a DATE only from
+  `door_code_from` (minted by a real confirm), and the held-back line ("appears
+  once it's set on the key safe — never sent by email") only on the NEW
+  **`door_code_pending`** flag — my-bookings.php sends it only while the keeper
+  is ON for the cottage and no code is confirmed for THIS stay, because a
+  keeper-off cottage may have NO SAFE and a held-back card would assert one.
+  Nothing at all otherwise (§20's rule, kept). The arrival-day HERO
+  (`guestDoorCodeHeroHtml`, in-residence hub) is double-gated the same way:
+  released → big figure + Copy; pending on arrival day → masked `····` naming
+  the honest way in (call us); anything else → no card.
+- **"When will you arrive?" is the ONE new data field** (migration-110
+  `bookings.arrival_window`): window CODES only ('16-18' hour band / 'late' /
+  'unsure' — `arrival_window_valid` refuses free text), bands derived from the
+  booking's own check-in hour. Written by the guest via my-bookings.php POST
+  `set_arrival_window` (require_guest + ownership by email; **NO X-CSRF-Token
+  check, deliberately** — `csrf_issue_cookie()` only mints the cookie for ADMIN
+  sessions, so a CSRF check here refused every real guest client; break-tested
+  live, the posture is the same SameSite one every guest write takes). Read
+  back by the owner's hub when-line ("arriving 4–6pm", `arrivalWindowLabel` in
+  app.js) and the arrival-day card ("you said 4–6pm").
+- **The weather strip rides weather.php** (public, no key): fetched once per
+  session, the stay's own days only, absent beyond the ~2-week horizon or on
+  failure — a blank strip claims nothing. Caption states forecast confidence.
+- **Extras are one-tap ASKS** into the existing chat thread (the signed-in
+  sendChat payload, no new surface): "asked", never "booked" — we confirm, the
+  app doesn't promise.
+- NB test-integration can mint a REAL guest session over HTTP —
+  `auth.php guest_register` creates the session directly — which is how §19
+  drives the write path end to end (ownership 404, junk 400, clear-to-NULL).
+
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
 content before it ever pings the owner — `guestFaqAnswer(text)` runs a small precision-biased
