@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=262">
+    <link rel="stylesheet" href="app.css?v=263">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -903,10 +903,21 @@
                     <h1 class="section-title" style="font-size:1.6rem;margin:0;">Pay for your stay</h1>
                     <p class="pay-sub" id="pay-prop"></p>
                 </div>
-                <div id="pay-loading" class="pay-loading">
-                    <div class="sk-line" style="width:60%;"></div>
-                    <div class="sk-line" style="width:40%;"></div>
-                    <div class="sk-line" style="width:100%;height:46px;border-radius:12px;margin-top:14px;"></div>
+                <!-- The wait wears the shape of the screen that's coming — a
+                     skeleton reads as loading, a bare spinner reads as broken. -->
+                <div id="pay-loading" class="pay-loading" role="status" aria-label="Fetching your booking">
+                    <div class="pay-sk-box">
+                        <div class="sk-line" style="width:38%;margin:2px auto 10px;"></div>
+                        <div class="sk-line" style="width:52%;height:34px;margin:0 auto 10px;"></div>
+                        <div class="sk-line" style="width:64%;margin:0 auto;"></div>
+                    </div>
+                    <div class="pay-sk-box">
+                        <div class="sk-line" style="width:32%;margin-bottom:12px;"></div>
+                        <div class="sk-line" style="margin-bottom:10px;"></div>
+                        <div class="sk-line" style="margin-bottom:10px;"></div>
+                        <div class="sk-line" style="width:80%;"></div>
+                    </div>
+                    <div class="sk-line" style="width:100%;height:46px;border-radius:999px;margin-top:14px;"></div>
                 </div>
                 <!-- On desktop these two blocks sit side-by-side (summary | card form);
                      on mobile they stack in this order (amount, then the form). -->
@@ -958,11 +969,18 @@
                         <div class="enq-field-label" id="sq-card-label">Card details</div>
                         <div id="sq-card" class="sq-card"></div>
                         <p class="pay-msg" id="pay-msg" role="alert"></p>
+                        <!-- THE WAIT IS NARRATED (payStepsArm/payStepGo, app.js): what's
+                             happening while the charge runs, revealed only once the wait
+                             has lasted 400ms. Steps tick on the REAL callbacks. -->
+                        <div class="pay-steps" id="pay-steps" style="display:none;" role="status" aria-live="polite"></div>
                         <!-- The arrangement, offered at the one moment a card is in
                              hand. Hidden unless there is something to schedule; the
                              label names the sum and the day, not small print. -->
                         <section class="pay-autopay" id="pay-autopay" style="display:none;" aria-labelledby="pay-ap-cap"></section>
                         <button type="button" class="btn-glass pay-cta" id="pay-btn" style="width:100%;padding:17px;margin-top:6px;" data-act="submitPayment">Pay now</button>
+                        <!-- Armed autopay only: what paying now (instead of waiting for
+                             the collection) actually does. openPayView fills it. -->
+                        <div class="pay-armed-note" id="pay-armed-note" style="display:none;"></div>
                         <div class="pay-secure"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg><span>Secured by Square — we never see or store your card number.</span></div>
                         <div class="pay-receipt-note">You&rsquo;ll get an email receipt straight away.</div>
                     </div>
@@ -975,7 +993,10 @@
                          fills it) — paying never dead-ends. -->
                     <div class="pay-journey" id="pay-done-next" style="display:none;margin:16px auto 0;max-width:420px;"></div>
                     <button type="button" class="btn-glass pay-cta" id="pay-done-rest" style="display:none;margin:22px 6px 0;padding:14px 30px;" data-act="payRestNow"></button>
-                    <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
+                    <!-- A signed-in guest's receipt leads to My Stays — where the plan,
+                         the countdown and the deposit state live (payWithToken retargets
+                         it). A guest paying from an email link keeps the homepage exit. -->
+                    <button type="button" class="btn-glass" id="pay-done-back" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
                 <div id="pay-error" class="pay-error" role="alert" style="display:none;">
                     <p id="pay-error-msg" style="color:var(--text-muted);"></p>
@@ -1906,7 +1927,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=811"></script>
+    <script defer src="app.js?v=812"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

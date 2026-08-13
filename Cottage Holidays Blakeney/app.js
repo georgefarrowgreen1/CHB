@@ -3932,6 +3932,57 @@ function guestPriceBoxHtml(p, o) {
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
 }
+// MONEY COMING BACK SHOWS ITS JOURNEY: "3–5 working days" used to exist only
+// as a sentence in an email. Both ends are dates (issued = hold_settled_at,
+// plus the 5-working-day edge), the solid stretch is the days already behind
+// the guest, and it retires once the window passes. Ledger facts, no guesses.
+function chbWorkingDaysBetween(fromIso, toIso) {
+    let n = 0;
+    let d = new Date(fromIso + 'T12:00:00Z');
+    const end = new Date(toIso + 'T12:00:00Z');
+    while (d < end && n < 30) {
+        d = new Date(d.getTime() + 86400000);
+        const wd = d.getUTCDay();
+        if (wd !== 0 && wd !== 6) n++;
+    }
+    return n;
+}
+function chbAddWorkingDays(fromIso, days) {
+    let d = new Date(fromIso + 'T12:00:00Z');
+    let left = days;
+    while (left > 0) {
+        d = new Date(d.getTime() + 86400000);
+        const wd = d.getUTCDay();
+        if (wd !== 0 && wd !== 6) left--;
+    }
+    return d.toISOString().slice(0, 10);
+}
+function guestDepositTrackerHtml(b) {
+    if ((b.holdStatus || 'none') !== 'returned') return '';
+    const fig = Math.round((Number(b.damagesReturned) || 0) * 100) / 100;
+    if (!(fig > 0)) return '';
+    const issued = b.holdSettledAt ? String(b.holdSettledAt).split(' ')[0] : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(issued)) return '';
+    const today = todayDashed();
+    const elapsed = chbWorkingDaysBetween(issued, today);
+    // Past the window it has landed (or the guest is talking to their bank
+    // anyway) — a tracker still "in flight" on day 12 would be the lie.
+    if (elapsed > 6) return '';
+    const byIso = chbAddWorkingDays(issued, 5);
+    const dayN = Math.min(Math.max(elapsed, 0) + 1, 5);
+    const pct = Math.min(90, Math.max(8, Math.round((elapsed / 5) * 100)));
+    return `
+        <div class="pay-track">
+            <div class="pay-track-cap">Your ${gbp(fig)} deposit — on its way back</div>
+            <div class="pay-track-row">
+                <div class="pay-tnode is-done"><span class="pay-td" aria-hidden="true"></span><span class="pay-tl">Refund issued</span><span class="pay-ts">${fmtDate(issued)}</span></div>
+                <div class="pay-tline" aria-hidden="true"><span class="pay-tfill" style="width:${pct}%;"></span></div>
+                <div class="pay-tnode"><span class="pay-td" aria-hidden="true"></span><span class="pay-tl">Your bank</span><span class="pay-ts">by ${fmtDate(byIso)}</span></div>
+            </div>
+            <div class="pay-track-day">Day ${dayN} of 3–5 working days</div>
+            <div class="pay-track-note">Nothing is needed from you — it lands on the card you paid with.</div>
+        </div>`;
+}
 async function renderGuestBookings() {
     const list = document.getElementById('guest-bookings-list');
     const welcome = document.getElementById('guest-welcome');
@@ -4139,7 +4190,7 @@ async function renderGuestBookings() {
                                         : '',
                             })}
                             </div>
-                            ${upcoming ? guestFlowHtml(propKey, b, payToken) : ''}
+                            ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
                             <div class="card-actions">
                                 ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button>` : ''}
                                 <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
@@ -4586,33 +4637,77 @@ async function guestAutopayOff(token, bookingId) {
 function payJourneyRow(state, lbl, sub, fig) {
     return `<div class="pj-row is-${state}"><span class="pj-dot" aria-hidden="true"></span><span class="pj-main"><span class="pj-lbl">${escapeHtml(lbl)}</span>${sub ? `<span class="pj-sub">${escapeHtml(sub)}</span>` : ''}</span>${fig ? `<span class="pj-fig">${escapeHtml(fig)}</span>` : ''}</div>`;
 }
+// One row set for every state of the screen: the resting ask, an armed part
+// payment (the "you are here" row becomes the slice and the remainder gets its
+// own quiet row), and a live automatic plan (the marked row says it's ARRANGED).
+function payJourneyRowsFor(ctx, part) {
+    const remind = "we'll remind you";
+    const dueSub = ctx.due ? `Due by ${fmtDate(ctx.due)} — ${remind}` : `Before your stay — ${remind}`;
+    const rows = [];
+    if (ctx.kind === 'deposit') {
+        if (part > 0.005) {
+            rows.push(payJourneyRow('now', 'Today — part payment', '', gbp(part)));
+            rows.push(payJourneyRow('dim', 'Rest of this payment', 'Still to pay — any time from your booking page', gbp(Math.round((ctx.payTotal - part) * 100) / 100)));
+        } else {
+            rows.push(payJourneyRow('now', 'Today — deposit', 'Confirms your dates', gbp(ctx.payTotal)));
+        }
+        if (ctx.rest > 0.005) rows.push(payJourneyRow('dim', 'Balance', dueSub, gbp(ctx.rest)));
+    } else {
+        if (ctx.paidSoFar > 0.005)
+            rows.push(payJourneyRow('done', 'Already paid', ctx.backFig > 0.005 ? 'Including your refundable deposit' : '', gbp(ctx.paidSoFar)));
+        if (part > 0.005) {
+            rows.push(payJourneyRow('now', 'Today — part payment', '', gbp(part)));
+            rows.push(payJourneyRow('dim', 'Remaining balance', dueSub, gbp(Math.round((ctx.payTotal - part) * 100) / 100)));
+        } else if (ctx.armed) {
+            rows.push(payJourneyRow('arr', 'Arranged — nothing to do', `${gbp(ctx.payTotal)} will be collected automatically${ctx.due ? ' on ' + fmtDate(ctx.due) : ''}. We'll email you before it's taken.`, gbp(ctx.payTotal)));
+        } else {
+            rows.push(payJourneyRow('now', 'Balance — today', '', gbp(ctx.payTotal)));
+        }
+    }
+    if (ctx.backFig > 0.005) rows.push(payJourneyRow('dim', 'Deposit back', '3–5 working days after checkout', gbp(ctx.backFig)));
+    return rows;
+}
 function payJourneyRender(s, dep, depCharged, paidSoFar, payTotal) {
     const wrap = document.getElementById('pay-journey');
     const rowsEl = document.getElementById('pay-journey-rows');
     if (!wrap || !rowsEl) return;
     // The legacy hold flow keeps its own wording and gets no journey.
-    if (s.kind === 'hold') { wrap.style.display = 'none'; return; }
+    if (s.kind === 'hold') { wrap.style.display = 'none'; payState.jCtx = null; return; }
     const rest = Math.round((Number(s.balance || 0) - Number(s.amountDue || 0)) * 100) / 100;
     const backFig = dep > 0 ? dep : depCharged;
     // Stashed for the done panel, which renders after the screen's locals are gone.
     payState.jBack = backFig;
     payState.jDue = s.balanceDueDate || '';
-    const remind = "we'll remind you";
-    const rows = [];
-    if (s.kind === 'deposit') {
-        rows.push(payJourneyRow('now', 'Today — deposit', 'Confirms your dates', gbp(payTotal)));
-        if (rest > 0.005)
-            rows.push(payJourneyRow('dim', 'Balance', s.balanceDueDate ? `Due by ${fmtDate(s.balanceDueDate)} — ${remind}` : `Before your stay — ${remind}`, gbp(rest)));
-    } else {
-        if (paidSoFar > 0.005)
-            rows.push(payJourneyRow('done', 'Already paid', backFig > 0.005 ? 'Including your refundable deposit' : '', gbp(paidSoFar)));
-        rows.push(payJourneyRow('now', 'Balance — today', '', gbp(payTotal)));
-    }
-    if (backFig > 0.005) rows.push(payJourneyRow('dim', 'Deposit back', '3–5 working days after checkout', gbp(backFig)));
+    // …and for payJourneySync, so an armed part payment re-renders the SAME facts.
+    payState.jCtx = {
+        kind: s.kind,
+        rest: rest,
+        backFig: backFig,
+        paidSoFar: paidSoFar,
+        payTotal: payTotal,
+        due: s.balanceDueDate || '',
+        // A TROUBLED plan must not read "nothing to do" — the repair card is
+        // the affordance there, and red is not "arranged".
+        armed: s.kind === 'balance' && s.autopayState === 'armed' && !s.autopayRepair,
+    };
+    const rows = payJourneyRowsFor(payState.jCtx, 0);
     // A one-row journey states nothing the hero hasn't — render only a real path.
-    if (rows.length < 2) { wrap.style.display = 'none'; return; }
+    if (rows.length < 2) { wrap.style.display = 'none'; payState.jCtx = null; return; }
     rowsEl.innerHTML = rows.join('');
     wrap.style.display = '';
+}
+// THE JOURNEY FOLLOWS THE SLICE. Arming a part payment re-prices the hero, the
+// button and the wallets — this keeps the journey telling the same story (it
+// used to keep saying "Balance — today £525" under a £100 hero). Called from
+// payPartRender, so every path that moves the slice moves the journey with it.
+function payJourneySync() {
+    const ctx = payState.jCtx;
+    const rowsEl = document.getElementById('pay-journey-rows');
+    if (!ctx || !rowsEl) return;
+    const row = document.getElementById('pay-part-row');
+    const open = !!(row && row.style.display !== 'none' && payState.part);
+    const part = open ? Math.round((payState.partAmount || 0) * 100) / 100 : 0;
+    rowsEl.innerHTML = payJourneyRowsFor(ctx, part).join('');
 }
 // The green BEAT: success shows on the control that was pressed BEFORE the done
 // panel replaces it (the approved motion grammar). Instant under reduced motion.
@@ -4627,6 +4722,90 @@ async function payBeat(label) {
             await new Promise((r) => setTimeout(r, 650));
         btn.classList.remove('is-paid');
     } catch (e) {}
+}
+// THE WAIT IS NARRATED (#pay-steps) — three rules: it EARNS ITS PLACE (400ms
+// before it reveals, so a fast payment never sees it), it ACKNOWLEDGES TIME (a
+// bank step still running at 2s changes its line — the pause is the bank's,
+// not a frozen page), and it NEVER INVENTS PROGRESS (steps tick on the real
+// callbacks only). Card path only — a wallet has its own sheet.
+function payStepsArm() {
+    payState.stepsOn = true;
+    const gen = (payState.stepsGen = (payState.stepsGen || 0) + 1);
+    // One pulse, one place: while the charge runs, the journey's own "you are
+    // here" marker is the thing that spins (payStepsEnd settles or restores it).
+    const nowRow = document.querySelector('#pay-journey-rows .pj-row.is-now');
+    if (nowRow) {
+        nowRow.classList.remove('is-now');
+        nowRow.classList.add('is-run');
+    }
+    const esc = (i, txt) => {
+        const el = document.getElementById('pay-st-' + i);
+        if (el && el.classList.contains('is-run')) {
+            const ss = el.querySelector('.pay-step-sub');
+            if (ss) ss.textContent = txt;
+        }
+    };
+    setTimeout(() => {
+        if (!payState.stepsOn || payState.stepsGen !== gen) return;
+        const box = document.getElementById('pay-steps');
+        if (!box) return;
+        const fig = gbp(Math.round(payWalletsTarget() * 100) / 100);
+        const step = (i, state, l, s) =>
+            `<div class="pay-step ${state}" id="pay-st-${i}"><span class="pay-step-dot" aria-hidden="true"></span><span class="pay-step-m"><span class="pay-step-lbl">${l}</span><span class="pay-step-sub">${s}</span></span></div>`;
+        box.innerHTML =
+            `<div class="pay-steps-in"><div class="pay-steps-cap">What's happening</div>` +
+            // By 400ms we are already inside tokenize, so "preparing" is
+            // genuinely done and the bank step is genuinely running.
+            step(0, 'is-ok', 'Preparing your payment', 'this only takes a moment') +
+            step(1, 'is-run', 'Checking with your bank', 'your bank may show an approval prompt — nothing to retype here') +
+            step(2, '', 'Taking the payment', `one payment of ${fig} — nothing else is taken`) +
+            '</div>';
+        box.style.display = '';
+        requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-open')));
+        setTimeout(() => {
+            if (payState.stepsGen !== gen) return;
+            esc(1, 'still with your bank — if no prompt has appeared, open your banking app');
+        }, 2000);
+    }, 400);
+}
+// Advance to step i (everything before it ticks). No-op unless armed, so the
+// wallet and hold paths never see a narration they didn't start.
+function payStepGo(i) {
+    if (!payState.stepsOn) return;
+    for (let k = 0; k <= i; k++) {
+        const el = document.getElementById('pay-st-' + k);
+        if (!el) continue;
+        el.classList.remove('is-run');
+        if (k < i) el.classList.add('is-ok');
+        else el.classList.add('is-run');
+    }
+}
+function payStepsEnd(ok) {
+    payState.stepsOn = false;
+    payState.stepsGen = (payState.stepsGen || 0) + 1;
+    const runRow = document.querySelector('#pay-journey-rows .pj-row.is-run');
+    if (runRow) {
+        runRow.classList.remove('is-run');
+        runRow.classList.add(ok ? 'is-done' : 'is-now');
+    }
+    const box = document.getElementById('pay-steps');
+    if (!box) return;
+    if (ok) {
+        box.querySelectorAll('.pay-step').forEach((s) => {
+            s.classList.remove('is-run');
+            s.classList.add('is-ok');
+        });
+    } else {
+        // A failure folds the narration away BEFORE the message settles in —
+        // the last lit step already said where it stopped.
+        box.classList.remove('is-open');
+        setTimeout(() => {
+            if (!payState.stepsOn) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+            }
+        }, 350);
+    }
 }
 // WHAT HAPPENS NEXT on the done panel, as the journey's own rows — paying
 // never dead-ends. Additive beside the (unchanged) spoken sub.
@@ -4873,6 +5052,36 @@ async function openPayView(token, bookingId, kind) {
             const pb = document.getElementById('pay-btn');
             if (pb) pb.textContent = s.kind === 'hold' ? `Place ${gbp(payTotal)} hold` : `Pay ${gbp(payTotal)}`;
         } catch (e) {}
+        // AN ARRANGED BALANCE SAYS SO: the hero names the arrangement, the
+        // journey's marked row reads "Arranged — nothing to do", and the button
+        // demotes to a quiet "pay now instead" — a guest opening their emailed
+        // link used to see the same full-strength ask as an unpaid balance.
+        // Gated on armed AND no repair (a failed card is TROUBLE, whose
+        // affordance is the repair card, never "nothing to do").
+        try {
+            const armed = s.kind === 'balance' && s.autopayState === 'armed' && !s.autopayRepair;
+            const pb2 = document.getElementById('pay-btn');
+            const anote = document.getElementById('pay-armed-note');
+            if (armed) {
+                const lblEl2 = document.getElementById('pay-kind-label');
+                if (lblEl2) lblEl2.textContent = 'Balance · already arranged';
+                if (pb2) {
+                    pb2.textContent = `Pay ${gbp(payTotal)} now instead`;
+                    pb2.classList.add('is-quiet');
+                }
+                if (anote) {
+                    anote.textContent =
+                        'Paying now settles the balance early — nothing further is collected. You can change your card or turn this off any time from My Stays.';
+                    anote.style.display = '';
+                }
+            } else {
+                if (pb2) pb2.classList.remove('is-quiet');
+                if (anote) {
+                    anote.style.display = 'none';
+                    anote.textContent = '';
+                }
+            }
+        } catch (e) {}
         // PAY PART OF IT. Offered only where the SERVER sent bounds — it clamps
         // the charge to them, so the field can only ever ASK. Its max is the
         // RENTAL due, not the hero: the refundable deposit rides the payment
@@ -4969,12 +5178,16 @@ async function payWithToken(sourceId, partOverride) {
         document.getElementById('pay-done').style.display = '';
         document.getElementById('pay-done-sub').textContent =
             "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
+        try { payDoneBackRetarget(); } catch (e) {}
         try {
             toast('Card hold placed — thank you!');
         } catch (e) {}
         return;
     }
     let res;
+    // The bank step is done the moment we hold a token — the charge is what
+    // runs now, and the narration says so (no-op unless the card path armed it).
+    payStepGo(2);
     try {
         res = await apiPost('pay.php', {
             action: 'charge',
@@ -5039,6 +5252,7 @@ async function payWithToken(sourceId, partOverride) {
                     : `Thank you — ${took} received. We'll be in touch about the remaining balance before your stay.`;
     // What happens next, as the journey's own rows — additive beside the sub.
     try { payDoneNextRender(res, rem); } catch (e) {}
+    try { payDoneBackRetarget(); } catch (e) {}
     const restBtn = document.getElementById('pay-done-rest');
     if (restBtn) {
         restBtn.style.display = rem > 0.005 ? '' : 'none';
@@ -5047,6 +5261,30 @@ async function payWithToken(sourceId, partOverride) {
     try {
         toast('Payment received — thank you!');
     } catch (e) {}
+}
+// THE RECEIPT LANDS WHERE ITS PROMISES LIVE: everything the done panel names
+// (plan, arrival email, deposit back) is on My Stays, so a SIGNED-IN guest's
+// exit goes there; an email-link guest with no session keeps the homepage.
+function payDoneBackRetarget() {
+    const back = document.getElementById('pay-done-back');
+    if (!back) return;
+    if (currentGuest) {
+        back.textContent = 'View your stay';
+        back.dataset.act = 'payDoneStays';
+    } else {
+        back.textContent = 'Back to the site';
+        back.dataset.act = 'nav';
+    }
+}
+function payDoneStays() {
+    if (!currentGuest) {
+        nav('view-main');
+        return;
+    }
+    nav('view-guest-bookings');
+    // renderGuestBookings fetches its own payload, so the stay card reflects
+    // the payment that just went through rather than the pre-payment cache.
+    renderGuestBookings().catch(() => {});
 }
 // "Pay the remaining £X" on the done screen: re-open the same pay screen — the
 // summary refetches and asks for what is NOW left; this button decides nothing.
@@ -5192,6 +5430,7 @@ function payPartRender() {
         }
         big.dataset.fig = big.textContent;
     }
+    payJourneySync();
     payAutopaySync();
 }
 // THE ARRANGEMENT STANDS DOWN WHILE THE PART ROW IS OPEN: its sentence quotes
@@ -5491,6 +5730,10 @@ async function submitPayment() {
         btn.classList.add('is-busy');
         btn.textContent = 'Processing…';
     }
+    // The narration arms here and nowhere else: the card path is the one with
+    // an invisible bank check inside it. Wallets have their own sheet, and the
+    // legacy hold keeps its own wording.
+    if (payState.kind !== 'hold') payStepsArm();
     try {
         // SCA: tokenize WITH verification details so the bank's 3-D Secure
         // check runs here (Square shows the challenge if the issuer asks).
@@ -5502,7 +5745,9 @@ async function submitPayment() {
             throw new Error(m);
         }
         await payWithToken(result.token);
+        payStepsEnd(true);
     } catch (e) {
+        payStepsEnd(false);
         const raw = String((e && e.message) || '');
         setPayMsg(
             /verification|3.?d.?s|timed out/i.test(raw)
@@ -16875,7 +17120,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'guestpay1';
+    const BUILD = 'guestpay2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
