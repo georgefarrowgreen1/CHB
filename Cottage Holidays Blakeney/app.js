@@ -4030,6 +4030,9 @@ async function renderGuestBookings() {
         booking: mapBookingFromApi(row),
         address: row.property_address || '',
         payToken: row.pay_token || '',
+        // The cottage's REAL name, from the server's own JOIN — the one source
+        // that still answers for an ARCHIVED cottage (see below).
+        propName: row.property_name || '',
     }));
     guestBookingsCache = mine; // for invoice download
 
@@ -4138,10 +4141,18 @@ async function renderGuestBookings() {
         pastCards = [],
         hubCards = [];
     let preArrivalShown = false; // only the soonest future stay gets the countdown hub
-    mine.forEach(({ propKey, booking: b, address, payToken }) => {
-        const meta = propertyMeta[propKey];
+    mine.forEach(({ propKey, booking: b, address, payToken, propName }) => {
+        // AN ARCHIVED COTTAGE'S BOOKING MUST STILL RENDER (reported live: the
+        // Annex was archived, propertyMeta had no entry, and ONE undefined
+        // `meta.name` threw here mid-forEach — so the guest's ENTIRE My Stays
+        // page rendered empty, other cottages' stays included). The server's
+        // JOIN still names an archived cottage, so fall back to that; the
+        // whole card build is also fenced below, because one bad booking must
+        // never take the page down with it.
+        const meta = propertyMeta[propKey] || { name: propName || propKey };
         const r = propertyRates[propKey] || defaultRates[propKey];
         const addr = address || (r && r.address) || '';
+        try {
         const p =
             b.agreedPrice ||
             priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
@@ -4195,7 +4206,10 @@ async function renderGuestBookings() {
         // ordinal (completed_stays is the server's own count); older past cards
         // keep the quiet link. The review ask is a gentle star-tap card, only
         // while no review exists — a submitted one keeps its status note.
-        const isLeadPast = !upcoming && pastCards.length === 0;
+        // Book-again needs a cottage page to land on — an archived cottage has
+        // none, so its past card simply doesn't offer the button.
+        const canRebook = !!propertyMeta[propKey];
+        const isLeadPast = !upcoming && pastCards.length === 0 && canRebook;
         const ordWords = ['second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
         const nextOrd = completedStays >= 1 && completedStays <= 9 ? ordWords[completedStays - 1] : '';
         const bookAgainLead = isLeadPast
@@ -4234,7 +4248,7 @@ async function renderGuestBookings() {
                         <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}">Terms</button>
                         ${upcoming ? faqBlockHtml(propKey) : ''}
                         ${upcoming ? guestWelcomeButton(propKey) : ''}
-                        ${!upcoming && !isLeadPast ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}>Book again</button>` : ''}
+                        ${!upcoming && !isLeadPast && canRebook ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}>Book again</button>` : ''}
                         ${showReview && myGuestReviews[propKey] ? guestReviewButton(propKey) : ''}
                         ${showPhoto ? guestPhotoButton(propKey) : ''}
                     </div>
@@ -4278,6 +4292,20 @@ async function renderGuestBookings() {
             // future booking we reach is the next one.
             preArrivalShown = true;
             hubCards.push(guestPreArrivalHubHtml(propKey, b, meta, payToken, gt));
+        }
+        } catch (e) {
+            // The fence: whatever went wrong with THIS booking, the page still
+            // stands. A degraded card states the stay's own facts (server name,
+            // dates, ref) and names the way to a person — strictly better than
+            // the blank screen a thrown render leaves.
+            (hasCheckedOut(b) ? pastCards : upcomingCards).push(`
+                <div class="glass-panel guest-booking gb2">
+                    <h3 class="gb2-name">${escapeHtml(meta.name)}</h3>
+                    <div class="gb2-when">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ref ${bookingRef(b.id)}</div>
+                    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">We couldn't show everything for this stay just now — your booking is safe. Message us and we'll help.</p>
+                    <div class="card-actions gb2-links"><button class="btn-sm btn-edit" data-act="toggleChat">Message us</button></div>
+                </div>`);
+            try { console.error('My Stays card failed for', propKey, e); } catch (e2) {}
         }
     });
     const gHdr = (t) =>
@@ -17602,7 +17630,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mystays2';
+    const BUILD = 'mystays4';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
