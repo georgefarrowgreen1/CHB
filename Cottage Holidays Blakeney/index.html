@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=263">
+    <link rel="stylesheet" href="app.css?v=264">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -850,6 +850,10 @@
                         <input type="checkbox" id="enq-terms" data-act-change="enqLiveSync">
                         <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
                     </label>
+                    <!-- THE SEND IS NARRATED (enqStepsShow, app.js — the pay screen's
+                         #pay-steps anatomy reused): what's happening while it goes,
+                         revealed only once the wait has lasted 400ms. -->
+                    <div class="pay-steps" id="enq-steps" style="display:none;" role="status" aria-live="polite"></div>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass btn-accent" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
                     <!-- The living line — see enqLiveSync. -->
@@ -861,7 +865,12 @@
                      quickly create an account from the details just entered. The enquiry
                      has already been sent by this point, so this step is entirely optional. -->
                 <div id="enquire-step-account" style="display:none;">
-                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>Enquiry sent — we'll confirm availability by email.</span></div>
+                    <!-- The sent MOMENT: the receipt's own drawn tick + halo (display
+                         flips restart CSS animations, so this needs no JS), then the
+                         step's blocks cascade in — see app.css's enquiry motion. -->
+                    <div style="text-align:center;"><div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div></div>
+                    <h2 class="section-title" style="font-size:1.6rem;text-align:center;margin:10px 0 14px;">Enquiry sent</h2>
+                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>George replies personally — usually the same day, by email.</span></div>
                     <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
                     <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
                     <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
@@ -1927,7 +1936,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=812"></script>
+    <script defer src="app.js?v=813"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

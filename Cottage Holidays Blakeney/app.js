@@ -12832,6 +12832,25 @@ function dpPretty(str) {
     if (!d) return '';
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
+// SPOKEN dates for the picker's conversational surfaces — weekday-named, the
+// year only when it isn't this year's (the email date rule; see CLAUDE.md).
+// dpPretty stays for the utilitarian field labels and admin.
+function dpSpoken(str) {
+    const d = dpParse(str);
+    if (!d) return '';
+    const o = { weekday: 'short', day: 'numeric', month: 'short' };
+    if (d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+    // ICU writes "Mon, 24 Aug"; the house speaks "Mon 24 Aug" (the demo's form).
+    return d.toLocaleDateString('en-GB', /** @type {Intl.DateTimeFormatOptions} */ (o)).replace(',', '');
+}
+// The far end of a spoken range — the weekday is already carried by the start.
+function dpSpokenEnd(str) {
+    const d = dpParse(str);
+    if (!d) return '';
+    const o = { day: 'numeric', month: 'short' };
+    if (d.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+    return d.toLocaleDateString('en-GB', /** @type {Intl.DateTimeFormatOptions} */ (o));
+}
 
 function openDatePicker() {
     dpMode = 'enquiry';
@@ -12930,20 +12949,46 @@ function renderDatePicker() {
     // A field target may bring its own words (startHint/endHint — "check-in" is wrong
     // for a season) and `inclusive: true` when its END date is inclusive (season
     // bands), so the hint's night count cannot disagree with the card reading it back.
-    if (!dpState.start) hint.innerText = (dpTarget && dpTarget.startHint) || 'Select your check-in date';
-    else if (!dpState.end) {
+    // THE HINT TALKS LIKE THE HOUSE on the guest surfaces (the approved
+    // booking-flow demo): spoken weekday dates and George's voice — a field
+    // target still brings its own words, and admin keeps the utilitarian form.
+    const dpVoice = dpMode !== 'admin' && !dpTarget;
+    if (!dpState.start) {
+        hint.innerText =
+            (dpTarget && dpTarget.startHint) ||
+            (dpVoice ? 'When would you like to arrive?' : 'Select your check-in date');
+    } else if (!dpState.end) {
         // SAY HOW FAR THEY CAN GO. Everything past the next booking is refused, and
         // a guest who turns the page has no way to know why the month went quiet.
         // ONLY IN THE MODES THAT ENFORCE IT — the other three let any future date
         // through, so a ceiling there states a limit that is not applied.
         const capped = dpMode === 'enquiry';
         const stop = capped ? dpNextBookedStart(dpState.start) : null;
-        hint.innerText =
-            (dpTarget && dpTarget.endHint) ||
-            'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
+        if (dpTarget && dpTarget.endHint) hint.innerText = dpTarget.endHint;
+        else if (dpVoice)
+            hint.innerHTML =
+                '<b>' + escapeHtml(dpSpoken(dpState.start)) + "</b> — lovely. Now the day you'll leave" +
+                (stop ? ', anything up to <b>' + escapeHtml(dpSpoken(stop)) + '</b>' : '');
+        else hint.innerText = 'Now select your check-out date' + (stop ? ` — up to ${dpPretty(stop)}` : '');
     } else {
         const n = nightsBetween(dpState.start, dpState.end) + (dpTarget && dpTarget.inclusive ? 1 : 0);
-        const span = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+        const span = dpVoice
+            ? `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`
+            : `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${n} night${n === 1 ? '' : 's'}`;
+        // "✓ LOOKS FREE" ONLY WHERE IT IS TRUE BY THIS MODE'S OWN RULES: the
+        // enquiry picker refuses crossed nights, so a completed range here is
+        // clear — but a SEEDED range (the hero search seeds any dates into this
+        // form) can cross a booking, so the capsule re-checks the nights before
+        // claiming anything. The other modes never claim it: a waitlist range
+        // is for the taken nights, and the hero search takes any dates.
+        let freeCap = '';
+        if (dpMode === 'enquiry') {
+            let clear = true,
+                guard = 0;
+            for (let x = dpState.start; x < dpState.end && clear && guard < 400; x = ukShiftDays(x, 1), guard++)
+                if (isBookedNight(x)) clear = false;
+            if (clear) freeCap = '<span class="dp-cap-ok">✓ Looks free</span> ';
+        }
         // IN THE HINT, not a line of its own: the hint is already the one role="status"
         // region, so the figure is announced for free and the stay is not said twice.
         // Emphasis is WEIGHT at the sentence's own size (the search hero's lesson), and
@@ -12951,12 +12996,31 @@ function renderDatePicker() {
         const t = dpStayTotal();
         if (t) {
             hint.innerHTML =
+                freeCap +
                 escapeHtml(span) +
                 ' · <span class="dp-fig">' + escapeHtml(gbp(t.total)) + '</span> for ' +
                 t.adults + ' adult' + (t.adults === 1 ? '' : 's') +
                 (t.children > 0 ? ', ' + t.children + ' child' + (t.children === 1 ? '' : 'ren') : '');
         } else {
-            hint.innerText = span;
+            hint.innerHTML = freeCap + escapeHtml(span);
+        }
+    }
+    // THE DONE BUTTON CARRIES THE RECEIPT (enquiry only): dates and the stay's
+    // figure on the control itself, so the last look before closing confirms
+    // everything. The other modes keep the plain Done — a waitlist range is not
+    // a purchase, and admin isn't shopping.
+    const doneBtn = document.getElementById('dp-done');
+    if (doneBtn) {
+        const dt = dpMode === 'enquiry' && dpState.start && dpState.end ? dpStayTotal() : null;
+        if (dt) {
+            doneBtn.innerHTML =
+                'Continue<span class="dp-done-sub">' +
+                escapeHtml(`${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)} · ${gbp(dt.total)}`) +
+                '</span>';
+            doneBtn.classList.add('is-ready');
+        } else {
+            doneBtn.textContent = 'Done';
+            doneBtn.classList.remove('is-ready');
         }
     }
     // THE LEGEND FOLLOWS THE PICKABILITY RULE, and was flatly false on three of the
@@ -13206,13 +13270,27 @@ function renderDatePicker() {
             const p = dpNightPrice(ds);
             if (p > 0) priceTag = `<span class="dp-price">£${Math.round(p)}</span>`;
         }
-        cells += `<div class="${classes.join(' ')}" data-day="${ds}"${click}${title}><span class="dp-num">${d}</span>${priceTag}</div>`;
+        // The wave's stagger: each in-range night fills a beat after the one
+        // before it, near to far, so the range grows OUT of the choice. Only on
+        // the completing render (dp-wavef, below) and capped so a long range
+        // still settles inside half a second.
+        const waveStyle =
+            dpState.animWave && classes.indexOf('dp-in-range') !== -1 && dpState.start
+                ? ` style="--dpd:${Math.min(0.24, Math.max(0, nightsBetween(dpState.start, ds)) * 0.03).toFixed(2)}s"`
+                : '';
+        cells += `<div class="${classes.join(' ')}" data-day="${ds}"${click}${title}${waveStyle}><span class="dp-num">${d}</span>${priceTag}</div>`;
     }
     // Whether the grid had focus must be read BEFORE innerHTML destroys the node that
     // held it — after the swap document.activeElement is <body> and the answer is
     // always "no", which is how the first version silently dropped focus on every pick.
     const hadFocus = !!(document.activeElement && grid.contains(document.activeElement));
     grid.innerHTML = cells;
+    // Consume the pick-motion flags (set by dpPick): the pop and the wave run
+    // on THIS render only, never on a month page or a price repaint.
+    grid.classList.toggle('dp-anim', !!dpState.animPick);
+    grid.classList.toggle('dp-wavef', !!dpState.animWave);
+    dpState.animPick = false;
+    dpState.animWave = false;
     dpSeatFocus(hadFocus);
 }
 // ---- ONE TAB STOP, THEN ARROWS (the roving-tabindex pattern every date grid uses).
@@ -13288,6 +13366,10 @@ function dpGridKeys(e) {
 }
 
 function dpPick(ds) {
+    // Motion is earned per PICK: the selection pop on this render, and the
+    // range WAVE only on the render that COMPLETES it — renderDatePicker
+    // consumes both flags, so a month page or price repaint can't replay them.
+    dpState.animPick = true;
     // First click (or restarting) sets check-in; second sets check-out.
     if (!dpState.start || (dpState.start && dpState.end)) {
         dpState.start = ds;
@@ -13299,6 +13381,7 @@ function dpPick(ds) {
             dpState.end = null;
         } else {
             dpState.end = ds;
+            dpState.animWave = true;
         }
     }
     renderDatePicker();
@@ -13375,10 +13458,11 @@ function dpDone() {
     ci.value = dpState.start || '';
     co.value = dpState.end || '';
     if (dpState.start && dpState.end) {
-        display.innerText = `${dpPretty(dpState.start)}  →  ${dpPretty(dpState.end)}`;
+        // The form's field speaks the dates back the way the picker's hint did.
+        display.innerText = `${dpSpoken(dpState.start)} → ${dpSpokenEnd(dpState.end)}`;
         trigger.classList.add('has-dates');
     } else if (dpState.start) {
-        display.innerText = `Check-in ${dpPretty(dpState.start)} — pick check-out`;
+        display.innerText = `Check-in ${dpSpoken(dpState.start)} — pick check-out`;
         trigger.classList.remove('has-dates');
     } else {
         display.innerText = 'Select your stay dates';
@@ -13386,6 +13470,17 @@ function dpDone() {
     }
     closeDatePicker();
     updateEnquiryPrice();
+    // THE FORM ASSEMBLES ITSELF AROUND THE DATES: landing a completed range
+    // cascades the blocks beneath the field in, one after another. Display
+    // only — re-adding the class replays the CSS animation, no timers.
+    if (dpState.start && dpState.end) {
+        const stp = document.getElementById('enquire-step-review');
+        if (stp) {
+            stp.classList.remove('enq-landed');
+            void stp.offsetWidth;
+            stp.classList.add('enq-landed');
+        }
+    }
 }
 
 // ===== Homepage hero availability search =====
@@ -15057,6 +15152,26 @@ function updateEnquiryPrice() {
     const adults = Math.max(1, parseInt(document.getElementById('enq-adults').value, 10) || 0);
     const children = Math.max(0, parseInt(document.getElementById('enq-children').value, 10) || 0);
 
+    // THE CONTINUE BUTTON CARRIES ITS OWN RECEIPT — dates and the all-in figure
+    // (rental + the refundable deposit: what the STAY costs, the price box's
+    // own framing) on the control, so the tap that moves the guest on restates
+    // what it moves on with. Synced HERE, before any early return, so clearing
+    // the dates strips the sub rather than leaving a stale one.
+    try {
+        const contBtn = document.querySelector('#enquire-step-review [data-act="enquireContinue"]');
+        if (contBtn) {
+            let contSub = '';
+            if (checkIn && checkOut) {
+                const cpb = priceBreakdown(activeFrontProperty, adults, children, checkIn, checkOut);
+                if (cpb && cpb.total > 0)
+                    contSub = `${dpSpoken(checkIn)} → ${dpSpokenEnd(checkOut)} · ${gbp(cpb.total + (cpb.damagesDeposit || 0))} all in`;
+            }
+            contBtn.innerHTML = contSub
+                ? 'Continue<span class="enq-cta-sub">' + escapeHtml(contSub) + '</span>'
+                : 'Continue';
+        }
+    } catch (e) {}
+
     // Real-time feedback on the chosen dates, so the visitor sees a problem
     // (e.g. below the minimum stay, or a non-arrival day) before they submit.
     const rulesHint = document.getElementById('enq-rules-hint');
@@ -15238,6 +15353,45 @@ function onOccupancyInput() {
     if (String(c) !== cEl.value) cEl.value = c;
 }
 
+// THE SEND IS NARRATED — the pay screen's #pay-steps anatomy reused verbatim.
+// Step 1 is the client's own calendar check (enqFirstProblem just ran it), so
+// it shows TICKED at the 400ms reveal; step 2 covers the POST.
+let __enqStepsGen = 0;
+function enqStepsShow() {
+    const gen = ++__enqStepsGen;
+    setTimeout(() => {
+        if (gen !== __enqStepsGen) return;
+        const box = document.getElementById('enq-steps');
+        if (!box) return;
+        const step = (state, l, s) =>
+            `<div class="pay-step ${state}"><span class="pay-step-dot" aria-hidden="true"></span><span class="pay-step-m"><span class="pay-step-lbl">${l}</span><span class="pay-step-sub">${s}</span></span></div>`;
+        box.innerHTML =
+            '<div class="pay-steps-in"><div class="pay-steps-cap">What&rsquo;s happening</div>' +
+            step('is-ok', 'Checking the dates are still free', 'a last look at the calendar before it goes') +
+            step('is-run', 'Sending your enquiry to George', 'no payment happens now') +
+            '</div>';
+        box.style.display = '';
+        requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-open')));
+    }, 400);
+}
+function enqStepsEnd(ok) {
+    __enqStepsGen++;
+    const box = document.getElementById('enq-steps');
+    if (!box) return;
+    if (ok) {
+        box.querySelectorAll('.pay-step').forEach((s) => {
+            s.classList.remove('is-run');
+            s.classList.add('is-ok');
+        });
+    } else {
+        // A refusal folds the narration away before the message settles in.
+        box.classList.remove('is-open');
+        setTimeout(() => {
+            box.style.display = 'none';
+            box.innerHTML = '';
+        }, 350);
+    }
+}
 async function submitEnquiry(propKey) {
     const name = document.getElementById('enq-name').value.trim();
     const email = document.getElementById('enq-email').value.trim();
@@ -15275,6 +15429,7 @@ async function submitEnquiry(propKey) {
         submitBtn.classList.add('is-busy');
         submitBtn.textContent = 'Sending…';
     }
+    enqStepsShow();
     let enqResp = null;
     try {
         const rr = propertyRates[propKey] || defaultRates[propKey] || {};
@@ -15302,6 +15457,7 @@ async function submitEnquiry(propKey) {
                 document.getElementById('enq-sms-optin') && document.getElementById('enq-sms-optin').checked ? 1 : 0,
         });
     } catch (e) {
+        enqStepsEnd(false);
         // Server said the dates were taken while this tab held stale data —
         // refresh every availability surface so the calendar and chips the
         // guest looks at next tell the truth about why.
@@ -15321,6 +15477,17 @@ async function submitEnquiry(propKey) {
             submitBtn.classList.remove('is-busy');
             submitBtn.textContent = origSubmitLabel;
         }
+    }
+    enqStepsEnd(true);
+    // Success shows on the control that was pressed first (the payBeat rule) —
+    // a green "✓ Sent" beat before the sent moment replaces the screen.
+    if (submitBtn) {
+        submitBtn.classList.add('is-sent');
+        submitBtn.textContent = '✓ Sent';
+        if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches))
+            await new Promise((r) => setTimeout(r, 650));
+        submitBtn.classList.remove('is-sent');
+        submitBtn.textContent = origSubmitLabel;
     }
     try {
         trackEvent('enquiry_submit', propKey);
@@ -17120,7 +17287,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'guestpay2';
+    const BUILD = 'bookflow1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
