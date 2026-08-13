@@ -607,7 +607,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   await page.waitForTimeout(150);
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  // Sample by STATE, not the clock: the done panel appears only after the
+  // unhurried beat (1050ms hold), so a fixed wait races it.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const partCharge = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').pop();
   ok(!!partCharge && partCharge.part_amount === 120, `the charge asks for the figure on the button (${partCharge && partCharge.part_amount})`);
   // The quote still covers the FULL charge — pay.php verifies it BEFORE taking
@@ -1057,7 +1059,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // Happy path: tokenize (stub) → charge → receipt state.
   await page.evaluate(() => document.getElementById('pay-btn').click());
-  await page.waitForTimeout(700);
+  // State-wait (the unhurried-beat rule above): done shows after the 1050ms hold.
+  await page.waitForFunction(() => document.getElementById('pay-done').style.display !== 'none', null, { timeout: 6000 });
   const done = await page.evaluate(() => ({
     done: document.getElementById('pay-done').style.display !== 'none',
     sub: (document.getElementById('pay-done-sub') || {}).textContent || '',

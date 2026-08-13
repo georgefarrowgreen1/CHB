@@ -1,11 +1,9 @@
-/* --- SELF-HOSTED FONTS (was Google Fonts) ---
-   Latin-subset VARIABLE woff2 in fonts/ — the same bytes Google served, now
-   first-party: no gstatic connections, immutable-cached, preloaded from index.html.
-   ONE block per family declaring the file's REAL weight RANGE: a single-value
-   `font-weight` descriptor PINS the wght axis, so the old per-weight blocks made
-   every weight above 500 one synthetic bold (measured: 500–800 all 421px). Ranged
-   costs no extra bytes; real bold is ~2.4% WIDER, so weight is a layout question
-   too. ui-test-searchpage §16a gates it. */
+/* --- SELF-HOSTED FONTS ---
+   Latin-subset VARIABLE woff2 in fonts/, first-party + immutable-cached +
+   preloaded. ONE block per family declaring the file's REAL weight RANGE — a
+   single-value `font-weight` descriptor PINS the wght axis, which is how
+   per-weight blocks once made 500–800 a single synthetic bold. Gated by
+   ui-test-searchpage §16a; the measured story is in CLAUDE.md. */
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;
@@ -3953,7 +3951,9 @@ a.card {
   color: var(--ok-text);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .pj-row.is-now .pj-dot { animation: pjPing 2.4s ease-out infinite; }
+  /* THE UNHURRIED PAYMENT: success slows; the WAIT (spinner, sweep), the
+     decline and My Stays' 2.4s dot do not. See CLAUDE.md. */
+  .pj-row.is-now .pj-dot { animation: pjPing 3.2s ease-out infinite; }
   @keyframes pjPing {
     0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
     70% { box-shadow: 0 0 0 10px transparent; }
@@ -3966,25 +3966,25 @@ a.card {
      animations, so this needs no JS). */
   .pay-done-tick .ic path {
     stroke-dasharray: 24;
-    animation: payDraw 0.5s ease 0.15s backwards;
+    animation: payDraw 0.9s ease 0.25s backwards;
   }
   @keyframes payDraw { from { stroke-dashoffset: 24; } }
   /* ONE SPRING for everything that arrives or changes state (the Apple pass):
      the narration unfolds, a finished step's tick POPS, the working dot spins,
      a decline SETTLES, the receipt cascades in behind its tick's halo. */
-  .pay-steps { transition: grid-template-rows 0.5s var(--spring); }
+  .pay-steps { transition: grid-template-rows 0.7s var(--spring); }
   .pay-step.is-run .pay-step-dot,
   .pj-row.is-run .pj-dot { animation: paySpin 0.8s linear infinite; }
   .pay-step.is-ok .pay-step-dot,
-  .pj-row.is-done .pj-dot { animation: payPop 0.4s var(--spring); }
+  .pj-row.is-done .pj-dot { animation: payPop 0.55s var(--spring); }
   @keyframes payPop {
     0% { transform: scale(0.5); }
     60% { transform: scale(1.2); }
     100% { transform: scale(1); }
   }
-  .pay-cta.is-paid { animation: payPop2 0.45s var(--spring); }
+  .pay-cta.is-paid { animation: payPop2 0.7s var(--spring); }
   @keyframes payPop2 { from { transform: scale(0.96); } }
-  .pay-msg.show { animation: paySettle 0.5s var(--spring); }
+  .pay-msg.show { animation: paySettle 0.5s var(--spring); } /* unhurried-exempt: bad news is read, not savoured */
   @keyframes paySettle {
     0% { transform: translateX(0) translateY(4px); opacity: 0; }
     30% { transform: translateX(-5px) translateY(0); opacity: 1; }
@@ -4006,19 +4006,19 @@ a.card {
     border-radius: 50%;
     background: radial-gradient(circle, color-mix(in srgb, var(--ok) 18%, transparent) 0%, transparent 68%);
     opacity: 0;
-    animation: payHalo 1.1s ease-out 0.5s;
+    animation: payHalo 1.7s ease-out 0.75s;
     pointer-events: none;
   }
   @keyframes payHalo {
     0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
     35% { opacity: 1; }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
   }
-  .pay-done > *:nth-child(2) { animation: payCasc 0.5s var(--spring) 0.45s backwards; }
-  .pay-done > *:nth-child(3) { animation: payCasc 0.5s var(--spring) 0.58s backwards; }
-  .pay-done > *:nth-child(4) { animation: payCasc 0.5s var(--spring) 0.72s backwards; }
-  .pay-done > *:nth-child(5) { animation: payCasc 0.5s var(--spring) 0.85s backwards; }
-  .pay-done > *:nth-child(6) { animation: payCasc 0.5s var(--spring) 0.95s backwards; }
+  .pay-done > *:nth-child(2) { animation: payCasc 0.7s var(--spring) 0.7s backwards; }
+  .pay-done > *:nth-child(3) { animation: payCasc 0.7s var(--spring) 0.95s backwards; }
+  .pay-done > *:nth-child(4) { animation: payCasc 0.7s var(--spring) 1.2s backwards; }
+  .pay-done > *:nth-child(5) { animation: payCasc 0.7s var(--spring) 1.45s backwards; }
+  .pay-done > *:nth-child(6) { animation: payCasc 0.7s var(--spring) 1.65s backwards; }
   @keyframes payCasc { from { opacity: 0; transform: translateY(8px); } }
   /* The refund line flows toward the bank — money in flight, My Stays. */
   .pay-tline { animation: payFlow 0.9s linear infinite; }
