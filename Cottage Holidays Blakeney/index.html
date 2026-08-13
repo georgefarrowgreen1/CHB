@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=261">
+    <link rel="stylesheet" href="app.css?v=262">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -896,6 +896,9 @@
     <main id="view-pay" class="page-view container">
         <div class="pay-wrap">
             <div class="pay-card glass-panel">
+                <!-- The cottage's own colour opens the card (openPayView paints it
+                     from the property accent) — the money follows the stay it buys. -->
+                <div class="pay-stay-band" id="pay-stay-band" aria-hidden="true" style="display:none;"></div>
                 <div class="pay-head">
                     <h1 class="section-title" style="font-size:1.6rem;margin:0;">Pay for your stay</h1>
                     <p class="pay-sub" id="pay-prop"></p>
@@ -919,6 +922,13 @@
                                  affordance, not a new money path. -->
                             <button type="button" class="pay-full-link" id="pay-full" style="display:none;" data-act="payInFull"></button>
                         </div>
+                        <!-- THE JOURNEY: deposit → balance → deposit back, "you are
+                             here" marked (payJourneyRender) — the whole money story
+                             on the screen that asks for part of it. -->
+                        <section class="pay-journey" id="pay-journey" style="display:none;" aria-labelledby="pay-journey-cap">
+                            <div class="pay-journey-cap" id="pay-journey-cap">Your payments</div>
+                            <div id="pay-journey-rows"></div>
+                        </section>
                     </div>
                     <div class="pay-form">
                         <!-- THE REPAIR CARD (summary's autopayRepair): stores a card,
@@ -961,6 +971,9 @@
                     <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
                     <h2 style="font-family:var(--font-serif);margin:14px 0 4px;" id="pay-done-title">Payment received</h2>
                     <p style="color:var(--text-muted);margin:0;" id="pay-done-sub"></p>
+                    <!-- What happens next, as the journey's own rows (payWithToken
+                         fills it) — paying never dead-ends. -->
+                    <div class="pay-journey" id="pay-done-next" style="display:none;margin:16px auto 0;max-width:420px;"></div>
                     <button type="button" class="btn-glass pay-cta" id="pay-done-rest" style="display:none;margin:22px 6px 0;padding:14px 30px;" data-act="payRestNow"></button>
                     <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
@@ -1893,7 +1906,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=810"></script>
+    <script defer src="app.js?v=811"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

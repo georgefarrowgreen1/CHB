@@ -3582,6 +3582,139 @@ a.card {
   height: 64px;
   color: var(--ok-text);
 }
+/* ---- THE JOURNEY (the approved payments demo): deposit → balance → deposit
+   back as dotted rows, "you are here" marked. One composer (payJourneyRows,
+   app.js) feeds the pay screen AND the done panel's what-happens-next. ---- */
+.pay-journey {
+  margin-top: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  text-align: left;
+}
+.pay-journey-cap {
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 15px 0;
+}
+.pj-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 15px;
+}
+.pj-row + .pj-row {
+  border-top: 1px solid var(--glass-border);
+}
+.pj-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  opacity: 0.55;
+}
+.pj-row.is-done .pj-dot { background: var(--ok); border-color: var(--ok); opacity: 1; }
+.pj-row.is-now .pj-dot { background: var(--accent); border-color: var(--accent); opacity: 1; }
+.pj-main { min-width: 0; flex: 1; }
+.pj-lbl { display: block; font-size: 0.86rem; font-weight: 600; }
+.pj-row.is-dim .pj-lbl { font-weight: 500; color: var(--text-muted); }
+.pj-sub { display: block; font-size: 0.74rem; color: var(--text-muted); margin-top: 1px; }
+.pj-fig { flex-shrink: 0; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+.pj-row.is-dim .pj-fig { font-weight: 500; color: var(--text-muted); }
+/* The cottage's own colour opens the card — the money follows the thing it
+   buys. Painted by openPayView from propertyMeta's accent; hidden without one. */
+.pay-stay-band {
+  height: 4px;
+  border-radius: 4px 4px 0 0;
+  margin: -8px -8px 14px;
+}
+.pay-stay-cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  margin-left: 8px;
+  vertical-align: 1px;
+  white-space: nowrap;
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent);
+}
+.pay-stay-cap.is-held {
+  color: var(--warn-text);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 24%, transparent);
+}
+/* ---- MONEY IN FLIGHT ANIMATES; money at rest is still (the approved motion
+   grammar). The "you are here" dot pings; a processing button spins and
+   shimmers; success is a green beat on the control BEFORE the done panel;
+   the receipt's tick draws itself. All stand down under reduced motion. ---- */
+.pay-cta.is-busy {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pay-cta.is-busy::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2.5px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  vertical-align: -2px;
+  margin-right: 8px;
+  animation: paySpin 0.7s linear infinite;
+}
+.pay-cta.is-busy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: paySweep 1.1s ease-in-out infinite;
+}
+@keyframes paySpin { to { transform: rotate(360deg); } }
+@keyframes paySweep { to { transform: translateX(100%); } }
+.pay-cta.is-paid {
+  /* 15%, not stronger — --ok-text on its own tint fails AA past ~20% (a11y §1b
+     measured 28% at 4.15:1); the beat's emphasis is the border + the ✓. */
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  color: var(--ok-text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pj-row.is-now .pj-dot { animation: pjPing 2.4s ease-out infinite; }
+  @keyframes pjPing {
+    0% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
+    70% { box-shadow: 0 0 0 10px transparent; }
+    100% { box-shadow: 0 0 0 3px transparent; }
+  }
+  /* The plan's NEXT collection is money waiting — same ping, My Stays' own
+     dots. A troubled plan does not ping: red is not "on its way". */
+  .hub-plan:not(.hub-plan-trouble) .ap-dot.is-next { animation: pjPing 2.4s ease-out infinite; }
+  /* The receipt's tick draws itself on reveal (display flips restart CSS
+     animations, so this needs no JS). */
+  .pay-done-tick .ic path {
+    stroke-dasharray: 24;
+    animation: payDraw 0.5s ease 0.15s backwards;
+  }
+  @keyframes payDraw { from { stroke-dashoffset: 24; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pay-cta.is-busy::before,
+  .pay-cta.is-busy::after {
+    animation: none;
+    content: none;
+  }
+}
 /* PAY-JOURNEY MOTION — states used to CUT. Animations replay on display:none →
    shown, so each panel eases in at its own state change with no JS; the hero
    ticks over via .pay-amt-swap (payPartRender, real change only). Close stays
