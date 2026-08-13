@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=269">
+    <link rel="stylesheet" href="app.css?v=270">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -965,6 +965,20 @@
                                 <p class="pay-part-hint" id="pay-part-hint"></p>
                             </div>
                         </div>
+                        <!-- THE PLAN COMES BEFORE THE PAYMENT (the approved plan-first
+                             demo): the rest of the money is step 1, decided where EVERY
+                             guest passes it — a wallet guest never scrolled past the
+                             card form to the old position below. payAutopayRender
+                             fills it; payMethodsSync makes the methods follow. -->
+                        <section class="pay-autopay" id="pay-autopay" style="display:none;" aria-labelledby="pay-ap-cap"></section>
+                        <!-- Step 2's own caption, shown only while step 1 is (a lone
+                             "2" with no "1" above it would be noise). -->
+                        <div class="pay-sec-cap pay-today-cap" id="pay-today-cap" style="display:none;"><span class="pay-step-n" aria-hidden="true">2</span>Pay today<span class="pay-sec-amt" id="pay-today-amt"></span></div>
+                        <!-- The honest stand-down: Square cannot keep a WALLET card on
+                             file for merchant-initiated payments, so an automatic plan
+                             needs the card form — said out loud, with the alternative
+                             named, never a silent greying-out. -->
+                        <div class="pay-walnote" id="pay-walnote" style="display:none;" role="status"><b>Automatic payments need a card we can keep on file</b> — wallet cards can't be stored for later payments, so enter your card below. Prefer Apple&nbsp;Pay or Google&nbsp;Pay today? Choose &ldquo;I'll pay it myself&rdquo; and you can still pay the balance by wallet when it's due.</div>
                         <!-- Express checkout: the caption names the LIVE figure the
                              wallets are priced to (mountWallets writes it). -->
                         <section class="pay-express" id="pay-express" style="display:none;" aria-labelledby="pay-express-cap">
@@ -981,10 +995,12 @@
                              happening while the charge runs, revealed only once the wait
                              has lasted 400ms. Steps tick on the REAL callbacks. -->
                         <div class="pay-steps" id="pay-steps" style="display:none;" role="status" aria-live="polite"></div>
-                        <!-- The arrangement, offered at the one moment a card is in
-                             hand. Hidden unless there is something to schedule; the
-                             label names the sum and the day, not small print. -->
-                        <section class="pay-autopay" id="pay-autopay" style="display:none;" aria-labelledby="pay-ap-cap"></section>
+                        <!-- ONE CONSENT SENTENCE, whichever rail: the whole arrangement
+                             — today's figure, what happens to the rest, what (if
+                             anything) is stored — restated above the button so the
+                             wallet sheet and the card form make identical promises.
+                             payAutopayRender writes it; hidden when nothing is offered. -->
+                        <p class="pay-consent" id="pay-consent" style="display:none;"></p>
                         <button type="button" class="btn-glass pay-cta" id="pay-btn" style="width:100%;padding:17px;margin-top:6px;" data-act="submitPayment">Pay now</button>
                         <!-- Armed autopay only: what paying now (instead of waiting for
                              the collection) actually does. openPayView fills it. -->
@@ -1935,7 +1951,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=819"></script>
+    <script defer src="app.js?v=820"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
