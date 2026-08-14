@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 502;
+const ADMIN_BUNDLE_V = 504;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 198;
+const ADMIN_CSS_V = 200;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1762,7 +1762,8 @@ function mapBookingFromApi(row) {
         // booking_next_payment; my-bookings.php only, so null on the owner path
         // and on an older server (callers fall back to the balance).
         nextPayment: row.next_payment && typeof row.next_payment === 'object' ? row.next_payment : null,
-        // booking_autopay_state — my-bookings.php only, so '' on the owner path
+        // booking_autopay_state — sent on BOTH paths now (bookings.php list too), so
+        // the owner side can tell an ARRANGED balance from an unpaid one
         // and on an older server; '' reads as "no arrangement" everywhere.
         autopayState: row.autopay_state || '',
         autopaySays: row.autopay_says || '',
@@ -4002,8 +4003,21 @@ function guestPriceBoxHtml(p, o) {
         rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
     rows.push(`<div class="price-row total"><span>Total${o.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(o.total)}</span></div>`);
     if (o.extraRows) rows.push(o.extraRows);
-    if (o.dep > 0)
-        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Includes the ${gbp(o.dep)} refundable damages deposit — refunded after your stay.</p>`);
+    // THE DEPOSIT'S STATE, not just its amount. One static sentence served every
+    // state, so a KEPT deposit told the guest it was "refunded after your stay" — on
+    // the booking whose own invoice and PDF said it was retained for damage.
+    // depositInvoiceStatus is the derivation those two already share, so the card is
+    // a fourth reader of one decision rather than a fifth opinion. A caller with no
+    // state (the pending enquiry) falls through to its default sentence.
+    // DISPLAY AND ARITHMETIC ARE DIFFERENT QUESTIONS — invoice.php's own rule. `dep`
+    // is what is still IN the total, so a returned deposit correctly drops to 0 and
+    // left the card silent about £75 that had been taken and given back; `depWas` is
+    // what the deposit WAS and never goes to zero.
+    const depShow = o.dep > 0 ? o.dep : Math.round((Number(o.depWas) || 0) * 100) / 100;
+    if (depShow > 0) {
+        const say = depositInvoiceStatus(depShow, o.holdStatus, o.damagesReturned, o.settledDate);
+        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
+    }
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
 }
@@ -4142,10 +4156,17 @@ async function renderGuestBookings() {
     const reviewShown = new Set(); // one review block per property
     const photoShown = new Set(); // one "share a photo" button per property
     if (mine.length === 0 && pendingMine.length === 0) {
+        // A GUEST WHO HAS STAYED HERE IS NOT A NEW VISITOR. Cancelling DELETEs the
+        // booking row (dates_clash and waitlist_notify_freed depend on it going), so a
+        // guest whose only stay was cancelled — possibly with a refund in flight — was
+        // told "No Bookings Yet … once you book one of our cottages, it will appear
+        // here" by their own account. The server's completed-stays count is the one
+        // fact available here.
+        const returning = completedStays > 0;
         list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">No Bookings Yet</p>
-                    <p style="font-size:0.95rem;">Once you book one of our cottages, it will appear here.</p>
-                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">Browse Cottages</button>
+                    <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
+                    <p style="font-size:0.95rem;">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
+                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse Cottages'}</button>
                 </div>`;
         return;
     }
@@ -4267,6 +4288,14 @@ async function renderGuestBookings() {
         const priceBox = guestPriceBoxHtml(p, {
             dep: gt.dep,
             total: gt.total,
+            // The state, so the card can say what really happened to it — and what the
+            // deposit WAS, which survives it leaving the total.
+            // What the deposit WAS — the sum actually taken when there is one, else
+            // the agreed figure. invoice.php's own deposit_amount rule.
+            depWas: Number(b.holdAmount) > 0 ? Number(b.holdAmount) : depositTakenAmt(p, b),
+            holdStatus: b.holdStatus,
+            damagesReturned: b.damagesReturned,
+            settledDate: b.holdSettledAt ? fmtDate(String(b.holdSettledAt).slice(0, 10)) : '',
             extraRows:
                 gt.paid > 0
                     ? `
@@ -17960,7 +17989,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sync140903b';
+    const BUILD = 'dep140912x';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

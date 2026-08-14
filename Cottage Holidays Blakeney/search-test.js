@@ -2298,6 +2298,23 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const regPart = ctx.chbDuties().filter((d) => d.kind === 'register');
         check('a PART-filled register is still outstanding', regPart.length === 1, regPart.map((d) => d.label).join(' | '));
 
+        // A4b) MONEY THE GUEST HAS ALREADY ARRANGED IS NOT CHASED. An armed plan means
+        // a card is on file and the collection is scheduled — the pay screen tells the
+        // guest "Balance · already arranged" — and chbChaseInfo consulted nothing about
+        // it, so an ordinary chase duty appeared every day for a booking that needs
+        // nothing, and both taps it offers email a "pay your balance" request for money
+        // coming off that card in days. A TROUBLED plan still chases: the card failed,
+        // so the money really is outstanding (payments-due.php draws the same line).
+        vm.runInContext(`enquiries=[]; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[
+              {id:85,dbId:85,name:'Arranged Guest',email:'ag@x.co',checkIn:'${dFut(10)}',checkOut:'${dFut(13)}',adults:2,children:0,payment:'deposit',depositPaid:100,autopayState:'armed',
+               agreedPrice:{total:430,perNight:415,nights:3,txnFee:15}},
+              {id:86,dbId:86,name:'Troubled Guest',email:'tg@x.co',checkIn:'${dFut(10)}',checkOut:'${dFut(13)}',adults:2,children:0,payment:'deposit',depositPaid:100,autopayState:'failed',
+               agreedPrice:{total:430,perNight:415,nights:3,txnFee:15}}];`, ctx);
+        const armed = ctx.chbDuties().filter((d) => d.kind === 'balance');
+        check('an ARRANGED balance is not chased', !armed.some((d) => /Arranged Guest/.test(d.label)), armed.map((d) => d.label).join(' | '));
+        check('…while a TROUBLED plan still is — that card failed', armed.some((d) => /Troubled Guest/.test(d.label)), armed.map((d) => d.label).join(' | '));
+
         // A5) A PLANNING FACT IS NOT AN ALERT. findChangeovers collected every
         // same-day changeover forward for ever, and showChangeoverToasts renders one
         // persistent amber card each into the fixed toast stack: measured at 390x844

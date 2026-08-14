@@ -488,6 +488,22 @@ function bookings_admin_payload()
         unset($bk);
     } catch (\Throwable $e) {
     }
+    // THE PLAN'S STATE, on the owner path too. booking_autopay_state is already
+    // derived for my-bookings.php, and app.js's mapper documents autopayState as ''
+    // here — so nothing owner-side could tell an ARRANGED balance from an unpaid
+    // one. A guest who consented to automatic collection produced an ordinary chase
+    // duty every day, and both taps it offered emailed them a "pay your balance"
+    // request for money that will be taken from their card in three days,
+    // contradicting the "Balance · already arranged" the app showed them.
+    try {
+        require_once __DIR__ . '/pricing.php';
+        foreach ($rows as &$bk) {
+            [$st] = booking_autopay_state($bk);
+            $bk['autopay_state'] = $st;
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
     // Guest-registration status per booking (UK hotel-records duty). The bulk
     // payload carries only status + count + the owner-usable form link — never
     // the PII; the owner opens the token page to view/edit the actual names.

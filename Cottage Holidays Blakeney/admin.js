@@ -14703,11 +14703,26 @@ async function cancelBooking(bookingId) {
                     `Return it by hand, then it is settled.\n\nIt is saved under Needs attention so you don't lose it.`,
             );
         } else {
-            toast(
-                'Booking cancelled.' +
-                    (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
-                    (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
-            );
+            // AND WHETHER THE GUEST WAS TOLD. The confirm promises a cancellation
+            // email; the endpoint sends it best-effort and reports it as
+            // `email: {ok, error}` beside deposit_owed and manual_refund, which this
+            // already reads — so the outcome was in hand and thrown away. Cancelling
+            // deletes the booking, so nothing else on any screen will ever mention
+            // this stay again: if the email did not go, the guest's only notice was
+            // the money moving. Same rule as the refund and deposit-return reports.
+            const em = r && r.email;
+            const mailFailed = em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file';
+            const extra =
+                (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
+                (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : '');
+            if (mailFailed) {
+                await glassAlert(
+                    `Booking cancelled${extra} — but the email telling ${booking.name || 'the guest'} didn't send (${em.error}).\n\n` +
+                        'The booking is gone, so nothing on any screen will mention this stay again — worth telling them another way.',
+                );
+            } else {
+                toast('Booking cancelled.' + extra);
+            }
         }
         try {
             closeDetailsModal();
@@ -17708,6 +17723,14 @@ function renderPricing() {
 // with payment_rail's, byte for byte.
 function chbChaseInfo(k, b) {
     if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
+    // AND NEVER CHASE MONEY THE GUEST HAS ALREADY ARRANGED. An armed plan means a
+    // card is on file and the collection is scheduled — the pay screen tells the
+    // guest "Balance · already arranged" — so a chase duty here appeared every day
+    // for a booking that needs nothing, and both taps it offers email a "pay your
+    // balance" request for money coming off that card in days. A TROUBLED plan is
+    // different and must still chase: the card failed, so the money is genuinely
+    // outstanding (payments-due.php draws the same line).
+    if (b && b.autopayState === 'armed') return null;
     const gt = bookingDue(k, b);
     if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
     const today = todayDashed();

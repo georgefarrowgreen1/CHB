@@ -849,6 +849,54 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(arch.again === 0 && arch.rebook === 0, 'Book again is withheld — an archived cottage has no page to land on');
   await page.close();
 
+  // ── 29) THE CARD SAYS WHAT REALLY HAPPENED TO THE DEPOSIT ────────────────────
+  // guestPriceBoxHtml emitted ONE static sentence from `dep > 0` — "refunded after
+  // your stay" — for every state, so a KEPT deposit told the guest their money was
+  // coming back on the same booking whose own invoice and PDF said it was retained
+  // for damage. One booking, two documents, opposite claims. It reads
+  // depositInvoiceStatus now: the pure derivation the invoice and the PDF already
+  // share, driven by the same invoice-deposit-fixtures.json.
+  console.log('\n29) the deposit state on the stay card');
+  const depSay = async (extra) => {
+    const pg = await openPage({ name: 'Dep Guest', email: 'dep@x.co' },
+      [mk('jollyboat', d(-10), d(-7), Object.assign({ payment: 'paid', deposit_paid: 450, damages_deposit: 75 }, priced, extra))]);
+    // The breakdown starts folded; its text is in the DOM either way.
+    const t = await pg.evaluate(() => {
+      const box = document.querySelector('.guest-price-box');
+      return box ? (box.textContent || '').replace(/\s+/g, ' ') : '(no price box)';
+    });
+    await pg.close();
+    return t;
+  };
+  const kept = await depSay({ hold_status: 'kept', hold_amount: 75 });
+  ok(/retained/i.test(kept), `a KEPT deposit says it was retained (${kept.slice(-90)})`);
+  ok(!/refunded after your stay/i.test(kept), '…and never that it is coming back');
+  // A RETURNED deposit has LEFT the total (displayGrand zeroes it — display and
+  // arithmetic are different questions, invoice.php's own rule), which left the card
+  // silent about £75 that had been taken and given back. `depWas` is what it WAS.
+  const back = await depSay({ hold_status: 'returned', hold_amount: 75, damages_returned: 75, hold_settled_at: d(-5) + ' 10:00:00' });
+  ok(/refunded in full/i.test(back), `a RETURNED deposit is still ON the card, saying it went back (${back.slice(-90)})`);
+  const held = await depSay({ hold_status: 'charged', hold_amount: 75 });
+  ok(/refunded in full after your stay/i.test(held), `one still held reads as still to come (${held.slice(-90)})`);
+
+  // ── 30) A GUEST WHO HAS STAYED HERE IS NOT A NEW VISITOR ─────────────────────
+  // Cancelling DELETEs the booking row — dates_clash, availability.php and
+  // waitlist_notify_freed all depend on it going — so a guest whose only stay was
+  // cancelled, possibly with a refund still in flight, was told "No Bookings Yet …
+  // once you book one of our cottages, it will appear here" by their own account.
+  console.log('\n30) the empty state after a cancellation');
+  const emptyNew = await openPage({ name: 'New Visitor', email: 'nv@x.co' }, []);
+  const newSay = await emptyNew.evaluate(() => (document.querySelector('.guest-empty') || {}).textContent || '');
+  await emptyNew.close();
+  ok(/No Bookings Yet/i.test(newSay), `a genuinely new visitor still gets the welcome (${newSay.replace(/\s+/g, ' ').slice(0, 40)})`);
+  const emptyBack = await openPage({ name: 'Been Before', email: 'bb@x.co' }, [], { completed: 2 });
+  const backSay = await emptyBack.evaluate(() => (document.querySelector('.guest-empty') || {}).textContent || '');
+  await emptyBack.close();
+  ok(!/No Bookings Yet/i.test(backSay) && /Nothing booked/i.test(backSay),
+    `a returning guest is not told they have never booked (${backSay.replace(/\s+/g, ' ').slice(0, 60)})`);
+  ok(/reply to your confirmation email/i.test(backSay),
+    '…and is given a way to ask about a stay they expected to see');
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();
