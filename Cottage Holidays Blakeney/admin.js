@@ -15073,7 +15073,13 @@ function moAsyncFill() {
                 backFig.innerHTML = items.length ? `<span class="bhub-payline-fig">${gbp(Number(L.net || 0))}</span>` : stCap('ok', 'None held');
                 const today2 = todayDashed();
                 const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok);">ready to return</span>');
-                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.amount) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
+                // `it.net` — the liability items carry outstanding/awaiting/rental/fee/
+                // gross/feeBack/net and NO `amount` key, so `Number(it.amount) || 0`
+                // printed £0.00 on every row: "Sarah Pemberton · £0.00 — ready to
+                // return" under a headline correctly reading £147.38, on the screen
+                // that tells the owner what to hand back. The sibling renderer on Move
+                // money out already prints it.net.
+                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
             } else if (backFig) {
                 backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';

@@ -308,6 +308,18 @@ if (($in['action'] ?? '') === 'save') {
         }
         if (in_array($f, $numeric, true)) {
             $v = max(0, (float) $in[$f]);
+            // THE NIGHTLY RATE MAY NOT BE ZERO — `create` already refuses it, and
+            // `save` accepting it meant one blurred edit gave a cottage away: the
+            // couple-rate field saves on BLUR, so selecting the figure to retype it,
+            // deleting it and tapping away stored 0. Every quote for that cottage
+            // then reads "from £0.00", the calendar prints no prices, and an enquiry
+            // approved against it snapshots agreed_total = £0.00 — a free stay, with
+            // the confirmation email stating £0.00. (The fold summary keeps showing
+            // the OLD rate, because acrSync guards on couple > 0, so one surface
+            // actively contradicts the stored value.) Same sentence as `create`.
+            if ($f === 'couple_rate' && $v <= 0) {
+                json_out(['error' => 'Please set a nightly couple rate above £0'], 400);
+            }
             // Last-minute discount can't exceed the engine's 90% cap — clamp at save
             // so the stored value never silently diverges from what guests are charged.
             if ($f === 'lastmin_pct') {

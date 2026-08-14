@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 488;
+const ADMIN_BUNDLE_V = 489;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -9294,24 +9294,11 @@ function displayGrand(p, ps, holdStatus, b) {
     const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
     const chargedDep = depositCharged(holdStatus) ? dep : 0; // only if actually collected
-    // A CASH deposit counts as paid too — the same arithmetic damages_collected
-    // uses in the ledger (what was paid ABOVE the rental, capped at the agreed
-    // deposit). hold_status is a CARD-rail fact and cash never sets it, and
-    // paymentSummary caps depositPaid at the rental total — so a guest who handed
-    // over £750 (£700 + £50 deposit, recorded as one sum) read "£50 still to
-    // come" on every owner surface while damageHeld listed the same £50 as in
-    // hand and returnable. Zero for a legacy folded-total booking (paid never
-    // exceeds the total there) and zero once the deposit is charged/settled on
-    // the card rail (holdStatus leaves 'none').
-    // ONE RENTAL FRAME, the same one damageHeld uses. This measured the cash
-    // deposit against `ps.total` while damageHeld measures it against the RENTAL
-    // (priceOverride, else rentalTotal), and the two disagreed on exactly the
-    // rows where they differ: a LEGACY booking whose agreed total already folded
-    // the deposit in had damageHeld calling the deposit collected while this
-    // called it outstanding, so the card showed a balance for money the guest had
-    // handed over — which is what the `ps.fullyPaid ||` short-circuit below was
-    // papering over. Deriving both from the rental settles it, and lets fullyPaid
-    // be honest on the rail where the deposit really is still to collect.
+    // A CASH deposit counts as paid too — damages_collected's ledger arithmetic
+    // (paid ABOVE the rental, capped at the agreed deposit), on ONE rental frame,
+    // the same one damageHeld uses (priceOverride, else rentalTotal). Measuring it
+    // against ps.total instead made the two disagree on legacy folded-total rows.
+    // Zero on a legacy booking and once the card rail has charged it. See CLAUDE.md.
     const rentalBasis = b && b.priceOverride != null
         ? Number(b.priceOverride)
         : (p && p.rentalTotal != null ? Number(p.rentalTotal) : ps.total);
@@ -12058,6 +12045,20 @@ async function saveRateField(propKey, field, value) {
 async function updateRate(propKey, field, value) {
     const num = Math.max(0, parseFloat(value) || 0);
     if (!propertyRates[propKey]) propertyRates[propKey] = Object.assign({}, defaultRates[propKey]);
+    // A NIGHTLY RATE OF ZERO IS NEVER A PRICE — the field saves on BLUR, so clearing
+    // it to retype stored 0 and gave the cottage away. rates.php refuses it too; this
+    // guard stops the mirror (and every price on screen) going to £0 meanwhile.
+    if (field === 'coupleRate' && num <= 0) {
+        try {
+            glassAlert('Please set a nightly couple rate above £0 — a cottage priced at zero would be given away.');
+        } catch (e) {}
+        try {
+            const back = Number(propertyRates[propKey] && propertyRates[propKey][field]) || 0;
+            const el = /** @type {HTMLInputElement} */ (document.getElementById('acr-' + propKey + '-' + field));
+            if (el) el.value = String(back);
+        } catch (e) {}
+        return;
+    }
     propertyRates[propKey][field] = num; // instant UI update
     renderCalendar();
     renderCardPrices();
@@ -17755,7 +17756,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'books1';
+    const BUILD = 'zerorate1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

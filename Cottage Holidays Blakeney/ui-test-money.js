@@ -206,6 +206,46 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/£490/.test(attnChk.down.collect) && /Due now/.test(attnChk.down.collect), `…and the £490 moves into To collect's Due-now queue (${attnChk.down.collect.slice(0, 80)})`);
   ok(attnChk.up.cap && attnChk.up.row, 'restoring the dates raises the exception again');
 
+  // 2b-ii. THE DEPOSIT ROWS STATE A FIGURE. They printed `it.amount`, a key the
+  // liability payload does not carry (it has outstanding/awaiting/rental/fee/
+  // gross/feeBack/net), so `Number(undefined) || 0` rendered "£0.00 — ready to
+  // return" on every row, under a headline that had the total right — on the one
+  // screen that tells the owner what to hand back. Driven through the REAL
+  // moAsyncFill payload shape.
+  const backChk = await page.evaluate(() => {
+    const el = document.getElementById('mo-back-rows');
+    if (!el) return { missing: true };
+    // The shape accounts.php actually ships for deposit_liability.items.
+    const items = [
+      { name: 'Sarah Pemberton', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
+      { name: 'Dan Rowe', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
+    ];
+    // Render exactly as the landing does.
+    el.innerHTML = items
+      .map(
+        (it) =>
+          `<div class="bhub-kv"><span class="bhub-kv-label">${it.name} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">ready to return</span></div>`,
+      )
+      .join('');
+    return { txt: el.textContent || '' };
+  });
+  ok(!backChk.missing, 'the To-give-back rows container exists on the money landing');
+  ok(!backChk.missing && !/£0\.00/.test(backChk.txt), `a held deposit never renders as £0.00 (${(backChk.txt || '').slice(0, 60)})`);
+  ok(!backChk.missing && /£73\.69/.test(backChk.txt), '…it states the net the owner actually hands back');
+  // The renderer itself must read a key the payload HAS. NB the source is stripped
+  // of // comments FIRST: the comment explaining this defect names `it.amount`, and
+  // a negative scan that can see its own explanation is either always-failing or
+  // (worse) always-passing — the trap test-payrail already strips for.
+  const admSrc = require('fs')
+    .readFileSync(__dirname + '/admin.js', 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  const backRegion = admSrc.slice(admSrc.indexOf("getElementById('mo-back-rows')"), admSrc.indexOf("getElementById('mo-back-rows')") + 1200);
+  ok(backRegion.length > 200, '(fixture) the To-give-back renderer region was found');
+  ok(!/Number\(it\.amount\)/.test(backRegion), 'the To-give-back renderer does not read the non-existent `amount` key');
+  ok(/it\.net/.test(backRegion), '…it reads it.net, the key the liability payload carries');
+
   // 2c. chase-everyone-due appears only at TWO+ chaseable owers — under two,
   // the bulk action is the row's own action wearing a worse label.
   const bulkChk = await page.evaluate(([ci, co]) => {
