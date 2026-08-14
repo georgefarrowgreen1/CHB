@@ -139,18 +139,46 @@ function sync_property($prop)
             }
         } catch (\Throwable $e) {
         }
-        // Replace this source's blocks for this property (clean refresh).
-        db()
-            ->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')
-            ->execute([$prop, $source]);
-        $ins = db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
-        $count = 0;
-        foreach ($events as $e) {
-            if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
-                continue;
+        // Replace this source's blocks for this property — ATOMICALLY. This was a
+        // bare DELETE followed by N INSERTs, and it is the one write deciding
+        // availability that did not take a lock: every reader of ical_blocks
+        // (dates_clash, availability.php, the enquiry guard) sees the table
+        // mid-rebuild, so a clash check landing in that window reads a live Airbnb
+        // stay as FREE and lets a booking through. The window is not theoretical —
+        // the sync fires from the daily cron, from autoSyncIcalBlocks on every back
+        // office load, and from "Sync now", i.e. while the owner is using the app.
+        // A transaction also means a mid-loop failure ROLLS BACK to the previous
+        // blocks rather than leaving the source deleted, which is the same
+        // never-empty-the-calendar rule ical_feed_usable enforces on the fetch.
+        $pdo = db();
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')->execute([$prop, $source]);
+            $ins = $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
+            $count = 0;
+            foreach ($events as $e) {
+                if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
+                    continue;
+                }
+                // An over-long UID from a non-platform feed would abort the whole
+                // loop; the column is the identity, not the payload.
+                $ins->execute([$prop, $source, mb_substr((string) ($e['uid'] ?? ''), 0, 190), $e['start'], $e['end']]);
+                $count++;
             }
-            $ins->execute([$prop, $source, $e['uid'], $e['start'], $e['end']]);
-            $count++;
+            $pdo->commit();
+        } catch (\Throwable $ex) {
+            try {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            } catch (\Throwable $e2) {
+            }
+            // The feed reads as failing rather than as empty, and the OLD blocks
+            // stand. ical_record_status is called ONCE with the whole summary at the
+            // foot of this function, so a failing row here is all that is needed —
+            // calling it per source would overwrite the other feeds' entries.
+            $summary[] = ['source' => $source, 'ok' => false, 'error' => 'could not rebuild blocks'];
+            continue;
         }
         $summary[] = ['source' => $source, 'ok' => true, 'events' => $count];
     }

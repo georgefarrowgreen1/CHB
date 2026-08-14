@@ -1565,6 +1565,70 @@ console.log('\n== 12b. Adding a cottage has a way out ==');
     );
 }
 
+// ---- 12c. An external block loses only the nights a booking really covers ----
+// suppressBlocksUnderLocalBookings drops an iCal/owner block whenever it overlaps a
+// local booking AT ALL. The case it exists for is the exact-range MIRROR (our own
+// booking exported to Airbnb and imported back), and for any PARTIAL overlap it
+// removed the non-overlapping nights from dbBlocks too — which is what the owner's
+// timeline, the tl-ext bars and conflict-audit read. So an owner block 01–15 Sep
+// with a phone booking 01–03 Sep saved through the clash confirm left 03–15 Sep
+// showing FREE on the one screen the owner scans to avoid double-booking.
+console.log('\n== 12c. A partial overlap subtracts nights, it does not delete the block ==');
+{
+    const nights = (list) => list.map((b) => b.checkIn + '→' + b.checkOut).join(', ');
+    // SNAPSHOT the two stores: they are module-level objects mutated in place, and
+    // later sections render real bookings out of them (the PDF probe failed on the
+    // first run of this block for exactly that).
+    const savedStores = vm.runInContext('JSON.stringify({bk:dbBookings,bl:dbBlocks})', ctx);
+    const run = (bookings, blocks) => {
+        vm.runInContext(
+            'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]);' +
+            'Object.keys(dbBlocks).forEach(k=>delete dbBlocks[k]);' +
+            'dbBookings.t=' + JSON.stringify(bookings) + '; dbBlocks.t=' + JSON.stringify(blocks) + ';' +
+            'suppressBlocksUnderLocalBookings();',
+            ctx,
+        );
+        return vm.runInContext('dbBlocks.t.map(b=>({checkIn:b.checkIn,checkOut:b.checkOut,id:String(b.id)}))', ctx);
+    };
+    // The MIRROR still disappears — that is what this function is for.
+    const mirror = run(
+        [{ id: 1, checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+        [{ id: 'x1', source: 'airbnb', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+    );
+    check(`an exact-range mirror still disappears (${nights(mirror) || 'none'})`, mirror.length === 0);
+    // A PARTIAL overlap keeps the nights the booking does not cover.
+    const partial = run(
+        [{ id: 1, checkIn: '2026-09-01', checkOut: '2026-09-03' }],
+        [{ id: 'x1', source: 'owner', checkIn: '2026-09-01', checkOut: '2026-09-15' }],
+    );
+    check(
+        `a partial overlap keeps the rest of the block (${nights(partial) || 'NOTHING — the nights read as free'})`,
+        partial.length === 1 && partial[0].checkIn === '2026-09-03' && partial[0].checkOut === '2026-09-15',
+    );
+    // A booking INSIDE a block splits it, rather than clearing both sides.
+    const split = run(
+        [{ id: 1, checkIn: '2026-09-05', checkOut: '2026-09-08' }],
+        [{ id: 'x1', source: 'owner', checkIn: '2026-09-01', checkOut: '2026-09-15' }],
+    );
+    check(
+        `a booking in the MIDDLE splits the block in two (${nights(split) || 'NOTHING'})`,
+        split.length === 2 && split[0].checkOut === '2026-09-05' && split[1].checkIn === '2026-09-08',
+    );
+    check('…and the two halves carry distinct ids', split.length === 2 && split[0].id !== split[1].id);
+    // A block nowhere near a booking is untouched.
+    const clear = run(
+        [{ id: 1, checkIn: '2026-10-01', checkOut: '2026-10-03' }],
+        [{ id: 'x1', source: 'airbnb', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+    );
+    check(`an unrelated block is untouched (${nights(clear)})`, clear.length === 1 && clear[0].checkIn === '2026-09-01');
+    vm.runInContext(
+        'var __s = ' + savedStores + ';' +
+        'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]); Object.assign(dbBookings, __s.bk);' +
+        'Object.keys(dbBlocks).forEach(k=>delete dbBlocks[k]); Object.assign(dbBlocks, __s.bl);',
+        ctx,
+    );
+}
+
 // ============================================================
 //  §13 — NO SILENT CAPS, and the number is stated ONCE.
 //  The activity log asks for 250 rows and rendered them with nothing saying so,

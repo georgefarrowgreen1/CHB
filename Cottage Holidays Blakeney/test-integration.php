@@ -370,12 +370,19 @@ it_check('unknown action → 400 (route_actions catch-all)', http($admin, 'POST'
 echo "\n== 8. Self-repair storage hygiene ==\n";
 @mkdir($work . '/uploads/cache', 0777, true);
 file_put_contents($work . '/uploads/live.jpg', 'x');
-file_put_contents($work . '/uploads/cache/live.jpg.w640.webp', 'x');   // source present → keep
-file_put_contents($work . '/uploads/cache/gone.jpg.w640.webp', 'x');   // source missing → prune
+// THE REAL CACHE-NAME SHAPE, which is what let this defect ship. img.php builds the
+// name from the FULL src with separators flattened — 'uploads/live.jpg' becomes
+// `uploads_live.jpg` — so these fixtures were the one shape self-repair's broken
+// probe happened to handle: it reconstructed `uploads/<basename>`, which for
+// `live.jpg.w640.webp` really is uploads/live.jpg. Against the names img.php
+// ACTUALLY writes, every entry looked orphaned and the nightly cron deleted the
+// whole resize cache and called it a fix.
+file_put_contents($work . '/uploads/cache/uploads_live.jpg.w640.webp', 'x');   // source present → keep
+file_put_contents($work . '/uploads/cache/uploads_gone.jpg.w640.webp', 'x');   // source missing → prune
 $r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
 it_check('self-repair runs via the cron secret', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
-it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/gone.jpg.w640.webp'));
-it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/live.jpg.w640.webp'));
+it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/uploads_gone.jpg.w640.webp'));
+it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/uploads_live.jpg.w640.webp'));
 it_check('the prune is reported as a fix', (bool) array_filter($r['json']['fixed'] ?? [], fn($f) => strpos((string) $f, 'resized image') !== false), json_encode($r['json']['fixed'] ?? []));
 
 // ---- 10. Money-integrity fixes (whole-site logic audit) -------------------

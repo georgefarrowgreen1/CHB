@@ -459,7 +459,11 @@ try {
 try {
     $feeds = 0;
     foreach (db()->query("SELECT item_value FROM content WHERE item_key LIKE 'ical-feeds-%'")->fetchAll() as $r) {
-        $arr = json_decode((string) $r['item_value'], true);
+        // DECRYPT it: `ical-feeds-*` is a PRIVATE key (content_set_secret), so the
+        // raw column is ciphertext and json_decode returned null on every row —
+        // Status reported "No external feeds connected" while the feeds were syncing
+        // normally, which is the one page an owner opens to find out whether they are.
+        $arr = json_decode(decrypt_value((string) $r['item_value']), true);
         if (is_array($arr)) {
             $feeds += count($arr);
         }

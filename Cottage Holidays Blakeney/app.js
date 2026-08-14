@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 500;
+const ADMIN_BUNDLE_V = 502;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 196;
+const ADMIN_CSS_V = 198;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9750,18 +9750,47 @@ function rangesOverlap(aIn, aOut, bIn, bOut) {
     return !!(aIn && aOut && bIn && bOut) && aIn < bOut && bIn < aOut;
 }
 
-// Hide any external (iCal) block that overlaps a local booking for the same
-// property — local data takes precedence on the calendar.
+// SUBTRACT the local booking from an external block, never delete the block. The
+// case this exists for is the exact-range MIRROR — our own booking exported to
+// Airbnb and imported back — and deleting is right for that and wrong for any
+// PARTIAL overlap, which the app supports (an owner block plus a phone booking
+// saved through the clash confirm). Those lost their non-overlapping nights from
+// dbBlocks, which is what the timeline, the tl-ext bars and conflict-audit read —
+// so booked nights showed FREE on the screen the owner scans to avoid that. A true
+// mirror is fully covered, yields no remainder, and still disappears.
 function suppressBlocksUnderLocalBookings() {
     Object.keys(dbBlocks).forEach((k) => {
         const locals = dbBookings[k] || [];
         if (!locals.length) return;
-        dbBlocks[k] = (dbBlocks[k] || []).filter(
-            (bl) =>
-                !locals.some((bk) =>
-                    rangesOverlap(bl.checkIn, bl.checkOut, bk.checkIn, bk.checkOut),
-                ),
-        );
+        const out = [];
+        (dbBlocks[k] || []).forEach((bl) => {
+            // Remaining segments of [checkIn, checkOut) after removing every local
+            // booking's range. Checkout-exclusive throughout, like rangesOverlap.
+            let parts = [{ a: bl.checkIn, b: bl.checkOut }];
+            locals.forEach((bk) => {
+                if (!bk.checkIn || !bk.checkOut) return;
+                const next = [];
+                parts.forEach((p) => {
+                    if (!(p.a < bk.checkOut && bk.checkIn < p.b)) { next.push(p); return; } // no overlap
+                    if (p.a < bk.checkIn) next.push({ a: p.a, b: bk.checkIn });
+                    if (bk.checkOut < p.b) next.push({ a: bk.checkOut, b: p.b });
+                });
+                parts = next;
+            });
+            if (parts.length === 1 && parts[0].a === bl.checkIn && parts[0].b === bl.checkOut) {
+                out.push(bl); // untouched
+                return;
+            }
+            // A split keeps the block's identity on every piece (the timeline reads
+            // source/guestName off it) with its own id suffix, so nothing keyed on id
+            // collapses two segments into one.
+            parts.forEach((p, i) => out.push(Object.assign({}, bl, {
+                id: i === 0 ? bl.id : String(bl.id) + '-' + i,
+                checkIn: p.a,
+                checkOut: p.b,
+            })));
+        });
+        dbBlocks[k] = out;
     });
 }
 
@@ -17931,7 +17960,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'own140849';
+    const BUILD = 'sync140903b';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
