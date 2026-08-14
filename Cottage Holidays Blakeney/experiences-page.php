@@ -103,7 +103,7 @@ try {
             }
         }
         require_once __DIR__ . '/hero-shell.php';
-        $out = inject_live_hero($out, $hero, $origin);
+        $out = inject_live_hero($out, $hero, $origin, false); // experiences route never paints #hero
     }
 } catch (\Throwable $e) {
     $out = $html; // any hiccup → the untouched shell

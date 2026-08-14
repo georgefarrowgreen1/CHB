@@ -193,7 +193,7 @@ try {
             // images. og:image/twitter:image were already set to the gallery photo
             // above, so those aren't affected.
             require_once __DIR__ . '/hero-shell.php';
-            $out = inject_live_hero($out, $cv('hero-bg'), $origin);
+            $out = inject_live_hero($out, $cv('hero-bg'), $origin, false); // cottage route never paints #hero
         }
     }
 } catch (\Throwable $e) {

@@ -830,6 +830,31 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     // frosted panels re-blur every frame while idle — the mobile GPU/battery fix).
     check('hero drift is not infinite (perf regression guard)', !/heroDrift[^;{]*infinite/.test(cssText));
 
+    // THE LCP IMAGE IS RIGHT-SIZED, AND ONLY PRELOADED WHERE IT PAINTS.
+    // The upload is 1920×1440 (~726KB after htaccess's WebP negotiation) for a box
+    // that is 1170 device px on a phone — the largest asset every anonymous visitor
+    // pays for. And #hero lives inside <main id="view-main">, which the cottage and
+    // experiences routes leave display:none, so those two were pulling it at
+    // fetchpriority=high for an element they never show.
+    {
+        const heroShell = fs.readFileSync(path.join(__dirname, 'hero-shell.php'), 'utf8');
+        const cottageSrc = fs.readFileSync(path.join(__dirname, 'cottage.php'), 'utf8');
+        const expSrc = fs.readFileSync(path.join(__dirname, 'experiences-page.php'), 'utf8');
+        check('the hero preload is served through img.php, not the full-size upload',
+            /\$sized\s*=\s*'img\.php\?src='/.test(heroShell) && /href="'\s*\.\s*\$sized/.test(heroShell));
+        check('…and the hero element asks for the SAME sized URL (or the photo downloads twice)',
+            (heroShell.match(/img\.php\?src=/g) || []).length >= 2);
+        check('…at a width the phone can use (1200, not the 900 default that upscales)',
+            /w=1200/.test(heroShell) && !/&amp;w=900/.test(heroShell));
+        check('social previews keep the full-size original',
+            /str_replace\(\$origin \. '\/hero\.jpg', \$heroAbs/.test(heroShell));
+        // NB not [^)]* — the cottage call contains $cv('hero-bg'), whose own ')'
+        // ends the class before the argument being asserted is reached.
+        const noPreload = (s) => /inject_live_hero\(.*,\s*false\s*\)/.test(s);
+        check('the routes that never paint #hero do not preload it',
+            noPreload(cottageSrc) && noPreload(expSrc));
+    }
+
     // SEO: the footer carries REAL crawlable /cottages/ links, rebuilt from the
     // live list, with the SPA-nav helpers that keep them clickable in-app.
     check('footer has real /cottages/ crawlable links', /href="\/cottages\//.test(html));
