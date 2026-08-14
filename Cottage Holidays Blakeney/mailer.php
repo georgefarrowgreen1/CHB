@@ -2612,7 +2612,14 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
-    $days = max(0, (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
+    // ANCHORED AT UTC MIDNIGHT, like pricing.php and bookings.php already are.
+    // Both timestamps were LOCAL under Europe/London, so an interval spanning the
+    // spring-forward Sunday is N*86400 − 3600 seconds and floor() returns N−1: the
+    // reminder told a guest "your arrival is in 6 days" for a stay 7 days away.
+    // (Autumn is harmless — the extra hour rounds down inside the same day.) The
+    // reminder pass runs for arrivals 3–14 days out, so late March is squarely in
+    // its window. Verified: 2027-03-26 → 2027-04-02 now yields 7, was 6.
+    $days = max(0, (int) floor((strtotime($b['check_in'] . ' UTC') - strtotime(date('Y-m-d') . ' UTC')) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
     $rail = payment_rail($b);
     // The SAME facts the request stated, so the chase cannot quote a smaller sum

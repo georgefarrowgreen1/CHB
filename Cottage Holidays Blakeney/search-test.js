@@ -1283,6 +1283,27 @@ if (typeof ctx.chbCoastRow === 'function') {
     check('coast: and carries low water in the sub', !!r && /low 12:55/.test(r.sub), r && r.sub);
     check('coast: it crosses the tide with WHO is arriving — the thing only this app can say', !!r && /Wren arrives today/.test(r.sub), r && r.sub);
 
+    // A REAL WorldTides TIME CARRIES +0000, AND MUST BE READ ON THE LOCAL CLOCK.
+    // The fixture above is offset-less, so it parses as local and cannot see this;
+    // the live payload is UTC, and both owner-side readers took a character SLICE
+    // of the ISO string — so all through BST the owner's answer ran an hour early
+    // and disagreed with the guest page rendering the SAME payload. Pinned in
+    // summer (BST, +1) and winter (GMT, +0) so it cannot pass by luck.
+    const utcTide = (d, hhmm) => ({ ok: true, extremes: [{ time: `${d}T${hhmm}+0000`, type: 'High', height: 3.9 }] });
+    const bstRow = ctx.chbCoastRow('tides today', tToday, { tide: utcTide(tToday, '06:41'), weather: null });
+    const isBst = new Date(tToday + 'T12:00:00Z').toLocaleString('en-GB', { timeZone: 'Europe/London', timeZoneName: 'short' }).includes('BST');
+    check(
+        `coast: a UTC tide time is shown on the local clock (${isBst ? 'BST → 07:41' : 'GMT → 06:41'})`,
+        !!bstRow && new RegExp('High water ' + (isBst ? '07:41' : '06:41')).test(bstRow.label),
+        bstRow && bstRow.label,
+    );
+    // The other reader, the offline day sheet, shares the same helper.
+    check('coast: the tide clock helper exists and is shared', typeof ctx.chbTideClock === 'function');
+    check('coast: …and it converts, rather than slicing the string',
+        ctx.chbTideClock('2026-08-14T06:41+0000') === '07:41', ctx.chbTideClock('2026-08-14T06:41+0000'));
+    check('coast: …and in winter it leaves GMT alone',
+        ctx.chbTideClock('2026-01-14T06:41+0000') === '06:41', ctx.chbTideClock('2026-01-14T06:41+0000'));
+
     const w = ctx.chbCoastRow('weather today', tToday, { tide: null, weather });
     check('coast: a weather question answers without tides', !!w && /cloudy/.test(w.label) && /19°C/.test(w.label), w && w.label);
     check('coast: a gale is named with its gust', !!w && /gusting 52 mph/.test(w.label + ' ' + w.sub), w && (w.label + ' | ' + w.sub));

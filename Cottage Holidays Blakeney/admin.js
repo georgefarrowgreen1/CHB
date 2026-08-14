@@ -3727,7 +3727,11 @@ function chbSysLine() {
 // ============================================================
 const CHB_TIDE_Q = /\b(tide|tides|high water|low water|spring tide|neap)\b/i;
 const CHB_WEATHER_Q = /\b(weather|forecast|rain|raining|wind|windy|gale|storm|sunny|temperature|how (warm|cold|hot))\b/i;
-let __chbCoast = { tide: null, weather: null, at: 0 };
+// `day` is part of the KEY, not decoration: the tide half is fetched FOR a day
+// (tides.php?start=<iso>), and caching on age alone answered "tides on saturday"
+// with today's extremes printed under Saturday's name. The weather half was
+// always safe — it finds its own date in the payload.
+let __chbCoast = { tide: null, weather: null, at: 0, day: '' };
 // Which day is being asked about? Only ever today or a named day this week —
 // anything more elaborate is a job for cmdkParseDates, and guessing wider here
 // would answer a question nobody asked.
@@ -3764,8 +3768,21 @@ async function chbCoastFetch(iso) {
         get(`tides.php?start=${encodeURIComponent(iso)}&days=1`),
         get('weather.php?days=7'),
     ]);
-    __chbCoast = { tide, weather, at: Date.now() };
+    __chbCoast = { tide, weather, at: Date.now(), day: iso };
     return __chbCoast;
+}
+// A TIDE TIME ARRIVES IN UTC (…T06:41+0000) AND MUST BE READ ON THE LOCAL CLOCK.
+// Both owner-side readers took a character SLICE of the ISO string, which states
+// UTC verbatim — so all through BST the owner's answer ran an hour early and
+// disagreed with the guest page showing the same tide from the same payload
+// (renderTides, renderInStayTides and the trip planner all parse it properly).
+// Measured: 2026-08-14T06:41+0000 sliced to "06:41" where the coast reads 07:41.
+function chbTideClock(t) {
+    const s = String(t || '');
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s.slice(11, 16); // unparseable — better than nothing
+    return d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
 }
 // One row, in the owner's terms. The value isn't the number — it is the number
 // CROSSED with what the day already holds: a guest arriving near low water on a
@@ -3777,8 +3794,8 @@ function chbCoastRow(q, iso, data) {
     const bits = [];
     let lead = '';
     if (wantTide && data.tide && Array.isArray(data.tide.extremes)) {
-        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
-        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
+        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
+        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
         if (hi.length) lead = `High water ${hi.join(' and ')} ${dayName}`;
         if (lo.length) bits.push(`low ${lo.join(' and ')}`);
     }
@@ -6416,7 +6433,7 @@ function cmdkBuildResults(ql) {
     if (CHB_TIDE_Q.test(ql) || CHB_WEATHER_Q.test(ql)) {
         const gen = __cmdkQueryGen;
         const iso = chbCoastDay(ql);
-        const fresh = __chbCoast.at && Date.now() - __chbCoast.at < 6e5 ? Promise.resolve(__chbCoast) : chbCoastFetch(iso);
+        const fresh = __chbCoast.at && __chbCoast.day === iso && Date.now() - __chbCoast.at < 6e5 ? Promise.resolve(__chbCoast) : chbCoastFetch(iso);
         fresh.then((data) => {
             if (gen !== __cmdkQueryGen) return; // superseded
             const row = chbCoastRow(ql, iso, data || {});
@@ -18640,7 +18657,7 @@ function odsCoastText(s) {
     const today = todayDashed();
     const bits = [];
     if (c.day === today && c.tide && Array.isArray(c.tide.extremes)) {
-        const t = (x) => String(x.time || '').slice(11, 16);
+        const t = (x) => chbTideClock(x.time); // local clock, not the UTC substring
         const hi = c.tide.extremes.filter((x) => /high/i.test(x.type || '')).map(t).filter(Boolean);
         const lo = c.tide.extremes.filter((x) => /low/i.test(x.type || '')).map(t).filter(Boolean);
         if (hi.length) bits.push('High water ' + hi.join(' and '));

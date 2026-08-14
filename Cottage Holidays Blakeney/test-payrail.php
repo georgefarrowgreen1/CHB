@@ -69,6 +69,43 @@ foreach (['Cash', 'cash', 'Bank transfer', 'bank', 'BACS', 'Cheque', 'PayPal', '
     chk("'$m' → bacs", payment_rail(['payment_method' => $m]) === 'bacs');
 }
 
+// THE DAYS-TO-ARRIVAL COUNT SURVIVES THE CLOCK CHANGE. Both timestamps used to be
+// LOCAL midnights under Europe/London, so an interval spanning spring-forward is
+// N*86400 − 3600 seconds and floor() returns N−1 — the reminder told a guest their
+// arrival was "in 6 days" for a stay 7 days away. The reminder pass fires for
+// arrivals 3–14 days out, so late March sits squarely inside its window. Driven
+// through the REAL composer with the clock pinned either side of each transition.
+echo "\n== The reminder's day count survives the clock change ==\n";
+// NB this is the REFERENCE arithmetic, not the composer — the composer reads
+// today from date('Y-m-d') and has no clock injection point, so these five cases
+// pin the FORMULA across each transition. The composer itself is then checked two
+// ways below: its rendered output for a real future date, and a source pin on the
+// anchored expression. A mirror alone would prove nothing.
+$dayCount = function ($from, $to) {
+    return max(0, (int) floor((strtotime($to . ' UTC') - strtotime($from . ' UTC')) / 86400));
+};
+chk('spring forward 2027: 26 Mar → 2 Apr is 7 days, not 6', $dayCount('2027-03-26', '2027-04-02') === 7);
+chk('spring forward 2026: 25 Mar → 1 Apr is 7 days, not 6', $dayCount('2026-03-25', '2026-04-01') === 7);
+chk('a short span across it: 28 Mar → 31 Mar 2026 is 3 days', $dayCount('2026-03-28', '2026-03-31') === 3);
+chk('autumn back 2026: 22 Oct → 29 Oct is 7 days', $dayCount('2026-10-22', '2026-10-29') === 7);
+chk('an ordinary summer week is unchanged', $dayCount('2026-08-01', '2026-08-08') === 7);
+// THE REAL COMPOSER, on a real future date: what it prints must equal the
+// reference count. NB this only DIVERGES when the window spans a transition, so
+// for most of the year it passes either way — break-tested and confirmed. It
+// proves the composer is wired to the count at all; the SOURCE pin below is what
+// actually catches the formula reverting to local midnights.
+$dstB = bk('Square card');
+$dstIn = gmdate('Y-m-d', strtotime(gmdate('Y-m-d') . ' UTC') + 9 * 86400);
+$dstB['check_in'] = $dstIn;
+$dstOut = payment_reminder_body($dstB, $URL, '#C79A64', $BANK);
+$dstWant = $dayCount(date('Y-m-d'), $dstIn);
+chk("the composer's own text states the anchored count (in {$dstWant} days)",
+    strpos($dstOut['text'], "in {$dstWant} days") !== false || ($dstWant <= 1 && strpos($dstOut['text'], 'tomorrow') !== false));
+// …and it uses the anchored form, not the local one it had.
+$mailSrcDst = file_get_contents(__DIR__ . '/mailer.php');
+chk('the composer anchors both dates at UTC midnight',
+    strpos($mailSrcDst, "strtotime(\$b['check_in'] . ' UTC') - strtotime(date('Y-m-d') . ' UTC')") !== false);
+
 echo "\n== The REMINDER email follows the rail ==\n";
 $card = payment_reminder_body(bk('Square card'), $URL, '#C79A64', $BANK);
 chk('card: the pay link is in the text half', strpos($card['text'], $URL) !== false);
