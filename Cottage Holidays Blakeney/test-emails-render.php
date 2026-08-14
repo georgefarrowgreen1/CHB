@@ -252,7 +252,7 @@ $JOBS = [
   ['autopay-failure', 'guest', fn() => send_autopay_failure($B, 'card_declined', false, '2026-07-20')],
   ['refund', 'guest', fn() => send_refund_email($B)],
   ['anniversary', 'guest', fn() => send_anniversary_email($B)],
-  ['enquiry-reply', 'guest', fn() => send_enquiry_reply_email(array_merge($ENQ, ['price' => null]), 'About your stay at Jollyboat', "Hello Sarah,\n\nYes — there's parking for one car right outside, and a late arrival is no trouble at all. Just let us know roughly when to expect you.\n\nThe dates you asked about are free.", 'enquiry')],
+  ['enquiry-reply', 'guest', fn() => send_enquiry_reply_email(array_merge($ENQ, ['price' => null]), 'About your stay at Jollyboat', "Yes — there's parking for one car right outside, and a late arrival is no trouble at all. Just let us know roughly when to expect you.\n\nThe dates you asked about are free.", 'enquiry')],
   ['direct-followup', 'guest', fn() => send_direct_followup_email($B)],
   ['hold-request', 'guest', fn() => send_hold_request($B, $PAYURL)],
   ['hold-released', 'guest', fn() => send_hold_released($B)],
@@ -691,6 +691,34 @@ chk('no retired ink is set as text anywhere', $offenders === []);
 foreach (array_slice($offenders, 0, 10) as $o) {
     echo "        $o\n";
 }
+
+// ---------------------------------------------------------------------------
+//  §6  THE REPLY GREETS THE GUEST ONCE
+//  build_enquiry_reply_email() opens every reply with its own "Hello <name>,"
+//  and the one-tap drafter opened its body with "Hi <name>," as well, so every
+//  drafted reply went out greeting the guest twice. Nothing could see it: the
+//  drafter is JS and gated in search-test, the template is PHP and gated here,
+//  and neither side had ever been run through the other. Only rendering the real
+//  draft through the real template showed it.
+//
+//  The template owns the greeting — it has to, since an owner who types a bare
+//  message still gets one — so this half asserts the template greets EXACTLY
+//  once for a body that does not, and search-test §26 asserts the drafter's body
+//  does not greet. The two compose; neither is sufficient alone.
+echo "\n== §6 the reply greets once ==\n";
+$replyBody = "Thanks so much for your enquiry about Jollyboat — lovely to hear from you.\n\nThose exact dates have just gone, I'm afraid.";
+$rep = build_enquiry_reply_email($ENQ, 'About your dates', $replyBody, 'enquiry');
+$firstName = first_name($ENQ['name'], 'Guest');
+foreach (['html', 'text'] as $half) {
+    $n = preg_match_all('/\b(?:Hello|Hi|Dear)\s+' . preg_quote($firstName, '/') . '\b/i', (string) $rep[$half]);
+    chk("the $half half greets " . $firstName . ' exactly once (found ' . $n . ')', $n === 1);
+}
+// …and a body that DOES greet is the defect, so it must be visible as two.
+// Asserting this keeps the check above from passing on a template that greets
+// nobody: it proves the counter can tell one greeting from two.
+$dbl = build_enquiry_reply_email($ENQ, 'About your dates', "Hi {$firstName},\n\n" . $replyBody, 'enquiry');
+chk('…and the counter really counts (a self-greeting body renders two)',
+    preg_match_all('/\b(?:Hello|Hi|Dear)\s+' . preg_quote($firstName, '/') . '\b/i', (string) $dbl['html']) === 2);
 
 @unlink($tmp);
 echo "\n== Summary ==\n";

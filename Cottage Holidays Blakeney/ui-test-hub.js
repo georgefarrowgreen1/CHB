@@ -1849,7 +1849,11 @@ let approveWill409 = false;
   await page.evaluate(() => { /* eslint-disable-next-line no-global-assign */ squareAdminEnabled = true; });
   const dec = page.evaluate(() => declineEnquiry('e7'));
   await page.waitForTimeout(500);
-  await page.evaluate(() => glassDialogResolve(true));
+  // Declining now ASKS whether to write the guest a reply (they were promised one
+  // by the end of the next day and nothing was ever sent). This section is about
+  // where the decline LEAVES you, so answer "Not now" — resolving true opens the
+  // composer, which then sits over the page and blocks section L's clicks.
+  await page.evaluate(() => glassDialogResolve(false));
   await dec;
   await page.waitForTimeout(700);
   const j4 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
@@ -1883,7 +1887,10 @@ let approveWill409 = false;
   const k2 = await page.evaluate(() => ({
     txt: ((document.getElementById('inbox-list') || {}).textContent || '').replace(/\s+/g, ' '),
     rows: document.querySelectorAll('#inbox-list .enq-declined-row').length,
-    restores: document.querySelectorAll('#inbox-list .enq-declined-row button').length,
+    // Count RESTORE, not every button: the row also offers "Email the guest"
+    // when there is an address, and a bare button count made "every row offers
+    // Restore" fail on a row that offers Restore and one more thing.
+    restores: document.querySelectorAll('#inbox-list .enq-declined-restore').length,
   }));
   ok(k2.rows >= 1 && /Declined/.test(k2.txt), `the one declined in J is listed (${k2.rows} row/s)`);
   ok(k2.restores === k2.rows, 'every row offers Restore — the whole point of the drawer');

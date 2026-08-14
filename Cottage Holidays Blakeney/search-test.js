@@ -1038,15 +1038,36 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
     `, ctx);
     const enq = { id: 99, name: 'Priya Shah', email: 'p@x.co', propKey: 'jollyboat', checkIn: '2026-09-10', checkOut: '2026-09-13', adults: 2, children: 0, guests: '2 adults', message: 'Hi, can we bring our dog?' };
     const draft = ctx.chbDraftEnquiryReply(enq);
-    check('draft greets the guest by first name', /^Hi Priya,/.test(draft), draft.split('\n')[0]);
+    // THE DRAFT DOES NOT GREET, and that is the fix, not an omission.
+    // build_enquiry_reply_email() opens every reply with its own "Hello <name>,"
+    // — the template has to own it, since an owner typing a bare message still
+    // gets one — so a body that greeted as well went out reading "Hello Priya," /
+    // "Hi Priya," on every drafted reply. Invisible to both gates until the real
+    // draft was put through the real template. This half asserts the body is a
+    // body; test-emails-render §6 asserts the template greets exactly once.
+    check('draft does NOT greet — the template owns that', !/^\s*(Hi|Hello|Dear)\s+Priya/i.test(draft), draft.split('\n')[0]);
+    check('draft opens on the thanks line instead', /^Thanks so much for your enquiry/.test(draft), draft.split('\n')[0]);
     check('draft names the cottage + dates', /Jollyboat/.test(draft) && /10\/09\/2026/.test(draft) && /13\/09\/2026/.test(draft));
     check('draft states availability when free', /those dates are free/i.test(draft));
     check('draft includes the live quote + refundable deposit', /total for your stay would be £\d/.test(draft) && /refundable damage deposit/.test(draft));
     check('draft answers the asked question from the cottage FAQ (dogs)', /two well-behaved dogs are welcome/i.test(draft));
     check('draft signs off with the host name', /Warm wishes,\nGeorge$/.test(draft.trim()));
-    // A clashing enquiry flags "just taken" instead of "free".
+    // A clashing enquiry says the dates have gone — and NAMES the free windows
+    // rather than promising to go and look for them. enquiryFreeNearby() already
+    // knew them, and the enquiry hub was already printing them on the screen
+    // directly above the button that writes this draft.
     vm.runInContext(`dbBookings.jollyboat = [{ id: 1, name: 'Xavier Blake', checkIn: '2026-09-11', checkOut: '2026-09-14' }];`, ctx);
-    check('draft flags a clash when the dates are taken', /just taken/i.test(ctx.chbDraftEnquiryReply(enq)));
+    const clash = ctx.chbDraftEnquiryReply(enq);
+    check('draft flags a clash when the dates are taken', /have just gone/i.test(clash));
+    const wins = ctx.enquiryFreeNearby(enq);
+    check('(fixture) the app can see free windows either side', wins.length >= 1, JSON.stringify(wins));
+    check('draft NAMES the free windows instead of offering to look',
+        wins.every((w) => clash.includes(w)) && !/find the nearest we can offer/.test(clash),
+        clash.split('\n')[1]);
+    // AND IT DOES NOT PRICE A STAY IT HAS JUST REFUSED. The quote line was
+    // unconditional, so it landed directly under the sentence saying the dates
+    // were gone — "£556.20 (4 nights)" for a stay that cannot happen.
+    check('draft carries NO quote when the dates are gone', !/total for your stay would be/.test(clash), clash);
     // No host name → falls back to the business name.
     vm.runInContext(`dbBookings.jollyboat = []; siteContent['host-name'] = '';`, ctx);
     check('draft falls back to the business name with no host name set', /Cottage Holidays Blakeney$/.test(ctx.chbDraftEnquiryReply(enq).trim()));

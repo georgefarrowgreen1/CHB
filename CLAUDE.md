@@ -1001,6 +1001,57 @@ would flip the moment a cottage was renamed in Settings.
   name and a small rating on ONE line still have very different tops, and testing `top`
   reported "wrapped" for every inline case.
 
+## Declining stops being the end of the conversation
+
+**A guest promised a reply "always by the end of the next day" got silence, and the
+app told the owner the opposite.** `send_enquiry_ack` makes that promise; the decline
+path requires no mailer and calls no `send_*` at all, so nothing was ever sent — while
+the in-app help topic said *"Approve… edit, or decline — **each emails the guest**"*,
+so the owner declined believing it was handled. (Editing IS silent, and is documented
+as such; decline was documented as the opposite of what it does.) Three parts, gated by
+**ui-test-mailbox §11/§11b** (17 checks) and search-test §26:
+- **`declineEnquiry` ASKS, and never sends.** After the successful post, an enquiry
+  with an email raises a `glassConfirm` ("…is expecting a reply", ok label "Write the
+  reply") that routes to the existing `enqReplyDraft`. **Never automatic**: the owner
+  may have already phoned, and a canned apology after a real conversation is worse than
+  none — so "Not now" is a complete answer and falls through to the unchanged toast with
+  its Undo. No email address → no ask at all.
+- **The captured ROW is handed over, not its id.** Declining is a soft delete and the
+  list query is `declined_at IS NULL`, so by the time `loadData()` has run the record is
+  out of `enquiries` and an id lookup finds nothing. `openEnquiryEmail` therefore takes
+  an id **or** the enquiry object; every other caller still passes an id. Break-tested —
+  passing `enqId` there yields an empty composer.
+- **The drawer keeps the offer** (`emailDeclinedEnquiry`, reading `__declinedEnq`), so a
+  decline made in haste can still be answered an hour later. NB the row already spends
+  165px on "Put back in Waiting" at 390px, which is the documented squeeze that rendered
+  "Pimpernel" as "Pl…" — the second button is gated at 390px for exactly that.
+**AND THE DRAFT ITSELF HAD THREE DEFECTS, all on EVERY enquiry reply, not just declines.**
+Found by driving `chbDraftEnquiryReply` for real and rendering the result through
+`build_enquiry_reply_email` — which nothing had ever done, the drafter being JS-gated and
+the template PHP-gated:
+- **It greeted the guest TWICE.** The template opens every reply with its own
+  `email_p('Hello ' . $name . ',')` — it has to, since an owner typing a bare message
+  still gets one — and the draft opened with "Hi <first>,". Every drafted reply shipped
+  reading "Hello Rachel," / "Hi Rachel,". The template owns the greeting; the drafter
+  owns the body. Gated from **both sides, because neither is sufficient**:
+  test-emails-render §6 counts greetings in the RENDERED halves (and proves the counter
+  can tell one from two), search-test §26 asserts the body does not greet.
+- **It offered to go and look for alternatives it already had.** On taken dates it wrote
+  "I'll gladly find the nearest we can offer" while `enquiryFreeNearby()` — which the
+  enquiry hub prints on the screen directly above that button — already knew. It names
+  them now ("18–22 Sep 2026 and 26–30 Sep 2026 are free…"), falling back to the old
+  sentence only when the scan finds nothing.
+- **It quoted a price for the dates it had just refused.** The quote line was
+  unconditional, so "The total for your stay would be £556.20 (4 nights)" landed directly
+  under "those exact dates are just taken". Gated on the FREE branch keeping its quote,
+  so this cannot become "never quote".
+NB the sample in test-emails-render's registry greeted too, so the owner's own preview of
+this template showed the double greeting; de-greeted with the fixture. And **ui-test-hub
+§J answered that new dialog `true`**, which opened the composer and left it covering the
+page — section L's clicks then timed out 90 lines later. A suite that resolves a dialog it
+did not raise will do this every time a new ask appears; it answers "Not now" now, which
+is the path that section is actually about.
+
 ## The declined drawer says what it is
 
 Reported from a phone (screenshot): the Declined tab showed a green **0** and "All caught
