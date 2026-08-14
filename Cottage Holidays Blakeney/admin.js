@@ -2233,8 +2233,8 @@ async function cmdkCustomerDirectory(ql) {
 // Register the built-in sources in their historical order. Each is a thin adapter
 // over an existing collector, so behaviour is identical — the win is that the list
 // is now data, not a hard-coded concat chain.
-CHB_SEARCH.registerSource('customers', () => cmdkSourceCustomers(), 8);
-CHB_SEARCH.registerSource('records', () => cmdkSourceRecords(), 10);
+CHB_SEARCH.registerSource('customers', () => chbSrcMemo('customers', cmdkSourceCustomers), 8);
+CHB_SEARCH.registerSource('records', () => chbSrcMemo('records', cmdkSourceRecords), 10);
 CHB_SEARCH.registerSource('actions', (q) => cmdkActions(q), 20);
 CHB_SEARCH.registerSource('screens', () => cmdkScreens(), 30);
 CHB_SEARCH.registerSource('fields', (q) => cmdkFields(q), 40);
@@ -3014,6 +3014,40 @@ let __cmdkConvCtx = null; // { type: 'booking', id }
 //  keywords. Purely additive: candidates append BELOW the keyword results.
 // ===================================================================
 const CHB_RANK = { idf: null, index: [], sig: '', cache: new Map(), min: 0.18, topK: 4 };
+// THE STAMP THAT REPLACES A REBUILD. chbRankIndex() called CHB_SEARCH.collect('')
+// — every item — purely to hash their keys and usually conclude nothing had
+// changed. It answers the same question without building anything: the data
+// generation (bumped by every completed loadData) plus the DATE, since
+// cmdkSourceRecords derives _urgent from todayDashed() and cmdkBookingActions
+// labels off bookingDue, neither of which moves a row count.
+function chbRankStamp() {
+    const gen = Number(/** @type {any} */ (window).__chbDataGen) || 0;
+    // The generation alone is NOT enough and a gate caught it: anything mutating a
+    // store without a reload behind it served the old pool. Cheap store sizes ride
+    // along; the generation covers a same-size edit, since writes reload.
+    let rows = 0;
+    try {
+        for (const k of Object.keys(dbBookings || {})) rows += (dbBookings[k] || []).length;
+        for (const k of Object.keys(dbBlocks || {})) rows += (dbBlocks[k] || []).length;
+    } catch (e) {}
+    const enq = Array.isArray(enquiries) ? enquiries.length : 0;
+    return gen + '@' + todayDashed() + '@' + rows + '.' + enq;
+}
+// The two sources that do NOT take the query are memoised on that stamp — they
+// were rebuilt per keystroke for a pool that cannot move between two characters
+// (measured 9 record-pool builds over 7 keystrokes, now 1). Sources that DO take
+// q keep re-running.
+const CHB_SRC_MEMO = { records: null, customers: null, stamp: '' };
+function chbSrcMemo(key, build) {
+    const st = chbRankStamp();
+    if (CHB_SRC_MEMO.stamp !== st) {
+        CHB_SRC_MEMO.stamp = st;
+        CHB_SRC_MEMO.records = null;
+        CHB_SRC_MEMO.customers = null;
+    }
+    if (!CHB_SRC_MEMO[key]) CHB_SRC_MEMO[key] = build();
+    return CHB_SRC_MEMO[key];
+}
 CHB_SEARCH.rank = CHB_RANK; // part of the public search-core API
 function chbRankText(it) {
     return (((it.label || '') + ' ' + (it.sub || '') + ' ' + (it.kw || '')).trim()).slice(0, 300);
@@ -3030,6 +3064,9 @@ function chbRankExpand(q) {
 // cached by text hash, so unchanged items cost a lookup; IDF is recomputed over
 // the current items so weights track the live collection).
 function chbRankIndex() {
+    // Ask the stamp BEFORE building anything — the whole point of it.
+    const stamp = chbRankStamp();
+    if (stamp === CHB_RANK.sig && CHB_RANK.idf) return; // universe unchanged
     const items = CHB_SEARCH.collect('');
     const seen = new Set();
     const rows = [];
@@ -3041,8 +3078,7 @@ function chbRankIndex() {
         const txt = chbRankText(it);
         if (txt) rows.push({ k, txt });
     }
-    const sig = rows.length + ':' + chbNluHashStr(rows.map((r) => r.k).join('|'));
-    if (sig === CHB_RANK.sig && CHB_RANK.idf) return; // universe unchanged
+    const sig = stamp;
     const D = CHB_NLU.dims;
     const raw = rows.map((r) => {
         let v = CHB_RANK.cache.get(r.txt);
@@ -19610,6 +19646,17 @@ async function initBackOffice() {
     // Today by itself (the same no-reload recovery chbNetUp uses). Only while
     // the stores are EMPTY — with last-good data in memory, Today is already
     // the better screen and the sheet stays out of the way.
+    // NB PERF-8 (one data load per owner boot instead of two) was BUILT AND
+    // REVERTED here. The doubling is real — measured on the real journey,
+    // admin-bootstrap.php twice with five endpoints behind it — but reusing a
+    // recently-successful load costs more than it buys: initBackOffice has five
+    // callers and most exist to REFRESH (chbNetRecover after a dropped link, the
+    // post-recovery re-init), so a time-window reuse skips the very reload they
+    // are for. ui-test-needs-you caught that, reporting money against stores the
+    // test had just cleared. Scoping the reuse to the first init of the page then
+    // recovered only one of the boot's several inits, so the win largely went too.
+    // A real fix needs the refresh callers to say so explicitly rather than a
+    // window guessing for them; the measurement is in the PR if anyone returns.
     const __ldrP = loadData();
     const __storesEmpty = () => !Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
     let __odsPatienceT = null;
