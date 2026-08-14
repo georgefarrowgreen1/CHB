@@ -33,7 +33,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(300);
 
   // 1) The dock's knot → the dedicated search page.
-  await page.evaluate(() => openCmdK()); await page.waitForTimeout(400);
+  await page.evaluate(() => openCmdK());
+  // WAIT FOR FOCUS, don't race it. openCmdK autofocuses asynchronously, and a
+  // fixed 400ms lost that race intermittently under the 3-at-a-time harness —
+  // reported as "the input takes focus" failing, which reads like the feature
+  // being broken. Green standalone and under 3-way load; caught only by the full
+  // run. Same rule the knot's travel and chat-layout's overlay now follow: wait
+  // for the condition, and let the timeout be the failure.
+  try {
+    await page.waitForFunction(() => document.activeElement === document.getElementById('cmdk-input'),
+      null, { timeout: 8000 });
+  } catch (e) { /* the check below reports it */ }
   let st = await page.evaluate(() => ({
     view: (document.querySelector('.page-view.active') || {}).id,
     cmdkOpen: !!document.getElementById('cmdk').classList.contains('open'),
