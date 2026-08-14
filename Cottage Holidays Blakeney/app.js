@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 510;
+const ADMIN_BUNDLE_V = 511;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -9867,6 +9867,13 @@ async function loadData() {
     // Told, not thrown: the tasks isolate their failures, so this NEVER rejects
     // and a try/catch around it is dead code. Callers telling "couldn't load"
     // from "isn't there" read this.
+    // THE DATA GENERATION. Bumped on every completed load — which is what every
+    // confirmed write is followed by in this app — so the owner-side search index
+    // and its two query-independent sources can tell "nothing has changed" from
+    // "something might have" without rebuilding 859 items to find out. A COUNTER,
+    // not a row count: a count cannot tell one-deleted-one-added apart, and the
+    // index would then sit on stale ids. See chbRankStamp in admin.js.
+    try { /** @type {any} */ (window).__chbDataGen = (Number(/** @type {any} */ (window).__chbDataGen) || 0) + 1; } catch (e) {}
     return { ok: failed.length === 0, failed };
 }
 
@@ -18151,7 +18158,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'perfbat1';
+    const BUILD = 'perf10a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

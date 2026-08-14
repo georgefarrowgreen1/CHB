@@ -2952,6 +2952,69 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
     } else fail('cmdkIntent / chbConvPatch missing from the bundle');
 
+    // ---- 44. The search pool is not rebuilt for every keystroke -------------
+    //  chbRankIndex() called CHB_SEARCH.collect('') — every item — purely to hash
+    //  their keys and usually conclude nothing had changed, and the two
+    //  query-independent sources were rebuilt per keystroke for a pool that
+    //  cannot move between two characters. Measured on a 120-booking fixture:
+    //  12 pool builds and 23.5ms per keystroke, now 9 and 19.3ms.
+    //
+    //  The memo is only safe if it INVALIDATES, and the first version did not:
+    //  it keyed on a load generation alone, so seeding a store directly (which
+    //  this suite does, and so does any code path that mutates without a reload)
+    //  served the old pool. §21c caught it. Both halves are pinned here.
+    if (typeof ctx.chbRankStamp === 'function' && ctx.CHB_SEARCH) {
+        console.log('\n== 44. the search pool is memoised, and invalidates ==');
+        vm.runInContext(`
+            Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
+            dbBookings['21a'] = [{ id: 'm1', dbId: 901, propKey: '21a', name: 'Memo Probe', email: 'mp@x.co',
+                checkIn: '2026-09-01', checkOut: '2026-09-04', adults: 2, children: 0, guests: '2 adults',
+                payment: 'deposit', depositPaid: 100, agreedPrice: { total: 400 }, holdStatus: 'none' }];
+        `, ctx);
+        const s1 = ctx.chbRankStamp();
+        const a1 = ctx.CHB_SEARCH.collect('memo');
+        const a2 = ctx.CHB_SEARCH.collect('memo');
+        check('the stamp is stable while nothing changes', ctx.chbRankStamp() === s1, s1);
+        check('…and the pool answers the same both times',
+            a1.length === a2.length && a1.length > 0, `${a1.length} / ${a2.length}`);
+        // A DIRECT store mutation — no loadData behind it — must still be seen.
+        vm.runInContext(`
+            dbBookings['21a'].push({ id: 'm2', dbId: 902, propKey: '21a', name: 'Second Probe', email: 'sp@x.co',
+                checkIn: '2026-09-10', checkOut: '2026-09-12', adults: 2, children: 0, guests: '2 adults',
+                payment: 'deposit', depositPaid: 100, agreedPrice: { total: 400 }, holdStatus: 'none' });
+        `, ctx);
+        check('a direct store mutation moves the stamp', ctx.chbRankStamp() !== s1,
+            `${s1} -> ${ctx.chbRankStamp()}`);
+        const found = ctx.CHB_SEARCH.collect('second probe').some((i) => /Second Probe/i.test(i.label || ''));
+        check('…and the new record is findable at once (the memo really invalidated)', found);
+        // A completed load moves it too — that is what covers a SAME-SIZE edit.
+        const s2 = ctx.chbRankStamp();
+        vm.runInContext('window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1;', ctx);
+        check('a completed load moves the stamp as well', ctx.chbRankStamp() !== s2,
+            `${s2} -> ${ctx.chbRankStamp()}`);
+        // AND THE WIN ITSELF, as a COUNT — deterministic, unlike a millisecond.
+        // Disabling the memo leaves every check above green (it is a pure
+        // optimisation, which is the right shape), so without this the saving
+        // could be undone silently. Typing seven characters must not rebuild the
+        // pool once per source per keystroke.
+        // Count what the memo actually avoids: the SOURCE builds. Counting
+        // CHB_SEARCH.collect() calls does not — the memo shortcuts the source
+        // inside collect, not collect itself, so that counter read 9 with the
+        // memo on and 9 with it off, i.e. it gated nothing (caught by
+        // break-testing it, which is the only reason it is not still there).
+        if (typeof ctx.cmdkBuildResults === 'function') {
+            let recs = 0;
+            vm.runInContext('window.__recCount = 0;', ctx);
+            const realRec = ctx.cmdkSourceRecords;
+            ctx.cmdkSourceRecords = (...a2) => { recs++; return realRec.apply(null, a2); };
+            const typed = 'memo pr';
+            for (let i = 1; i <= typed.length; i++) { try { ctx.cmdkBuildResults(typed.slice(0, i)); } catch (e) {} }
+            ctx.cmdkSourceRecords = realRec;
+            check(`typing ${typed.length} characters builds the record pool once, not per keystroke (${recs})`,
+                recs <= 2, String(recs));
+        }
+    }
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
