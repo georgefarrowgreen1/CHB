@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 497;
+const ADMIN_BUNDLE_V = 498;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 193;
+const ADMIN_CSS_V = 194;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4965,8 +4965,11 @@ function payVerificationDetails() {
     const contact = { countryCode: 'GB' };
     if (parts.length) contact.givenName = parts[0];
     if (parts.length > 1) contact.familyName = parts.slice(1).join(' ');
+    // What is actually being taken (payChargeNow), falling back to the ask only when
+    // the slice is not yet a number — Square rejects a zero verification amount.
+    const now = Number(payChargeNow() || 0);
     return {
-        amount: Number(payState.amountDue || 0).toFixed(2),
+        amount: (now > 0 ? now : Number(payState.amountDue || 0)).toFixed(2),
         currencyCode: 'GBP',
         intent: 'CHARGE',
         customerInitiated: true,
@@ -5001,6 +5004,13 @@ function showPayError(text, retry) {
     if (err) err.style.display = '';
     if (msg) msg.textContent = text || 'Something went wrong.';
 }
+// A REFUSAL, not a hiccup: retrying any of these returns the same answer. 500 is
+// deliberately NOT here (a server error can pass), and a transport failure carries no
+// status at all — the case the retry exists for.
+const PAY_ERR_TERMINAL = [400, 403, 404, 410, 503];
+// Named once — the confirmation email is a thread the owner can answer, and Messages
+// reaches them without one.
+const PAY_ERR_WAY_OUT = 'Reply to your confirmation email and we\'ll send you a fresh link — or message us from the site and we\'ll take it from there.';
 // Held rather than closed over by the button, so re-showing the panel with a
 // different (or no) remedy can never leave the last one wired up.
 let __payRetry = null;
@@ -5149,7 +5159,7 @@ function payStepsArm() {
         if (!payState.stepsOn || payState.stepsGen !== gen) return;
         const box = document.getElementById('pay-steps');
         if (!box) return;
-        const fig = gbp(Math.round(payWalletsTarget() * 100) / 100);
+        const fig = gbp(Math.round(payChargeNow() * 100) / 100);
         const step = (i, state, l, s) =>
             `<div class="pay-step ${state}" id="pay-st-${i}"><span class="pay-step-dot" aria-hidden="true"></span><span class="pay-step-m"><span class="pay-step-lbl">${l}</span><span class="pay-step-sub">${s}</span></span></div>`;
         box.innerHTML =
@@ -5217,11 +5227,23 @@ function payDoneNextRender(res, rem) {
         payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
     ];
     if (rem > 0.005) {
+        // THE JOURNEY'S OWN VOCABULARY, or the promise before and after the payment are
+        // two documents. `rem` is the remainder of THIS ASK, so on a part-paid DEPOSIT
+        // it is the rest of the deposit — calling it "Balance" misnames it AND deletes
+        // the real balance the journey had just shown. jCtx still holds it, so say both.
+        const ctx = payState.jCtx;
+        const depPart = ctx && ctx.kind === 'deposit';
         rows.push(
             apo && apo.ok
                 ? payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, '')
-                : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
+                : depPart
+                  ? payJourneyRow('dim', `Rest of your deposit ${gbp(rem)}`, 'Still to pay — any time from your booking page', '')
+                  : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
         );
+        // …and the stay's own balance, which a deposit ask never covered.
+        if (depPart && Number(ctx.rest || 0) > 0.005) {
+            rows.push(payJourneyRow('dim', `Balance ${gbp(ctx.rest)}`, ctx.due ? `Due by ${fmtDate(ctx.due)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
+        }
     }
     rows.push(payJourneyRow('dim', 'Arrival details a week before', 'Directions, entry and everything you need', ''));
     if (Number(payState.jBack || 0) > 0.005)
@@ -5553,8 +5575,17 @@ async function openPayView(token, bookingId, kind) {
         // A DROPPED CONNECTION IS NOT THE END OF THE JOURNEY. This is the guest's
         // only way to pay, reached from an emailed link, and the panel's one control
         // was "Back to the site" — so a failed Square SDK load ended the payment.
-        showPayError(e.message || 'Could not load the payment form.', () =>
-            openPayView(token, bookingId, kind),
+        //
+        // …BUT A VERDICT IS NOT A DROPPED CONNECTION. pay.php's terminal refusals (an
+        // expired link, a booking gone, payments off) carry a status, and retrying one
+        // returns it for ever — measured, Try again reproduced the identical panel. A
+        // button that looks like the remedy and is not is worse than none, and the
+        // guest still wants to pay, so the message names what would work.
+        const terminal = PAY_ERR_TERMINAL.indexOf(Number(e && e.status)) !== -1;
+        const say = e.message || 'Could not load the payment form.';
+        showPayError(
+            terminal ? say + ' ' + PAY_ERR_WAY_OUT : say,
+            terminal ? null : () => openPayView(token, bookingId, kind),
         );
     }
 }
@@ -5869,6 +5900,11 @@ function payAutopayRender() {
     if (!payState.autopayOffer || !t || open) {
         wrap.style.display = 'none';
         wrap.innerHTML = '';
+        // THE STAND-DOWN HAS TO REACH THE CONSENT. This branch returned before
+        // payMethodsSync, so opening the part row after choosing "Monthly" reset the
+        // choice and hid the card while the consent sentence went on promising a
+        // monthly plan — the guest's own decision withdrawn with nothing said.
+        payMethodsSync();
         return;
     }
     const mo = payState.apMonthly;
@@ -5940,7 +5976,12 @@ function payMethodsSync() {
     const wrap = document.getElementById('pay-autopay');
     const offered = !!(wrap && wrap.style.display !== 'none' && payState.autopayOffer);
     const auto = offered && payState.autopayChoice !== 'self';
-    const wallets = !!payState.walletsAny;
+    // TWO REASONS THE WALLETS STAND DOWN, ONE EXPRESSION: a chosen plan (Square cannot
+    // keep a wallet card on file) and a £0 charge, which payWalletsReprice already
+    // decides from the same payChargeNow(). Folding it in stops the two undoing each
+    // other by ordering — without it, running on the hidden branch restored an empty
+    // express panel over a £0 charge.
+    const wallets = !!payState.walletsAny && Math.round(payChargeNow() * 100) / 100 > 0;
     const show = (id, on) => {
         const el = document.getElementById(id);
         if (el) el.style.display = on ? '' : 'none';
@@ -6142,7 +6183,11 @@ async function mountWallets(amountDue) {
 // button says as much). Re-mounts only when the target actually moves, so a
 // wallet button never shows a figure the guest didn't choose — the owner's
 // point: part-paying must still offer Apple/Google Pay, priced to the part.
-function payWalletsTarget() {
+// WHAT IS BEING CHARGED RIGHT NOW — one decider, read by the wallets AND by the card
+// path's 3-D Secure verification, which used to read payState.amountDue: written once
+// in openPayView, so a guest paying £60 of a £225 ask had their bank's challenge name
+// £225. That is the one moment a guest confirms an amount.
+function payChargeNow() {
     const v = payState.partView;
     const row = document.getElementById('pay-part-row');
     const open = !!(row && row.style.display !== 'none');
@@ -6154,7 +6199,7 @@ function payWalletsReprice() {
     const wrap = document.getElementById('sq-wallets');
     const orEl = document.getElementById('sq-or');
     const lblEl = document.getElementById('sq-card-label');
-    const target = Math.round(payWalletsTarget() * 100) / 100;
+    const target = Math.round(payChargeNow() * 100) / 100;
     if (!(target > 0)) {
         // Nothing to charge yet — take the wallets down and cancel any in-flight
         // mount so a late one can't paint a stale button. The express panel goes
@@ -17827,7 +17872,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ui140734';
+    const BUILD = 'pay140806';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
