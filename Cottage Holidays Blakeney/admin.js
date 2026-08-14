@@ -15863,8 +15863,21 @@ async function enableOwnerPush() {
 }
 async function testOwnerPush() {
     try {
-        await apiGet('push.php?action=test_admin');
-        toast('Test alert sent — check your notifications.');
+        // THE DEVICE COUNT IS IN THE REPLY AND WAS THROWN AWAY. push.php returns
+        // {ok, sent} — alert_owner's count exists for exactly this — and the test
+        // passes category:'urgent' with no email fallback, so with zero subscribed
+        // devices nothing goes anywhere. Telling the owner to "check your
+        // notifications" then sends them to wait for something never delivered,
+        // and they conclude owner alerts are broken. Say which it was.
+        const r = await apiGet('push.php?action=test_admin');
+        const n = Number(r && r.sent) || 0;
+        if (n > 0) {
+            toast(`Test alert sent to ${n} device${n === 1 ? '' : 's'} — check your notifications.`);
+        } else {
+            glassAlert(
+                "No device is set up to receive alerts yet, so nothing was sent. Tap “Enable on this device” above first — and on an iPhone or iPad, add the site to your Home Screen and open it from there, because iOS only allows notifications from an installed app.",
+            );
+        }
     } catch (e) {
         glassAlert("Couldn't send test: " + (e.message || e));
     }
@@ -16220,10 +16233,22 @@ async function recordPayment(bookingId) {
     else if (dep >= total - 0.001) status = 'paid';
     else status = 'deposit';
 
+    // "COLLECTED TOO" IS OFFERED WHATEVER THE FIGURE, and the server applies it
+    // ONLY on 'paid' (deliberately — reconcile_deposit's own note: that is the one
+    // state where "everything, including the deposit" is unambiguous). So picking
+    // it beside a PARTIAL rental used to be dropped in silence: the owner was told
+    // "Payment recorded — £100.00 received", while the £50 in the drawer entered
+    // nothing — not the deposits-to-return queue, not the duties, not the ring
+    // fence, not the invoice — and returnDeposit later refused it outright. Say so
+    // and let them choose, rather than discarding what they just told us.
+    if (askDep && vals.withdep === 'yes' && status !== 'paid') {
+        const go = await glassConfirm(
+            `The ${gbp(dmg)} deposit can only be recorded alongside the full rental — that is the only point at which "everything's in" is unambiguous. Record the ${gbp(dep)} rental on its own for now, and add the deposit when the rest is paid?`,
+            `Record ${gbp(dep)} only`,
+        );
+        if (!go) return; // back to the dialog to change the figure
+    }
     const payload = { id: booking.dbId, payment: status };
-    // Only meaningful with 'paid' (the server applies it nowhere else): the
-    // deposit rides the FULL settlement on the cash rail, exactly as pay.php
-    // bundles it into the first card payment.
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {
@@ -19022,6 +19047,15 @@ async function odsPay(i) {
     if (dep <= 0.001) status = 'unpaid';
     else if (dep >= r.rtot - 0.001) status = 'paid';
     else status = 'deposit';
+    // Same silent discard as recordPayment (see its note) — the day sheet's
+    // capture offers the deposit too, and the server honours it only on 'paid'.
+    if (askDep && vals.withdep === 'yes' && status !== 'paid') {
+        const go = await glassConfirm(
+            `The deposit can only be recorded alongside the full rental. Record the ${gbp(dep)} rental on its own for now?`,
+            `Record ${gbp(dep)} only`,
+        );
+        if (!go) return;
+    }
     const payload = { action: 'set_payment', id: r.dbId, payment: status };
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
@@ -19958,23 +19992,42 @@ function accomAddPhoto(k) {
         await accomSavePhotos(k, imgs);
     });
 }
-function accomSaveText(k) {
+// "SAVED." ONLY IF IT SAVED. These fired their success line unconditionally, after
+// fire-and-forget writes — so a dropped mobile request or a 500 put a green "Saved."
+// on screen beside saveContent's own "Couldn't save that change to the server"
+// alert, with the rejected value still in the field and still in the mirror. The
+// owner believes the newer statement and leaves; the cottage page keeps the old text.
+async function accomSaveText(k) {
     const g = (f) => {
         const el = document.getElementById('accom-t-' + f + '-' + k);
         return el ? el.value : '';
     };
-    ['title', 'subtitle', 'tagline', 'desc', 'location'].forEach((f) => {
-        const v = g(f);
-        saveContent(k + '-' + f, v).catch(() => {});
-        siteContent[k + '-' + f] = v;
-    });
     const m = document.getElementById('accom-text-msg-' + k);
     if (m) {
-        m.textContent = 'Saved.';
-        m.style.color = 'var(--ok)';
-        setTimeout(() => {
-            m.textContent = '';
-        }, 1500);
+        m.textContent = 'Saving…';
+        m.style.color = 'var(--text-muted)';
+    }
+    const fields = ['title', 'subtitle', 'tagline', 'desc', 'location'];
+    const vals = fields.map((f) => [f, g(f)]);
+    try {
+        // Awaited, and the mirror is only written for a value the server took —
+        // otherwise re-opening the fold shows a rejected edit as saved.
+        for (const [f, v] of vals) {
+            await saveContent(k + '-' + f, v);
+            siteContent[k + '-' + f] = v;
+        }
+        if (m) {
+            m.textContent = 'Saved.';
+            m.style.color = 'var(--ok)';
+            setTimeout(() => {
+                m.textContent = '';
+            }, 1500);
+        }
+    } catch (e) {
+        if (m) {
+            m.textContent = "Not saved — that didn't reach the server. Try again.";
+            m.style.color = 'var(--danger-text)';
+        }
     }
 }
 function accomAddAmenity(k) {
@@ -19982,11 +20035,28 @@ function accomAddAmenity(k) {
     if (wrap)
         wrap.insertAdjacentHTML('beforeend', listRowHtml('am', '', 'e.g. Wood-burning stove'));
 }
-function accomSaveAmenities(k) {
+// This one said NOTHING either way — success or failure — so the owner had no
+// signal at all. It reuses the text saver's message slot.
+async function accomSaveAmenities(k) {
     const wrap = document.getElementById('accom-am-rows-' + k);
     const items = collectListRows(wrap, 'am');
-    saveContent('amenities-' + k, items).catch(() => {});
-    siteContent['amenities-' + k] = items;
+    const m = document.getElementById('accom-text-msg-' + k);
+    try {
+        await saveContent('amenities-' + k, items);
+        siteContent['amenities-' + k] = items;
+        if (m) {
+            m.textContent = 'Saved.';
+            m.style.color = 'var(--ok)';
+            setTimeout(() => {
+                m.textContent = '';
+            }, 1500);
+        }
+    } catch (e) {
+        if (m) {
+            m.textContent = "Not saved — that didn't reach the server. Try again.";
+            m.style.color = 'var(--danger-text)';
+        }
+    }
 }
 
 function accomSectionHtml(k, sec) {
