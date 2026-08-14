@@ -180,14 +180,14 @@ function status_word($state)
     font-style: normal;
     font-weight: 100 900;
     font-display: swap;
-    src: url('/fonts/montserrat-latin.woff2') format('woff2');
+    src: url('/fonts/montserrat-latin.woff2?v=06b16db7') format('woff2');
   }
   @font-face {
     font-family: 'Playfair Display';
     font-style: normal;
     font-weight: 400 900;
     font-display: swap;
-    src: url('/fonts/playfair-latin.woff2') format('woff2');
+    src: url('/fonts/playfair-latin.woff2?v=e0c764a8') format('woff2');
   }
   :root {
     color-scheme: light dark;

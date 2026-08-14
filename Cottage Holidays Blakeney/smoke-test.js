@@ -1311,21 +1311,33 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     // print the value to paste rather than asking anyone to remember a stamp —
     // and app.css's @font-face must agree with index.html's PRELOAD exactly, or
     // the preload warms a URL nothing then asks for.
+    // It DISCOVERS the referring files rather than naming them, because the first
+    // version named app.css and index.html and status.php was the third — a whole
+    // page holding its own unbustable, separately-downloaded copy of both faces,
+    // live, invisible to the gate written the same hour. A source scan sees what it
+    // was written to see; make it find its own subjects.
     {
         console.log('\n== 12f. The fonts carry a content pin, and one pin ==');
-        const cssSrc = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
-        const htmlSrc = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         const fontFiles = fs.readdirSync(path.join(__dirname, 'fonts')).filter((f) => f.endsWith('.woff2'));
         check('fonts/ holds woff2 files (vacuity guard)', fontFiles.length >= 2, `${fontFiles.length} found`);
+        const refFiles = fs.readdirSync(__dirname)
+            .filter((f) => /\.(php|html|css|js)$/.test(f) && !/^(smoke-test|.*test.*)\.js$/.test(f))
+            .filter((f) => /fonts\/[a-z0-9-]+\.woff2/i.test(fs.readFileSync(path.join(__dirname, f), 'utf8')));
+        check('found the files that reference a font (vacuity guard)', refFiles.length >= 3,
+            refFiles.join(', ') || 'none');
         fontFiles.forEach((f) => {
             const want = require('crypto').createHash('sha256')
                 .update(fs.readFileSync(path.join(__dirname, 'fonts', f))).digest('hex').slice(0, 8);
-            const inCss = (cssSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
-            const inHtml = (htmlSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
-            check(`${f}: app.css pins its content hash`, inCss === want,
-                inCss ? `pinned ?v=${inCss}, file hashes to ${want}` : `no ?v= at all — use ?v=${want}`);
-            check(`${f}: …and the preload asks for the SAME url`, !!inHtml && inHtml === inCss,
-                `preload ?v=${inHtml || 'none'} vs stylesheet ?v=${inCss || 'none'}`);
+            const re = new RegExp(`fonts/${f.replace('.', '\\.')}(\\?v=([0-9a-f]+))?`, 'g');
+            const wrong = [];
+            refFiles.forEach((rf) => {
+                const src = fs.readFileSync(path.join(__dirname, rf), 'utf8');
+                for (const m of src.matchAll(re)) {
+                    if (m[2] !== want) wrong.push(`${rf} ?v=${m[2] || 'none'}`);
+                }
+            });
+            check(`${f}: every reference pins its content hash (?v=${want})`, wrong.length === 0,
+                wrong.join(' | '));
         });
     }
 
