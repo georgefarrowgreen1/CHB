@@ -305,6 +305,57 @@ const clause = (text, n) => {
   ok(/if \(stranded\) \{[\s\S]{0,400}glassConfirm\(/.test(adminSrc),
     '…and asks before saving them that way');
 
+  // ── THE RESCUE EMAIL'S PROMISE IS KEPT ────────────────────────────────────
+  // enquireDraftSave wrote chb-enq-draft since it shipped and NOTHING read it
+  // back, while the abandoned-enquiry email told the guest their details were
+  // saved. They tapped through to a blank form — an email WE sent, so it read as
+  // the site losing their work. Drive the real round trip.
+  const draft = await page.evaluate(async () => {
+    const k = Object.keys(propertyMeta)[0];
+    openProperty(k);
+    await new Promise((r) => setTimeout(r, 400));
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 400));
+    const set = (id, v) => { const e = document.getElementById(id); if (e) { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); } };
+    set('enq-name', 'Priya Patel');
+    set('enq-email', 'priya@example.com');
+    set('enq-message', 'Any chance of a late checkout?');
+    enquireDraftSave();
+    const stored = !!localStorage.getItem('chb-enq-draft');
+    // Leave and come back, exactly as the emailed link does.
+    closeEnquireModal();
+    ['enq-name', 'enq-email', 'enq-message'].forEach((id) => { const e = document.getElementById(id); if (e) e.value = ''; });
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 400));
+    const g = (id) => (document.getElementById(id) || {}).value || '';
+    const wb = document.getElementById('enq-wb');
+    return { stored, name: g('enq-name'), email: g('enq-email'), msg: g('enq-message'),
+      note: wb && wb.getClientRects().length ? (wb.textContent || '') : '' };
+  });
+  ok(draft.stored, '(fixture) the draft is written');
+  ok(draft.name === 'Priya Patel' && draft.email === 'priya@example.com' && /late checkout/.test(draft.msg),
+    `coming back restores what was typed (${draft.name} / ${draft.email})`);
+  // …and SAYS so, or a stranger meets a form full of details they don't remember
+  // giving. This slot is shared with the welcome-back line, which runs after the
+  // restore and used to blank it.
+  ok(/Picked up where you left off/.test(draft.note), `…and says why the form is already full (${draft.note.slice(0, 60)})`);
+  // The email must not out-live the feature again: pair the claim with the code.
+  // NB comment lines are stripped first — a // -commented call still matches the
+  // plain regex, so the unstripped version passed with the call disabled.
+  const appSrcD = require('fs')
+    .readFileSync(__dirname + '/app.js', 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  const mailSrcD = require('fs').readFileSync(__dirname + '/mailer.php', 'utf8');
+  // The CALL must be a statement of its own — `enquireDraftRestore(key)` also
+  // appears in the function's own signature, so the loose form passed with the
+  // call deleted.
+  ok(/function enquireDraftRestore\(/.test(appSrcD) && /^\s*enquireDraftRestore\(key\);\s*$/m.test(appSrcD),
+    'the restore exists AND is called from the modal opener');
+  ok(!/saved in the form on this device/.test(mailSrcD),
+    'the rescue email no longer claims more than a different device can keep');
+
   console.log(fails ? `\n  TERMS SUITE FAILED ❌ (${fails})` : '\n  TERMS SUITE PASSED ✅');
   await done(fails);
 })();

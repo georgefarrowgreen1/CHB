@@ -139,18 +139,46 @@ function sync_property($prop)
             }
         } catch (\Throwable $e) {
         }
-        // Replace this source's blocks for this property (clean refresh).
-        db()
-            ->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')
-            ->execute([$prop, $source]);
-        $ins = db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
-        $count = 0;
-        foreach ($events as $e) {
-            if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
-                continue;
+        // Replace this source's blocks for this property — ATOMICALLY. This was a
+        // bare DELETE followed by N INSERTs, and it is the one write deciding
+        // availability that did not take a lock: every reader of ical_blocks
+        // (dates_clash, availability.php, the enquiry guard) sees the table
+        // mid-rebuild, so a clash check landing in that window reads a live Airbnb
+        // stay as FREE and lets a booking through. The window is not theoretical —
+        // the sync fires from the daily cron, from autoSyncIcalBlocks on every back
+        // office load, and from "Sync now", i.e. while the owner is using the app.
+        // A transaction also means a mid-loop failure ROLLS BACK to the previous
+        // blocks rather than leaving the source deleted, which is the same
+        // never-empty-the-calendar rule ical_feed_usable enforces on the fetch.
+        $pdo = db();
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')->execute([$prop, $source]);
+            $ins = $pdo->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
+            $count = 0;
+            foreach ($events as $e) {
+                if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
+                    continue;
+                }
+                // An over-long UID from a non-platform feed would abort the whole
+                // loop; the column is the identity, not the payload.
+                $ins->execute([$prop, $source, mb_substr((string) ($e['uid'] ?? ''), 0, 190), $e['start'], $e['end']]);
+                $count++;
             }
-            $ins->execute([$prop, $source, $e['uid'], $e['start'], $e['end']]);
-            $count++;
+            $pdo->commit();
+        } catch (\Throwable $ex) {
+            try {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            } catch (\Throwable $e2) {
+            }
+            // The feed reads as failing rather than as empty, and the OLD blocks
+            // stand. ical_record_status is called ONCE with the whole summary at the
+            // foot of this function, so a failing row here is all that is needed —
+            // calling it per source would overwrite the other feeds' entries.
+            $summary[] = ['source' => $source, 'ok' => false, 'error' => 'could not rebuild blocks'];
+            continue;
         }
         $summary[] = ['source' => $source, 'ok' => true, 'events' => $count];
     }
@@ -334,15 +362,21 @@ if ($action === 'add_block') {
 }
 
 if ($action === 'delete_block') {
-    // Remove a single imported block by id. Note: if the booking still exists on
-    // the platform's feed, a future sync may re-import it.
+    // Free an OWNER block. Restricted to source='owner' on purpose: an imported
+    // platform block is owned by the sync, and deleting one would read the cottage
+    // as FREE to dates_clash and availability.php until the next import — a real
+    // double-booking window opened by a mis-fired id. (The sync re-imports it
+    // anyway, so the delete would achieve nothing but that window.)
     $id = (int) ($in['id'] ?? 0);
     if ($id <= 0) {
         json_out(['error' => 'A block id is required'], 400);
     }
-    db()
-        ->prepare('DELETE FROM ical_blocks WHERE id = ?')
-        ->execute([$id]);
+    $del = db()->prepare("DELETE FROM ical_blocks WHERE id = ? AND source = 'owner'");
+    $del->execute([$id]);
+    if ($del->rowCount() < 1) {
+        json_out(['error' => "Those dates are held by a connected calendar, so they can't be freed here — they clear when that booking does."], 409);
+    }
+    log_activity('booking', 'block.removed', 'Blocked dates freed', ['entity' => 'block', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

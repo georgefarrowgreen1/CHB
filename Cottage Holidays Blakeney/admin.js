@@ -49,11 +49,16 @@ function captureGeo(k) {
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
             const g = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            adminPrivateContent['geo-' + k] = g;
-            setGeoInputs(k, g);
+            // SAVE FIRST, then adopt — clearGeo's shape, three functions down. Writing
+            // the mirror before the answer repainted a refused write as a saved pin.
             try {
                 await saveContent('geo-' + k, g);
-            } catch (e) {}
+            } catch (e) {
+                if (status) status.textContent = "Couldn't save it just now — check your connection.";
+                return;
+            }
+            adminPrivateContent['geo-' + k] = g;
+            setGeoInputs(k, g);
             if (status) status.textContent = geoStatusText(k);
         },
         () => {
@@ -73,10 +78,13 @@ async function saveGeoManual(k) {
         return;
     }
     const g = { lat, lng };
-    adminPrivateContent['geo-' + k] = g;
     try {
         await saveContent('geo-' + k, g);
-    } catch (e) {}
+    } catch (e) {
+        if (status) status.textContent = "Couldn't save it just now — check your connection.";
+        return;
+    }
+    adminPrivateContent['geo-' + k] = g;
     if (status) status.textContent = geoStatusText(k);
 }
 async function clearGeo(k) {
@@ -3673,7 +3681,24 @@ function chbSystemState() {
         }
     } catch (e) {}
     if (checks.length) return checks[0]; // the most important thing, not a panel
+    // NOT ASKED IS NOT HEALTHY. All of these signals ride ONE admin-bootstrap
+    // request, so with it dropped there is nothing to warn about and this used to
+    // answer "All systems normal" — measured alongside a Today strip that said the
+    // daily automation looked stopped. __sigAt is when the payload last really
+    // landed; without it, or with it stale, the honest answer is that we could not
+    // check. Its own level, so callers can style it as neither green nor red.
+    if (!chbSignalsFresh()) {
+        return { level: 'unknown', say: "Couldn't check the automations just now", go: () => cmdkOpenSection('diagnostics') };
+    }
     return { level: 'ok', say: 'All systems normal' };
+}
+// TRUE while the bootstrap signals are known to be current. Ten minutes: loadData
+// runs on every back-office entry, so a stamp older than that means the last few
+// attempts did not answer, which is exactly when a green light misleads.
+const CHB_SIG_FRESH_MS = 10 * 60 * 1000;
+function chbSignalsFresh() {
+    const at = Number(/** @type {any} */ (window).__sigAt) || 0;
+    return at > 0 && Date.now() - at < CHB_SIG_FRESH_MS;
 }
 // WHICH CALENDAR FEEDS ARE IN TROUBLE — worst first. A feed that has NEVER
 // imported is not stalled, so the server omits it; only staleness and outright
@@ -3704,7 +3729,11 @@ function chbSysLine() {
     // When all is well the line says so QUIETLY — and on a phone it says nothing at
     // all, because 390px of foot is already carrying the hint text.
     el.hidden = false;
-    el.className = 'cmdk-sys' + (st.level === 'ok' ? ' is-ok' : ' is-warn');
+    // 'unknown' reads as neither: it is not a warning about the business, and a
+    // green dot beside "couldn't check" would be the colour contradicting the words.
+    // .is-ok is what the ≤639px rule stands down, and not-asked is likewise not
+    // worth a phone's foot — so it takes that class with a muted dot.
+    el.className = 'cmdk-sys' + (st.level === 'warn' ? ' is-warn' : ' is-ok') + (st.level === 'unknown' ? ' is-unknown' : '');
     el.innerHTML = `<span class="cmdk-sys-dot" aria-hidden="true"></span><span class="cmdk-sys-say">${escapeHtml(st.say)}</span>`;
     el.disabled = !st.go;
     el.onclick = st.go || null;
@@ -3727,7 +3756,11 @@ function chbSysLine() {
 // ============================================================
 const CHB_TIDE_Q = /\b(tide|tides|high water|low water|spring tide|neap)\b/i;
 const CHB_WEATHER_Q = /\b(weather|forecast|rain|raining|wind|windy|gale|storm|sunny|temperature|how (warm|cold|hot))\b/i;
-let __chbCoast = { tide: null, weather: null, at: 0 };
+// `day` is part of the KEY, not decoration: the tide half is fetched FOR a day
+// (tides.php?start=<iso>), and caching on age alone answered "tides on saturday"
+// with today's extremes printed under Saturday's name. The weather half was
+// always safe — it finds its own date in the payload.
+let __chbCoast = { tide: null, weather: null, at: 0, day: '' };
 // Which day is being asked about? Only ever today or a named day this week —
 // anything more elaborate is a job for cmdkParseDates, and guessing wider here
 // would answer a question nobody asked.
@@ -3764,8 +3797,21 @@ async function chbCoastFetch(iso) {
         get(`tides.php?start=${encodeURIComponent(iso)}&days=1`),
         get('weather.php?days=7'),
     ]);
-    __chbCoast = { tide, weather, at: Date.now() };
+    __chbCoast = { tide, weather, at: Date.now(), day: iso };
     return __chbCoast;
+}
+// A TIDE TIME ARRIVES IN UTC (…T06:41+0000) AND MUST BE READ ON THE LOCAL CLOCK.
+// Both owner-side readers took a character SLICE of the ISO string, which states
+// UTC verbatim — so all through BST the owner's answer ran an hour early and
+// disagreed with the guest page showing the same tide from the same payload
+// (renderTides, renderInStayTides and the trip planner all parse it properly).
+// Measured: 2026-08-14T06:41+0000 sliced to "06:41" where the coast reads 07:41.
+function chbTideClock(t) {
+    const s = String(t || '');
+    if (!s) return '';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return s.slice(11, 16); // unparseable — better than nothing
+    return d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
 }
 // One row, in the owner's terms. The value isn't the number — it is the number
 // CROSSED with what the day already holds: a guest arriving near low water on a
@@ -3777,8 +3823,8 @@ function chbCoastRow(q, iso, data) {
     const bits = [];
     let lead = '';
     if (wantTide && data.tide && Array.isArray(data.tide.extremes)) {
-        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
-        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
+        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
+        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
         if (hi.length) lead = `High water ${hi.join(' and ')} ${dayName}`;
         if (lo.length) bits.push(`low ${lo.join(' and ')}`);
     }
@@ -6416,7 +6462,7 @@ function cmdkBuildResults(ql) {
     if (CHB_TIDE_Q.test(ql) || CHB_WEATHER_Q.test(ql)) {
         const gen = __cmdkQueryGen;
         const iso = chbCoastDay(ql);
-        const fresh = __chbCoast.at && Date.now() - __chbCoast.at < 6e5 ? Promise.resolve(__chbCoast) : chbCoastFetch(iso);
+        const fresh = __chbCoast.at && __chbCoast.day === iso && Date.now() - __chbCoast.at < 6e5 ? Promise.resolve(__chbCoast) : chbCoastFetch(iso);
         fresh.then((data) => {
             if (gen !== __cmdkQueryGen) return; // superseded
             const row = chbCoastRow(ql, iso, data || {});
@@ -9494,9 +9540,17 @@ function manageVerdicts() {
     // Scoped to what this pulse measures — "everything is running" sat
     // beside the health pill's "1 thing needs a look" (the FULL check's
     // knowledge), two verdicts about one screen disagreeing.
+    // …AND "RUNNING" IS ONLY CLAIMED WHEN IT WAS ASKED. cron and the feeds ride ONE
+    // admin-bootstrap request, so a single dropped one left this saying "Daily jobs
+    // and calendar feeds are running" — measured, at the same moment Today's strip
+    // said the automation looked stopped. There is nothing to warn about because
+    // nothing answered, which is not the same as nothing being wrong.
+    const sigOk = chbSignalsFresh();
     const pulse = parts.length
         ? parts.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.'
-        : 'Daily jobs and calendar feeds are running.';
+        : sigOk
+          ? 'Daily jobs and calendar feeds are running.'
+          : "Couldn't check the daily jobs or the calendar feeds just now — open the full system check.";
 
     // Exceptions — the faults that can cost real money lead; a clean day
     // renders no red at all.
@@ -9517,9 +9571,9 @@ function manageVerdicts() {
     });
 
     const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds — the full check covers the rest',
-        stoppedN ? stCap('warn', stoppedN + ' stopped') : stCap('ok', 'All running'),
-        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
+        stoppedN ? stCap('warn', stoppedN + ' stopped') : sigOk ? stCap('ok', 'All running') : stCap('unk', 'not checked'),
+        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Full system check</button></div>`);
     const modGrp = bhubFoldGrp('mgmod', 'To approve', 'reviews, guest photos, things to do',
         modN ? stCap('warn', modN + ' waiting') : stCap('ok', 'Nothing waiting'),
@@ -10227,17 +10281,69 @@ function bhubMenuToggle(ev) {
     if (!wasOpen) {
         menu.style.display = 'flex';
         btn.setAttribute('aria-expanded', 'true');
+        bhubMenuPlace(btn, menu);
+        // A phone ROTATED with the menu open is the case this whole fix is about,
+        // so re-measure rather than leaving a placement made for the old window.
+        __bhubMenuResize = () => bhubMenuPlace(btn, menu);
+        window.addEventListener('resize', __bhubMenuResize);
         setTimeout(() => {
             document.addEventListener('click', bhubMenuClose, { once: true });
             document.addEventListener('keydown', __bhubMenuEsc);
         }, 0);
     }
 }
+// THE MENU MEASURES ITSELF, the coach tip's lesson. A CSS cap cannot do this: the
+// menu's `top` is `calc(100% + 6px)` off its wrapper, so how much room is left
+// below depends on where the button has scrolled to, and `100%` inside max-height
+// resolves against the containing block instead — measured, the obvious
+// `calc(100dvh - 100% - …)` computed to calc(-100% + 366px) and did nothing.
+// The failure this closes: at 844x390 the menu ran 207->537 in a 390px window, so
+// "Cancel & refund" was not below a scroll — it was outside the viewport with
+// nothing to scroll. Cap to the room below, and if that is too little to be worth
+// scrolling, open UPWARD where there is more.
+function bhubMenuPlace(btn, menu) {
+    menu.style.maxHeight = '';
+    menu.style.top = '';
+    menu.style.bottom = '';
+    const b = btn.getBoundingClientRect();
+    const margin = 14;
+    const below = window.innerHeight - b.bottom - 6 - margin;
+    const above = b.top - 6 - margin;
+    const want = menu.scrollHeight;
+    if (want > below && above > below) {
+        menu.style.top = 'auto';
+        menu.style.bottom = 'calc(100% + 6px)';
+        menu.style.maxHeight = Math.max(120, Math.floor(above)) + 'px';
+    } else {
+        menu.style.maxHeight = Math.max(120, Math.floor(below)) + 'px';
+    }
+}
 function __bhubMenuEsc(e) {
     if (e.key === 'Escape') bhubMenuClose();
 }
+let __bhubMenuResize = null;
 function bhubMenuClose() {
-    document.querySelectorAll('.bhub-menu').forEach((m) => (m.style.display = 'none'));
+    if (__bhubMenuResize) {
+        window.removeEventListener('resize', __bhubMenuResize);
+        __bhubMenuResize = null;
+    }
+    // THE OUTSIDE-CLICK LISTENER HAS TO GO TOO, and it was the only one that did
+    // not. It is `{once: true}`, so closing by any OTHER route (Escape, a resize,
+    // opening a second menu) left it armed — and since it lives on `document`,
+    // where the data-act dispatcher also lives, the next tap on ⋯ ran the
+    // dispatcher (open) and then the stale listener (close) in the same event.
+    // stopPropagation cannot help: both are listeners on the SAME node. Measured
+    // as a dead second tap.
+    document.removeEventListener('click', bhubMenuClose);
+    document.querySelectorAll('.bhub-menu').forEach((el) => {
+        const m = /** @type {HTMLElement} */ (el);
+        m.style.display = 'none';
+        // Drop the placement with it: an inline top/bottom/max-height left behind is a
+        // measurement of the window as it WAS, and the next open would inherit it.
+        m.style.top = '';
+        m.style.bottom = '';
+        m.style.maxHeight = '';
+    });
     document
         .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
@@ -10576,7 +10682,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
-    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean} | null} */
+    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
     let next = null;
     if (!gt.fullyPaid && !past) {
         const canCard = squareAdminEnabled && b.email;
@@ -10656,6 +10762,12 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
                 onclick: chbAttrs('returnDeposit', String(b.id)),
                 btn: 'Return the deposit',
+                // …AND KEEPING IT IS OFFERED HERE TOO. The hub is where both the duty
+                // and the Money overview route, and it offered only Return — so with
+                // damage, the owner's one action on this screen was to give back money
+                // they were keeping. A quiet second action, because returning it is the
+                // ordinary outcome and keeping it is the exception.
+                alt: { label: 'Keep it for damage', act: chbAttrs('keepDeposit', String(b.id)) },
             };
         } else {
             next = {
@@ -10691,7 +10803,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const nextHtml = next
         ? next.money
             ? '' // the Payments block's own header carries it (bhub-payask)
-            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
+            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button>${next.alt ? `<button class="bhub-actlink bhub-next-alt" ${next.alt.act}>${escapeHtml(next.alt.label)}</button>` : ''}</div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
     return nextHtml;
 }
@@ -10872,10 +10984,10 @@ function renderBookingHub() {
             ${breakdownRows}
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
             <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
-            ${gt.paid > 0 ? `<div class="price-row" style="color:var(--ok);"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
+            ${gt.paid > 0 ? `<div class="price-row" style="color:var(--ok-text);"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
             ${
                 gt.fullyPaid
-                    ? `<div class="price-row total" style="color:var(--ok);"><span>Paid in full</span><span class="price-amount" style="color:var(--ok);">✓</span></div>`
+                    ? `<div class="price-row total" style="color:var(--ok-text);"><span>Paid in full</span><span class="price-amount" style="color:var(--ok-text);">✓</span></div>`
                     : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
             }
         </div>`;
@@ -12261,32 +12373,46 @@ function accomAddRowHtml() {
 // generates the key/slug/accent; everything else is completed afterwards in
 // the new cottage's Preferences folders. All booking/payment logic works for
 // it immediately because it's a real properties row.
+// ONE FORM, AND BACKING OUT CREATES NOTHING. This was three dialogs ending in a
+// glassConfirm used as a two-way choice — "OK = private · Cancel = list it publicly"
+// — with no third branch, and glassConfirm resolves FALSE on Cancel AND Escape. So
+// an owner who changed their mind at the last step, or reflexively dismissed the
+// dialog, PUBLISHED a cottage to the live website: no photos, no description,
+// enquirable at once. glassForm resolves null on both.
 async function addAccommodationPrompt() {
-    const name = await glassPrompt('Name of the new accommodation', '');
-    if (name == null) return;
-    if (!String(name).trim()) {
+    const vals = await glassForm(
+        'A new accommodation needs a name and a nightly price for a couple. You can change everything else afterwards.',
+        [
+            { id: 'name', label: 'Name', type: 'text', placeholder: 'e.g. Harbour Cottage' },
+            { id: 'rate', label: 'Nightly price for a couple (£)', type: 'number', placeholder: '130' },
+            {
+                id: 'listing',
+                label: 'On the website?',
+                type: 'select',
+                options: [
+                    { value: 'public', label: 'Show it on the website' },
+                    { value: 'private', label: "Private — don't show it, but take bookings for it" },
+                ],
+            },
+        ],
+        { title: 'Add an accommodation', okLabel: 'Add it' },
+    );
+    if (!vals) return; // Cancel or Escape — nothing is created
+    const name = String(vals.name || '').trim();
+    if (!name) {
         glassAlert('Please enter a name.');
         return;
     }
-    const rateStr = await glassPrompt(
-        `Nightly price for a couple at "${String(name).trim()}" (£)`,
-        '',
-    );
-    if (rateStr == null) return;
-    const rate = parseFloat(rateStr);
+    const rate = parseFloat(vals.rate);
     if (!(rate > 0)) {
         glassAlert('Please enter a nightly couple rate above £0.');
         return;
     }
-    // Private (unlisted): a cottage you manage bookings/payments for but that
-    // never appears on your public website.
-    const unlisted = await glassConfirm(
-        `Should "${String(name).trim()}" be PRIVATE?\n\nPrivate cottages don't appear on your website — but you can still take bookings and payments for them from the back office.\n\nOK = private · Cancel = list it publicly`,
-    );
+    const unlisted = vals.listing === 'private';
     try {
         const res = await apiPost('rates.php', {
             action: 'create',
-            name: String(name).trim(),
+            name: name,
             couple_rate: rate,
             unlisted: unlisted ? 1 : 0,
         });
@@ -12295,8 +12421,8 @@ async function addAccommodationPrompt() {
         if (res && res.prop_key) settingsOpenAccom(res.prop_key); // drop straight into "fill in"
         toast(
             unlisted
-                ? `Added private cottage "${String(name).trim()}" — book it from the calendar or Add booking.`
-                : `Added "${String(name).trim()}" — now add its photos & details.`,
+                ? `Added private cottage "${name}" — book it from the calendar or Add booking.`
+                : `Added "${name}" — now add its photos & details.`,
         );
     } catch (e) {
         glassAlert("Couldn't add the accommodation: " + (e && e.message ? e.message : e));
@@ -12758,13 +12884,22 @@ function settingsOpenCancel(propKey) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
-function setCancelPolicy(propKey, polKey) {
+// AWAIT IT, and only then claim it. The save was fire-and-forget while the mirror,
+// the picker highlight and a green toast all went ahead — so a refused write left a
+// chosen card and "policy saved" stacked under saveContent's own "Couldn't save that
+// change", with the rejected value in the mirror for the session. This is the ONE
+// term on the cottage page a guest agrees to.
+async function setCancelPolicy(propKey, polKey) {
     if (!CANCELLATION_POLICIES[polKey]) return;
+    try {
+        await saveContent(`${propKey}-cancellation-policy`, polKey);
+    } catch (e) {
+        return; // saveContent has already shown the owner why
+    }
     siteContent[`${propKey}-cancellation-policy`] = polKey;
     try {
         localStorage.setItem(`${propKey}-cancellation-policy`, polKey);
     } catch (e) {}
-    saveContent(`${propKey}-cancellation-policy`, polKey).catch(() => {});
     const detail = document.getElementById('cancel-detail');
     if (detail) detail.innerHTML = cancelPickerHtml(propKey);
     // If that cottage page is currently shown, update its text live.
@@ -13270,11 +13405,22 @@ async function renderAccounts() {
         ['Q3 · Oct–Dec', `${startYear}-10-06`, `${startYear + 1}-01-05`],
         ['Q4 · Jan–Mar', `${startYear + 1}-01-06`, `${startYear + 1}-04-05`],
     ];
+    // INCOME BY THE DAY IT ARRIVED, not by the booking's payment_date — that field is
+    // restamped on every payment, so £200 in May and £600 in November reported Q1 £0
+    // and Q3 £800, and a row allocated to one tax year but dated in the next fell
+    // outside all four quarters and vanished. income_days is the server's per-date
+    // split (the fee_days/kept_days shape); the payments fallback keeps an older
+    // server working rather than showing four empty quarters.
+    const incomeDays = Array.isArray(rep.income_days) ? rep.income_days : null;
     const qRows = qBounds.map(([lbl, s, e]) => {
         const inc =
-            payments
-                .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
-                .reduce((a, p) => a + (p.income_part || 0), 0) +
+            (incomeDays
+                ? incomeDays
+                      .filter((d) => (d.date || '') >= s && (d.date || '') <= e)
+                      .reduce((a, d) => a + (d.amount || 0), 0)
+                : payments
+                      .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
+                      .reduce((a, p) => a + (p.income_part || 0), 0)) +
             keptDays
                 .filter((k) => (k.date || '') >= s && (k.date || '') <= e)
                 .reduce((a, k) => a + (k.amount || 0), 0);
@@ -14474,7 +14620,13 @@ function renderDepositsDue() {
                             <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
-                    <div class="money-actions"><button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>` : ''}</div>
+                    <!-- KEEP IS RAIL-BLIND. This was gated on holdStatus === 'charged',
+                         a CARD-rail fact cash never sets, so a deposit handed over in
+                         cash — counted by damageHeld, listed in this very queue, raised
+                         as a duty — could only be GIVEN BACK. With damage, the owner's
+                         one offered action was to return money they were keeping.
+                         damageHeld is what is actually held, whichever rail took it. -->
+                    <div class="money-actions"><button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Return deposit</button>${dh.held > 0.005 ? `<button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>` : ''}</div>
                 </div>`,
         )
         .join('');
@@ -14515,11 +14667,36 @@ async function returnDeposit(bookingId) {
     if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)))
         return;
     try {
-        await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
-        toast('Deposit return issued.');
+        const r = await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
+        // THE GUEST'S EMAIL IS THE ONLY PLACE A RETENTION REASON EXISTS. The endpoint
+        // reports the send as `email: {ok, error}`; this threw it away and toasted
+        // success, so with SMTP down the money moved, the owner believed the guest had
+        // been told, and a PARTIAL return left them a smaller refund with no reason
+        // anywhere. The two states the owner already knows are not failures.
+        const em = r && r.email;
+        if (em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file') {
+            glassAlert(
+                `${gbp(amount)} returned — but the email telling ${booking.name} didn't send (${em.error}).` +
+                    (note ? ' Your reason for keeping the rest is only in that email, so they have not seen it — worth telling them another way.' : ''),
+            );
+        } else {
+            toast('Deposit return issued.');
+        }
         afterPaymentChange(bookingId);
     } catch (e) {
-        glassAlert("Couldn't return the deposit: " + e.message);
+        // A SERVER VERDICT IS NOT A TRANSPORT FAILURE, and the screen must stop
+        // asserting the old fact. e.status is set only when the server answered; the
+        // commonest verdict is "someone already did this" from another device, after
+        // which the hub still offered Return and the duty still listed it.
+        if (e && e.status) {
+            try {
+                await loadData();
+                afterPaymentChange(bookingId);
+            } catch (e2) {}
+            toast(e.message, 'error');
+        } else {
+            glassAlert("Couldn't return the deposit: " + e.message);
+        }
     }
 }
 // Cancel a booking: optional refund + reason, frees the dates, emails the guest.
@@ -14567,11 +14744,26 @@ async function cancelBooking(bookingId) {
                     `Return it by hand, then it is settled.\n\nIt is saved under Needs attention so you don't lose it.`,
             );
         } else {
-            toast(
-                'Booking cancelled.' +
-                    (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
-                    (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
-            );
+            // AND WHETHER THE GUEST WAS TOLD. The confirm promises a cancellation
+            // email; the endpoint sends it best-effort and reports it as
+            // `email: {ok, error}` beside deposit_owed and manual_refund, which this
+            // already reads — so the outcome was in hand and thrown away. Cancelling
+            // deletes the booking, so nothing else on any screen will ever mention
+            // this stay again: if the email did not go, the guest's only notice was
+            // the money moving. Same rule as the refund and deposit-return reports.
+            const em = r && r.email;
+            const mailFailed = em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file';
+            const extra =
+                (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
+                (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : '');
+            if (mailFailed) {
+                await glassAlert(
+                    `Booking cancelled${extra} — but the email telling ${booking.name || 'the guest'} didn't send (${em.error}).\n\n` +
+                        'The booking is gone, so nothing on any screen will mention this stay again — worth telling them another way.',
+                );
+            } else {
+                toast('Booking cancelled.' + extra);
+            }
         }
         try {
             closeDetailsModal();
@@ -14958,14 +15150,14 @@ function renderMoneyOverview() {
         ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
             escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' due now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' not due yet' : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
-        : bhubFoldGrp('mocollect', '<span style="color:var(--ok);">To collect</span>',
+        : bhubFoldGrp('mocollect', '<span style="color:var(--ok-text);">To collect</span>',
             // "Paid up" is a claim — with an overdue row above, the sub AND
             // the capsule both stand down (green ✓ beside a red exception is
             // the colour contradicting the words).
             overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
             overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
-    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok);">To move out</span>', 'what Square has paid in, net of fees',
+    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok-text);">To move out</span>', 'what Square has paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
@@ -14973,8 +15165,8 @@ function renderMoneyOverview() {
         `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
         `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
-    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
-        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok);">${gbp(netTY)}</span>`,
+    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok-text);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
+        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok-text);">${gbp(netTY)}</span>`,
         `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
          <div class="bhub-btn-row bhub-act-links">
             <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'income')}>Open Income &amp; tax</button>
@@ -15061,8 +15253,14 @@ function moAsyncFill() {
                 const items = L.items || [];
                 backFig.innerHTML = items.length ? `<span class="bhub-payline-fig">${gbp(Number(L.net || 0))}</span>` : stCap('ok', 'None held');
                 const today2 = todayDashed();
-                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok);">ready to return</span>');
-                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.amount) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
+                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok-text);">ready to return</span>');
+                // `it.net` — the liability items carry outstanding/awaiting/rental/fee/
+                // gross/feeBack/net and NO `amount` key, so `Number(it.amount) || 0`
+                // printed £0.00 on every row: "Sarah Pemberton · £0.00 — ready to
+                // return" under a headline correctly reading £147.38, on the screen
+                // that tells the owner what to hand back. The sibling renderer on Move
+                // money out already prints it.net.
+                if (backRows) backRows.innerHTML = items.slice(0, 4).map((it) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(it.name || 'Guest')} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">${st(it)}</span></div>`).join('') || '<div class="bhub-mut">No deposits held.</div>';
             } else if (backFig) {
                 backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';
@@ -15075,7 +15273,7 @@ function moAsyncFill() {
                 const expT = expensesForYear(startYear).reduce((s2, x) => s2 + (x.amount || 0), 0);
                 const net = (rep.total || 0) + (rep.kept_deposits || 0) - (rep.card_fees || 0) - expT;
                 booksFig.textContent = gbp(net);
-                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok)';
+                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok-text)';
                 const br = document.getElementById('mo-books-rows');
                 if (br) br.innerHTML = `${gbp(rep.total || 0)} income · − ${gbp(rep.card_fees || 0)} card fees · − ${gbp(expT)} expenses${(rep.kept_deposits || 0) > 0.005 ? ` · + ${gbp(rep.kept_deposits)} kept deposits` : ''}`;
             }
@@ -15846,8 +16044,21 @@ async function enableOwnerPush() {
 }
 async function testOwnerPush() {
     try {
-        await apiGet('push.php?action=test_admin');
-        toast('Test alert sent — check your notifications.');
+        // THE DEVICE COUNT IS IN THE REPLY AND WAS THROWN AWAY. push.php returns
+        // {ok, sent} — alert_owner's count exists for exactly this — and the test
+        // passes category:'urgent' with no email fallback, so with zero subscribed
+        // devices nothing goes anywhere. Telling the owner to "check your
+        // notifications" then sends them to wait for something never delivered,
+        // and they conclude owner alerts are broken. Say which it was.
+        const r = await apiGet('push.php?action=test_admin');
+        const n = Number(r && r.sent) || 0;
+        if (n > 0) {
+            toast(`Test alert sent to ${n} device${n === 1 ? '' : 's'} — check your notifications.`);
+        } else {
+            glassAlert(
+                "No device is set up to receive alerts yet, so nothing was sent. Tap “Enable on this device” above first — and on an iPhone or iPad, add the site to your Home Screen and open it from there, because iOS only allows notifications from an installed app.",
+            );
+        }
     } catch (e) {
         glassAlert("Couldn't send test: " + (e.message || e));
     }
@@ -16203,10 +16414,22 @@ async function recordPayment(bookingId) {
     else if (dep >= total - 0.001) status = 'paid';
     else status = 'deposit';
 
+    // "COLLECTED TOO" IS OFFERED WHATEVER THE FIGURE, and the server applies it
+    // ONLY on 'paid' (deliberately — reconcile_deposit's own note: that is the one
+    // state where "everything, including the deposit" is unambiguous). So picking
+    // it beside a PARTIAL rental used to be dropped in silence: the owner was told
+    // "Payment recorded — £100.00 received", while the £50 in the drawer entered
+    // nothing — not the deposits-to-return queue, not the duties, not the ring
+    // fence, not the invoice — and returnDeposit later refused it outright. Say so
+    // and let them choose, rather than discarding what they just told us.
+    if (askDep && vals.withdep === 'yes' && status !== 'paid') {
+        const go = await glassConfirm(
+            `The ${gbp(dmg)} deposit can only be recorded alongside the full rental — that is the only point at which "everything's in" is unambiguous. Record the ${gbp(dep)} rental on its own for now, and add the deposit when the rest is paid?`,
+            `Record ${gbp(dep)} only`,
+        );
+        if (!go) return; // back to the dialog to change the figure
+    }
     const payload = { id: booking.dbId, payment: status };
-    // Only meaningful with 'paid' (the server applies it nowhere else): the
-    // deposit rides the FULL settlement on the cash rail, exactly as pay.php
-    // bundles it into the first card payment.
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {
@@ -16361,7 +16584,7 @@ function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
     if (st)
         st.innerHTML = squareAdminEnabled
-            ? '<span style="color:var(--ok);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
+            ? '<span style="color:var(--ok-text);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
             : '<span style="color:var(--warn-text);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
@@ -16427,7 +16650,7 @@ async function loadSquareWebhookStatus() {
         return;
     }
     if (d.connected) {
-        line.innerHTML = '<span style="color:var(--ok);">●</span> Connected — fees, payouts and refund statuses update automatically.';
+        line.innerHTML = '<span style="color:var(--ok-text);">●</span> Connected — fees, payouts and refund statuses update automatically.';
         if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Reconnect'; }
     } else {
         const why = d.error ? ' <span style="color:var(--text-muted);">(' + escapeHtml(d.error) + ')</span>' : '';
@@ -16979,7 +17202,7 @@ function holdControls(b) {
         return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
     }
     if (st === 'returned')
-        return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok);">${gbp(amt)} refunded</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok-text);">${gbp(amt)} refunded</span></span></div>`;
     if (st === 'kept')
         return `<div class="money-deposit"><span>Damage deposit: <strong style="color:var(--danger);">${gbp(amt)} kept</strong> for damage</span></div>`;
     // Legacy card-hold model — kept working for any in-flight authorised holds.
@@ -16990,7 +17213,7 @@ function holdControls(b) {
     if (st === 'captured')
         return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger);">${gbp(amt)} captured</strong> for damage</span></div>`;
     if (st === 'released')
-        return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok);">released</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok-text);">released</span></span></div>`;
     if (st === 'expired')
         return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span></div>`;
     // Fresh booking: nothing to render — the unified payline's "incl. £X damages
@@ -17073,6 +17296,8 @@ const NY_ICONS = {
     chat: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>',
     approve: '<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.2-5.9 3.2 1.2-6.5L2.5 9.4l6.6-.9z"/>',
     spark: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.5 1 1.5 1 2.5h6c0-1 .4-2 1-2.5A6 6 0 0 0 12 3z"/>',
+    // A person on a record — the guest register, which is a legal one.
+    guest: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6"/>',
 };
 // ============================================================
 //  Deterministic anomaly detection — the booking data VOLUNTEERS what it can
@@ -17539,6 +17764,14 @@ function renderPricing() {
 // with payment_rail's, byte for byte.
 function chbChaseInfo(k, b) {
     if (bookingOwnerArranged(b)) return null; // arranged personally — never volunteered
+    // AND NEVER CHASE MONEY THE GUEST HAS ALREADY ARRANGED. An armed plan means a
+    // card is on file and the collection is scheduled — the pay screen tells the
+    // guest "Balance · already arranged" — so a chase duty here appeared every day
+    // for a booking that needs nothing, and both taps it offers email a "pay your
+    // balance" request for money coming off that card in days. A TROUBLED plan is
+    // different and must still chase: the card failed, so the money is genuinely
+    // outstanding (payments-due.php draws the same line).
+    if (b && b.autopayState === 'armed') return null;
     const gt = bookingDue(k, b);
     if (gt.fullyPaid || !(gt.balance > 0.5) || !b.checkIn) return null;
     const today = todayDashed();
@@ -17564,6 +17797,10 @@ function chbChaseInfo(k, b) {
     const chase = due && (days <= 21 || !!(b.balanceDueDate && bookingInBalanceWindow(b)));
     return { chase, due, kind, amount, days, late, dueDate: bookingPlanDueDate(b), gt, k, b };
 }
+// How close to arrival a missing register becomes a duty. Wide enough that the
+// owner has time to chase the guest, narrow enough that a booking made in January
+// does not nag from January.
+const REG_DUTY_DAYS = 3;
 function chbDuties() {
     const out = [];
     const today = todayDashed();
@@ -17739,6 +17976,23 @@ function chbDuties() {
                     sub: `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
                     act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
+                    run: () => { closeCmdK(); openBookingHub(b.id); },
+                });
+            }
+            // THE GUEST REGISTER IS A LEGAL RECORD AND WAS A DUTY NOWHERE. The hub
+            // asks for it and can raise it in Needs-attention, but chbDuties had no
+            // branch — so for a guest arriving TOMORROW who had never opened the link
+            // the strip computed to display:none, the ops line said "all quiet today ✓
+            // Nothing needs you" and the brief said nothing. Same derivation the hub
+            // uses, scoped to the pre-arrival window so it cannot nag.
+            const regDays = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
+            if (b.regUrl && !hasCheckedOut(b) && regDays >= 0 && regDays <= REG_DUTY_DAYS && (!b.regSubmitted || !bookingRegComplete(b))) {
+                out.push({
+                    kind: 'register', sev: regDays <= 1 ? 'danger' : 'warn', ic: 'guest',
+                    label: `${b.name || 'A guest'}’s details are not on the register`,
+                    sub: `${regDays === 0 ? 'Arriving today' : regDays === 1 ? 'Arriving tomorrow' : `Arriving in ${regDays} days`} · ${pname(k)} · required before arrival`,
+                    act: 'Open', go: chbAttrs('openBookingHub', String(b.id)),
+                    board: 'today', scope: 'bookings',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
@@ -18598,7 +18852,7 @@ function odsCoastText(s) {
     const today = todayDashed();
     const bits = [];
     if (c.day === today && c.tide && Array.isArray(c.tide.extremes)) {
-        const t = (x) => String(x.time || '').slice(11, 16);
+        const t = (x) => chbTideClock(x.time); // local clock, not the UTC substring
         const hi = c.tide.extremes.filter((x) => /high/i.test(x.type || '')).map(t).filter(Boolean);
         const lo = c.tide.extremes.filter((x) => /low/i.test(x.type || '')).map(t).filter(Boolean);
         if (hi.length) bits.push('High water ' + hi.join(' and '));
@@ -19005,6 +19259,15 @@ async function odsPay(i) {
     if (dep <= 0.001) status = 'unpaid';
     else if (dep >= r.rtot - 0.001) status = 'paid';
     else status = 'deposit';
+    // Same silent discard as recordPayment (see its note) — the day sheet's
+    // capture offers the deposit too, and the server honours it only on 'paid'.
+    if (askDep && vals.withdep === 'yes' && status !== 'paid') {
+        const go = await glassConfirm(
+            `The deposit can only be recorded alongside the full rental. Record the ${gbp(dep)} rental on its own for now?`,
+            `Record ${gbp(dep)} only`,
+        );
+        if (!go) return;
+    }
     const payload = { action: 'set_payment', id: r.dbId, payment: status };
     if (askDep && vals.withdep === 'yes' && status === 'paid') payload.deposit_collected = true;
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
@@ -19941,23 +20204,42 @@ function accomAddPhoto(k) {
         await accomSavePhotos(k, imgs);
     });
 }
-function accomSaveText(k) {
+// "SAVED." ONLY IF IT SAVED. These fired their success line unconditionally, after
+// fire-and-forget writes — so a dropped mobile request or a 500 put a green "Saved."
+// on screen beside saveContent's own "Couldn't save that change to the server"
+// alert, with the rejected value still in the field and still in the mirror. The
+// owner believes the newer statement and leaves; the cottage page keeps the old text.
+async function accomSaveText(k) {
     const g = (f) => {
         const el = document.getElementById('accom-t-' + f + '-' + k);
         return el ? el.value : '';
     };
-    ['title', 'subtitle', 'tagline', 'desc', 'location'].forEach((f) => {
-        const v = g(f);
-        saveContent(k + '-' + f, v).catch(() => {});
-        siteContent[k + '-' + f] = v;
-    });
     const m = document.getElementById('accom-text-msg-' + k);
     if (m) {
-        m.textContent = 'Saved.';
-        m.style.color = 'var(--ok)';
-        setTimeout(() => {
-            m.textContent = '';
-        }, 1500);
+        m.textContent = 'Saving…';
+        m.style.color = 'var(--text-muted)';
+    }
+    const fields = ['title', 'subtitle', 'tagline', 'desc', 'location'];
+    const vals = fields.map((f) => [f, g(f)]);
+    try {
+        // Awaited, and the mirror is only written for a value the server took —
+        // otherwise re-opening the fold shows a rejected edit as saved.
+        for (const [f, v] of vals) {
+            await saveContent(k + '-' + f, v);
+            siteContent[k + '-' + f] = v;
+        }
+        if (m) {
+            m.textContent = 'Saved.';
+            m.style.color = 'var(--ok)';
+            setTimeout(() => {
+                m.textContent = '';
+            }, 1500);
+        }
+    } catch (e) {
+        if (m) {
+            m.textContent = "Not saved — that didn't reach the server. Try again.";
+            m.style.color = 'var(--danger-text)';
+        }
     }
 }
 function accomAddAmenity(k) {
@@ -19965,11 +20247,28 @@ function accomAddAmenity(k) {
     if (wrap)
         wrap.insertAdjacentHTML('beforeend', listRowHtml('am', '', 'e.g. Wood-burning stove'));
 }
-function accomSaveAmenities(k) {
+// This one said NOTHING either way — success or failure — so the owner had no
+// signal at all. It reuses the text saver's message slot.
+async function accomSaveAmenities(k) {
     const wrap = document.getElementById('accom-am-rows-' + k);
     const items = collectListRows(wrap, 'am');
-    saveContent('amenities-' + k, items).catch(() => {});
-    siteContent['amenities-' + k] = items;
+    const m = document.getElementById('accom-text-msg-' + k);
+    try {
+        await saveContent('amenities-' + k, items);
+        siteContent['amenities-' + k] = items;
+        if (m) {
+            m.textContent = 'Saved.';
+            m.style.color = 'var(--ok)';
+            setTimeout(() => {
+                m.textContent = '';
+            }, 1500);
+        }
+    } catch (e) {
+        if (m) {
+            m.textContent = "Not saved — that didn't reach the server. Try again.";
+            m.style.color = 'var(--danger-text)';
+        }
+    }
 }
 
 function accomSectionHtml(k, sec) {
@@ -22174,7 +22473,7 @@ async function copyReviewLink(key) {
 // steer whether they get the book-direct follow-up next year.
 const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct' };
 function leadStatusPill(s) {
-    if (s === 'approved') return '<span style="color:var(--ok);font-weight:600;">Published</span>';
+    if (s === 'approved') return '<span style="color:var(--ok-text);font-weight:600;">Published</span>';
     if (s === 'declined') return '<span style="color:var(--text-muted);">Hidden</span>';
     return '<span style="color:var(--warn);font-weight:600;">Awaiting you</span>';
 }
@@ -22748,6 +23047,17 @@ async function saveSeasonGrid() {
             glassAlert(`"${label || 'A season'}" ends before it starts — check the dates.`);
             return;
         }
+        // A SEASON WITH NO PRICE IS SAVED AS NOTHING, under "Saved for all cottages ✓".
+        // Only priced rows reach perProp, so a card named and dated but unpriced — which
+        // its own foot invites — was silently DISCARDED, and CLEARING an existing
+        // season's prices deleted it. A third refusal beside the two above.
+        if (rates.every((r) => !r.rate)) {
+            glassAlert(
+                `"${label || 'A season'}" has no price on any cottage, so there is nothing to save — a season is a price for some dates.` +
+                    ' Give it a price on at least one cottage, or remove the card with its ✕.',
+            );
+            return;
+        }
         rates.forEach(({ k, rate }) => {
             if (rate > 0) perProp[k].push({ label, start, end, rate });
         });
@@ -23288,6 +23598,37 @@ function tlGapTap(pk, iso) {
         'Set the offer',
     ).then((ok) => { if (ok) nyGapOffer(pk, iso); });
 }
+// FREE A BLOCKED RANGE. The other half of "Block dates", which shipped without
+// one: the endpoint (ical-import.php delete_block) was written and correct and had
+// no caller, so blocked nights were permanent — hidden from the website AND
+// published as unavailable to every connected platform. Confirms first, because
+// freeing dates puts them back on sale everywhere.
+async function tlBlockTap(id) {
+    const bl = Object.keys(dbBlocks || {})
+        .flatMap((k) => (dbBlocks[k] || []).map((b) => Object.assign({ _pk: k }, b)))
+        .find((b) => String(b.id) === String(id));
+    if (!bl) {
+        toast('Those dates have changed — the calendar will refresh');
+        try {
+            renderCalendar();
+        } catch (e) {}
+        return;
+    }
+    const nm = (propertyMeta[bl._pk] || {}).name || bl._pk;
+    const ok = await glassConfirm(
+        `Free these dates on ${nm}? ${fmtStayRange(bl.checkIn, bl.checkOut)} goes back on sale here and on any connected calendar.`,
+        'Free the dates',
+    );
+    if (!ok) return;
+    try {
+        await apiPost('ical-import.php', { action: 'delete_block', id: Number(id) });
+        toast('Dates freed — back on sale.');
+        await loadData();
+        renderCalendar();
+    } catch (e) {
+        glassAlert(e.message || "Couldn't free those dates.");
+    }
+}
 // Keep the header label in sync with the month under the left edge.
 function tlSyncMonthLabel() {
     const host = document.getElementById('cal-body');
@@ -23619,6 +23960,18 @@ function renderCalendar() {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(bl.checkIn, bl.checkOut);
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
+                // AN OWNER BLOCK IS THE ONE BLOCK A HUMAN CAN RETRACT, so it is the one
+                // that gets a control. Imported OTA bars stay display-only — the sync
+                // owns their lifecycle and a deleted import simply returns on the next
+                // run. Without this, "Block dates" was a one-way door: delete_block
+                // exists and is correct but had NO caller anywhere, so a range blocked
+                // for building work that finished early stayed unsellable for ever, on
+                // the website AND on every connected platform (ical-export publishes
+                // owner blocks), with no route back but the database.
+                if (bl.source === 'owner') {
+                    bars += `<button type="button" class="tl-bar tl-ext tl-own${sp.clip}" data-search="${escapeHtml(('blocked ' + meta.name + ' owner unavailable').toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('tlBlockTap', String(bl.id))} title="${escapeHtml(meta.name)} — blocked · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)} · tap to free these dates" aria-label="Blocked ${escapeHtml(meta.name)} ${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)} — free these dates">Blocked</button>`;
+                    return;
+                }
                 bars += `<span class="tl-bar tl-ext${sp.clip}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);
@@ -23974,7 +24327,15 @@ function renderInbox() {
     // nothing is selected yet so the workspace never sits with an empty pane.
     // ONLY while the Inbox is the active view — renderInbox() also runs from
     // the dashboard init, and auto-selecting there would navigate away.
-    if (inboxSplitWide() && (document.querySelector('.page-view.active') || {}).id === 'view-inbox') {
+    // …AND ONLY ON THE ENQUIRIES FOLDER. markInboxSelection below already carried
+    // this guard; the function that CREATES the selection did not, so any
+    // re-render while the owner read Email or Messages docked an enquiry over it
+    // and stamped it seen, dropping it from an unread count nobody had looked at.
+    if (
+        inboxSplitWide() &&
+        (document.querySelector('.page-view.active') || {}).id === 'view-inbox' &&
+        __inboxFolder === 'enquiries'
+    ) {
         const listNow = sortedEnquiries();
         if (__enqHubId && !enquiries.find((x) => x.id === __enqHubId)) __enqHubId = null;
         if (!__enqHubId && listNow.length) {
@@ -24015,7 +24376,13 @@ async function openEnquiryHub(enqId) {
         tryAccessBackOffice();
         return;
     }
-    let e = enquiries.find((x) => x.id === enqId);
+    // EITHER ID FORM. Client enquiries carry id 'e<n>' with the numeric db id on
+    // dbId, and two live routes hand this the NUMERIC one: the new-enquiry push
+    // ('./?open=enquiry-<id>') and every federated search row. A strict === never
+    // matched, so both said "no longer here" about an enquiry in the inbox —
+    // findBookingById's fix, whose enquiry twin was missed.
+    const findEnq = (want) => enquiries.find((x) => String(x.id) === String(want) || String(x.dbId) === String(want));
+    let e = findEnq(enqId);
     // Same rule as openBookingHub: a dropped request is not a deleted enquiry.
     let loadFailed = false;
     if (!e) {
@@ -24027,7 +24394,7 @@ async function openEnquiryHub(enqId) {
             loadFailed = true;
         }
         if (r && r.ok === false) loadFailed = true;
-        e = enquiries.find((x) => x.id === enqId);
+        e = findEnq(enqId);
     }
     if (!e) {
         if (loadFailed) {
@@ -24038,8 +24405,12 @@ async function openEnquiryHub(enqId) {
         openInbox();
         return;
     }
-    __enqHubId = enqId;
-    try { chbStampRecent('enquiry', enqId, e && e.name); } catch (er) {} // cross-page memory
+    // The CLIENT id, never the argument — markInboxSelection matches it against
+    // each row's data-enqid and the wide auto-select asks whether it still
+    // exists, so opening by the numeric id left the pane holding 77 against a row
+    // saying 'e77' and the next re-render docked the FIRST enquiry over it.
+    __enqHubId = e.id;
+    try { chbStampRecent('enquiry', e.id, e && e.name); } catch (er) {} // cross-page memory
     enquirySeen(e);
     const content = document.getElementById('enquiry-hub-content');
     const prev = document.querySelector('.page-view.active');
@@ -24056,14 +24427,13 @@ async function openEnquiryHub(enqId) {
         if (content && home && content.parentElement !== home) home.appendChild(content);
         const alreadyHere = prev && prev.id === 'view-enquiry-hub';
         nav('view-enquiry-hub');
-        if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: enqId });
-        chbNavRemember('enquiry-' + enqId);
+        if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: e.id });
+        chbNavRemember('enquiry-' + e.id);
         window.scrollTo({ top: 0 });
         // The condensed bar names the record (the booking hub's rule).
         try {
             const t = document.getElementById('admin-head-title');
-            const nm = (enquiries.find((x) => String(x.id) === String(enqId)) || {}).name;
-            const first = String(nm || '').trim().split(/\s+/)[0];
+            const first = String(e.name || '').trim().split(/\s+/)[0];
             if (t && first) t.textContent = first;
         } catch (e) {}
     }
@@ -24856,7 +25226,19 @@ async function approveEnquiry(enqId) {
             }
         }
     } catch (e) {
-        glassAlert("Couldn't approve: " + e.message);
+        // A VERDICT, then the truth on screen. The commonest refusal is the 409 from
+        // approval's re-check under book_lock — and the card went on reading "READY TO
+        // APPROVE · DATES FREE" with Approve still there, so the owner tapped it again
+        // and was refused again. renderEnquiryHub reads the reloaded bookings.
+        if (e && e.status) {
+            try {
+                await loadData();
+                renderEnquiryHub();
+            } catch (e2) {}
+            toast(e.message, 'error');
+        } else {
+            glassAlert("Couldn't approve: " + e.message);
+        }
     }
     }
 }

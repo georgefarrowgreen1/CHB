@@ -166,13 +166,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=272">
+    <link rel="stylesheet" href="app.css?v=292">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
          gap). crossorigin is required on font preloads even same-origin. -->
-    <link rel="preload" href="fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="fonts/playfair-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/montserrat-latin.woff2?v=06b16db7" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/playfair-latin.woff2?v=e0c764a8" as="font" type="font/woff2" crossorigin>
     <!-- jsPDF CDN connection opened early (loaded on demand, owner-only). -->
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <!-- jsPDF (invoices/receipts, owner-only) is loaded ON DEMAND by ensureJsPdf()
@@ -727,7 +727,7 @@
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
-        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-act="backdropClose" data-close="closeEnquireModal">
+        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-focus="#enq-date-trigger" data-act="backdropClose" data-close="closeEnquireModal">
             <div class="modal-box enquire-box glass-panel">
                 <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
@@ -814,7 +814,7 @@
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
                     <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" data-act-keydown="activate" data-act="enquireBack">← Back</span>
-                    <h2 class="section-title" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
+                    <h2 class="section-title" id="enq-h-details" tabindex="-1" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
                     <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
                     <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
@@ -868,13 +868,16 @@
                          flips restart CSS animations, so this needs no JS), then the
                          step's blocks cascade in — see app.css's enquiry motion. -->
                     <div style="text-align:center;"><div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div></div>
-                    <h2 class="section-title" style="font-size:1.6rem;text-align:center;margin:10px 0 14px;">Enquiry sent</h2>
-                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>George replies personally — usually the same day, by email.</span></div>
+                    <h2 class="section-title" id="enq-h-sent" tabindex="-1" style="font-size:1.6rem;text-align:center;margin:10px 0 14px;">Enquiry sent</h2>
+                    <!-- The sentence and the schedule row below are rewritten by submitEnquiry when
+                         the guest left the email field blank — an enquiry with a phone and no
+                         address is deliberately accepted, so the reply cannot be an email. -->
+                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span id="enq-sent-how">George replies personally — usually the same day, by email.</span></div>
                     <!-- The enquiry said back, so the guest leaves knowing what they asked for. -->
                     <div class="enq-sent-sum" id="enq-sent-sum" style="display:none;"></div>
                     <div class="enq-sched" style="margin:12px 0 4px;border-top:none;padding-top:0;">
                         <div class="enq-sched-row"><span class="enq-sched-dot" aria-hidden="true"></span><span class="enq-sched-when">Now</span><span class="enq-sched-what">We read your enquiry and check your dates</span></div>
-                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Today</span><span class="enq-sched-what">An email confirming your dates &amp; price, with a secure payment link</span></div>
+                        <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Today</span><span class="enq-sched-what" id="enq-sched-today">An email confirming your dates &amp; price, with a secure payment link</span></div>
                         <div class="enq-sched-row"><span class="enq-sched-dot ghost" aria-hidden="true"></span><span class="enq-sched-when">Then</span><span class="enq-sched-what">Pay the deposit and the cottage is yours — we'll look after the rest</span></div>
                     </div>
                     <!-- New guest: set a password to create an account -->
@@ -1133,7 +1136,11 @@
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log In</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
-                        <div id="magic-link-msg" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
+                        <!-- role=alert like every other message element in this file:
+                             this is the ONLY report either flow makes, and without it a
+                             refusal ("Please enter a valid email address") was written
+                             to a silent div with focus left where it was. -->
+                        <div id="magic-link-msg" role="alert" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
                     </div>
                     <p id="passkey-hint" style="display:none;font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:16px;">Tip: after logging in, add a passkey in your account for one-tap sign-in next time.</p>
                 </div>
@@ -1170,7 +1177,7 @@
     </div>
 
     <!-- ================= GUEST BOOKINGS ("My Bookings") ================= -->
-    <main id="view-guest-bookings" class="page-view container">
+    <main id="view-guest-bookings" class="page-view container guest-bookings-view">
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">My Stays</h1>
@@ -1331,7 +1338,7 @@
             <input type="text" class="input-glass" id="wl-name" style="margin-bottom:12px;">
             <label class="modal-label">Email</label>
             <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
-            <div class="enq-modal-msg" id="wl-msg"></div>
+            <div class="enq-modal-msg" id="wl-msg" role="alert"></div>
             <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
         </div>
     </div>
@@ -1955,7 +1962,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=822"></script>
+    <script defer src="app.js?v=846"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

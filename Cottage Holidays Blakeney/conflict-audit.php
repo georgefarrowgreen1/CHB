@@ -97,6 +97,19 @@ foreach ($props as $p) {
     // the same nights).
     foreach ($bookings as $a) {
         foreach ($blocks as $bk) {
+            // THE MIRROR IS NOT A CONFLICT, and it is the NORMAL state of a
+            // cross-listed cottage. ical-export.php publishes each of our bookings as
+            // a busy range; Airbnb/Vrbo import it and republish it; our own sync
+            // imports it back. So every direct booking on a cross-listed cottage
+            // produced an exact-range booking↔block overlap, logged at `warn` into
+            // Needs attention — the documented setup reporting itself as a double
+            // booking. This file already skips OTA↔OTA overlaps as mirrors for the
+            // same reason (see the header); an EXACT range match is that same test.
+            // Anything else — a partial overlap, a different range — is a real clash
+            // and still reported.
+            if ($a['check_in'] === $bk['check_in'] && $a['check_out'] === $bk['check_out']) {
+                continue;
+            }
             if (ca_overlap($a['check_in'], $a['check_out'], $bk['check_in'], $bk['check_out'])) {
                 $conflicts[] = [
                     'sig' => "bo|$prop|" . (int) $a['id'] . '|' . (int) $bk['id'],

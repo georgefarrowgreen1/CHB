@@ -666,6 +666,21 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   const legendText = () => page.evaluate(() => document.getElementById('dp-legend').innerText.trim());
   ok(/you can still pick them/i.test(await legendText()),
     `the legend says the crossed dates are pickable here ("${await legendText()}")`);
+  // …AND SO DOES THE PAINT. The legend was only the visible layer: the corrective
+  // that lifts a crossed night out of the refused look was keyed on `.dp-admin`,
+  // so on the waitlist and the chat check the taken nights — the only nights those
+  // surfaces exist to select — rendered at 0.35 with a not-allowed cursor. Keyed on
+  // the click hook now, so it covers every mode where the cell really is pickable.
+  const wlPaint = await page.evaluate(() => {
+    const el = document.querySelector('#dp-grid [data-day="2026-08-19"]');
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { cursor: cs.cursor, op: Number(cs.opacity), struck: /line-through/.test(cs.textDecorationLine) };
+  });
+  ok(wlPaint && wlPaint.cursor === 'pointer' && wlPaint.op > 0.4,
+    `a pickable crossed night LOOKS pickable (cursor ${wlPaint && wlPaint.cursor}, opacity ${wlPaint && wlPaint.op})`);
+  ok(wlPaint && wlPaint.struck,
+    '…while keeping its strike, which is the fact being waited on');
   // A too-short night is a CONSEQUENCE of a booking, and the waitlist premise is that
   // the booking may go — so 6/11/18/27 (free nights that can start no 2-night stay
   // only because the next night is taken) must not be marked unavailable here.
@@ -1482,6 +1497,148 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   await page.evaluate(() => closeDatePicker());
   PER_PROP.jollyboat = RANGES;
   AVAIL = RANGES;
+
+  // ─── §20 THE CARD FITS, AND THE RECEIPT PRINTS ──────────────────────────────
+  // Two things the picker promised and did not deliver, both invisible to every
+  // check above because they are GEOMETRY at sizes nothing measured.
+  console.log('\n§20 The card fits on a short screen, and Continue states its figure');
+  const receipt = await page.evaluate(() => {
+    document.getElementById('enq-adults').value = '2';
+    document.getElementById('enq-children').value = '0';
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    openDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    const sub = document.querySelector('#dp-done .dp-done-sub');
+    if (!sub) return null;
+    return {
+      text: sub.innerText.trim(),
+      // A wrapped sub paints all of itself; an ellipsised one does not. Compare its
+      // own scroll extent against its box rather than eyeballing the string — a
+      // clipped receipt still READS, which is why this shipped.
+      // scrollWidth beyond the box means the sentence never fitted, whether it was
+      // then clipped or left to overflow the control — both hide the figure.
+      clipped: sub.scrollWidth > sub.clientWidth + 1,
+      ws: getComputedStyle(sub).whiteSpace,
+      label: (document.getElementById('dp-done') || {}).innerText || '',
+    };
+  });
+  ok(receipt && /£/.test(receipt.text),
+    `the Continue receipt carries the stay's figure (${receipt && JSON.stringify(receipt.text)})`);
+  ok(receipt && !receipt.clipped,
+    `and none of it is cut off — the foot is a 2-up row, so it must WRAP (white-space ${receipt && receipt.ws})`);
+  // THE CARD ITSELF, in landscape. Uncapped and unscrollable it ran 472px in a
+  // 360px viewport: both month buttons off the top, Continue off the bottom.
+  await page.setViewportSize({ width: 740, height: 360 });
+  await page.waitForTimeout(250);
+  const fit = await page.evaluate(() => {
+    const card = document.querySelector('.datepicker-card');
+    const r = card.getBoundingClientRect();
+    // REACHABLE, not necessarily already on screen: the card scrolls now, so the
+    // honest question is whether scrolling it brings the control into the viewport.
+    // (Before the cap it could not be reached at all — the card overflowed the
+    // VIEWPORT, which nothing scrolls.)
+    const reachable = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return null;
+      e.scrollIntoView({ block: 'nearest' });
+      const b = e.getBoundingClientRect();
+      return b.top >= -0.5 && b.bottom <= window.innerHeight + 0.5;
+    };
+    return {
+      fits: r.top >= -0.5 && r.bottom <= window.innerHeight + 0.5,
+      scrolls: getComputedStyle(card).overflowY === 'auto',
+      nav: reachable('.dp-nav-btn'),
+      done: reachable('#dp-done'),
+      h: Math.round(r.height),
+    };
+  });
+  ok(fit.fits && fit.scrolls, `at 740x360 the card fits the viewport and scrolls inside it (h ${fit.h})`);
+  ok(fit.nav === true, '…the month buttons are reachable');
+  ok(fit.done === true, '…and so is Continue, which is the only way to finish');
+  await page.evaluate(() => closeDatePicker());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+
+  // ─── §21 CLOSING THE PICKER DOES NOT STRAND FOCUS ───────────────────────────
+  // The dialogs the picker opens FROM stay open behind it, so closing it has to hand
+  // focus back into them. It did not: measured, activeElement was <body> — outside any
+  // dialog — and the Tab trap in the global keydown handler only redirects at the
+  // first/last focusable of the OPEN dialog, so it did nothing and the next Tab walked
+  // off onto the theme toggle in the page behind. The glass-form case had been fixed;
+  // the guest surfaces, where this is a keyboard user's only route through the form,
+  // were left.
+  console.log('\n§21 Closing the picker hands focus back into the dialog behind it');
+  const focusBack = await page.evaluate(async () => {
+    // Open the real dialog: the sections above drive the picker directly, so without
+    // this there is no form behind it and the check measures nothing (it reported the
+    // modal closed on its first run).
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 350));
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    const trig = document.getElementById('enq-date-trigger');
+    if (trig) trig.focus();
+    const from = document.activeElement ? document.activeElement.id : '';
+    openDatePicker();
+    await new Promise((r) => setTimeout(r, 200));
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    dpDone();
+    await new Promise((r) => setTimeout(r, 250));
+    const a = document.activeElement;
+    const modal = document.getElementById('enquire-modal');
+    return {
+      from,
+      to: a ? a.id || a.tagName : '(none)',
+      inModal: !!(modal && a && modal.contains(a)),
+      modalOpen: !!(modal && modal.classList.contains('open')),
+      pickerOpen: document.getElementById('date-picker').classList.contains('open'),
+    };
+  });
+  ok(focusBack.modalOpen && !focusBack.pickerOpen, `(fixture) the picker closed with the enquiry form still open (${focusBack.pickerOpen})`);
+  ok(focusBack.inModal, `focus lands back INSIDE the dialog, not on <body> (${focusBack.from} → ${focusBack.to})`);
+  // …AND THE MODAL OPENS ON THE THING IT ASKS FOR. focusInto picks "the first real
+  // form field" with `input:not([type=hidden])` — but the dates and the party counts
+  // are ALL type=hidden behind buttons, so the first match was #enq-faq-q, the
+  // OPTIONAL "Parking? Wifi? The beach?" box: measured at top 995 in an 844px
+  // viewport, so the caret opened off screen, a screen reader announced the dialog
+  // as the FAQ ask box, and "choose your dates" was the fourth tab stop — after the
+  // button that leaves the step. A dialog may name its own entry point now.
+  const openFocus = await page.evaluate(async () => {
+    try { closeEnquireModal(); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 200));
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 400));
+    const a = document.activeElement;
+    const r = a ? a.getBoundingClientRect() : null;
+    return { id: a ? a.id || a.tagName : '(none)', top: r ? Math.round(r.top) : -1, vh: window.innerHeight };
+  });
+  ok(openFocus.id === 'enq-date-trigger',
+    `the enquiry modal opens on the dates, the thing it asks for first (${openFocus.id})`);
+  ok(openFocus.top >= 0 && openFocus.top <= openFocus.vh,
+    `…which is ON SCREEN, not below the fold (top ${openFocus.top} of ${openFocus.vh})`);
+  // A STEP CHANGE MOVES FOCUS TO THE STEP. Each one swapped `display` and left focus
+  // wherever it was — after the Continue button it was on has just been hidden, that
+  // is <body>: outside the dialog, where the Tab trap does nothing.
+  const stepFocus = await page.evaluate(async () => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set('enq-checkin', '2026-08-04'); set('enq-checkout', '2026-08-07');
+    set('enq-adults', 2); set('enq-children', 0);
+    dpState.start = '2026-08-04'; dpState.end = '2026-08-07';
+    enquireContinue();
+    await new Promise((r) => setTimeout(r, 250));
+    const a = document.activeElement;
+    const modal = document.getElementById('enquire-modal');
+    return { id: a ? a.id || a.tagName : '(none)', inModal: !!(modal && a && modal.contains(a)) };
+  });
+  ok(stepFocus.inModal && stepFocus.id === 'enq-h-details',
+    `moving to step 2 focuses that step's own heading (${stepFocus.id})`);
+  await page.evaluate(() => { try { closeEnquireModal(); } catch (e) {} });
+  await page.waitForTimeout(150);
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

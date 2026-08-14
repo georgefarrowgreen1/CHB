@@ -32,7 +32,14 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mk(2, { name: 'Paid Up', email: 'paid@gmail.com', check_in: d(40), check_out: d(43), payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-3) }),
     // past stay still holding a £100 damage deposit → deposits-to-return queue
     mk(3, { name: 'Left Deposit', email: 'left@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 540, payment_method: 'Card', payment_date: d(-30), hold_status: 'charged', hold_amount: 100 }),
+    // …and the SAME situation on the CASH rail. hold_status stays 'none' because no
+    // card was ever charged; the deposit is in damageHeld's `paid above the rental`
+    // branch (£490 = £440 rental + £50 deposit), so it is listed here and raised as
+    // a duty exactly like the card one.
+    mk(4, { name: 'Cash Deposit', email: 'cash@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 490, payment_method: 'Bank transfer', payment_date: d(-30), hold_status: 'none' }),
   ];
+  // Drives the guest-email failure the deposit-return report has to surface.
+let mailWillFail = false;
   const posts = [];
   // §7 drives the "Move money out" screen off the SAME accounts.php payload the
   // income screen uses, so the stub carries deposit_liability only when a case
@@ -55,7 +62,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         if (b.action === 'email_logs') return json({ logs: {} });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
-        if (b.action === 'return_deposit') { const r = rows.find((x) => x.id === b.id); if (r) r.hold_status = 'returned'; return json({ ok: true }); }
+        if (b.action === 'return_deposit') {
+          const r = rows.find((x) => x.id === b.id);
+          if (r) r.hold_status = 'returned';
+          // The real endpoint always reports the send outcome; mailWillFail drives the
+          // case where the money moved and the guest was never told.
+          return json({ ok: true, returned: Number(b.amount) || 0, status: 'PENDING', email: { ok: !mailWillFail, error: mailWillFail ? 'SMTP connect failed' : '' } });
+        }
         if (b.action === 'confirm_return_settled') return json({ ok: true, confirmed: 1, amount: 73.69 });
         return json({ ok: true });
       }
@@ -205,6 +218,46 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(!attnChk.down.cap && !attnChk.down.row, 'moving the stay out of the window stands the red section down');
   ok(/£490/.test(attnChk.down.collect) && /Due now/.test(attnChk.down.collect), `…and the £490 moves into To collect's Due-now queue (${attnChk.down.collect.slice(0, 80)})`);
   ok(attnChk.up.cap && attnChk.up.row, 'restoring the dates raises the exception again');
+
+  // 2b-ii. THE DEPOSIT ROWS STATE A FIGURE. They printed `it.amount`, a key the
+  // liability payload does not carry (it has outstanding/awaiting/rental/fee/
+  // gross/feeBack/net), so `Number(undefined) || 0` rendered "£0.00 — ready to
+  // return" on every row, under a headline that had the total right — on the one
+  // screen that tells the owner what to hand back. Driven through the REAL
+  // moAsyncFill payload shape.
+  const backChk = await page.evaluate(() => {
+    const el = document.getElementById('mo-back-rows');
+    if (!el) return { missing: true };
+    // The shape accounts.php actually ships for deposit_liability.items.
+    const items = [
+      { name: 'Sarah Pemberton', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
+      { name: 'Dan Rowe', outstanding: 75, rental: 400, fee: 7.5, gross: 75, feeBack: 1.31, net: 73.69, check_in: '2020-01-01', check_out: '2020-01-05' },
+    ];
+    // Render exactly as the landing does.
+    el.innerHTML = items
+      .map(
+        (it) =>
+          `<div class="bhub-kv"><span class="bhub-kv-label">${it.name} · ${gbp(Number(it.net != null ? it.net : it.outstanding) || 0)}</span><span class="bhub-kv-val">ready to return</span></div>`,
+      )
+      .join('');
+    return { txt: el.textContent || '' };
+  });
+  ok(!backChk.missing, 'the To-give-back rows container exists on the money landing');
+  ok(!backChk.missing && !/£0\.00/.test(backChk.txt), `a held deposit never renders as £0.00 (${(backChk.txt || '').slice(0, 60)})`);
+  ok(!backChk.missing && /£73\.69/.test(backChk.txt), '…it states the net the owner actually hands back');
+  // The renderer itself must read a key the payload HAS. NB the source is stripped
+  // of // comments FIRST: the comment explaining this defect names `it.amount`, and
+  // a negative scan that can see its own explanation is either always-failing or
+  // (worse) always-passing — the trap test-payrail already strips for.
+  const admSrc = require('fs')
+    .readFileSync(__dirname + '/admin.js', 'utf8')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  const backRegion = admSrc.slice(admSrc.indexOf("getElementById('mo-back-rows')"), admSrc.indexOf("getElementById('mo-back-rows')") + 1200);
+  ok(backRegion.length > 200, '(fixture) the To-give-back renderer region was found');
+  ok(!/Number\(it\.amount\)/.test(backRegion), 'the To-give-back renderer does not read the non-existent `amount` key');
+  ok(/it\.net/.test(backRegion), '…it reads it.net, the key the liability payload carries');
 
   // 2c. chase-everyone-due appears only at TWO+ chaseable owers — under two,
   // the bulk action is the row's own action wearing a worse label.
@@ -373,6 +426,26 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // rental £440 + £50 damages deposit = £490, matching the row's chip.
   ok(/£490/.test(pay1.owedLine), `owed banner equals the sum of its rows, £490 (${pay1.owedLine.trim().slice(0, 60)})`);
   ok(/£100/.test(pay1.depQueue) && pay1.depReturnBtn && pay1.depKeepBtn, 'deposits-to-return queue: £100 held + Return/Keep buttons');
+  // KEEP IS RAIL-BLIND. It was gated on holdStatus === 'charged' — a CARD-rail fact
+  // cash never sets — so a deposit handed over in cash sat in THIS queue, and in the
+  // duty list, with only "Return deposit" offered: with damage the owner's one
+  // action was to give back money they were keeping, and the guest was emailed
+  // "we're returning your refundable damage deposit" about it. Both rows are read
+  // from one render, so the check cannot pass by finding the card row's button.
+  const rails = await page.evaluate(() => {
+    const rowOf = (name) => [...document.querySelectorAll('#deposits-due .money-row')]
+      .find((r) => (r.textContent || '').includes(name));
+    const shape = (name) => {
+      const r = rowOf(name);
+      if (!r) return null;
+      return { ret: !!r.querySelector('[data-act="returnDeposit"]'), keep: !!r.querySelector('[data-act="keepDeposit"]'), say: (r.textContent || '').replace(/\s+/g, ' ') };
+    };
+    return { card: shape('Left Deposit'), cash: shape('Cash Deposit') };
+  });
+  ok(rails.card && rails.cash, `(fixture) both rails are in the queue (${!!(rails.card && rails.cash)})`);
+  ok(rails.cash && rails.cash.ret && rails.cash.keep,
+    `a CASH deposit can be kept for damage, not only given back (${rails.cash && rails.cash.say.slice(0, 60)})`);
+  ok(rails.card && rails.card.keep, '…and the card rail is unchanged');
   // THE IDENTITY PILL SURVIVES THREE PILLS AT PHONE WIDTH (the UI pass:
   // "Pimpernel" crushed to "P" under paid-state + arrives-soon chips — the
   // no-shrink chips took the row and the ellipsised tag absorbed it all).
@@ -470,6 +543,37 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   let retPost = null;
   for (let i = 0; i < 40 && !retPost; i++) { await page.waitForTimeout(100); retPost = posts.find((p) => p.action === 'return_deposit'); }
   ok(!!retPost && Number(retPost.amount) === 100, `Return deposit posted £100 back (${JSON.stringify(retPost && { amt: retPost.amount })})`);
+
+  // 4b) THE OWNER IS TOLD WHETHER THE GUEST WAS TOLD. The endpoint mails the guest
+  // best-effort and hands the outcome back as `email: {ok, error}`; the client threw
+  // the response away and toasted "Deposit return issued." unconditionally. On a
+  // PARTIAL return that email is the only place the guest ever learns why the rest was
+  // kept, so with SMTP down the money moved, the owner believed they had been told, and
+  // the reason existed nowhere. Driven through the real dialogs with a real failure.
+  mailWillFail = true;
+  const ret2 = page.evaluate(() => returnDeposit('b3'));
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { const i = document.getElementById('glass-dialog-input'); if (i) i.value = '25'; glassDialogResolve(true); });
+  await page.waitForTimeout(500);
+  // The reason step (a partial return asks for one), then the confirm.
+  await page.evaluate(() => { const i = document.getElementById('glass-dialog-input'); if (i) i.value = 'broken lamp'; glassDialogResolve(true); });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => glassDialogResolve(true));
+  await ret2.catch(() => {});
+  await page.waitForTimeout(700);
+  const said = await page.evaluate(() => {
+    const d = document.getElementById('glass-dialog');
+    const shown = !!(d && getComputedStyle(d).display !== 'none');
+    const txt = (document.getElementById('glass-dialog-msg') || {}).innerText || '';
+    return { shown, txt, toast: (document.querySelector('.chb-toast, #toast') || {}).textContent || '' };
+  });
+  ok(said.shown && /didn't send/i.test(said.txt),
+    `a failed guest email is REPORTED, not toasted as success (${said.txt.slice(0, 70)})`);
+  ok(/reason/i.test(said.txt) && /have not seen it/i.test(said.txt),
+    `…and names the retention reason as the thing they have not seen (${said.txt.slice(-80)})`);
+  mailWillFail = false;
+  await page.evaluate(() => { const d = document.getElementById('glass-dialog'); if (d) glassDialogResolve(true); });
+  await page.waitForTimeout(300);
 
   // ---- 5. back navigation ----
   console.log('5. back navigation');

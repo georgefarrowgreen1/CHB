@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 487;
+const ADMIN_BUNDLE_V = 509;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 192;
+const ADMIN_CSS_V = 205;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1762,7 +1762,8 @@ function mapBookingFromApi(row) {
         // booking_next_payment; my-bookings.php only, so null on the owner path
         // and on an older server (callers fall back to the balance).
         nextPayment: row.next_payment && typeof row.next_payment === 'object' ? row.next_payment : null,
-        // booking_autopay_state — my-bookings.php only, so '' on the owner path
+        // booking_autopay_state — sent on BOTH paths now (bookings.php list too), so
+        // the owner side can tell an ARRANGED balance from an unpaid one
         // and on an older server; '' reads as "no arrangement" everywhere.
         autopayState: row.autopay_state || '',
         autopaySays: row.autopay_says || '',
@@ -2769,7 +2770,13 @@ window.addEventListener('resize', () => {
 function renderGallery(images) {
     const track = document.getElementById('gallery-21a');
     if (!track) return;
-    const list = Array.isArray(images) && images.length ? images : [''];
+    // FILTER FIRST (renderGalleryGrid's own rule below): substituting [''] built ONE
+    // slide with an empty data-bg dressed as a photo — 538px of a 390x844 phone as a
+    // blank rectangle with role=button, "Photo 1 of 1 … open photo viewer", arrows over
+    // nothing and a lightbox that does not open. The state every new cottage is in.
+    const real = (Array.isArray(images) ? images : []).filter(Boolean);
+    const list = real.length ? real : [''];
+    const empty = !real.length;
     // Lazy: hold the URL in data-bg and only paint the visible slide + its
     // neighbours (see loadGallerySlides). Off-screen photos download just in
     // time as the visitor navigates, so opening a cottage is much lighter.
@@ -2777,12 +2784,16 @@ function renderGallery(images) {
     const galName =
         (propertyMeta[activeFrontProperty] && propertyMeta[activeFrontProperty].name) ||
         'the cottage';
-    track.innerHTML = list
-        .map(
-            (src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}, open photo viewer" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
-        )
-        .join('');
+    // With nothing to show, ONE honest non-interactive slide: no role, no tabindex,
+    // no label, no click or key hook — nothing that offers a viewer there isn't.
+    track.innerHTML = empty
+        ? `<div class="gallery-slide gallery-slide-none" id="prop-img-0"><span class="gallery-none-say">Photos of ${escapeHtml(galName)} are coming soon</span></div>`
+        : list
+              .map(
+                  (src, i) =>
+                      `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}, open photo viewer" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
+              )
+              .join('');
     // Clamp index in case photos were removed
     let idx = galleryState['gallery-21a'] || 0;
     if (idx >= list.length) idx = list.length - 1;
@@ -2791,6 +2802,10 @@ function renderGallery(images) {
     track.style.transform = `translateX(${-(idx * 100)}%)`;
     loadGallerySlides('gallery-21a');
     updateGalleryCount();
+    // The arrows go with the photos — and are equally pointless at exactly one, which
+    // the count rule above already treats as nothing to page through.
+    const gwrap = track.parentElement;
+    if (gwrap) gwrap.querySelectorAll('.gallery-nav').forEach((b) => { /** @type {HTMLElement} */ (b).style.display = list.filter(Boolean).length > 1 ? '' : 'none'; });
     renderGalleryGrid(list);
 }
 // Desktop-only Airbnb-style photo grid (1 big + up to 4 small) built from the
@@ -3158,10 +3173,33 @@ let __accountsSection = null;
 // ON DEMAND the first time the owner exports a PDF, rather than on every page
 // load, so guests never pay for it. Promise-cached so it loads at most once.
 let __jspdfPromise = null;
-// The crown mark (logo.svg rasterised at 2x, transparent) for the PDF
-// invoice letterhead — jsPDF can't draw the SVG's gradients directly.
-const CHB_CROWN_PNG =
-    'data:image/png;base64,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';
+// The crown mark for the PDF invoice letterhead (jsPDF cannot draw the SVG's
+// gradients directly) is a REAL FILE, not a base64 constant. As a constant it cost
+// EVERY GUEST 10,067 gzipped bytes of app.js — 3.7% of the file, and base64 is the
+// one thing gzip cannot help with — for a mark only the owner's invoice export has
+// ever drawn (8,070 bytes on the wire, to owners, once). Fetched once, memoised,
+// and NEVER FATAL: a failed fetch returns '' and clears the memo so the next export
+// tries again, and the letterhead simply prints without the mark. The bytes are the
+// same bytes — crown.png IS the decoded constant, byte for byte (smoke-test §12e).
+let __crownPromise = null;
+function ensureCrownPng() {
+    if (__crownPromise) return __crownPromise;
+    // NB the build stamp is `window.__BUILD`, not BUILD — the `const BUILD` at the
+    // foot of this file is inside its own IIFE and is not in scope anywhere else.
+    __crownPromise = fetch('crown.png?v=' + (/** @type {any} */ (window).__BUILD || ''))
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('crown ' + r.status))))
+        .then((buf) => {
+            const b = new Uint8Array(buf);
+            let s = '';
+            for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+            return 'data:image/png;base64,' + btoa(s);
+        })
+        .catch(() => {
+            __crownPromise = null; // a dropped connection must not lose the mark for the session
+            return '';
+        });
+    return __crownPromise;
+}
 function ensureJsPdf() {
     if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
     if (__jspdfPromise) return __jspdfPromise;
@@ -3619,6 +3657,16 @@ async function guestRegister() {
             postcode,
             password,
         });
+        // Email already has bookings → account made, no session, link emailed
+        // (guest_register). Navigating on would land in an empty My Stays.
+        if (res && res.verify) {
+            err.style.display = 'none';
+            try {
+                await glassAlert(res.message || "Account created — we've emailed you a sign-in link. Tap it to confirm it's you.");
+            } catch (e) {}
+            closeGuestAuthModal();
+            return;
+        }
         currentGuest = res.guest;
         isAuthenticated = false;
         setAuthUI(); // one role at a time: drop any admin session
@@ -3945,6 +3993,11 @@ async function guestLogout() {
         if (IS_STAGING) sessionStorage.setItem('chb-staging-noauto', '1');
     } catch (e) {}
     currentGuest = null;
+    // The device stops being a signed-in one, so the boot's fast reveal applies
+    // again next time (the same hygiene forceAdminLogout does for chb-was-admin).
+    try {
+        localStorage.removeItem(GUEST_SEEN_KEY);
+    } catch (e) {}
     setGuestUI();
     nav('view-main');
 }
@@ -3978,8 +4031,21 @@ function guestPriceBoxHtml(p, o) {
         rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
     rows.push(`<div class="price-row total"><span>Total${o.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(o.total)}</span></div>`);
     if (o.extraRows) rows.push(o.extraRows);
-    if (o.dep > 0)
-        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Includes the ${gbp(o.dep)} refundable damages deposit — refunded after your stay.</p>`);
+    // THE DEPOSIT'S STATE, not just its amount. One static sentence served every
+    // state, so a KEPT deposit told the guest it was "refunded after your stay" — on
+    // the booking whose own invoice and PDF said it was retained for damage.
+    // depositInvoiceStatus is the derivation those two already share, so the card is
+    // a fourth reader of one decision rather than a fifth opinion. A caller with no
+    // state (the pending enquiry) falls through to its default sentence.
+    // DISPLAY AND ARITHMETIC ARE DIFFERENT QUESTIONS — invoice.php's own rule. `dep`
+    // is what is still IN the total, so a returned deposit correctly drops to 0 and
+    // left the card silent about £75 that had been taken and given back; `depWas` is
+    // what the deposit WAS and never goes to zero.
+    const depShow = o.dep > 0 ? o.dep : Math.round((Number(o.depWas) || 0) * 100) / 100;
+    if (depShow > 0) {
+        const say = depositInvoiceStatus(depShow, o.holdStatus, o.damagesReturned, o.settledDate);
+        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
+    }
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
 }
@@ -4118,10 +4184,17 @@ async function renderGuestBookings() {
     const reviewShown = new Set(); // one review block per property
     const photoShown = new Set(); // one "share a photo" button per property
     if (mine.length === 0 && pendingMine.length === 0) {
+        // A GUEST WHO HAS STAYED HERE IS NOT A NEW VISITOR. Cancelling DELETEs the
+        // booking row (dates_clash and waitlist_notify_freed depend on it going), so a
+        // guest whose only stay was cancelled — possibly with a refund in flight — was
+        // told "No Bookings Yet … once you book one of our cottages, it will appear
+        // here" by their own account. The server's completed-stays count is the one
+        // fact available here.
+        const returning = completedStays > 0;
         list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">No Bookings Yet</p>
-                    <p style="font-size:0.95rem;">Once you book one of our cottages, it will appear here.</p>
-                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">Browse Cottages</button>
+                    <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
+                    <p style="font-size:0.95rem;">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
+                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse Cottages'}</button>
                 </div>`;
         return;
     }
@@ -4212,7 +4285,11 @@ async function renderGuestBookings() {
         const currentStay = b.checkIn <= todayStr && !hasCheckedOut(b);
         if (currentStay) currentStays.push({ propKey, bookingId: b.id });
         const statusTag = upcoming
-            ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:#fff;border:1px solid var(--booked-border);">Upcoming</span>`
+            // --ok-text, not white: the tint is 25% #4CAF50 over a near-white
+            // card, so white measured 1.29:1 in the DEFAULT theme — the one badge
+            // marking a live booking was the one you had to hunt for, while both
+            // siblings in this same expression correctly take a -text token.
+            ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:var(--ok-text);border:1px solid var(--booked-border);">Upcoming</span>`
             : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
         // One review/photo block per PROPERTY — decide on THIS card, not via
         // reviewShown.has() inside the template (has() is true for every later
@@ -4239,6 +4316,14 @@ async function renderGuestBookings() {
         const priceBox = guestPriceBoxHtml(p, {
             dep: gt.dep,
             total: gt.total,
+            // The state, so the card can say what really happened to it — and what the
+            // deposit WAS, which survives it leaving the total.
+            // What the deposit WAS — the sum actually taken when there is one, else
+            // the agreed figure. invoice.php's own deposit_amount rule.
+            depWas: Number(b.holdAmount) > 0 ? Number(b.holdAmount) : depositTakenAmt(p, b),
+            holdStatus: b.holdStatus,
+            damagesReturned: b.damagesReturned,
+            settledDate: b.holdSettledAt ? fmtDate(String(b.holdSettledAt).slice(0, 10)) : '',
             extraRows:
                 gt.paid > 0
                     ? `
@@ -4951,8 +5036,11 @@ function payVerificationDetails() {
     const contact = { countryCode: 'GB' };
     if (parts.length) contact.givenName = parts[0];
     if (parts.length > 1) contact.familyName = parts.slice(1).join(' ');
+    // What is actually being taken (payChargeNow), falling back to the ask only when
+    // the slice is not yet a number — Square rejects a zero verification amount.
+    const now = Number(payChargeNow() || 0);
     return {
-        amount: Number(payState.amountDue || 0).toFixed(2),
+        amount: (now > 0 ? now : Number(payState.amountDue || 0)).toFixed(2),
         currencyCode: 'GBP',
         intent: 'CHARGE',
         customerInitiated: true,
@@ -4987,6 +5075,13 @@ function showPayError(text, retry) {
     if (err) err.style.display = '';
     if (msg) msg.textContent = text || 'Something went wrong.';
 }
+// A REFUSAL, not a hiccup: retrying any of these returns the same answer. 500 is
+// deliberately NOT here (a server error can pass), and a transport failure carries no
+// status at all — the case the retry exists for.
+const PAY_ERR_TERMINAL = [400, 403, 404, 410, 503];
+// Named once — the confirmation email is a thread the owner can answer, and Messages
+// reaches them without one.
+const PAY_ERR_WAY_OUT = 'Reply to your confirmation email and we\'ll send you a fresh link — or message us from the site and we\'ll take it from there.';
 // Held rather than closed over by the button, so re-showing the panel with a
 // different (or no) remedy can never leave the last one wired up.
 let __payRetry = null;
@@ -5135,7 +5230,7 @@ function payStepsArm() {
         if (!payState.stepsOn || payState.stepsGen !== gen) return;
         const box = document.getElementById('pay-steps');
         if (!box) return;
-        const fig = gbp(Math.round(payWalletsTarget() * 100) / 100);
+        const fig = gbp(Math.round(payChargeNow() * 100) / 100);
         const step = (i, state, l, s) =>
             `<div class="pay-step ${state}" id="pay-st-${i}"><span class="pay-step-dot" aria-hidden="true"></span><span class="pay-step-m"><span class="pay-step-lbl">${l}</span><span class="pay-step-sub">${s}</span></span></div>`;
         box.innerHTML =
@@ -5203,11 +5298,23 @@ function payDoneNextRender(res, rem) {
         payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
     ];
     if (rem > 0.005) {
+        // THE JOURNEY'S OWN VOCABULARY, or the promise before and after the payment are
+        // two documents. `rem` is the remainder of THIS ASK, so on a part-paid DEPOSIT
+        // it is the rest of the deposit — calling it "Balance" misnames it AND deletes
+        // the real balance the journey had just shown. jCtx still holds it, so say both.
+        const ctx = payState.jCtx;
+        const depPart = ctx && ctx.kind === 'deposit';
         rows.push(
             apo && apo.ok
                 ? payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, '')
-                : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
+                : depPart
+                  ? payJourneyRow('dim', `Rest of your deposit ${gbp(rem)}`, 'Still to pay — any time from your booking page', '')
+                  : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
         );
+        // …and the stay's own balance, which a deposit ask never covered.
+        if (depPart && Number(ctx.rest || 0) > 0.005) {
+            rows.push(payJourneyRow('dim', `Balance ${gbp(ctx.rest)}`, ctx.due ? `Due by ${fmtDate(ctx.due)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
+        }
     }
     rows.push(payJourneyRow('dim', 'Arrival details a week before', 'Directions, entry and everything you need', ''));
     if (Number(payState.jBack || 0) > 0.005)
@@ -5539,8 +5646,17 @@ async function openPayView(token, bookingId, kind) {
         // A DROPPED CONNECTION IS NOT THE END OF THE JOURNEY. This is the guest's
         // only way to pay, reached from an emailed link, and the panel's one control
         // was "Back to the site" — so a failed Square SDK load ended the payment.
-        showPayError(e.message || 'Could not load the payment form.', () =>
-            openPayView(token, bookingId, kind),
+        //
+        // …BUT A VERDICT IS NOT A DROPPED CONNECTION. pay.php's terminal refusals (an
+        // expired link, a booking gone, payments off) carry a status, and retrying one
+        // returns it for ever — measured, Try again reproduced the identical panel. A
+        // button that looks like the remedy and is not is worse than none, and the
+        // guest still wants to pay, so the message names what would work.
+        const terminal = PAY_ERR_TERMINAL.indexOf(Number(e && e.status)) !== -1;
+        const say = e.message || 'Could not load the payment form.';
+        showPayError(
+            terminal ? say + ' ' + PAY_ERR_WAY_OUT : say,
+            terminal ? null : () => openPayView(token, bookingId, kind),
         );
     }
 }
@@ -5855,6 +5971,11 @@ function payAutopayRender() {
     if (!payState.autopayOffer || !t || open) {
         wrap.style.display = 'none';
         wrap.innerHTML = '';
+        // THE STAND-DOWN HAS TO REACH THE CONSENT. This branch returned before
+        // payMethodsSync, so opening the part row after choosing "Monthly" reset the
+        // choice and hid the card while the consent sentence went on promising a
+        // monthly plan — the guest's own decision withdrawn with nothing said.
+        payMethodsSync();
         return;
     }
     const mo = payState.apMonthly;
@@ -5926,7 +6047,12 @@ function payMethodsSync() {
     const wrap = document.getElementById('pay-autopay');
     const offered = !!(wrap && wrap.style.display !== 'none' && payState.autopayOffer);
     const auto = offered && payState.autopayChoice !== 'self';
-    const wallets = !!payState.walletsAny;
+    // TWO REASONS THE WALLETS STAND DOWN, ONE EXPRESSION: a chosen plan (Square cannot
+    // keep a wallet card on file) and a £0 charge, which payWalletsReprice already
+    // decides from the same payChargeNow(). Folding it in stops the two undoing each
+    // other by ordering — without it, running on the hidden branch restored an empty
+    // express panel over a £0 charge.
+    const wallets = !!payState.walletsAny && Math.round(payChargeNow() * 100) / 100 > 0;
     const show = (id, on) => {
         const el = document.getElementById(id);
         if (el) el.style.display = on ? '' : 'none';
@@ -6128,7 +6254,11 @@ async function mountWallets(amountDue) {
 // button says as much). Re-mounts only when the target actually moves, so a
 // wallet button never shows a figure the guest didn't choose — the owner's
 // point: part-paying must still offer Apple/Google Pay, priced to the part.
-function payWalletsTarget() {
+// WHAT IS BEING CHARGED RIGHT NOW — one decider, read by the wallets AND by the card
+// path's 3-D Secure verification, which used to read payState.amountDue: written once
+// in openPayView, so a guest paying £60 of a £225 ask had their bank's challenge name
+// £225. That is the one moment a guest confirms an amount.
+function payChargeNow() {
     const v = payState.partView;
     const row = document.getElementById('pay-part-row');
     const open = !!(row && row.style.display !== 'none');
@@ -6140,7 +6270,7 @@ function payWalletsReprice() {
     const wrap = document.getElementById('sq-wallets');
     const orEl = document.getElementById('sq-or');
     const lblEl = document.getElementById('sq-card-label');
-    const target = Math.round(payWalletsTarget() * 100) / 100;
+    const target = Math.round(payChargeNow() * 100) / 100;
     if (!(target > 0)) {
         // Nothing to charge yet — take the wallets down and cancel any in-flight
         // mount so a late one can't paint a stale button. The express panel goes
@@ -6976,8 +7106,13 @@ async function sendConfirmationEmail(bookingId) {
 }
 
 async function downloadInvoice(bookingId) {
+    // Both fetches in ONE round trip's worth of wall clock — the crown is a
+    // separate file now, and awaiting it after jsPDF would add its latency to
+    // every export. ensureCrownPng never rejects, so only jsPDF reaches the catch.
+    let crownPng = '';
     try {
-        await ensureJsPdf();
+        const [, png] = await Promise.all([ensureJsPdf(), ensureCrownPng()]);
+        crownPng = png;
     } catch (e) {
         glassAlert("The invoice tool couldn't load — please check your connection and try again.");
         return;
@@ -7232,7 +7367,7 @@ async function downloadInvoice(bookingId) {
     // ── header: brand on the left rail, the document's own id on the right. The
     //    crown-over-brand centred lockup was the most traditional thing on the page;
     //    the serif is kept for the NAME alone, as the brand's signature.
-    try { doc.addImage(CHB_CROWN_PNG, 'PNG', left, y - 2, 20, 12); } catch (e) {}
+    if (crownPng) { try { doc.addImage(crownPng, 'PNG', left, y - 2, 20, 12); } catch (e) {} }
     doc.setFont('times', 'bold');
     doc.setFontSize(13);
     ink(INK);
@@ -7810,6 +7945,22 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         }
+        // REVEAL THE FINISHED PAGE, rather than waiting on the session round trip.
+        // The overlay is opaque #121316 at z-index 5000 and was removed only in the
+        // `finally` below — after bootstrap.php AND both session POSTs. Measured at
+        // Slow 4G (CPU x4): first paint 1,820ms is a crown on black, reveal 7,049ms,
+        // while a 2,500ms screenshot with it suppressed shows the hero, both
+        // headlines, the CTA and all three cottage cards, complete and correct (the
+        // static cards carry no prices, so nothing there is a placeholder). Reveal
+        // 5,959 -> 5,245ms. GATED ON NEVER-SIGNED-IN, because the cost lands on the
+        // other side: an owner or returning guest would watch the anonymous view
+        // flash past first. The `finally` call stays as the belt-and-braces path —
+        // hideLoadingOverlay returns early once `fade-out` is set.
+        try {
+            const everSignedIn = localStorage.getItem('chb-was-admin') || localStorage.getItem('chb-owner')
+                || localStorage.getItem(GUEST_SEEN_KEY);
+            if (!everSignedIn && !PREVIEW_MODE) hideLoadingOverlay();
+        } catch (e) {}
         // Restore admin + guest sessions — also independent, also concurrent.
         await Promise.all([
             (async () => {
@@ -9276,16 +9427,11 @@ function displayGrandTotal(rentalTotal, p, holdStatus) {
 // A manually-recorded cash/bank payment leaves hold_status 'none', so the deposit
 // is NOT counted as paid — otherwise a £100 cash deposit would show as £150 paid.
 // `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
-// Money the owner manages PERSONALLY — a recorded off-card method (cash,
-// bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
-// volunteer what they owe — no duty, no owed-later, no "to collect" share).
-// Records and direct answers keep the full state. Mirrors payment_rail incl.
-// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase. The
-// card pattern is payment_rail's, byte for byte (test-payrail holds them in
-// step): a hand-typed "Visa" must not read as card on the server and cash here.
-// Lives in app.js, not admin.js, because the GUEST's own booking card asks it
-// too — an arranged-by-hand stay must not sprout a card-pay button the moment
-// its refundable deposit reads as honestly outstanding.
+// Money the owner manages PERSONALLY (cash/bank/cheque): never volunteer what
+// they owe — no duty, no owed-later, no "to collect" share; records and direct
+// answers keep the full state. Mirrors payment_rail byte for byte, EMPTY-means-
+// card edge included (test-payrail holds them in step). In app.js because the
+// GUEST's card asks it too. See CLAUDE.md.
 function bookingOwnerArranged(b) {
     const m = String((b && b.paymentMethod) || '').trim();
     return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
@@ -9294,24 +9440,11 @@ function displayGrand(p, ps, holdStatus, b) {
     const dep = displayDepositAmt(p, holdStatus, b);
     const total = Math.round((ps.total + dep) * 100) / 100;
     const chargedDep = depositCharged(holdStatus) ? dep : 0; // only if actually collected
-    // A CASH deposit counts as paid too — the same arithmetic damages_collected
-    // uses in the ledger (what was paid ABOVE the rental, capped at the agreed
-    // deposit). hold_status is a CARD-rail fact and cash never sets it, and
-    // paymentSummary caps depositPaid at the rental total — so a guest who handed
-    // over £750 (£700 + £50 deposit, recorded as one sum) read "£50 still to
-    // come" on every owner surface while damageHeld listed the same £50 as in
-    // hand and returnable. Zero for a legacy folded-total booking (paid never
-    // exceeds the total there) and zero once the deposit is charged/settled on
-    // the card rail (holdStatus leaves 'none').
-    // ONE RENTAL FRAME, the same one damageHeld uses. This measured the cash
-    // deposit against `ps.total` while damageHeld measures it against the RENTAL
-    // (priceOverride, else rentalTotal), and the two disagreed on exactly the
-    // rows where they differ: a LEGACY booking whose agreed total already folded
-    // the deposit in had damageHeld calling the deposit collected while this
-    // called it outstanding, so the card showed a balance for money the guest had
-    // handed over — which is what the `ps.fullyPaid ||` short-circuit below was
-    // papering over. Deriving both from the rental settles it, and lets fullyPaid
-    // be honest on the rail where the deposit really is still to collect.
+    // A CASH deposit counts as paid too — damages_collected's ledger arithmetic
+    // (paid ABOVE the rental, capped at the agreed deposit), on ONE rental frame,
+    // the same one damageHeld uses (priceOverride, else rentalTotal). Measuring it
+    // against ps.total instead made the two disagree on legacy folded-total rows.
+    // Zero on a legacy booking and once the card rail has charged it. See CLAUDE.md.
     const rentalBasis = b && b.priceOverride != null
         ? Number(b.priceOverride)
         : (p && p.rentalTotal != null ? Number(p.rentalTotal) : ps.total);
@@ -9351,11 +9484,14 @@ function bookingDue(propKey, b) {
     return displayGrand(p, ps, b.holdStatus || 'none', b);
 }
 
+// BUILT ONCE, for the same reason ukNowParts is. toLocaleString constructs a fresh
+// Intl.NumberFormat per call, and this is every money figure in every row.
+let __gbpFmt = null;
 function gbp(n) {
-    return (
-        '£' +
-        Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    );
+    if (!__gbpFmt) {
+        __gbpFmt = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return '£' + __gbpFmt.format(Number(n));
 }
 
 // Total / deposit-paid / balance for a booking, using the agreed (locked) price.
@@ -9560,10 +9696,21 @@ let enquiries = [];
 let currentGuest = null; // {name,email,phone} when logged in, else null
 
 // Restore the guest session from the server cookie
+// The guest twin of `chb-was-admin`: remember the VERDICT, never the session.
+// Its one job is to tell a device that has signed in before apart from one that
+// never has, so the boot's early page reveal can skip the devices where showing
+// the anonymous view for the length of this round trip would be a visible flash.
+// Written only on a real answer — a network failure leaves the last verdict alone,
+// exactly as the admin side does, because "we could not ask" is not "signed out".
+const GUEST_SEEN_KEY = 'chb-was-guest';
 async function restoreGuestSession() {
     try {
         const res = await apiPost('auth.php', { action: 'guest_status' });
         currentGuest = res.guest || null;
+        try {
+            if (currentGuest) localStorage.setItem(GUEST_SEEN_KEY, '1');
+            else localStorage.removeItem(GUEST_SEEN_KEY);
+        } catch (_) {}
     } catch (e) {
         currentGuest = null;
     }
@@ -9594,18 +9741,29 @@ async function loadData() {
         ab = await apiGet('admin-bootstrap.php');
         if (!ab || !ab.ok) ab = null;
     } catch (e) {}
-    window.__cronStatusPre = (ab && ab.cron) || null;
-    // Per-cottage iCal feed health, from the SAME payload. The search foot's status
-    // line is not allowed to fetch, which is why only the cron was wired into it;
-    // carrying this here is what makes a stalled Airbnb sync visible before it is
-    // discovered by a double booking.
-    /** @type {any} */ (window).__feedStatusPre = (ab && Array.isArray(ab.feeds) ? ab.feeds : null);
-    // Failed payouts / open disputes, from that same payload — a duty (chbDuties)
-    // rather than a status line, because bad bank details stop every later transfer.
-    /** @type {any} */ (window).__payoutTroublePre = (ab && ab.payoutTrouble) || null;
-    // Customer emails waiting to be read, same payload again — the count the
-    // CRON's poll left behind, so no page ever waits on a mail server.
-    /** @type {any} */ (window).__newMailPre = (ab && ab.newMail) || null;
+    // HEALTH IS NEVER CLAIMED FROM IGNORANCE. These four signals all come from ONE
+    // request, and overwriting them unconditionally meant a single dropped
+    // admin-bootstrap turned every "look at this" into "all clear": measured
+    // simultaneously, Today said "Needs you 1 — your daily automation looks stopped"
+    // while Manage said "Daily jobs and calendar feeds are running" with a green
+    // "✓ All running", and the assistant's foot said "All systems normal". The last
+    // good copy is kept (the loadData rule the stores already follow) and __sigAt
+    // stamps when it was true, so a reader can tell "healthy" from "not asked".
+    if (ab) {
+        window.__cronStatusPre = ab.cron || null;
+        // Per-cottage iCal feed health, from the SAME payload. The search foot's
+        // status line is not allowed to fetch, which is why only the cron was wired
+        // into it; carrying this here is what makes a stalled Airbnb sync visible
+        // before it is discovered by a double booking.
+        /** @type {any} */ (window).__feedStatusPre = Array.isArray(ab.feeds) ? ab.feeds : null;
+        // Failed payouts / open disputes — a duty (chbDuties) rather than a status
+        // line, because bad bank details stop every later transfer.
+        /** @type {any} */ (window).__payoutTroublePre = ab.payoutTrouble || null;
+        // Customer emails waiting to be read: the count the CRON's poll left behind,
+        // so no page ever waits on a mail server.
+        /** @type {any} */ (window).__newMailPre = ab.newMail || null;
+        /** @type {any} */ (window).__sigAt = Date.now();
+    }
 
     // Shape-check each part (not just truthiness) so a malformed combined
     // payload cleanly falls back to the individual endpoint.
@@ -9695,18 +9853,47 @@ function rangesOverlap(aIn, aOut, bIn, bOut) {
     return !!(aIn && aOut && bIn && bOut) && aIn < bOut && bIn < aOut;
 }
 
-// Hide any external (iCal) block that overlaps a local booking for the same
-// property — local data takes precedence on the calendar.
+// SUBTRACT the local booking from an external block, never delete the block. The
+// case this exists for is the exact-range MIRROR — our own booking exported to
+// Airbnb and imported back — and deleting is right for that and wrong for any
+// PARTIAL overlap, which the app supports (an owner block plus a phone booking
+// saved through the clash confirm). Those lost their non-overlapping nights from
+// dbBlocks, which is what the timeline, the tl-ext bars and conflict-audit read —
+// so booked nights showed FREE on the screen the owner scans to avoid that. A true
+// mirror is fully covered, yields no remainder, and still disappears.
 function suppressBlocksUnderLocalBookings() {
     Object.keys(dbBlocks).forEach((k) => {
         const locals = dbBookings[k] || [];
         if (!locals.length) return;
-        dbBlocks[k] = (dbBlocks[k] || []).filter(
-            (bl) =>
-                !locals.some((bk) =>
-                    rangesOverlap(bl.checkIn, bl.checkOut, bk.checkIn, bk.checkOut),
-                ),
-        );
+        const out = [];
+        (dbBlocks[k] || []).forEach((bl) => {
+            // Remaining segments of [checkIn, checkOut) after removing every local
+            // booking's range. Checkout-exclusive throughout, like rangesOverlap.
+            let parts = [{ a: bl.checkIn, b: bl.checkOut }];
+            locals.forEach((bk) => {
+                if (!bk.checkIn || !bk.checkOut) return;
+                const next = [];
+                parts.forEach((p) => {
+                    if (!(p.a < bk.checkOut && bk.checkIn < p.b)) { next.push(p); return; } // no overlap
+                    if (p.a < bk.checkIn) next.push({ a: p.a, b: bk.checkIn });
+                    if (bk.checkOut < p.b) next.push({ a: bk.checkOut, b: p.b });
+                });
+                parts = next;
+            });
+            if (parts.length === 1 && parts[0].a === bl.checkIn && parts[0].b === bl.checkOut) {
+                out.push(bl); // untouched
+                return;
+            }
+            // A split keeps the block's identity on every piece (the timeline reads
+            // source/guestName off it) with its own id suffix, so nothing keyed on id
+            // collapses two segments into one.
+            parts.forEach((p, i) => out.push(Object.assign({}, bl, {
+                id: i === 0 ? bl.id : String(bl.id) + '-' + i,
+                checkIn: p.a,
+                checkOut: p.b,
+            })));
+        });
+        dbBlocks[k] = out;
     });
 }
 
@@ -9928,8 +10115,16 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
     }
     if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`))) return;
     try {
-        await apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount });
-        toast('Refund issued.');
+        const r = await apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount });
+        // Read the send outcome rather than assuming it (the deposit-return rule): the
+        // endpoint mails best-effort and reports it, and this toasted success
+        // unconditionally. The two states the owner already knows are not failures.
+        const em = r && r.email;
+        if (em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file') {
+            glassAlert(`${gbp(amount)} refunded — but the email telling the guest didn't send (${em.error}).`);
+        } else {
+            toast('Refund issued.');
+        }
         await loadData();
         renderCalendar();
         const fresh = findBookingById(bookingId);
@@ -9959,8 +10154,16 @@ function saveDismissedChangeovers(list) {
 
 // Find every same-day changeover (a checkout meeting a check-in at the same
 // property on the same date), today and into the future, for planning ahead.
+// A PLANNING FACT IS NOT AN ALERT. This collected every same-day changeover
+// forward for ever, one persistent amber card each: measured at 390x844 with
+// changeovers at +10, +95 and +200 days, three cards filled 664px of an 844px
+// screen — burying the Needs-you strip, an overdue row and the calendar — one of
+// them dated fourteen months out. Beyond acting distance the timeline carries it.
+const CHANGEOVER_HORIZON_DAYS = 7;
+const CHANGEOVER_TOAST_MAX = 2;
 function findChangeovers() {
     const todayStr = todayDashed();
+    const horizon = ukShiftDays(todayStr, CHANGEOVER_HORIZON_DAYS);
     const out = [];
     Object.keys(dbBookings).forEach((propKey) => {
         const list = dbBookings[propKey] || [];
@@ -9970,7 +10173,8 @@ function findChangeovers() {
                 if (
                     leaving.checkOut &&
                     leaving.checkOut === arriving.checkIn &&
-                    leaving.checkOut >= todayStr
+                    leaving.checkOut >= todayStr &&
+                    leaving.checkOut <= horizon
                 ) {
                     out.push({
                         key: `${propKey}|${leaving.checkOut}|${leaving.id}|${arriving.id}`,
@@ -9993,7 +10197,11 @@ function showChangeoverToasts() {
     if (!wrap) return;
     wrap.innerHTML = '';
     const dismissed = loadDismissedChangeovers();
-    const items = findChangeovers().filter((c) => !dismissed.includes(c.key));
+    const all = findChangeovers().filter((c) => !dismissed.includes(c.key));
+    // Capped, and the remainder is STATED — a silent truncation reads as "that is
+    // all of them" (the no-silent-caps rule). Three cards is already most of a
+    // phone; two leaves the strip beneath them readable.
+    const items = all.slice(0, CHANGEOVER_TOAST_MAX);
     items.forEach((c) => {
         const meta = propertyMeta[c.propKey];
         const el = document.createElement('div');
@@ -10016,6 +10224,13 @@ function showChangeoverToasts() {
         el.querySelector('.toast-dismiss').addEventListener('click', dismiss);
         wrap.appendChild(el);
     });
+    if (all.length > items.length) {
+        const more = document.createElement('div');
+        more.className = 'toast toast-more';
+        const n = all.length - items.length;
+        more.textContent = `${n} more same-day changeover${n === 1 ? '' : 's'} in the next ${CHANGEOVER_HORIZON_DAYS} days — they are on the calendar below.`;
+        wrap.appendChild(more);
+    }
 }
 
 function dismissChangeover(key, el) {
@@ -11842,6 +12057,50 @@ function enquireDraftSync(draft) {
         apiPost('enquiries.php', payload).catch(() => {});
     }, 2500);
 }
+// PICK UP WHERE YOU LEFT OFF — the read-back the draft was written for. Nothing
+// ever read chb-enq-draft, while the rescue email promised the details were kept,
+// so the guest tapped through to a blank form. Guards: the rescue cron's own
+// 3-day window, the draft's cottage must match, fill only EMPTY fields (never
+// clobber account autofill), and SAY it happened + re-check the dates. See CLAUDE.md.
+function enquireDraftRestore(key) {
+    try {
+        const wb0 = document.getElementById('enq-wb');
+        if (wb0) delete wb0.dataset.draftNote; // cleared per open, or a stale flag freezes an old note
+        const raw = localStorage.getItem(ENQ_DRAFT_KEY);
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        if (!d || typeof d !== 'object') return;
+        if (d.prop && key && d.prop !== key) return;
+        if (!d.at || Date.now() - d.at > 3 * 864e5) return;
+        let filled = 0;
+        [
+            ['enq-name', d.name],
+            ['enq-email', d.email],
+            ['enq-phone', d.phone],
+            ['enq-postcode', d.postcode],
+            ['enq-address', d.address],
+            ['enq-message', d.message],
+            ['enq-checkin', d.checkIn],
+            ['enq-checkout', d.checkOut],
+        ].forEach(([id, v]) => {
+            if (!v) return;
+            const el = /** @type {HTMLInputElement} */ (document.getElementById(id));
+            if (el && !el.value && !el.readOnly) {
+                el.value = v;
+                filled++;
+            }
+        });
+        if (!filled) return;
+        const wb = document.getElementById('enq-wb');
+        if (wb) {
+            wb.textContent = d.checkIn
+                ? 'Picked up where you left off — worth checking those dates are still free.'
+                : 'Picked up where you left off.';
+            wb.style.display = '';
+            wb.dataset.draftNote = '1';
+        }
+    } catch (e) {}
+}
 function enquireDraftClear() {
     try {
         localStorage.removeItem(ENQ_DRAFT_KEY);
@@ -11898,6 +12157,8 @@ function openEnquireModal() {
         if (el) el.style.display = showAcct ? '' : 'none';
     });
     applyOccupancyToForm(key); // ensure steppers/children reflect this cottage's limits
+    // BEFORE the date trigger and the price box, so both reflect what was restored.
+    enquireDraftRestore(key);
     refreshDateTrigger();
     updateEnquiryPrice();
     try {
@@ -11925,6 +12186,7 @@ function enquireBack() {
     setEnqMsg('details', '');
 }
 // Light up the progress indicator (1 = Your stay, 2 = Your details, 3 = Account).
+let __enqStepWas = 0;
 function setEnqStep(n) {
     const p1 = document.getElementById('enq-prog-1'),
         p2 = document.getElementById('enq-prog-2'),
@@ -11932,6 +12194,18 @@ function setEnqStep(n) {
     if (p1) p1.classList.toggle('done', n >= 2);
     if (p2) p2.classList.toggle('on', n >= 2);
     if (p3) p3.classList.toggle('on', n >= 3);
+    // A STEP CHANGE IS ANNOUNCED. Every one of these swapped `display` and left
+    // focus wherever it was — which, after the Continue button it was on has just
+    // been hidden, is <body>: outside the dialog, so the Tab trap (which only
+    // redirects at the first/last focusable of the open dialog) does nothing and the
+    // next Tab walks into the page behind. Focus the step's own heading, which is
+    // also what tells a screen-reader user the screen changed. Only on a real
+    // CHANGE, so the modal's own open (which focusInto handles) is untouched.
+    if (n !== __enqStepWas && __enqStepWas !== 0) {
+        const target = document.getElementById(n === 3 ? 'enq-h-sent' : n === 2 ? 'enq-h-details' : 'enq-date-trigger');
+        if (target) setTimeout(() => { try { target.focus({ preventScroll: true }); } catch (e) {} }, 40);
+    }
+    __enqStepWas = n;
 }
 // Inline validation message inside the enquiry popup (replaces blocking
 // glassAlert for the two-step form). step = 'review' | 'details'.
@@ -12058,6 +12332,20 @@ async function saveRateField(propKey, field, value) {
 async function updateRate(propKey, field, value) {
     const num = Math.max(0, parseFloat(value) || 0);
     if (!propertyRates[propKey]) propertyRates[propKey] = Object.assign({}, defaultRates[propKey]);
+    // A NIGHTLY RATE OF ZERO IS NEVER A PRICE — the field saves on BLUR, so clearing
+    // it to retype stored 0 and gave the cottage away. rates.php refuses it too; this
+    // guard stops the mirror (and every price on screen) going to £0 meanwhile.
+    if (field === 'coupleRate' && num <= 0) {
+        try {
+            glassAlert('Please set a nightly couple rate above £0 — a cottage priced at zero would be given away.');
+        } catch (e) {}
+        try {
+            const back = Number(propertyRates[propKey] && propertyRates[propKey][field]) || 0;
+            const el = /** @type {HTMLInputElement} */ (document.getElementById('acr-' + propKey + '-' + field));
+            if (el) el.value = String(back);
+        } catch (e) {}
+        return;
+    }
     propertyRates[propKey][field] = num; // instant UI update
     renderCalendar();
     renderCardPrices();
@@ -12493,21 +12781,28 @@ function chbClockSync(srv) {
 function chbNow() {
     return new Date(Date.now() + CHB_CLOCK.skew);
 }
+// BUILT ONCE. An Intl.DateTimeFormat is expensive to construct and free to reuse,
+// and this is the app's CLOCK — todayDashed() and ukNowMinutes() both read it, so
+// every date comparison in every render built a fresh one. LAZY: a guest browsing
+// the cottage list makes zero calls and must not pay for a formatter it never uses.
+// Gated by smoke-test §12d.
+let __ukFmt = null;
 function ukNowParts() {
     const parts = {};
-    new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-    })
-        .formatToParts(chbNow())
-        .forEach((p) => {
-            if (p.type !== 'literal') parts[p.type] = p.value;
+    if (!__ukFmt) {
+        __ukFmt = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/London',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
         });
+    }
+    __ukFmt.formatToParts(chbNow()).forEach((p) => {
+        if (p.type !== 'literal') parts[p.type] = p.value;
+    });
     return { y: +parts.year, m: +parts.month, d: +parts.day, hh: +parts.hour, mm: +parts.minute };
 }
 // Minutes past midnight on the UK wall clock — the cottage's clock, not the
@@ -13031,9 +13326,20 @@ document.addEventListener('keydown', (e) => {
     let lastTrigger = null;
     const isOpen = (el) => el.classList.contains('open');
     const focusInto = (el) => {
+        // A DIALOG MAY NAME ITS OWN ENTRY POINT. The heuristic below is right for a
+        // form whose first field is an <input>, and wrong for the enquiry modal, where
+        // the dates and the party counts are all `type=hidden` behind buttons: the
+        // first match was #enq-faq-q, the OPTIONAL "Parking? Wifi? The beach?" box —
+        // measured at top 995 in an 844px viewport, so the caret opened off screen and
+        // a screen reader announced the dialog as the FAQ ask box, with "choose your
+        // dates" the fourth tab stop, after the button that leaves the step.
+        let target = null;
+        const named = el.getAttribute('data-focus');
+        if (named) target = el.querySelector(named);
+        if (!target) target = el.querySelector('[autofocus]');
         // Prefer the first real form field; otherwise focus the dialog box itself
         // (so screen readers announce the dialog) rather than the close button.
-        let target = el.querySelector(
+        if (!target) target = el.querySelector(
             'input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
         );
         if (!target || target.offsetParent === null) {
@@ -13327,6 +13633,7 @@ function openDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 // The SAME glass picker for the back-office Add/Edit Booking modal. Taken
@@ -13342,6 +13649,7 @@ function openBookingDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.add('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 // Keep the modal's date trigger label in sync with the hidden inputs.
@@ -13362,6 +13670,17 @@ function refreshModalDateTrigger() {
         trigger.classList.remove('has-dates');
     }
 }
+// WHO OPENED THE PICKER. The dialogs it opens FROM stay open behind it, so closing
+// it must hand focus back into them — otherwise activeElement is <body>, outside any
+// dialog, and the Tab trap only redirects at the first/last focusable of the OPEN
+// dialog, so it does nothing. Measured: focus BODY → Tab 1 landed on the theme
+// toggle. Fixed for the glass-form case alone; the guest surfaces were left.
+/** @type {HTMLElement|null} */
+let __dpOpener = null;
+function dpRememberOpener() {
+    const a = /** @type {HTMLElement|null} */ (document.activeElement);
+    __dpOpener = a && a !== document.body && typeof a.focus === 'function' ? a : null;
+}
 function closeDatePicker() {
     const dp = document.getElementById('date-picker');
     // Raised ABOVE the glass dialog (a daterange field)? Hand focus back to the
@@ -13370,10 +13689,12 @@ function closeDatePicker() {
     const overGlass = dp.classList.contains('dp-over-glass');
     dp.classList.remove('open');
     dp.classList.remove('dp-over-glass');
-    if (overGlass && dpTarget && dpTarget.trigger) {
-        const t = document.getElementById(dpTarget.trigger);
-        if (t) try { t.focus(); } catch (e) {}
-    }
+    // The named trigger first, else whatever had focus when the picker went up — and
+    // only if it is still in the document and painting (a re-render replaces nodes).
+    let back = overGlass && dpTarget && dpTarget.trigger ? document.getElementById(dpTarget.trigger) : null;
+    if (!back && __dpOpener && document.contains(__dpOpener) && __dpOpener.getClientRects().length) back = __dpOpener;
+    if (back) try { back.focus({ preventScroll: true }); } catch (e) {}
+    __dpOpener = null;
     // Hand the picker back to the page's cottage: a CANCELLED waitlist pick would else
     // leave the enquiry form shading someone else's bookings, looking perfectly normal.
     dpProp = null;
@@ -14124,6 +14445,7 @@ function openFieldDatePicker(target) {
     const gd = document.getElementById('glass-dialog');
     dp.classList.toggle('dp-over-glass', !!(gd && gd.classList.contains('open')));
     renderDatePicker();
+    dpRememberOpener();
     dp.classList.add('open');
 }
 // One wording for every trigger's label.
@@ -14140,6 +14462,7 @@ function openHeroDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 function hsSetFlex(n) {
@@ -15397,6 +15720,10 @@ function enqOrdinalWord(n) {
 function enqWelcomeSync() {
     const el = document.getElementById('enq-wb');
     if (!el) return;
+    // This slot is shared with the picked-up-where-you-left-off note, and this
+    // function runs AFTER the restore. For a stranger — the rescue email's actual
+    // audience — html is '' here, so an unguarded write would blank the very note
+    // that explains why their form is already full.
     let html = '';
     if (currentGuest && Array.isArray(__wbStays)) {
         const today = todayDashed();
@@ -15406,6 +15733,7 @@ function enqWelcomeSync() {
             html = `Welcome back${first ? ', <b>' + escapeHtml(first) + '</b>' : ''} — this would be your <b>${enqOrdinalWord(past + 1)} stay</b> with us, so your details are already filled in.`;
         }
     }
+    if (!html && el.dataset.draftNote === '1') return; // leave the restore note alone
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
 }
@@ -15981,12 +16309,34 @@ async function submitEnquiry(propKey) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
             }
         }
+        // NO EMAIL, NO EMAIL PROMISES. Both this client and enquiries.php deliberately
+        // accept an enquiry with a phone and no address — a guest who prefers to be
+        // called — and the sent screen then promised an email three times and offered
+        // an account step that CANNOT work (enquireCreateAccount answers "We need a
+        // valid email", on a screen with no email field and no way back). Everything
+        // here is rewritten to what will actually happen.
+        const noEmail = !String(email || '').trim();
+        const howEl = document.getElementById('enq-sent-how');
+        if (howEl) {
+            howEl.textContent = noEmail
+                ? `George replies personally — usually the same day. He'll call you${phone ? ' on ' + phone : ''}.`
+                : 'George replies personally — usually the same day, by email.';
+        }
+        const todayEl = document.getElementById('enq-sched-today');
+        if (todayEl) {
+            todayEl.textContent = noEmail
+                ? 'A call to confirm your dates & price, and how to pay'
+                : 'An email confirming your dates & price, with a secure payment link';
+        }
         // If this email already has an account, show "sign in" instead of "create".
         const exists = !!(enqResp && enqResp.account_exists);
         const newBlk = document.getElementById('enq-acct-new');
         const existBlk = document.getElementById('enq-acct-existing');
-        if (newBlk) newBlk.style.display = exists ? 'none' : '';
-        if (existBlk) existBlk.style.display = exists ? '' : 'none';
+        // An account is keyed on an email address, so with none there is nothing to
+        // create and nothing to recover — the step is withheld rather than offered
+        // and then refused.
+        if (newBlk) newBlk.style.display = exists || noEmail ? 'none' : '';
+        if (existBlk) existBlk.style.display = exists && !noEmail ? '' : 'none';
         const d = document.getElementById('enquire-step-details');
         if (d) d.style.display = 'none';
         acctStep.style.display = '';
@@ -16094,6 +16444,17 @@ async function enquireCreateAccount() {
             postcode: __enqAcct.postcode,
             password: pwd,
         });
+        // As above — but the enquiry HAS been sent either way, so say both.
+        if (res && res.verify) {
+            __enqAcct = null;
+            resetEnquiryForm();
+            try {
+                closeEnquireModal();
+            } catch (e) {}
+            enquireDraftClear();
+            toast("Enquiry sent. We've emailed you a sign-in link to confirm it's you.");
+            return;
+        }
         currentGuest = res.guest;
         isAuthenticated = false;
         setAuthUI(); // one role at a time
@@ -17755,7 +18116,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'paytempo1';
+    const BUILD = 'perf292';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

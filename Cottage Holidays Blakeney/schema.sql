@@ -32,11 +32,20 @@ CREATE TABLE IF NOT EXISTS properties (
 CREATE TABLE IF NOT EXISTS guests (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     name          VARCHAR(160)  NOT NULL,
-    email         VARCHAR(190)  NOT NULL UNIQUE,
+    -- COLLATE stated, not inherited: every "same person" lookup is a plain
+    -- `email = ?` so it can use the index (migration-112), and plain equality is
+    -- only case-insensitive because this collation is. Don't drop the COLLATE.
+    email         VARCHAR(190)  COLLATE utf8mb4_general_ci NOT NULL UNIQUE,
     phone         VARCHAR(60)   NULL,
     address       TEXT          NULL,
     postcode      VARCHAR(12)   NULL,
     password_hash VARCHAR(255)  NOT NULL,             -- bcrypt via password_hash()
+    -- Proof the address is really theirs (migration-111). Only the magic link can
+    -- set it, because the link is emailed TO that address. NULL = registered against
+    -- an email that already had bookings and not yet confirmed: password sign-in is
+    -- refused until then, or anyone who guessed a guest's email would inherit their
+    -- stay. A brand-new address has nothing to claim and is stamped at registration.
+    email_verified_at DATETIME  NULL,
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -45,7 +54,7 @@ CREATE TABLE IF NOT EXISTS enquiries (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     prop_key     VARCHAR(32)  NOT NULL,
     name         VARCHAR(160) NOT NULL,
-    email        VARCHAR(190) NULL,
+    email        VARCHAR(190) COLLATE utf8mb4_general_ci NULL,
     phone        VARCHAR(60)  NULL,
     address      TEXT         NULL,
     postcode     VARCHAR(12)  NULL,
@@ -68,7 +77,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     id             INT AUTO_INCREMENT PRIMARY KEY,
     prop_key       VARCHAR(32)  NOT NULL,
     name           VARCHAR(160) NOT NULL,
-    email          VARCHAR(190) NULL,
+    email          VARCHAR(190) COLLATE utf8mb4_general_ci NULL,
     phone          VARCHAR(60)  NULL,
     address        TEXT         NULL,
     postcode       VARCHAR(12)  NULL,

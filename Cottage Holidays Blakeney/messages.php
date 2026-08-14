@@ -377,7 +377,7 @@ if ($isAdmin && empty($in['token'])) {
             if (!empty($thread['email'])) {
                 try {
                     $b = db()->prepare(
-                        'SELECT id, prop_key, check_in, check_out, payment FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY check_in DESC LIMIT 10',
+                        'SELECT id, prop_key, check_in, check_out, payment FROM bookings WHERE email = ? ORDER BY check_in DESC LIMIT 10',
                     );
                     $b->execute([$thread['email']]);
                     $bookings = array_map(

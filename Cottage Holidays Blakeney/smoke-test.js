@@ -830,6 +830,31 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     // frosted panels re-blur every frame while idle — the mobile GPU/battery fix).
     check('hero drift is not infinite (perf regression guard)', !/heroDrift[^;{]*infinite/.test(cssText));
 
+    // THE LCP IMAGE IS RIGHT-SIZED, AND ONLY PRELOADED WHERE IT PAINTS.
+    // The upload is 1920×1440 (~726KB after htaccess's WebP negotiation) for a box
+    // that is 1170 device px on a phone — the largest asset every anonymous visitor
+    // pays for. And #hero lives inside <main id="view-main">, which the cottage and
+    // experiences routes leave display:none, so those two were pulling it at
+    // fetchpriority=high for an element they never show.
+    {
+        const heroShell = fs.readFileSync(path.join(__dirname, 'hero-shell.php'), 'utf8');
+        const cottageSrc = fs.readFileSync(path.join(__dirname, 'cottage.php'), 'utf8');
+        const expSrc = fs.readFileSync(path.join(__dirname, 'experiences-page.php'), 'utf8');
+        check('the hero preload is served through img.php, not the full-size upload',
+            /\$sized\s*=\s*'img\.php\?src='/.test(heroShell) && /href="'\s*\.\s*\$sized/.test(heroShell));
+        check('…and the hero element asks for the SAME sized URL (or the photo downloads twice)',
+            (heroShell.match(/img\.php\?src=/g) || []).length >= 2);
+        check('…at a width the phone can use (1200, not the 900 default that upscales)',
+            /w=1200/.test(heroShell) && !/&amp;w=900/.test(heroShell));
+        check('social previews keep the full-size original',
+            /str_replace\(\$origin \. '\/hero\.jpg', \$heroAbs/.test(heroShell));
+        // NB not [^)]* — the cottage call contains $cv('hero-bg'), whose own ')'
+        // ends the class before the argument being asserted is reached.
+        const noPreload = (s) => /inject_live_hero\(.*,\s*false\s*\)/.test(s);
+        check('the routes that never paint #hero do not preload it',
+            noPreload(cottageSrc) && noPreload(expSrc));
+    }
+
     // SEO: the footer carries REAL crawlable /cottages/ links, rebuilt from the
     // live list, with the SPA-nav helpers that keep them clickable in-app.
     check('footer has real /cottages/ crawlable links', /href="\/cottages\//.test(html));
@@ -913,12 +938,13 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const SHEET_BOTTOM = A4.H - 44;
         const isStamp = (t) => /^(Page \d+ of \d+|Invoice CHB-\d+)$/.test(t.s) && t.y > SHEET_BOTTOM;
         const mkDoc = () => {
-            const calls = { text: [], pages: 1, colours: [], fills: [], saved: '', props: null, lang: '', on: 0 };
+            const calls = { text: [], pages: 1, colours: [], fills: [], saved: '', props: null, lang: '', on: 0, images: [] };
             let ink = [0, 0, 0];
             const doc = {
                 internal: { pageSize: { getWidth: () => A4.W, getHeight: () => A4.H } },
                 setFillColor(...c) { calls.fills.push(c.join(',')); }, setDrawColor() {}, setFont() {}, setFontSize() {},
-                rect() {}, roundedRect() {}, line() {}, addImage() {}, setCharSpace() {}, setLineWidth() {},
+                rect() {}, roundedRect() {}, line() {}, setCharSpace() {}, setLineWidth() {},
+                addImage(data, fmt) { calls.images.push({ data: String(data), fmt: String(fmt) }); },
                 setProperties(o) { calls.props = o; }, setLanguage(l) { calls.lang = l; },
                 getNumberOfPages() { return calls.pages; },
                 setPage(n) { calls.on = n; },
@@ -946,6 +972,18 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         // for a guest. Seeded so the how-to-pay branch can be driven at all.
         vm.runInContext("siteContent['bacs-details'] = 'Cottage Holidays Blakeney\\nSort 01-02-03  ·  Acct 12345678';", ctx);
         sandbox.window.ensureJsPdf = async () => {};
+        // The crown is a real FILE now, so the harness serves it the way the host
+        // does — the real ensureCrownPng runs, and its base64 encoder is exercised
+        // rather than stubbed past. `noCrown` drives the failure branch.
+        const CROWN_BYTES = fs.readFileSync(path.join(__dirname, 'crown.png'));
+        let crownFetches = 0;
+        let noCrown = false;
+        sandbox.fetch = (url) => {
+            if (!/^crown\.png\?v=/.test(String(url))) return Promise.reject(new Error('no network in smoke test'));
+            crownFetches++;
+            if (noCrown) return Promise.resolve({ ok: false, status: 404 });
+            return Promise.resolve({ ok: true, status: 200, arrayBuffer: async () => CROWN_BYTES.buffer.slice(CROWN_BYTES.byteOffset, CROWN_BYTES.byteOffset + CROWN_BYTES.byteLength) });
+        };
         sandbox.window.jspdf = { jsPDF: function () { const m = mkDoc(); captured = m.calls; return m.doc; } };
         // dbBookings / propertyMeta / propertyRates are `const`, so in a vm context
         // they live in the script's LEXICAL scope and never appear on the sandbox
@@ -1204,9 +1242,91 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
                     stamps.map((t) => t.s).join(' | ') || 'nothing stamped');
             }
         };
+        // -- §12e THE CROWN IS A FILE, AND IT IS THE SAME CROWN -----------------
+        //    Moving an 8KB image out of app.js is only a win if the letterhead is
+        //    unchanged, so this compares the bytes jsPDF is HANDED against
+        //    crown.png on disk — the base64 encoder in ensureCrownPng is the new
+        //    code, and a wrong encoding would draw noise, not nothing. The failure
+        //    branch matters just as much: a 404 must cost the mark, never the
+        //    invoice, because the export is how a guest gets their document.
+        const crownProbe = async () => {
+            vm.runInContext('__crownPromise = null;', ctx);
+            crownFetches = 0;
+            noCrown = false;
+            const c = await run({});
+            const img = (c.images || []).find((i) => i.fmt === 'PNG');
+            check('PDF: the crown is drawn', !!img && img.data.startsWith('data:image/png;base64,'),
+                img ? img.data.slice(0, 30) : 'no image drawn');
+            if (img) {
+                const got = Buffer.from(img.data.split(',')[1], 'base64');
+                check('PDF: …and it is crown.png, byte for byte', got.equals(CROWN_BYTES),
+                    `${got.length} bytes drawn vs ${CROWN_BYTES.length} on disk`);
+            }
+            // Memoised: a second export must not re-fetch it.
+            await run({});
+            check('PDF: the crown is fetched ONCE per session', crownFetches === 1, `${crownFetches} fetches`);
+            // …and a failed fetch loses the mark, not the invoice.
+            vm.runInContext('__crownPromise = null;', ctx);
+            noCrown = true;
+            const bare = await run({});
+            check('PDF: a missing crown still produces the invoice',
+                !!bare && bare.saved.includes('CHB-000042') && (bare.images || []).length === 0,
+                bare ? `${(bare.images || []).length} images, saved "${bare.saved}"` : 'nothing produced');
+            // …and it clears the memo, so the NEXT export tries again.
+            noCrown = false;
+            const again = await run({});
+            check('PDF: …and the next export tries again', (again.images || []).length === 1,
+                `${(again.images || []).length} images`);
+            vm.runInContext('__crownPromise = null;', ctx);
+        };
         pendingChecks.push(
-            (async () => { await probe(); })().catch((e) => fail('PDF invoice probe threw: ' + e.message)),
+            (async () => { await probe(); await crownProbe(); })().catch((e) => fail('PDF invoice probe threw: ' + e.message)),
         );
+    }
+    // The RATCHET that keeps the win: app.js is the file every anonymous visitor
+    // downloads, and a base64 image inside it is bytes gzip cannot compress
+    // charged to people who will never see the picture. Deliberately a size
+    // threshold rather than a ban — a tiny inline SVG cursor or 1px spacer is a
+    // legitimate thing to inline; 1KB of base64 is an asset that wants a URL.
+    {
+        const guestJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8')
+            + fs.readFileSync(path.join(__dirname, 'guest-app.js'), 'utf8');
+        const big = (guestJs.match(/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]{1024,}/g) || []);
+        check('no base64 image over 1KB rides the guest JS', big.length === 0,
+            big.map((s) => `${s.slice(0, 24)}… (${s.length} chars)`).join(' | '));
+        // crown.png is owner-only, so it must NOT join the guest precache.
+        const swSrc = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+        const core = (swSrc.match(/const CORE\s*=\s*\[([\s\S]*?)\]/) || [])[1] || '';
+        check('sw.js CORE parses (vacuity guard)', core.length > 40, `${core.length} chars`);
+        check('crown.png stays OUT of the guest precache', !/crown\.png/.test(core));
+        check('crown.png exists and is a PNG',
+            fs.existsSync(path.join(__dirname, 'crown.png'))
+            && fs.readFileSync(path.join(__dirname, 'crown.png')).slice(0, 8).toString('hex') === '89504e470d0a1a0a');
+    }
+
+    // §12f THE FONTS ARE VERSIONED BY THEIR OWN CONTENT.
+    // htaccess serves woff2 `immutable, max-age=31536000`, so an unpinned font
+    // URL is a file no returning visitor can ever be given a new copy of. The
+    // pin is the first 8 hex of the file's sha256 — derived, so this check can
+    // print the value to paste rather than asking anyone to remember a stamp —
+    // and app.css's @font-face must agree with index.html's PRELOAD exactly, or
+    // the preload warms a URL nothing then asks for.
+    {
+        console.log('\n== 12f. The fonts carry a content pin, and one pin ==');
+        const cssSrc = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
+        const htmlSrc = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        const fontFiles = fs.readdirSync(path.join(__dirname, 'fonts')).filter((f) => f.endsWith('.woff2'));
+        check('fonts/ holds woff2 files (vacuity guard)', fontFiles.length >= 2, `${fontFiles.length} found`);
+        fontFiles.forEach((f) => {
+            const want = require('crypto').createHash('sha256')
+                .update(fs.readFileSync(path.join(__dirname, 'fonts', f))).digest('hex').slice(0, 8);
+            const inCss = (cssSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
+            const inHtml = (htmlSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
+            check(`${f}: app.css pins its content hash`, inCss === want,
+                inCss ? `pinned ?v=${inCss}, file hashes to ${want}` : `no ?v= at all — use ?v=${want}`);
+            check(`${f}: …and the preload asks for the SAME url`, !!inHtml && inHtml === inCss,
+                `preload ?v=${inHtml || 'none'} vs stylesheet ?v=${inCss || 'none'}`);
+        });
     }
 
     // THE DEPOSIT ON A GUEST'S INVOICE IS THE SUM TAKEN, NOT THE SUM AGREED.
@@ -1510,6 +1630,132 @@ console.log('\n== 12. The clash guard has exactly one bypass, and it is a human 
         `every override_clash is set only after a confirm${unconfirmed.length ? ' — ' + unconfirmed.map((s) => s.file).join(', ') : ''}`,
         unconfirmed.length === 0,
     );
+}
+
+// ---- 12b. Backing out of "Add accommodation" creates nothing ----------------
+// A new cottage goes LIVE the moment it is created — public page, enquirable, no
+// photos, default text — so the dialog that creates one has to be dismissable. The
+// last step used to be a glassConfirm used as a two-way choice ("OK = private ·
+// Cancel = list it publicly") with no third branch, and glassConfirm resolves FALSE
+// on Cancel AND on Escape: a reflexive dismissal PUBLISHED the cottage. It is one
+// glassForm now, which resolves null on both.
+//
+// Asserted on the SOURCE rather than driven: the browser suites drive this dialog
+// through three different dismissal routes and each one left the promise unsettled
+// and hung the run, which is a lot of machinery to prove a property the code states
+// exactly. Both halves are checked, so it cannot pass vacuously — the function must
+// use the dialog type whose dismissal aborts, and must NOT gate the create on the
+// one whose dismissal is an answer.
+console.log('\n== 12b. Adding a cottage has a way out ==');
+{
+    const src = fs.readFileSync(path.join(__dirname, 'admin.js'), 'utf8');
+    const i = src.indexOf('async function addAccommodationPrompt');
+    const body = i < 0 ? '' : src.slice(i, src.indexOf('\n}', i));
+    check('addAccommodationPrompt was found', body.length > 200);
+    check('…it asks with a glassForm, which resolves null on Cancel AND Escape', /await glassForm\(/.test(body));
+    check('…and aborts on that null before creating anything', /if \(!vals\) return/.test(body));
+    check(
+        '…with no glassConfirm deciding the listing, whose dismissal is an ANSWER',
+        !/glassConfirm\(/.test(body),
+    );
+}
+
+// ---- 12c. An external block loses only the nights a booking really covers ----
+// suppressBlocksUnderLocalBookings drops an iCal/owner block whenever it overlaps a
+// local booking AT ALL. The case it exists for is the exact-range MIRROR (our own
+// booking exported to Airbnb and imported back), and for any PARTIAL overlap it
+// removed the non-overlapping nights from dbBlocks too — which is what the owner's
+// timeline, the tl-ext bars and conflict-audit read. So an owner block 01–15 Sep
+// with a phone booking 01–03 Sep saved through the clash confirm left 03–15 Sep
+// showing FREE on the one screen the owner scans to avoid double-booking.
+console.log('\n== 12c. A partial overlap subtracts nights, it does not delete the block ==');
+{
+    const nights = (list) => list.map((b) => b.checkIn + '→' + b.checkOut).join(', ');
+    // SNAPSHOT the two stores: they are module-level objects mutated in place, and
+    // later sections render real bookings out of them (the PDF probe failed on the
+    // first run of this block for exactly that).
+    const savedStores = vm.runInContext('JSON.stringify({bk:dbBookings,bl:dbBlocks})', ctx);
+    const run = (bookings, blocks) => {
+        vm.runInContext(
+            'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]);' +
+            'Object.keys(dbBlocks).forEach(k=>delete dbBlocks[k]);' +
+            'dbBookings.t=' + JSON.stringify(bookings) + '; dbBlocks.t=' + JSON.stringify(blocks) + ';' +
+            'suppressBlocksUnderLocalBookings();',
+            ctx,
+        );
+        return vm.runInContext('dbBlocks.t.map(b=>({checkIn:b.checkIn,checkOut:b.checkOut,id:String(b.id)}))', ctx);
+    };
+    // The MIRROR still disappears — that is what this function is for.
+    const mirror = run(
+        [{ id: 1, checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+        [{ id: 'x1', source: 'airbnb', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+    );
+    check(`an exact-range mirror still disappears (${nights(mirror) || 'none'})`, mirror.length === 0);
+    // A PARTIAL overlap keeps the nights the booking does not cover.
+    const partial = run(
+        [{ id: 1, checkIn: '2026-09-01', checkOut: '2026-09-03' }],
+        [{ id: 'x1', source: 'owner', checkIn: '2026-09-01', checkOut: '2026-09-15' }],
+    );
+    check(
+        `a partial overlap keeps the rest of the block (${nights(partial) || 'NOTHING — the nights read as free'})`,
+        partial.length === 1 && partial[0].checkIn === '2026-09-03' && partial[0].checkOut === '2026-09-15',
+    );
+    // A booking INSIDE a block splits it, rather than clearing both sides.
+    const split = run(
+        [{ id: 1, checkIn: '2026-09-05', checkOut: '2026-09-08' }],
+        [{ id: 'x1', source: 'owner', checkIn: '2026-09-01', checkOut: '2026-09-15' }],
+    );
+    check(
+        `a booking in the MIDDLE splits the block in two (${nights(split) || 'NOTHING'})`,
+        split.length === 2 && split[0].checkOut === '2026-09-05' && split[1].checkIn === '2026-09-08',
+    );
+    check('…and the two halves carry distinct ids', split.length === 2 && split[0].id !== split[1].id);
+    // A block nowhere near a booking is untouched.
+    const clear = run(
+        [{ id: 1, checkIn: '2026-10-01', checkOut: '2026-10-03' }],
+        [{ id: 'x1', source: 'airbnb', checkIn: '2026-09-01', checkOut: '2026-09-04' }],
+    );
+    check(`an unrelated block is untouched (${nights(clear)})`, clear.length === 1 && clear[0].checkIn === '2026-09-01');
+    vm.runInContext(
+        'var __s = ' + savedStores + ';' +
+        'Object.keys(dbBookings).forEach(k=>delete dbBookings[k]); Object.assign(dbBookings, __s.bk);' +
+        'Object.keys(dbBlocks).forEach(k=>delete dbBlocks[k]); Object.assign(dbBlocks, __s.bl);',
+        ctx,
+    );
+}
+
+// ---- 12d. The clock and the money format are built ONCE ---------------------
+// An Intl.DateTimeFormat is expensive to construct and free to reuse. ukNowParts
+// is the app's CLOCK — todayDashed() and ukNowMinutes() both read it, so every
+// date comparison in every render went through a fresh one — and gbp() called
+// Number#toLocaleString, which constructs an Intl.NumberFormat per call, on every
+// money figure in every row. Measured through the real boot with the constructors
+// counted: a guest boot went 13 → 1 and an owner boot 51 → 2 (on an EMPTY booking
+// list; the render loops that call these per row are what make it thousands on a
+// real one). Lazy, so a guest who never sees a price never builds the money one.
+console.log('\n== 12d. The clock and the money format are built once ==');
+{
+    // Count constructions in the SANDBOX's own realm, which is where app.js ran.
+    vm.runInContext('__intlCount = { d: 0, n: 0 };', ctx);
+    vm.runInContext(
+        'var __RD = Intl.DateTimeFormat, __RN = Intl.NumberFormat;' +
+        'Intl.DateTimeFormat = function (...a) { __intlCount.d++; return new __RD(...a); };' +
+        'Intl.NumberFormat = function (...a) { __intlCount.n++; return new __RN(...a); };',
+        ctx,
+    );
+    // Warm them, then call each MANY times: the property is that the count does not
+    // grow with the calls, which is exactly what a per-call constructor fails.
+    vm.runInContext('todayDashed(); gbp(1); __intlCount = { d: 0, n: 0 };', ctx);
+    const counted = vm.runInContext(
+        'for (let i = 0; i < 200; i++) { todayDashed(); ukNowMinutes(); gbp(i + 0.5); } __intlCount;',
+        ctx,
+    );
+    check(`600 clock/money calls construct no new date formatter (${counted.d})`, counted.d === 0);
+    check(`…and no new number formatter (${counted.n})`, counted.n === 0);
+    // …and the money format is unchanged by the swap from toLocaleString.
+    const money = vm.runInContext('[gbp(0), gbp(1234.5), gbp(-12.345), gbp(1e6)].join(" | ")', ctx);
+    check(`the money format is byte-identical (${money})`, money === '£0.00 | £1,234.50 | £-12.35 | £1,000,000.00');
+    vm.runInContext('Intl.DateTimeFormat = __RD; Intl.NumberFormat = __RN;', ctx);
 }
 
 // ============================================================

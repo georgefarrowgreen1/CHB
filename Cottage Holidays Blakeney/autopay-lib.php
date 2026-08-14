@@ -519,6 +519,13 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
 {
     $bookingId = (int) $b['id'];
     $sqId = (string) ($payment['id'] ?? '');
+    // READ WHAT WAS PAID *BEFORE* THE LEDGER ROW LANDS. booking_paid_so_far reads
+    // booking_ledger_net, so once the INSERT below has run it ALREADY contains this
+    // collection — adding $rental to a reading taken afterwards counts it twice, which
+    // on a monthly plan makes deposit_paid run ahead of the money and the last
+    // instalment is never collected. pay.php snapshots before its own INSERT for the
+    // same reason.
+    $prior = booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]);
     $fee = null;
     if (!empty($payment['processing_fee']) && is_array($payment['processing_fee'])) {
         $cents = 0;
@@ -546,9 +553,9 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
         } catch (\Throwable $e) {
         }
     }
-    // Read the paid figure back through the shared helper rather than adding
-    // to a number carried in from before the lock — the one definition rule.
-    $paid = round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]) + $rental, 2);
+    // The paid figure comes from the shared helper — read ABOVE, before the ledger
+    // row for this collection existed (see $prior).
+    $paid = round($prior + $rental, 2);
     $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
     $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
     // A MONTHLY plan advances to its next scheduled date (NULL once done) and
@@ -559,16 +566,31 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
     $nextAt = booking_autopay_next_after($b, $gate !== '' ? $gate : $today);
     try {
         db()
-            ->prepare('UPDATE bookings SET deposit_paid = ?, payment_status = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_attempts = 0 WHERE id = ?')
+            ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_attempts = 0 WHERE id = ?')
             ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $nextAt, $bookingId]);
     } catch (\Throwable $e) {
         // migration-108 not applied — keep the pre-instalment write so a single
-        // collection still records exactly as it always did.
+        // collection still records exactly as it always did. NB the column is
+        // `payment` (the ENUM), NOT `payment_status`: naming a column that does not
+        // exist threw here AND in the fallback, and the inner catch swallowed it, so
+        // a successful charge wrote NOTHING back — autopay_next_at never advanced and
+        // the plan re-collected the next morning, and the one every morning after.
         try {
             db()
-                ->prepare('UPDATE bookings SET deposit_paid = ?, payment_status = ?, autopay_last_try = ?, autopay_last_error = NULL WHERE id = ?')
+                ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ?, autopay_last_try = ?, autopay_last_error = NULL WHERE id = ?')
                 ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $bookingId]);
         } catch (\Throwable $e2) {
+            // A swallowed write-back over a SUCCESSFUL charge is money taken with no
+            // record — it must never be silent again.
+            try {
+                log_activity('payment', 'autopay.writeback_failed', 'Collected the money but could not record it against the booking — check this booking before the next daily run', [
+                    'severity' => 'action',
+                    'entity' => 'booking',
+                    'entity_id' => (string) $bookingId,
+                    'meta' => ['error' => mb_substr($e2->getMessage(), 0, 200)],
+                ]);
+            } catch (\Throwable $e3) {
+            }
         }
     }
     try {
@@ -579,7 +601,7 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
         ]);
     } catch (\Throwable $e) {
     }
-    autopay_send_receipt($b, $sqId, $rental, $damages);
+    autopay_send_receipt($b, $sqId, $rental, $damages, $paid);
 }
 
 // THE GUEST IS TOLD. This was the one charge in the app that sent nothing: every
@@ -591,16 +613,20 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
 // the receipt for a payment they made themselves cannot say different things
 // about the same money. Best-effort and wrapped: the money is already taken and
 // the ledger already written, so a mail failure must never propagate.
-function autopay_send_receipt($b, $sqId, $rental, $damages)
+function autopay_send_receipt($b, $sqId, $rental, $damages, $paidSoFar = null)
 {
     $bookingId = (int) ($b['id'] ?? 0);
     try {
         if (empty($b['email']) || !function_exists('send_payment_receipt')) {
             return;
         }
-        // Read back through the shared helper rather than adding to a figure
-        // carried in from before the lock — the one-definition rule.
-        $paid = round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]) + $rental, 2);
+        // The collector passes the figure it derived BEFORE its ledger row landed.
+        // Re-reading it here would count this collection twice (booking_ledger_net
+        // already holds it), which is what put an inflated "paid so far" in front of
+        // the guest. The fallback is for a caller with nothing to hand.
+        $paid = $paidSoFar !== null
+            ? round((float) $paidSoFar, 2)
+            : round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
         $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
         $paid = $total > 0 ? min($total, $paid) : $paid;
         $prop = function_exists('prop_display') ? (prop_display((string) $b['prop_key'])['name'] ?? '') : '';

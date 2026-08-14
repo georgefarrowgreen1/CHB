@@ -41,6 +41,8 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // Enquiries the owner has turned down — soft-deleted server-side, which is
   // what makes the drawer possible.
   let declined = [];
+// Drives approval's 409 — the refusal the page has to answer honestly.
+let approveWill409 = false;
   const posts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
@@ -88,6 +90,21 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
       if (b.__url === 'enquiries.php') {
         if (b.action === 'approve_preview') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'approve') {
+          // The 409 approval's re-check under book_lock really raises: the dates went
+          // while the enquiry sat in the inbox, or another device already approved it.
+          if (approveWill409) {
+            // The refusal is not free-standing: the server says no BECAUSE a booking
+            // now overlaps, so the fixture must carry that booking too — otherwise the
+            // reload brings back the same free calendar and the card is right to keep
+            // saying "dates free" (the first version of this check asserted a flip the
+            // fix could not deliver).
+            const e2 = enqs.find((x) => x.id === b.id);
+            if (e2 && !rows.some((r) => r.id === 77)) rows.push(mk(77, { name: 'Took The Dates', email: 'took@x.co', prop_key: e2.prop_key, check_in: e2.check_in, check_out: e2.check_out }));
+            return route.fulfill({
+              status: 409, contentType: 'application/json',
+              body: JSON.stringify({ error: 'Those dates are no longer available — another booking now overlaps them.' }),
+            });
+          }
           const enq = enqs.find((x) => x.id === b.id);
           rows.push(mk(70, { name: enq ? enq.name : 'Approved Guest', email: 'enq@gmail.com', check_in: d(40), check_out: d(43) }));
           enqs = enqs.filter((x) => x.id !== b.id);
@@ -1441,9 +1458,61 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     return { shown: m.style.display !== 'none', fits: r.top >= 0 && r.left >= -1 && r.right <= innerWidth + 1 };
   });
   ok(menuOpen.shown && menuOpen.fits, 'tapping ⋯ opens the menu, fully on screen');
+  // …AND EVERY ITEM TAKES ITS OWN TAP. On a SHORT screen the menu runs down into
+  // the phone sticky bar, which is opaque and was the higher layer: measured at
+  // 844x390, elementFromPoint on "Share stay details" returned .bhub-sticky — an
+  // item you can read and cannot tap, with two more not visible at all. Paint
+  // order and hit order are one question, so one z-index answers both. Hit-tested
+  // rather than asserted on the z-index, which is the outcome and not the value.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  const swallowed = await page.evaluate(async () => {
+    window.scrollTo(0, 0);
+    const m = document.querySelector('.bhub-menu');
+    // Open it AT THIS SIZE — reusing the copy left open by the check above would
+    // measure a placement made for the taller window (caught: maxHeight 686px in a
+    // 390px viewport), which tests nothing about a short screen.
+    // Open it AT THIS SIZE. The copy left open above was placed for the taller
+    // window (caught: maxHeight 686px in a 390px viewport). Close, let the
+    // document-level once-listener retire, then re-open.
+    bhubMenuClose();
+    await new Promise((r) => setTimeout(r, 60));
+    document.querySelector('.bhub-menu-btn').click();
+    await new Promise((r) => setTimeout(r, 60));
+    const items = [...m.querySelectorAll('[role="menuitem"]')];
+    const bad = [];
+    for (const it of items) {
+      // REACHABLE then TAPPABLE: the menu is capped and scrolls on a short screen,
+      // so bring each item into view first — the defect was never "you must scroll",
+      // it was an item painted UNDER an opaque bar (and one outside the window with
+      // nothing to scroll at all).
+      it.scrollIntoView({ block: 'nearest' });
+      const r = it.getBoundingClientRect();
+      if (!r.width || r.top < -0.5 || r.bottom > innerHeight + 0.5) { bad.push((it.textContent || '').trim().slice(0, 22) + ' (off screen)'); continue; }
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (!hit || (!it.contains(hit) && hit !== it)) bad.push((it.textContent || '').trim().slice(0, 22) + ' → ' + (hit ? (hit.className || hit.tagName) : 'null'));
+    }
+    const mr = m.getBoundingClientRect();
+    return { n: items.length, bad, sticky: !!document.querySelector('.bhub-sticky'),
+      dbg: `menu[${Math.round(mr.top)},${Math.round(mr.bottom)}] vh=${innerHeight} maxH=${m.style.maxHeight} sh=${m.scrollHeight}` };
+  });
+  ok(swallowed.n >= 3 && swallowed.sticky, `(fixture) a short screen shows the sticky bar under an open ⋯ menu (${swallowed.n} items)`);
+  ok(swallowed.bad.length === 0, `every ⋯ item takes its own tap on a short screen (${swallowed.bad.join(' | ') || 'all clear'}) ${swallowed.dbg}`);
+  await page.evaluate(() => { const m = document.querySelector('.bhub-menu'); if (m) m.style.display = 'none'; });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display === 'none'), 'Escape closes the menu');
+  // …AND THE NEXT TAP STILL OPENS IT. The outside-click listener is {once:true} and
+  // was the only one bhubMenuClose did not remove, so closing by any other route
+  // left it armed on `document` — where the data-act dispatcher also lives — and the
+  // next tap ran the dispatcher (open) then the stale listener (close) in one event.
+  // A dead second tap on the hub's only menu.
+  await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'),
+    'and the NEXT tap opens it again — no stale outside-click listener swallowing it');
   // …and blocked in code even if something calls it directly.
   const guard = page.evaluate(() => deleteBooking('b1'));
   await page.waitForTimeout(500);
@@ -1711,6 +1780,61 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(clash.noApprove && /Edit the dates/.test(clash.sticky),
     `Approve is withdrawn everywhere; the dock offers Edit the dates instead (${clash.sticky})`);
   ok(clash.attn && clash.attnActs, 'the blocker is a Needs-attention row routing to their booking');
+
+  // …AND A REFUSAL FROM THE SERVER PUTS THE PAGE RIGHT, rather than leaving it
+  // asserting the old fact. Approval RE-CHECKS the calendar under book_lock, so the
+  // commonest refusal here is the 409 "those dates are no longer available" — raised
+  // when the dates went while the enquiry sat in the inbox, or when the owner already
+  // approved it from another device. The catch was a bare glassAlert with no reload, so
+  // after OK the card still read "READY TO APPROVE · DATES FREE" with the Approve
+  // button still there: the owner could tap it again and be refused again. A server
+  // VERDICT carries e.status (apiErr); a transport failure does not and must not be
+  // treated as one.
+  approveWill409 = true;
+  await page.evaluate(() => {
+    window.__loadDataCalls = 0;
+    const real = window.loadData;
+    window.loadData = async (...a) => { window.__loadDataCalls++; return real.apply(null, a); };
+  });
+  const stale = await page.evaluate(async () => {
+    await window.openEnquiryHub('e7');
+    await new Promise((r) => setTimeout(r, 300));
+    const before = !!document.querySelector('#view-enquiry-hub [data-act="approveEnquiry"], #inbox-detail-pane [data-act="approveEnquiry"]');
+    const p = window.approveEnquiry('e7');
+    await new Promise((r) => setTimeout(r, 500));
+    // The clash confirm, if one is offered…
+    const dlg = document.getElementById('glass-dialog');
+    if (dlg && getComputedStyle(dlg).display !== 'none') { try { glassDialogResolve(true); } catch (e) {} }
+    await new Promise((r) => setTimeout(r, 400));
+    // …then the email PREVIEW, which is where Send actually fires the request. This is
+    // a different overlay from glass-dialog; resolving only the latter left the whole
+    // suite hanging on a promise nothing could settle.
+    const ov = document.getElementById('send-confirm-overlay');
+    if (ov && ov.classList.contains('open')) document.getElementById('send-confirm-send').click();
+    await p.catch(() => {});
+    await new Promise((r) => setTimeout(r, 900));
+    const d2 = document.getElementById('glass-dialog');
+    const out = {
+      before,
+      alert: !!(d2 && getComputedStyle(d2).display !== 'none'),
+      approveStill: !!document.querySelector('#view-enquiry-hub [data-act="approveEnquiry"], #inbox-detail-pane [data-act="approveEnquiry"]'),
+      card: ((document.querySelector('#view-enquiry-hub .bhub-next, #inbox-detail-pane .bhub-next') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      reloaded: window.__loadDataCalls || 0,
+    };
+    if (d2 && getComputedStyle(d2).display !== 'none') { try { glassDialogResolve(true); } catch (e) {} }
+    return out;
+  });
+  approveWill409 = false;
+  // Take the blocking booking back OUT — and reload, or the client keeps it and every
+  // later check about this enquiry reads the gone-dates card (caught: the next one did).
+  rows = rows.filter((r) => r.id !== 77);
+  await page.evaluate(async () => { await loadData(); });
+  await page.waitForTimeout(300);
+  ok(stale.before, '(fixture) the enquiry was approvable before the server refused');
+  ok(stale.reloaded > 0, `a server VERDICT refreshes the record before speaking (${stale.reloaded} loads)`);
+  ok(!stale.alert, 'and it is a toast, not a modal — the owner has nothing to acknowledge');
+  ok(!/READY TO APPROVE/i.test(stale.card),
+    `…so the card stops claiming the dates are free (${stale.card.slice(0, 80)})`);
 
   // …and each ask now NAMES ITS FIGURE (the mockup's rule: approving sends
   // money asks, so the sum is stated before the tap).

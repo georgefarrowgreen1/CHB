@@ -543,6 +543,38 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(p3c.blankOmitted, 'a blank price saves NOTHING for that cottage — base rate by omission');
   ok(/Saved for all cottages/.test(p3c.msg), `…and reports it ("${p3c.msg}")`);
 
+  // …BUT A SEASON WITH NO PRICE AT ALL IS SAVED AS NOTHING, and this reported
+  // "Saved for all cottages ✓" over it. Only priced rows reach the payload, so a
+  // card that is named and dated but unpriced — which the card's own foot invites,
+  // "No prices yet — every cottage keeps its base rate for these dates" — was
+  // silently DISCARDED: several calendar taps of work gone under a success mark.
+  // Worse when the owner CLEARS an existing season's prices to reset it, which
+  // deletes the season. It refuses now, in the words its two sibling refusals use.
+  const p3c2 = await page.evaluate(async () => {
+    const card = document.querySelector('#season-grid-body .sg-band');
+    const priced = [...card.querySelectorAll('[data-sg-prop]')];
+    const keep = priced.map((el) => el.value);
+    priced.forEach((el) => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    const realPost = window.apiPost;
+    let posted = 0;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('rates.php') && body.action === 'seasons_save') { posted++; return { ok: true }; }
+      return realPost(url, body);
+    };
+    document.querySelector('#sec-seasongrid [data-act="saveSeasonGrid"]').click();
+    await new Promise((r) => setTimeout(r, 350));
+    window.apiPost = realPost;
+    const dlg = document.getElementById('glass-dialog');
+    const say = dlg && getComputedStyle(dlg).display !== 'none' ? (document.getElementById('glass-dialog-msg') || {}).innerText || '' : '';
+    if (say) { try { glassDialogResolve(true); } catch (e) {} }
+    const label = (card.querySelector('[data-sg="label"]') || {}).value || '';
+    priced.forEach((el, i) => { el.value = keep[i]; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    return { posted, say, label };
+  });
+  ok(p3c2.posted === 0, `an unpriced season is REFUSED, not saved as nothing (${p3c2.posted} posts)`);
+  ok(/no price on any cottage/i.test(p3c2.say), `…and says why, naming the card (${p3c2.say.slice(0, 90)})`);
+  ok(p3c2.label !== '', `…with the owner's own work still on screen to fix ("${p3c2.label}")`);
+
   const p3d = await page.evaluate(async () => {
     settingsOpen('pricing');
     await new Promise((r) => setTimeout(r, 300));

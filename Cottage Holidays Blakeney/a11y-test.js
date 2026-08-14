@@ -521,6 +521,149 @@ const stub = (page) => page.route(/\.php/, (r) => {
     const seen = outlines.filter((o) => o.outline.length).length;
     ok(seen >= 10, `outlines collected: ${seen} of ${outlines.length} scenes (a scope that stopped resolving would pass \u00A76 in silence)`);
 
+    // ── §7 THE TABLET BAND, MEASURED IN PIXELS ────────────────────────────────
+    // Every scene above runs at 390px wide, so 769–899px is invisible to this
+    // gate — and that is exactly where the cottage page's sticky booking bar
+    // shows (the guest shell hides it below, the sidebar rule above). Its ground
+    // was a raw dark rgba that never retunes while its inks are tokens that do,
+    // so in the DEFAULT light theme the price measured 1.02:1 and the ENQUIRE NOW
+    // label 1.15:1 — an invisible button that is the only way to enquire there,
+    // because .prop-reserve is display:none below 900px.
+    // Sampled from the PAINTED pixels, not getComputedStyle: these sit on
+    // translucent glass, where computed colour reports only the top layer (the
+    // trap this codebase has produced five separate false readings from).
+    console.log('\n§7 The 769–899px band — a raw dark fill must not survive the light theme');
+    const lumOf = ([r, g, b]) => {
+        const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const contrast = (a, b) => { const L1 = lumOf(a), L2 = lumOf(b); return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); };
+    for (const theme of ['light', 'dark']) {
+        const p2 = await t.browser.newPage({ viewport: { width: 820, height: 900 } });
+        try {
+            // Deliberately NOT stub()ed: this is the PUBLIC cottage page, and the
+            // admin stub suppresses the boot that renders the bar at all.
+            await p2.addInitScript((th) => { try { localStorage.setItem('chb-theme', th); } catch (e) {} }, theme);
+            await p2.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+            await p2.waitForTimeout(1700);
+            await p2.evaluate(() => { try { openProperty(Object.keys(propertyMeta)[0]); } catch (e) {} });
+            await p2.waitForTimeout(900);
+            const barUp = await p2.evaluate(() => { const e = document.querySelector('.prop-book-bar'); return !!(e && e.getClientRects().length); });
+            ok(barUp, `(fixture) the cottage booking bar is on screen at 820px (${theme})`);
+            if (!barUp) continue;
+            for (const sel of ['.pbb-price', '.pbb-btn']) {
+                const el = p2.locator(sel).first();
+                if (!(await el.count()) || !(await el.isVisible())) continue;
+                const shot = await el.screenshot();
+                const s = await p2.evaluate(async (d) => {
+                    const img = new Image(); img.src = 'data:image/png;base64,' + d; await img.decode();
+                    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+                    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+                    const D = x.getImageData(0, 0, img.width, img.height).data;
+                    const L = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    const m = {}; let dark = [255, 255, 255], light = [0, 0, 0];
+                    for (let i = 0; i < D.length; i += 4) {
+                        const px = [D[i], D[i + 1], D[i + 2]]; m[px.join(',')] = (m[px.join(',')] || 0) + 1;
+                        if (L(px) < L(dark)) dark = px;
+                        if (L(px) > L(light)) light = px;
+                    }
+                    return { ground: Object.entries(m).sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number), dark, light };
+                }, shot.toString('base64'));
+                const ink = theme === 'light' ? s.dark : s.light;
+                const r = contrast(s.ground, ink);
+                ok(r >= 4.5, `${theme}: ${sel} ink is legible on the bar (${r.toFixed(2)}:1 — ground rgb(${s.ground}))`);
+            }
+        } finally {
+            await p2.close();
+        }
+    }
+
+    // ── §8 THE DEFAULT THEME'S RAW LITERALS ───────────────────────────────────
+    // Five more of the same class as §7: a literal colour that never retunes,
+    // sitting under inks that do. §1/§1b can't see any of them — three are inline
+    // styles or fills the pair-scanner doesn't discover, one is a background-IMAGE
+    // rather than a colour, and one is a border on a class no stylesheet mentioned.
+    // Measured by arithmetic on the resolved values (deterministic, no rendering)
+    // except the chevron, which is a computed background-image and so exact.
+    console.log('\n§8 Raw literals in the DEFAULT theme — inks, fills and a lost chevron');
+    {
+        const p3 = await t.browser.newPage({ viewport: { width: 390, height: 844 } });
+        try {
+            await p3.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+            await p3.waitForFunction(() => typeof window.__BUILD === 'string', null, { timeout: 20000 });
+            // admin.css is owner-only and lazily fetched, so a public page carries none
+            // of it — .bk-row's rules included. Load it rather than stub an owner
+            // session: this section wants the STYLESHEET, not the back office.
+            await p3.evaluate(async () => {
+                const l = document.createElement('link');
+                l.rel = 'stylesheet'; l.href = 'admin.css';
+                const done = new Promise((r) => { l.onload = r; l.onerror = r; });
+                document.head.appendChild(l); await done;
+            });
+            for (const theme of ['light', 'dark']) {
+                const r = await p3.evaluate((th) => {
+                    document.body.classList.toggle('light-mode', th === 'light');
+                    // Read the tokens off BODY, not :root — the light retunes live on
+                    // `body.light-mode`, so documentElement hands back the DARK values in
+                    // light mode and every ratio below is measured against the wrong ink
+                    // (the first run of this section reported 1.56:1 for a badge that
+                    // really renders at 4.65).
+                    const cs = getComputedStyle(document.body);
+                    const tok = (n) => cs.getPropertyValue(n).trim();
+                    // A select's chevron is a background-IMAGE, so a computed read is
+                    // exact — no compositing to model.
+                    const sel = document.createElement('select');
+                    sel.className = 'input-glass';
+                    document.body.appendChild(sel);
+                    const chev = getComputedStyle(sel).backgroundImage;
+                    sel.remove();
+                    // The row a paid guest arriving TODAY gets. Its class was generated
+                    // and styled by nothing, so read the painted edge rather than the CSS.
+                    const row = document.createElement('button');
+                    row.className = 'bk-row glass-panel pay-arrive';
+                    document.body.appendChild(row);
+                    const edge = getComputedStyle(row);
+                    const arrive = { w: edge.borderLeftWidth, c: edge.borderLeftColor };
+                    row.remove();
+                    return {
+                        chev, arrive,
+                        okText: tok('--ok-text'), accentInk: tok('--accent-ink'),
+                        accent: tok('--accent'), ok: tok('--ok'),
+                        warn: tok('--warn'), danger: tok('--danger'), info: tok('--info'),
+                    };
+                }, theme);
+                const rgb = (v) => {
+                    const h = String(v).replace('#', '');
+                    if (/^[0-9a-f]{6}$/i.test(h)) return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+                    const m = String(v).match(/[\d.]+/g).map(Number);
+                    return [m[0], m[1], m[2]];
+                };
+                // 25% #4CAF50 over the guest card's ground, which is what the badge sits on.
+                const over = (fg, a, bg) => fg.map((c, i) => Math.round(c * a + bg[i] * (1 - a)));
+                const card = theme === 'light' ? [253, 252, 250] : [21, 21, 24];
+                const badgeFill = over([76, 175, 80], 0.25, card);
+                const cr = (a, b) => contrast(rgb(a), Array.isArray(b) ? b : rgb(b));
+
+                ok(r.chev !== 'none', `${theme}: a glass <select> still says it is a menu (background-image ${r.chev === 'none' ? 'NONE' : 'present'})`);
+                const badge = cr(r.okText, badgeFill);
+                ok(badge >= 4.5, `${theme}: the Upcoming badge's ink is legible on its own 25% tint (${badge.toFixed(2)}:1)`);
+                const chip = cr(r.accentInk, r.accent);
+                ok(chip >= 4.5, `${theme}: the selected Activity-log chip is legible on the accent fill (${chip.toFixed(2)}:1)`);
+                // The status hero's disc: one ink, three FILLS — and the fills must be
+                // theme-invariant tokens, or no single ink can clear all three (the warn
+                // one was --warn-TEXT, which is retuned, and measured 1.73:1).
+                for (const [name, fill] of [['ok', r.ok], ['warn', r.warn], ['danger', r.danger]]) {
+                    const v = cr(r.accentInk, fill);
+                    ok(v >= 4.5, `${theme}: the Status hero's ${name} glyph resolves on its disc (${v.toFixed(2)}:1)`);
+                }
+                ok(parseFloat(r.arrive.w) >= 3 && cr(r.arrive.c, r.info) < 1.05,
+                    `${theme}: a guest arriving today gets the sea-blue traffic-light edge (${r.arrive.w} ${r.arrive.c})`);
+            }
+        } finally {
+            await p3.close();
+        }
+    }
+
     console.log(fails ? `\n  ${fails} A11Y CHECK(S) FAILED ❌` : '\n  A11Y CHECKS PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

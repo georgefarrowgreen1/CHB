@@ -9,6 +9,8 @@
 //  6. happy path: tokenize → charge posts source_id → receipt state
 const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
+// The app's own money format, for comparing a figure against rendered text.
+const gbpJS = (n) => '£' + Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
@@ -20,9 +22,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // Stub the Square SDK: loadSquareSdk() short-circuits on window.Square, the
     // card field attaches as a no-op, tokenize approves, and paymentRequest
     // throwing means no wallet mounts (so the divider must stay hidden).
+    // RECORD what tokenize is asked to verify. The stub dropped its argument, so the
+    // one figure the guest's own bank shows them was invisible to every check in this
+    // suite — and on a part payment it was the full ask, not the slice.
+    window.__tokArgs = [];
     window.Square = {
       payments: () => ({
-        card: async () => ({ attach: async () => {}, tokenize: async () => ({ status: 'OK', token: 'tok_test_1' }) }),
+        card: async () => ({ attach: async () => {}, tokenize: async (v) => { window.__tokArgs.push(v); return { status: 'OK', token: 'tok_test_1' }; } }),
         paymentRequest: () => { throw new Error('no wallets in this test'); },
       }),
     };
@@ -37,6 +43,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       b.__url = url.split('/').pop().split('?')[0];
       posts.push(b);
       if (b.__url === 'pay.php' && b.action === 'summary') {
+        // Booking 403: pay.php's TERMINAL refusal — the real status codes it answers
+        // with (403 expired/invalid link, 404 booking gone, 503 payments off). A
+        // 4xx/503 is a verdict, so retrying returns it for ever.
+        if (b.booking_id === '403') return route.fulfill({
+          status: 403, contentType: 'application/json',
+          body: JSON.stringify({ error: 'This payment link is invalid or has expired.' }),
+        });
         // Booking 13: MID-PLAN WITH A FAILED TRY — the summary carries
         // autopayRepair (kind is 'balance', so autopayTerms is null and the
         // consent card cannot render; the repair card is the only affordance).
@@ -616,6 +629,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // the slice, so a moved balance is caught on the figure the guest actually read.
   ok(!!partCharge && typeof partCharge.quote === 'string' && partCharge.quote !== '',
     '…while the signed quote still describes the whole amount');
+  // AND SO DOES THE BANK. 3-D Secure runs inside tokenize, and its `amount` is what
+  // the issuer's own challenge names — the one moment a guest is asked to confirm a
+  // figure. It read payState.amountDue, written once in openPayView and never
+  // following a slice, so a £120 payment was authenticated as the full ask. Both
+  // gates were blind to it: the stub dropped the argument (recorded now) and nothing
+  // compared it to the charge.
+  const tokAmt = await page.evaluate(() => {
+    const a = (window.__tokArgs || []).filter(Boolean);
+    return a.length ? a[a.length - 1].amount : null;
+  });
+  ok(tokAmt === '120.00',
+    `the bank is asked to verify the amount actually being taken (${tokAmt} vs part_amount ${partCharge && partCharge.part_amount})`);
 
   // ============================================================
   //  THE DONE SCREEN AFTER A SLICE IS NOT A DEAD END. It states the server's
@@ -813,6 +838,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     choice: payState.autopayChoice,
   }));
   ok(!apDown.shown && apDown.choice === 'self', `opening the part row stands the card down and resets the choice (${apDown.choice})`);
+  // …AND THE CONSENT SENTENCE FOLLOWS IT. The hidden branch of payAutopayRender used
+  // to return BEFORE payMethodsSync, so the plan card vanished and reset while the one
+  // sentence restating the arrangement went on promising monthly payments — the guest's
+  // own decision about the rest of their money withdrawn with nothing said, and the
+  // wallet note left up beside it. Read the SENTENCE, not the choice: the choice was
+  // already correct and the screen still lied.
+  const apSay = await page.evaluate(() => {
+    const c = document.getElementById('pay-consent');
+    return { consent: c && c.style.display !== 'none' ? (c.textContent || '').trim() : '' };
+  });
+  ok(!/monthly/i.test(apSay.consent),
+    `the consent line stops promising a plan that was stood down ("${apSay.consent.slice(0, 60)}")`);
+  // NB no separate assertion on the wallet note: payWalletsReprice takes it down from
+  // the £0 charge independently, so break-testing the consent fix left it correctly
+  // hidden — it would only fail if the CHOICE were not reset, which the check above
+  // already owns.
   await page.evaluate(() => { const a = document.getElementById('pay-part-amt'); a.value = '60'; a.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.waitForTimeout(200);
   const apSliceBefore = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').length;
@@ -821,6 +862,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const apSlice = posts.filter((p) => p.__url === 'pay.php' && p.action === 'charge').slice(apSliceBefore).pop();
   ok(!!apSlice && apSlice.part_amount === 60 && apSlice.autopay === false && apSlice.autopay_instalments === 0,
     `a slice charge carries no consent (part ${apSlice && apSlice.part_amount}, autopay ${apSlice && apSlice.autopay})`);
+  // …AND ITS RECEIPT SPEAKS THE JOURNEY'S OWN VOCABULARY. `remaining` is the rest of
+  // THIS ASK, so on a part-paid DEPOSIT it is the rest of the deposit — the panel
+  // called it "Balance £X", which both misnames it AND replaced the stay's real
+  // balance, a row the journey had shown one tap earlier and which the receipt email
+  // then quotes. One payment, three different "what's left" figures. NB this has to be
+  // driven on a DEPOSIT ask: on a balance ask "Balance" is the correct word, which is
+  // why the first version of this check passed in the wrong section proving nothing.
+  // Wait for THIS payment's panel, not the one already on screen: the section above
+  // leaves pay-done visible, so a bare display check returns instantly and reads the
+  // previous render (which had no remainder and passed the checks below vacuously).
+  await page.waitForFunction(() => /£60\.00 received/.test((document.getElementById('pay-done-sub') || {}).textContent || ''), null, { timeout: 6000 });
+  const doneRows = await page.evaluate(() => {
+    const el = document.getElementById('pay-done-next');
+    return {
+      labels: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+      kind: payState.jCtx ? payState.jCtx.kind : null,
+      rest: payState.jCtx ? payState.jCtx.rest : null,
+    };
+  });
+  ok(doneRows.kind === 'deposit' && doneRows.rest > 0.005,
+    `(fixture) a part-paid DEPOSIT with a stay balance behind it (${doneRows.kind}, rest ${doneRows.rest})`);
+  ok(/Rest of your deposit/.test(doneRows.labels),
+    `the remainder of a deposit is named as such, not as the balance (${doneRows.labels.slice(0, 110)})`);
+  ok(doneRows.labels.indexOf(gbpJS(doneRows.rest)) !== -1,
+    `…and the stay's own balance is still on the screen (${gbpJS(doneRows.rest)})`);
   // Closing the row brings the card back, at the default.
   await page.evaluate(() => openPayView('paytok', '7', 'deposit'));
   await page.waitForTimeout(900);
@@ -1114,6 +1180,39 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(errStates.ran === 1, 'PAY-ERR: …and the button really runs the remedy it was given');
   ok(!errStates.terminal.shown,
     `PAY-ERR: a TERMINAL state does not (${errStates.terminal.msg.slice(0, 50)})`);
+  // …AND openPayView DECIDES WHICH IT IS. The two checks above drive showPayError
+  // directly with a remedy handed in, so they prove the HELPER — while the catch that
+  // calls it passed a retry UNCONDITIONALLY, so pay.php's terminal refusals (403 an
+  // expired link, 404 a booking gone, 503 payments off) offered a Try again that
+  // reproduced the identical panel for ever. Driven through the real opener against a
+  // real 403.
+  await page.evaluate(() => openPayView('badtok', '403', 'balance'));
+  await page.waitForTimeout(900);
+  const deadLink = await page.evaluate(() => {
+    const b = document.getElementById('pay-error-retry');
+    return {
+      panel: (document.getElementById('pay-error') || { style: {} }).style.display !== 'none',
+      retry: !!b && getComputedStyle(b).display !== 'none',
+      msg: (document.getElementById('pay-error-msg') || {}).textContent || '',
+    };
+  });
+  ok(deadLink.panel && /invalid or has expired/.test(deadLink.msg), `PAY-ERR: a dead link says so (${deadLink.msg.slice(0, 44)})`);
+  ok(!deadLink.retry, 'PAY-ERR: …offers no Try again, because retrying returns the same answer');
+  // The guest still WANTS to pay, so the panel has to name the thing that would work.
+  ok(/fresh link/i.test(deadLink.msg) && /(message us|confirmation email)/i.test(deadLink.msg),
+    `PAY-ERR: …and names the way to get a working one (${deadLink.msg.slice(-70)})`);
+  // A TRANSPORT failure carries no status and must keep its retry — the case the
+  // button was added for. Booking 7 answers normally, so break the SDK instead.
+  const okSquare = await page.evaluate(() => { const s = window.Square; window.Square = { payments: () => { throw new Error('SDK unavailable'); } }; return !!s; });
+  await page.evaluate(() => openPayView('paytok', '7', 'balance'));
+  await page.waitForTimeout(900);
+  const dropped = await page.evaluate(() => {
+    const b = document.getElementById('pay-error-retry');
+    return { retry: !!b && getComputedStyle(b).display !== 'none', msg: (document.getElementById('pay-error-msg') || {}).textContent || '' };
+  });
+  ok(okSquare && dropped.retry, `PAY-ERR: a failure with no verdict still offers Try again (${dropped.msg.slice(0, 40)})`);
+  ok(!/fresh link/i.test(dropped.msg), '…and does NOT send them off to ask for a new link — this one works');
+  await page.evaluate(() => { window.Square = { payments: () => ({ card: async () => ({ attach: async () => {}, tokenize: async (v) => { window.__tokArgs.push(v); return { status: 'OK', token: 'tok_test_1' }; } }), paymentRequest: () => { throw new Error('no wallets in this test'); } }) }; });
 
   // ============================================================
   // PLAN-FIRST (the approved demo): the plan is decided BEFORE the payment

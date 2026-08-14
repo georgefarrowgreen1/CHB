@@ -60,7 +60,7 @@ if ($action === 'submit') {
     // booking shouldn't unlock the public photo wall yet. In-stay sharing is
     // deliberately allowed (reviews, by contrast, need a COMPLETED stay).
     $own = db()->prepare(
-        'SELECT COUNT(*) FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?) AND check_in <= CURDATE()',
+        'SELECT COUNT(*) FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND email = ? AND check_in <= CURDATE()',
     );
     $own->execute([$prop, $guest['email']]);
     if ((int) $own->fetchColumn() < 1) {

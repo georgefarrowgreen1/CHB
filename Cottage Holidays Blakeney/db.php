@@ -865,6 +865,17 @@ function is_internal_content_key($key)
     if (strpos($key, 'ical-status-') === 0) {
         return true; // per-cottage feed sync health (ical-import.php) — owner-only
     }
+    // A GUEST'S OWN PUSH TEXT. webpush.php stashes each guest's latest notification
+    // under guest-ping-<id> so the service worker can fetch it; the key matched
+    // neither classifier, so content_public_payload served every one of them to any
+    // anonymous visitor — "Booking confirmed 🎉" with the cottage and exact dates,
+    // "tap to pay your balance of £301.27", "We've received £225.00". Its exact
+    // sibling `owner-ping` was already listed below; this is the same fact about
+    // the other party. test-content-keys only scans LITERAL keys, so a key built by
+    // concatenation could never have been caught by it.
+    if (strpos($key, 'guest-ping-') === 0) {
+        return true;
+    }
     return in_array($key, [
         'notify-emails',
         'admin-2fa-enabled',
@@ -1055,6 +1066,28 @@ function cron_watchdog_maybe_alert()
 // convenience, so a missing table or a write error must NEVER break the action
 // being logged. $opts may carry actor / prop_key / entity / entity_id / meta
 // (array) / severity ('info' | 'warn' | 'action'). Read by activity-log.php.
+// ONE PLACE THAT RECORDS WHETHER A GUEST EMAIL WENT. The refund and
+// deposit-return endpoints mail the guest best-effort and hand the outcome to the
+// client — but nothing was written to the log, so the hub's Emails fold (which reads
+// comms rows) carried no trace of the one email that explains a refund, and the owner
+// could not tell later whether it had gone. `$result` is the mailer's own
+// ['ok'=>bool,'error'=>string] or null when there was no address to send to.
+// A FAILURE is logged as a WARN so it reaches Needs attention; not sending because
+// there is no email on file is a fact, not a fault.
+function log_comms_outcome($action, $label, $result, $bookingId, $propKey = '')
+{
+    $opts = ['prop_key' => (string) $propKey, 'entity' => 'booking', 'entity_id' => (string) $bookingId];
+    if ($result === null) {
+        log_activity('comms', $action, $label . ' not sent — no email address on file', $opts);
+        return;
+    }
+    if (!empty($result['ok'])) {
+        log_activity('comms', $action, $label . ' sent', $opts);
+        return;
+    }
+    $why = isset($result['error']) ? (string) $result['error'] : 'unknown error';
+    log_activity('comms', $action, $label . ' FAILED to send — ' . $why, $opts + ['severity' => 'warn']);
+}
 function log_activity($category, $action, $summary, $opts = [])
 {
     try {

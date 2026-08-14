@@ -110,6 +110,72 @@ ick('a URL with no host is blocked', !ical_url_public('http://'));
 ick('nonsense is blocked', !ical_url_public('not a url'));
 ick('a public IP is allowed', ical_url_public('https://93.184.216.34/cal.ics'));
 
+// ---- 4. THE REBUILD IS ATOMIC, AND A FAILURE KEEPS THE OLD BLOCKS ----------
+// sync_property replaces a source's blocks with a DELETE + N INSERTs, and it is the
+// one write deciding availability that took no lock. Every reader of ical_blocks
+// (dates_clash, availability.php, the enquiry guard) sees the table mid-rebuild, so
+// a clash check landing in that window reads a live Airbnb stay as FREE and lets a
+// booking through — and the window is not theoretical: the sync fires from the
+// cron, from autoSyncIcalBlocks on every back-office load, and from "Sync now".
+//
+// This is a real-database property, so what is checked here is the SOURCE: the
+// transaction exists, the insert loop is inside it, and a failure rolls back rather
+// than leaving the source deleted. test-integration is where a live rebuild runs.
+echo "\n== 4. The block rebuild is atomic ==\n";
+{
+    $src = (string) file_get_contents(__DIR__ . '/ical-import.php');
+    $i = strpos($src, 'function sync_property');
+    $body = $i === false ? '' : substr($src, $i, 6000);
+    // Strip comments before asserting an absence — the notes here describe the very
+    // shapes being forbidden (this repo's own negative-scan rule).
+    $code = (string) preg_replace('~^\s*//.*$~m', '', $body);
+    ick('sync_property was found', strlen($body) > 500);
+    ick('the rebuild opens a transaction', strpos($code, 'beginTransaction()') !== false);
+    ick('…the DELETE is inside it', strpos($code, 'beginTransaction()') < strpos($code, 'DELETE FROM ical_blocks'));
+    ick('…and so is the INSERT loop', strpos($code, 'beginTransaction()') < strpos($code, 'INSERT INTO ical_blocks'));
+    ick('…which commits only after the loop', strpos($code, 'INSERT INTO ical_blocks') < strpos($code, 'commit()'));
+    ick('a failure rolls back rather than leaving the source empty', strpos($code, 'rollBack()') !== false);
+    ick('…and reports the feed as FAILING, not as zero events',
+        (bool) preg_match("~'ok'\s*=>\s*false~", substr($code, (int) strpos($code, 'rollBack()'), 400)));
+    // An over-long UID from a non-platform feed must not abort the loop.
+    ick('the UID is truncated to the column', strpos($code, 'mb_substr') !== false);
+}
+
+// ---- 5. THE CROSS-LISTING MIRROR IS NOT A CONFLICT, AND A FEED IS NOT MISSING --
+// Two readers of the same sync, each contradicting it. Source checks, because both
+// files route (require_admin / a cron secret) and would exit on require; the
+// judgement each states is exact and one line long.
+echo "\n== 5. What the sync's own readers say about it ==\n";
+{
+    $ca = (string) file_get_contents(__DIR__ . '/conflict-audit.php');
+    $caCode = (string) preg_replace('~^\s*//.*$~m', '', $ca); // never scan for an absence in its own explanation
+    ick('conflict-audit was found', strpos($ca, 'ca_overlap') !== false);
+    // ical-export publishes each booking as a busy range, the platform republishes
+    // it, and our sync imports it back — so on a cross-listed cottage EVERY direct
+    // booking produced an exact-range booking↔block overlap, logged at warn into
+    // Needs attention. The documented setup reporting itself as a double booking.
+    // The file already skips OTA↔OTA overlaps as mirrors for the same reason.
+    // Single-quoted so PHP does not interpolate $a/$bk, and a plain string search
+    // rather than a regex — the pattern is a literal comparison.
+    ick(
+        'an EXACT-range booking↔block overlap is skipped as the mirror it is',
+        strpos(preg_replace('~\s+~', ' ', $caCode), '$a[\'check_in\'] === $bk[\'check_in\'] && $a[\'check_out\'] === $bk[\'check_out\']') !== false,
+    );
+    ick('…and a real overlap is still reported', strpos($caCode, "'sig' => \"bo|") !== false || strpos($caCode, 'bo|') !== false);
+
+    // Strip comments BEFORE windowing: the note explaining this fix is ~290
+    // characters long and pushed the line it describes outside a 400-char window.
+    $dg = (string) preg_replace('~^\s*//.*$~m', '', (string) file_get_contents(__DIR__ . '/diagnostics.php'));
+    $i = strpos($dg, 'ical-feeds-%');
+    $near = $i === false ? '' : substr($dg, $i, 300);
+    ick('the Status page counts configured feeds', $i !== false);
+    // `ical-feeds-*` is written with content_set_secret, so the raw column is
+    // ciphertext: json_decode returned null on every row and Status reported "No
+    // external feeds connected" while the feeds were syncing normally — on the one
+    // page an owner opens to find out whether they are.
+    ick('…by DECRYPTING the private value, not reading the ciphertext', strpos($near, 'decrypt_value(') !== false);
+}
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED \xE2\x9D\x8C\n\n";

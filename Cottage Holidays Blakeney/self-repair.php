@@ -256,11 +256,26 @@ try {
     $cacheDir = $upDir . '/cache';
     $pruned = 0;
     if (is_dir($cacheDir)) {
+        // MIRROR img.php's own transform rather than trying to invert it. It builds
+        // the cache name from the FULL src with separators flattened —
+        // preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/foo.jpg') . '.w640.webp' —
+        // so the basename is `uploads_foo.jpg`, and this used to probe
+        // `uploads/uploads_foo.jpg`, which never exists. Every entry therefore looked
+        // orphaned: the nightly cron deleted the ENTIRE resize cache and reported it
+        // as a fix, so the next visitor re-generated every variant from scratch.
+        // The two flattenings must stay in step; see img.php:60.
+        $live = [];
+        foreach (scandir($upDir) ?: [] as $uf) {
+            if ($uf === '.' || $uf === '..' || is_dir($upDir . '/' . $uf)) {
+                continue;
+            }
+            $live[preg_replace('/[^A-Za-z0-9._-]/', '_', 'uploads/' . $uf)] = true;
+        }
         foreach (scandir($cacheDir) ?: [] as $cf) {
             if (!preg_match('/^(.+)\.w\d+\.webp$/', $cf, $m)) {
                 continue; // not ours (or . / ..) — leave alone
             }
-            if (!is_file($upDir . '/' . $m[1])) {
+            if (!isset($live[$m[1]])) {
                 if (@unlink($cacheDir . '/' . $cf)) {
                     $pruned++;
                 }

@@ -19,10 +19,17 @@ require_once __DIR__ . '/pricing.php';
 // both the signed-in guest (their own) and an admin preview (a target customer).
 function my_bookings_payload(string $email, bool $preview = false): array
 {
+    // PLAIN EQUALITY, DELIBERATELY — do not "fix" this back to LOWER(b.email) =
+    // LOWER(?). `bookings.email` collates utf8mb4_general_ci (stated outright by
+    // migration-112, not inherited), so `=` already matches any case; wrapping the
+    // column in a function only makes idx_email unusable. Measured on 5,036 rows:
+    // ref/idx_email/1 row against index-scan/no key/5,036 — on the query that runs
+    // every time a guest opens their stays. test-integration §21 asserts both the
+    // collation and the plan, so the assumption fails loudly if a host differs.
     $stmt = db()->prepare(
         'SELECT b.*, p.name AS property_name, p.address AS property_address
          FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
-         WHERE LOWER(b.email) = LOWER(?)
+         WHERE b.email = ?
          ORDER BY b.check_in ASC',
     );
     $stmt->execute([$email]);
@@ -71,6 +78,14 @@ function my_bookings_payload(string $email, bool $preview = false): array
         return $ksByProp[$pk];
     };
     foreach ($bookings as &$bk) {
+        // THE STAFF NOTE IS NOT THE GUEST'S TO READ. This payload is built with
+        // `SELECT b.*` and handed straight to json_out, so `bookings.notes` — the
+        // field the hub calls "Add a private note — only you see it" — was shipped
+        // verbatim to the guest whose booking it is, visible in DevTools. Whatever
+        // the owner wrote about them ("left it filthy last year", "friends rate")
+        // went with it. Stripped here rather than narrowing the SELECT, because
+        // every other consumer of that row is owner-side and still needs it.
+        unset($bk['notes']);
         $bk['pay_token'] = ($preview || !$sqOn) ? null : pay_token((int) $bk['id']);
         $ks = $ksFor($bk['prop_key']);
         // The cottage's on/off switch gates the reveal too — a keeper the
@@ -229,7 +244,7 @@ function my_bookings_payload(string $email, bool $preview = false): array
     $eq = db()->prepare(
         'SELECT e.*, p.name AS property_name, p.address AS property_address
          FROM enquiries e JOIN properties p ON p.prop_key = e.prop_key
-         WHERE LOWER(e.email) = LOWER(?)
+         WHERE e.email = ?
          ORDER BY e.check_in ASC',
     );
     $eq->execute([$email]);
@@ -289,7 +304,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!arrival_window_valid($win)) {
         json_out(['error' => "That arrival time didn't look right — pick one of the options."], 400);
     }
-    $own = db()->prepare('SELECT id FROM bookings WHERE id = ? AND LOWER(email) = LOWER(?)');
+    $own = db()->prepare('SELECT id FROM bookings WHERE id = ? AND email = ?');
     $own->execute([$bid, $gEmail]);
     if (!$own->fetchColumn()) {
         json_out(['error' => 'Unknown booking'], 404);

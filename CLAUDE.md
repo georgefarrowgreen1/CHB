@@ -28,11 +28,20 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
      and never more than once between real pieces of work.
   4. Job LOGS are the honest oracle the status field is not: they 404 while a job is
      running and download once it is done.
-- **`test-integration.php` CAN be run locally — do it, it is the gate that bites.**
-  This container HAS MariaDB (`sudo service mariadb start`; root/root on 127.0.0.1
-  already works), so the "needs MySQL, CI runs it" line is wrong and was believed
-  for a whole PR: #963 shipped a migration that passed every other gate and failed
-  §2 in CI. Migrations in particular are ONLY exercised here.
+- **`test-integration.php` needs MySQL — CHECK whether this container has any before
+  believing either claim.** It is the gate that bites (migrations are ONLY exercised
+  there; #963 shipped one that passed every other gate and failed §2 in CI), so run
+  it when you can: `mysqladmin -h127.0.0.1 -uroot -proot status`, or
+  `sudo service mariadb start` first. But do NOT assume it is there — this note used
+  to assert flatly that the container HAS MariaDB, and a later session found no
+  mysqld, no mariadb service and no mysqladmin at all, having trusted the line. The
+  container image is not stable across sessions: **node_modules is not committed
+  either** (ci.yml does `npm init -y` + `npm install playwright@<pinned>` per run), so
+  the ui-test suites may need `npm install playwright` before they will run, and the
+  preinstalled Chromium may not match a newer playwright — pass
+  `CHB_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (ui-test-lib's
+  own override) when the launch complains about a missing browser revision.
+  When you genuinely cannot run it, SAY so in the PR rather than implying CI-parity.
 - **A guarded migration is a plain `ALTER TABLE ... ADD COLUMN`.** migrate.php
   treats a duplicate-column error as already-applied. Do NOT reach for the
   information_schema + `PREPARE`/`EXECUTE` guard: the no-op branch (`SELECT 1`)
@@ -3576,6 +3585,53 @@ the one control that creates a booking with nobody reading the answer could ther
 silently overlap a real guest, and its own "Those dates clash — try again" branch was
 unreachable because the override guaranteed the server would never say so.
 
+**REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT** (`guests.email_verified_at`,
+migration-111). `my_bookings_payload` matches stays on `LOWER(b.email) = LOWER(?)`
+and NOTHING verified the address — `guest_register` created the account and signed
+the person in on the spot, so registering with a guest's email handed over their
+booking: dates, party, money, arrival details, and the door code once inside its
+reveal window. The magic link is the proof, because it is emailed TO the address.
+Three rules: an address with NO bookings has nothing to claim, so it is stamped
+verified and signs straight in (the ordinary case is untouched); an address that
+DOES have bookings gets the account, no session, and the link; and **`guest_login`
+must refuse an unverified account** — without that the fix is theatre, since the
+password was chosen by whoever registered. `guest_magic_consume` stamps the column.
+Checks BOOKINGS only, never enquiries: the enquiry flow registers moments after
+submitting an enquiry with that same address, so counting enquiries would send
+every new guest to their inbox. Existing rows are backfilled VERIFIED — locking a
+real guest out of their own stay is a worse harm than a squat that has already
+happened. Gated by test-integration §19 in all four directions.
+
+**THE INSTALMENT COLLECTOR'S THREE RULES** (autopay-lib.php / pay.php), each of
+which shipped broken and was found by the money audit:
+- **The write-back names `payment` — the ENUM — not `payment_status`**, which is no
+  column at all. PDO is in exception mode, so the write AND its fallback threw and
+  the inner catch swallowed both: after a successful charge NOTHING was written
+  back, `autopay_next_at` never advanced, and a monthly plan re-collected the next
+  morning and every morning after. test-autopay now asserts every column the
+  collector writes exists in schema.sql + the migrations, because the harness's
+  `ApWrite` accepts any SQL string — which is how 211 checks passed over a
+  collector that could not write.
+- **Read the paid figure BEFORE the ledger row lands.** `booking_paid_so_far` reads
+  `booking_ledger_net`, so reading it after the INSERT and adding `$rental` counts
+  the collection twice; a monthly plan then stopped one instalment short with every
+  screen reading paid in full. The receipt was re-deriving it the same way.
+- **Snapshot the autopay terms BEFORE the charge.** `booking_autopay_terms` opens
+  with "only a DEPOSIT is ever scheduled" and resolves the stage through the LIVE
+  ledger — derived after the charge the deposit reads settled, the stage is already
+  'balance', terms come back null and the vault answers "nothing to schedule". Every
+  consenting guest was told their plan could not be set up. It also takes a
+  `$kindHint` so the screen's own stage wins: "settle the whole stay now" was
+  offering to schedule the money it was collecting.
+
+**BLOCKING DATES IS NOT A ONE-WAY DOOR.** `delete_block` existed, was correct, and
+had NO caller — the timeline drew owner blocks as inert spans — so a blocked range
+was permanent: hidden on the site, refused by `dates_clash`, AND published as
+unavailable to every platform (ical-export publishes `source='owner'`). Owner blocks
+are controls now; IMPORTED bars stay display-only and `delete_block` is restricted
+to `source='owner'` server-side, because deleting an import reads the cottage as
+FREE until the next sync — a real double-booking window.
+
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
 Settings → System check → Run migrations). Migrations are idempotent
@@ -5301,6 +5357,71 @@ enabled cases, the duty guard and the reveal guard each break-tested in isolatio
   (the helper's status/code, all three wiring decisions incl. the deliberate omission) and
   ui-test-command, which drives the real dialog against a stubbed 409 - break-tested by
   putting the refusal back to 200, which reproduces both "Sent 2 of 3" and the £NaN toast.
+
+## What every guest downloads, and what every guest query costs
+
+- **THE CROWN IS A FILE.** `CHB_CROWN_PNG` was an 8,070-byte PNG as a base64 constant
+  in app.js — **10,067 gzipped bytes, 3.7% of the file every anonymous visitor
+  downloads**, and base64 is the one thing gzip cannot help with — for a mark ONLY
+  `downloadInvoice`'s letterhead has ever drawn. It is `crown.png` now, fetched lazily
+  beside jsPDF (`Promise.all`, so it adds no wall clock), memoised, and **never fatal**:
+  a failed fetch returns `''`, clears the memo so the next export retries, and the
+  letterhead prints without the mark. Two traps: the build stamp is **`window.__BUILD`**,
+  not `BUILD` — the `const BUILD` at the foot of app.js is inside its own IIFE and is in
+  scope nowhere else (smoke-test's vm caught it as a ReferenceError, and the browser
+  would have too); and crown.png stays **OUT of the sw.js CORE precache**, or guests
+  precache an owner-only asset and the saving is spent again. Gated by smoke-test's PDF
+  section, which now serves the real bytes through a stubbed fetch and asserts the
+  drawn image **equals crown.png byte for byte** — moving an image is only a win if the
+  letterhead is unchanged, and a wrong base64 encoder draws noise, not nothing — plus a
+  RATCHET: no `data:image/…;base64,` over 1KB may ride app.js or guest-app.js again.
+  Deliberately a size threshold, not a ban: a 1px spacer is a fair thing to inline.
+  Budget lowered 274800 → 265600 to lock it in.
+- **A FINISHED PAGE IS NOT HELD BACK BY A SESSION CHECK** (gated by ui-test-poorsignal
+  §10, all five declarations break-tested). `#loading-overlay` is an opaque `#121316`
+  at z-index 5000 and was removed only in the boot's `finally` — i.e. after
+  bootstrap.php AND both session POSTs. Measured at Slow 4G (CPU ×4): first paint
+  **1,820ms is a crown on black**, reveal **7,049ms**, while a 2,500ms screenshot with
+  it suppressed shows the hero photo, both headlines, the CTA, the stats and all three
+  cottage cards, complete and correct — the static cards carry no prices, so nothing
+  above the fold is a placeholder. It now hides as soon as the content render block is
+  done: reveal **5,959 → 5,245ms**. **GATED ON NEVER-SIGNED-IN**, because the cost lands
+  on the other side — an owner or returning guest would watch the anonymous view flash
+  past for the length of the session check, and that is the population who use the app
+  most. The `finally` call stays as belt-and-braces (hideLoadingOverlay returns early
+  once `fade-out` is set), so the fast path costs the slow path nothing. That needed a
+  guest twin of `chb-was-admin`: **`chb-was-guest`**, written from the VERDICT in
+  `restoreGuestSession`, cleared by `guestLogout`, and deliberately NOT touched in the
+  catch — a dropped request is not "signed out", the same rule the admin hint follows.
+  §10 drives it with **auth.php HANGING**, which is the whole question: if the reveal
+  still waited on the session, a hung one would never reveal at all.
+- **THE FONTS ARE PINNED BY THEIR OWN CONTENT HASH.** htaccess serves woff2
+  `immutable, max-age=31536000` under a comment claiming "CSS/JS/fonts are cache-busted
+  with ?v=…" — and the two font URLs carried **no pin at all**, so a re-subset or a
+  weight-axis fix would have been invisible to every returning visitor for a YEAR with
+  no way to bust it. `?v=<first 8 hex of sha256>` now, on the `@font-face` **and** the
+  index.html PRELOAD, which must match byte for byte or the preload warms a URL nothing
+  asks for. Content-derived so nobody has to remember a stamp: smoke-test §12f
+  recomputes the hash and fails with the value to paste in.
+- **AN EMAIL LOOKUP IS PLAIN EQUALITY — never `LOWER(email) = LOWER(?)`** (migration-112,
+  gated by test-integration §21). Wrapping the indexed column in a function makes
+  `idx_email` unusable. Measured on the real schema with 5,036 rows: `email = ?` plans
+  **ref / idx_email / 1 row**, the LOWER() form plans an **index scan of all 5,036** —
+  on the query `my_bookings_payload` runs every time a guest opens their stays. Twelve
+  sites swapped; `enquiries.php` had already worked this out and said so in a comment
+  nothing else followed. Plain `=` is case-insensitive here only because the columns
+  collate `utf8mb4_general_ci`, which was **inherited from the server default**, i.e.
+  true by luck — migration-112 states it outright on `bookings`/`enquiries`/`guests`
+  (a no-op on a correct install, a fix on a wrong one; a MODIFY keeps `idx_email` and
+  the guests UNIQUE key, both rebuilt under the stated collation). §21 checks all three
+  legs — the collation, the BEHAVIOUR through the real endpoint (a mixed-case stay must
+  reach a guest whose session was minted from the lower-case form), and the PLAN — and
+  break-testing the collation to `utf8mb4_bin` reproduces the harm exactly: the guest's
+  own booking list comes back **empty**. The plan check asks `possible_keys`, not `key`:
+  that is whether the index is USABLE, which is what the wrapper destroyed, and unlike
+  the optimiser's final choice it is stable at any table size. Out of scope on purpose:
+  `LIKE` searches and `SELECT LOWER(email)` projections — neither can use the index
+  anyway, so forbidding them would fail on correct code.
 
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**

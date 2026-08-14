@@ -14,7 +14,16 @@ require_once __DIR__ . '/db.php';
 if (isset($_GET['all'])) {
     $keys = [];
     try {
-        $keys = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
+        // AN UNLISTED COTTAGE MUST NOT EXIST ON THE PUBLIC SITE — rates.php,
+        // sitemap.php and leads.php all filter it and this did not, so an anonymous
+        // ?all=1 (the call the homepage chips already make) returned a private
+        // cottage's prop_key AND its whole forward occupancy calendar. Admin-aware
+        // rather than unconditional, mirroring rates.php's posture, so an owner-side
+        // caller keeps seeing everything.
+        $pubOnly = empty($_SESSION['admin_id']);
+        $keys = db()
+            ->query('SELECT prop_key FROM properties WHERE archived_at IS NULL' . ($pubOnly ? ' AND unlisted = 0' : ''))
+            ->fetchAll(PDO::FETCH_COLUMN);
     } catch (\Throwable $e) {
         $keys = ['21a', 'jollyboat', 'pimpernel'];
     } // pre-migration fallback

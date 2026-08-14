@@ -3,13 +3,17 @@
    preloaded. ONE block per family declaring the file's REAL weight RANGE — a
    single-value `font-weight` descriptor PINS the wght axis, which is how
    per-weight blocks once made 500–800 a single synthetic bold. Gated by
-   ui-test-searchpage §16a; the measured story is in CLAUDE.md. */
+   ui-test-searchpage §16a; the measured story is in CLAUDE.md.
+
+   The ?v= is the file's own content hash — woff2 is immutable for a year and
+   these URLs had no pin, so a re-subset was unbustable. It must equal the
+   PRELOAD's; smoke-test §12f recomputes it and prints the value to paste. */
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('fonts/montserrat-latin.woff2') format('woff2');
+  src: url('fonts/montserrat-latin.woff2?v=06b16db7') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
@@ -17,7 +21,7 @@
   font-style: normal;
   font-weight: 400 900;
   font-display: swap;
-  src: url('fonts/playfair-latin.woff2') format('woff2');
+  src: url('fonts/playfair-latin.woff2?v=e0c764a8') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
@@ -201,14 +205,10 @@ textarea:focus-visible,
   --font-sans: "Montserrat", sans-serif;
   --fluid-bezier: cubic-bezier(0.25, 1, 0.25, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* iOS SAFE AREAS. Full-screen overlays used a flat 20px inset, so on a phone
-     with a Dynamic Island / notch the top of the panel sat UNDERNEATH it. Read
-     the insets once here, as tokens, for two reasons: every overlay then insets
-     the same way instead of each remembering to, and a test can override these
-     to simulate a notched device — env() always reports 0px in a desktop
-     browser, so the bug is otherwise invisible to CI.
-     Use as max(<the design inset>, var(--safe-t)) so devices without insets
-     keep the original spacing exactly. */
+  /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
+     and a test can override these to fake a notch (env() reports 0px on desktop,
+     so the bug is otherwise invisible to CI). Use as
+     max(<design inset>, var(--safe-t)). See CLAUDE.md. */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -292,6 +292,21 @@ body.light-mode {
 body.light-mode .chat-widget {
   background: rgba(248, 248, 250, 0.97);
 }
+/* Two more members of this list, both missed: the cottage page's sticky book bar
+   (the ONLY enquire route at 769-899px, measured 1.02:1) and the Experiences
+   category tag (1.45:1). The boot selector is needed too, or they stay dark
+   until app.js adds .light-mode. Gated by a11y-test §7. */
+html.theme-light-boot body .prop-book-bar,
+body.light-mode .prop-book-bar {
+  background: rgba(255, 255, 255, 0.86);
+  border-top-color: var(--glass-border);
+  box-shadow: 0 -10px 40px rgba(30, 54, 72, 0.14);
+}
+html.theme-light-boot body .exp-cat-tag,
+body.light-mode .exp-cat-tag {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--glass-border);
+}
 body.light-mode .input-glass,
 body.light-mode .date-range-trigger,
 body.light-mode .rate-field input,
@@ -300,7 +315,10 @@ body.light-mode .price-box,
 body.light-mode .guest-price-box,
 body.light-mode .toast,
 body.light-mode textarea {
-  background: rgba(255, 255, 255, 0.5) !important;
+  /* background-COLOR: the shorthand also reset background-image, taking the
+     glass select's chevron with it in the DEFAULT theme (4 of 4 measured
+     "none"), so every picker read as a plain box. Gated by a11y-test §7. */
+  background-color: rgba(255, 255, 255, 0.5) !important;
 }
 body.light-mode .input-glass option {
   background: #fff;
@@ -1165,6 +1183,11 @@ body.light-mode ::-webkit-scrollbar-thumb {
   max-width: 380px;
   padding: 22px;
   border-radius: var(--r-lg);
+  /* THE CAP .modal-box HAS AND THIS NEVER GOT: uncapped and unscrollable, a
+     472px card in a 360px landscape viewport sliced both month buttons off the
+     top and Continue off the bottom. dvh for the iOS toolbar, as .modal-box. */
+  max-height: min(90dvh, calc(100dvh - var(--safe-t) - var(--safe-b) - 40px));
+  overflow-y: auto;
 }
 .dp-head {
   display: flex;
@@ -1306,7 +1329,11 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 /* Admin mode (Add/Edit Booking): taken nights are a cue, not a wall — the
    owner can still pick them (deliberate overlaps confirm at save). */
-#date-picker.dp-admin .dp-day.dp-booked {
+/* Keyed on the CLICK HOOK, not the mode (the hover-suppression trick), so it
+   covers every mode where a crossed night is pickable. It was .dp-admin only, so
+   the waitlist's taken nights — the ones it exists to select — painted 0.35 with
+   a not-allowed cursor. The strike STAYS: it is the fact being waited on. */
+#date-picker .dp-day.dp-booked[data-act] {
   cursor: pointer;
   opacity: 0.5;
 }
@@ -4058,9 +4085,14 @@ a.card {
      it wider than the control and clipped the figure (measured). */
   text-transform: none;
   letter-spacing: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* AND IT WRAPS. The foot is a 2-up row, so this box is ~114px against a 159px
+     string at every width measured — nowrap+ellipsis cut the checkout mid-word
+     and never showed the figure at all. .enq-cta-sub already wraps it. The
+     `normal` is load-bearing and not a tidy-up: .btn-glass sets nowrap for its
+     own one-word label and this INHERITS it, so dropping the declarations here
+     alone only turned a clipped receipt into one that overflowed the control. */
+  white-space: normal;
+  line-height: 1.25;
   max-width: 100%;
 }
 .enq-cta-sub {
@@ -4477,6 +4509,19 @@ textarea.input-glass.field-sm {
   height: 100%;
   width: 100%;
   transition: transform 0.6s var(--fluid-bezier);
+}
+/* A cottage with no photos yet — the state between being created and its first
+   upload. An honest sentence on the house ground, not a blank rectangle dressed
+   as a photo (no role, no tabindex, no viewer on offer). */
+.gallery-slide-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 0 24px;
 }
 .gallery-slide {
   min-width: 100%;
@@ -5616,12 +5661,16 @@ body.light-mode .tag-pimpernel {
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
   display: flex;
+  /* The row WRAPS and the field claims a basis. Both siblings are 0 0 auto +
+     nowrap, so on a phone the input took the whole shortfall — 64px, two
+     characters — and only when there IS work, i.e. when search is wanted. */
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   margin: 10px 0;
 }
 .msg-inbox-controls #msg-search {
-  flex: 1 1 auto;
+  flex: 1 1 200px;
   margin: 0;
 }
 .msg-filter-chip {
@@ -5828,20 +5877,6 @@ body.owner-mode .chat-widget {
 }
 
 /* Enquiry cards stacked in the sidebar */
-/* Availability / age chips shown on the enquiry card (free / clash / waiting). */
-.avail-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0 0 4px 8px;
-  padding: 2px 10px;
-  border-radius: var(--r-pill);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  vertical-align: middle;
-  border: 1px solid transparent;
-}
 
 /* Tappable price on an inbox enquiry: opens the agreed-price form. Styled as
    the text it replaces (est. £x) with a pencil, so the line stays glanceable. */
@@ -6557,7 +6592,9 @@ body.owner-mode .chat-widget {
 .act-log-chip.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  /* White measured 2.16:1 dark / 2.96:1 light on the chip that SAYS what is
+     filtered. --accent-ink is what every accent fill here already pairs with. */
+  color: var(--accent-ink);
 }
 .act-actor {
   font-size: 0.7rem;
@@ -7937,7 +7974,9 @@ body.light-mode .feed-dot-bad {
   background: rgba(214, 167, 133, 0.1);
   border: 1px solid rgba(214, 167, 133, 0.25);
 }
-/* Homepage live availability: per-card chip + late-availability spotlight */
+/* Homepage live availability: per-card chip + late-availability spotlight.
+   THE ONLY .avail-chip RULE — a second, orphaned from the enquiry card, left the
+   quietest line on every cottage card the boldest and 19px off its rail. */
 .card-avail {
   min-height: 1.1em;
 }
@@ -7985,10 +8024,17 @@ body.light-mode .feed-dot-bad {
   justify-content: center;
   min-height: 40px; /* comfortable touch target (tabs were 30px) */
 }
-/* Guests get comfortable targets even on the one admin-family small button
-   that appears on their side (My Stays → Account & settings). */
-#view-guest-bookings .btn-sm {
-  min-height: 40px;
+/* Comfortable targets on the one admin-family button guests meet — ABOVE the phone
+   breakpoint, which is the only place this was ever meant to act. It out-specified
+   the ≤480px 44px floor AND `.gb2-links .btn-sm`'s own 44 (whose comment claims
+   that floor and never painted), so every control on the guest's own account
+   screen, Pay included, was 4px shorter on a phone than the same button anywhere
+   else. Scoping the MEDIA is the fix; matching the specificity would only be the
+   next round of the same argument. */
+@media (min-width: 481px) {
+  .guest-bookings-view .btn-sm {
+    min-height: 40px;
+  }
 }
 /* "My Stay" hub — the in-stay action panel shown at the top of My Stays. */
 .my-stay-hub {
@@ -8449,6 +8495,17 @@ body.light-mode .feed-dot-bad {
 }
 .gb2-cta {
   margin: 0 0 14px;
+}
+/* THE PRIMARY ASK IS NOT THE SMALLEST TYPE IN THE CARD. On base .btn-sm, "PAY
+   BALANCE £250.00" was 10.88px uppercase 400 while "Invoice" beneath it was
+   12.8px 600. This is .gb2-again's tier: 14.4 primary / 12.8 quiet. The hub's
+   CTA moves with it or the two hubs disagree. */
+.gb2-cta .btn-sm,
+.hub-cta-btn {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .gb2-again {
   display: block;
@@ -9256,6 +9313,14 @@ body.light-mode .feed-dot-bad {
 }
 .toast.toast-out {
   animation: toastOut 0.35s var(--fluid-bezier) forwards;
+}
+/* The counted remainder of a capped stack — a LINE, not another card: it carries
+   no action, so it must not spend a card's worth of a phone screen saying so. */
+.toast.toast-more {
+  border-left-color: var(--glass-border);
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 @keyframes toastIn {
   from {
@@ -10925,12 +10990,9 @@ body.light-mode .datepicker-pop {
 .settings-index > .settings-section-label:first-child {
   margin-top: 2px;
 }
-/* Desktop: the Settings & Money landing lists (both .settings-index) are a single
-   narrow 640px column on phones. On a wide screen that leaves the right half empty,
-   so flow the section groups into two balanced columns that fill the page. Each
-   group stays whole (never split across a column) and every label stays glued to
-   the group it heads. Money's graphical overview spans the full width on top.
-   Phones/tablets (<960px) keep the single-column mobile layout untouched. */
+/* Desktop: flow .settings-index's groups into two balanced columns (the 640px
+   phone column leaves a wide screen half empty). Each group stays WHOLE and its
+   label glued to it; Money's overview spans the top. <900px is untouched. */
 @media (min-width: 900px) {
   .settings-index {
     max-width: 1040px;
@@ -11311,12 +11373,11 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
   }
 }
 
-/* UNIFIED LIQUID-GLASS INTERACTIONS — one motion language for every interactive control:
-   --fluid-bezier (colour/bg/border) + --spring (transform), a hover lift on pointer devices,
-   a consistent press. Appended last so it standardises the per-component rules; each element
-   keeps its own colour :hover and only gains the transform/shadow/press. Reduced motion is
-   neutralised globally. .card / .btn-glass keep their own larger lift; .gallery-nav and
-   .lightbox-nav are handled separately, carrying a translateY(-50%) centring transform. */
+/* UNIFIED LIQUID-GLASS INTERACTIONS — one motion language for every control:
+   --fluid-bezier (colour) + --spring (transform), hover lift on pointer devices,
+   one press. Appended LAST so it standardises the per-component rules; each keeps
+   its own colour :hover. .card/.btn-glass keep a larger lift; .gallery-nav and
+   .lightbox-nav are separate (they carry a centring translateY(-50%)). */
 .btn-sm,
 .btn-edit,
 .toggle-btn,

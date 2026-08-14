@@ -532,9 +532,15 @@ function booking_autopay_may_charge($b, $today = null)
 // can never promise a different figure from the one printed above it.
 // Returns null when there is nothing to schedule — and the checkbox must not be
 // offered at all then, rather than offered and quietly doing nothing.
-function booking_autopay_terms($b, $instalments = 1)
+function booking_autopay_terms($b, $instalments = 1, $kindHint = null)
 {
-    $kind = booking_payment_kind($b);
+    // The stage the SCREEN resolved wins when it is given. Deriving it here instead
+    // answered a different question than the one being asked: on "rather settle the
+    // whole stay now" the screen is charging the BALANCE while this helper, reading
+    // the not-yet-paid row, still said 'deposit' — so the screen offered to schedule
+    // the very money it was collecting, and paying left a vaulted card and a consent
+    // against a settled stay (harmless until a later partial refund re-armed it).
+    $kind = $kindHint !== null && $kindHint !== '' ? $kindHint : booking_payment_kind($b);
     // Only a BALANCE is ever scheduled. The legacy authorise-only hold is not a
     // schedule, and asking someone to agree to be charged the deposit they are
     // in the middle of paying is nonsense.

@@ -1283,6 +1283,27 @@ if (typeof ctx.chbCoastRow === 'function') {
     check('coast: and carries low water in the sub', !!r && /low 12:55/.test(r.sub), r && r.sub);
     check('coast: it crosses the tide with WHO is arriving — the thing only this app can say', !!r && /Wren arrives today/.test(r.sub), r && r.sub);
 
+    // A REAL WorldTides TIME CARRIES +0000, AND MUST BE READ ON THE LOCAL CLOCK.
+    // The fixture above is offset-less, so it parses as local and cannot see this;
+    // the live payload is UTC, and both owner-side readers took a character SLICE
+    // of the ISO string — so all through BST the owner's answer ran an hour early
+    // and disagreed with the guest page rendering the SAME payload. Pinned in
+    // summer (BST, +1) and winter (GMT, +0) so it cannot pass by luck.
+    const utcTide = (d, hhmm) => ({ ok: true, extremes: [{ time: `${d}T${hhmm}+0000`, type: 'High', height: 3.9 }] });
+    const bstRow = ctx.chbCoastRow('tides today', tToday, { tide: utcTide(tToday, '06:41'), weather: null });
+    const isBst = new Date(tToday + 'T12:00:00Z').toLocaleString('en-GB', { timeZone: 'Europe/London', timeZoneName: 'short' }).includes('BST');
+    check(
+        `coast: a UTC tide time is shown on the local clock (${isBst ? 'BST → 07:41' : 'GMT → 06:41'})`,
+        !!bstRow && new RegExp('High water ' + (isBst ? '07:41' : '06:41')).test(bstRow.label),
+        bstRow && bstRow.label,
+    );
+    // The other reader, the offline day sheet, shares the same helper.
+    check('coast: the tide clock helper exists and is shared', typeof ctx.chbTideClock === 'function');
+    check('coast: …and it converts, rather than slicing the string',
+        ctx.chbTideClock('2026-08-14T06:41+0000') === '07:41', ctx.chbTideClock('2026-08-14T06:41+0000'));
+    check('coast: …and in winter it leaves GMT alone',
+        ctx.chbTideClock('2026-01-14T06:41+0000') === '06:41', ctx.chbTideClock('2026-01-14T06:41+0000'));
+
     const w = ctx.chbCoastRow('weather today', tToday, { tide: null, weather });
     check('coast: a weather question answers without tides', !!w && /cloudy/.test(w.label) && /19°C/.test(w.label), w && w.label);
     check('coast: a gale is named with its gust', !!w && /gusting 52 mph/.test(w.label + ' ' + w.sub), w && (w.label + ' | ' + w.sub));
@@ -2247,6 +2268,74 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('a settled deposit with the balance not yet due is NOT chased at 10 days out', !/Settled Ahead/.test(dutyAll), dutyAll);
         const laterPlan = ctx.chbOwedLater();
         check('…the quiet owed-later line holds it instead', laterPlan.n === 1 && Math.abs(laterPlan.total - 300) < 0.005, `${laterPlan.n} · ${laterPlan.total}`);
+
+        // A4) THE GUEST REGISTER IS A DUTY. It is treated as one at booking level —
+        // bookingFlow has a stage for it, the hub's next-action card asks for it — and
+        // chbDuties had no branch, so for a guest arriving TOMORROW who had never
+        // opened the link the strip computed to display:none, the ops line said
+        // "all quiet today ✓ Nothing needs you" and the brief said nothing. It is a
+        // legal record (the Immigration (Hotel Records) Order 1972), and its own
+        // window: nothing until it is close enough to chase, red on the day and the
+        // day before.
+        vm.runInContext(`enquiries=[]; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[
+              {id:81,dbId:81,name:'Reg Tomorrow',email:'r1@x.co',checkIn:'${dFut(1)}',checkOut:'${dFut(4)}',adults:3,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r1',regSubmitted:false,regCount:0,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}},
+              {id:82,dbId:82,name:'Reg Far Off',email:'r2@x.co',checkIn:'${dFut(30)}',checkOut:'${dFut(33)}',adults:2,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r2',regSubmitted:false,regCount:0,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}},
+              {id:83,dbId:83,name:'Reg Done',email:'r3@x.co',checkIn:'${dFut(2)}',checkOut:'${dFut(5)}',adults:2,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r3',regSubmitted:true,regCount:2,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        const regD = ctx.chbDuties().filter((d) => d.kind === 'register');
+        check('an unsubmitted register close to arrival IS a duty',
+            regD.length === 1 && /Reg Tomorrow/.test(regD[0].label), regD.map((d) => d.label).join(' | '));
+        check('…and reads as red the day before arrival', regD.length === 1 && regD[0].sev === 'danger', regD.map((d) => d.sev).join(','));
+        check('…while one 30 days out does not nag', !regD.some((d) => /Reg Far Off/.test(d.label)));
+        check('…and a COMPLETE register is not a duty at all', !regD.some((d) => /Reg Done/.test(d.label)));
+        // Partial counts as outstanding — the register needs everyone 16 or over.
+        vm.runInContext(`dbBookings.jollyboat=[
+              {id:84,dbId:84,name:'Reg Partial',email:'r4@x.co',checkIn:'${dFut(2)}',checkOut:'${dFut(5)}',adults:3,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r4',regSubmitted:true,regCount:1,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        const regPart = ctx.chbDuties().filter((d) => d.kind === 'register');
+        check('a PART-filled register is still outstanding', regPart.length === 1, regPart.map((d) => d.label).join(' | '));
+
+        // A4b) MONEY THE GUEST HAS ALREADY ARRANGED IS NOT CHASED. An armed plan means
+        // a card is on file and the collection is scheduled — the pay screen tells the
+        // guest "Balance · already arranged" — and chbChaseInfo consulted nothing about
+        // it, so an ordinary chase duty appeared every day for a booking that needs
+        // nothing, and both taps it offers email a "pay your balance" request for money
+        // coming off that card in days. A TROUBLED plan still chases: the card failed,
+        // so the money really is outstanding (payments-due.php draws the same line).
+        vm.runInContext(`enquiries=[]; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[
+              {id:85,dbId:85,name:'Arranged Guest',email:'ag@x.co',checkIn:'${dFut(10)}',checkOut:'${dFut(13)}',adults:2,children:0,payment:'deposit',depositPaid:100,autopayState:'armed',
+               agreedPrice:{total:430,perNight:415,nights:3,txnFee:15}},
+              {id:86,dbId:86,name:'Troubled Guest',email:'tg@x.co',checkIn:'${dFut(10)}',checkOut:'${dFut(13)}',adults:2,children:0,payment:'deposit',depositPaid:100,autopayState:'failed',
+               agreedPrice:{total:430,perNight:415,nights:3,txnFee:15}}];`, ctx);
+        const armed = ctx.chbDuties().filter((d) => d.kind === 'balance');
+        check('an ARRANGED balance is not chased', !armed.some((d) => /Arranged Guest/.test(d.label)), armed.map((d) => d.label).join(' | '));
+        check('…while a TROUBLED plan still is — that card failed', armed.some((d) => /Troubled Guest/.test(d.label)), armed.map((d) => d.label).join(' | '));
+
+        // A5) A PLANNING FACT IS NOT AN ALERT. findChangeovers collected every
+        // same-day changeover forward for ever, and showChangeoverToasts renders one
+        // persistent amber card each into the fixed toast stack: measured at 390x844
+        // with changeovers at +10, +95 and +200 days, three cards filled 664px of an
+        // 844px screen, covering the whole Needs-you strip, an overdue balance row and
+        // the calendar — one of them dated fourteen months out.
+        if (typeof ctx.findChangeovers === 'function') {
+            vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+                dbBookings.jollyboat=[
+                  {id:91,dbId:91,name:'Out Soon',checkIn:'${dFut(1)}',checkOut:'${dFut(4)}',adults:2,children:0},
+                  {id:92,dbId:92,name:'In Soon',checkIn:'${dFut(4)}',checkOut:'${dFut(7)}',adults:2,children:0},
+                  {id:93,dbId:93,name:'Out Later',checkIn:'${dFut(92)}',checkOut:'${dFut(95)}',adults:2,children:0},
+                  {id:94,dbId:94,name:'In Later',checkIn:'${dFut(95)}',checkOut:'${dFut(98)}',adults:2,children:0},
+                  {id:95,dbId:95,name:'Out Ages',checkIn:'${dFut(197)}',checkOut:'${dFut(200)}',adults:2,children:0},
+                  {id:96,dbId:96,name:'In Ages',checkIn:'${dFut(200)}',checkOut:'${dFut(203)}',adults:2,children:0}];`, ctx);
+            const co = ctx.findChangeovers();
+            check('a changeover the owner can act on is reported', co.some((c) => /Out Soon/.test(c.leaving.name)), co.map((c) => c.date).join(','));
+            check('…and one 95 days out is not an alert', !co.some((c) => /Out Later/.test(c.leaving.name)), co.map((c) => c.date).join(','));
+            check('…nor one 200 days out', !co.some((c) => /Out Ages/.test(c.leaving.name)));
+            check('…so the stack cannot bury the strip it sits over', co.length <= 3, String(co.length));
+        }
 
         // A3) OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug:
         // "if someone pays cash deposit don't show notification or owes — we

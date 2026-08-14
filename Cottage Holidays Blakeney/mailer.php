@@ -2612,7 +2612,14 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
-    $days = max(0, (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
+    // ANCHORED AT UTC MIDNIGHT, like pricing.php and bookings.php already are.
+    // Both timestamps were LOCAL under Europe/London, so an interval spanning the
+    // spring-forward Sunday is N*86400 − 3600 seconds and floor() returns N−1: the
+    // reminder told a guest "your arrival is in 6 days" for a stay 7 days away.
+    // (Autumn is harmless — the extra hour rounds down inside the same day.) The
+    // reminder pass runs for arrivals 3–14 days out, so late March is squarely in
+    // its window. Verified: 2027-03-26 → 2027-04-02 now yields 7, was 6.
+    $days = max(0, (int) floor((strtotime($b['check_in'] . ' UTC') - strtotime(date('Y-m-d') . ' UTC')) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
     $rail = payment_rail($b);
     // The SAME facts the request stated, so the chase cannot quote a smaller sum
@@ -3671,7 +3678,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
             "you can pick up where you left off here:\n" .
             ($link ? $link . "\n\n" : "\n") .
-            'Your details are saved in the form on this device, so it only takes a moment. ' .
+            'If you open it on the same device you started on, we\'ll have kept what you typed. ' .
             "Or just reply to this email and we'll happily sort it out for you.\n\n" .
             "Warm wishes,\nCottage Holidays Blakeney",
         'html' => email_shell(
@@ -3684,7 +3691,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
                 ) .
                 email_p(
                     "No pressure at all — if you'd still like to stay, you can pick up where you left off in one tap. " .
-                        'Your details are saved in the form on this device, so it only takes a moment.',
+                        'If you open it on the same device you started on, we\'ll have kept what you typed.',
                 ) .
                 ($link ? email_btn($link, 'Pick up where you left off') : '') .
                 email_p("Or just reply to this email and we'll happily sort it out for you.", true),

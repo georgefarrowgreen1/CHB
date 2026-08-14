@@ -147,6 +147,56 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(rng.dlgOpen && rng.options.length === 2 && /booking/i.test(rng.options[0]) && /block/i.test(rng.options[1]),
     `second tap opens the chooser with both actions (${(rng.options || []).join(' / ')})`);
   ok(rng.cleared, 'backing out clears the mark — nothing saved');
+  // 1c-ii) …AND IN THE DEFAULT THEME THE CONTROL ANSWERS THE POINTER. The two-tap
+  // cell is a control (cursor:pointer, role=button), and its hover tint plus every
+  // day-column separator were raw white alphas with no light-mode counterpart — so
+  // in light mode pointing at a cell changed nothing you could see and the grid
+  // read as one undivided band per lane. Sampled from computed values against the
+  // cell's own resting ground, so the check needs no colour model.
+  const laneInk = await page.evaluate(async () => {
+    const out = {};
+    // RESTORE WHAT WAS THERE, not a guess: light IS the app's default, so blanking the
+    // class at the end would leave every later check in this suite on a theme the app
+    // never chose.
+    const wasLight = document.body.classList.contains('light-mode');
+    for (const theme of ['light', 'dark']) {
+      document.body.classList.toggle('light-mode', theme === 'light');
+      await new Promise((r) => setTimeout(r, 120));
+      const cell = document.querySelector('#cal-body .tl-cell[data-act="tlCellTap"]:not(.is-wknd):not(.is-today):not(.is-mstart)');
+      if (!cell) { out[theme] = null; continue; }
+      const rest = getComputedStyle(cell);
+      // Does a hover rule for THIS theme exist at all? Read it from the CSSOM: the
+      // harness cannot hover in a way that survives a computed read here, and the
+      // defect is a missing rule, not a wrong value. NB read selectorText FIRST and
+      // recurse only into a non-empty list — modern Chromium gives every CSSStyleRule
+      // an (empty) cssRules for nesting, and an `if (r.cssRules) continue` skips every
+      // style rule in the document (this file's own documented trap).
+      const hoverRule = [...document.styleSheets].some((sh) => {
+        let rs; try { rs = sh.cssRules; } catch (e) { return false; }
+        const walk = (l) => [...l].some((r2) =>
+          (r2.selectorText && /\.tl-cell:hover/.test(r2.selectorText) && (theme === 'dark' ? !/light-mode/.test(r2.selectorText) : /light-mode/.test(r2.selectorText)) && r2.style.background)
+          || (!r2.selectorText && r2.cssRules && r2.cssRules.length && walk(r2.cssRules)));
+        return walk(rs);
+      });
+      out[theme] = { border: rest.borderLeftColor, hoverRule };
+    }
+    document.body.classList.toggle('light-mode', wasLight);
+    return out;
+  });
+  ok(!!(laneInk.light && laneInk.dark), `(fixture) a plain free timeline cell was on screen in both themes (${!!laneInk.light}/${!!laneInk.dark})`);
+  // THE PROPERTY IS THAT A LIGHT COUNTERPART EXISTS, not a luminance delta against a
+  // ground this harness has to go looking for. The first version walked up for the
+  // first opaque ancestor and composited against it — which passed locally and, in CI,
+  // found a LIGHT ancestor while measuring the dark theme and reported delta 0.5 on
+  // correct code. The defect itself is exact and needs no ground: light had no rule at
+  // all, so both themes resolved to the SAME raw white alpha.
+  ok(laneInk.light && laneInk.dark && laneInk.light.border !== laneInk.dark.border,
+    `the timeline's day columns are drawn per THEME, not one raw alpha for both (light ${laneInk.light && laneInk.light.border} / dark ${laneInk.dark && laneInk.dark.border})`);
+  for (const theme of ['light', 'dark']) {
+    const v = laneInk[theme];
+    ok(v && /rgba?\(/.test(v.border) && !/, *0\)$/.test(v.border), `${theme}: …and it is actually inked (${v && v.border})`);
+    ok(v && v.hoverRule, `${theme}: a free cell has a hover tint, so the two-tap control answers the pointer`);
+  }
   const refuse = await page.evaluate(async () => {
     // The FIRST and LAST free cells on the lane: with two stays seeded
     // mid-window, the widest range must cross one — it has to refuse and
@@ -302,6 +352,55 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const bd5 = await page.evaluate(() => window.__bdPosts);
   ok(bd5.length === 1 && bd5[0].check_in === bd4.ci && bd5[0].check_out === bd4.co && bd5[0].prop,
     `Block posts the picked range through the same add_block payload (${bd5.length ? bd5[0].check_in + '→' + bd5[0].check_out : 'none'})`);
+
+  // 5b. …AND BLOCKING IS NOT A ONE-WAY DOOR. delete_block existed, was correct,
+  // and had NO caller anywhere: a range blocked for work that finished early was
+  // unsellable for ever — hidden on the site AND published as unavailable to every
+  // connected platform. The OWNER block gets a control; an IMPORTED one must not
+  // (the sync owns its lifecycle, and freeing it opens a double-booking window
+  // until the next import).
+  const blk = await page.evaluate(() => {
+    window.__delPosts = [];
+    const k = Object.keys(dbBlocks)[0] || '21a';
+    const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    dbBlocks[k] = [
+      { id: 9001, source: 'owner', checkIn: iso(3), checkOut: iso(6) },
+      { id: 9002, source: 'airbnb', checkIn: iso(10), checkOut: iso(13) },
+    ];
+    renderCalendar();
+    const own = document.querySelector('[data-act="tlBlockTap"]');
+    const ota = [...document.querySelectorAll('.tl-ext')].filter((e) => !e.getAttribute('data-act'));
+    return {
+      ownIsControl: !!(own && own.tagName === 'BUTTON'),
+      ownArgs: own ? own.getAttribute('data-args') || '' : '',
+      otaInert: ota.length > 0,
+      otaHasAct: [...document.querySelectorAll('.tl-ext')].some((e) => (e.textContent || '').trim() === 'Airbnb' && e.getAttribute('data-act')),
+    };
+  });
+  ok(blk.ownIsControl && /9001/.test(blk.ownArgs), `an owner block is a control carrying its own id (${blk.ownArgs})`);
+  ok(blk.otaInert && !blk.otaHasAct, 'an imported platform block stays display-only');
+  // Confirm-then-delete, driven through the real dialog.
+  const del = await page.evaluate(async () => {
+    window.__delPosts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('ical-import.php') && body.action === 'delete_block') { window.__delPosts.push(body); return { ok: true }; }
+      return realPost ? realPost(url, body) : { ok: true };
+    };
+    // Guarded: a missing control must FAIL the checks, not throw and take the
+    // whole suite down with it (the dead-fold-opener lesson).
+    const btn = document.querySelector('[data-act="tlBlockTap"]');
+    if (!btn) return { dlgUp: false, posts: [], noControl: true };
+    btn.click();
+    await new Promise((r) => setTimeout(r, 350));
+    const dlgUp = !!document.querySelector('#glass-dialog');
+    const okBtn = document.getElementById('glass-dialog-ok');
+    if (okBtn) okBtn.click();
+    await new Promise((r) => setTimeout(r, 400));
+    return { dlgUp, posts: window.__delPosts };
+  });
+  ok(del.dlgUp, 'freeing dates asks first — they go back on sale everywhere');
+  ok(del.posts.length === 1 && Number(del.posts[0].id) === 9001, `…then posts delete_block for that block (${JSON.stringify(del.posts)})`);
 
   console.log(fails ? `MERGED WORKSPACE TEST FAILED ❌ (${fails})` : 'MERGED WORKSPACE TEST PASSED ✅');
   await done(fails);

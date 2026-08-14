@@ -308,6 +308,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/We read your enquiry/.test(sent11.steps) && /payment link/.test(sent11.steps),
     '…above the what-happens-next steps');
 
+  // A PHONE-ONLY ENQUIRY IS PROMISED A CALL, NOT AN EMAIL. Both this client and
+  // enquiries.php deliberately accept an enquiry with a phone and no address — a
+  // guest who prefers to be called — and the sent screen then promised an email
+  // THREE times and offered "Create your account", whose handler answers "We need a
+  // valid email to create your account" on a screen with no email field and no way
+  // back. Driven through the real send with the field left blank.
+  await page.evaluate(() => { closeEnquireModal(); });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { openEnquireModal(); });
+  await page.waitForTimeout(250);
+  await fill(true, true);
+  await page.evaluate(() => { const e = document.getElementById('enq-email'); if (e) e.value = ''; enqLiveSync(); });
+  await send();
+  const noMail = await page.evaluate(() => ({
+    step: document.getElementById('enquire-step-account').style.display,
+    how: (document.getElementById('enq-sent-how') || {}).textContent || '',
+    today: (document.getElementById('enq-sched-today') || {}).textContent || '',
+    acctShown: (document.getElementById('enq-acct-new') || { style: {} }).style.display !== 'none',
+    existShown: (document.getElementById('enq-acct-existing') || { style: {} }).style.display !== 'none',
+  }));
+  ok(noMail.step === '', '(fixture) an enquiry with a phone and no email is still accepted');
+  ok(/call you/i.test(noMail.how) && !/by email/i.test(noMail.how),
+    `…and is promised a CALL, not an email (${noMail.how})`);
+  ok(!/email/i.test(noMail.today), `…with the schedule row saying the same (${noMail.today})`);
+  ok(!noMail.acctShown && !noMail.existShown,
+    'the account step is withheld — an account is keyed on an email, so there is nothing to create');
+
   console.log('10. the owner can SEE it on the booking, at arrival time');
   // Storing it on the booking is only worth anything if it is on screen where the
   // owner looks when the guest turns up. Driven through the real hub rather than

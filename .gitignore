@@ -16,6 +16,14 @@ Cottage Holidays Blakeney/*.webp
 Thumbs.db
 node_modules/
 
+# Playwright's manifest is a BUILD ARTIFACT here, not a project file: ci.yml runs
+# `npm init -y` + `npm install playwright@<pinned>` in the app directory on every
+# browser job, so a committed package.json would collide with the thing that
+# creates it — and the deploy would carry it to the live host for no reason.
+# Installing playwright locally to run the ui-test suites leaves these behind.
+Cottage Holidays Blakeney/package.json
+Cottage Holidays Blakeney/package-lock.json
+
 # Layout-gate screenshots (regenerated per run; uploaded as a CI artifact).
 Cottage Holidays Blakeney/layout-shots/
 

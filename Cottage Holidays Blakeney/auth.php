@@ -345,12 +345,69 @@ switch ($action) {
             json_out(['error' => 'An account with this email already exists'], 409);
         }
 
+        // REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT. my_bookings_payload matches
+        // stays on `b.email = ?`, so signing someone in the instant
+        // they type an address handed over every booking already made against it —
+        // dates, party, money, the arrival details, and the door code once inside
+        // its reveal window — to anyone who guessed a guest's email. Nothing else
+        // in the flow verifies the address.
+        // So: an address that ALREADY HAS RECORDS gets no session here. The account
+        // is created (the password they chose is theirs), and we email the existing
+        // magic link, which is the app's own proof-of-control. A genuinely new guest
+        // — the ordinary case — is unaffected and still signs straight in.
+        // BOOKINGS ONLY, deliberately — not enquiries. The enquiry flow registers an
+        // account moments after the guest submits an enquiry with that same address,
+        // so counting enquiries would send every ordinary new guest to their inbox
+        // and the "your account is ready" path would never happen. A booking is also
+        // where the exposure actually is: money, arrival details and the door code
+        // hang off a booking; an enquiry carries none of them.
+        $claimsExisting = false;
+        try {
+            $c = db()->prepare('SELECT 1 FROM bookings WHERE email = ? LIMIT 1');
+            $c->execute([$email]);
+            $claimsExisting = (bool) $c->fetchColumn();
+        } catch (\Throwable $e) {
+            // Can't tell — assume it DOES claim records. Failing closed costs a new
+            // guest one email; failing open hands over someone's booking.
+            $claimsExisting = true;
+        }
+
         $hash = password_hash($pw, PASSWORD_DEFAULT);
-        db()
-            ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash) VALUES (?,?,?,?,?,?)')
-            ->execute([$name, $email, $phone, $address, $postcode, $hash]);
+        // An account with nothing to claim is verified by definition — there is no
+        // one else's data behind it, so a new guest signs straight in as before.
+        // One that DOES claim existing stays stays unverified until the emailed
+        // link is used; guest_login refuses it meanwhile, or the password they just
+        // chose would walk straight back through the front door.
+        try {
+            db()
+                ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash, email_verified_at) VALUES (?,?,?,?,?,?,?)')
+                ->execute([$name, $email, $phone, $address, $postcode, $hash, $claimsExisting ? null : date('Y-m-d H:i:s')]);
+        } catch (\Throwable $e) {
+            // migration-111 not applied yet — keep the pre-verification write.
+            db()
+                ->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash) VALUES (?,?,?,?,?,?)')
+                ->execute([$name, $email, $phone, $address, $postcode, $hash]);
+        }
+        $newGuestId = (int) db()->lastInsertId();
+
+        if ($claimsExisting) {
+            try {
+                $ts = time();
+                $url = site_base_url() . 'index.html?mlogin=' . $newGuestId . '&t=' . $ts . '&k=' . login_token($newGuestId, $ts);
+                require_once __DIR__ . '/mailer.php';
+                send_magic_link_email(['id' => $newGuestId, 'name' => $name, 'email' => $email], $url);
+            } catch (\Throwable $e) {
+            }
+            log_activity('account', 'guest.register_verify', 'New account for an email that already has bookings — sign-in link emailed instead of signing in', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $newGuestId]);
+            json_out([
+                'ok' => true,
+                'verify' => true,
+                'message' => "Account created. We've emailed you a sign-in link at " . $email . " — tap it to confirm it's you and see your stay.",
+            ]);
+        }
+
         session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['guest_id'] = (int) db()->lastInsertId();
+        $_SESSION['guest_id'] = $newGuestId;
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
         log_activity('account', 'guest.register', 'New guest account — ' . $name, ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $_SESSION['guest_id']]);
         json_out([
@@ -406,6 +463,27 @@ switch ($action) {
             json_out(['error' => 'Email or password not recognised'], 401);
         }
         throttle_record('guest:' . $email, true);
+        // THE PASSWORD IS NOT THE PROOF. An account created against an address that
+        // already had bookings is left unverified (guest_register), and the password
+        // was chosen by whoever registered — so accepting it here would walk straight
+        // back through the door the registration check just closed. Only the emailed
+        // link proves the address; re-send it and say so. Grandfathered accounts and
+        // every ordinary new guest are stamped verified, so nobody real meets this.
+        try {
+            $vq = db()->prepare('SELECT email_verified_at FROM guests WHERE id = ?');
+            $vq->execute([(int) $row['id']]);
+            $verifiedAt = $vq->fetchColumn();
+            if ($verifiedAt === null) {
+                $ts = time();
+                $url = site_base_url() . 'index.html?mlogin=' . (int) $row['id'] . '&t=' . $ts . '&k=' . login_token($row['id'], $ts);
+                require_once __DIR__ . '/mailer.php';
+                send_magic_link_email($row, $url);
+                log_activity('account', 'guest.login_unverified', 'Sign-in refused until the email is confirmed — link re-sent', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) (int) $row['id']]);
+                json_out(['error' => "Please confirm your email first — we've just sent you a sign-in link at " . $email . '.'], 403);
+            }
+        } catch (\PDOException $e) {
+            // migration-111 not applied — behave exactly as before.
+        }
         session_regenerate_id(true); // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int) $row['id'];
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
@@ -482,6 +560,16 @@ switch ($action) {
         $row = $stmt->fetch();
         if (!$row) {
             json_out(['error' => 'This sign-in link is invalid.'], 401);
+        }
+        // THIS is the proof of address — the link was emailed to it and has just been
+        // opened. Stamping it here is what lets an account created against existing
+        // bookings finally sign in (guest_register / guest_login).
+        try {
+            db()
+                ->prepare('UPDATE guests SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = ?')
+                ->execute([(int) $row['id']]);
+        } catch (\Throwable $e) {
+            // migration-111 not applied — nothing to stamp.
         }
         session_regenerate_id(true); // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int) $row['id'];
@@ -812,7 +900,7 @@ switch ($action) {
             json_out(['error' => 'Guest email is required'], 400);
         }
         $s = db()->prepare(
-            'SELECT name, prop_key, check_in FROM bookings WHERE LOWER(email) = ? ORDER BY check_in DESC LIMIT 1',
+            'SELECT name, prop_key, check_in FROM bookings WHERE email = ? ORDER BY check_in DESC LIMIT 1',
         );
         $s->execute([$email]);
         $b = $s->fetch();

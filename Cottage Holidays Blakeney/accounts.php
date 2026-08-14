@@ -82,7 +82,38 @@ function allocate_income_by_year($income, $cardDates, $paymentDate)
     return $byYear;
 }
 
+// The same allocation, kept per DAY. The tax-YEAR total was already split across
+// the real card dates, but the ROW carrying it is stamped with the booking's single
+// `payment_date` — a field pay.php and the reconciler restamp on EVERY payment — and
+// the client's MTD quarter buckets filter on that. So £200 in May and £600 in
+// November reported Q1 £0.00 / Q3 £800.00, and a row allocated to one tax year but
+// dated inside the next fell outside all four quarter bounds and vanished from the
+// table entirely. Shipping the days lets the quarters be summed from what actually
+// happened, exactly as fee_days and kept_days already are.
+function allocate_income_by_day($income, $cardDates, $paymentDate)
+{
+    $out = [];
+    $remaining = $income;
+    foreach ($cardDates as [$d, $amt]) {
+        if ($remaining <= 0.005) {
+            break;
+        }
+        $take = min($remaining, $amt);
+        if ($take > 0.005) {
+            $out[] = ['d' => $d, 'a' => round($take, 2)];
+            $remaining -= $take;
+        }
+    }
+    // Whatever the card cannot account for is cash/bank money whose only date is
+    // the booking's own — the same fallback allocate_income_by_year() uses.
+    if ($remaining > 0.005 && $paymentDate) {
+        $out[] = ['d' => substr((string) $paymentDate, 0, 10), 'a' => round($remaining, 2)];
+    }
+    return $out;
+}
+
 $rows = []; // one entry per (booking, tax-year contribution) — held sits on the payment_date year
+$incomeDays = []; // ['d' => Y-m-d, 'a' => float] — income on the day it really arrived
 $years = [];
 $undatedIncome = 0;
 $undatedHeld = 0;
@@ -108,6 +139,9 @@ foreach ($bookings as $b) {
     $paymentYear = tax_year_start($b['payment_date']); // where the held deposit + display date sit
 
     $byYear = allocate_income_by_year($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date']);
+    foreach (allocate_income_by_day($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date']) as $dayRow) {
+        $incomeDays[] = $dayRow;
+    }
     if (!$byYear) {
         $byYear = [$paymentYear === null ? 'null' : $paymentYear => 0.0]; // no income (edge) — still surface held
     }
@@ -149,36 +183,72 @@ try {
     foreach ($bookings as $b) {
         $liveIds[(int) $b['id']] = true;
     }
-    $orphans = db()->query(
+    // NET PER BOOKING, NOT PER DATE. A cancellation refund is stamped NOW(), which
+    // is almost never the day the charge landed — so grouping the net by DATE put
+    // the refund in its own negative group, `HAVING net > 0.005` dropped it, and the
+    // charge's own day still reported its full gross. A booking charged £800 in May
+    // and fully refunded in June was reported as £800 of taxable rental income for a
+    // stay the owner kept nothing from, and that flowed into net profit, the Money
+    // landing, the statement PDF and the CSV. Net the whole booking first, floor at
+    // zero, then allocate whatever survives across its own charge dates oldest-first
+    // — the same shape the kept-damages block below already uses.
+    $orphanRows = db()->query(
         "SELECT booking_id, DATE(created_at) d,
-              ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0)
-                  - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) net
+              ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0),2) charged,
+              ROUND(COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) refunded
            FROM payments
           GROUP BY booking_id, DATE(created_at)
-         HAVING net > 0.005",
+          ORDER BY booking_id, d",
     )->fetchAll();
-    foreach ($orphans as $o) {
-        if (isset($liveIds[(int) $o['booking_id']])) {
+    $orphanBk = [];
+    foreach ($orphanRows as $o) {
+        $bid = (int) $o['booking_id'];
+        if (isset($liveIds[$bid])) {
             continue; // live booking — already counted above
         }
-        $ty = tax_year_start($o['d']);
-        $rows[] = [
-            'id' => (int) $o['booking_id'],
-            'name' => '(cancelled booking)',
-            'prop_key' => '',
-            'property_name' => '',
-            'payment_method' => 'Square card',
-            'payment_date' => $o['d'],
-            'received' => (float) $o['net'],
-            'income_part' => (float) $o['net'],
-            'held_part' => 0.0,
-            'tax_year' => $ty,
-        ];
-        if ($ty === null) {
-            $undatedIncome += (float) $o['net'];
-            $undatedCount++;
-        } else {
-            $years[$ty] = true;
+        if (!isset($orphanBk[$bid])) {
+            $orphanBk[$bid] = ['charges' => [], 'refunded' => 0.0];
+        }
+        if ((float) $o['charged'] > 0.005) {
+            $orphanBk[$bid]['charges'][] = ['d' => $o['d'], 'amt' => (float) $o['charged']];
+        }
+        $orphanBk[$bid]['refunded'] += (float) $o['refunded'];
+    }
+    foreach ($orphanBk as $bid => $info) {
+        $gross = 0.0;
+        foreach ($info['charges'] as $c) {
+            $gross += $c['amt'];
+        }
+        $left = round($gross - $info['refunded'], 2);
+        if ($left <= 0.005) {
+            continue; // fully refunded — the owner kept nothing, so there is no income
+        }
+        foreach ($info['charges'] as $c) {
+            if ($left <= 0.005) {
+                break;
+            }
+            $take = round(min($left, $c['amt']), 2);
+            $left = round($left - $take, 2);
+            $incomeDays[] = ['d' => $c['d'], 'a' => $take];
+            $ty = tax_year_start($c['d']);
+            $rows[] = [
+                'id' => $bid,
+                'name' => '(cancelled booking)',
+                'prop_key' => '',
+                'property_name' => '',
+                'payment_method' => 'Square card',
+                'payment_date' => $c['d'],
+                'received' => $take,
+                'income_part' => $take,
+                'held_part' => 0.0,
+                'tax_year' => $ty,
+            ];
+            if ($ty === null) {
+                $undatedIncome += $take;
+                $undatedCount++;
+            } else {
+                $years[$ty] = true;
+            }
         }
     }
 } catch (\Throwable $e) {
@@ -533,6 +603,13 @@ json_out([
     'fee_days' => array_map(fn($r) => ['date' => $r['d'], 'fee' => (float) $r['f']], $feesInYear),
     'kept_deposits' => round($keptTotal, 2), // damage deposits retained — taxable income
     'kept_days' => array_map(fn($r) => ['date' => $r['d'], 'amount' => (float) $r['a']], $keptInYear),
+    // Income on the day it ACTUALLY arrived, for the MTD quarter buckets — the rows
+    // above carry the booking's restamped payment_date, which put income in the
+    // wrong quarter or in none at all.
+    'income_days' => array_map(
+        fn($r) => ['date' => $r['d'], 'amount' => (float) $r['a']],
+        array_values(array_filter($incomeDays, fn($r) => tax_year_start($r['d']) === $requested)),
+    ),
     'count' => count($inYear),
     'by_property' => $byProp,
     'payments' => $inYear,

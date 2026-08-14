@@ -75,7 +75,11 @@ function content_value($k, $d = null) {
     ];
     return $c[$k] ?? $d;
 }
-function log_activity() {}
+// ARITY MIRRORS db.php's, and it is not cosmetic: PHPStan analyses the whole set
+// as one, so a 0-arg stub made every real 4-arg call site in the app an
+// `arguments.count` error — 95 of them in CI. Third time this file has done it
+// (see rate_limit and occupancy_limits above).
+function log_activity($category, $action, $summary, $opts = []) {}
 function db() { throw new RuntimeException('no database in this renderer'); }
 function booking_ledger_net($id) { return 0.0; }
 function damages_returned($id) { return 0.0; }

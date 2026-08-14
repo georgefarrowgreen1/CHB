@@ -370,12 +370,19 @@ it_check('unknown action → 400 (route_actions catch-all)', http($admin, 'POST'
 echo "\n== 8. Self-repair storage hygiene ==\n";
 @mkdir($work . '/uploads/cache', 0777, true);
 file_put_contents($work . '/uploads/live.jpg', 'x');
-file_put_contents($work . '/uploads/cache/live.jpg.w640.webp', 'x');   // source present → keep
-file_put_contents($work . '/uploads/cache/gone.jpg.w640.webp', 'x');   // source missing → prune
+// THE REAL CACHE-NAME SHAPE, which is what let this defect ship. img.php builds the
+// name from the FULL src with separators flattened — 'uploads/live.jpg' becomes
+// `uploads_live.jpg` — so these fixtures were the one shape self-repair's broken
+// probe happened to handle: it reconstructed `uploads/<basename>`, which for
+// `live.jpg.w640.webp` really is uploads/live.jpg. Against the names img.php
+// ACTUALLY writes, every entry looked orphaned and the nightly cron deleted the
+// whole resize cache and called it a fix.
+file_put_contents($work . '/uploads/cache/uploads_live.jpg.w640.webp', 'x');   // source present → keep
+file_put_contents($work . '/uploads/cache/uploads_gone.jpg.w640.webp', 'x');   // source missing → prune
 $r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
 it_check('self-repair runs via the cron secret', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
-it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/gone.jpg.w640.webp'));
-it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/live.jpg.w640.webp'));
+it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/uploads_gone.jpg.w640.webp'));
+it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/uploads_live.jpg.w640.webp'));
 it_check('the prune is reported as a fix', (bool) array_filter($r['json']['fixed'] ?? [], fn($f) => strpos((string) $f, 'resized image') !== false), json_encode($r['json']['fixed'] ?? []));
 
 // ---- 10. Money-integrity fixes (whole-site logic audit) -------------------
@@ -1595,10 +1602,34 @@ http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $
 
 // (b) The arrival-window write: a REAL guest session (register mints one, with
 // the csrf cookie the jar picks up), writing to THEIR OWN booking only.
+// REGISTERING AN EMAIL THAT ALREADY HAS BOOKINGS DOES NOT HAND OVER THE STAY.
+// my_bookings_payload matches on the email alone, so signing someone in the moment
+// they typed one gave anybody who guessed a guest's address their dates, money,
+// arrival details and (inside its reveal window) the door code. The account is made
+// but stays unverified, and the magic link — emailed TO that address — is the proof.
 $gj = [];
 $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keysafe Guest', 'email' => 'ks@gmail.com',
     'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('(fixture) a guest account for the booking email signs in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_check('registering an email that already has bookings does NOT sign you in',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['verify'] ?? false) === true && !isset($r['json']['guest']), $r['raw']);
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'list']);
+it_check('…and that half-made account can read nothing', $r['code'] === 401, $r['raw']);
+// The bypass that makes the refusal real: the password was chosen by whoever
+// registered, so accepting it here would reopen the door the check just shut.
+$r = http($gj, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'ks@gmail.com', 'password' => 'longenough1']);
+it_check('…nor can the password they just chose sign them in', $r['code'] === 403, $r['raw']);
+// The rightful owner opens the emailed link, which IS the proof of the address.
+$gvid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn();
+$gts = time();
+$gtok = substr(hash_hmac('sha256', 'login:' . $gvid . ':' . $gts, $SECRET), 0, 32); // login_token()'s own shape
+$r = http($gj, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gvid, 'ts' => $gts, 'token' => $gtok]);
+it_check('(fixture) the emailed sign-in link signs the guest in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_check('…and stamps the address as proven', $rootDb->query("SELECT email_verified_at FROM guests WHERE id = $gvid")->fetchColumn() !== null, '');
+// A BRAND-NEW address has nothing to claim, so the ordinary guest is unaffected.
+$gj2 = [];
+$r = http($gj2, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Fresh Guest', 'email' => 'fresh-guest@gmail.com',
+    'password' => 'longenough1', 'address' => '2 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+it_check('a brand-new email still signs straight in', ($r['json']['ok'] ?? false) === true && empty($r['json']['verify']) && !empty($r['json']['guest']), $r['raw']);
 $r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
 it_check('the guest stores their arrival window on their own booking', ($r['json']['ok'] ?? false) === true && ($r['json']['window'] ?? '') === '16-18', $r['raw']);
 $aw = $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn();
@@ -1673,6 +1704,66 @@ it_check('…and the whole stage comes back out', $q("SELECT COUNT(*) FROM booki
     && $q('SELECT COUNT(*) FROM expenses') === $x0
     && $q('SELECT COUNT(*) FROM waitlist') === $w0
     && $q("SELECT COUNT(*) FROM guest_reviews WHERE status = 'pending'") === $v0, '');
+
+// ---- 21. An email lookup is case-blind AND index-usable -------------------
+//  Every "is this the same person" query used to read `LOWER(email) = LOWER(?)`,
+//  which wraps the indexed column in a function and so cannot use idx_email.
+//  Measured on this schema with 5,036 rows: `email = ?` plans ref/idx_email/1 row,
+//  the LOWER() form plans an index scan of all 5,036 — on the query that runs
+//  whenever a guest opens their stays. They are now plain equality, which is only
+//  correct because the columns collate case-insensitively. That was inherited from
+//  the server default, i.e. true by luck; migration-112 states it. This section is
+//  what makes the assumption fail LOUDLY rather than silently hiding a guest's own
+//  booking from them, so all three legs are checked: the collation, the behaviour
+//  through the real endpoint, and the query plan.
+echo "\n== 21. Email lookups are case-blind and index-usable ==\n";
+$colls = $rootDb->query(
+    "SELECT TABLE_NAME, COLLATION_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'email'
+       AND TABLE_NAME IN ('bookings','enquiries','guests')",
+)->fetchAll(PDO::FETCH_KEY_PAIR);
+it_check('all three email columns exist to be checked (vacuity guard)', count($colls) === 3, json_encode($colls));
+foreach ($colls as $tbl => $coll) {
+    it_check("$tbl.email collates case-INsensitively", substr((string) $coll, -3) === '_ci', (string) $coll);
+}
+// The BEHAVIOUR, through the real endpoint: a stay stored in mixed case must
+// reach a guest whose session was minted from the lower-case form of it.
+$mcIn = date('Y-m-d', strtotime('+120 days'));
+$mcOut = date('Y-m-d', strtotime('+124 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Mixed Case','Mixed.Case@Gmail.COM','$mcIn','$mcOut',2,0,'deposit',100,400,400,0,4)");
+$mcBid = (int) $rootDb->lastInsertId();
+$mj = [];
+$r = http($mj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Mixed Case', 'email' => 'mixed.case@gmail.com',
+    'password' => 'longenough1', 'address' => '3 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+it_check('(fixture) the account is made against the LOWER-case address', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$mcGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'mixed.case@gmail.com'")->fetchColumn();
+it_check('…and `email = ?` found that account despite the mixed-case stay', $mcGid > 0, "guest id $mcGid");
+$mts = time();
+$mtok = substr(hash_hmac('sha256', 'login:' . $mcGid . ':' . $mts, $SECRET), 0, 32);
+$r = http($mj, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $mcGid, 'ts' => $mts, 'token' => $mtok]);
+it_check('(fixture) the emailed link signs them in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($mj, 'GET', '/my-bookings.php');
+$mcIds = array_map(fn($b) => (int) ($b['id'] ?? 0), $r['json']['bookings'] ?? []);
+it_check('a MIXED-CASE stay reaches its own guest', in_array($mcBid, $mcIds, true), $r['raw']);
+// …and the plan. `possible_keys` is the right question, not `key`: it says whether
+// the index is USABLE at all, which is what the function wrapper destroyed, and it
+// is stable at any table size where the optimiser's final choice is not.
+$plan = fn($sql) => $rootDb->query('EXPLAIN ' . $sql)->fetch(PDO::FETCH_ASSOC);
+$pOk = $plan("SELECT id FROM bookings WHERE email = 'mixed.case@gmail.com'");
+$pBad = $plan("SELECT id FROM bookings WHERE LOWER(email) = LOWER('mixed.case@gmail.com')");
+it_check('`email = ?` can use idx_email', strpos((string) ($pOk['possible_keys'] ?? ''), 'idx_email') !== false, json_encode($pOk));
+it_check('…and the LOWER() form provably cannot (so this is not a no-op)', ($pBad['possible_keys'] ?? null) === null, json_encode($pBad));
+// The ratchet: an equality filter that wraps email in LOWER() must not come back.
+// LIKE searches and SELECT-list projections are deliberately out of scope — neither
+// can use the index anyway, so forbidding them would fail on correct code.
+$lowerBack = [];
+foreach (glob(__DIR__ . '/*.php') as $php) {
+    if (strpos(basename($php), 'test-') === 0) { continue; }
+    $src = (string) file_get_contents($php);
+    $src = preg_replace('/^\s*(\/\/|\*|#).*$/m', '', $src) ?? $src; // a comment explaining this must not fail it
+    if (preg_match('/LOWER\(\s*[a-z]?\.?email\s*\)\s*=/i', $src)) { $lowerBack[] = basename($php); }
+}
+it_check('no equality filter wraps email in LOWER() any more', $lowerBack === [], implode(', ', $lowerBack));
 
 echo "\n== Summary ==\n";
 if ($fail) {

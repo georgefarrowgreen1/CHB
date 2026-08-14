@@ -294,6 +294,32 @@ const PINNED = new Date('2026-08-08T09:00:00Z');
         `…with the same anatomy as the cottages page (${home.map((c) => c.rows.join(',')).join(' | ')})`,
     );
 
+    // ── A COTTAGE WITH NO PHOTOS DOES NOT PRETEND TO HAVE ONE ──────────────────
+    // A cottage goes live the moment it is created, so this is the state a guest can
+    // meet before the first upload. renderGallery substituted [''] for an empty list
+    // and dressed the result as a photo: measured 538px of a 390x844 phone — the whole
+    // first screen — as a blank rectangle with role=button, tabindex=0, an aria-label
+    // reading "Photo 1 of 1 … open photo viewer", two carousel arrows over nothing, and
+    // a lightbox that does not open when you press Enter on it.
+    console.log('\nA cottage with no photos yet');
+    const nophotos = await page.evaluate(async () => {
+        renderGallery([]);
+        await new Promise((r) => setTimeout(r, 150));
+        const track = document.getElementById('gallery-21a');
+        const slides = [...track.querySelectorAll('.gallery-slide')];
+        const arrows = [...(track.parentElement ? track.parentElement.querySelectorAll('.gallery-nav') : [])];
+        return {
+            n: slides.length,
+            interactive: slides.filter((el) => el.getAttribute('role') || el.getAttribute('tabindex') || el.getAttribute('data-act') || el.getAttribute('aria-label')).length,
+            says: (track.textContent || '').trim(),
+            arrowsShown: arrows.filter((a) => a.getClientRects().length).length,
+        };
+    });
+    ok(nophotos.n === 1 && nophotos.interactive === 0,
+        `the empty gallery offers nothing to open (${nophotos.n} slide, ${nophotos.interactive} interactive)`);
+    ok(/coming soon/i.test(nophotos.says), `…and says so in words (${nophotos.says})`);
+    ok(nophotos.arrowsShown === 0, `…with no arrows over nothing (${nophotos.arrowsShown})`);
+
     console.log(fails ? `\n  ${fails} COTTAGE-CARD CHECK(S) FAILED ❌` : '\n  COTTAGE-CARD SUITE PASSED ✅');
     await done(fails);
 })();

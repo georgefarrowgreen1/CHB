@@ -488,6 +488,22 @@ function bookings_admin_payload()
         unset($bk);
     } catch (\Throwable $e) {
     }
+    // THE PLAN'S STATE, on the owner path too. booking_autopay_state is already
+    // derived for my-bookings.php, and app.js's mapper documents autopayState as ''
+    // here — so nothing owner-side could tell an ARRANGED balance from an unpaid
+    // one. A guest who consented to automatic collection produced an ordinary chase
+    // duty every day, and both taps it offered emailed them a "pay your balance"
+    // request for money that will be taken from their card in three days,
+    // contradicting the "Balance · already arranged" the app showed them.
+    try {
+        require_once __DIR__ . '/pricing.php';
+        foreach ($rows as &$bk) {
+            [$st] = booking_autopay_state($bk);
+            $bk['autopay_state'] = $st;
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
     // Guest-registration status per booking (UK hotel-records duty). The bulk
     // payload carries only status + count + the owner-usable form link — never
     // the PII; the owner opens the token page to view/edit the actual names.
@@ -737,7 +753,7 @@ if ($action === 'add') {
     $priorStays = 0;
     if ($guestEmail !== '') {
         try {
-            $pc = db()->prepare('SELECT COUNT(*) FROM bookings WHERE LOWER(email) = LOWER(?) AND id <> ?');
+            $pc = db()->prepare('SELECT COUNT(*) FROM bookings WHERE email = ? AND id <> ?');
             $pc->execute([$guestEmail, $newId]);
             $priorStays = (int) $pc->fetchColumn();
         } catch (\Throwable $e) {
@@ -1649,6 +1665,11 @@ if ($action === 'refund') {
         }
     }
     log_activity('payment', 'booking.refund', 'Refund issued — £' . number_format((float) $amount, 2), ['prop_key' => $gProp ?? '', 'entity' => 'booking', 'entity_id' => (string) $bookingId]);
+    // AND THE SEND IS ON THE RECORD, either way. The hub's Emails fold and
+    // hubEmailsSum read comms rows, so without this the one email that explains a
+    // refund to the guest left no trace on the booking at all — the owner could not
+    // tell later whether it had gone.
+    log_comms_outcome('email.refund', 'Refund email', $emailResult, $bookingId, $gProp ?? '');
     json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
 }
 
@@ -1942,6 +1963,7 @@ if ($action === 'return_deposit') {
         log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    log_comms_outcome('email.deposit_return', 'Deposit-return email', $emailResult, $id, $b['prop_key'] ?? '');
     json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
 }
 
@@ -1959,7 +1981,16 @@ if ($action === 'keep_deposit') {
     // double-settle (refund the guest AND book it as kept income).
     book_lock($b['prop_key'] ?? '');
     $b = booking_by_id($id) ?: $b;
-    if (($b['hold_status'] ?? '') !== 'charged') {
+    // RAIL-BLIND, like the duty and the ring fence. This required hold_status
+    // 'charged' — a CARD-rail fact that a cash or bank deposit never sets — so a
+    // deposit handed over in cash, recorded through "Collected too", counted by
+    // damages_collected, listed in "Deposits to return" and raised as a duty could
+    // only ever be GIVEN BACK: with damage, the owner's one offered action was to
+    // return money they were keeping, and the guest was emailed "we're returning
+    // your refundable damage deposit" about it. What matters is whether money is
+    // actually held, which damages_collected already answers for both eras; a
+    // SETTLED deposit is refused on its own terms below and by the $held check.
+    if (in_array($b['hold_status'] ?? '', ['returned', 'kept', 'released', 'expired'], true)) {
         book_unlock($b['prop_key'] ?? '');
         json_out(['error' => 'This deposit has already been settled.'], 409);
     }

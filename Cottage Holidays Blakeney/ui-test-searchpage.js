@@ -849,16 +849,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // query typed — otherwise this reads a non-rendered element and passes at 0px for
     // the wrong reason.
     const i = document.getElementById('cmdk-input');
-    i.value = 'bob'; cmdkSearchCore('bob', false);
-    await new Promise((r) => setTimeout(r, 300));
     const out = {};
-    ['cmdk-clear', 'cmdk-help'].forEach((id) => {
+    const ring = (id) => {
       const el = document.getElementById(id);
-      if (!el) { out[id] = null; return; }
-      if (!el.getBoundingClientRect().width) { out[id] = null; return; } // not on screen
+      if (!el || !el.getBoundingClientRect().width) { out[id] = null; return; } // not on screen
       el.focus();
       out[id] = getComputedStyle(el).outlineWidth;
-    });
+    };
+    // Each stop is measured in the state where it actually RENDERS at this width:
+    // ✕ clear only exists with text (`has-text`), and below 640px the "?" yields to
+    // the field in that same state (measuring either in the wrong state reads a
+    // non-rendered element and passes at 0px for the wrong reason).
+    ring('cmdk-help');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await new Promise((r) => setTimeout(r, 300));
+    ring('cmdk-clear');
     const chip = document.querySelector('#cmdk .cmdk-chip');
     if (chip) { chip.focus(); out.chip = getComputedStyle(chip).outlineWidth; }
     return out;
