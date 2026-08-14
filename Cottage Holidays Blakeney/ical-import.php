@@ -334,15 +334,21 @@ if ($action === 'add_block') {
 }
 
 if ($action === 'delete_block') {
-    // Remove a single imported block by id. Note: if the booking still exists on
-    // the platform's feed, a future sync may re-import it.
+    // Free an OWNER block. Restricted to source='owner' on purpose: an imported
+    // platform block is owned by the sync, and deleting one would read the cottage
+    // as FREE to dates_clash and availability.php until the next import — a real
+    // double-booking window opened by a mis-fired id. (The sync re-imports it
+    // anyway, so the delete would achieve nothing but that window.)
     $id = (int) ($in['id'] ?? 0);
     if ($id <= 0) {
         json_out(['error' => 'A block id is required'], 400);
     }
-    db()
-        ->prepare('DELETE FROM ical_blocks WHERE id = ?')
-        ->execute([$id]);
+    $del = db()->prepare("DELETE FROM ical_blocks WHERE id = ? AND source = 'owner'");
+    $del->execute([$id]);
+    if ($del->rowCount() < 1) {
+        json_out(['error' => "Those dates are held by a connected calendar, so they can't be freed here — they clear when that booking does."], 409);
+    }
+    log_activity('booking', 'block.removed', 'Blocked dates freed', ['entity' => 'block', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

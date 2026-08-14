@@ -303,6 +303,55 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(bd5.length === 1 && bd5[0].check_in === bd4.ci && bd5[0].check_out === bd4.co && bd5[0].prop,
     `Block posts the picked range through the same add_block payload (${bd5.length ? bd5[0].check_in + '→' + bd5[0].check_out : 'none'})`);
 
+  // 5b. …AND BLOCKING IS NOT A ONE-WAY DOOR. delete_block existed, was correct,
+  // and had NO caller anywhere: a range blocked for work that finished early was
+  // unsellable for ever — hidden on the site AND published as unavailable to every
+  // connected platform. The OWNER block gets a control; an IMPORTED one must not
+  // (the sync owns its lifecycle, and freeing it opens a double-booking window
+  // until the next import).
+  const blk = await page.evaluate(() => {
+    window.__delPosts = [];
+    const k = Object.keys(dbBlocks)[0] || '21a';
+    const iso = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+    dbBlocks[k] = [
+      { id: 9001, source: 'owner', checkIn: iso(3), checkOut: iso(6) },
+      { id: 9002, source: 'airbnb', checkIn: iso(10), checkOut: iso(13) },
+    ];
+    renderCalendar();
+    const own = document.querySelector('[data-act="tlBlockTap"]');
+    const ota = [...document.querySelectorAll('.tl-ext')].filter((e) => !e.getAttribute('data-act'));
+    return {
+      ownIsControl: !!(own && own.tagName === 'BUTTON'),
+      ownArgs: own ? own.getAttribute('data-args') || '' : '',
+      otaInert: ota.length > 0,
+      otaHasAct: [...document.querySelectorAll('.tl-ext')].some((e) => (e.textContent || '').trim() === 'Airbnb' && e.getAttribute('data-act')),
+    };
+  });
+  ok(blk.ownIsControl && /9001/.test(blk.ownArgs), `an owner block is a control carrying its own id (${blk.ownArgs})`);
+  ok(blk.otaInert && !blk.otaHasAct, 'an imported platform block stays display-only');
+  // Confirm-then-delete, driven through the real dialog.
+  const del = await page.evaluate(async () => {
+    window.__delPosts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('ical-import.php') && body.action === 'delete_block') { window.__delPosts.push(body); return { ok: true }; }
+      return realPost ? realPost(url, body) : { ok: true };
+    };
+    // Guarded: a missing control must FAIL the checks, not throw and take the
+    // whole suite down with it (the dead-fold-opener lesson).
+    const btn = document.querySelector('[data-act="tlBlockTap"]');
+    if (!btn) return { dlgUp: false, posts: [], noControl: true };
+    btn.click();
+    await new Promise((r) => setTimeout(r, 350));
+    const dlgUp = !!document.querySelector('#glass-dialog');
+    const okBtn = document.getElementById('glass-dialog-ok');
+    if (okBtn) okBtn.click();
+    await new Promise((r) => setTimeout(r, 400));
+    return { dlgUp, posts: window.__delPosts };
+  });
+  ok(del.dlgUp, 'freeing dates asks first — they go back on sale everywhere');
+  ok(del.posts.length === 1 && Number(del.posts[0].id) === 9001, `…then posts delete_block for that block (${JSON.stringify(del.posts)})`);
+
   console.log(fails ? `MERGED WORKSPACE TEST FAILED ❌ (${fails})` : 'MERGED WORKSPACE TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

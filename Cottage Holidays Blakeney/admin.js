@@ -23305,6 +23305,37 @@ function tlGapTap(pk, iso) {
         'Set the offer',
     ).then((ok) => { if (ok) nyGapOffer(pk, iso); });
 }
+// FREE A BLOCKED RANGE. The other half of "Block dates", which shipped without
+// one: the endpoint (ical-import.php delete_block) was written and correct and had
+// no caller, so blocked nights were permanent — hidden from the website AND
+// published as unavailable to every connected platform. Confirms first, because
+// freeing dates puts them back on sale everywhere.
+async function tlBlockTap(id) {
+    const bl = Object.keys(dbBlocks || {})
+        .flatMap((k) => (dbBlocks[k] || []).map((b) => Object.assign({ _pk: k }, b)))
+        .find((b) => String(b.id) === String(id));
+    if (!bl) {
+        toast('Those dates have changed — the calendar will refresh');
+        try {
+            renderCalendar();
+        } catch (e) {}
+        return;
+    }
+    const nm = (propertyMeta[bl._pk] || {}).name || bl._pk;
+    const ok = await glassConfirm(
+        `Free these dates on ${nm}? ${fmtStayRange(bl.checkIn, bl.checkOut)} goes back on sale here and on any connected calendar.`,
+        'Free the dates',
+    );
+    if (!ok) return;
+    try {
+        await apiPost('ical-import.php', { action: 'delete_block', id: Number(id) });
+        toast('Dates freed — back on sale.');
+        await loadData();
+        renderCalendar();
+    } catch (e) {
+        glassAlert(e.message || "Couldn't free those dates.");
+    }
+}
 // Keep the header label in sync with the month under the left edge.
 function tlSyncMonthLabel() {
     const host = document.getElementById('cal-body');
@@ -23636,6 +23667,18 @@ function renderCalendar() {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(bl.checkIn, bl.checkOut);
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
+                // AN OWNER BLOCK IS THE ONE BLOCK A HUMAN CAN RETRACT, so it is the one
+                // that gets a control. Imported OTA bars stay display-only — the sync
+                // owns their lifecycle and a deleted import simply returns on the next
+                // run. Without this, "Block dates" was a one-way door: delete_block
+                // exists and is correct but had NO caller anywhere, so a range blocked
+                // for building work that finished early stayed unsellable for ever, on
+                // the website AND on every connected platform (ical-export publishes
+                // owner blocks), with no route back but the database.
+                if (bl.source === 'owner') {
+                    bars += `<button type="button" class="tl-bar tl-ext tl-own${sp.clip}" data-search="${escapeHtml(('blocked ' + meta.name + ' owner unavailable').toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('tlBlockTap', String(bl.id))} title="${escapeHtml(meta.name)} — blocked · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)} · tap to free these dates" aria-label="Blocked ${escapeHtml(meta.name)} ${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)} — free these dates">Blocked</button>`;
+                    return;
+                }
                 bars += `<span class="tl-bar tl-ext${sp.clip}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);

@@ -14,14 +14,14 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v876';
+const CACHE = 'chb-cache-v877';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=272', 'app.js?v=825', 'guest-app.css?v=41', 'guest-app.js?v=22'];
+const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=272', 'app.js?v=826', 'guest-app.css?v=41', 'guest-app.js?v=22'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -166,7 +166,22 @@ async function swFlushQueue() {
     for (const it of items) {
         let r;
         try {
-            r = await fetch(it.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(it.payload || {}) });
+            // THE REPLAY MUST CARRY THE CSRF TOKEN or require_admin() 403s it and the
+            // loop below (correctly) keeps it — so every offline write was refused for
+            // ever on the browsers that have Background Sync. A worker can't read
+            // document.cookie; the csrf cookie is not httpOnly and cookieStore exists
+            // in exactly those workers. No token → no header, i.e. the old behaviour.
+            let csrf = '';
+            try {
+                const cs = /** @type {any} */ (self).cookieStore;
+                if (cs) {
+                    const c = await cs.get('csrf');
+                    csrf = (c && c.value) || '';
+                }
+            } catch (e) {}
+            const hdrs = { 'Content-Type': 'application/json' };
+            if (csrf) hdrs['X-CSRF-Token'] = decodeURIComponent(csrf);
+            r = await fetch(it.endpoint, { method: 'POST', headers: hdrs, credentials: 'include', body: JSON.stringify(it.payload || {}) });
         } catch (e) {
             // True network failure — stop and let the browser retry the sync later.
             throw e;
