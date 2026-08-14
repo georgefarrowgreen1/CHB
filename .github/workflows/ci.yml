@@ -216,6 +216,15 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-migrate.php
 
+      # A gate that stubs one of the app's helpers with a NARROWER signature turns
+      # every real call site into a PHPStan arguments.count error, while every test
+      # and browser suite stays green — measured, 95 failures from one 0-arg stub,
+      # the third time that file had done it. PHPStan is the only other gate that
+      # sees it and it has no local runner, so this one makes it fail before a push.
+      - name: Test-stub arity (a stub must mirror the signature it shadows)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-stub-arity.php
+
       # SMTP transport: runs mailer.php's real socket conversation against a
       # scriptable fake SMTP server — happy path, transient-retry, the
       # no-retry-after-payload guarantee (double-send safety), batch-over-one-

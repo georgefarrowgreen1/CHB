@@ -79,7 +79,7 @@ function db()
 {
     return new WlDb();
 }
-function dates_clash($prop, $from, $to)
+function dates_clash($prop, $from, $to, $ignoreId = null) // arity mirrors db.php's
 {
     global $WL_CLASH;
     return $WL_CLASH;
