@@ -60,16 +60,50 @@ try {
 } catch (\Throwable $e) {
 }
 
+// THE WEEK'S MONEY, NOT EACH BOOKING'S LIFETIME. deposit_paid is CUMULATIVE and
+// payment_date is restamped on every payment, so summing it for bookings "paid in
+// the last 7 days" counted everything those bookings had EVER received: a stay with
+// £100.43 in March and £301.27 on the 10th of August reported "£401.70 in" for the
+// week of the 17th — and the £100.43 had already been reported by March's own
+// digest. accounts.php's comment documents this exact model as the flaw it fixed
+// for the books; the digest was the surviving copy. The card ledger carries a date
+// per payment, so ask it.
 $received = 0.0;
 try {
     $r = db()
         ->query(
-            "SELECT COALESCE(SUM(deposit_paid),0) v FROM bookings
-                      WHERE payment_date >= (CURDATE() - INTERVAL 7 DAY)",
+            "SELECT ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0)
+                       - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) v
+                 FROM payments WHERE created_at >= (NOW() - INTERVAL 7 DAY)",
         )
         ->fetch();
     $received = (float) ($r['v'] ?? 0);
+    // Cash and bank bookings leave no ledger row, so the cumulative figure is their
+    // only record. Counted for bookings with NO ledger rows at all, so a card
+    // booking is never counted twice. NB one hand-recorded booking paid across two
+    // different weeks still reports its whole total in the later week — there is no
+    // per-payment history to split, and inventing one would be worse than saying so.
+    $r2 = db()
+        ->query(
+            "SELECT COALESCE(SUM(b.deposit_paid),0) v FROM bookings b
+                     WHERE b.payment_date >= (CURDATE() - INTERVAL 7 DAY)
+                       AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.booking_id = b.id)",
+        )
+        ->fetch();
+    $received += (float) ($r2['v'] ?? 0);
 } catch (\Throwable $e) {
+    // payments table not migrated — fall back to the pre-ledger shape rather than
+    // reporting nothing came in.
+    try {
+        $r = db()
+            ->query(
+                "SELECT COALESCE(SUM(deposit_paid),0) v FROM bookings
+                          WHERE payment_date >= (CURDATE() - INTERVAL 7 DAY)",
+            )
+            ->fetch();
+        $received = (float) ($r['v'] ?? 0);
+    } catch (\Throwable $e2) {
+    }
 }
 
 // ---- The week ahead: arrivals -------------------------------------------

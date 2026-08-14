@@ -13270,11 +13270,22 @@ async function renderAccounts() {
         ['Q3 · Oct–Dec', `${startYear}-10-06`, `${startYear + 1}-01-05`],
         ['Q4 · Jan–Mar', `${startYear + 1}-01-06`, `${startYear + 1}-04-05`],
     ];
+    // INCOME BY THE DAY IT ARRIVED, not by the booking's payment_date — that field is
+    // restamped on every payment, so £200 in May and £600 in November reported Q1 £0
+    // and Q3 £800, and a row allocated to one tax year but dated in the next fell
+    // outside all four quarters and vanished. income_days is the server's per-date
+    // split (the fee_days/kept_days shape); the payments fallback keeps an older
+    // server working rather than showing four empty quarters.
+    const incomeDays = Array.isArray(rep.income_days) ? rep.income_days : null;
     const qRows = qBounds.map(([lbl, s, e]) => {
         const inc =
-            payments
-                .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
-                .reduce((a, p) => a + (p.income_part || 0), 0) +
+            (incomeDays
+                ? incomeDays
+                      .filter((d) => (d.date || '') >= s && (d.date || '') <= e)
+                      .reduce((a, d) => a + (d.amount || 0), 0)
+                : payments
+                      .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
+                      .reduce((a, p) => a + (p.income_part || 0), 0)) +
             keptDays
                 .filter((k) => (k.date || '') >= s && (k.date || '') <= e)
                 .reduce((a, k) => a + (k.amount || 0), 0);
