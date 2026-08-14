@@ -666,6 +666,21 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   const legendText = () => page.evaluate(() => document.getElementById('dp-legend').innerText.trim());
   ok(/you can still pick them/i.test(await legendText()),
     `the legend says the crossed dates are pickable here ("${await legendText()}")`);
+  // …AND SO DOES THE PAINT. The legend was only the visible layer: the corrective
+  // that lifts a crossed night out of the refused look was keyed on `.dp-admin`,
+  // so on the waitlist and the chat check the taken nights — the only nights those
+  // surfaces exist to select — rendered at 0.35 with a not-allowed cursor. Keyed on
+  // the click hook now, so it covers every mode where the cell really is pickable.
+  const wlPaint = await page.evaluate(() => {
+    const el = document.querySelector('#dp-grid [data-day="2026-08-19"]');
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { cursor: cs.cursor, op: Number(cs.opacity), struck: /line-through/.test(cs.textDecorationLine) };
+  });
+  ok(wlPaint && wlPaint.cursor === 'pointer' && wlPaint.op > 0.4,
+    `a pickable crossed night LOOKS pickable (cursor ${wlPaint && wlPaint.cursor}, opacity ${wlPaint && wlPaint.op})`);
+  ok(wlPaint && wlPaint.struck,
+    '…while keeping its strike, which is the fact being waited on');
   // A too-short night is a CONSEQUENCE of a booking, and the waitlist premise is that
   // the booking may go — so 6/11/18/27 (free nights that can start no 2-night stay
   // only because the next night is taken) must not be marked unavailable here.
@@ -1482,6 +1497,69 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   await page.evaluate(() => closeDatePicker());
   PER_PROP.jollyboat = RANGES;
   AVAIL = RANGES;
+
+  // ─── §20 THE CARD FITS, AND THE RECEIPT PRINTS ──────────────────────────────
+  // Two things the picker promised and did not deliver, both invisible to every
+  // check above because they are GEOMETRY at sizes nothing measured.
+  console.log('\n§20 The card fits on a short screen, and Continue states its figure');
+  const receipt = await page.evaluate(() => {
+    document.getElementById('enq-adults').value = '2';
+    document.getElementById('enq-children').value = '0';
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    openDatePicker();
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    const sub = document.querySelector('#dp-done .dp-done-sub');
+    if (!sub) return null;
+    return {
+      text: sub.innerText.trim(),
+      // A wrapped sub paints all of itself; an ellipsised one does not. Compare its
+      // own scroll extent against its box rather than eyeballing the string — a
+      // clipped receipt still READS, which is why this shipped.
+      // scrollWidth beyond the box means the sentence never fitted, whether it was
+      // then clipped or left to overflow the control — both hide the figure.
+      clipped: sub.scrollWidth > sub.clientWidth + 1,
+      ws: getComputedStyle(sub).whiteSpace,
+      label: (document.getElementById('dp-done') || {}).innerText || '',
+    };
+  });
+  ok(receipt && /£/.test(receipt.text),
+    `the Continue receipt carries the stay's figure (${receipt && JSON.stringify(receipt.text)})`);
+  ok(receipt && !receipt.clipped,
+    `and none of it is cut off — the foot is a 2-up row, so it must WRAP (white-space ${receipt && receipt.ws})`);
+  // THE CARD ITSELF, in landscape. Uncapped and unscrollable it ran 472px in a
+  // 360px viewport: both month buttons off the top, Continue off the bottom.
+  await page.setViewportSize({ width: 740, height: 360 });
+  await page.waitForTimeout(250);
+  const fit = await page.evaluate(() => {
+    const card = document.querySelector('.datepicker-card');
+    const r = card.getBoundingClientRect();
+    // REACHABLE, not necessarily already on screen: the card scrolls now, so the
+    // honest question is whether scrolling it brings the control into the viewport.
+    // (Before the cap it could not be reached at all — the card overflowed the
+    // VIEWPORT, which nothing scrolls.)
+    const reachable = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return null;
+      e.scrollIntoView({ block: 'nearest' });
+      const b = e.getBoundingClientRect();
+      return b.top >= -0.5 && b.bottom <= window.innerHeight + 0.5;
+    };
+    return {
+      fits: r.top >= -0.5 && r.bottom <= window.innerHeight + 0.5,
+      scrolls: getComputedStyle(card).overflowY === 'auto',
+      nav: reachable('.dp-nav-btn'),
+      done: reachable('#dp-done'),
+      h: Math.round(r.height),
+    };
+  });
+  ok(fit.fits && fit.scrolls, `at 740x360 the card fits the viewport and scrolls inside it (h ${fit.h})`);
+  ok(fit.nav === true, '…the month buttons are reachable');
+  ok(fit.done === true, '…and so is Continue, which is the only way to finish');
+  await page.evaluate(() => closeDatePicker());
+  await page.setViewportSize({ width: 390, height: 844 });
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

@@ -84,6 +84,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(h && /Jollyboat/.test(h.title) && /10 days/.test(h.title), `hub names the cottage + countdown (${h && h.title.trim()})`);
   ok(h && h.tiles === 5, `hub carries the planning tiles (${h && h.tiles})`);
   ok(h && /balance/i.test(h.sub) && h.pay, 'balance-due stay shows the balance note + Pay CTA');
+  // 2a-ii) THE ASK IS NOT THE SMALLEST TYPE IN THE CARD, AND NOTHING HERE IS UNDER
+  // THE PHONE TOUCH FLOOR. Two rules this screen was breaking on the DEFAULT theme
+  // at phone width: `#view-guest-bookings .btn-sm` out-specified BOTH the ≤480px 44px
+  // floor and `.gb2-links .btn-sm`'s own 44 (whose comment claims that floor and
+  // never painted), so every control here — Pay included — was 4px shorter than the
+  // same button anywhere else; and the primary CTA sat on base .btn-sm at 10.88px
+  // uppercase 400 while the quiet links under it were 12.8px sentence-case 600.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const cardType = await page.evaluate(() => {
+    const box = (sel) => { const e = document.querySelector(sel); if (!e) return null; const cs = getComputedStyle(e);
+      return { h: Math.round(e.getBoundingClientRect().height), fs: parseFloat(cs.fontSize), fw: Number(cs.fontWeight), tt: cs.textTransform }; };
+    // An identical button OUTSIDE the view, same page and frame, is the control.
+    const ref = document.createElement('button'); ref.className = 'btn-sm btn-edit'; ref.textContent = 'Invoice';
+    document.body.appendChild(ref);
+    const refH = Math.round(ref.getBoundingClientRect().height);
+    ref.remove();
+    return { cta: box('.gb2-cta .btn-sm, .hub-cta-btn'), quiet: box('.gb2-links .btn-sm'), refH,
+      shortest: Math.min(...[...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass')]
+        .filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().height))) };
+  });
+  ok(cardType.cta && cardType.quiet && cardType.cta.fs >= cardType.quiet.fs,
+    `the primary ask is not smaller than the quiet links (${cardType.cta && cardType.cta.fs}px vs ${cardType.quiet && cardType.quiet.fs}px)`);
+  ok(cardType.cta && cardType.cta.tt === 'none' && cardType.cta.fw >= 600,
+    `…and it reads as a sentence at a ladder weight (${cardType.cta && cardType.cta.tt} / ${cardType.cta && cardType.cta.fw})`);
+  ok(cardType.shortest >= 44,
+    `every control on the guest's own account screen meets the phone floor (shortest ${cardType.shortest}px, same button outside this view ${cardType.refH}px)`);
   await page.close();
 
   // 2b) …AND WHEN IT IS DUE. The card's job is "the one outstanding thing before

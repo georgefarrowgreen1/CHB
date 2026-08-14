@@ -1441,9 +1441,61 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
     return { shown: m.style.display !== 'none', fits: r.top >= 0 && r.left >= -1 && r.right <= innerWidth + 1 };
   });
   ok(menuOpen.shown && menuOpen.fits, 'tapping ⋯ opens the menu, fully on screen');
+  // …AND EVERY ITEM TAKES ITS OWN TAP. On a SHORT screen the menu runs down into
+  // the phone sticky bar, which is opaque and was the higher layer: measured at
+  // 844x390, elementFromPoint on "Share stay details" returned .bhub-sticky — an
+  // item you can read and cannot tap, with two more not visible at all. Paint
+  // order and hit order are one question, so one z-index answers both. Hit-tested
+  // rather than asserted on the z-index, which is the outcome and not the value.
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForTimeout(300);
+  const swallowed = await page.evaluate(async () => {
+    window.scrollTo(0, 0);
+    const m = document.querySelector('.bhub-menu');
+    // Open it AT THIS SIZE — reusing the copy left open by the check above would
+    // measure a placement made for the taller window (caught: maxHeight 686px in a
+    // 390px viewport), which tests nothing about a short screen.
+    // Open it AT THIS SIZE. The copy left open above was placed for the taller
+    // window (caught: maxHeight 686px in a 390px viewport). Close, let the
+    // document-level once-listener retire, then re-open.
+    bhubMenuClose();
+    await new Promise((r) => setTimeout(r, 60));
+    document.querySelector('.bhub-menu-btn').click();
+    await new Promise((r) => setTimeout(r, 60));
+    const items = [...m.querySelectorAll('[role="menuitem"]')];
+    const bad = [];
+    for (const it of items) {
+      // REACHABLE then TAPPABLE: the menu is capped and scrolls on a short screen,
+      // so bring each item into view first — the defect was never "you must scroll",
+      // it was an item painted UNDER an opaque bar (and one outside the window with
+      // nothing to scroll at all).
+      it.scrollIntoView({ block: 'nearest' });
+      const r = it.getBoundingClientRect();
+      if (!r.width || r.top < -0.5 || r.bottom > innerHeight + 0.5) { bad.push((it.textContent || '').trim().slice(0, 22) + ' (off screen)'); continue; }
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (!hit || (!it.contains(hit) && hit !== it)) bad.push((it.textContent || '').trim().slice(0, 22) + ' → ' + (hit ? (hit.className || hit.tagName) : 'null'));
+    }
+    const mr = m.getBoundingClientRect();
+    return { n: items.length, bad, sticky: !!document.querySelector('.bhub-sticky'),
+      dbg: `menu[${Math.round(mr.top)},${Math.round(mr.bottom)}] vh=${innerHeight} maxH=${m.style.maxHeight} sh=${m.scrollHeight}` };
+  });
+  ok(swallowed.n >= 3 && swallowed.sticky, `(fixture) a short screen shows the sticky bar under an open ⋯ menu (${swallowed.n} items)`);
+  ok(swallowed.bad.length === 0, `every ⋯ item takes its own tap on a short screen (${swallowed.bad.join(' | ') || 'all clear'}) ${swallowed.dbg}`);
+  await page.evaluate(() => { const m = document.querySelector('.bhub-menu'); if (m) m.style.display = 'none'; });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display === 'none'), 'Escape closes the menu');
+  // …AND THE NEXT TAP STILL OPENS IT. The outside-click listener is {once:true} and
+  // was the only one bhubMenuClose did not remove, so closing by any other route
+  // left it armed on `document` — where the data-act dispatcher also lives — and the
+  // next tap ran the dispatcher (open) then the stale listener (close) in one event.
+  // A dead second tap on the hub's only menu.
+  await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'),
+    'and the NEXT tap opens it again — no stale outside-click listener swallowing it');
   // …and blocked in code even if something calls it directly.
   const guard = page.evaluate(() => deleteBooking('b1'));
   await page.waitForTimeout(500);

@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 496;
+const ADMIN_BUNDLE_V = 497;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 192;
+const ADMIN_CSS_V = 193;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4222,7 +4222,11 @@ async function renderGuestBookings() {
         const currentStay = b.checkIn <= todayStr && !hasCheckedOut(b);
         if (currentStay) currentStays.push({ propKey, bookingId: b.id });
         const statusTag = upcoming
-            ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:#fff;border:1px solid var(--booked-border);">Upcoming</span>`
+            // --ok-text, not white: the tint is 25% #4CAF50 over a near-white
+            // card, so white measured 1.29:1 in the DEFAULT theme — the one badge
+            // marking a live booking was the one you had to hunt for, while both
+            // siblings in this same expression correctly take a -text token.
+            ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:var(--ok-text);border:1px solid var(--booked-border);">Upcoming</span>`
             : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
         // One review/photo block per PROPERTY — decide on THIS card, not via
         // reviewShown.has() inside the template (has() is true for every later
@@ -17823,7 +17827,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mb140629';
+    const BUILD = 'ui140734';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

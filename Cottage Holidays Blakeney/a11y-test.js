@@ -578,6 +578,92 @@ const stub = (page) => page.route(/\.php/, (r) => {
         }
     }
 
+    // ── §8 THE DEFAULT THEME'S RAW LITERALS ───────────────────────────────────
+    // Five more of the same class as §7: a literal colour that never retunes,
+    // sitting under inks that do. §1/§1b can't see any of them — three are inline
+    // styles or fills the pair-scanner doesn't discover, one is a background-IMAGE
+    // rather than a colour, and one is a border on a class no stylesheet mentioned.
+    // Measured by arithmetic on the resolved values (deterministic, no rendering)
+    // except the chevron, which is a computed background-image and so exact.
+    console.log('\n§8 Raw literals in the DEFAULT theme — inks, fills and a lost chevron');
+    {
+        const p3 = await t.browser.newPage({ viewport: { width: 390, height: 844 } });
+        try {
+            await p3.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+            await p3.waitForFunction(() => typeof window.__BUILD === 'string', null, { timeout: 20000 });
+            // admin.css is owner-only and lazily fetched, so a public page carries none
+            // of it — .bk-row's rules included. Load it rather than stub an owner
+            // session: this section wants the STYLESHEET, not the back office.
+            await p3.evaluate(async () => {
+                const l = document.createElement('link');
+                l.rel = 'stylesheet'; l.href = 'admin.css';
+                const done = new Promise((r) => { l.onload = r; l.onerror = r; });
+                document.head.appendChild(l); await done;
+            });
+            for (const theme of ['light', 'dark']) {
+                const r = await p3.evaluate((th) => {
+                    document.body.classList.toggle('light-mode', th === 'light');
+                    // Read the tokens off BODY, not :root — the light retunes live on
+                    // `body.light-mode`, so documentElement hands back the DARK values in
+                    // light mode and every ratio below is measured against the wrong ink
+                    // (the first run of this section reported 1.56:1 for a badge that
+                    // really renders at 4.65).
+                    const cs = getComputedStyle(document.body);
+                    const tok = (n) => cs.getPropertyValue(n).trim();
+                    // A select's chevron is a background-IMAGE, so a computed read is
+                    // exact — no compositing to model.
+                    const sel = document.createElement('select');
+                    sel.className = 'input-glass';
+                    document.body.appendChild(sel);
+                    const chev = getComputedStyle(sel).backgroundImage;
+                    sel.remove();
+                    // The row a paid guest arriving TODAY gets. Its class was generated
+                    // and styled by nothing, so read the painted edge rather than the CSS.
+                    const row = document.createElement('button');
+                    row.className = 'bk-row glass-panel pay-arrive';
+                    document.body.appendChild(row);
+                    const edge = getComputedStyle(row);
+                    const arrive = { w: edge.borderLeftWidth, c: edge.borderLeftColor };
+                    row.remove();
+                    return {
+                        chev, arrive,
+                        okText: tok('--ok-text'), accentInk: tok('--accent-ink'),
+                        accent: tok('--accent'), ok: tok('--ok'),
+                        warn: tok('--warn'), danger: tok('--danger'), info: tok('--info'),
+                    };
+                }, theme);
+                const rgb = (v) => {
+                    const h = String(v).replace('#', '');
+                    if (/^[0-9a-f]{6}$/i.test(h)) return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+                    const m = String(v).match(/[\d.]+/g).map(Number);
+                    return [m[0], m[1], m[2]];
+                };
+                // 25% #4CAF50 over the guest card's ground, which is what the badge sits on.
+                const over = (fg, a, bg) => fg.map((c, i) => Math.round(c * a + bg[i] * (1 - a)));
+                const card = theme === 'light' ? [253, 252, 250] : [21, 21, 24];
+                const badgeFill = over([76, 175, 80], 0.25, card);
+                const cr = (a, b) => contrast(rgb(a), Array.isArray(b) ? b : rgb(b));
+
+                ok(r.chev !== 'none', `${theme}: a glass <select> still says it is a menu (background-image ${r.chev === 'none' ? 'NONE' : 'present'})`);
+                const badge = cr(r.okText, badgeFill);
+                ok(badge >= 4.5, `${theme}: the Upcoming badge's ink is legible on its own 25% tint (${badge.toFixed(2)}:1)`);
+                const chip = cr(r.accentInk, r.accent);
+                ok(chip >= 4.5, `${theme}: the selected Activity-log chip is legible on the accent fill (${chip.toFixed(2)}:1)`);
+                // The status hero's disc: one ink, three FILLS — and the fills must be
+                // theme-invariant tokens, or no single ink can clear all three (the warn
+                // one was --warn-TEXT, which is retuned, and measured 1.73:1).
+                for (const [name, fill] of [['ok', r.ok], ['warn', r.warn], ['danger', r.danger]]) {
+                    const v = cr(r.accentInk, fill);
+                    ok(v >= 4.5, `${theme}: the Status hero's ${name} glyph resolves on its disc (${v.toFixed(2)}:1)`);
+                }
+                ok(parseFloat(r.arrive.w) >= 3 && cr(r.arrive.c, r.info) < 1.05,
+                    `${theme}: a guest arriving today gets the sea-blue traffic-light edge (${r.arrive.w} ${r.arrive.c})`);
+            }
+        } finally {
+            await p3.close();
+        }
+    }
+
     console.log(fails ? `\n  ${fails} A11Y CHECK(S) FAILED ❌` : '\n  A11Y CHECKS PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

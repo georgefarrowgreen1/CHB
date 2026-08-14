@@ -147,6 +147,51 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(rng.dlgOpen && rng.options.length === 2 && /booking/i.test(rng.options[0]) && /block/i.test(rng.options[1]),
     `second tap opens the chooser with both actions (${(rng.options || []).join(' / ')})`);
   ok(rng.cleared, 'backing out clears the mark — nothing saved');
+  // 1c-ii) …AND IN THE DEFAULT THEME THE CONTROL ANSWERS THE POINTER. The two-tap
+  // cell is a control (cursor:pointer, role=button), and its hover tint plus every
+  // day-column separator were raw white alphas with no light-mode counterpart — so
+  // in light mode pointing at a cell changed nothing you could see and the grid
+  // read as one undivided band per lane. Sampled from computed values against the
+  // cell's own resting ground, so the check needs no colour model.
+  const laneInk = await page.evaluate(async () => {
+    const out = {};
+    for (const theme of ['light', 'dark']) {
+      document.body.classList.toggle('light-mode', theme === 'light');
+      await new Promise((r) => setTimeout(r, 120));
+      const cell = document.querySelector('#cal-body .tl-cell[data-act="tlCellTap"]:not(.is-wknd):not(.is-today):not(.is-mstart)');
+      if (!cell) { out[theme] = null; continue; }
+      const rest = getComputedStyle(cell);
+      // A raw ALPHA says nothing — white at 0.04 is a visible hairline on the dark
+      // ground and INVISIBLE on the light one, which is the whole defect. So
+      // composite the border over the ground it actually sits on (walk up for the
+      // first opaque background) and require a real luminance delta.
+      const parse = (v) => { const m = String(v).match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(',').map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+      let ground = null;
+      for (let el = cell; el && !ground; el = el.parentElement) {
+        const c = parse(getComputedStyle(el).backgroundColor);
+        if (c && c.a >= 0.99) ground = c;
+      }
+      if (!ground) ground = { r: 255, g: 255, b: 255, a: 1 };
+      const bc = parse(rest.borderLeftColor) || { r: 0, g: 0, b: 0, a: 0 };
+      const over = ['r', 'g', 'b'].map((k) => bc[k] * bc.a + ground[k] * (1 - bc.a));
+      const L = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      const delta = Math.abs(L(over) - L([ground.r, ground.g, ground.b]));
+      cell.classList.add('__hovertest');
+      const hoverRule = [...document.styleSheets].some((sh) => { let rs; try { rs = sh.cssRules; } catch (e) { return false; }
+        const walk = (l) => [...l].some((r2) => (r2.selectorText && /\.tl-cell:hover/.test(r2.selectorText) && (theme === 'dark' || /light-mode/.test(r2.selectorText)) && r2.style.background)
+          || (r2.cssRules && !r2.selectorText && walk(r2.cssRules)));
+        return walk(rs); });
+      cell.classList.remove('__hovertest');
+      out[theme] = { border: rest.borderLeftColor, delta: Math.round(delta * 10) / 10, hoverRule };
+    }
+    document.body.classList.remove('light-mode');
+    return out;
+  });
+  for (const theme of ['light', 'dark']) {
+    const v = laneInk[theme];
+    ok(v && v.delta >= 4, `${theme}: the timeline's day columns are actually drawn (${v && v.border} — luminance delta ${v && v.delta})`);
+    ok(v && v.hoverRule, `${theme}: and a free cell has a hover tint, so the two-tap control answers the pointer`);
+  }
   const refuse = await page.evaluate(async () => {
     // The FIRST and LAST free cells on the lane: with two stays seeded
     // mid-window, the widest range must cross one — it has to refuse and

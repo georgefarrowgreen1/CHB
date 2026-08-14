@@ -631,6 +631,70 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { up, down };
   }, { ci: d(30), co: d(33), made: d(-4) });
   ok(attn.up.row && attn.up.cap, 'a stale enquiry raises the Needs-attention row');
+  // …AND IT WEARS THE HOUSE FOLD ANATOMY. `#inbox-landing .bhub-fold-lbl` was
+  // written for the three hand-written answer rows, which wrap their text in
+  // .iv-lwrap beside a glyph — but #iv-attn's rows come from the generic
+  // bhubFoldGrp(), whose label and sub are SIBLINGS. As flex items the sub sat
+  // BESIDE the label and squeezed it to 4px, breaking the guest's name into a
+  // column of single words. Measured, not asserted on the selector: a label
+  // narrower than its own first word is the defect.
+  // At PHONE width, where the squeeze bit: at 1000px the label has room to spare and
+  // the width half of this check would pass on the broken CSS.
+  const attnW = page.viewportSize().width;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const attnShape = await page.evaluate((old) => {
+    enquiries.push({ id: 'e98', dbId: 98, propKey: '21a', name: 'Jem Beighton', email: 'j@x.com', checkIn: old.ci, checkOut: old.co, adults: 2, children: 0, guests: '2 adults', message: 'Free in Sep?', received: old.made });
+    renderInbox();
+    const grp = document.querySelector('#iv-attn .bhub-fold-grp');
+    const lbl = grp && grp.querySelector('.bhub-fold-lbl');
+    const sub = grp && grp.querySelector('.bhub-fold-sub');
+    if (!lbl) { enquiries.pop(); renderInbox(); return null; }
+    const lr = lbl.getBoundingClientRect(), sr = sub ? sub.getBoundingClientRect() : null;
+    // MEASURE THE INKED TEXT, NOT THE ELEMENT BOX (the cottage-card lesson): under
+    // flex the LABEL's box stayed a comfortable 177px while its own text run was
+    // squeezed to a few pixels beside the sub, so a box measurement reports nothing
+    // wrong. A Range over the label's own text nodes gives what is actually painted.
+    const rng = document.createRange();
+    let textW = 0, textLines = 0;
+    for (const n of lbl.childNodes) {
+      if (n.nodeType !== 3 || !String(n.nodeValue).trim()) continue;
+      rng.selectNodeContents(n);
+      const rects = [...rng.getClientRects()];
+      textW = Math.max(textW, ...rects.map((x) => x.width));
+      textLines = Math.max(textLines, rects.length);
+    }
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+    probe.style.font = getComputedStyle(lbl).font;
+    probe.textContent = [...lbl.childNodes].filter((n) => n.nodeType === 3).map((n) => n.nodeValue).join(' ')
+      .trim().split(/\s+/).sort((a, b) => b.length - a.length)[0] || '';
+    document.body.appendChild(probe);
+    const wordW = probe.getBoundingClientRect().width;
+    probe.remove();
+    const out = {
+      lblW: Math.round(textW), wordW: Math.round(wordW), lines: textLines,
+      // The sub belongs UNDER the label, not beside it.
+      // The sub is a CHILD of the label, so "under it" is about the LEFT edge, not
+      // the bottom: stacked (display:block) it starts on the label's own rail;
+      // as a flex ITEM beside the text it was pushed right, which is what squeezed
+      // the name. Compare rails, and require the sub to start below the first line.
+      subStacked: sr ? Math.abs(sr.left - lr.left) <= 1 : null,
+      subLower: sr ? sr.top > lr.top + 1 : null,
+      dbg: JSON.stringify({ lblL: Math.round(lr.left), subL: sr ? Math.round(sr.left) : null, lblT: Math.round(lr.top), subT: sr ? Math.round(sr.top) : null }),
+    };
+    enquiries.pop(); renderInbox();
+    return out;
+  }, { ci: d(30), co: d(33), made: d(-6) });
+  // 1.5x the longest word, not merely >= it: broken, the run measured 76px against a
+  // 73px word — it "fitted" by 3px while breaking the name over FOUR lines, one word
+  // each. A label that can hold more than a single word per line is the property.
+  ok(attnShape && attnShape.lblW >= attnShape.wordW * 1.5,
+    `the exception row's label holds more than one word per line (${attnShape && attnShape.lblW}px painted vs ${attnShape && attnShape.wordW}px longest word, ${attnShape && attnShape.lines} lines)`);
+  ok(attnShape && attnShape.subStacked === true && attnShape.subLower === true,
+    `and its sub is STACKED under the label, not squeezed beside it (${attnShape && attnShape.dbg})`);
+  await page.setViewportSize({ width: attnW, height: 900 });
+  await page.waitForTimeout(250);
   ok(/1 waiting/.test(attn.up.fig), `…and the verdict counts it (${attn.up.fig})`);
   ok(attn.up.warnCap, 'a busy verdict wears the warning triangle, not the ✓');
   ok(attn.down, 'answering it stands the red section down');
@@ -789,6 +853,53 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const hubSrcIds = require('fs').readFileSync(__dirname + '/admin.js', 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   ok(/String\(x\.id\) === String\(want\) \|\| String\(x\.dbId\) === String\(want\)/.test(hubSrcIds),
     'openEnquiryHub normalises the id rather than matching one form');
+
+  // ── THE MESSAGES SEARCH BOX IS A SEARCH BOX ────────────────────────────────
+  // .msg-inbox-controls is a flex row with no wrap whose two siblings are both
+  // `flex: 0 0 auto` + nowrap, so on a phone the input absorbed the entire
+  // shortfall: measured 64px — about two characters of "Search name, email or
+  // text…" — and ONLY when there is unanswered work, i.e. exactly when the folder
+  // is worth searching. Driven through the real renderer with a thread that needs
+  // a reply, since with none the two siblings do not render and the row is fine.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const msgRow = await page.evaluate(async () => {
+    // Back to the Inbox first: the id-form checks above open an enquiry hub, and at
+    // phone width that is a standalone VIEW, so the folder row is in the document
+    // and painting nothing. Seed AFTER it — openInbox refetches and the suite's
+    // route answers with no threads.
+    await window.openInbox();
+    await new Promise((r) => setTimeout(r, 300));
+    __msgThreads = [{ id: 1, booking_id: 9, name: 'A Guest', email: 'guest@example.com', prop_key: '21a',
+      last_body: 'Is there parking?', last_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      last_from: 'guest', unread: 1, archived: 0 }];
+    __msgShowArchived = false;
+    // Stacked, each folder lives inside a CLOSED fold — measuring there reports 0
+    // for everything and the check passes proving nothing (it did, first run).
+    inboxFolder('messages');
+    const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
+    if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
+    renderMessagesList();
+    await new Promise((r) => setTimeout(r, 300));
+    const row = document.querySelector('.msg-inbox-controls');
+    const inp = document.getElementById('msg-search');
+    if (!row || !inp) return { why: 'row ' + !!row + ' inp ' + !!inp + ' folds ' + document.querySelectorAll('#inbox-landing .bhub-fold-row').length };
+    if (!row.getClientRects().length) return { why: 'the controls row never painted' };
+    const chip = document.getElementById('msg-unanswered');
+    return {
+      w: Math.round(inp.getBoundingClientRect().width),
+      rowW: Math.round(row.getBoundingClientRect().width),
+      chip: !!chip,
+      // How wide is its own placeholder? A field narrower than a few characters of
+      // it reads as broken rather than as a search.
+      ph: (inp.placeholder || '').length,
+    };
+  });
+  ok(msgRow && msgRow.chip, `(fixture) an unanswered thread renders the chip that squeezes the row (${msgRow && (msgRow.why || msgRow.rowW + 'px')})`);
+  ok(msgRow && msgRow.w >= msgRow.rowW * 0.6,
+    `the conversation search keeps a usable width beside them (${msgRow && msgRow.w}px of ${msgRow && msgRow.rowW}px)`);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(200);
 
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);

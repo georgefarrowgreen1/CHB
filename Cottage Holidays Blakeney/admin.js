@@ -10244,17 +10244,69 @@ function bhubMenuToggle(ev) {
     if (!wasOpen) {
         menu.style.display = 'flex';
         btn.setAttribute('aria-expanded', 'true');
+        bhubMenuPlace(btn, menu);
+        // A phone ROTATED with the menu open is the case this whole fix is about,
+        // so re-measure rather than leaving a placement made for the old window.
+        __bhubMenuResize = () => bhubMenuPlace(btn, menu);
+        window.addEventListener('resize', __bhubMenuResize);
         setTimeout(() => {
             document.addEventListener('click', bhubMenuClose, { once: true });
             document.addEventListener('keydown', __bhubMenuEsc);
         }, 0);
     }
 }
+// THE MENU MEASURES ITSELF, the coach tip's lesson. A CSS cap cannot do this: the
+// menu's `top` is `calc(100% + 6px)` off its wrapper, so how much room is left
+// below depends on where the button has scrolled to, and `100%` inside max-height
+// resolves against the containing block instead — measured, the obvious
+// `calc(100dvh - 100% - …)` computed to calc(-100% + 366px) and did nothing.
+// The failure this closes: at 844x390 the menu ran 207->537 in a 390px window, so
+// "Cancel & refund" was not below a scroll — it was outside the viewport with
+// nothing to scroll. Cap to the room below, and if that is too little to be worth
+// scrolling, open UPWARD where there is more.
+function bhubMenuPlace(btn, menu) {
+    menu.style.maxHeight = '';
+    menu.style.top = '';
+    menu.style.bottom = '';
+    const b = btn.getBoundingClientRect();
+    const margin = 14;
+    const below = window.innerHeight - b.bottom - 6 - margin;
+    const above = b.top - 6 - margin;
+    const want = menu.scrollHeight;
+    if (want > below && above > below) {
+        menu.style.top = 'auto';
+        menu.style.bottom = 'calc(100% + 6px)';
+        menu.style.maxHeight = Math.max(120, Math.floor(above)) + 'px';
+    } else {
+        menu.style.maxHeight = Math.max(120, Math.floor(below)) + 'px';
+    }
+}
 function __bhubMenuEsc(e) {
     if (e.key === 'Escape') bhubMenuClose();
 }
+let __bhubMenuResize = null;
 function bhubMenuClose() {
-    document.querySelectorAll('.bhub-menu').forEach((m) => (m.style.display = 'none'));
+    if (__bhubMenuResize) {
+        window.removeEventListener('resize', __bhubMenuResize);
+        __bhubMenuResize = null;
+    }
+    // THE OUTSIDE-CLICK LISTENER HAS TO GO TOO, and it was the only one that did
+    // not. It is `{once: true}`, so closing by any OTHER route (Escape, a resize,
+    // opening a second menu) left it armed — and since it lives on `document`,
+    // where the data-act dispatcher also lives, the next tap on ⋯ ran the
+    // dispatcher (open) and then the stale listener (close) in the same event.
+    // stopPropagation cannot help: both are listeners on the SAME node. Measured
+    // as a dead second tap.
+    document.removeEventListener('click', bhubMenuClose);
+    document.querySelectorAll('.bhub-menu').forEach((el) => {
+        const m = /** @type {HTMLElement} */ (el);
+        m.style.display = 'none';
+        // Drop the placement with it: an inline top/bottom/max-height left behind is a
+        // measurement of the window as it WAS, and the next open would inherit it.
+        m.style.top = '';
+        m.style.bottom = '';
+        m.style.maxHeight = '';
+    });
     document
         .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
@@ -10889,10 +10941,10 @@ function renderBookingHub() {
             ${breakdownRows}
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
             <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
-            ${gt.paid > 0 ? `<div class="price-row" style="color:var(--ok);"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
+            ${gt.paid > 0 ? `<div class="price-row" style="color:var(--ok-text);"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
             ${
                 gt.fullyPaid
-                    ? `<div class="price-row total" style="color:var(--ok);"><span>Paid in full</span><span class="price-amount" style="color:var(--ok);">✓</span></div>`
+                    ? `<div class="price-row total" style="color:var(--ok-text);"><span>Paid in full</span><span class="price-amount" style="color:var(--ok-text);">✓</span></div>`
                     : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
             }
         </div>`;
@@ -14986,14 +15038,14 @@ function renderMoneyOverview() {
         ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
             escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' due now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' not due yet' : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
-        : bhubFoldGrp('mocollect', '<span style="color:var(--ok);">To collect</span>',
+        : bhubFoldGrp('mocollect', '<span style="color:var(--ok-text);">To collect</span>',
             // "Paid up" is a claim — with an overdue row above, the sub AND
             // the capsule both stand down (green ✓ beside a red exception is
             // the colour contradicting the words).
             overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
             overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
-    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok);">To move out</span>', 'what Square has paid in, net of fees',
+    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok-text);">To move out</span>', 'what Square has paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
@@ -15001,8 +15053,8 @@ function renderMoneyOverview() {
         `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
         `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
-    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
-        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok);">${gbp(netTY)}</span>`,
+    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok-text);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
+        `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok-text);">${gbp(netTY)}</span>`,
         `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
          <div class="bhub-btn-row bhub-act-links">
             <button class="bhub-actlink" ${chbAttrs('accountsOpen', 'income')}>Open Income &amp; tax</button>
@@ -15089,7 +15141,7 @@ function moAsyncFill() {
                 const items = L.items || [];
                 backFig.innerHTML = items.length ? `<span class="bhub-payline-fig">${gbp(Number(L.net || 0))}</span>` : stCap('ok', 'None held');
                 const today2 = todayDashed();
-                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok);">ready to return</span>');
+                const st = (it) => (Number(it.awaiting || 0) > 0 ? 'refunded — waiting to settle' : it.check_in && it.check_in > today2 ? 'not arrived yet' : it.check_out && it.check_out >= today2 ? 'still staying' : '<span style="color:var(--ok-text);">ready to return</span>');
                 // `it.net` — the liability items carry outstanding/awaiting/rental/fee/
                 // gross/feeBack/net and NO `amount` key, so `Number(it.amount) || 0`
                 // printed £0.00 on every row: "Sarah Pemberton · £0.00 — ready to
@@ -15109,7 +15161,7 @@ function moAsyncFill() {
                 const expT = expensesForYear(startYear).reduce((s2, x) => s2 + (x.amount || 0), 0);
                 const net = (rep.total || 0) + (rep.kept_deposits || 0) - (rep.card_fees || 0) - expT;
                 booksFig.textContent = gbp(net);
-                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok)';
+                booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok-text)';
                 const br = document.getElementById('mo-books-rows');
                 if (br) br.innerHTML = `${gbp(rep.total || 0)} income · − ${gbp(rep.card_fees || 0)} card fees · − ${gbp(expT)} expenses${(rep.kept_deposits || 0) > 0.005 ? ` · + ${gbp(rep.kept_deposits)} kept deposits` : ''}`;
             }
@@ -16420,7 +16472,7 @@ function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
     if (st)
         st.innerHTML = squareAdminEnabled
-            ? '<span style="color:var(--ok);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
+            ? '<span style="color:var(--ok-text);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
             : '<span style="color:var(--warn-text);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
@@ -16486,7 +16538,7 @@ async function loadSquareWebhookStatus() {
         return;
     }
     if (d.connected) {
-        line.innerHTML = '<span style="color:var(--ok);">●</span> Connected — fees, payouts and refund statuses update automatically.';
+        line.innerHTML = '<span style="color:var(--ok-text);">●</span> Connected — fees, payouts and refund statuses update automatically.';
         if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Reconnect'; }
     } else {
         const why = d.error ? ' <span style="color:var(--text-muted);">(' + escapeHtml(d.error) + ')</span>' : '';
@@ -17038,7 +17090,7 @@ function holdControls(b) {
         return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
     }
     if (st === 'returned')
-        return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok);">${gbp(amt)} refunded</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok-text);">${gbp(amt)} refunded</span></span></div>`;
     if (st === 'kept')
         return `<div class="money-deposit"><span>Damage deposit: <strong style="color:var(--danger);">${gbp(amt)} kept</strong> for damage</span></div>`;
     // Legacy card-hold model — kept working for any in-flight authorised holds.
@@ -17049,7 +17101,7 @@ function holdControls(b) {
     if (st === 'captured')
         return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger);">${gbp(amt)} captured</strong> for damage</span></div>`;
     if (st === 'released')
-        return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok);">released</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok-text);">released</span></span></div>`;
     if (st === 'expired')
         return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span></div>`;
     // Fresh booking: nothing to render — the unified payline's "incl. £X damages
@@ -22278,7 +22330,7 @@ async function copyReviewLink(key) {
 // steer whether they get the book-direct follow-up next year.
 const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct' };
 function leadStatusPill(s) {
-    if (s === 'approved') return '<span style="color:var(--ok);font-weight:600;">Published</span>';
+    if (s === 'approved') return '<span style="color:var(--ok-text);font-weight:600;">Published</span>';
     if (s === 'declined') return '<span style="color:var(--text-muted);">Hidden</span>';
     return '<span style="color:var(--warn);font-weight:600;">Awaiting you</span>';
 }
