@@ -1339,7 +1339,13 @@ chk('a guest with no email is refused rather than sent nowhere', ($r = send_auto
 
 // WIRING — the composers alone pass with the call sites removed.
 $apSrcR = file_get_contents(__DIR__ . '/autopay-lib.php');
-chk('a collection actually sends the receipt', strpos($apSrcR, 'autopay_send_receipt($b, $sqId, $rental, $damages);') !== false);
+chk('a collection actually sends the receipt', strpos($apSrcR, 'autopay_send_receipt($b, $sqId, $rental, $damages, $paid);') !== false);
+// …QUOTING THE FIGURE THE COLLECTOR DERIVED, not one it re-reads. booking_paid_so_far
+// reads the live ledger, which by then holds this very collection — re-reading it and
+// adding $rental again told the guest they had paid one instalment more than they had.
+chk('...and the receipt is handed the pre-charge figure rather than re-reading it',
+    strpos($apSrcR, '$paid = round($prior + $rental, 2);') !== false
+        && strpos($apSrcR, '$prior = booking_paid_so_far(') < strpos($apSrcR, 'INSERT IGNORE INTO payments'));
 chk('...marked automatic', strpos($apSrcR, "'automatic' => true,") !== false);
 chk('the daily run actually sends the notices', strpos(file_get_contents(__DIR__ . '/autopay-run.php'), 'autopay_notice_run($today)') !== false);
 

@@ -486,8 +486,62 @@ chk('an ARMED balance is not chased', substr_count($due, "booking_autopay_state(
 // Only 'armed' suppresses — anything else must chase exactly as before, which is
 // what makes the fallback real rather than a hole.
 chk("...and nothing else suppresses the chase", strpos($due, "!== 'off'") === false && strpos($due, "'failed'") === false);
+// EVERY COLUMN THE COLLECTOR WRITES MUST EXIST. The harness's ApWrite accepts any
+// SQL string and returns true, so a statement naming a column that is not there
+// passed every check here while throwing against the real database — and because
+// autopay_record_success wraps its write AND its fallback in catches, a successful
+// Square charge then wrote nothing back at all: autopay_next_at never advanced, so
+// a monthly plan re-collected the next morning, and every morning after. Read the
+// real column list out of schema.sql + the migrations and hold the source to it.
+$apLibSrc = file_get_contents(__DIR__ . '/autopay-lib.php');
+$schemaAll = file_get_contents(__DIR__ . '/schema.sql');
+foreach (glob(__DIR__ . '/migration-*.sql') as $mg) {
+    $schemaAll .= "\n" . file_get_contents($mg);
+}
+$bkBlock = '';
+if (preg_match('/CREATE TABLE IF NOT EXISTS bookings \((.*?)\n\) ENGINE/s', $schemaAll, $mm)) {
+    $bkBlock = $mm[1];
+}
+$bookingCols = [];
+foreach (preg_split('/\r?\n/', $bkBlock) as $ln) {
+    if (preg_match('/^\s*([a-z_][a-z0-9_]*)\s+(INT|VARCHAR|DECIMAL|DATE|DATETIME|ENUM|TEXT|TINYINT)/i', $ln, $cm)) {
+        $bookingCols[strtolower($cm[1])] = true;
+    }
+}
+foreach (['ALTER TABLE bookings\s+ADD COLUMN\s+([a-z_][a-z0-9_]*)'] as $re) {
+    if (preg_match_all('/' . $re . '/i', $schemaAll, $am)) {
+        foreach ($am[1] as $c) {
+            $bookingCols[strtolower($c)] = true;
+        }
+    }
+}
+// NB chk() takes TWO arguments — a third is accepted at runtime and silently
+// ignored, so any detail has to ride the label.
+chk('(fixture) the bookings column list parsed — ' . count($bookingCols) . ' columns', count($bookingCols) > 25);
+$badCols = [];
+if (preg_match_all('/UPDATE bookings SET (.+?) WHERE/s', $apLibSrc, $um)) {
+    foreach ($um[1] as $setClause) {
+        if (preg_match_all('/([a-z_][a-z0-9_]*)\s*=/i', $setClause, $sm)) {
+            foreach ($sm[1] as $col) {
+                $col = strtolower($col);
+                if (!isset($bookingCols[$col])) {
+                    $badCols[$col] = true;
+                }
+            }
+        }
+    }
+}
+chk('every column the collector writes to bookings exists in the schema'
+    . ($badCols ? ' — unknown: ' . implode(', ', array_keys($badCols)) : ''), !$badCols);
+// And the write-back must not be able to fail in silence over money already taken.
+chk('a swallowed write-back after a SUCCESSFUL charge is reported, not swallowed',
+    strpos($apLibSrc, 'autopay.writeback_failed') !== false);
+
 $paySrc = file_get_contents(__DIR__ . '/pay.php');
-chk('the pay screen offers the arrangement', strpos($paySrc, "'autopayTerms' => booking_autopay_terms(\$b)") !== false);
+// The screen passes the stage IT resolved ($kind) rather than letting the helper
+// derive a second one — a screen settling the whole stay must not offer to schedule
+// the very money it is collecting.
+chk('the pay screen offers the arrangement', strpos($paySrc, "'autopayTerms' => booking_autopay_terms(\$b, 1, \$kind)") !== false);
 chk('...and the monthly offer beside it', strpos($paySrc, "'instalmentOffer' => \$kind === 'hold' ? null : booking_instalment_offer(\$b)") !== false);
 // THE RUN LOADS ITS OWN DECISIONS. autopay-run.php never required pricing.php,
 // and autopay_run → booking_autopay_state lives there — every cron run FATALED
@@ -848,7 +902,18 @@ $apSrc2 = file_get_contents(__DIR__ . '/autopay-lib.php');
 chk('the run picks candidates by the NEXT collection date', substr_count($apSrc2, 'COALESCE(autopay_next_at, autopay_due)') >= 3);
 $paySrc2 = file_get_contents(__DIR__ . '/pay.php');
 chk('pay.php honours a requested count only through the terms derivation',
-    strpos($paySrc2, 'booking_autopay_terms($b, $apN > 1 ? $apN : 1)') !== false);
+    strpos($paySrc2, 'booking_autopay_terms($b, $apNPre > 1 ? $apNPre : 1, $kind)') !== false);
+// AND IT DERIVES THEM BEFORE THE MONEY MOVES. booking_autopay_terms resolves the
+// stage through the LIVE ledger, so derived after the charge the deposit reads
+// settled, the stage is 'balance' and the terms come back null — every consenting
+// guest was told the plan could not be set up. Assert the ORDER, which is the fix.
+// NB anchored on the charge's own $pence line, not on square_api — the legacy hold
+// flow posts to /v2/payments FIRST, so a strpos against that would compare the
+// snapshot to the wrong charge and pass (or fail) for the wrong reason.
+chk('...and derives them BEFORE the charge, while the stage is still the deposit',
+    strpos($paySrc2, '$apTermsPre = booking_autopay_terms(') !== false
+        && strpos($paySrc2, '$apTermsPre = booking_autopay_terms(') < strpos($paySrc2, '$pence = (int) round($chargeTotal * 100);')
+        && strpos($paySrc2, '$apTerms = $apTermsPre;') !== false);
 
 echo "\n=== 17. The guest hears first — failure emails from the collector ===\n";
 // Sent on the FIRST soft failure ("we'll try again") and on the failure that

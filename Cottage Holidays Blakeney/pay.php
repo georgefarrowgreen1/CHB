@@ -163,7 +163,9 @@ if ($action === 'summary') {
         // schedule — in which case it must not be OFFERED, rather than offered
         // and quietly doing nothing. booking_autopay_terms derives it the same
         // way this screen quotes the money, so the two can never disagree.
-        'autopayTerms' => booking_autopay_terms($b),
+        // The stage THIS screen resolved — not a second derivation, or a screen
+        // settling the whole stay offers to schedule the money it is collecting.
+        'autopayTerms' => booking_autopay_terms($b, 1, $kind),
         'autopayState' => booking_autopay_state($b)[0],
         // The MONTHLY offer (or null) — derived server-side so the screen that
         // shows it and the charge that validates the guest's pick read the
@@ -414,6 +416,26 @@ if ($action === 'charge') {
         json_out(['error' => 'This booking is already paid in full.'], 409);
     }
 
+    // THE ARRANGEMENT IS SNAPSHOTTED *BEFORE* THE MONEY MOVES, and this ordering is
+    // the whole feature. booking_autopay_terms opens with "only a DEPOSIT is ever
+    // scheduled" and resolves the stage through booking_paid_so_far → the LIVE
+    // ledger. Derived after the charge, the deposit reads settled, the stage is
+    // already 'balance', the terms come back null and autopay_vault answers "there
+    // is nothing to schedule" — so every consenting guest was told their plan could
+    // not be set up and no booking ever reached 'armed'. Taken here, while the stage
+    // is still the one the guest was shown, it describes what they actually agreed to.
+    // Cheap and side-effect-free, so it is fine that a declined charge discards it.
+    $apTermsPre = null;
+    if (!empty($in['autopay']) && !$partial && $kind !== 'hold') {
+        try {
+            require_once __DIR__ . '/autopay-lib.php';
+            $apNPre = (int) ($in['autopay_instalments'] ?? 0);
+            $apTermsPre = booking_autopay_terms($b, $apNPre > 1 ? $apNPre : 1, $kind);
+        } catch (\Throwable $e) {
+            $apTermsPre = null;
+        }
+    }
+
     $pence = (int) round($chargeTotal * 100);
     $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
@@ -544,8 +566,9 @@ if ($action === 'charge') {
             // booking_instalment_offer derives — anything else returns null and
             // autopay_vault refuses, never guessing a consent the guest was not
             // shown. 0/absent keeps the single collection, byte for byte.
-            $apN = (int) ($in['autopay_instalments'] ?? 0);
-            $apTerms = booking_autopay_terms($b, $apN > 1 ? $apN : 1);
+            // The snapshot taken before the charge (see $apTermsPre) — NOT a fresh
+            // derivation, which would now resolve the stage to 'balance' and return null.
+            $apTerms = $apTermsPre;
             $vault = autopay_vault($b, $sqId, $apTerms);
             if ($vault['ok'] && $apTerms) {
                 $apOutcome = [
