@@ -162,6 +162,19 @@ ck_check('…and not merely internal', !is_internal_content_key('ops-jollyboat')
 ck_check("keysafe-<prop> keys are PRIVATE (encrypted at rest)", is_private_content_key('keysafe-jollyboat'));
 ck_check('…and not merely internal', !is_internal_content_key('keysafe-jollyboat'));
 
+// A GUEST'S OWN PUSH TEXT, the mirror image of owner-ping. webpush.php stashes it
+// under 'guest-ping-' . (int) $guestId so the service worker can fetch it — built
+// by CONCATENATION, so the literal scanner above can never see it, which is how it
+// stayed unclassified while owner-ping (the identical fact about the other party)
+// was listed. Unclassified meant content_public_payload served every guest's latest
+// notification to any anonymous visitor: "Booking confirmed 🎉" with the cottage and
+// dates, "tap to pay your balance of £301.27", "We've received £225.00".
+ck_check('guest-ping-<id> is INTERNAL — never on the anonymous content GET', is_internal_content_key('guest-ping-42'));
+ck_check('…the same classification its owner-ping sibling has', is_internal_content_key('owner-ping'));
+// Not private/encrypted: it is short-lived push text the SW must read back, and an
+// unreadable value would silently become a blank notification.
+ck_check('…and not encrypted at rest (the SW must read it back)', !is_private_content_key('guest-ping-42'));
+
 
 echo "\n== Summary ==\n";
 if ($fail) {

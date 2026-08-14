@@ -266,6 +266,23 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
             if ($live <= 1) {
                 json_out(['error' => 'You can’t remove your only live accommodation.'], 400);
             }
+            // …AND THE SITE STILL NEEDS A PUBLIC ONE. This count includes unlisted
+            // cottages, so with one private + one public, removing the public one
+            // passed ($live = 2) and left the website with nothing on it — exactly
+            // the state set_unlisted's own guard refuses ("the website needs at
+            // least one"). Only fires when the cottage being removed IS public, so
+            // archiving a private one is unaffected. NB archiveAccommodation has no
+            // confirm dialog at all, so this is one tap.
+            $tgt = db()->prepare('SELECT unlisted FROM properties WHERE prop_key = ?');
+            $tgt->execute([$propKey]);
+            if (!(int) $tgt->fetchColumn()) {
+                $pub = (int) db()
+                    ->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL AND unlisted = 0')
+                    ->fetchColumn();
+                if ($pub <= 1) {
+                    json_out(['error' => 'You can’t remove your only public accommodation — the website needs at least one.'], 400);
+                }
+            }
         } catch (\Throwable $e) {
         }
     }

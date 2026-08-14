@@ -865,6 +865,17 @@ function is_internal_content_key($key)
     if (strpos($key, 'ical-status-') === 0) {
         return true; // per-cottage feed sync health (ical-import.php) — owner-only
     }
+    // A GUEST'S OWN PUSH TEXT. webpush.php stashes each guest's latest notification
+    // under guest-ping-<id> so the service worker can fetch it; the key matched
+    // neither classifier, so content_public_payload served every one of them to any
+    // anonymous visitor — "Booking confirmed 🎉" with the cottage and exact dates,
+    // "tap to pay your balance of £301.27", "We've received £225.00". Its exact
+    // sibling `owner-ping` was already listed below; this is the same fact about
+    // the other party. test-content-keys only scans LITERAL keys, so a key built by
+    // concatenation could never have been caught by it.
+    if (strpos($key, 'guest-ping-') === 0) {
+        return true;
+    }
     return in_array($key, [
         'notify-emails',
         'admin-2fa-enabled',
