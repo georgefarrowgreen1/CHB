@@ -1537,6 +1537,34 @@ console.log('\n== 12. The clash guard has exactly one bypass, and it is a human 
     );
 }
 
+// ---- 12b. Backing out of "Add accommodation" creates nothing ----------------
+// A new cottage goes LIVE the moment it is created — public page, enquirable, no
+// photos, default text — so the dialog that creates one has to be dismissable. The
+// last step used to be a glassConfirm used as a two-way choice ("OK = private ·
+// Cancel = list it publicly") with no third branch, and glassConfirm resolves FALSE
+// on Cancel AND on Escape: a reflexive dismissal PUBLISHED the cottage. It is one
+// glassForm now, which resolves null on both.
+//
+// Asserted on the SOURCE rather than driven: the browser suites drive this dialog
+// through three different dismissal routes and each one left the promise unsettled
+// and hung the run, which is a lot of machinery to prove a property the code states
+// exactly. Both halves are checked, so it cannot pass vacuously — the function must
+// use the dialog type whose dismissal aborts, and must NOT gate the create on the
+// one whose dismissal is an answer.
+console.log('\n== 12b. Adding a cottage has a way out ==');
+{
+    const src = fs.readFileSync(path.join(__dirname, 'admin.js'), 'utf8');
+    const i = src.indexOf('async function addAccommodationPrompt');
+    const body = i < 0 ? '' : src.slice(i, src.indexOf('\n}', i));
+    check('addAccommodationPrompt was found', body.length > 200);
+    check('…it asks with a glassForm, which resolves null on Cancel AND Escape', /await glassForm\(/.test(body));
+    check('…and aborts on that null before creating anything', /if \(!vals\) return/.test(body));
+    check(
+        '…with no glassConfirm deciding the listing, whose dismissal is an ANSWER',
+        !/glassConfirm\(/.test(body),
+    );
+}
+
 // ============================================================
 //  §13 — NO SILENT CAPS, and the number is stated ONCE.
 //  The activity log asks for 250 rows and rendered them with nothing saying so,

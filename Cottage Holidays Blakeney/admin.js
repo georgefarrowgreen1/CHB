@@ -49,11 +49,16 @@ function captureGeo(k) {
     navigator.geolocation.getCurrentPosition(
         async (pos) => {
             const g = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            adminPrivateContent['geo-' + k] = g;
-            setGeoInputs(k, g);
+            // SAVE FIRST, then adopt — clearGeo's shape, three functions down. Writing
+            // the mirror before the answer repainted a refused write as a saved pin.
             try {
                 await saveContent('geo-' + k, g);
-            } catch (e) {}
+            } catch (e) {
+                if (status) status.textContent = "Couldn't save it just now — check your connection.";
+                return;
+            }
+            adminPrivateContent['geo-' + k] = g;
+            setGeoInputs(k, g);
             if (status) status.textContent = geoStatusText(k);
         },
         () => {
@@ -73,10 +78,13 @@ async function saveGeoManual(k) {
         return;
     }
     const g = { lat, lng };
-    adminPrivateContent['geo-' + k] = g;
     try {
         await saveContent('geo-' + k, g);
-    } catch (e) {}
+    } catch (e) {
+        if (status) status.textContent = "Couldn't save it just now — check your connection.";
+        return;
+    }
+    adminPrivateContent['geo-' + k] = g;
     if (status) status.textContent = geoStatusText(k);
 }
 async function clearGeo(k) {
@@ -12330,32 +12338,46 @@ function accomAddRowHtml() {
 // generates the key/slug/accent; everything else is completed afterwards in
 // the new cottage's Preferences folders. All booking/payment logic works for
 // it immediately because it's a real properties row.
+// ONE FORM, AND BACKING OUT CREATES NOTHING. This was three dialogs ending in a
+// glassConfirm used as a two-way choice — "OK = private · Cancel = list it publicly"
+// — with no third branch, and glassConfirm resolves FALSE on Cancel AND Escape. So
+// an owner who changed their mind at the last step, or reflexively dismissed the
+// dialog, PUBLISHED a cottage to the live website: no photos, no description,
+// enquirable at once. glassForm resolves null on both.
 async function addAccommodationPrompt() {
-    const name = await glassPrompt('Name of the new accommodation', '');
-    if (name == null) return;
-    if (!String(name).trim()) {
+    const vals = await glassForm(
+        'A new accommodation needs a name and a nightly price for a couple. You can change everything else afterwards.',
+        [
+            { id: 'name', label: 'Name', type: 'text', placeholder: 'e.g. Harbour Cottage' },
+            { id: 'rate', label: 'Nightly price for a couple (£)', type: 'number', placeholder: '130' },
+            {
+                id: 'listing',
+                label: 'On the website?',
+                type: 'select',
+                options: [
+                    { value: 'public', label: 'Show it on the website' },
+                    { value: 'private', label: "Private — don't show it, but take bookings for it" },
+                ],
+            },
+        ],
+        { title: 'Add an accommodation', okLabel: 'Add it' },
+    );
+    if (!vals) return; // Cancel or Escape — nothing is created
+    const name = String(vals.name || '').trim();
+    if (!name) {
         glassAlert('Please enter a name.');
         return;
     }
-    const rateStr = await glassPrompt(
-        `Nightly price for a couple at "${String(name).trim()}" (£)`,
-        '',
-    );
-    if (rateStr == null) return;
-    const rate = parseFloat(rateStr);
+    const rate = parseFloat(vals.rate);
     if (!(rate > 0)) {
         glassAlert('Please enter a nightly couple rate above £0.');
         return;
     }
-    // Private (unlisted): a cottage you manage bookings/payments for but that
-    // never appears on your public website.
-    const unlisted = await glassConfirm(
-        `Should "${String(name).trim()}" be PRIVATE?\n\nPrivate cottages don't appear on your website — but you can still take bookings and payments for them from the back office.\n\nOK = private · Cancel = list it publicly`,
-    );
+    const unlisted = vals.listing === 'private';
     try {
         const res = await apiPost('rates.php', {
             action: 'create',
-            name: String(name).trim(),
+            name: name,
             couple_rate: rate,
             unlisted: unlisted ? 1 : 0,
         });
@@ -12364,8 +12386,8 @@ async function addAccommodationPrompt() {
         if (res && res.prop_key) settingsOpenAccom(res.prop_key); // drop straight into "fill in"
         toast(
             unlisted
-                ? `Added private cottage "${String(name).trim()}" — book it from the calendar or Add booking.`
-                : `Added "${String(name).trim()}" — now add its photos & details.`,
+                ? `Added private cottage "${name}" — book it from the calendar or Add booking.`
+                : `Added "${name}" — now add its photos & details.`,
         );
     } catch (e) {
         glassAlert("Couldn't add the accommodation: " + (e && e.message ? e.message : e));
@@ -12827,13 +12849,22 @@ function settingsOpenCancel(propKey) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
-function setCancelPolicy(propKey, polKey) {
+// AWAIT IT, and only then claim it. The save was fire-and-forget while the mirror,
+// the picker highlight and a green toast all went ahead — so a refused write left a
+// chosen card and "policy saved" stacked under saveContent's own "Couldn't save that
+// change", with the rejected value in the mirror for the session. This is the ONE
+// term on the cottage page a guest agrees to.
+async function setCancelPolicy(propKey, polKey) {
     if (!CANCELLATION_POLICIES[polKey]) return;
+    try {
+        await saveContent(`${propKey}-cancellation-policy`, polKey);
+    } catch (e) {
+        return; // saveContent has already shown the owner why
+    }
     siteContent[`${propKey}-cancellation-policy`] = polKey;
     try {
         localStorage.setItem(`${propKey}-cancellation-policy`, polKey);
     } catch (e) {}
-    saveContent(`${propKey}-cancellation-policy`, polKey).catch(() => {});
     const detail = document.getElementById('cancel-detail');
     if (detail) detail.innerHTML = cancelPickerHtml(propKey);
     // If that cottage page is currently shown, update its text live.
@@ -22950,6 +22981,17 @@ async function saveSeasonGrid() {
         }
         if (end < start) {
             glassAlert(`"${label || 'A season'}" ends before it starts — check the dates.`);
+            return;
+        }
+        // A SEASON WITH NO PRICE IS SAVED AS NOTHING, under "Saved for all cottages ✓".
+        // Only priced rows reach perProp, so a card named and dated but unpriced — which
+        // its own foot invites — was silently DISCARDED, and CLEARING an existing
+        // season's prices deleted it. A third refusal beside the two above.
+        if (rates.every((r) => !r.rate)) {
+            glassAlert(
+                `"${label || 'A season'}" has no price on any cottage, so there is nothing to save — a season is a price for some dates.` +
+                    ' Give it a price on at least one cottage, or remove the card with its ✕.',
+            );
             return;
         }
         rates.forEach(({ k, rate }) => {

@@ -268,6 +268,45 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     ok(claims.border === claims.danger,
         `…it says the opposite, in the danger colour (${claims.border})`);
 
+    // ── 9b-ii. THE SAME CLASS, THREE MORE CALLERS. The map pin and the cancellation
+    //      policy each wrote their mirror BEFORE the answer and then claimed the save
+    //      — a pin the owner believed was dropped and came back unset next load, and a
+    //      chosen policy card + green toast stacked under saveContent's own
+    //      "Couldn't save that change" alert, with the rejected value in the mirror
+    //      for the rest of the session. The cancellation policy is the one term on the
+    //      cottage page a guest agrees to. Driven with the write still refusing.
+    const claims2 = await page.evaluate(async () => {
+        const out = {};
+        // The pin: a status element is the whole claim, and the mirror must not adopt.
+        // REUSE the page's own elements when they exist — getElementById returns the
+        // FIRST match, so a synthetic duplicate is written to by nobody and reads
+        // empty while the real one carries the message (caught on the first run).
+        const mk = (id, val) => {
+            let e = document.getElementById(id);
+            if (!e) { e = document.createElement(val === undefined ? 'div' : 'input'); e.id = id; document.body.appendChild(e); e.__tmp = true; }
+            if (val !== undefined) e.value = val;
+            return e;
+        };
+        const st = mk('geo-status-21a');
+        st.textContent = '';
+        mk('geo-lat-21a', '52.95');
+        mk('geo-lng-21a', '1.02');
+        delete adminPrivateContent['geo-21a'];
+        await saveGeoManual('21a');
+        out.geoSay = st.textContent;
+        out.geoMirror = adminPrivateContent['geo-21a'] === undefined ? '(untouched)' : 'ADOPTED';
+        ['geo-status-21a', 'geo-lat-21a', 'geo-lng-21a'].forEach((id) => { const e = document.getElementById(id); if (e && e.__tmp) e.remove(); });
+        // The policy: the mirror is the claim the cottage page then reads.
+        const before = siteContent['21a-cancellation-policy'];
+        await setCancelPolicy('21a', before === 'flexible' ? 'strict' : 'flexible');
+        out.polMirror = siteContent['21a-cancellation-policy'] === before ? '(unchanged)' : 'ADOPTED';
+        return out;
+    });
+    ok(/couldn.t save/i.test(claims2.geoSay), `a rejected map pin says so, rather than reading as set (${claims2.geoSay})`);
+    ok(claims2.geoMirror === '(untouched)', `…and the mirror does not adopt the refused value (${claims2.geoMirror})`);
+    ok(claims2.polMirror === '(unchanged)',
+        `a rejected cancellation policy is not adopted either — it is the one term the guest agrees to (${claims2.polMirror})`);
+
     // ── 9c. "SAVE ALL COTTAGES" REPORTS PER COTTAGE. It ran one save per cottage
     //      inside a SINGLE try, so cottage 2 failing meant cottage 1 was already
     //      saved and cottage 3 never attempted — and the catch then said "Couldn't
