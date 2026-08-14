@@ -153,6 +153,7 @@ $REGISTRY = [
     'cottage.php' => ['page', [], '/cottages/<slug> server-rendered for crawlers'],
     'experiences-page.php' => ['page', [], '/experiences server-rendered for crawlers'],
     'hero-shell.php' => ['page', [], 'hero-image shell used by the SEO routes'],
+    'shell-etag.php' => ['page', [], 'conditional-GET ending shared by the three SSR shell routes'],
     'home.php' => ['page', [], '/ server-rendered for crawlers'],
     'staging-gate.php' => ['page', [], 'staging-host gate page (no-op in production)'],
 

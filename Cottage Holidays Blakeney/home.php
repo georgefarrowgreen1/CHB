@@ -56,5 +56,8 @@ try {
     $out = $html; // any hiccup → the untouched shell, exactly as before this file existed
 }
 
-header('Content-Type: text/html; charset=utf-8');
-echo $out;
+// Conditional GET, so an installed PWA's launch costs a ~0-byte 304 instead of
+// re-downloading a byte-identical 34.5KB shell. See shell-etag.php for why the
+// comparison has to tolerate mod_deflate's "-gzip" suffix.
+require_once __DIR__ . '/shell-etag.php';
+shell_send_html($out);

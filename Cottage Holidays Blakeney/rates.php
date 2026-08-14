@@ -71,7 +71,7 @@ function rates_public_payload()
     return [
         'properties' => $rows,
         'seasons' => $seasons,
-        'occupancy' => occupancy_limits(),
+        'occupancy' => occupancy_limits($rows), // the rows fetched at the top of this function
         'payment' => [
             'deposit_pct' => square_deposit_pct(),
             'balance_days' => payment_balance_days(),

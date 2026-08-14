@@ -567,6 +567,80 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     ok(hint.afterLogout === null, `logging out clears it (${hint.afterLogout})`);
     ok(hint.afterNetworkFail === '1', `a dropped request is not a verdict and leaves it (${hint.afterNetworkFail})`);
 
+    // ---- §11 THE SESSION IS RESTORED, ONCE, ON EVERY BOOT -----------------
+    //  Hoisting these two probes to run alongside the bootstrap saves ~126ms of
+    //  blocked paint and was tried and REVERTED: it re-opened the owner sign-in
+    //  modal after a successful sign-in (bisected — e2e fails with the hoist and
+    //  passes without it, with the rest of the batch in place). What this pins is
+    //  the invariant either shape must keep: exactly two probes, exactly once.
+    console.log('\n-- §11 the session is restored once per boot --');
+    {
+        const p = await browser.newPage({ viewport: { width: 900, height: 800 } });
+        const seen = [];
+        await p.route(/\.php/, async (route) => {
+            const url = route.request().url();
+            const body = route.request().postData() || '';
+            const j = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+            if (/auth\.php/.test(url)) {
+                const m = body.match(/"action"\s*:\s*"(admin_status|guest_status)"/);
+                if (m) { seen.push(m[1]); }
+            }
+            return j({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], reviews: [], experiences: [] });
+        });
+        await p.goto(`${base}/index.html`);
+        await p.waitForTimeout(1600);
+        ok(seen.filter((x) => x === 'admin_status').length === 1, `admin_status is asked exactly once (${seen.join(',')})`);
+        ok(seen.filter((x) => x === 'guest_status').length === 1, `guest_status is asked exactly once (${seen.join(',')})`);
+        await p.close();
+    }
+
+    // ---- §12 AN IDLE VISITOR POLLS AVAILABILITY ONCE PER TICK, NOT TWICE ---
+    //  The 30s tick ran loadRates(), which ends in loadPublicAvailability() and
+    //  its `?all=1` payload of EVERY cottage's ranges — and then fetched one of
+    //  those same cottages again with `?prop=`. Two requests a tick, 4/minute per
+    //  idle visitor, for data the first one already carried. The second is gone;
+    //  what must NOT go with it is the freshness, so this checks the store and
+    //  both repaint surfaces still end up correct.
+    console.log('\n-- §12 one availability fetch per tick, not two --');
+    {
+        const p = await browser.newPage({ viewport: { width: 900, height: 800 } });
+        const hits = [];
+        await p.route(/\.php/, (route) => {
+            const url = route.request().url();
+            const j = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+            if (/availability\.php/.test(url)) {
+                hits.push(/all=1/.test(url) ? 'all' : 'prop');
+                return j({ ok: true, props: { '21a': [{ from: d(3), to: d(6) }] }, ranges: [{ from: d(3), to: d(6) }] });
+            }
+            if (/rates\.php|bootstrap\.php/.test(url)) {
+                return j({ ok: true, rates: { properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} },
+                    properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }],
+                    seasons: {}, occupancy: {}, content: {}, reviews: [], square: {} });
+            }
+            return j({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], reviews: [], experiences: [] });
+        });
+        await p.goto(`${base}/index.html`);
+        await p.waitForTimeout(900);
+        // Stand on a cottage page — the state that used to cost the second fetch.
+        await p.evaluate(() => { activeFrontProperty = '21a'; });
+        hits.length = 0;
+        await p.evaluate(() => liveUpdateTick());
+        await p.waitForTimeout(700);
+        ok(hits.filter((h) => h === 'prop').length === 0,
+            `the tick makes NO per-cottage availability call (${hits.join(',') || 'none'})`);
+        ok(hits.filter((h) => h === 'all').length === 1,
+            `…just the one ?all=1 that carries every cottage (${hits.join(',') || 'none'})`);
+        // …and the per-cottage STORE it used to fill is filled anyway, from that
+        // one payload. Dropping a request is only a win if nothing goes stale.
+        const filled = await p.evaluate(() => ({
+            keys: Object.keys(propertyAvailability || {}),
+            ranges: ((propertyAvailability || {})['21a'] || []).length,
+        }));
+        ok(filled.keys.includes('21a') && filled.ranges === 1,
+            `…and propertyAvailability is filled from it (${JSON.stringify(filled)})`);
+        await p.close();
+    }
+
     console.log('');
     console.log(fails ? `  ${fails} POOR-SIGNAL CHECK(S) FAILED ❌` : '  POOR-SIGNAL SUITE PASSED ✅');
     await done(fails);

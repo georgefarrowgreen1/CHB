@@ -423,7 +423,11 @@ function clean($v)
 // ---- Shared business rules (single source of truth) ----
 // Per-property occupancy caps. Used by the public enquiry validation (enquiries.php)
 // AND served to the front end via rates.php, so the two can never disagree.
-function occupancy_limits()
+// $rows: the `properties` rows the caller has ALREADY fetched. rates.php's public
+// payload selects the whole table two lines earlier and this queried it again for
+// four columns of the same rows. Optional, so every other caller is unchanged;
+// archived/unlisted are filtered in PHP so the SET is identical either way.
+function occupancy_limits($rows = null)
 {
     // The cottages themselves are the single source of truth, so this works for
     // however many the owner has added — not just the original three. Each live
@@ -435,9 +439,16 @@ function occupancy_limits()
     $limits = [];
     try {
         // Only live (non-archived) cottages constrain the public enquiry form.
-        $rows = db()
-            ->query('SELECT prop_key, max_adults, max_children, max_total FROM properties WHERE archived_at IS NULL AND unlisted = 0')
-            ->fetchAll();
+        if (!is_array($rows)) {
+            $rows = db()
+                ->query('SELECT prop_key, max_adults, max_children, max_total FROM properties WHERE archived_at IS NULL AND unlisted = 0')
+                ->fetchAll();
+        } else {
+            $rows = array_values(array_filter(
+                $rows,
+                fn($r) => ($r['archived_at'] ?? null) === null && (int) ($r['unlisted'] ?? 0) === 0,
+            ));
+        }
         foreach ($rows as $row) {
             $limits[$row['prop_key']] = [
                 'maxAdults' => max(1, (int) ($row['max_adults'] ?? 2)),
@@ -457,7 +468,19 @@ function occupancy_limits()
         ];
     }
     try {
-        $rows = db()->query("SELECT item_key, item_value FROM content WHERE item_key LIKE 'occupancy-%'")->fetchAll();
+        // The memo carries the whole table when bootstrap warmed it, so the
+        // LIKE is answered from memory rather than a fifth round trip.
+        $memo = $GLOBALS['__content_all'] ?? null;
+        if (is_array($memo)) {
+            $rows = [];
+            foreach ($memo as $mk => $mv) {
+                if (strpos((string) $mk, 'occupancy-') === 0) {
+                    $rows[] = ['item_key' => $mk, 'item_value' => $mv];
+                }
+            }
+        } else {
+            $rows = db()->query("SELECT item_key, item_value FROM content WHERE item_key LIKE 'occupancy-%'")->fetchAll();
+        }
         foreach ($rows as $row) {
             $key = substr($row['item_key'], strlen('occupancy-'));
             if (!isset($limits[$key])) {
@@ -929,12 +952,40 @@ function is_internal_content_key($key)
 
 // Read a single content value as a plain string (decrypting private keys), '' if unset.
 // Used server-side (e.g. tides.php reads the owner-pasted tide API key).
+// A REQUEST-SCOPED MEMO OF THE WHOLE content TABLE, warmed by exactly ONE caller.
+// bootstrap.php's public payload already SELECTs every row, and content_value()/
+// content_json() then went back to the database for keys sitting in that result
+// set — 4 of the request's 11 round trips were re-reads of data already in memory.
+//
+// Scoping it to that one READ-ONLY builder is what makes it safe: content.php's
+// write paths and every other request never warm it, so there is no
+// write-then-read staleness to invalidate. It holds RAW values (pre-decrypt,
+// pre-filter), so private keys are still decrypted per read exactly as before.
+// A key ABSENT from the table memoises as false — the same thing fetchColumn()
+// returns — so a miss is answered from memory too rather than re-querying.
+function content_memo_warm(array $raw): void
+{
+    $GLOBALS['__content_all'] = $raw;
+}
+function content_memo_get(string $key)
+{
+    if (!isset($GLOBALS['__content_all']) || !is_array($GLOBALS['__content_all'])) {
+        return null; // not warmed — the caller falls back to its own SELECT
+    }
+    return array_key_exists($key, $GLOBALS['__content_all']) ? $GLOBALS['__content_all'][$key] : false;
+}
+
 function content_value($key)
 {
     try {
-        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-        $s->execute([$key]);
-        $v = $s->fetchColumn();
+        // Answer from the request-scoped memo when bootstrap's payload has
+        // already read the whole table (see content_memo_warm).
+        $v = content_memo_get((string) $key);
+        if ($v === null) {
+            $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+            $s->execute([$key]);
+            $v = $s->fetchColumn();
+        }
         if ($v === false) {
             return '';
         }
@@ -958,9 +1009,14 @@ function content_value($key)
 function content_json($key, $default = [])
 {
     try {
-        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-        $s->execute([$key]);
-        $v = $s->fetchColumn();
+        // Answer from the request-scoped memo when bootstrap's payload has
+        // already read the whole table (see content_memo_warm).
+        $v = content_memo_get((string) $key);
+        if ($v === null) {
+            $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+            $s->execute([$key]);
+            $v = $s->fetchColumn();
+        }
         if ($v === false || $v === null || $v === '') {
             return $default;
         }
@@ -982,9 +1038,14 @@ function content_json($key, $default = [])
 function content_secret_json($key, $default = [])
 {
     try {
-        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-        $s->execute([$key]);
-        $v = $s->fetchColumn();
+        // Answer from the request-scoped memo when bootstrap's payload has
+        // already read the whole table (see content_memo_warm).
+        $v = content_memo_get((string) $key);
+        if ($v === null) {
+            $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+            $s->execute([$key]);
+            $v = $s->fetchColumn();
+        }
         if ($v === false || $v === null || $v === '') {
             return $default;
         }

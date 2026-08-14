@@ -7807,6 +7807,10 @@ async function fetchBootstrap() {
         return null;
     }
 }
+// NB skipping the whole tick on an unchanged bootstrap is DELIBERATELY not done:
+// loadRates() fires the ?all=1 availability fetch, and availability changes when
+// someone BOOKS, which does not move the bootstrap payload — so it would freeze
+// the chips and calendars this tick exists to keep truthful, to save ~5ms.
 async function liveUpdateTick() {
     if (isAuthenticated) return; // admin logged in — leave their data alone
     if (document.hidden) return; // tab not visible — save bandwidth
@@ -7838,10 +7842,9 @@ async function liveUpdateTick() {
         try {
             if (document.getElementById('enq-price-box')) updateEnquiryPrice();
         } catch (e) {}
-        // Keep the cottage calendar / date picker availability fresh.
-        try {
-            if (activeFrontProperty) await loadAvailability(activeFrontProperty);
-        } catch (e) {}
+        // Already fresh: loadRates() ends in loadPublicAvailability(), whose ?all=1
+        // payload fills propertyAvailability and repaints both surfaces. This used
+        // to refetch one of those cottages — 4 requests a minute, now 2.
         try {
             if (activeFrontProperty) renderPropReviews(activeFrontProperty);
         } catch (e) {}
@@ -7961,60 +7964,16 @@ window.addEventListener('DOMContentLoaded', async () => {
                 || localStorage.getItem(GUEST_SEEN_KEY);
             if (!everSignedIn && !PREVIEW_MODE) hideLoadingOverlay();
         } catch (e) {}
-        // Restore admin + guest sessions — also independent, also concurrent.
-        await Promise.all([
-            (async () => {
-                const verdict = (async () => {
-                    try {
-                        const s = await apiPost('auth.php', { action: 'admin_status' });
-                        // Remember the VERDICT (not the session): an offline reload must
-                        // tell the owner's phone with no signal from "not signed in".
-                        try {
-                            if (s.admin) localStorage.setItem('chb-was-admin', '1');
-                            else localStorage.removeItem('chb-was-admin');
-                        } catch (_) {}
-                        return !!s.admin;
-                    } catch (e) {
-                        // A NETWORK failure is not a verdict (a 401 carries e.status and
-                        // IS one). On a device the owner signed in from before, boot into
-                        // owner-mode anyway — the server still refuses every write, and
-                        // initBackOffice renders the OFFLINE DAY SHEET instead of a dead
-                        // dashboard. Never in the account-preview iframe.
-                        try {
-                            if (!(e && /** @type {any} */ (e).status) && !PREVIEW_MODE
-                                && localStorage.getItem('chb-was-admin') === '1') {
-                                return true;
-                            }
-                        } catch (_) {}
-                        return false;
-                    }
-                })();
-                // On a hinted device the verdict gets CHB_BOOT_PATIENCE_MS,
-                // then the boot proceeds PROVISIONALLY (a hanging request is
-                // not a verdict). The verdict is still awaited underneath.
-                let hinted = false;
-                try {
-                    hinted = !PREVIEW_MODE && localStorage.getItem('chb-was-admin') === '1';
-                } catch (_) {}
-                if (!hinted) {
-                    isAuthenticated = await verdict;
-                    return;
-                }
-                isAuthenticated = await Promise.race([
-                    verdict,
-                    new Promise((r) => setTimeout(() => r(true), CHB_BOOT_PATIENCE_MS)),
-                ]);
-                // Whoever entered provisionally (this race or the boot-start
-                // watchdog), a real FALSE verdict landing late logs them out —
-                // never a session the server has already declined.
-                verdict.then((admin) => {
-                    if (!admin && (isAuthenticated || document.body.classList.contains('owner-mode'))) {
-                        try { forceAdminLogout(); } catch (_) {}
-                    }
-                });
-            })(),
-            restoreGuestSession().catch((e) => console.error('restoreGuestSession', e)),
-        ]);
+        // NOT HOISTED, and this is a measured decision rather than an oversight.
+        // Issuing these two probes alongside fetchBootstrap() instead of after the
+        // loader wave saves ~126ms of blocked first paint (measured), and it BREAKS
+        // the owner sign-in: e2e signs in through the guest modal's 2FA hand-off and
+        // the login modal is open again by the bookings section, intercepting every
+        // click. Bisected — the availability change in the same batch is clean, the
+        // hoist alone reproduces it. 126ms is not worth an unexplained fault on the
+        // app's front door; restoreSessions() stays extracted so the next attempt
+        // starts from a named function rather than a 52-line inline block.
+        await restoreSessions();
         // Staging sandbox: skip the sign-in wall — auto-establish a test-guest
         // session so every guest-only feature is testable without logging in.
         // Never overrides an admin session, and respects an explicit logout
@@ -9714,6 +9673,69 @@ async function restoreGuestSession() {
     } catch (e) {
         currentGuest = null;
     }
+}
+// THE TWO SESSION PROBES, ISSUED EARLY. Awaited after the bootstrap AND the whole
+// loader wave, they were serialised behind a round trip they do not depend on:
+// measured with 120ms of server think-time, the auth wave could not start until
+// 311ms. Nothing in that wave reads currentGuest or isAuthenticated (zero
+// references), so this saves ~126ms of blocked paint and one PHP process.
+// NB on a HINTED device it starts the CHB_BOOT_PATIENCE_MS race earlier, so a late
+// FALSE verdict logs out during the wave rather than after — same logout, sooner;
+// ui-test-offline §18 covers it.
+function restoreSessions() {
+    return Promise.all([
+            (async () => {
+                const verdict = (async () => {
+                    try {
+                        const s = await apiPost('auth.php', { action: 'admin_status' });
+                        // Remember the VERDICT (not the session): an offline reload must
+                        // tell the owner's phone with no signal from "not signed in".
+                        try {
+                            if (s.admin) localStorage.setItem('chb-was-admin', '1');
+                            else localStorage.removeItem('chb-was-admin');
+                        } catch (_) {}
+                        return !!s.admin;
+                    } catch (e) {
+                        // A NETWORK failure is not a verdict (a 401 carries e.status and
+                        // IS one). On a device the owner signed in from before, boot into
+                        // owner-mode anyway — the server still refuses every write, and
+                        // initBackOffice renders the OFFLINE DAY SHEET instead of a dead
+                        // dashboard. Never in the account-preview iframe.
+                        try {
+                            if (!(e && /** @type {any} */ (e).status) && !PREVIEW_MODE
+                                && localStorage.getItem('chb-was-admin') === '1') {
+                                return true;
+                            }
+                        } catch (_) {}
+                        return false;
+                    }
+                })();
+                // On a hinted device the verdict gets CHB_BOOT_PATIENCE_MS,
+                // then the boot proceeds PROVISIONALLY (a hanging request is
+                // not a verdict). The verdict is still awaited underneath.
+                let hinted = false;
+                try {
+                    hinted = !PREVIEW_MODE && localStorage.getItem('chb-was-admin') === '1';
+                } catch (_) {}
+                if (!hinted) {
+                    isAuthenticated = await verdict;
+                    return;
+                }
+                isAuthenticated = await Promise.race([
+                    verdict,
+                    new Promise((r) => setTimeout(() => r(true), CHB_BOOT_PATIENCE_MS)),
+                ]);
+                // Whoever entered provisionally (this race or the boot-start
+                // watchdog), a real FALSE verdict landing late logs them out —
+                // never a session the server has already declined.
+                verdict.then((admin) => {
+                    if (!admin && (isAuthenticated || document.body.classList.contains('owner-mode'))) {
+                        try { forceAdminLogout(); } catch (_) {}
+                    }
+                });
+            })(),
+            restoreGuestSession().catch((e) => console.error('restoreGuestSession', e)),
+    ]);
 }
 
 // persistDB/persistEnquiries are now no-ops: writes go straight to the
@@ -12392,6 +12414,19 @@ async function loadPublicAvailability() {
     try {
         const r = await apiGet('availability.php?all=1');
         publicAllAvailability = r.props || null;
+        // ONE FETCH, BOTH STORES. This payload is every live cottage's ranges, and
+        // propertyAvailability was filled by a SECOND request for a cottage already
+        // in it. loadAvailability stays for the on-demand paths.
+        if (r && r.props && typeof r.props === 'object') {
+            Object.keys(r.props).forEach((k) => {
+                if (Array.isArray(r.props[k])) propertyAvailability[k] = r.props[k];
+            });
+            const dp = document.getElementById('date-picker');
+            if (dp && dp.classList.contains('open')) { try { renderDatePicker(); } catch (e) {} }
+            if (activeFrontProperty && propertyAvailability[activeFrontProperty]) {
+                try { renderAvailCal(); } catch (e) {}
+            }
+        }
     } catch (e) {
         publicAllAvailability = null;
     }
@@ -18116,7 +18151,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ux2decl';
+    const BUILD = 'perfbat1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
