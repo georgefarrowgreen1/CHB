@@ -1601,6 +1601,42 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   });
   ok(focusBack.modalOpen && !focusBack.pickerOpen, `(fixture) the picker closed with the enquiry form still open (${focusBack.pickerOpen})`);
   ok(focusBack.inModal, `focus lands back INSIDE the dialog, not on <body> (${focusBack.from} → ${focusBack.to})`);
+  // …AND THE MODAL OPENS ON THE THING IT ASKS FOR. focusInto picks "the first real
+  // form field" with `input:not([type=hidden])` — but the dates and the party counts
+  // are ALL type=hidden behind buttons, so the first match was #enq-faq-q, the
+  // OPTIONAL "Parking? Wifi? The beach?" box: measured at top 995 in an 844px
+  // viewport, so the caret opened off screen, a screen reader announced the dialog
+  // as the FAQ ask box, and "choose your dates" was the fourth tab stop — after the
+  // button that leaves the step. A dialog may name its own entry point now.
+  const openFocus = await page.evaluate(async () => {
+    try { closeEnquireModal(); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 200));
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 400));
+    const a = document.activeElement;
+    const r = a ? a.getBoundingClientRect() : null;
+    return { id: a ? a.id || a.tagName : '(none)', top: r ? Math.round(r.top) : -1, vh: window.innerHeight };
+  });
+  ok(openFocus.id === 'enq-date-trigger',
+    `the enquiry modal opens on the dates, the thing it asks for first (${openFocus.id})`);
+  ok(openFocus.top >= 0 && openFocus.top <= openFocus.vh,
+    `…which is ON SCREEN, not below the fold (top ${openFocus.top} of ${openFocus.vh})`);
+  // A STEP CHANGE MOVES FOCUS TO THE STEP. Each one swapped `display` and left focus
+  // wherever it was — after the Continue button it was on has just been hidden, that
+  // is <body>: outside the dialog, where the Tab trap does nothing.
+  const stepFocus = await page.evaluate(async () => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set('enq-checkin', '2026-08-04'); set('enq-checkout', '2026-08-07');
+    set('enq-adults', 2); set('enq-children', 0);
+    dpState.start = '2026-08-04'; dpState.end = '2026-08-07';
+    enquireContinue();
+    await new Promise((r) => setTimeout(r, 250));
+    const a = document.activeElement;
+    const modal = document.getElementById('enquire-modal');
+    return { id: a ? a.id || a.tagName : '(none)', inModal: !!(modal && a && modal.contains(a)) };
+  });
+  ok(stepFocus.inModal && stepFocus.id === 'enq-h-details',
+    `moving to step 2 focuses that step's own heading (${stepFocus.id})`);
   await page.evaluate(() => { try { closeEnquireModal(); } catch (e) {} });
   await page.waitForTimeout(150);
 

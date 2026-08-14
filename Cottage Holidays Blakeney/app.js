@@ -12123,6 +12123,7 @@ function enquireBack() {
     setEnqMsg('details', '');
 }
 // Light up the progress indicator (1 = Your stay, 2 = Your details, 3 = Account).
+let __enqStepWas = 0;
 function setEnqStep(n) {
     const p1 = document.getElementById('enq-prog-1'),
         p2 = document.getElementById('enq-prog-2'),
@@ -12130,6 +12131,18 @@ function setEnqStep(n) {
     if (p1) p1.classList.toggle('done', n >= 2);
     if (p2) p2.classList.toggle('on', n >= 2);
     if (p3) p3.classList.toggle('on', n >= 3);
+    // A STEP CHANGE IS ANNOUNCED. Every one of these swapped `display` and left
+    // focus wherever it was — which, after the Continue button it was on has just
+    // been hidden, is <body>: outside the dialog, so the Tab trap (which only
+    // redirects at the first/last focusable of the open dialog) does nothing and the
+    // next Tab walks into the page behind. Focus the step's own heading, which is
+    // also what tells a screen-reader user the screen changed. Only on a real
+    // CHANGE, so the modal's own open (which focusInto handles) is untouched.
+    if (n !== __enqStepWas && __enqStepWas !== 0) {
+        const target = document.getElementById(n === 3 ? 'enq-h-sent' : n === 2 ? 'enq-h-details' : 'enq-date-trigger');
+        if (target) setTimeout(() => { try { target.focus({ preventScroll: true }); } catch (e) {} }, 40);
+    }
+    __enqStepWas = n;
 }
 // Inline validation message inside the enquiry popup (replaces blocking
 // glassAlert for the two-step form). step = 'review' | 'details'.
@@ -13243,9 +13256,20 @@ document.addEventListener('keydown', (e) => {
     let lastTrigger = null;
     const isOpen = (el) => el.classList.contains('open');
     const focusInto = (el) => {
+        // A DIALOG MAY NAME ITS OWN ENTRY POINT. The heuristic below is right for a
+        // form whose first field is an <input>, and wrong for the enquiry modal, where
+        // the dates and the party counts are all `type=hidden` behind buttons: the
+        // first match was #enq-faq-q, the OPTIONAL "Parking? Wifi? The beach?" box —
+        // measured at top 995 in an 844px viewport, so the caret opened off screen and
+        // a screen reader announced the dialog as the FAQ ask box, with "choose your
+        // dates" the fourth tab stop, after the button that leaves the step.
+        let target = null;
+        const named = el.getAttribute('data-focus');
+        if (named) target = el.querySelector(named);
+        if (!target) target = el.querySelector('[autofocus]');
         // Prefer the first real form field; otherwise focus the dialog box itself
         // (so screen readers announce the dialog) rather than the close button.
-        let target = el.querySelector(
+        if (!target) target = el.querySelector(
             'input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
         );
         if (!target || target.offsetParent === null) {
@@ -16215,12 +16239,34 @@ async function submitEnquiry(propKey) {
                 sum.style.display = 'none'; // a receipt that can't be computed says nothing
             }
         }
+        // NO EMAIL, NO EMAIL PROMISES. Both this client and enquiries.php deliberately
+        // accept an enquiry with a phone and no address — a guest who prefers to be
+        // called — and the sent screen then promised an email three times and offered
+        // an account step that CANNOT work (enquireCreateAccount answers "We need a
+        // valid email", on a screen with no email field and no way back). Everything
+        // here is rewritten to what will actually happen.
+        const noEmail = !String(email || '').trim();
+        const howEl = document.getElementById('enq-sent-how');
+        if (howEl) {
+            howEl.textContent = noEmail
+                ? `George replies personally — usually the same day. He'll call you${phone ? ' on ' + phone : ''}.`
+                : 'George replies personally — usually the same day, by email.';
+        }
+        const todayEl = document.getElementById('enq-sched-today');
+        if (todayEl) {
+            todayEl.textContent = noEmail
+                ? 'A call to confirm your dates & price, and how to pay'
+                : 'An email confirming your dates & price, with a secure payment link';
+        }
         // If this email already has an account, show "sign in" instead of "create".
         const exists = !!(enqResp && enqResp.account_exists);
         const newBlk = document.getElementById('enq-acct-new');
         const existBlk = document.getElementById('enq-acct-existing');
-        if (newBlk) newBlk.style.display = exists ? 'none' : '';
-        if (existBlk) existBlk.style.display = exists ? '' : 'none';
+        // An account is keyed on an email address, so with none there is nothing to
+        // create and nothing to recover — the step is withheld rather than offered
+        // and then refused.
+        if (newBlk) newBlk.style.display = exists || noEmail ? 'none' : '';
+        if (existBlk) existBlk.style.display = exists && !noEmail ? '' : 'none';
         const d = document.getElementById('enquire-step-details');
         if (d) d.style.display = 'none';
         acctStep.style.display = '';
