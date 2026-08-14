@@ -28,7 +28,15 @@ let failures = 0;
 const pendingChecks = [];
 const pass = (m) => console.log('  ✓ ' + m);
 const fail = (m) => { failures++; console.log('  ✗ ' + m); };
-function check(name, cond) { cond ? pass(name) : fail(name); }
+// The third argument is the DETAIL, printed only on failure. It was silently
+// discarded, so every `check(name, cond, why)` in this file — and there are many
+// — failed with no reason attached: CI reported "the program is token-for-token
+// identical ✗" and nothing else, when the cause was simply that typescript was
+// not installed yet. A failure that does not say why costs more than the check saves.
+function check(name, cond, detail) {
+    if (cond) { pass(name); return; }
+    fail(name + (detail ? ' — ' + String(detail).slice(0, 200) : ''));
+}
 function approx(a, b) { return Math.abs(a - b) < 0.005; }
 
 const html = fs.readFileSync(HTML_PATH, 'utf8');
