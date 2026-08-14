@@ -3681,7 +3681,24 @@ function chbSystemState() {
         }
     } catch (e) {}
     if (checks.length) return checks[0]; // the most important thing, not a panel
+    // NOT ASKED IS NOT HEALTHY. All of these signals ride ONE admin-bootstrap
+    // request, so with it dropped there is nothing to warn about and this used to
+    // answer "All systems normal" — measured alongside a Today strip that said the
+    // daily automation looked stopped. __sigAt is when the payload last really
+    // landed; without it, or with it stale, the honest answer is that we could not
+    // check. Its own level, so callers can style it as neither green nor red.
+    if (!chbSignalsFresh()) {
+        return { level: 'unknown', say: "Couldn't check the automations just now", go: () => cmdkOpenSection('diagnostics') };
+    }
     return { level: 'ok', say: 'All systems normal' };
+}
+// TRUE while the bootstrap signals are known to be current. Ten minutes: loadData
+// runs on every back-office entry, so a stamp older than that means the last few
+// attempts did not answer, which is exactly when a green light misleads.
+const CHB_SIG_FRESH_MS = 10 * 60 * 1000;
+function chbSignalsFresh() {
+    const at = Number(/** @type {any} */ (window).__sigAt) || 0;
+    return at > 0 && Date.now() - at < CHB_SIG_FRESH_MS;
 }
 // WHICH CALENDAR FEEDS ARE IN TROUBLE — worst first. A feed that has NEVER
 // imported is not stalled, so the server omits it; only staleness and outright
@@ -3712,7 +3729,11 @@ function chbSysLine() {
     // When all is well the line says so QUIETLY — and on a phone it says nothing at
     // all, because 390px of foot is already carrying the hint text.
     el.hidden = false;
-    el.className = 'cmdk-sys' + (st.level === 'ok' ? ' is-ok' : ' is-warn');
+    // 'unknown' reads as neither: it is not a warning about the business, and a
+    // green dot beside "couldn't check" would be the colour contradicting the words.
+    // .is-ok is what the ≤639px rule stands down, and not-asked is likewise not
+    // worth a phone's foot — so it takes that class with a muted dot.
+    el.className = 'cmdk-sys' + (st.level === 'warn' ? ' is-warn' : ' is-ok') + (st.level === 'unknown' ? ' is-unknown' : '');
     el.innerHTML = `<span class="cmdk-sys-dot" aria-hidden="true"></span><span class="cmdk-sys-say">${escapeHtml(st.say)}</span>`;
     el.disabled = !st.go;
     el.onclick = st.go || null;
@@ -9519,9 +9540,17 @@ function manageVerdicts() {
     // Scoped to what this pulse measures — "everything is running" sat
     // beside the health pill's "1 thing needs a look" (the FULL check's
     // knowledge), two verdicts about one screen disagreeing.
+    // …AND "RUNNING" IS ONLY CLAIMED WHEN IT WAS ASKED. cron and the feeds ride ONE
+    // admin-bootstrap request, so a single dropped one left this saying "Daily jobs
+    // and calendar feeds are running" — measured, at the same moment Today's strip
+    // said the automation looked stopped. There is nothing to warn about because
+    // nothing answered, which is not the same as nothing being wrong.
+    const sigOk = chbSignalsFresh();
     const pulse = parts.length
         ? parts.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.'
-        : 'Daily jobs and calendar feeds are running.';
+        : sigOk
+          ? 'Daily jobs and calendar feeds are running.'
+          : "Couldn't check the daily jobs or the calendar feeds just now — open the full system check.";
 
     // Exceptions — the faults that can cost real money lead; a clean day
     // renders no red at all.
@@ -9542,9 +9571,9 @@ function manageVerdicts() {
     });
 
     const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds — the full check covers the rest',
-        stoppedN ? stCap('warn', stoppedN + ' stopped') : stCap('ok', 'All running'),
-        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
-         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
+        stoppedN ? stCap('warn', stoppedN + ' stopped') : sigOk ? stCap('ok', 'All running') : stCap('unk', 'not checked'),
+        `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
+         <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Full system check</button></div>`);
     const modGrp = bhubFoldGrp('mgmod', 'To approve', 'reviews, guest photos, things to do',
         modN ? stCap('warn', modN + ' waiting') : stCap('ok', 'Nothing waiting'),
@@ -10653,7 +10682,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const askAmt = hubAskAmount(b, ps, gt, askKind);
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
-    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean} | null} */
+    /** @type {{text: string, onclick: string, btn: string, btnShort?: string, fig?: number, money?: boolean, cap?: string, capLabel?: string, regAsk?: boolean, alt?: {label: string, act: string}} | null} */
     let next = null;
     if (!gt.fullyPaid && !past) {
         const canCard = squareAdminEnabled && b.email;
@@ -10733,6 +10762,12 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
                 text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
                 onclick: chbAttrs('returnDeposit', String(b.id)),
                 btn: 'Return the deposit',
+                // …AND KEEPING IT IS OFFERED HERE TOO. The hub is where both the duty
+                // and the Money overview route, and it offered only Return — so with
+                // damage, the owner's one action on this screen was to give back money
+                // they were keeping. A quiet second action, because returning it is the
+                // ordinary outcome and keeping it is the exception.
+                alt: { label: 'Keep it for damage', act: chbAttrs('keepDeposit', String(b.id)) },
             };
         } else {
             next = {
@@ -10768,7 +10803,7 @@ function hubPipelineHtml(propKey, b, gt, dh, ps) {
     const nextHtml = next
         ? next.money
             ? '' // the Payments block's own header carries it (bhub-payask)
-            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
+            : `<div class="bhub-next">${capHtml}<span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button>${next.alt ? `<button class="bhub-actlink bhub-next-alt" ${next.alt.act}>${escapeHtml(next.alt.label)}</button>` : ''}</div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
     return nextHtml;
 }
@@ -14585,7 +14620,13 @@ function renderDepositsDue() {
                             <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
-                    <div class="money-actions"><button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>` : ''}</div>
+                    <!-- KEEP IS RAIL-BLIND. This was gated on holdStatus === 'charged',
+                         a CARD-rail fact cash never sets, so a deposit handed over in
+                         cash — counted by damageHeld, listed in this very queue, raised
+                         as a duty — could only be GIVEN BACK. With damage, the owner's
+                         one offered action was to return money they were keeping.
+                         damageHeld is what is actually held, whichever rail took it. -->
+                    <div class="money-actions"><button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Return deposit</button>${dh.held > 0.005 ? `<button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>` : ''}</div>
                 </div>`,
         )
         .join('');

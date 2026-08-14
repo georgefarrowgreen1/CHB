@@ -1981,7 +1981,16 @@ if ($action === 'keep_deposit') {
     // double-settle (refund the guest AND book it as kept income).
     book_lock($b['prop_key'] ?? '');
     $b = booking_by_id($id) ?: $b;
-    if (($b['hold_status'] ?? '') !== 'charged') {
+    // RAIL-BLIND, like the duty and the ring fence. This required hold_status
+    // 'charged' — a CARD-rail fact that a cash or bank deposit never sets — so a
+    // deposit handed over in cash, recorded through "Collected too", counted by
+    // damages_collected, listed in "Deposits to return" and raised as a duty could
+    // only ever be GIVEN BACK: with damage, the owner's one offered action was to
+    // return money they were keeping, and the guest was emailed "we're returning
+    // your refundable damage deposit" about it. What matters is whether money is
+    // actually held, which damages_collected already answers for both eras; a
+    // SETTLED deposit is refused on its own terms below and by the $held check.
+    if (in_array($b['hold_status'] ?? '', ['returned', 'kept', 'released', 'expired'], true)) {
         book_unlock($b['prop_key'] ?? '');
         json_out(['error' => 'This deposit has already been settled.'], 409);
     }

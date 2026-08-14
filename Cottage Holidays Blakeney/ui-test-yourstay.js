@@ -102,15 +102,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const refH = Math.round(ref.getBoundingClientRect().height);
     ref.remove();
     return { cta: box('.gb2-cta .btn-sm, .hub-cta-btn'), quiet: box('.gb2-links .btn-sm'), refH,
-      shortest: Math.min(...[...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass')]
-        .filter((e) => e.getClientRects().length).map((e) => Math.round(e.getBoundingClientRect().height))) };
+      // THE FLOOR IS min-height, and that is what to measure. The painted box is the
+      // wrong instrument here: .gb2-cta carries an entrance animation, so the Pay
+      // button samples mid-scale — 43.8px in CI, 44 after rounding locally, which is a
+      // flake and not a finding. The defect this guards was a `min-height: 40px` rule
+      // winning a specificity fight, which a computed read answers exactly. The
+      // painted height rides along in the message for context.
+      short: (() => {
+        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass')]
+          .filter((e) => e.getClientRects().length)
+          .map((e) => ({
+            min: parseFloat(getComputedStyle(e).minHeight) || 0,
+            h: e.getBoundingClientRect().height,
+            who: (e.className || '') + ' “' + (e.textContent || '').trim().slice(0, 18) + '”',
+          }))
+          .sort((a, b) => a.min - b.min);
+        return all[0] || { min: 0, h: 0, who: '(none)' };
+      })() };
   });
   ok(cardType.cta && cardType.quiet && cardType.cta.fs >= cardType.quiet.fs,
     `the primary ask is not smaller than the quiet links (${cardType.cta && cardType.cta.fs}px vs ${cardType.quiet && cardType.quiet.fs}px)`);
   ok(cardType.cta && cardType.cta.tt === 'none' && cardType.cta.fw >= 600,
     `…and it reads as a sentence at a ladder weight (${cardType.cta && cardType.cta.tt} / ${cardType.cta && cardType.cta.fw})`);
-  ok(cardType.shortest >= 44,
-    `every control on the guest's own account screen meets the phone floor (shortest ${cardType.shortest}px, same button outside this view ${cardType.refH}px)`);
+  ok(cardType.short.min >= 44,
+    `every control on the guest's own account screen takes the phone floor (lowest min-height ${cardType.short.min}px on ${cardType.short.who}, painting ${cardType.short.h.toFixed(1)}px; same button outside this view ${cardType.refH}px)`);
   await page.close();
 
   // 2b) …AND WHEN IT IS DUE. The card's job is "the one outstanding thing before

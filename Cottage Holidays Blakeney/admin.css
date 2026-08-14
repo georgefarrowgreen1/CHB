@@ -1308,7 +1308,13 @@ body.light-mode .ny-act {
   border-top: 1px solid var(--glass-border);
   margin: 6px -18px 0;
   padding-left: 18px !important;
-}.bhub-next-btn {
+}/* The exception beside the ordinary outcome — quiet, at the touch floor, and it
+   yields the row on a phone the way the button above it does. */
+.bhub-next-alt {
+  display: block;
+  margin-top: 6px;
+}
+.bhub-next-btn {
   padding: 12px 22px; /* the standard action-button geometry (.cal-add-btn) */
   font-size: 0.8rem;
 }.bhub-grid {
@@ -4400,6 +4406,11 @@ body.cmdk-open {
   border-radius: 50%;
   flex: 0 0 auto;
   background: var(--ok);
+}
+/* NOT ASKED is neither green nor red — a muted dot, because a green one beside
+   "couldn't check the automations" is the colour contradicting the words. */
+.cmdk-sys.is-unknown .cmdk-sys-dot {
+  background: var(--text-muted);
 }
 .cmdk-sys.is-warn {
   color: var(--warn-text);

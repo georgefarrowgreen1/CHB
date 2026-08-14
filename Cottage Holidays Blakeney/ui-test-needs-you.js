@@ -401,6 +401,45 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const none = await feedState(null);
   ok(!/calendar sync/.test(none.txt), 'no feed data at all invents nothing');
 
+  // ── 10. HEALTH IS NEVER CLAIMED FROM IGNORANCE ──────────────────────────────
+  // The cron, the feeds, the payout trouble and the mail count all ride ONE
+  // admin-bootstrap request, and loadData overwrote all four unconditionally — so a
+  // single dropped request turned every "look at this" into "all clear". Measured
+  // simultaneously with a stale cron and a failing feed in the fixture: Today said
+  // "Needs you 3", and after the drop Manage said "Daily jobs and calendar feeds are
+  // running." with a green "✓ All running" while the assistant's foot said "All
+  // systems normal". Nothing to warn about, because nothing answered.
+  console.log('10. a dropped bootstrap does not become a clean bill of health');
+  const sig = await page.evaluate((n) => {
+    window.__sigAt = n;
+    // Nothing stale in the stores — the point is that they were never REFRESHED.
+    window.__cronStatusPre = null; window.__feedStatusPre = null;
+    const st = (() => { try { return chbSystemState(); } catch (e) { return null; } })();
+    let pulse = '', cap = '';
+    try {
+      manageVerdicts();
+      const host = document.getElementById('manage-verdicts');
+      pulse = host ? (host.textContent || '').replace(/\s+/g, ' ') : '';
+      cap = host ? [...host.querySelectorAll('.st-cap')].map((c) => c.textContent).join(' | ') : '';
+    } catch (e) {}
+    return { level: st && st.level, say: st && st.say, pulse, cap };
+  }, Date.now() - 30 * 60 * 1000); // stamped half an hour ago: the last few tries did not answer
+  ok(sig.level === 'unknown', `the assistant's status line says it could not check (${sig.level} — ${sig.say})`);
+  ok(!/All systems normal/.test(sig.say || ''), '…rather than reporting the business healthy');
+  ok(!/are running\./.test(sig.pulse), `Manage's pulse does not claim the jobs are running (${(sig.pulse || '').slice(0, 90)})`);
+  ok(!/All running/.test(sig.cap || ''), `…and its capsule is not a green tick (${sig.cap})`);
+  // …and with a FRESH stamp and nothing wrong, the clean bill of health is back.
+  const sigOk = await page.evaluate(() => {
+    window.__sigAt = Date.now();
+    const st = (() => { try { return chbSystemState(); } catch (e) { return null; } })();
+    let cap = '';
+    try { manageVerdicts(); const host = document.getElementById('manage-verdicts'); cap = host ? [...host.querySelectorAll('.st-cap')].map((c) => c.textContent).join(' | ') : ''; } catch (e) {}
+    return { level: st && st.level, say: st && st.say, cap };
+  });
+  ok(sigOk.level === 'ok' && /All systems normal/.test(sigOk.say || ''),
+    `a bootstrap that DID answer still reports healthy (${sigOk.say})`);
+  ok(/All running/.test(sigOk.cap || ''), `…with its green capsule intact (${sigOk.cap})`);
+
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

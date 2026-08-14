@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 504;
+const ADMIN_BUNDLE_V = 506;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 200;
+const ADMIN_CSS_V = 202;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9678,18 +9678,29 @@ async function loadData() {
         ab = await apiGet('admin-bootstrap.php');
         if (!ab || !ab.ok) ab = null;
     } catch (e) {}
-    window.__cronStatusPre = (ab && ab.cron) || null;
-    // Per-cottage iCal feed health, from the SAME payload. The search foot's status
-    // line is not allowed to fetch, which is why only the cron was wired into it;
-    // carrying this here is what makes a stalled Airbnb sync visible before it is
-    // discovered by a double booking.
-    /** @type {any} */ (window).__feedStatusPre = (ab && Array.isArray(ab.feeds) ? ab.feeds : null);
-    // Failed payouts / open disputes, from that same payload — a duty (chbDuties)
-    // rather than a status line, because bad bank details stop every later transfer.
-    /** @type {any} */ (window).__payoutTroublePre = (ab && ab.payoutTrouble) || null;
-    // Customer emails waiting to be read, same payload again — the count the
-    // CRON's poll left behind, so no page ever waits on a mail server.
-    /** @type {any} */ (window).__newMailPre = (ab && ab.newMail) || null;
+    // HEALTH IS NEVER CLAIMED FROM IGNORANCE. These four signals all come from ONE
+    // request, and overwriting them unconditionally meant a single dropped
+    // admin-bootstrap turned every "look at this" into "all clear": measured
+    // simultaneously, Today said "Needs you 1 — your daily automation looks stopped"
+    // while Manage said "Daily jobs and calendar feeds are running" with a green
+    // "✓ All running", and the assistant's foot said "All systems normal". The last
+    // good copy is kept (the loadData rule the stores already follow) and __sigAt
+    // stamps when it was true, so a reader can tell "healthy" from "not asked".
+    if (ab) {
+        window.__cronStatusPre = ab.cron || null;
+        // Per-cottage iCal feed health, from the SAME payload. The search foot's
+        // status line is not allowed to fetch, which is why only the cron was wired
+        // into it; carrying this here is what makes a stalled Airbnb sync visible
+        // before it is discovered by a double booking.
+        /** @type {any} */ (window).__feedStatusPre = Array.isArray(ab.feeds) ? ab.feeds : null;
+        // Failed payouts / open disputes — a duty (chbDuties) rather than a status
+        // line, because bad bank details stop every later transfer.
+        /** @type {any} */ (window).__payoutTroublePre = ab.payoutTrouble || null;
+        // Customer emails waiting to be read: the count the CRON's poll left behind,
+        // so no page ever waits on a mail server.
+        /** @type {any} */ (window).__newMailPre = ab.newMail || null;
+        /** @type {any} */ (window).__sigAt = Date.now();
+    }
 
     // Shape-check each part (not just truthiness) so a malformed combined
     // payload cleanly falls back to the individual endpoint.
@@ -17989,7 +18000,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dep140912x';
+    const BUILD = 'hon140926b';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

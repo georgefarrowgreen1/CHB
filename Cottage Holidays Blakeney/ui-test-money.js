@@ -32,6 +32,11 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mk(2, { name: 'Paid Up', email: 'paid@gmail.com', check_in: d(40), check_out: d(43), payment: 'paid', deposit_paid: 440, payment_method: 'Card', payment_date: d(-3) }),
     // past stay still holding a £100 damage deposit → deposits-to-return queue
     mk(3, { name: 'Left Deposit', email: 'left@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 540, payment_method: 'Card', payment_date: d(-30), hold_status: 'charged', hold_amount: 100 }),
+    // …and the SAME situation on the CASH rail. hold_status stays 'none' because no
+    // card was ever charged; the deposit is in damageHeld's `paid above the rental`
+    // branch (£490 = £440 rental + £50 deposit), so it is listed here and raised as
+    // a duty exactly like the card one.
+    mk(4, { name: 'Cash Deposit', email: 'cash@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 490, payment_method: 'Bank transfer', payment_date: d(-30), hold_status: 'none' }),
   ];
   // Drives the guest-email failure the deposit-return report has to surface.
 let mailWillFail = false;
@@ -421,6 +426,26 @@ let mailWillFail = false;
   // rental £440 + £50 damages deposit = £490, matching the row's chip.
   ok(/£490/.test(pay1.owedLine), `owed banner equals the sum of its rows, £490 (${pay1.owedLine.trim().slice(0, 60)})`);
   ok(/£100/.test(pay1.depQueue) && pay1.depReturnBtn && pay1.depKeepBtn, 'deposits-to-return queue: £100 held + Return/Keep buttons');
+  // KEEP IS RAIL-BLIND. It was gated on holdStatus === 'charged' — a CARD-rail fact
+  // cash never sets — so a deposit handed over in cash sat in THIS queue, and in the
+  // duty list, with only "Return deposit" offered: with damage the owner's one
+  // action was to give back money they were keeping, and the guest was emailed
+  // "we're returning your refundable damage deposit" about it. Both rows are read
+  // from one render, so the check cannot pass by finding the card row's button.
+  const rails = await page.evaluate(() => {
+    const rowOf = (name) => [...document.querySelectorAll('#deposits-due .money-row')]
+      .find((r) => (r.textContent || '').includes(name));
+    const shape = (name) => {
+      const r = rowOf(name);
+      if (!r) return null;
+      return { ret: !!r.querySelector('[data-act="returnDeposit"]'), keep: !!r.querySelector('[data-act="keepDeposit"]'), say: (r.textContent || '').replace(/\s+/g, ' ') };
+    };
+    return { card: shape('Left Deposit'), cash: shape('Cash Deposit') };
+  });
+  ok(rails.card && rails.cash, `(fixture) both rails are in the queue (${!!(rails.card && rails.cash)})`);
+  ok(rails.cash && rails.cash.ret && rails.cash.keep,
+    `a CASH deposit can be kept for damage, not only given back (${rails.cash && rails.cash.say.slice(0, 60)})`);
+  ok(rails.card && rails.card.keep, '…and the card rail is unchanged');
   // THE IDENTITY PILL SURVIVES THREE PILLS AT PHONE WIDTH (the UI pass:
   // "Pimpernel" crushed to "P" under paid-state + arrives-soon chips — the
   // no-shrink chips took the row and the ellipsised tag absorbed it all).
