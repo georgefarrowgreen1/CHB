@@ -28,7 +28,15 @@ let failures = 0;
 const pendingChecks = [];
 const pass = (m) => console.log('  ✓ ' + m);
 const fail = (m) => { failures++; console.log('  ✗ ' + m); };
-function check(name, cond) { cond ? pass(name) : fail(name); }
+// The third argument is the DETAIL, printed only on failure. It was silently
+// discarded, so every `check(name, cond, why)` in this file — and there are many
+// — failed with no reason attached: CI reported "the program is token-for-token
+// identical ✗" and nothing else, when the cause was simply that typescript was
+// not installed yet. A failure that does not say why costs more than the check saves.
+function check(name, cond, detail) {
+    if (cond) { pass(name); return; }
+    fail(name + (detail ? ' — ' + String(detail).slice(0, 200) : ''));
+}
 function approx(a, b) { return Math.abs(a - b) < 0.005; }
 
 const html = fs.readFileSync(HTML_PATH, 'utf8');
@@ -1302,6 +1310,60 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check('crown.png exists and is a PNG',
             fs.existsSync(path.join(__dirname, 'crown.png'))
             && fs.readFileSync(path.join(__dirname, 'crown.png')).slice(0, 8).toString('hex') === '89504e470d0a1a0a');
+    }
+
+    // §12g THE DEPLOY-TIME COMMENT STRIP IS SAFE, AND PROVABLY SO.
+    //  143KB gz of a 461KB guest payload is source comments. They are blanked at
+    //  deploy time — never deleted — so every stack-trace line reported to
+    //  client-error.php stays exact. What must hold: the program is unchanged,
+    //  the line count is unchanged, and the cases where a naive line-scanner
+    //  would corrupt code are handled. Those cases are the whole risk, so they
+    //  are enumerated here rather than trusted to the AST check in the deploy.
+    {
+        console.log('\n== 12g. The deploy-time comment strip ==');
+        const { stripSource, verifyJs } = require(path.join(__dirname, 'strip-comments.js'));
+        const cases = [
+            ['a whole-line // comment goes', '// gone\nconst a = 1;', '\nconst a = 1;'],
+            ['a TRAILING comment stays — the line has code', 'const a = 1; // kept\n', 'const a = 1; // kept\n'],
+            ['an inline /** @type */ cast stays', 'const a = /** @type {any} */ (b);', 'const a = /** @type {any} */ (b);'],
+            ['a one-line block comment goes', '/* gone */\nconst a = 1;', '\nconst a = 1;'],
+            ['a MULTI-LINE block goes, every line blanked',
+                '/* one\n   two */\nconst a = 1;', '\n\nconst a = 1;'],
+            // THE ONES THAT BITE. A // inside a string or a template is CODE.
+            ['a // inside a string is untouched', "const u = '//example.com';", "const u = '//example.com';"],
+            ['a line that merely CONTAINS // is untouched', 'const u = "x"; // t\n', 'const u = "x"; // t\n'],
+        ];
+        cases.forEach(([label, src, want]) => {
+            check(label, stripSource(src, 'js') === want,
+                JSON.stringify(stripSource(src, 'js')) + ' want ' + JSON.stringify(want));
+        });
+        // A // at the start of a line INSIDE a template literal is not a comment.
+        const tpl = 'const t = `\n// not a comment\n`;\nconst a = 1;';
+        check('a //-looking line inside a template literal survives',
+            stripSource(tpl, 'js').includes('// not a comment'), JSON.stringify(stripSource(tpl, 'js')));
+        // THE INVARIANT that keeps stack traces honest, on the real files.
+        ['app.js', 'guest-app.js', 'app.css', 'guest-app.css'].forEach((f) => {
+            const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+            const kind = f.endsWith('.css') ? 'css' : 'js';
+            const out = stripSource(src, kind);
+            check(`${f}: the line count is unchanged`,
+                src.split('\n').length === out.split('\n').length,
+                `${src.split('\n').length} -> ${out.split('\n').length}`);
+            if (kind === 'js') {
+                check(`${f}: the program is token-for-token identical`, verifyJs(src, out, f) === null,
+                    String(verifyJs(src, out, f)));
+            }
+            // …and it actually SAVES something, or the deploy step is theatre.
+            const zlib = require('zlib');
+            const saved = zlib.gzipSync(Buffer.from(src)).length - zlib.gzipSync(Buffer.from(out)).length;
+            check(`${f}: it saves real bytes (${(saved / 1024).toFixed(1)}KB gz)`, saved > 2000, String(saved));
+        });
+        // Both deploy jobs must run it, or the guest payload never shrinks.
+        const dep = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+        const runs = (dep.match(/strip-comments\.js" "\$OUT" --verify/g) || []).length;
+        check('both deploy jobs strip, with --verify (production + staging)', runs === 2, String(runs));
+        check('…and the stripper itself is removed from the artifact',
+            (dep.match(/rm -f "\$OUT\/strip-comments\.js"/g) || []).length === 2);
     }
 
     // §12f THE FONTS ARE VERSIONED BY THEIR OWN CONTENT.

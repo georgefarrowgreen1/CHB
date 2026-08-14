@@ -78,6 +78,22 @@ jobs:
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
 
+          # STRIP FULL-LINE COMMENTS from the four assets every anonymous visitor
+          # downloads — 143KB gz of a 461KB payload, and ~245KB of raw JS a phone
+          # no longer parses. LINE-PRESERVING (blanked, never deleted) so every
+          # stack-trace line reported to client-error.php stays exact, and
+          # --verify parses both versions with the repo's own TypeScript and
+          # compares token streams, so the deploy STOPS rather than shipping a
+          # program that differs by so much as an identifier. index.html (CSP
+          # hash), sw.js and admin.* are deliberately untouched.
+          # typescript is what --verify parses with. NOT `|| true`: if it cannot be
+          # installed the verification cannot run, and shipping an unverified
+          # strip is the one outcome this whole step exists to prevent. $OUT is a
+          # workspace subdirectory, so node resolves the module by walking up.
+          npm install --no-audit --no-fund --prefer-offline typescript@5.6.3 > /dev/null
+          node "$OUT/strip-comments.js" "$OUT" --verify
+          rm -f "$OUT/strip-comments.js"
+
           # Precompressed brotli beside every js/css (the host negotiates only
           # gzip; .htaccess serves these to brotli-capable browsers — ~15%
           # smaller than gzip). sw.js is skipped: it must stay no-cache and an
@@ -200,6 +216,22 @@ jobs:
           if [ -d "$OUT/uploads" ]; then
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
+          # STRIP FULL-LINE COMMENTS from the four assets every anonymous visitor
+          # downloads — 143KB gz of a 461KB payload, and ~245KB of raw JS a phone
+          # no longer parses. LINE-PRESERVING (blanked, never deleted) so every
+          # stack-trace line reported to client-error.php stays exact, and
+          # --verify parses both versions with the repo's own TypeScript and
+          # compares token streams, so the deploy STOPS rather than shipping a
+          # program that differs by so much as an identifier. index.html (CSP
+          # hash), sw.js and admin.* are deliberately untouched.
+          # typescript is what --verify parses with. NOT `|| true`: if it cannot be
+          # installed the verification cannot run, and shipping an unverified
+          # strip is the one outcome this whole step exists to prevent. $OUT is a
+          # workspace subdirectory, so node resolves the module by walking up.
+          npm install --no-audit --no-fund --prefer-offline typescript@5.6.3 > /dev/null
+          node "$OUT/strip-comments.js" "$OUT" --verify
+          rm -f "$OUT/strip-comments.js"
+
           # Precompressed brotli beside every js/css (same as the live deploy;
           # sw.js skipped — it must stay no-cache).
           sudo apt-get install -y -qq brotli > /dev/null

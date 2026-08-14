@@ -46,6 +46,25 @@ jobs:
           find "Cottage Holidays Blakeney" -name '*.php' -print0 \
             | xargs -0 -n1 -P4 php -l
 
+      # typescript is installed HERE, before the smoke test, not two hundred
+      # lines down with the type-check ratchet. smoke-test §12g verifies the
+      # deploy-time comment strip by comparing TOKEN STREAMS, and with no
+      # typescript to parse with it cannot — so the check failed in CI while
+      # passing locally, where typescript happens to be installed. A gate that
+      # can only run on a developer's machine is the vacuity trap this file
+      # warns about everywhere else. The later steps reuse this install.
+      - name: Cache npm (eslint + typescript)
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-eslint-${{ runner.os }}-v1
+
+      - name: Install the JS toolchain (eslint, typescript)
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          npm init -y > /dev/null 2>&1
+          npm install --no-audit --no-fund --prefer-offline eslint globals typescript@5.6.3
+
       - name: Front-end smoke test
         working-directory: "Cottage Holidays Blakeney"
         run: node smoke-test.js
@@ -236,18 +255,9 @@ jobs:
       # Static "undefined reference" gate for the front-end JS — catches typo'd /
       # missing functions and variables (the "X is not defined" runtime errors)
       # before they ship, which php -l's JS equivalent (node --check) can't see.
-      - name: Cache npm (eslint)
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-eslint-${{ runner.os }}-v1
-
       - name: JS static check (ESLint no-undef)
         working-directory: "Cottage Holidays Blakeney"
-        run: |
-          npm init -y > /dev/null 2>&1
-          npm install --no-audit --no-fund --prefer-offline eslint globals typescript@5.6.3
-          node lint-js.js
+        run: node lint-js.js
 
       # Type-error RATCHET: tsc --checkJs as a linter (no build step, no runtime
       # change). Error counts per group must stay ≤ the committed budgets in
