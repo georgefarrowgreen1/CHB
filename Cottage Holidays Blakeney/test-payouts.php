@@ -538,8 +538,14 @@ pochk('a dispute event also refreshes it', preg_match("/dispute\.[\s\S]{0,900}pa
 pochk('failed payouts and disputes ride the bootstrap payload, not a new request',
     strpos($boot, "'payoutTrouble' => \$payoutTrouble") !== false && strpos($boot, 'payouts_failed(') !== false
     && strpos($boot, 'payouts_cached()') !== false && strpos($boot, 'payouts_refresh(') === false);
+// The FACT, not the punctuation: the payload's payoutTrouble reaches the pre-store.
+// This was pinned as the literal `= (ab && ab.payoutTrouble)`, and a refactor that
+// hoisted the whole block inside an `if (ab)` — identical behaviour, one redundant
+// guard removed — failed it. What must not happen is the READ being dropped and the
+// store hardcoded to null (the vacuity this check's neighbours warn about), so both
+// halves are still required; only the guard's shape is now free.
 pochk('the client keeps them for the duty list',
-    preg_match('/__payoutTroublePre = \(ab && ab\.payoutTrouble\)/', (string) file_get_contents(__DIR__ . '/app.js')) === 1);
+    preg_match('/__payoutTroublePre\s*=\s*(?:\(ab && )?ab\.payoutTrouble/', (string) file_get_contents(__DIR__ . '/app.js')) === 1);
 pochk('a failed payout becomes a DUTY, not just an excluded total',
     preg_match("/kind: 'payout'[\s\S]{0,200}couldn.{0,3}t pay/", $adm) === 1);
 pochk('money under dispute becomes a duty too', preg_match("/kind: 'dispute'[\s\S]{0,160}under dispute/", $adm) === 1);
