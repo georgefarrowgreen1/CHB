@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS guests (
     address       TEXT          NULL,
     postcode      VARCHAR(12)   NULL,
     password_hash VARCHAR(255)  NOT NULL,             -- bcrypt via password_hash()
+    -- Proof the address is really theirs (migration-111). Only the magic link can
+    -- set it, because the link is emailed TO that address. NULL = registered against
+    -- an email that already had bookings and not yet confirmed: password sign-in is
+    -- refused until then, or anyone who guessed a guest's email would inherit their
+    -- stay. A brand-new address has nothing to claim and is stamped at registration.
+    email_verified_at DATETIME  NULL,
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

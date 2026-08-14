@@ -1595,10 +1595,34 @@ http($admin, 'POST', '/keysafe.php', ['action' => 'set_enabled', 'prop_key' => $
 
 // (b) The arrival-window write: a REAL guest session (register mints one, with
 // the csrf cookie the jar picks up), writing to THEIR OWN booking only.
+// REGISTERING AN EMAIL THAT ALREADY HAS BOOKINGS DOES NOT HAND OVER THE STAY.
+// my_bookings_payload matches on the email alone, so signing someone in the moment
+// they typed one gave anybody who guessed a guest's address their dates, money,
+// arrival details and (inside its reveal window) the door code. The account is made
+// but stays unverified, and the magic link — emailed TO that address — is the proof.
 $gj = [];
 $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Keysafe Guest', 'email' => 'ks@gmail.com',
     'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
-it_check('(fixture) a guest account for the booking email signs in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_check('registering an email that already has bookings does NOT sign you in',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['verify'] ?? false) === true && !isset($r['json']['guest']), $r['raw']);
+$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'list']);
+it_check('…and that half-made account can read nothing', $r['code'] === 401, $r['raw']);
+// The bypass that makes the refusal real: the password was chosen by whoever
+// registered, so accepting it here would reopen the door the check just shut.
+$r = http($gj, 'POST', '/auth.php', ['action' => 'guest_login', 'email' => 'ks@gmail.com', 'password' => 'longenough1']);
+it_check('…nor can the password they just chose sign them in', $r['code'] === 403, $r['raw']);
+// The rightful owner opens the emailed link, which IS the proof of the address.
+$gvid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'ks@gmail.com'")->fetchColumn();
+$gts = time();
+$gtok = substr(hash_hmac('sha256', 'login:' . $gvid . ':' . $gts, $SECRET), 0, 32); // login_token()'s own shape
+$r = http($gj, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $gvid, 'ts' => $gts, 'token' => $gtok]);
+it_check('(fixture) the emailed sign-in link signs the guest in', ($r['json']['ok'] ?? false) === true, $r['raw']);
+it_check('…and stamps the address as proven', $rootDb->query("SELECT email_verified_at FROM guests WHERE id = $gvid")->fetchColumn() !== null, '');
+// A BRAND-NEW address has nothing to claim, so the ordinary guest is unaffected.
+$gj2 = [];
+$r = http($gj2, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Fresh Guest', 'email' => 'fresh-guest@gmail.com',
+    'password' => 'longenough1', 'address' => '2 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
+it_check('a brand-new email still signs straight in', ($r['json']['ok'] ?? false) === true && empty($r['json']['verify']) && !empty($r['json']['guest']), $r['raw']);
 $r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
 it_check('the guest stores their arrival window on their own booking', ($r['json']['ok'] ?? false) === true && ($r['json']['window'] ?? '') === '16-18', $r['raw']);
 $aw = $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn();

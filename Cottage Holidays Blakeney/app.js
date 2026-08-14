@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 489;
+const ADMIN_BUNDLE_V = 490;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3619,6 +3619,16 @@ async function guestRegister() {
             postcode,
             password,
         });
+        // Email already has bookings → account made, no session, link emailed
+        // (guest_register). Navigating on would land in an empty My Stays.
+        if (res && res.verify) {
+            err.style.display = 'none';
+            try {
+                await glassAlert(res.message || "Account created — we've emailed you a sign-in link. Tap it to confirm it's you.");
+            } catch (e) {}
+            closeGuestAuthModal();
+            return;
+        }
         currentGuest = res.guest;
         isAuthenticated = false;
         setAuthUI(); // one role at a time: drop any admin session
@@ -16095,6 +16105,17 @@ async function enquireCreateAccount() {
             postcode: __enqAcct.postcode,
             password: pwd,
         });
+        // As above — but the enquiry HAS been sent either way, so say both.
+        if (res && res.verify) {
+            __enqAcct = null;
+            resetEnquiryForm();
+            try {
+                closeEnquireModal();
+            } catch (e) {}
+            enquireDraftClear();
+            toast("Enquiry sent. We've emailed you a sign-in link to confirm it's you.");
+            return;
+        }
         currentGuest = res.guest;
         isAuthenticated = false;
         setAuthUI(); // one role at a time
@@ -17756,7 +17777,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'zerorate1';
+    const BUILD = 'guestverify1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
