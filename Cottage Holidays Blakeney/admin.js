@@ -5538,7 +5538,11 @@ function helpTopics() {
             related: ['add-cottage'] },
         { id: 'reply-enquiry', title: 'Reply to or approve an enquiry', cat: 'Inbox',
             kw: 'enquiry enquiries reply approve decline respond quote answer lead booking request',
-            steps: ['Open Inbox → Enquiries and pick one.', 'Approve to turn it into a booking (set the agreed price), edit, or decline — each emails the guest.'],
+            // "each emails the guest" was false of two of the three, and the owner
+            // acted on it: approving emails the confirmation and the payment ask,
+            // editing is deliberately silent, and declining emails nobody unless
+            // you take the reply it offers.
+            steps: ['Open Inbox → Enquiries and pick one.', 'Approve to turn it into a booking (set the agreed price) — that emails the confirmation and the payment request. Editing is silent. Declining files it and emails nobody, so take the reply it offers if you want the guest told.'],
             doIt: { label: 'Open Enquiries', run: view(() => { openInbox(); try { inboxFolder('enquiries'); } catch (e) {} }) },
             related: ['send-email'] },
         { id: 'send-email', title: 'Email a guest', cat: 'Inbox',
@@ -24198,10 +24202,31 @@ function declinedInboxHtml() {
                     String(e.dbId),
                     e.name || '',
                 )}>Put back in Waiting</button>
+                ${
+                    // A decline made in haste can still be answered an hour later.
+                    // The row is the only place the guest is reachable once the
+                    // enquiry has left the inbox — and with no address there is
+                    // nothing to offer, so the button simply is not there.
+                    e.email
+                        ? `<button type="button" class="btn-sm enq-declined-email" ${chbAttrs(
+                              'emailDeclinedEnquiry',
+                              String(e.dbId),
+                          )}>Email the guest</button>`
+                        : ''
+                }
             </div>`;
             })
             .join('')
     );
+}
+// Reply to an enquiry that has already been declined. The row is handed over as
+// an OBJECT: a declined enquiry is out of `enquiries` (the list query is
+// `declined_at IS NULL`), so an id lookup inside openEnquiryEmail would find
+// nothing. __declinedEnq holds the mapped rows the drawer is rendering.
+function emailDeclinedEnquiry(dbId) {
+    const e = (__declinedEnq || []).find((x) => String(x.dbId) === String(dbId));
+    if (!e) return;
+    enqReplyDraft(e);
 }
 // Put it back in the inbox, and take it out of the drawer in the same breath so
 // the two lists cannot both claim it.
@@ -24481,7 +24506,7 @@ function enquiryFreeNearby(e) {
 // the deterministic drafter into it (draftEnquiryReply reads __composeTarget,
 // which openEnquiryEmail sets — the order is the point).
 function enqReplyDraft(enquiryId) {
-    openEnquiryEmail(enquiryId);
+    openEnquiryEmail(enquiryId); // id from a data-act, or the row itself (see above)
     setTimeout(() => { try { draftEnquiryReply(); } catch (err) {} }, 250);
 }
 function renderEnquiryHub() {
@@ -24680,27 +24705,54 @@ function chbEnqTopicAnswer(message, propKey) {
 }
 function chbDraftEnquiryReply(enq) {
     if (!enq) return '';
-    const first = String(enq.name || '').trim().split(/\s+/)[0] || 'there';
     const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey || 'the cottage';
     const dates = fmtDate(enq.checkIn) + ' to ' + fmtDate(enq.checkOut);
-    const L = ['Hi ' + first + ',', ''];
+    // NO GREETING HERE. build_enquiry_reply_email() opens every reply with its
+    // own "Hello <name>,", so a draft that greeted too shipped "Hello Rachel," /
+    // "Hi Rachel," on every drafted reply — invisible until the drafter's output
+    // was put through the real template. The template owns the greeting (an owner
+    // typing a bare message still gets one); this owns the body.
+    const L = [];
     L.push('Thanks so much for your enquiry about ' + propName + ' for ' + dates + ' — lovely to hear from you.');
     let avail = null;
     try { avail = enquiryAvailability(enq); } catch (e) {}
     const free = !avail || avail.free;
     if (avail && avail.free) L.push("Good news — those dates are free, and we'd love to welcome you.");
-    else if (avail && !avail.free) L.push("Those exact dates are just taken, I'm afraid — but if you have any flexibility I'll gladly find the nearest we can offer.");
-    try {
-        const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
-        if (p && p.total) {
-            let pl = 'The total for your stay would be ' + gbp(p.total) + ' (' + p.nights + ' night' + (p.nights === 1 ? '' : 's') + ')';
-            if (p.damagesDeposit) pl += ', plus a ' + gbp(p.damagesDeposit) + ' refundable damage deposit';
-            L.push(pl + '.');
+    else if (avail && !avail.free) {
+        // NAME THE ALTERNATIVES. This used to promise to go and find "the nearest
+        // we can offer" — while enquiryFreeNearby(), which the enquiry hub is
+        // already printing on the screen above this button, knows exactly which
+        // windows are free. A guest handed two real dates can say yes; a guest
+        // handed an offer to go and look has to wait a second time.
+        let wins = [];
+        try { wins = enquiryFreeNearby(enq); } catch (e) { chbSwallow(e, 'enquiry-draft-nearby'); }
+        if (wins.length) {
+            L.push("Those exact dates have just gone, I'm afraid. If you have any flexibility, "
+                + wins.join(' and ')
+                + (wins.length === 1 ? ' is' : ' are')
+                + " free for the same length of stay, and I'd be glad to hold "
+                + (wins.length === 1 ? 'it' : 'either') + ' while you think.');
+        } else {
+            L.push("Those exact dates have just gone, I'm afraid — but if you have any flexibility I'll gladly find the nearest we can offer.");
         }
-        // The draft is still sendable without a price, which is the point of
-        // catching — but a quote silently missing from a reply to an enquiry is
-        // a lost booking, not a cosmetic gap.
-    } catch (e) { chbSwallow(e, 'enquiry-draft-quote'); }
+    }
+    // THE QUOTE ONLY BELONGS TO A STAY THAT CAN HAPPEN. Unconditional, it landed
+    // directly under the sentence refusing the dates — pricing a stay the line
+    // above had just said was unavailable. On free dates it is the whole point of
+    // the reply, so it stays exactly as it was.
+    if (free) {
+        try {
+            const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
+            if (p && p.total) {
+                let pl = 'The total for your stay would be ' + gbp(p.total) + ' (' + p.nights + ' night' + (p.nights === 1 ? '' : 's') + ')';
+                if (p.damagesDeposit) pl += ', plus a ' + gbp(p.damagesDeposit) + ' refundable damage deposit';
+                L.push(pl + '.');
+            }
+            // The draft is still sendable without a price, which is the point of
+            // catching — but a quote silently missing from a reply to an enquiry is
+            // a lost booking, not a cosmetic gap.
+        } catch (e) { chbSwallow(e, 'enquiry-draft-quote'); }
+    }
     const topic = chbEnqTopicAnswer(enq.message || '', enq.propKey);
     if (topic) L.push('', 'To your question — ' + topic.charAt(0).toLowerCase() + topic.slice(1));
     L.push('');
@@ -24721,8 +24773,12 @@ async function draftEnquiryReply() {
 // One shared composer (#enq-email-modal). __composeTarget carries which kind of
 // record we're emailing so sendEnquiryEmail() posts to the right endpoint.
 let __composeTarget = null;
+// Takes an id OR the enquiry itself. The object form is load-bearing: declining
+// is a soft delete, so once loadData() has run the row is out of `enquiries`
+// (`declined_at IS NULL`) and an id lookup finds nothing — the decline ask hands
+// over the row it captured BEFORE the post. Every other caller passes an id.
 function openEnquiryEmail(enqId) {
-    const enq = enquiries.find((e) => e.id === enqId);
+    const enq = enqId && typeof enqId === 'object' ? enqId : enquiries.find((e) => e.id === enqId);
     if (!enq) return;
     if (!enq.email) {
         glassAlert('This enquiry has no email address.');
@@ -25021,10 +25077,28 @@ async function declineEnquiry(enqId) {
         } else {
             renderInbox();
         }
-        toast(`Enquiry declined — ${name} removed from the inbox.`, undefined, {
-            label: 'Undo',
-            fn: () => undoDeclineEnquiry(dbId, name),
-        });
+        // DECLINING USED TO BE THE END OF THE CONVERSATION: the guest's
+        // acknowledgement promises a reply "by the end of the next day" and this
+        // path sends nothing, while the in-app help said it emailed them. The ask
+        // does not send — it puts the reply one tap away, and "Not now" is a
+        // complete answer. Never automatic: you may have already phoned, and a
+        // canned apology after a real conversation is worse than silence.
+        // The captured `enq` is handed over, not its id — a declined row is out
+        // of `enquiries` by now (see openEnquiryEmail). On the reply path Undo
+        // leaves the toast; "Put back in Waiting" holds it on the drawer row.
+        const undo = { label: 'Undo', fn: () => undoDeclineEnquiry(dbId, name) };
+        if (enq.email && typeof glassConfirm === 'function') {
+            const ask = await glassConfirm(
+                `${name} is expecting a reply — the acknowledgement promised one by the end of the next day.\n\n`
+                + 'Send one? The draft is ready, and names any nearby dates that are still free.',
+                'Write the reply',
+            );
+            if (ask) {
+                enqReplyDraft(enq);
+                return;
+            }
+        }
+        toast(`Enquiry declined — ${name} removed from the inbox.`, undefined, undo);
     } catch (e) {
         glassAlert("Couldn't decline: " + e.message);
     }

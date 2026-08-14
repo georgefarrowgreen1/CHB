@@ -1765,6 +1765,35 @@ foreach (glob(__DIR__ . '/*.php') as $php) {
 }
 it_check('no equality filter wraps email in LOWER() any more', $lowerBack === [], implode(', ', $lowerBack));
 
+// ---- 22. A DECLINED enquiry can still be replied to ----------------------
+//  The whole point of the decline ask is that the guest is owed a reply they
+//  were promised, and by the time it is offered the enquiry has already been
+//  declined. Declining is a soft delete, and the LIST query filters on
+//  `declined_at IS NULL` — so if the reply path ever grew the same filter (an
+//  easy and reasonable-looking edit), the feature would break silently: the
+//  composer opens, the owner writes, and the send 404s. Both halves are pinned
+//  here, on the real endpoints, because neither is visible from the client.
+echo "\n== 22. A declined enquiry can still be replied to ==\n";
+$eIn = date('Y-m-d', strtotime('+150 days'));
+$eOut = date('Y-m-d', strtotime('+154 days'));
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message) VALUES ('$propKey','Declined Replier','dr@gmail.com','$eIn','$eOut',2,0,'Any parking?')");
+$drId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'decline', 'id' => $drId]);
+it_check('(fixture) the enquiry declines', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('…and is a SOFT delete, still on the table', (int) $rootDb->query("SELECT COUNT(*) FROM enquiries WHERE id = $drId AND declined_at IS NOT NULL")->fetchColumn() === 1, '');
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'declined']);
+$inDrawer = array_filter($r['json']['enquiries'] ?? [], fn($e) => (int) ($e['id'] ?? 0) === $drId);
+it_check('…and reachable from the drawer the reply button lives on', count($inDrawer) === 1, $r['raw']);
+// The preview and the send are separate code paths and BOTH look the row up.
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'email_preview', 'id' => $drId,
+    'subject' => 'About your dates', 'message' => 'Those exact dates have just gone, I am afraid.']);
+it_check('a declined enquiry still PREVIEWS a reply', $r['code'] === 200 && !empty($r['json']['html']), $r['raw']);
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'email_guest', 'id' => $drId,
+    'subject' => 'About your dates', 'message' => 'Those exact dates have just gone, I am afraid.']);
+// MAIL_ENABLED is off in this harness, so a 200 means the row was FOUND and the
+// composer ran — which is the thing that would break. A 404 is the failure mode.
+it_check('…and the send reaches the composer rather than 404ing on the row', $r['code'] !== 404, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

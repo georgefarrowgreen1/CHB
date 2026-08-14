@@ -901,6 +901,164 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(200);
 
+  // ---- §11 DECLINING STOPS BEING THE END OF THE CONVERSATION ---------------
+  //  The acknowledgement the guest already holds promises a reply "always by the
+  //  end of the next day". The decline path requires no mailer and calls no send
+  //  function, so nothing was ever sent — and the in-app help said the opposite
+  //  ("decline — each emails the guest"), so the owner had no reason to think
+  //  anything was owed. The ask does NOT send: it puts the reply one tap away at
+  //  the moment the owner has the context, and "Not now" is a complete answer.
+  console.log('\n-- §11 the decline offers the reply --');
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.evaluate(() => { __inboxFolder = 'enquiries'; __inboxTab = 'waiting'; renderInbox(); });
+  await page.waitForTimeout(200);
+  // Drive the REAL decline. It awaits glassConfirm, so the promise is parked on
+  // window and answered by clicking the dialog's own buttons.
+  const startDecline = async (id) => {
+    await page.evaluate((eid) => {
+      window.__composeOpened = 0;
+      // Wrap ONCE — re-wrapping per use stacks layers, and one open then counts four.
+      if (!window.__realCompose) {
+        window.__realCompose = window.openEnquiryEmail;
+        window.openEnquiryEmail = (...a) => { window.__composeOpened++; return window.__realCompose.apply(null, a); };
+      }
+      document.querySelectorAll('.toast').forEach((t) => t.remove());
+      window.__declineP = window.declineEnquiry(eid);
+    }, id);
+    await page.waitForTimeout(400);
+  };
+  const dialogText = () => page.evaluate(() => {
+    const o = document.getElementById('glass-dialog');
+    if (!o || !o.classList.contains('open')) return null;
+    return {
+      msg: (document.getElementById('glass-dialog-msg') || {}).innerText || '',
+      ok: (document.getElementById('glass-dialog-ok') || {}).textContent || '',
+    };
+  });
+  // 1) A guest with an address is asked about.
+  await page.evaluate((seed) => {
+    enquiries.length = 0;
+    enquiries.push({ id: 'e77', dbId: 77, propKey: '21a', name: 'Nadia Ferrer', email: 'n@x.com', checkIn: seed.ci, checkOut: seed.co, adults: 2, children: 0, guests: '2 adults', message: 'Any parking?', received: seed.made });
+  }, { ci: d(30), co: d(33), made: d(-1) });
+  await startDecline('e77');
+  const asked = await dialogText();
+  ok(!!asked && /expecting a reply/i.test(asked.msg),
+    `declining raises the ask ("${asked ? asked.msg.split('\n')[0].slice(0, 58) : 'no dialog'}")`);
+  ok(!!asked && /write the reply/i.test(asked.ok), `…and its button says what it does ("${asked && asked.ok}")`);
+  // 2) "Write the reply" opens the composer — with the row it captured BEFORE the
+  //    post, since a declined enquiry is out of `enquiries` by now.
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(500);
+  const wrote = await page.evaluate(() => ({
+    opened: window.__composeOpened,
+    gone: !enquiries.some((e) => e.id === 'e77'),
+    body: (document.getElementById('enq-email-body') || {}).value || '',
+  }));
+  ok(wrote.gone, 'the declined enquiry really has left the live list (so an id lookup would fail)');
+  ok(wrote.opened === 1, `…and the composer still opened (${wrote.opened})`);
+  ok(/Thanks so much for your enquiry/.test(wrote.body) && !/^\s*(Hi|Hello) Nadia/i.test(wrote.body),
+    `…carrying the draft, greeting-free (“${wrote.body.split('\n')[0].slice(0, 46)}…”)`);
+  await page.evaluate(() => { closeEnquiryEmailModal && closeEnquiryEmailModal(); });
+  // 3) "Not now" is a complete answer: the old toast, Undo intact, nothing sent.
+  await page.evaluate((seed) => {
+    enquiries.length = 0;
+    enquiries.push({ id: 'e78', dbId: 78, propKey: '21a', name: 'Owen Hale', email: 'o@x.com', checkIn: seed.ci, checkOut: seed.co, adults: 2, children: 0, guests: '2 adults', message: 'Hi', received: seed.made });
+  }, { ci: d(30), co: d(33), made: d(-1) });
+  await startDecline('e78');
+  await page.click('#glass-dialog-cancel');
+  await page.waitForTimeout(400);
+  const notNow = await page.evaluate(() => {
+    const t = document.querySelector('.toast');
+    return {
+      opened: window.__composeOpened,
+      msg: t ? (t.querySelector('.toast-body span') || {}).textContent || '' : '',
+      undo: t ? (t.querySelector('.toast-action') || {}).textContent || '' : '',
+    };
+  });
+  ok(notNow.opened === 0, `"Not now" sends nothing and opens nothing (${notNow.opened})`);
+  ok(/removed from the inbox/i.test(notNow.msg), `…and the plain toast still reports the decline ("${notNow.msg}")`);
+  ok(/undo/i.test(notNow.undo), `…with Undo intact ("${notNow.undo}")`);
+  // 4) NO ADDRESS, NO ASK — there is nothing to offer, so the toast is unchanged.
+  await page.evaluate((seed) => {
+    enquiries.length = 0;
+    enquiries.push({ id: 'e79', dbId: 79, propKey: '21a', name: 'Phone Only', email: '', phone: '07700 900000', checkIn: seed.ci, checkOut: seed.co, adults: 2, children: 0, guests: '2 adults', message: 'Hi', received: seed.made });
+  }, { ci: d(30), co: d(33), made: d(-1) });
+  await startDecline('e79');
+  const noMail = await page.evaluate(() => {
+    const o = document.getElementById('glass-dialog');
+    const t = document.querySelector('.toast');
+    return {
+      dialog: !!(o && o.classList.contains('open')),
+      msg: t ? (t.querySelector('.toast-body span') || {}).textContent || '' : '',
+    };
+  });
+  ok(!noMail.dialog, 'an enquiry with no email address raises no ask');
+  ok(/removed from the inbox/i.test(noMail.msg), `…and goes straight to the toast ("${noMail.msg}")`);
+
+  // ---- §11b THE DRAWER KEEPS THE OFFER ------------------------------------
+  //  A decline made in haste can still be answered an hour later — the drawer row
+  //  is the only place the guest is reachable once the enquiry has left the inbox.
+  // Reached by CLICKING the tab, the way the drawer's own section does — driving
+  // __inboxTab directly leaves the fetch unarmed and renders nothing.
+  await page.evaluate(() => window.inboxFolder('enquiries'));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    __declinedEnq = null;
+    const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => x.textContent.trim() === 'Declined');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(900);
+  const drawer = await page.evaluate(() => {
+    const row = document.querySelector('.enq-declined-row');
+    if (!row) return null;
+    const b = row.querySelector('.enq-declined-email');
+    return { has: !!b, label: b ? b.textContent.trim() : '' };
+  });
+  ok(!!drawer && drawer.has, `the declined row offers a reply ("${drawer && drawer.label}")`);
+  // Real click → the composer opens with the draft, from __declinedEnq's own row.
+  await page.evaluate(() => { window.__composeOpened = 0; });
+  await page.click('.enq-declined-email');
+  await page.waitForTimeout(500);
+  const fromDrawer = await page.evaluate(() => ({
+    opened: window.__composeOpened,
+    body: (document.getElementById('enq-email-body') || {}).value || '',
+  }));
+  ok(fromDrawer.opened === 1 && /Thanks so much for your enquiry/.test(fromDrawer.body),
+    `…and it opens the composer with the draft (${fromDrawer.opened})`);
+  await page.evaluate(() => { closeEnquiryEmailModal && closeEnquiryEmailModal(); });
+  // With NO address there is nothing to offer, so the button is simply absent —
+  // never a control that alerts when tapped.
+  const noAddr = await page.evaluate(() => {
+    __declinedEnq = (__declinedEnq || []).map((e) => Object.assign({}, e, { email: '' }));
+    renderInbox();
+    const row = document.querySelector('.enq-declined-row');
+    return { email: !!(row && row.querySelector('.enq-declined-email')), restore: !!(row && row.querySelector('.enq-declined-restore')) };
+  });
+  ok(!noAddr.email && noAddr.restore, 'with no address the reply button is absent, and Restore still there');
+  // AND IT MUST NOT COST THE COTTAGE NAME AT 390px. The row's own gate above
+  // exists because "Put back in Waiting" already takes 165px of a 390px row; a
+  // second button is exactly the pressure that squeezed the pill to "Pl…".
+  await page.evaluate(() => { __declinedEnq = null; const b = [...document.querySelectorAll('#inbox-list .inbox-sort-btn')].find((x) => x.textContent.trim() === 'Declined'); if (b) b.click(); });
+  await page.waitForTimeout(900);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(300);
+  const tight = await page.evaluate(() => {
+    const row = document.querySelector('.enq-declined-row');
+    const tag = row.querySelector('.prop-tag');
+    const btns = [...row.querySelectorAll('.btn-sm')];
+    return {
+      clipped: tag.scrollWidth > tag.clientWidth + 1,
+      tagW: Math.round(tag.getBoundingClientRect().width), tagNeeds: tag.scrollWidth,
+      n: btns.length,
+      overflow: btns.some((b) => b.getBoundingClientRect().right > row.getBoundingClientRect().right + 1),
+      floor: Math.min(...btns.map((b) => Math.round(b.getBoundingClientRect().height))),
+    };
+  });
+  ok(tight.n === 2, `both actions render on the row (${tight.n})`);
+  ok(!tight.clipped, `…and the cottage name is still not clipped at 390px (${tight.tagW}px for ${tight.tagNeeds}px)`);
+  ok(!tight.overflow, 'neither button runs past the row edge');
+  await page.setViewportSize({ width: 1000, height: 900 });
+
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
