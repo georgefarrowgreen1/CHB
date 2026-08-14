@@ -19646,6 +19646,17 @@ async function initBackOffice() {
     // Today by itself (the same no-reload recovery chbNetUp uses). Only while
     // the stores are EMPTY — with last-good data in memory, Today is already
     // the better screen and the sheet stays out of the way.
+    // NB PERF-8 (one data load per owner boot instead of two) was BUILT AND
+    // REVERTED here. The doubling is real — measured on the real journey,
+    // admin-bootstrap.php twice with five endpoints behind it — but reusing a
+    // recently-successful load costs more than it buys: initBackOffice has five
+    // callers and most exist to REFRESH (chbNetRecover after a dropped link, the
+    // post-recovery re-init), so a time-window reuse skips the very reload they
+    // are for. ui-test-needs-you caught that, reporting money against stores the
+    // test had just cleared. Scoping the reuse to the first init of the page then
+    // recovered only one of the boot's several inits, so the win largely went too.
+    // A real fix needs the refresh callers to say so explicitly rather than a
+    // window guessing for them; the measurement is in the PR if anyone returns.
     const __ldrP = loadData();
     const __storesEmpty = () => !Object.keys(dbBookings || {}).some((k) => (dbBookings[k] || []).length);
     let __odsPatienceT = null;
