@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 492;
+const ADMIN_BUNDLE_V = 493;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -9286,16 +9286,11 @@ function displayGrandTotal(rentalTotal, p, holdStatus) {
 // A manually-recorded cash/bank payment leaves hold_status 'none', so the deposit
 // is NOT counted as paid — otherwise a £100 cash deposit would show as £150 paid.
 // `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
-// Money the owner manages PERSONALLY — a recorded off-card method (cash,
-// bank, cheque…; owner's ask, 06 Aug: discussed externally, so never
-// volunteer what they owe — no duty, no owed-later, no "to collect" share).
-// Records and direct answers keep the full state. Mirrors payment_rail incl.
-// its load-bearing edge: EMPTY means card — unpaid-yet keeps the chase. The
-// card pattern is payment_rail's, byte for byte (test-payrail holds them in
-// step): a hand-typed "Visa" must not read as card on the server and cash here.
-// Lives in app.js, not admin.js, because the GUEST's own booking card asks it
-// too — an arranged-by-hand stay must not sprout a card-pay button the moment
-// its refundable deposit reads as honestly outstanding.
+// Money the owner manages PERSONALLY (cash/bank/cheque): never volunteer what
+// they owe — no duty, no owed-later, no "to collect" share; records and direct
+// answers keep the full state. Mirrors payment_rail byte for byte, EMPTY-means-
+// card edge included (test-payrail holds them in step). In app.js because the
+// GUEST's card asks it too. See CLAUDE.md.
 function bookingOwnerArranged(b) {
     const m = String((b && b.paymentMethod) || '').trim();
     return m !== '' && !/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/i.test(m);
@@ -11839,6 +11834,50 @@ function enquireDraftSync(draft) {
         apiPost('enquiries.php', payload).catch(() => {});
     }, 2500);
 }
+// PICK UP WHERE YOU LEFT OFF — the read-back the draft was written for. Nothing
+// ever read chb-enq-draft, while the rescue email promised the details were kept,
+// so the guest tapped through to a blank form. Guards: the rescue cron's own
+// 3-day window, the draft's cottage must match, fill only EMPTY fields (never
+// clobber account autofill), and SAY it happened + re-check the dates. See CLAUDE.md.
+function enquireDraftRestore(key) {
+    try {
+        const wb0 = document.getElementById('enq-wb');
+        if (wb0) delete wb0.dataset.draftNote; // cleared per open, or a stale flag freezes an old note
+        const raw = localStorage.getItem(ENQ_DRAFT_KEY);
+        if (!raw) return;
+        const d = JSON.parse(raw);
+        if (!d || typeof d !== 'object') return;
+        if (d.prop && key && d.prop !== key) return;
+        if (!d.at || Date.now() - d.at > 3 * 864e5) return;
+        let filled = 0;
+        [
+            ['enq-name', d.name],
+            ['enq-email', d.email],
+            ['enq-phone', d.phone],
+            ['enq-postcode', d.postcode],
+            ['enq-address', d.address],
+            ['enq-message', d.message],
+            ['enq-checkin', d.checkIn],
+            ['enq-checkout', d.checkOut],
+        ].forEach(([id, v]) => {
+            if (!v) return;
+            const el = /** @type {HTMLInputElement} */ (document.getElementById(id));
+            if (el && !el.value && !el.readOnly) {
+                el.value = v;
+                filled++;
+            }
+        });
+        if (!filled) return;
+        const wb = document.getElementById('enq-wb');
+        if (wb) {
+            wb.textContent = d.checkIn
+                ? 'Picked up where you left off — worth checking those dates are still free.'
+                : 'Picked up where you left off.';
+            wb.style.display = '';
+            wb.dataset.draftNote = '1';
+        }
+    } catch (e) {}
+}
 function enquireDraftClear() {
     try {
         localStorage.removeItem(ENQ_DRAFT_KEY);
@@ -11895,6 +11934,8 @@ function openEnquireModal() {
         if (el) el.style.display = showAcct ? '' : 'none';
     });
     applyOccupancyToForm(key); // ensure steppers/children reflect this cottage's limits
+    // BEFORE the date trigger and the price box, so both reflect what was restored.
+    enquireDraftRestore(key);
     refreshDateTrigger();
     updateEnquiryPrice();
     try {
@@ -15408,6 +15449,10 @@ function enqOrdinalWord(n) {
 function enqWelcomeSync() {
     const el = document.getElementById('enq-wb');
     if (!el) return;
+    // This slot is shared with the picked-up-where-you-left-off note, and this
+    // function runs AFTER the restore. For a stranger — the rescue email's actual
+    // audience — html is '' here, so an unguarded write would blank the very note
+    // that explains why their form is already full.
     let html = '';
     if (currentGuest && Array.isArray(__wbStays)) {
         const today = todayDashed();
@@ -15417,6 +15462,7 @@ function enqWelcomeSync() {
             html = `Welcome back${first ? ', <b>' + escapeHtml(first) + '</b>' : ''} — this would be your <b>${enqOrdinalWord(past + 1)} stay</b> with us, so your details are already filled in.`;
         }
     }
+    if (!html && el.dataset.draftNote === '1') return; // leave the restore note alone
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
 }
@@ -17777,7 +17823,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'lightfix1';
+    const BUILD = 'draftback1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

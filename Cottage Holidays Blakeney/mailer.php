@@ -3671,7 +3671,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
             " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
             "you can pick up where you left off here:\n" .
             ($link ? $link . "\n\n" : "\n") .
-            'Your details are saved in the form on this device, so it only takes a moment. ' .
+            'If you open it on the same device you started on, we\'ll have kept what you typed. ' .
             "Or just reply to this email and we'll happily sort it out for you.\n\n" .
             "Warm wishes,\nCottage Holidays Blakeney",
         'html' => email_shell(
@@ -3684,7 +3684,7 @@ function enquiry_rescue_body($name, $propName, $dateSpan, $link, $accent)
                 ) .
                 email_p(
                     "No pressure at all — if you'd still like to stay, you can pick up where you left off in one tap. " .
-                        'Your details are saved in the form on this device, so it only takes a moment.',
+                        'If you open it on the same device you started on, we\'ll have kept what you typed.',
                 ) .
                 ($link ? email_btn($link, 'Pick up where you left off') : '') .
                 email_p("Or just reply to this email and we'll happily sort it out for you.", true),
