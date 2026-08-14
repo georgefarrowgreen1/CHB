@@ -201,14 +201,10 @@ textarea:focus-visible,
   --font-sans: "Montserrat", sans-serif;
   --fluid-bezier: cubic-bezier(0.25, 1, 0.25, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  /* iOS SAFE AREAS. Full-screen overlays used a flat 20px inset, so on a phone
-     with a Dynamic Island / notch the top of the panel sat UNDERNEATH it. Read
-     the insets once here, as tokens, for two reasons: every overlay then insets
-     the same way instead of each remembering to, and a test can override these
-     to simulate a notched device — env() always reports 0px in a desktop
-     browser, so the bug is otherwise invisible to CI.
-     Use as max(<the design inset>, var(--safe-t)) so devices without insets
-     keep the original spacing exactly. */
+  /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
+     and a test can override these to fake a notch (env() reports 0px on desktop,
+     so the bug is otherwise invisible to CI). Use as
+     max(<design inset>, var(--safe-t)). See CLAUDE.md. */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -291,6 +287,21 @@ body.light-mode {
            elsewhere use var(--text-light), so they flip automatically. */
 body.light-mode .chat-widget {
   background: rgba(248, 248, 250, 0.97);
+}
+/* Two more members of this list, both missed: the cottage page's sticky book bar
+   (the ONLY enquire route at 769-899px, measured 1.02:1) and the Experiences
+   category tag (1.45:1). The boot selector is needed too, or they stay dark
+   until app.js adds .light-mode. Gated by a11y-test §7. */
+html.theme-light-boot body .prop-book-bar,
+body.light-mode .prop-book-bar {
+  background: rgba(255, 255, 255, 0.86);
+  border-top-color: var(--glass-border);
+  box-shadow: 0 -10px 40px rgba(30, 54, 72, 0.14);
+}
+html.theme-light-boot body .exp-cat-tag,
+body.light-mode .exp-cat-tag {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--glass-border);
 }
 body.light-mode .input-glass,
 body.light-mode .date-range-trigger,
@@ -10925,12 +10936,9 @@ body.light-mode .datepicker-pop {
 .settings-index > .settings-section-label:first-child {
   margin-top: 2px;
 }
-/* Desktop: the Settings & Money landing lists (both .settings-index) are a single
-   narrow 640px column on phones. On a wide screen that leaves the right half empty,
-   so flow the section groups into two balanced columns that fill the page. Each
-   group stays whole (never split across a column) and every label stays glued to
-   the group it heads. Money's graphical overview spans the full width on top.
-   Phones/tablets (<960px) keep the single-column mobile layout untouched. */
+/* Desktop: flow .settings-index's groups into two balanced columns (the 640px
+   phone column leaves a wide screen half empty). Each group stays WHOLE and its
+   label glued to it; Money's overview spans the top. <900px is untouched. */
 @media (min-width: 900px) {
   .settings-index {
     max-width: 1040px;
@@ -11311,12 +11319,11 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
   }
 }
 
-/* UNIFIED LIQUID-GLASS INTERACTIONS — one motion language for every interactive control:
-   --fluid-bezier (colour/bg/border) + --spring (transform), a hover lift on pointer devices,
-   a consistent press. Appended last so it standardises the per-component rules; each element
-   keeps its own colour :hover and only gains the transform/shadow/press. Reduced motion is
-   neutralised globally. .card / .btn-glass keep their own larger lift; .gallery-nav and
-   .lightbox-nav are handled separately, carrying a translateY(-50%) centring transform. */
+/* UNIFIED LIQUID-GLASS INTERACTIONS — one motion language for every control:
+   --fluid-bezier (colour) + --spring (transform), hover lift on pointer devices,
+   one press. Appended LAST so it standardises the per-component rules; each keeps
+   its own colour :hover. .card/.btn-glass keep a larger lift; .gallery-nav and
+   .lightbox-nav are separate (they carry a centring translateY(-50%)). */
 .btn-sm,
 .btn-edit,
 .toggle-btn,

@@ -521,6 +521,63 @@ const stub = (page) => page.route(/\.php/, (r) => {
     const seen = outlines.filter((o) => o.outline.length).length;
     ok(seen >= 10, `outlines collected: ${seen} of ${outlines.length} scenes (a scope that stopped resolving would pass \u00A76 in silence)`);
 
+    // ── §7 THE TABLET BAND, MEASURED IN PIXELS ────────────────────────────────
+    // Every scene above runs at 390px wide, so 769–899px is invisible to this
+    // gate — and that is exactly where the cottage page's sticky booking bar
+    // shows (the guest shell hides it below, the sidebar rule above). Its ground
+    // was a raw dark rgba that never retunes while its inks are tokens that do,
+    // so in the DEFAULT light theme the price measured 1.02:1 and the ENQUIRE NOW
+    // label 1.15:1 — an invisible button that is the only way to enquire there,
+    // because .prop-reserve is display:none below 900px.
+    // Sampled from the PAINTED pixels, not getComputedStyle: these sit on
+    // translucent glass, where computed colour reports only the top layer (the
+    // trap this codebase has produced five separate false readings from).
+    console.log('\n§7 The 769–899px band — a raw dark fill must not survive the light theme');
+    const lumOf = ([r, g, b]) => {
+        const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const contrast = (a, b) => { const L1 = lumOf(a), L2 = lumOf(b); return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); };
+    for (const theme of ['light', 'dark']) {
+        const p2 = await t.browser.newPage({ viewport: { width: 820, height: 900 } });
+        try {
+            // Deliberately NOT stub()ed: this is the PUBLIC cottage page, and the
+            // admin stub suppresses the boot that renders the bar at all.
+            await p2.addInitScript((th) => { try { localStorage.setItem('chb-theme', th); } catch (e) {} }, theme);
+            await p2.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+            await p2.waitForTimeout(1700);
+            await p2.evaluate(() => { try { openProperty(Object.keys(propertyMeta)[0]); } catch (e) {} });
+            await p2.waitForTimeout(900);
+            const barUp = await p2.evaluate(() => { const e = document.querySelector('.prop-book-bar'); return !!(e && e.getClientRects().length); });
+            ok(barUp, `(fixture) the cottage booking bar is on screen at 820px (${theme})`);
+            if (!barUp) continue;
+            for (const sel of ['.pbb-price', '.pbb-btn']) {
+                const el = p2.locator(sel).first();
+                if (!(await el.count()) || !(await el.isVisible())) continue;
+                const shot = await el.screenshot();
+                const s = await p2.evaluate(async (d) => {
+                    const img = new Image(); img.src = 'data:image/png;base64,' + d; await img.decode();
+                    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+                    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+                    const D = x.getImageData(0, 0, img.width, img.height).data;
+                    const L = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    const m = {}; let dark = [255, 255, 255], light = [0, 0, 0];
+                    for (let i = 0; i < D.length; i += 4) {
+                        const px = [D[i], D[i + 1], D[i + 2]]; m[px.join(',')] = (m[px.join(',')] || 0) + 1;
+                        if (L(px) < L(dark)) dark = px;
+                        if (L(px) > L(light)) light = px;
+                    }
+                    return { ground: Object.entries(m).sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number), dark, light };
+                }, shot.toString('base64'));
+                const ink = theme === 'light' ? s.dark : s.light;
+                const r = contrast(s.ground, ink);
+                ok(r >= 4.5, `${theme}: ${sel} ink is legible on the bar (${r.toFixed(2)}:1 — ground rgb(${s.ground}))`);
+            }
+        } finally {
+            await p2.close();
+        }
+    }
+
     console.log(fails ? `\n  ${fails} A11Y CHECK(S) FAILED ❌` : '\n  A11Y CHECKS PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

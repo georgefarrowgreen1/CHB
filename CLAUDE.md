@@ -28,11 +28,20 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
      and never more than once between real pieces of work.
   4. Job LOGS are the honest oracle the status field is not: they 404 while a job is
      running and download once it is done.
-- **`test-integration.php` CAN be run locally — do it, it is the gate that bites.**
-  This container HAS MariaDB (`sudo service mariadb start`; root/root on 127.0.0.1
-  already works), so the "needs MySQL, CI runs it" line is wrong and was believed
-  for a whole PR: #963 shipped a migration that passed every other gate and failed
-  §2 in CI. Migrations in particular are ONLY exercised here.
+- **`test-integration.php` needs MySQL — CHECK whether this container has any before
+  believing either claim.** It is the gate that bites (migrations are ONLY exercised
+  there; #963 shipped one that passed every other gate and failed §2 in CI), so run
+  it when you can: `mysqladmin -h127.0.0.1 -uroot -proot status`, or
+  `sudo service mariadb start` first. But do NOT assume it is there — this note used
+  to assert flatly that the container HAS MariaDB, and a later session found no
+  mysqld, no mariadb service and no mysqladmin at all, having trusted the line. The
+  container image is not stable across sessions: **node_modules is not committed
+  either** (ci.yml does `npm init -y` + `npm install playwright@<pinned>` per run), so
+  the ui-test suites may need `npm install playwright` before they will run, and the
+  preinstalled Chromium may not match a newer playwright — pass
+  `CHB_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome` (ui-test-lib's
+  own override) when the launch complains about a missing browser revision.
+  When you genuinely cannot run it, SAY so in the PR rather than implying CI-parity.
 - **A guarded migration is a plain `ALTER TABLE ... ADD COLUMN`.** migrate.php
   treats a duplicate-column error as already-applied. Do NOT reach for the
   information_schema + `PREPARE`/`EXECUTE` guard: the no-op branch (`SELECT 1`)
@@ -3575,6 +3584,53 @@ of every site). The Test Centre's demo-booking button was sending it uncondition
 the one control that creates a booking with nobody reading the answer could therefore
 silently overlap a real guest, and its own "Those dates clash — try again" branch was
 unreachable because the override guaranteed the server would never say so.
+
+**REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT** (`guests.email_verified_at`,
+migration-111). `my_bookings_payload` matches stays on `LOWER(b.email) = LOWER(?)`
+and NOTHING verified the address — `guest_register` created the account and signed
+the person in on the spot, so registering with a guest's email handed over their
+booking: dates, party, money, arrival details, and the door code once inside its
+reveal window. The magic link is the proof, because it is emailed TO the address.
+Three rules: an address with NO bookings has nothing to claim, so it is stamped
+verified and signs straight in (the ordinary case is untouched); an address that
+DOES have bookings gets the account, no session, and the link; and **`guest_login`
+must refuse an unverified account** — without that the fix is theatre, since the
+password was chosen by whoever registered. `guest_magic_consume` stamps the column.
+Checks BOOKINGS only, never enquiries: the enquiry flow registers moments after
+submitting an enquiry with that same address, so counting enquiries would send
+every new guest to their inbox. Existing rows are backfilled VERIFIED — locking a
+real guest out of their own stay is a worse harm than a squat that has already
+happened. Gated by test-integration §19 in all four directions.
+
+**THE INSTALMENT COLLECTOR'S THREE RULES** (autopay-lib.php / pay.php), each of
+which shipped broken and was found by the money audit:
+- **The write-back names `payment` — the ENUM — not `payment_status`**, which is no
+  column at all. PDO is in exception mode, so the write AND its fallback threw and
+  the inner catch swallowed both: after a successful charge NOTHING was written
+  back, `autopay_next_at` never advanced, and a monthly plan re-collected the next
+  morning and every morning after. test-autopay now asserts every column the
+  collector writes exists in schema.sql + the migrations, because the harness's
+  `ApWrite` accepts any SQL string — which is how 211 checks passed over a
+  collector that could not write.
+- **Read the paid figure BEFORE the ledger row lands.** `booking_paid_so_far` reads
+  `booking_ledger_net`, so reading it after the INSERT and adding `$rental` counts
+  the collection twice; a monthly plan then stopped one instalment short with every
+  screen reading paid in full. The receipt was re-deriving it the same way.
+- **Snapshot the autopay terms BEFORE the charge.** `booking_autopay_terms` opens
+  with "only a DEPOSIT is ever scheduled" and resolves the stage through the LIVE
+  ledger — derived after the charge the deposit reads settled, the stage is already
+  'balance', terms come back null and the vault answers "nothing to schedule". Every
+  consenting guest was told their plan could not be set up. It also takes a
+  `$kindHint` so the screen's own stage wins: "settle the whole stay now" was
+  offering to schedule the money it was collecting.
+
+**BLOCKING DATES IS NOT A ONE-WAY DOOR.** `delete_block` existed, was correct, and
+had NO caller — the timeline drew owner blocks as inert spans — so a blocked range
+was permanent: hidden on the site, refused by `dates_clash`, AND published as
+unavailable to every platform (ical-export publishes `source='owner'`). Owner blocks
+are controls now; IMPORTED bars stay display-only and `delete_block` is restricted
+to `source='owner'` server-side, because deleting an import reads the cottage as
+FREE until the next sync — a real double-booking window.
 
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
