@@ -19,6 +19,14 @@ function content_public_payload()
     // GET always excludes both key classes for the public.
     $isAdmin = !empty($_SESSION['admin_id']);
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
+    // Every other content read in this request can now be answered from memory —
+    // this is the ONLY caller that warms the memo, which is what keeps it safe:
+    // no write path ever populates it, so there is nothing to invalidate.
+    $raw = [];
+    foreach ($rows as $r) {
+        $raw[$r['item_key']] = $r['item_value'];
+    }
+    content_memo_warm($raw);
     $out = [];
     foreach ($rows as $r) {
         $key = $r['item_key'];

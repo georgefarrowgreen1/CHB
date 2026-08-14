@@ -2033,11 +2033,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     out.ariaHidden = ml.querySelector('.knot-live').getAttribute('aria-hidden') === 'true';
     out.lenPx = /px$/.test(ml.style.getPropertyValue('--klen').trim());
     // The travel must actually MOVE (the class alone passed while the px bug
-    // stood): sample the live path's dash-offset across a beat.
+    // stood). SEEK THE ANIMATION, DON'T RACE IT: this sampled 300ms apart on the
+    // wall clock and flaked in CI — under load the two reads can land close
+    // enough to round to the same string, and the failure looks exactly like the
+    // bug it guards. An inline negative animation-delay parks the same animation
+    // at two phases of its 1.6s cycle and both are read a millisecond apart: no
+    // clock, no frames. Inline wins over the stylesheet's shorthand, which is
+    // what makes the seek stick. (The Siri-aura check learned this first — see
+    // §17a and the general rule in CLAUDE.md: sample by PHASE, never by clock.)
     const p = ml.querySelector('.knot-live path');
+    p.style.animationDelay = '0s';
     const a = getComputedStyle(p).strokeDashoffset;
-    await new Promise((r) => setTimeout(r, 300));
-    out.moves = getComputedStyle(p).strokeDashoffset !== a;
+    p.style.animationDelay = '-0.8s'; // half of the 1.6s cycle
+    const b = getComputedStyle(p).strokeDashoffset;
+    p.style.animationDelay = '';
+    out.moves = a !== b;
+    out.movesFrom = a + ' -> ' + b;
     out.trackDim = +getComputedStyle(ml.querySelector('.cmdk-search-ic:not(.knot-live)')).opacity < 0.5;
     cmdkSetLoading(false);
     out.busyCleared = !ml.classList.contains('knot-busy') && !document.getElementById('cmdk-progress').classList.contains('is-loading');
@@ -2080,7 +2091,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(knot.clones === 1 && knot.clonesAfterReseat === 1 && knot.ariaHidden,
     'ONE aria-hidden live clone, and re-seating never adds a second');
   ok(knot.lenPx, 'the length custom props carry px units (a unitless keyframe calc() never moves)');
-  ok(knot.moves, 'the lit segment actually TRAVELS the stroke (dash-offset changes between frames)');
+  ok(knot.moves, `the lit segment actually TRAVELS the stroke (${knot.movesFrom})`);
   ok(knot.trackDim, 'the resting mark dims to a track beneath the live stroke');
   ok(knot.busyCleared, 'the signal down clears the knot and the bar together');
   ok(knot.draw && knot.drawCleared, 'the determinate draw lands the real fraction and clears on null');

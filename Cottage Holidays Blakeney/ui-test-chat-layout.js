@@ -25,7 +25,23 @@ const { boot } = require('./ui-test-lib');
     const page = t.page;
     page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
     await page.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1200);
+    // WAIT FOR THE REAL CONDITION, not a clock. The checks below hit-test whether
+    // anything covers the composer, and #loading-overlay is a full-screen panel
+    // that sits there until the boot finishes — so a fixed 1200ms wait meant a
+    // slow runner reported "covered by loading-overlay" for all three controls,
+    // which reads exactly like the layout bug they exist to catch. It did: CI run
+    // 31824770415, green here serially, under 3-way concurrency, and through
+    // ui-tests.js. Same lesson as ui-test-lib's appReadyGoto — a
+    // wait-for-the-condition belongs in the harness, not a guessed duration.
+    let booted = true;
+    try {
+        await page.waitForFunction(() => {
+            const o = document.getElementById('loading-overlay');
+            return !o || o.classList.contains('fade-out');
+        }, null, { timeout: 20000 });
+    } catch (e) { booted = false; }
+    check(booted, 'the boot finished and the loading overlay lifted (or the hit-tests below mean nothing)');
+    await page.waitForTimeout(250); // the overlay's own 600ms fade begins here; let paint settle
 
     const open = await page.evaluate(async () => {
         try { toggleChat(); } catch (e) {}

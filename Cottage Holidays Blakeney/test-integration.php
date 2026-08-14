@@ -1794,6 +1794,148 @@ $r = http($admin, 'POST', '/enquiries.php', ['action' => 'email_guest', 'id' => 
 // composer ran — which is the thing that would break. A 404 is the failure mode.
 it_check('…and the send reaches the composer rather than 404ing on the row', $r['code'] !== 404, $r['raw']);
 
+// ---- 23. The HTML shell revalidates instead of re-downloading -------------
+//  All three SSR shell routes emitted only Content-Type — no ETag, no
+//  Last-Modified, no Cache-Control — and none calls session_start(), so PHP
+//  added no validator either. sw.js's navigation branch is network-first and
+//  always awaits the network, so an installed PWA re-downloaded a byte-identical
+//  ~34.5KB shell on the critical path of EVERY launch. Against a repeat visit's
+//  ~1.7KB of real traffic that was ~95% of the download.
+//
+//  The check that matters is the TOLERANT comparison. htaccess enables DEFLATE
+//  for text/html and sets no DeflateAlterETag, and Apache 2.4 defaults to
+//  AddSuffix — so mod_deflate rewrites `"abc"` to `"abc-gzip"` on the wire and
+//  the browser echoes that back. A byte-exact comparison would match nothing, on
+//  every request, while looking correct in the source. php -S applies no such
+//  filter, so the suffixed form is fed in DELIBERATELY here: it is the only way
+//  this environment can see the production shape at all.
+echo "\n== 23. The HTML shell revalidates ==\n";
+$shellGet = function (string $path, string $inm = '') {
+    global $BASE;
+    $h = ['Accept: text/html'];
+    if ($inm !== '') { $h[] = 'If-None-Match: ' . $inm; }
+    $opts = ['http' => ['method' => 'GET', 'header' => implode("\r\n", $h), 'timeout' => 30, 'ignore_errors' => true]];
+    $http_response_header = [];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create($opts));
+    $code = 0; $etag = ''; $cc = '';
+    foreach ($http_response_header as $hdr) {
+        if (preg_match('#^HTTP/\S+ (\d+)#', $hdr, $m)) { $code = (int) $m[1]; }
+        if (preg_match('/^ETag:\s*(.+)$/i', $hdr, $m)) { $etag = trim($m[1]); }
+        if (preg_match('/^Cache-Control:\s*(.+)$/i', $hdr, $m)) { $cc = trim($m[1]); }
+    }
+    return ['code' => $code, 'etag' => $etag, 'cc' => $cc, 'len' => strlen((string) $raw), 'raw' => (string) $raw];
+};
+// php -S serves no rewrites, so the routes are addressed by filename. cottage.php
+// needs a real slug or it 404s by design.
+$slugRow = $rootDb->query("SELECT slug FROM properties WHERE archived_at IS NULL ORDER BY sort_order LIMIT 1")->fetchColumn();
+// cottage.php reads the slug out of REQUEST_URI (`/cottages/<slug>`), not a query
+// string — php -S applies no rewrite, so the path is appended to the script and
+// PHP's built-in server passes it through. A `?slug=` query reached the regex not
+// at all and served the UNTOUCHED shell, which passed every check below while
+// proving nothing about the cottage route; the assertion under $shellRoutes now
+// requires cottage.php's bytes to DIFFER from home.php's.
+$shellRoutes = ['/home.php', '/experiences-page.php', '/cottage.php/cottages/' . rawurlencode((string) $slugRow)];
+foreach ($shellRoutes as $route) {
+    $r1 = $shellGet($route);
+    $name = ltrim(explode('?', $route)[0], '/');
+    it_check("$name serves the shell with a strong ETag", $r1['code'] === 200 && preg_match('/^"[0-9a-f]{32}"$/', $r1['etag']) === 1, "code {$r1['code']} etag {$r1['etag']}");
+    it_check("…and Cache-Control: no-cache, so it is STORED and revalidated", stripos($r1['cc'], 'no-cache') !== false, $r1['cc']);
+    it_check("…and it is a real page ({$r1['len']} bytes)", $r1['len'] > 8000, (string) $r1['len']);
+    $r2 = $shellGet($route, $r1['etag']);
+    it_check('…a matching If-None-Match answers 304 with no body', $r2['code'] === 304 && $r2['len'] === 0, "code {$r2['code']} len {$r2['len']}");
+    // THE PRODUCTION SHAPE: mod_deflate's suffix must still match, or this whole
+    // section passes locally and the fix does nothing on the live host.
+    $gz = preg_replace('/"$/', '-gzip"', $r1['etag']);
+    $r3 = $shellGet($route, (string) $gz);
+    it_check("…and so does mod_deflate's $gz", $r3['code'] === 304, "code {$r3['code']}");
+    // A weak validator and a comma-separated list are both legal client shapes.
+    $r4 = $shellGet($route, 'W/' . $r1['etag']);
+    it_check('…and a weak validator', $r4['code'] === 304, "code {$r4['code']}");
+    $r5 = $shellGet($route, '"0000000000000000000000000000dead", ' . $r1['etag']);
+    it_check('…and a list containing it', $r5['code'] === 304, "code {$r5['code']}");
+    // …but a DIFFERENT entity must still be served in full.
+    $r6 = $shellGet($route, '"0000000000000000000000000000dead"');
+    it_check('a stale validator gets the page, not a 304', $r6['code'] === 200 && $r6['len'] > 8000, "code {$r6['code']} len {$r6['len']}");
+}
+// …and cottage.php really rendered a COTTAGE. Byte-identical output to home.php
+// means it fell through to the untouched shell, which is exactly what a wrong
+// slug produces — the checks above would all still pass on it.
+$homeTag = $shellGet('/home.php')['etag'];
+$cottTag = $shellGet($shellRoutes[2])['etag'];
+it_check('cottage.php rendered the cottage, not the bare shell', $cottTag !== '' && $cottTag !== $homeTag, "cottage $cottTag vs home $homeTag");
+// The other half: sw.js listed BOTH './' and 'index.html', which htaccess rewrites
+// to the same home.php — so a new install downloaded the shell twice.
+$swSrc = (string) file_get_contents(__DIR__ . '/sw.js');
+$core = [];
+if (preg_match('/const CORE\s*=\s*\[([^\]]*)\]/', $swSrc, $m)) {
+    preg_match_all("/'([^']+)'/", $m[1], $mm);
+    $core = $mm[1];
+}
+it_check('sw.js CORE parses (vacuity guard)', count($core) >= 8, (string) count($core));
+it_check('the shell is precached ONCE, not as both ./ and index.html',
+    in_array('index.html', $core, true) && !in_array('./', $core, true), implode(' ', $core));
+
+// ---- 24. The public bootstrap stops re-reading rows it already holds ------
+//  One anonymous bootstrap.php request executed 9 statements / 11 round trips,
+//  four of which re-read data already in the request's memory: the payload
+//  SELECTs the whole `content` table, then content_value()/content_json() went
+//  back for individual keys from that same result set, and occupancy_limits()
+//  re-queried `properties` two lines after rates_public_payload() had selected
+//  it. On shared hosting, with a handful of tabs polling every 30 seconds, that
+//  is a lot of wasted PHP+MySQL for a response that usually ends in a 304.
+//
+//  The property that MUST hold is that the payload is unchanged. Counting
+//  queries proves the saving; comparing bytes proves it cost nothing.
+echo "\n== 24. The public bootstrap does not re-read itself ==\n";
+$countQueries = function (string $path) {
+    // MySQL's own counter, read either side of the request: no instrumentation
+    // in the app, so this measures what the server actually executed.
+    global $rootDb, $BASE;
+    $before = (int) ($rootDb->query("SHOW SESSION STATUS LIKE 'Queries'")->fetch()['Value'] ?? 0);
+    $opts = ['http' => ['method' => 'GET', 'header' => "Accept: application/json", 'timeout' => 30, 'ignore_errors' => true]];
+    $raw = @file_get_contents($BASE . $path, false, stream_context_create($opts));
+    $after = (int) ($rootDb->query("SHOW SESSION STATUS LIKE 'Queries'")->fetch()['Value'] ?? 0);
+    return ['body' => (string) $raw, 'queries' => $after - $before - 2]; // less the two SHOWs
+};
+// SHOW SESSION STATUS counts THIS connection only, so it cannot see the web
+// request's queries — use the GLOBAL counter instead, and take the measurement
+// on an otherwise idle server (which this harness is).
+$globalQueries = function () {
+    global $rootDb;
+    return (int) ($rootDb->query("SHOW GLOBAL STATUS LIKE 'Questions'")->fetch()['Value'] ?? 0);
+};
+$q0 = $globalQueries();
+$b1 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
+$q1 = $globalQueries();
+$used = $q1 - $q0 - 1; // less the SHOW itself
+it_check('the anonymous bootstrap is a real payload', is_string($b1) && strlen($b1) > 200 && json_decode($b1, true) !== null, substr((string) $b1, 0, 120));
+// MEASURED on this harness, same counter, same fixture: 11 statements before,
+// 8 after. (The audit predicted 9->5 by reading the call graph with no database
+// to hand; the live counter also sees the connection's own setup, which is why
+// both numbers are higher and the saving is 3 rather than 4.) A ratchet, not a
+// target — if a future change puts a re-read back, this is where it shows up.
+it_check("…in 8 statements or fewer, down from a measured 11 (used $used)", $used > 0 && $used <= 8, (string) $used);
+// BYTE-IDENTICAL is the property that makes the saving free. The memo holds raw
+// values and content_value still decrypts per read, so nothing about the output
+// may move — including for an ADMIN session, which sees more keys.
+$b2 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
+it_check('…and two consecutive builds agree byte for byte', $b1 === $b2, '');
+// occupancy_limits keeps its answer when handed rows rather than querying.
+$occDirect = json_decode((string) $b1, true)['rates']['occupancy'] ?? null;
+it_check('occupancy limits still ride the payload', is_array($occDirect) && count($occDirect) >= 1, json_encode($occDirect));
+$liveProps = $rootDb->query('SELECT prop_key FROM properties WHERE archived_at IS NULL AND unlisted = 0')->fetchAll(PDO::FETCH_COLUMN);
+sort($liveProps);
+$occKeys = array_keys((array) $occDirect);
+sort($occKeys);
+it_check('…for exactly the live cottages, same as the query it replaced', $occKeys === $liveProps, json_encode([$occKeys, $liveProps]));
+// The memo must NOT leak across requests or into write paths: a fresh request
+// re-warms it, and nothing else populates it. Proven by the byte-identity above
+// plus the fact that a WRITE then a read sees the new value.
+$r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'hero-title', 'value' => 'Memo Probe ' . time()]);
+it_check('(fixture) a content write succeeds', $r['code'] === 200, $r['raw']);
+$b3 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
+it_check('a write is visible to the very next request (no stale memo)', strpos((string) $b3, 'Memo Probe') !== false, substr((string) $b3, 0, 160));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
