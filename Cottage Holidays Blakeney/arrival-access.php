@@ -28,7 +28,7 @@ if (!$guest) {
 
 // Must have a booking at this cottage (any — past, current or upcoming).
 $own = db()->prepare(
-    'SELECT 1 FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?) LIMIT 1',
+    'SELECT 1 FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND email = ? LIMIT 1',
 );
 $own->execute([$propKey, $guest['email']]);
 if (!$own->fetchColumn()) {

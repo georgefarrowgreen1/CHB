@@ -5358,6 +5358,53 @@ enabled cases, the duty guard and the reveal guard each break-tested in isolatio
   ui-test-command, which drives the real dialog against a stubbed 409 - break-tested by
   putting the refusal back to 200, which reproduces both "Sent 2 of 3" and the £NaN toast.
 
+## What every guest downloads, and what every guest query costs
+
+- **THE CROWN IS A FILE.** `CHB_CROWN_PNG` was an 8,070-byte PNG as a base64 constant
+  in app.js — **10,067 gzipped bytes, 3.7% of the file every anonymous visitor
+  downloads**, and base64 is the one thing gzip cannot help with — for a mark ONLY
+  `downloadInvoice`'s letterhead has ever drawn. It is `crown.png` now, fetched lazily
+  beside jsPDF (`Promise.all`, so it adds no wall clock), memoised, and **never fatal**:
+  a failed fetch returns `''`, clears the memo so the next export retries, and the
+  letterhead prints without the mark. Two traps: the build stamp is **`window.__BUILD`**,
+  not `BUILD` — the `const BUILD` at the foot of app.js is inside its own IIFE and is in
+  scope nowhere else (smoke-test's vm caught it as a ReferenceError, and the browser
+  would have too); and crown.png stays **OUT of the sw.js CORE precache**, or guests
+  precache an owner-only asset and the saving is spent again. Gated by smoke-test's PDF
+  section, which now serves the real bytes through a stubbed fetch and asserts the
+  drawn image **equals crown.png byte for byte** — moving an image is only a win if the
+  letterhead is unchanged, and a wrong base64 encoder draws noise, not nothing — plus a
+  RATCHET: no `data:image/…;base64,` over 1KB may ride app.js or guest-app.js again.
+  Deliberately a size threshold, not a ban: a 1px spacer is a fair thing to inline.
+  Budget lowered 274800 → 265600 to lock it in.
+- **THE FONTS ARE PINNED BY THEIR OWN CONTENT HASH.** htaccess serves woff2
+  `immutable, max-age=31536000` under a comment claiming "CSS/JS/fonts are cache-busted
+  with ?v=…" — and the two font URLs carried **no pin at all**, so a re-subset or a
+  weight-axis fix would have been invisible to every returning visitor for a YEAR with
+  no way to bust it. `?v=<first 8 hex of sha256>` now, on the `@font-face` **and** the
+  index.html PRELOAD, which must match byte for byte or the preload warms a URL nothing
+  asks for. Content-derived so nobody has to remember a stamp: smoke-test §12f
+  recomputes the hash and fails with the value to paste in.
+- **AN EMAIL LOOKUP IS PLAIN EQUALITY — never `LOWER(email) = LOWER(?)`** (migration-112,
+  gated by test-integration §21). Wrapping the indexed column in a function makes
+  `idx_email` unusable. Measured on the real schema with 5,036 rows: `email = ?` plans
+  **ref / idx_email / 1 row**, the LOWER() form plans an **index scan of all 5,036** —
+  on the query `my_bookings_payload` runs every time a guest opens their stays. Twelve
+  sites swapped; `enquiries.php` had already worked this out and said so in a comment
+  nothing else followed. Plain `=` is case-insensitive here only because the columns
+  collate `utf8mb4_general_ci`, which was **inherited from the server default**, i.e.
+  true by luck — migration-112 states it outright on `bookings`/`enquiries`/`guests`
+  (a no-op on a correct install, a fix on a wrong one; a MODIFY keeps `idx_email` and
+  the guests UNIQUE key, both rebuilt under the stated collation). §21 checks all three
+  legs — the collation, the BEHAVIOUR through the real endpoint (a mixed-case stay must
+  reach a guest whose session was minted from the lower-case form), and the PLAN — and
+  break-testing the collation to `utf8mb4_bin` reproduces the harm exactly: the guest's
+  own booking list comes back **empty**. The plan check asks `possible_keys`, not `key`:
+  that is whether the index is USABLE, which is what the wrapper destroyed, and unlike
+  the optimiser's final choice it is stable at any table size. Out of scope on purpose:
+  `LIKE` searches and `SELECT LOWER(email)` projections — neither can use the index
+  anyway, so forbidding them would fail on correct code.
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a

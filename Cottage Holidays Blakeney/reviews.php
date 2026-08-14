@@ -95,7 +95,7 @@ if ($action === 'submit') {
         json_out(['error' => 'Account not found'], 404);
     }
     $s = db()->prepare('SELECT COUNT(*) c FROM bookings
-                        WHERE prop_key = ? AND LOWER(email) = LOWER(?) AND check_out <= CURDATE()');
+                        WHERE prop_key = ? AND email = ? AND check_out <= CURDATE()');
     $s->execute([$propKey, $guest['email']]);
     if ((int) $s->fetch()['c'] === 0) {
         json_out(['error' => 'Reviews can be left once your stay is complete.'], 403);

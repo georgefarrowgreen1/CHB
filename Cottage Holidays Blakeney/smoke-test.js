@@ -938,12 +938,13 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const SHEET_BOTTOM = A4.H - 44;
         const isStamp = (t) => /^(Page \d+ of \d+|Invoice CHB-\d+)$/.test(t.s) && t.y > SHEET_BOTTOM;
         const mkDoc = () => {
-            const calls = { text: [], pages: 1, colours: [], fills: [], saved: '', props: null, lang: '', on: 0 };
+            const calls = { text: [], pages: 1, colours: [], fills: [], saved: '', props: null, lang: '', on: 0, images: [] };
             let ink = [0, 0, 0];
             const doc = {
                 internal: { pageSize: { getWidth: () => A4.W, getHeight: () => A4.H } },
                 setFillColor(...c) { calls.fills.push(c.join(',')); }, setDrawColor() {}, setFont() {}, setFontSize() {},
-                rect() {}, roundedRect() {}, line() {}, addImage() {}, setCharSpace() {}, setLineWidth() {},
+                rect() {}, roundedRect() {}, line() {}, setCharSpace() {}, setLineWidth() {},
+                addImage(data, fmt) { calls.images.push({ data: String(data), fmt: String(fmt) }); },
                 setProperties(o) { calls.props = o; }, setLanguage(l) { calls.lang = l; },
                 getNumberOfPages() { return calls.pages; },
                 setPage(n) { calls.on = n; },
@@ -971,6 +972,18 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         // for a guest. Seeded so the how-to-pay branch can be driven at all.
         vm.runInContext("siteContent['bacs-details'] = 'Cottage Holidays Blakeney\\nSort 01-02-03  ·  Acct 12345678';", ctx);
         sandbox.window.ensureJsPdf = async () => {};
+        // The crown is a real FILE now, so the harness serves it the way the host
+        // does — the real ensureCrownPng runs, and its base64 encoder is exercised
+        // rather than stubbed past. `noCrown` drives the failure branch.
+        const CROWN_BYTES = fs.readFileSync(path.join(__dirname, 'crown.png'));
+        let crownFetches = 0;
+        let noCrown = false;
+        sandbox.fetch = (url) => {
+            if (!/^crown\.png\?v=/.test(String(url))) return Promise.reject(new Error('no network in smoke test'));
+            crownFetches++;
+            if (noCrown) return Promise.resolve({ ok: false, status: 404 });
+            return Promise.resolve({ ok: true, status: 200, arrayBuffer: async () => CROWN_BYTES.buffer.slice(CROWN_BYTES.byteOffset, CROWN_BYTES.byteOffset + CROWN_BYTES.byteLength) });
+        };
         sandbox.window.jspdf = { jsPDF: function () { const m = mkDoc(); captured = m.calls; return m.doc; } };
         // dbBookings / propertyMeta / propertyRates are `const`, so in a vm context
         // they live in the script's LEXICAL scope and never appear on the sandbox
@@ -1229,9 +1242,91 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
                     stamps.map((t) => t.s).join(' | ') || 'nothing stamped');
             }
         };
+        // -- §12e THE CROWN IS A FILE, AND IT IS THE SAME CROWN -----------------
+        //    Moving an 8KB image out of app.js is only a win if the letterhead is
+        //    unchanged, so this compares the bytes jsPDF is HANDED against
+        //    crown.png on disk — the base64 encoder in ensureCrownPng is the new
+        //    code, and a wrong encoding would draw noise, not nothing. The failure
+        //    branch matters just as much: a 404 must cost the mark, never the
+        //    invoice, because the export is how a guest gets their document.
+        const crownProbe = async () => {
+            vm.runInContext('__crownPromise = null;', ctx);
+            crownFetches = 0;
+            noCrown = false;
+            const c = await run({});
+            const img = (c.images || []).find((i) => i.fmt === 'PNG');
+            check('PDF: the crown is drawn', !!img && img.data.startsWith('data:image/png;base64,'),
+                img ? img.data.slice(0, 30) : 'no image drawn');
+            if (img) {
+                const got = Buffer.from(img.data.split(',')[1], 'base64');
+                check('PDF: …and it is crown.png, byte for byte', got.equals(CROWN_BYTES),
+                    `${got.length} bytes drawn vs ${CROWN_BYTES.length} on disk`);
+            }
+            // Memoised: a second export must not re-fetch it.
+            await run({});
+            check('PDF: the crown is fetched ONCE per session', crownFetches === 1, `${crownFetches} fetches`);
+            // …and a failed fetch loses the mark, not the invoice.
+            vm.runInContext('__crownPromise = null;', ctx);
+            noCrown = true;
+            const bare = await run({});
+            check('PDF: a missing crown still produces the invoice',
+                !!bare && bare.saved.includes('CHB-000042') && (bare.images || []).length === 0,
+                bare ? `${(bare.images || []).length} images, saved "${bare.saved}"` : 'nothing produced');
+            // …and it clears the memo, so the NEXT export tries again.
+            noCrown = false;
+            const again = await run({});
+            check('PDF: …and the next export tries again', (again.images || []).length === 1,
+                `${(again.images || []).length} images`);
+            vm.runInContext('__crownPromise = null;', ctx);
+        };
         pendingChecks.push(
-            (async () => { await probe(); })().catch((e) => fail('PDF invoice probe threw: ' + e.message)),
+            (async () => { await probe(); await crownProbe(); })().catch((e) => fail('PDF invoice probe threw: ' + e.message)),
         );
+    }
+    // The RATCHET that keeps the win: app.js is the file every anonymous visitor
+    // downloads, and a base64 image inside it is bytes gzip cannot compress
+    // charged to people who will never see the picture. Deliberately a size
+    // threshold rather than a ban — a tiny inline SVG cursor or 1px spacer is a
+    // legitimate thing to inline; 1KB of base64 is an asset that wants a URL.
+    {
+        const guestJs = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8')
+            + fs.readFileSync(path.join(__dirname, 'guest-app.js'), 'utf8');
+        const big = (guestJs.match(/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]{1024,}/g) || []);
+        check('no base64 image over 1KB rides the guest JS', big.length === 0,
+            big.map((s) => `${s.slice(0, 24)}… (${s.length} chars)`).join(' | '));
+        // crown.png is owner-only, so it must NOT join the guest precache.
+        const swSrc = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
+        const core = (swSrc.match(/const CORE\s*=\s*\[([\s\S]*?)\]/) || [])[1] || '';
+        check('sw.js CORE parses (vacuity guard)', core.length > 40, `${core.length} chars`);
+        check('crown.png stays OUT of the guest precache', !/crown\.png/.test(core));
+        check('crown.png exists and is a PNG',
+            fs.existsSync(path.join(__dirname, 'crown.png'))
+            && fs.readFileSync(path.join(__dirname, 'crown.png')).slice(0, 8).toString('hex') === '89504e470d0a1a0a');
+    }
+
+    // §12f THE FONTS ARE VERSIONED BY THEIR OWN CONTENT.
+    // htaccess serves woff2 `immutable, max-age=31536000`, so an unpinned font
+    // URL is a file no returning visitor can ever be given a new copy of. The
+    // pin is the first 8 hex of the file's sha256 — derived, so this check can
+    // print the value to paste rather than asking anyone to remember a stamp —
+    // and app.css's @font-face must agree with index.html's PRELOAD exactly, or
+    // the preload warms a URL nothing then asks for.
+    {
+        console.log('\n== 12f. The fonts carry a content pin, and one pin ==');
+        const cssSrc = fs.readFileSync(path.join(__dirname, 'app.css'), 'utf8');
+        const htmlSrc = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        const fontFiles = fs.readdirSync(path.join(__dirname, 'fonts')).filter((f) => f.endsWith('.woff2'));
+        check('fonts/ holds woff2 files (vacuity guard)', fontFiles.length >= 2, `${fontFiles.length} found`);
+        fontFiles.forEach((f) => {
+            const want = require('crypto').createHash('sha256')
+                .update(fs.readFileSync(path.join(__dirname, 'fonts', f))).digest('hex').slice(0, 8);
+            const inCss = (cssSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
+            const inHtml = (htmlSrc.match(new RegExp(`fonts/${f.replace('.', '\\.')}\\?v=([0-9a-f]+)`)) || [])[1] || '';
+            check(`${f}: app.css pins its content hash`, inCss === want,
+                inCss ? `pinned ?v=${inCss}, file hashes to ${want}` : `no ?v= at all — use ?v=${want}`);
+            check(`${f}: …and the preload asks for the SAME url`, !!inHtml && inHtml === inCss,
+                `preload ?v=${inHtml || 'none'} vs stylesheet ?v=${inCss || 'none'}`);
+        });
     }
 
     // THE DEPOSIT ON A GUEST'S INVOICE IS THE SUM TAKEN, NOT THE SUM AGREED.

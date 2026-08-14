@@ -753,7 +753,7 @@ if ($action === 'add') {
     $priorStays = 0;
     if ($guestEmail !== '') {
         try {
-            $pc = db()->prepare('SELECT COUNT(*) FROM bookings WHERE LOWER(email) = LOWER(?) AND id <> ?');
+            $pc = db()->prepare('SELECT COUNT(*) FROM bookings WHERE email = ? AND id <> ?');
             $pc->execute([$guestEmail, $newId]);
             $priorStays = (int) $pc->fetchColumn();
         } catch (\Throwable $e) {

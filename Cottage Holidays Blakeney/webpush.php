@@ -567,7 +567,7 @@ function guest_id_for_email($email)
         return 0;
     }
     try {
-        $s = db()->prepare('SELECT id FROM guests WHERE LOWER(email) = LOWER(?) LIMIT 1');
+        $s = db()->prepare('SELECT id FROM guests WHERE email = ? LIMIT 1');
         $s->execute([(string) $email]);
         return (int) ($s->fetchColumn() ?: 0);
     } catch (\Throwable $e) {

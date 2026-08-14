@@ -346,7 +346,7 @@ switch ($action) {
         }
 
         // REGISTERING AN EMAIL IS NOT PROOF YOU OWN IT. my_bookings_payload matches
-        // stays on `LOWER(b.email) = LOWER(?)`, so signing someone in the instant
+        // stays on `b.email = ?`, so signing someone in the instant
         // they type an address handed over every booking already made against it —
         // dates, party, money, the arrival details, and the door code once inside
         // its reveal window — to anyone who guessed a guest's email. Nothing else
@@ -363,7 +363,7 @@ switch ($action) {
         // hang off a booking; an enquiry carries none of them.
         $claimsExisting = false;
         try {
-            $c = db()->prepare('SELECT 1 FROM bookings WHERE LOWER(email) = LOWER(?) LIMIT 1');
+            $c = db()->prepare('SELECT 1 FROM bookings WHERE email = ? LIMIT 1');
             $c->execute([$email]);
             $claimsExisting = (bool) $c->fetchColumn();
         } catch (\Throwable $e) {
@@ -900,7 +900,7 @@ switch ($action) {
             json_out(['error' => 'Guest email is required'], 400);
         }
         $s = db()->prepare(
-            'SELECT name, prop_key, check_in FROM bookings WHERE LOWER(email) = ? ORDER BY check_in DESC LIMIT 1',
+            'SELECT name, prop_key, check_in FROM bookings WHERE email = ? ORDER BY check_in DESC LIMIT 1',
         );
         $s->execute([$email]);
         $b = $s->fetch();

@@ -3,13 +3,23 @@
    preloaded. ONE block per family declaring the file's REAL weight RANGE — a
    single-value `font-weight` descriptor PINS the wght axis, which is how
    per-weight blocks once made 500–800 a single synthetic bold. Gated by
-   ui-test-searchpage §16a; the measured story is in CLAUDE.md. */
+   ui-test-searchpage §16a; the measured story is in CLAUDE.md.
+
+   THE ?v= IS THE FILE'S OWN CONTENT HASH, not a hand-bumped stamp. htaccess
+   serves woff2 `immutable, max-age=31536000` and these URLs carried NO pin at
+   all, so a re-subset or a weight-axis fix would have been invisible to every
+   returning visitor for a YEAR with no way to bust it — the one cached asset
+   with no version, under a header whose own comment claims fonts are busted
+   with ?v=. Content-derived so it cannot be forgotten: smoke-test §12f
+   recomputes the hash and fails with the value to paste in. It must match the
+   PRELOAD in index.html byte for byte, or the preload fetches a second copy
+   under a different URL and the browser warns it went unused. */
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('fonts/montserrat-latin.woff2') format('woff2');
+  src: url('fonts/montserrat-latin.woff2?v=06b16db7') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
@@ -17,7 +27,7 @@
   font-style: normal;
   font-weight: 400 900;
   font-display: swap;
-  src: url('fonts/playfair-latin.woff2') format('woff2');
+  src: url('fonts/playfair-latin.woff2?v=e0c764a8') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 

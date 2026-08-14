@@ -56,7 +56,7 @@ try {
 }
 
 $stamp = db()->prepare('UPDATE direct_leads SET follow_up_sent_at = NOW() WHERE id = ?');
-$futureQ = db()->prepare('SELECT COUNT(*) FROM bookings WHERE LOWER(email) = LOWER(?) AND check_in >= CURDATE()');
+$futureQ = db()->prepare('SELECT COUNT(*) FROM bookings WHERE email = ? AND check_in >= CURDATE()');
 
 $sent = 0;
 $emailedThisRun = []; // don't email the same address twice in one run

@@ -39,7 +39,7 @@ if (!$email) {
 // Only a guest who has booked this cottage may read its welcome book — AND the
 // holiday must be paid in full. (Trip information is gated behind payment just
 // like the key code.) Allow it if ANY of their bookings here is settled.
-$own = db()->prepare('SELECT * FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?)');
+$own = db()->prepare('SELECT * FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND email = ?');
 $own->execute([$prop, $email]);
 $bookings = $own->fetchAll();
 if (!$bookings) {
