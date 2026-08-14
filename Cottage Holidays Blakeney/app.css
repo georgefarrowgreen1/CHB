@@ -5,15 +5,9 @@
    per-weight blocks once made 500–800 a single synthetic bold. Gated by
    ui-test-searchpage §16a; the measured story is in CLAUDE.md.
 
-   THE ?v= IS THE FILE'S OWN CONTENT HASH, not a hand-bumped stamp. htaccess
-   serves woff2 `immutable, max-age=31536000` and these URLs carried NO pin at
-   all, so a re-subset or a weight-axis fix would have been invisible to every
-   returning visitor for a YEAR with no way to bust it — the one cached asset
-   with no version, under a header whose own comment claims fonts are busted
-   with ?v=. Content-derived so it cannot be forgotten: smoke-test §12f
-   recomputes the hash and fails with the value to paste in. It must match the
-   PRELOAD in index.html byte for byte, or the preload fetches a second copy
-   under a different URL and the browser warns it went unused. */
+   The ?v= is the file's own content hash — woff2 is immutable for a year and
+   these URLs had no pin, so a re-subset was unbustable. It must equal the
+   PRELOAD's; smoke-test §12f recomputes it and prints the value to paste. */
 @font-face {
   font-family: 'Montserrat';
   font-style: normal;

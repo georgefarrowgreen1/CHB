@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 508;
+const ADMIN_BUNDLE_V = 509;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 204;
+const ADMIN_CSS_V = 205;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -3993,6 +3993,11 @@ async function guestLogout() {
         if (IS_STAGING) sessionStorage.setItem('chb-staging-noauto', '1');
     } catch (e) {}
     currentGuest = null;
+    // The device stops being a signed-in one, so the boot's fast reveal applies
+    // again next time (the same hygiene forceAdminLogout does for chb-was-admin).
+    try {
+        localStorage.removeItem(GUEST_SEEN_KEY);
+    } catch (e) {}
     setGuestUI();
     nav('view-main');
 }
@@ -7940,6 +7945,22 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         }
+        // REVEAL THE FINISHED PAGE, rather than waiting on the session round trip.
+        // The overlay is opaque #121316 at z-index 5000 and was removed only in the
+        // `finally` below — after bootstrap.php AND both session POSTs. Measured at
+        // Slow 4G (CPU x4): first paint 1,820ms is a crown on black, reveal 7,049ms,
+        // while a 2,500ms screenshot with it suppressed shows the hero, both
+        // headlines, the CTA and all three cottage cards, complete and correct (the
+        // static cards carry no prices, so nothing there is a placeholder). Reveal
+        // 5,959 -> 5,245ms. GATED ON NEVER-SIGNED-IN, because the cost lands on the
+        // other side: an owner or returning guest would watch the anonymous view
+        // flash past first. The `finally` call stays as the belt-and-braces path —
+        // hideLoadingOverlay returns early once `fade-out` is set.
+        try {
+            const everSignedIn = localStorage.getItem('chb-was-admin') || localStorage.getItem('chb-owner')
+                || localStorage.getItem(GUEST_SEEN_KEY);
+            if (!everSignedIn && !PREVIEW_MODE) hideLoadingOverlay();
+        } catch (e) {}
         // Restore admin + guest sessions — also independent, also concurrent.
         await Promise.all([
             (async () => {
@@ -9675,10 +9696,21 @@ let enquiries = [];
 let currentGuest = null; // {name,email,phone} when logged in, else null
 
 // Restore the guest session from the server cookie
+// The guest twin of `chb-was-admin`: remember the VERDICT, never the session.
+// Its one job is to tell a device that has signed in before apart from one that
+// never has, so the boot's early page reveal can skip the devices where showing
+// the anonymous view for the length of this round trip would be a visible flash.
+// Written only on a real answer — a network failure leaves the last verdict alone,
+// exactly as the admin side does, because "we could not ask" is not "signed out".
+const GUEST_SEEN_KEY = 'chb-was-guest';
 async function restoreGuestSession() {
     try {
         const res = await apiPost('auth.php', { action: 'guest_status' });
         currentGuest = res.guest || null;
+        try {
+            if (currentGuest) localStorage.setItem(GUEST_SEEN_KEY, '1');
+            else localStorage.removeItem(GUEST_SEEN_KEY);
+        } catch (_) {}
     } catch (e) {
         currentGuest = null;
     }
@@ -18084,7 +18116,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'perf291';
+    const BUILD = 'perf292';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

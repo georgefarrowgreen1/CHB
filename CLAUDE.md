@@ -5377,6 +5377,24 @@ enabled cases, the duty guard and the reveal guard each break-tested in isolatio
   RATCHET: no `data:image/…;base64,` over 1KB may ride app.js or guest-app.js again.
   Deliberately a size threshold, not a ban: a 1px spacer is a fair thing to inline.
   Budget lowered 274800 → 265600 to lock it in.
+- **A FINISHED PAGE IS NOT HELD BACK BY A SESSION CHECK** (gated by ui-test-poorsignal
+  §10, all five declarations break-tested). `#loading-overlay` is an opaque `#121316`
+  at z-index 5000 and was removed only in the boot's `finally` — i.e. after
+  bootstrap.php AND both session POSTs. Measured at Slow 4G (CPU ×4): first paint
+  **1,820ms is a crown on black**, reveal **7,049ms**, while a 2,500ms screenshot with
+  it suppressed shows the hero photo, both headlines, the CTA, the stats and all three
+  cottage cards, complete and correct — the static cards carry no prices, so nothing
+  above the fold is a placeholder. It now hides as soon as the content render block is
+  done: reveal **5,959 → 5,245ms**. **GATED ON NEVER-SIGNED-IN**, because the cost lands
+  on the other side — an owner or returning guest would watch the anonymous view flash
+  past for the length of the session check, and that is the population who use the app
+  most. The `finally` call stays as belt-and-braces (hideLoadingOverlay returns early
+  once `fade-out` is set), so the fast path costs the slow path nothing. That needed a
+  guest twin of `chb-was-admin`: **`chb-was-guest`**, written from the VERDICT in
+  `restoreGuestSession`, cleared by `guestLogout`, and deliberately NOT touched in the
+  catch — a dropped request is not "signed out", the same rule the admin hint follows.
+  §10 drives it with **auth.php HANGING**, which is the whole question: if the reveal
+  still waited on the session, a hung one would never reveal at all.
 - **THE FONTS ARE PINNED BY THEIR OWN CONTENT HASH.** htaccess serves woff2
   `immutable, max-age=31536000` under a comment claiming "CSS/JS/fonts are cache-busted
   with ?v=…" — and the two font URLs carried **no pin at all**, so a re-subset or a

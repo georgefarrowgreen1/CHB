@@ -24,7 +24,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 (async () => {
-    const { page, base, done } = await boot({ viewport: { width: 900, height: 800 } });
+    const { page, base, done, browser } = await boot({ viewport: { width: 900, height: 800 } });
 
     const booking = {
         id: 1, prop_key: '21a', name: 'First Guest', email: 'g@example.com', phone: '', address: '1 Lane',
@@ -471,6 +471,101 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     });
     ok(!expBack.errShown && expBack.cards > 0, `…and retrying fills the page in (${expBack.cards} chars)`);
     await page.unroute(/experiences\.php/);
+
+    // ---- §10 A FINISHED PAGE IS NOT HELD BACK BY A SESSION CHECK ------------
+    //  The loading overlay is an opaque full-screen panel at z-index 5000, and it
+    //  used to be removed only in the boot's `finally` — after bootstrap.php AND
+    //  both session POSTs. Measured at Slow 4G: first paint 1,820ms (a crown on
+    //  black), reveal 7,049ms, over a page that was complete and correct at 2,500.
+    //  Two session round trips that can tell an anonymous visitor nothing were
+    //  holding the black up. But the cost of revealing early lands on people who
+    //  ARE signed in — they would see the anonymous view flash — so the fast path
+    //  is gated on a device that has never signed in, and BOTH halves are checked
+    //  here. Driven with auth.php HANGING, which is the whole question: if the
+    //  reveal still waited on the session, a hung one would never reveal at all.
+    console.log('\n-- §10 the page reveals without waiting for the session --');
+    const bootPage = async (seed) => {
+        const p = await browser.newPage({ viewport: { width: 900, height: 800 } });
+        if (seed) await p.addInitScript(seed);
+        await p.route(/\.php/, async (route) => {
+            const url = route.request().url();
+            const body = route.request().postData() || '';
+            if (/auth\.php/.test(url) && /(admin_status|guest_status)/.test(body)) {
+                await new Promise((r) => setTimeout(r, 15000)); // never answers within the check
+                return route.abort('failed');
+            }
+            return route.fulfill({
+                status: 200, contentType: 'application/json',
+                body: JSON.stringify({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], reviews: [], experiences: [] }),
+            });
+        });
+        await p.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
+        return p;
+    };
+    // The overlay is REMOVED 600ms after `fade-out` is set, so "gone" means either.
+    const covered = (p) => p.evaluate(() => {
+        const o = document.getElementById('loading-overlay');
+        return !!o && !o.classList.contains('fade-out');
+    });
+    const fresh = await bootPage(() => { try { localStorage.clear(); } catch (e) {} });
+    await fresh.waitForFunction(() => typeof window.__BUILD === 'string', null, { timeout: 20000 });
+    let revealed = false;
+    try {
+        await fresh.waitForFunction(() => {
+            const o = document.getElementById('loading-overlay');
+            return !o || o.classList.contains('fade-out');
+        }, null, { timeout: 8000 });
+        revealed = true;
+    } catch (e) { revealed = false; }
+    ok(revealed, 'a never-signed-in visitor sees the page while the session check is still hanging');
+    // …and what they see is the real page, not an empty shell — the point of the
+    // change is that the content underneath was already finished.
+    const painted = await fresh.evaluate(() => {
+        const hero = document.querySelector('#view-main h1, .hero h1');
+        const cards = document.querySelectorAll('#cottages .cottage-card, #cottages .prop-card, #cottages > *').length;
+        return { h1: hero ? (hero.textContent || '').trim().slice(0, 40) : '', cards };
+    });
+    ok(painted.h1.length > 3 && painted.cards > 0,
+        `…and the page under it is real content ("${painted.h1}", ${painted.cards} cottage nodes)`);
+    await fresh.close();
+    // THE OTHER HALF: a device that has signed in before keeps waiting, so the
+    // owner and the returning guest never watch the anonymous view flash past.
+    const known = await bootPage(() => { try { localStorage.clear(); localStorage.setItem('chb-was-admin', '1'); } catch (e) {} });
+    await known.waitForFunction(() => typeof window.__BUILD === 'string', null, { timeout: 20000 });
+    await known.waitForTimeout(2500);
+    ok(await covered(known), 'a device that has signed in before still waits for the verdict');
+    await known.close();
+    // The guest twin of that hint is written from the VERDICT and cleared on the
+    // way out, or a returning guest is treated as a stranger for ever.
+    const hint = await page.evaluate(async () => {
+        const out = {};
+        localStorage.removeItem('chb-was-guest');
+        window.__origApiPost = window.apiPost;
+        window.apiPost = async () => ({ guest: { name: 'Ann', email: 'a@b.com' } });
+        await restoreGuestSession();
+        out.afterSignedIn = localStorage.getItem('chb-was-guest');
+        window.apiPost = async () => ({ guest: null });
+        await restoreGuestSession();
+        out.afterSignedOut = localStorage.getItem('chb-was-guest');
+        window.apiPost = async () => ({ guest: { name: 'Ann', email: 'a@b.com' } });
+        await restoreGuestSession();
+        window.apiPost = async () => ({ ok: true });
+        await guestLogout();
+        out.afterLogout = localStorage.getItem('chb-was-guest');
+        // A NETWORK failure is not a verdict — the last answer must survive it.
+        await restoreGuestSession();
+        window.apiPost = async () => ({ guest: { name: 'Ann', email: 'a@b.com' } });
+        await restoreGuestSession();
+        window.apiPost = async () => { throw new Error('offline'); };
+        await restoreGuestSession();
+        out.afterNetworkFail = localStorage.getItem('chb-was-guest');
+        window.apiPost = window.__origApiPost;
+        return out;
+    });
+    ok(hint.afterSignedIn === '1', `signing in records the guest hint (${hint.afterSignedIn})`);
+    ok(hint.afterSignedOut === null, `a signed-OUT verdict clears it (${hint.afterSignedOut})`);
+    ok(hint.afterLogout === null, `logging out clears it (${hint.afterLogout})`);
+    ok(hint.afterNetworkFail === '1', `a dropped request is not a verdict and leaves it (${hint.afterNetworkFail})`);
 
     console.log('');
     console.log(fails ? `  ${fails} POOR-SIGNAL CHECK(S) FAILED ❌` : '  POOR-SIGNAL SUITE PASSED ✅');
