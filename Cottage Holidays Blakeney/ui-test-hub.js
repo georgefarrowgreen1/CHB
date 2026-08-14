@@ -41,6 +41,8 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   // Enquiries the owner has turned down — soft-deleted server-side, which is
   // what makes the drawer possible.
   let declined = [];
+// Drives approval's 409 — the refusal the page has to answer honestly.
+let approveWill409 = false;
   const posts = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
@@ -88,6 +90,21 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
       if (b.__url === 'enquiries.php') {
         if (b.action === 'approve_preview') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'approve') {
+          // The 409 approval's re-check under book_lock really raises: the dates went
+          // while the enquiry sat in the inbox, or another device already approved it.
+          if (approveWill409) {
+            // The refusal is not free-standing: the server says no BECAUSE a booking
+            // now overlaps, so the fixture must carry that booking too — otherwise the
+            // reload brings back the same free calendar and the card is right to keep
+            // saying "dates free" (the first version of this check asserted a flip the
+            // fix could not deliver).
+            const e2 = enqs.find((x) => x.id === b.id);
+            if (e2 && !rows.some((r) => r.id === 77)) rows.push(mk(77, { name: 'Took The Dates', email: 'took@x.co', prop_key: e2.prop_key, check_in: e2.check_in, check_out: e2.check_out }));
+            return route.fulfill({
+              status: 409, contentType: 'application/json',
+              body: JSON.stringify({ error: 'Those dates are no longer available — another booking now overlaps them.' }),
+            });
+          }
           const enq = enqs.find((x) => x.id === b.id);
           rows.push(mk(70, { name: enq ? enq.name : 'Approved Guest', email: 'enq@gmail.com', check_in: d(40), check_out: d(43) }));
           enqs = enqs.filter((x) => x.id !== b.id);
@@ -1763,6 +1780,61 @@ const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at re
   ok(clash.noApprove && /Edit the dates/.test(clash.sticky),
     `Approve is withdrawn everywhere; the dock offers Edit the dates instead (${clash.sticky})`);
   ok(clash.attn && clash.attnActs, 'the blocker is a Needs-attention row routing to their booking');
+
+  // …AND A REFUSAL FROM THE SERVER PUTS THE PAGE RIGHT, rather than leaving it
+  // asserting the old fact. Approval RE-CHECKS the calendar under book_lock, so the
+  // commonest refusal here is the 409 "those dates are no longer available" — raised
+  // when the dates went while the enquiry sat in the inbox, or when the owner already
+  // approved it from another device. The catch was a bare glassAlert with no reload, so
+  // after OK the card still read "READY TO APPROVE · DATES FREE" with the Approve
+  // button still there: the owner could tap it again and be refused again. A server
+  // VERDICT carries e.status (apiErr); a transport failure does not and must not be
+  // treated as one.
+  approveWill409 = true;
+  await page.evaluate(() => {
+    window.__loadDataCalls = 0;
+    const real = window.loadData;
+    window.loadData = async (...a) => { window.__loadDataCalls++; return real.apply(null, a); };
+  });
+  const stale = await page.evaluate(async () => {
+    await window.openEnquiryHub('e7');
+    await new Promise((r) => setTimeout(r, 300));
+    const before = !!document.querySelector('#view-enquiry-hub [data-act="approveEnquiry"], #inbox-detail-pane [data-act="approveEnquiry"]');
+    const p = window.approveEnquiry('e7');
+    await new Promise((r) => setTimeout(r, 500));
+    // The clash confirm, if one is offered…
+    const dlg = document.getElementById('glass-dialog');
+    if (dlg && getComputedStyle(dlg).display !== 'none') { try { glassDialogResolve(true); } catch (e) {} }
+    await new Promise((r) => setTimeout(r, 400));
+    // …then the email PREVIEW, which is where Send actually fires the request. This is
+    // a different overlay from glass-dialog; resolving only the latter left the whole
+    // suite hanging on a promise nothing could settle.
+    const ov = document.getElementById('send-confirm-overlay');
+    if (ov && ov.classList.contains('open')) document.getElementById('send-confirm-send').click();
+    await p.catch(() => {});
+    await new Promise((r) => setTimeout(r, 900));
+    const d2 = document.getElementById('glass-dialog');
+    const out = {
+      before,
+      alert: !!(d2 && getComputedStyle(d2).display !== 'none'),
+      approveStill: !!document.querySelector('#view-enquiry-hub [data-act="approveEnquiry"], #inbox-detail-pane [data-act="approveEnquiry"]'),
+      card: ((document.querySelector('#view-enquiry-hub .bhub-next, #inbox-detail-pane .bhub-next') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      reloaded: window.__loadDataCalls || 0,
+    };
+    if (d2 && getComputedStyle(d2).display !== 'none') { try { glassDialogResolve(true); } catch (e) {} }
+    return out;
+  });
+  approveWill409 = false;
+  // Take the blocking booking back OUT — and reload, or the client keeps it and every
+  // later check about this enquiry reads the gone-dates card (caught: the next one did).
+  rows = rows.filter((r) => r.id !== 77);
+  await page.evaluate(async () => { await loadData(); });
+  await page.waitForTimeout(300);
+  ok(stale.before, '(fixture) the enquiry was approvable before the server refused');
+  ok(stale.reloaded > 0, `a server VERDICT refreshes the record before speaking (${stale.reloaded} loads)`);
+  ok(!stale.alert, 'and it is a toast, not a modal — the owner has nothing to acknowledge');
+  ok(!/READY TO APPROVE/i.test(stale.card),
+    `…so the card stops claiming the dates are free (${stale.card.slice(0, 80)})`);
 
   // …and each ask now NAMES ITS FIGURE (the mockup's rule: approving sends
   // money asks, so the sum is stated before the tap).

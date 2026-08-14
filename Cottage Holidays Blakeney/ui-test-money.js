@@ -33,6 +33,8 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     // past stay still holding a £100 damage deposit → deposits-to-return queue
     mk(3, { name: 'Left Deposit', email: 'left@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 540, payment_method: 'Card', payment_date: d(-30), hold_status: 'charged', hold_amount: 100 }),
   ];
+  // Drives the guest-email failure the deposit-return report has to surface.
+let mailWillFail = false;
   const posts = [];
   // §7 drives the "Move money out" screen off the SAME accounts.php payload the
   // income screen uses, so the stub carries deposit_liability only when a case
@@ -55,7 +57,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
         if (b.action === 'email_logs') return json({ logs: {} });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
-        if (b.action === 'return_deposit') { const r = rows.find((x) => x.id === b.id); if (r) r.hold_status = 'returned'; return json({ ok: true }); }
+        if (b.action === 'return_deposit') {
+          const r = rows.find((x) => x.id === b.id);
+          if (r) r.hold_status = 'returned';
+          // The real endpoint always reports the send outcome; mailWillFail drives the
+          // case where the money moved and the guest was never told.
+          return json({ ok: true, returned: Number(b.amount) || 0, status: 'PENDING', email: { ok: !mailWillFail, error: mailWillFail ? 'SMTP connect failed' : '' } });
+        }
         if (b.action === 'confirm_return_settled') return json({ ok: true, confirmed: 1, amount: 73.69 });
         return json({ ok: true });
       }
@@ -510,6 +518,37 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   let retPost = null;
   for (let i = 0; i < 40 && !retPost; i++) { await page.waitForTimeout(100); retPost = posts.find((p) => p.action === 'return_deposit'); }
   ok(!!retPost && Number(retPost.amount) === 100, `Return deposit posted £100 back (${JSON.stringify(retPost && { amt: retPost.amount })})`);
+
+  // 4b) THE OWNER IS TOLD WHETHER THE GUEST WAS TOLD. The endpoint mails the guest
+  // best-effort and hands the outcome back as `email: {ok, error}`; the client threw
+  // the response away and toasted "Deposit return issued." unconditionally. On a
+  // PARTIAL return that email is the only place the guest ever learns why the rest was
+  // kept, so with SMTP down the money moved, the owner believed they had been told, and
+  // the reason existed nowhere. Driven through the real dialogs with a real failure.
+  mailWillFail = true;
+  const ret2 = page.evaluate(() => returnDeposit('b3'));
+  await page.waitForTimeout(700);
+  await page.evaluate(() => { const i = document.getElementById('glass-dialog-input'); if (i) i.value = '25'; glassDialogResolve(true); });
+  await page.waitForTimeout(500);
+  // The reason step (a partial return asks for one), then the confirm.
+  await page.evaluate(() => { const i = document.getElementById('glass-dialog-input'); if (i) i.value = 'broken lamp'; glassDialogResolve(true); });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => glassDialogResolve(true));
+  await ret2.catch(() => {});
+  await page.waitForTimeout(700);
+  const said = await page.evaluate(() => {
+    const d = document.getElementById('glass-dialog');
+    const shown = !!(d && getComputedStyle(d).display !== 'none');
+    const txt = (document.getElementById('glass-dialog-msg') || {}).innerText || '';
+    return { shown, txt, toast: (document.querySelector('.chb-toast, #toast') || {}).textContent || '' };
+  });
+  ok(said.shown && /didn't send/i.test(said.txt),
+    `a failed guest email is REPORTED, not toasted as success (${said.txt.slice(0, 70)})`);
+  ok(/reason/i.test(said.txt) && /have not seen it/i.test(said.txt),
+    `…and names the retention reason as the thing they have not seen (${said.txt.slice(-80)})`);
+  mailWillFail = false;
+  await page.evaluate(() => { const d = document.getElementById('glass-dialog'); if (d) glassDialogResolve(true); });
+  await page.waitForTimeout(300);
 
   // ---- 5. back navigation ----
   console.log('5. back navigation');

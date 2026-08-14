@@ -4506,6 +4506,19 @@ textarea.input-glass.field-sm {
   width: 100%;
   transition: transform 0.6s var(--fluid-bezier);
 }
+/* A cottage with no photos yet — the state between being created and its first
+   upload. An honest sentence on the house ground, not a blank rectangle dressed
+   as a photo (no role, no tabindex, no viewer on offer). */
+.gallery-slide-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 0 24px;
+}
 .gallery-slide {
   min-width: 100%;
   height: 100%;
@@ -9296,6 +9309,14 @@ body.light-mode .feed-dot-bad {
 }
 .toast.toast-out {
   animation: toastOut 0.35s var(--fluid-bezier) forwards;
+}
+/* The counted remainder of a capped stack — a LINE, not another card: it carries
+   no action, so it must not spend a card's worth of a phone screen saying so. */
+.toast.toast-more {
+  border-left-color: var(--glass-border);
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 @keyframes toastIn {
   from {

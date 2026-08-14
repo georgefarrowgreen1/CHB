@@ -2269,6 +2269,57 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const laterPlan = ctx.chbOwedLater();
         check('…the quiet owed-later line holds it instead', laterPlan.n === 1 && Math.abs(laterPlan.total - 300) < 0.005, `${laterPlan.n} · ${laterPlan.total}`);
 
+        // A4) THE GUEST REGISTER IS A DUTY. It is treated as one at booking level —
+        // bookingFlow has a stage for it, the hub's next-action card asks for it — and
+        // chbDuties had no branch, so for a guest arriving TOMORROW who had never
+        // opened the link the strip computed to display:none, the ops line said
+        // "all quiet today ✓ Nothing needs you" and the brief said nothing. It is a
+        // legal record (the Immigration (Hotel Records) Order 1972), and its own
+        // window: nothing until it is close enough to chase, red on the day and the
+        // day before.
+        vm.runInContext(`enquiries=[]; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[
+              {id:81,dbId:81,name:'Reg Tomorrow',email:'r1@x.co',checkIn:'${dFut(1)}',checkOut:'${dFut(4)}',adults:3,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r1',regSubmitted:false,regCount:0,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}},
+              {id:82,dbId:82,name:'Reg Far Off',email:'r2@x.co',checkIn:'${dFut(30)}',checkOut:'${dFut(33)}',adults:2,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r2',regSubmitted:false,regCount:0,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}},
+              {id:83,dbId:83,name:'Reg Done',email:'r3@x.co',checkIn:'${dFut(2)}',checkOut:'${dFut(5)}',adults:2,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r3',regSubmitted:true,regCount:2,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        const regD = ctx.chbDuties().filter((d) => d.kind === 'register');
+        check('an unsubmitted register close to arrival IS a duty',
+            regD.length === 1 && /Reg Tomorrow/.test(regD[0].label), regD.map((d) => d.label).join(' | '));
+        check('…and reads as red the day before arrival', regD.length === 1 && regD[0].sev === 'danger', regD.map((d) => d.sev).join(','));
+        check('…while one 30 days out does not nag', !regD.some((d) => /Reg Far Off/.test(d.label)));
+        check('…and a COMPLETE register is not a duty at all', !regD.some((d) => /Reg Done/.test(d.label)));
+        // Partial counts as outstanding — the register needs everyone 16 or over.
+        vm.runInContext(`dbBookings.jollyboat=[
+              {id:84,dbId:84,name:'Reg Partial',email:'r4@x.co',checkIn:'${dFut(2)}',checkOut:'${dFut(5)}',adults:3,children:0,payment:'paid',depositPaid:540,regUrl:'https://x/r4',regSubmitted:true,regCount:1,
+               agreedPrice:{total:540,perNight:520,nights:3,txnFee:20}}];`, ctx);
+        const regPart = ctx.chbDuties().filter((d) => d.kind === 'register');
+        check('a PART-filled register is still outstanding', regPart.length === 1, regPart.map((d) => d.label).join(' | '));
+
+        // A5) A PLANNING FACT IS NOT AN ALERT. findChangeovers collected every
+        // same-day changeover forward for ever, and showChangeoverToasts renders one
+        // persistent amber card each into the fixed toast stack: measured at 390x844
+        // with changeovers at +10, +95 and +200 days, three cards filled 664px of an
+        // 844px screen, covering the whole Needs-you strip, an overdue balance row and
+        // the calendar — one of them dated fourteen months out.
+        if (typeof ctx.findChangeovers === 'function') {
+            vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+                dbBookings.jollyboat=[
+                  {id:91,dbId:91,name:'Out Soon',checkIn:'${dFut(1)}',checkOut:'${dFut(4)}',adults:2,children:0},
+                  {id:92,dbId:92,name:'In Soon',checkIn:'${dFut(4)}',checkOut:'${dFut(7)}',adults:2,children:0},
+                  {id:93,dbId:93,name:'Out Later',checkIn:'${dFut(92)}',checkOut:'${dFut(95)}',adults:2,children:0},
+                  {id:94,dbId:94,name:'In Later',checkIn:'${dFut(95)}',checkOut:'${dFut(98)}',adults:2,children:0},
+                  {id:95,dbId:95,name:'Out Ages',checkIn:'${dFut(197)}',checkOut:'${dFut(200)}',adults:2,children:0},
+                  {id:96,dbId:96,name:'In Ages',checkIn:'${dFut(200)}',checkOut:'${dFut(203)}',adults:2,children:0}];`, ctx);
+            const co = ctx.findChangeovers();
+            check('a changeover the owner can act on is reported', co.some((c) => /Out Soon/.test(c.leaving.name)), co.map((c) => c.date).join(','));
+            check('…and one 95 days out is not an alert', !co.some((c) => /Out Later/.test(c.leaving.name)), co.map((c) => c.date).join(','));
+            check('…nor one 200 days out', !co.some((c) => /Out Ages/.test(c.leaving.name)));
+            check('…so the stack cannot bury the strip it sits over', co.length <= 3, String(co.length));
+        }
+
         // A3) OWNER-ARRANGED MONEY IS NEVER VOLUNTEERED (owner's ask, 06 Aug:
         // "if someone pays cash deposit don't show notification or owes — we
         // will have discussed with them externally"). A recorded off-card

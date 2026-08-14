@@ -1560,6 +1560,49 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(fit.done === true, '…and so is Continue, which is the only way to finish');
   await page.evaluate(() => closeDatePicker());
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+
+  // ─── §21 CLOSING THE PICKER DOES NOT STRAND FOCUS ───────────────────────────
+  // The dialogs the picker opens FROM stay open behind it, so closing it has to hand
+  // focus back into them. It did not: measured, activeElement was <body> — outside any
+  // dialog — and the Tab trap in the global keydown handler only redirects at the
+  // first/last focusable of the OPEN dialog, so it did nothing and the next Tab walked
+  // off onto the theme toggle in the page behind. The glass-form case had been fixed;
+  // the guest surfaces, where this is a keyboard user's only route through the form,
+  // were left.
+  console.log('\n§21 Closing the picker hands focus back into the dialog behind it');
+  const focusBack = await page.evaluate(async () => {
+    // Open the real dialog: the sections above drive the picker directly, so without
+    // this there is no form behind it and the check measures nothing (it reported the
+    // modal closed on its first run).
+    openEnquireModal();
+    await new Promise((r) => setTimeout(r, 350));
+    document.getElementById('enq-checkin').value = '';
+    document.getElementById('enq-checkout').value = '';
+    const trig = document.getElementById('enq-date-trigger');
+    if (trig) trig.focus();
+    const from = document.activeElement ? document.activeElement.id : '';
+    openDatePicker();
+    await new Promise((r) => setTimeout(r, 200));
+    dpState.view = new Date(2026, 7, 1);
+    dpPick('2026-08-04');
+    dpPick('2026-08-07');
+    dpDone();
+    await new Promise((r) => setTimeout(r, 250));
+    const a = document.activeElement;
+    const modal = document.getElementById('enquire-modal');
+    return {
+      from,
+      to: a ? a.id || a.tagName : '(none)',
+      inModal: !!(modal && a && modal.contains(a)),
+      modalOpen: !!(modal && modal.classList.contains('open')),
+      pickerOpen: document.getElementById('date-picker').classList.contains('open'),
+    };
+  });
+  ok(focusBack.modalOpen && !focusBack.pickerOpen, `(fixture) the picker closed with the enquiry form still open (${focusBack.pickerOpen})`);
+  ok(focusBack.inModal, `focus lands back INSIDE the dialog, not on <body> (${focusBack.from} → ${focusBack.to})`);
+  await page.evaluate(() => { try { closeEnquireModal(); } catch (e) {} });
+  await page.waitForTimeout(150);
 
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);

@@ -1649,6 +1649,11 @@ if ($action === 'refund') {
         }
     }
     log_activity('payment', 'booking.refund', 'Refund issued — £' . number_format((float) $amount, 2), ['prop_key' => $gProp ?? '', 'entity' => 'booking', 'entity_id' => (string) $bookingId]);
+    // AND THE SEND IS ON THE RECORD, either way. The hub's Emails fold and
+    // hubEmailsSum read comms rows, so without this the one email that explains a
+    // refund to the guest left no trace on the booking at all — the owner could not
+    // tell later whether it had gone.
+    log_comms_outcome('email.refund', 'Refund email', $emailResult, $bookingId, $gProp ?? '');
     json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
 }
 
@@ -1942,6 +1947,7 @@ if ($action === 'return_deposit') {
         log_activity('payment', 'deposit.evidence', 'Deposit photo saved — ' . $evidence, ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    log_comms_outcome('email.deposit_return', 'Deposit-return email', $emailResult, $id, $b['prop_key'] ?? '');
     json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
 }
 

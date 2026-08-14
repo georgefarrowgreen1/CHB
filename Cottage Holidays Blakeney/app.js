@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 498;
+const ADMIN_BUNDLE_V = 499;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 194;
+const ADMIN_CSS_V = 195;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2769,7 +2769,13 @@ window.addEventListener('resize', () => {
 function renderGallery(images) {
     const track = document.getElementById('gallery-21a');
     if (!track) return;
-    const list = Array.isArray(images) && images.length ? images : [''];
+    // FILTER FIRST (renderGalleryGrid's own rule below): substituting [''] built ONE
+    // slide with an empty data-bg dressed as a photo — 538px of a 390x844 phone as a
+    // blank rectangle with role=button, "Photo 1 of 1 … open photo viewer", arrows over
+    // nothing and a lightbox that does not open. The state every new cottage is in.
+    const real = (Array.isArray(images) ? images : []).filter(Boolean);
+    const list = real.length ? real : [''];
+    const empty = !real.length;
     // Lazy: hold the URL in data-bg and only paint the visible slide + its
     // neighbours (see loadGallerySlides). Off-screen photos download just in
     // time as the visitor navigates, so opening a cottage is much lighter.
@@ -2777,12 +2783,16 @@ function renderGallery(images) {
     const galName =
         (propertyMeta[activeFrontProperty] && propertyMeta[activeFrontProperty].name) ||
         'the cottage';
-    track.innerHTML = list
-        .map(
-            (src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}, open photo viewer" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
-        )
-        .join('');
+    // With nothing to show, ONE honest non-interactive slide: no role, no tabindex,
+    // no label, no click or key hook — nothing that offers a viewer there isn't.
+    track.innerHTML = empty
+        ? `<div class="gallery-slide gallery-slide-none" id="prop-img-0"><span class="gallery-none-say">Photos of ${escapeHtml(galName)} are coming soon</span></div>`
+        : list
+              .map(
+                  (src, i) =>
+                      `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}, open photo viewer" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
+              )
+              .join('');
     // Clamp index in case photos were removed
     let idx = galleryState['gallery-21a'] || 0;
     if (idx >= list.length) idx = list.length - 1;
@@ -2791,6 +2801,10 @@ function renderGallery(images) {
     track.style.transform = `translateX(${-(idx * 100)}%)`;
     loadGallerySlides('gallery-21a');
     updateGalleryCount();
+    // The arrows go with the photos — and are equally pointless at exactly one, which
+    // the count rule above already treats as nothing to page through.
+    const gwrap = track.parentElement;
+    if (gwrap) gwrap.querySelectorAll('.gallery-nav').forEach((b) => { /** @type {HTMLElement} */ (b).style.display = list.filter(Boolean).length > 1 ? '' : 'none'; });
     renderGalleryGrid(list);
 }
 // Desktop-only Airbnb-style photo grid (1 big + up to 4 small) built from the
@@ -9969,8 +9983,16 @@ async function refundPayment(bookingId, squareId, maxAmount, carried) {
     }
     if (!(await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`))) return;
     try {
-        await apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount });
-        toast('Refund issued.');
+        const r = await apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount });
+        // Read the send outcome rather than assuming it (the deposit-return rule): the
+        // endpoint mails best-effort and reports it, and this toasted success
+        // unconditionally. The two states the owner already knows are not failures.
+        const em = r && r.email;
+        if (em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file') {
+            glassAlert(`${gbp(amount)} refunded — but the email telling the guest didn't send (${em.error}).`);
+        } else {
+            toast('Refund issued.');
+        }
         await loadData();
         renderCalendar();
         const fresh = findBookingById(bookingId);
@@ -10000,8 +10022,16 @@ function saveDismissedChangeovers(list) {
 
 // Find every same-day changeover (a checkout meeting a check-in at the same
 // property on the same date), today and into the future, for planning ahead.
+// A PLANNING FACT IS NOT AN ALERT. This collected every same-day changeover
+// forward for ever, one persistent amber card each: measured at 390x844 with
+// changeovers at +10, +95 and +200 days, three cards filled 664px of an 844px
+// screen — burying the Needs-you strip, an overdue row and the calendar — one of
+// them dated fourteen months out. Beyond acting distance the timeline carries it.
+const CHANGEOVER_HORIZON_DAYS = 7;
+const CHANGEOVER_TOAST_MAX = 2;
 function findChangeovers() {
     const todayStr = todayDashed();
+    const horizon = ukShiftDays(todayStr, CHANGEOVER_HORIZON_DAYS);
     const out = [];
     Object.keys(dbBookings).forEach((propKey) => {
         const list = dbBookings[propKey] || [];
@@ -10011,7 +10041,8 @@ function findChangeovers() {
                 if (
                     leaving.checkOut &&
                     leaving.checkOut === arriving.checkIn &&
-                    leaving.checkOut >= todayStr
+                    leaving.checkOut >= todayStr &&
+                    leaving.checkOut <= horizon
                 ) {
                     out.push({
                         key: `${propKey}|${leaving.checkOut}|${leaving.id}|${arriving.id}`,
@@ -10034,7 +10065,11 @@ function showChangeoverToasts() {
     if (!wrap) return;
     wrap.innerHTML = '';
     const dismissed = loadDismissedChangeovers();
-    const items = findChangeovers().filter((c) => !dismissed.includes(c.key));
+    const all = findChangeovers().filter((c) => !dismissed.includes(c.key));
+    // Capped, and the remainder is STATED — a silent truncation reads as "that is
+    // all of them" (the no-silent-caps rule). Three cards is already most of a
+    // phone; two leaves the strip beneath them readable.
+    const items = all.slice(0, CHANGEOVER_TOAST_MAX);
     items.forEach((c) => {
         const meta = propertyMeta[c.propKey];
         const el = document.createElement('div');
@@ -10057,6 +10092,13 @@ function showChangeoverToasts() {
         el.querySelector('.toast-dismiss').addEventListener('click', dismiss);
         wrap.appendChild(el);
     });
+    if (all.length > items.length) {
+        const more = document.createElement('div');
+        more.className = 'toast toast-more';
+        const n = all.length - items.length;
+        more.textContent = `${n} more same-day changeover${n === 1 ? '' : 's'} in the next ${CHANGEOVER_HORIZON_DAYS} days — they are on the calendar below.`;
+        wrap.appendChild(more);
+    }
 }
 
 function dismissChangeover(key, el) {
@@ -13428,6 +13470,7 @@ function openDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 // The SAME glass picker for the back-office Add/Edit Booking modal. Taken
@@ -13443,6 +13486,7 @@ function openBookingDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.add('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 // Keep the modal's date trigger label in sync with the hidden inputs.
@@ -13463,6 +13507,17 @@ function refreshModalDateTrigger() {
         trigger.classList.remove('has-dates');
     }
 }
+// WHO OPENED THE PICKER. The dialogs it opens FROM stay open behind it, so closing
+// it must hand focus back into them — otherwise activeElement is <body>, outside any
+// dialog, and the Tab trap only redirects at the first/last focusable of the OPEN
+// dialog, so it does nothing. Measured: focus BODY → Tab 1 landed on the theme
+// toggle. Fixed for the glass-form case alone; the guest surfaces were left.
+/** @type {HTMLElement|null} */
+let __dpOpener = null;
+function dpRememberOpener() {
+    const a = /** @type {HTMLElement|null} */ (document.activeElement);
+    __dpOpener = a && a !== document.body && typeof a.focus === 'function' ? a : null;
+}
 function closeDatePicker() {
     const dp = document.getElementById('date-picker');
     // Raised ABOVE the glass dialog (a daterange field)? Hand focus back to the
@@ -13471,10 +13526,12 @@ function closeDatePicker() {
     const overGlass = dp.classList.contains('dp-over-glass');
     dp.classList.remove('open');
     dp.classList.remove('dp-over-glass');
-    if (overGlass && dpTarget && dpTarget.trigger) {
-        const t = document.getElementById(dpTarget.trigger);
-        if (t) try { t.focus(); } catch (e) {}
-    }
+    // The named trigger first, else whatever had focus when the picker went up — and
+    // only if it is still in the document and painting (a re-render replaces nodes).
+    let back = overGlass && dpTarget && dpTarget.trigger ? document.getElementById(dpTarget.trigger) : null;
+    if (!back && __dpOpener && document.contains(__dpOpener) && __dpOpener.getClientRects().length) back = __dpOpener;
+    if (back) try { back.focus({ preventScroll: true }); } catch (e) {}
+    __dpOpener = null;
     // Hand the picker back to the page's cottage: a CANCELLED waitlist pick would else
     // leave the enquiry form shading someone else's bookings, looking perfectly normal.
     dpProp = null;
@@ -14225,6 +14282,7 @@ function openFieldDatePicker(target) {
     const gd = document.getElementById('glass-dialog');
     dp.classList.toggle('dp-over-glass', !!(gd && gd.classList.contains('open')));
     renderDatePicker();
+    dpRememberOpener();
     dp.classList.add('open');
 }
 // One wording for every trigger's label.
@@ -14241,6 +14299,7 @@ function openHeroDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
+    dpRememberOpener();
     document.getElementById('date-picker').classList.add('open');
 }
 function hsSetFlex(n) {
@@ -17872,7 +17931,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pay140806';
+    const BUILD = 'ux140835';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

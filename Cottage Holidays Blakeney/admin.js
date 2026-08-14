@@ -14595,11 +14595,36 @@ async function returnDeposit(bookingId) {
     if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)))
         return;
     try {
-        await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
-        toast('Deposit return issued.');
+        const r = await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
+        // THE GUEST'S EMAIL IS THE ONLY PLACE A RETENTION REASON EXISTS. The endpoint
+        // reports the send as `email: {ok, error}`; this threw it away and toasted
+        // success, so with SMTP down the money moved, the owner believed the guest had
+        // been told, and a PARTIAL return left them a smaller refund with no reason
+        // anywhere. The two states the owner already knows are not failures.
+        const em = r && r.email;
+        if (em && em.ok === false && em.error !== 'Mail disabled' && em.error !== 'No guest email on file') {
+            glassAlert(
+                `${gbp(amount)} returned — but the email telling ${booking.name} didn't send (${em.error}).` +
+                    (note ? ' Your reason for keeping the rest is only in that email, so they have not seen it — worth telling them another way.' : ''),
+            );
+        } else {
+            toast('Deposit return issued.');
+        }
         afterPaymentChange(bookingId);
     } catch (e) {
-        glassAlert("Couldn't return the deposit: " + e.message);
+        // A SERVER VERDICT IS NOT A TRANSPORT FAILURE, and the screen must stop
+        // asserting the old fact. e.status is set only when the server answered; the
+        // commonest verdict is "someone already did this" from another device, after
+        // which the hub still offered Return and the duty still listed it.
+        if (e && e.status) {
+            try {
+                await loadData();
+                afterPaymentChange(bookingId);
+            } catch (e2) {}
+            toast(e.message, 'error');
+        } else {
+            glassAlert("Couldn't return the deposit: " + e.message);
+        }
     }
 }
 // Cancel a booking: optional refund + reason, frees the dates, emails the guest.
@@ -17184,6 +17209,8 @@ const NY_ICONS = {
     chat: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>',
     approve: '<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.2-5.9 3.2 1.2-6.5L2.5 9.4l6.6-.9z"/>',
     spark: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.5 1 1.5 1 2.5h6c0-1 .4-2 1-2.5A6 6 0 0 0 12 3z"/>',
+    // A person on a record — the guest register, which is a legal one.
+    guest: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6"/>',
 };
 // ============================================================
 //  Deterministic anomaly detection — the booking data VOLUNTEERS what it can
@@ -17675,6 +17702,10 @@ function chbChaseInfo(k, b) {
     const chase = due && (days <= 21 || !!(b.balanceDueDate && bookingInBalanceWindow(b)));
     return { chase, due, kind, amount, days, late, dueDate: bookingPlanDueDate(b), gt, k, b };
 }
+// How close to arrival a missing register becomes a duty. Wide enough that the
+// owner has time to chase the guest, narrow enough that a booking made in January
+// does not nag from January.
+const REG_DUTY_DAYS = 3;
 function chbDuties() {
     const out = [];
     const today = todayDashed();
@@ -17850,6 +17881,23 @@ function chbDuties() {
                     sub: `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
                     act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
+                    run: () => { closeCmdK(); openBookingHub(b.id); },
+                });
+            }
+            // THE GUEST REGISTER IS A LEGAL RECORD AND WAS A DUTY NOWHERE. The hub
+            // asks for it and can raise it in Needs-attention, but chbDuties had no
+            // branch — so for a guest arriving TOMORROW who had never opened the link
+            // the strip computed to display:none, the ops line said "all quiet today ✓
+            // Nothing needs you" and the brief said nothing. Same derivation the hub
+            // uses, scoped to the pre-arrival window so it cannot nag.
+            const regDays = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
+            if (b.regUrl && !hasCheckedOut(b) && regDays >= 0 && regDays <= REG_DUTY_DAYS && (!b.regSubmitted || !bookingRegComplete(b))) {
+                out.push({
+                    kind: 'register', sev: regDays <= 1 ? 'danger' : 'warn', ic: 'guest',
+                    label: `${b.name || 'A guest'}’s details are not on the register`,
+                    sub: `${regDays === 0 ? 'Arriving today' : regDays === 1 ? 'Arriving tomorrow' : `Arriving in ${regDays} days`} · ${pname(k)} · required before arrival`,
+                    act: 'Open', go: chbAttrs('openBookingHub', String(b.id)),
+                    board: 'today', scope: 'bookings',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
@@ -25072,7 +25120,19 @@ async function approveEnquiry(enqId) {
             }
         }
     } catch (e) {
-        glassAlert("Couldn't approve: " + e.message);
+        // A VERDICT, then the truth on screen. The commonest refusal is the 409 from
+        // approval's re-check under book_lock — and the card went on reading "READY TO
+        // APPROVE · DATES FREE" with Approve still there, so the owner tapped it again
+        // and was refused again. renderEnquiryHub reads the reloaded bookings.
+        if (e && e.status) {
+            try {
+                await loadData();
+                renderEnquiryHub();
+            } catch (e2) {}
+            toast(e.message, 'error');
+        } else {
+            glassAlert("Couldn't approve: " + e.message);
+        }
     }
     }
 }

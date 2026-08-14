@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=279">
+    <link rel="stylesheet" href="app.css?v=280">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1133,7 +1133,11 @@
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log In</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
-                        <div id="magic-link-msg" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
+                        <!-- role=alert like every other message element in this file:
+                             this is the ONLY report either flow makes, and without it a
+                             refusal ("Please enter a valid email address") was written
+                             to a silent div with focus left where it was. -->
+                        <div id="magic-link-msg" role="alert" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
                     </div>
                     <p id="passkey-hint" style="display:none;font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:16px;">Tip: after logging in, add a passkey in your account for one-tap sign-in next time.</p>
                 </div>
@@ -1331,7 +1335,7 @@
             <input type="text" class="input-glass" id="wl-name" style="margin-bottom:12px;">
             <label class="modal-label">Email</label>
             <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
-            <div class="enq-modal-msg" id="wl-msg"></div>
+            <div class="enq-modal-msg" id="wl-msg" role="alert"></div>
             <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
         </div>
     </div>
@@ -1955,7 +1959,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=833"></script>
+    <script defer src="app.js?v=834"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
