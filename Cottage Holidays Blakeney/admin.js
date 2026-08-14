@@ -24121,7 +24121,15 @@ function renderInbox() {
     // nothing is selected yet so the workspace never sits with an empty pane.
     // ONLY while the Inbox is the active view — renderInbox() also runs from
     // the dashboard init, and auto-selecting there would navigate away.
-    if (inboxSplitWide() && (document.querySelector('.page-view.active') || {}).id === 'view-inbox') {
+    // …AND ONLY ON THE ENQUIRIES FOLDER. markInboxSelection below already carried
+    // this guard; the function that CREATES the selection did not, so any
+    // re-render while the owner read Email or Messages docked an enquiry over it
+    // and stamped it seen, dropping it from an unread count nobody had looked at.
+    if (
+        inboxSplitWide() &&
+        (document.querySelector('.page-view.active') || {}).id === 'view-inbox' &&
+        __inboxFolder === 'enquiries'
+    ) {
         const listNow = sortedEnquiries();
         if (__enqHubId && !enquiries.find((x) => x.id === __enqHubId)) __enqHubId = null;
         if (!__enqHubId && listNow.length) {
@@ -24162,7 +24170,13 @@ async function openEnquiryHub(enqId) {
         tryAccessBackOffice();
         return;
     }
-    let e = enquiries.find((x) => x.id === enqId);
+    // EITHER ID FORM. Client enquiries carry id 'e<n>' with the numeric db id on
+    // dbId, and two live routes hand this the NUMERIC one: the new-enquiry push
+    // ('./?open=enquiry-<id>') and every federated search row. A strict === never
+    // matched, so both said "no longer here" about an enquiry in the inbox —
+    // findBookingById's fix, whose enquiry twin was missed.
+    const findEnq = (want) => enquiries.find((x) => String(x.id) === String(want) || String(x.dbId) === String(want));
+    let e = findEnq(enqId);
     // Same rule as openBookingHub: a dropped request is not a deleted enquiry.
     let loadFailed = false;
     if (!e) {
@@ -24174,7 +24188,7 @@ async function openEnquiryHub(enqId) {
             loadFailed = true;
         }
         if (r && r.ok === false) loadFailed = true;
-        e = enquiries.find((x) => x.id === enqId);
+        e = findEnq(enqId);
     }
     if (!e) {
         if (loadFailed) {
@@ -24185,8 +24199,12 @@ async function openEnquiryHub(enqId) {
         openInbox();
         return;
     }
-    __enqHubId = enqId;
-    try { chbStampRecent('enquiry', enqId, e && e.name); } catch (er) {} // cross-page memory
+    // The CLIENT id, never the argument — markInboxSelection matches it against
+    // each row's data-enqid and the wide auto-select asks whether it still
+    // exists, so opening by the numeric id left the pane holding 77 against a row
+    // saying 'e77' and the next re-render docked the FIRST enquiry over it.
+    __enqHubId = e.id;
+    try { chbStampRecent('enquiry', e.id, e && e.name); } catch (er) {} // cross-page memory
     enquirySeen(e);
     const content = document.getElementById('enquiry-hub-content');
     const prev = document.querySelector('.page-view.active');
@@ -24203,14 +24221,13 @@ async function openEnquiryHub(enqId) {
         if (content && home && content.parentElement !== home) home.appendChild(content);
         const alreadyHere = prev && prev.id === 'view-enquiry-hub';
         nav('view-enquiry-hub');
-        if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: enqId });
-        chbNavRemember('enquiry-' + enqId);
+        if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: e.id });
+        chbNavRemember('enquiry-' + e.id);
         window.scrollTo({ top: 0 });
         // The condensed bar names the record (the booking hub's rule).
         try {
             const t = document.getElementById('admin-head-title');
-            const nm = (enquiries.find((x) => String(x.id) === String(enqId)) || {}).name;
-            const first = String(nm || '').trim().split(/\s+/)[0];
+            const first = String(e.name || '').trim().split(/\s+/)[0];
             if (t && first) t.textContent = first;
         } catch (e) {}
     }

@@ -715,6 +715,81 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(mw2.armedOnce, 'the watch arms once per page — a re-init cannot double the timer');
   await page.evaluate(() => { __mbxOpenedOnce = window.__mbxOpenedOnceSave; window.__newMailPre = null; window.loadData = window.__ldSave; });
 
+  // ── THE READING PANE BELONGS TO THE ACTIVE FOLDER ─────────────────────────
+  // renderInbox's wide-split auto-select checked the active VIEW but not the
+  // active FOLDER, while markInboxSelection right below it carries exactly that
+  // guard. So any re-render while the owner was reading Email or Messages —
+  // a dock tap, a reconnect, an approval nulling __enqHubId — docked an enquiry
+  // hub over what they were reading AND stamped that enquiry seen, dropping it
+  // from an unread count they had never looked at.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const hijack = await page.evaluate(async (dd) => {
+    nav('view-inbox');
+    await new Promise((r) => setTimeout(r, 300));
+    inboxFolder('email');
+    await new Promise((r) => setTimeout(r, 300));
+    // The suite's own routes answer with no enquiries, so seed one AFTER the
+    // folder switch has finished loading (its fetch replaces the array) —
+    // without one there is nothing to dock and both checks prove nothing.
+    window.__seedEnq = () => {
+      __inboxTab = 'waiting'; // an earlier section leaves the declined drawer open
+      if (!enquiries.some((x) => x.id === 'e77'))
+        enquiries.push({ id: 'e77', dbId: 77, propKey: '21a', name: 'Nadia Ferrer', email: 'n@x.com', checkIn: dd.ci, checkOut: dd.co, adults: 2, children: 0, guests: '2 adults', message: 'Any parking?', received: dd.made });
+      return enquiries.length;
+    };
+    const seeded = window.__seedEnq();
+    __enqHubId = null; // the state an approval/decline leaves behind
+    let opened = 0;
+    const real = window.openEnquiryHub;
+    window.openEnquiryHub = async (...a) => { opened++; return real.apply(null, a); };
+    renderInbox();
+    await new Promise((r) => setTimeout(r, 400));
+    const folderAfter = __inboxFolder;
+    window.openEnquiryHub = real;
+    return { opened, folderAfter, seeded };
+  }, { ci: d(30), co: d(33), made: d(-1) });
+  ok(hijack.seeded > 0, `the fixture really carries an enquiry to dock (${hijack.seeded})`);
+  ok(hijack.opened === 0, `a re-render on the Email folder does not dock an enquiry over it (opened ${hijack.opened})`);
+  ok(hijack.folderAfter === 'email', 'and the owner is left on the folder they were reading');
+  // …while the Enquiries folder still auto-selects, which is the feature.
+  const autoSel = await page.evaluate(async () => {
+    inboxFolder('enquiries');
+    await new Promise((r) => setTimeout(r, 300));
+    window.__seedEnq();
+    __enqHubId = null;
+    let opened = 0;
+    const real = window.openEnquiryHub;
+    window.openEnquiryHub = async (...a) => { opened++; return real.apply(null, a); };
+    renderInbox();
+    await new Promise((r) => setTimeout(r, 400));
+    window.openEnquiryHub = real;
+    return { opened, n: (typeof enquiries !== 'undefined' ? enquiries.length : -1), wide: inboxSplitWide() };
+  });
+  ok(autoSel.opened > 0, `the Enquiries folder still fills its empty pane (opened ${autoSel.opened}, list ${autoSel.n}, wide ${autoSel.wide})`);
+
+  // EITHER ID FORM opens an enquiry. Client enquiries carry id 'e<n>'; the
+  // new-enquiry push and every federated search row hand over the NUMERIC db id,
+  // and a strict === reported "no longer here" about one sitting in the inbox.
+  const idForms = await page.evaluate(async () => {
+    window.__seedEnq();
+    const e = enquiries.find((x) => x.id === 'e77') || null;
+    if (!e) return { byClient: false, byNumeric: false, id: 'none', dbId: 'none' };
+    // Drive the REAL opener both ways rather than re-stating its lookup here.
+    const seen = [];
+    __enqHubId = null;
+    await openEnquiryHub(e.id);
+    seen.push(__enqHubId);
+    __enqHubId = null;
+    await openEnquiryHub(e.dbId);
+    seen.push(__enqHubId);
+    return { byClient: seen[0] === e.id, byNumeric: seen[1] === e.id, id: e.id, dbId: e.dbId };
+  });
+  ok(idForms.byClient && idForms.byNumeric,
+    `openEnquiryHub opens the same enquiry from either id form (${idForms.id} / ${idForms.dbId})`);
+  const hubSrcIds = require('fs').readFileSync(__dirname + '/admin.js', 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  ok(/String\(x\.id\) === String\(want\) \|\| String\(x\.dbId\) === String\(want\)/.test(hubSrcIds),
+    'openEnquiryHub normalises the id rather than matching one form');
+
   console.log(fails ? `MAILBOX TEST FAILED ❌ (${fails})` : 'MAILBOX TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
