@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 506;
+const ADMIN_BUNDLE_V = 507;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 202;
+const ADMIN_CSS_V = 203;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9435,11 +9435,14 @@ function bookingDue(propKey, b) {
     return displayGrand(p, ps, b.holdStatus || 'none', b);
 }
 
+// BUILT ONCE, for the same reason ukNowParts is. toLocaleString constructs a fresh
+// Intl.NumberFormat per call, and this is every money figure in every row.
+let __gbpFmt = null;
 function gbp(n) {
-    return (
-        '£' +
-        Number(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    );
+    if (!__gbpFmt) {
+        __gbpFmt = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return '£' + __gbpFmt.format(Number(n));
 }
 
 // Total / deposit-paid / balance for a booking, using the agreed (locked) price.
@@ -12718,21 +12721,28 @@ function chbClockSync(srv) {
 function chbNow() {
     return new Date(Date.now() + CHB_CLOCK.skew);
 }
+// BUILT ONCE. An Intl.DateTimeFormat is expensive to construct and free to reuse,
+// and this is the app's CLOCK — todayDashed() and ukNowMinutes() both read it, so
+// every date comparison in every render built a fresh one. LAZY: a guest browsing
+// the cottage list makes zero calls and must not pay for a formatter it never uses.
+// Gated by smoke-test §12d.
+let __ukFmt = null;
 function ukNowParts() {
     const parts = {};
-    new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-    })
-        .formatToParts(chbNow())
-        .forEach((p) => {
-            if (p.type !== 'literal') parts[p.type] = p.value;
+    if (!__ukFmt) {
+        __ukFmt = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/London',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
         });
+    }
+    __ukFmt.formatToParts(chbNow()).forEach((p) => {
+        if (p.type !== 'literal') parts[p.type] = p.value;
+    });
     return { y: +parts.year, m: +parts.month, d: +parts.day, hh: +parts.hour, mm: +parts.minute };
 }
 // Minutes past midnight on the UK wall clock — the cottage's clock, not the
@@ -18046,7 +18056,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hon140926b';
+    const BUILD = 'int140939';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

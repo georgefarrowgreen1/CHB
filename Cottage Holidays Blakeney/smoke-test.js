@@ -1629,6 +1629,40 @@ console.log('\n== 12c. A partial overlap subtracts nights, it does not delete th
     );
 }
 
+// ---- 12d. The clock and the money format are built ONCE ---------------------
+// An Intl.DateTimeFormat is expensive to construct and free to reuse. ukNowParts
+// is the app's CLOCK — todayDashed() and ukNowMinutes() both read it, so every
+// date comparison in every render went through a fresh one — and gbp() called
+// Number#toLocaleString, which constructs an Intl.NumberFormat per call, on every
+// money figure in every row. Measured through the real boot with the constructors
+// counted: a guest boot went 13 → 1 and an owner boot 51 → 2 (on an EMPTY booking
+// list; the render loops that call these per row are what make it thousands on a
+// real one). Lazy, so a guest who never sees a price never builds the money one.
+console.log('\n== 12d. The clock and the money format are built once ==');
+{
+    // Count constructions in the SANDBOX's own realm, which is where app.js ran.
+    vm.runInContext('__intlCount = { d: 0, n: 0 };', ctx);
+    vm.runInContext(
+        'var __RD = Intl.DateTimeFormat, __RN = Intl.NumberFormat;' +
+        'Intl.DateTimeFormat = function (...a) { __intlCount.d++; return new __RD(...a); };' +
+        'Intl.NumberFormat = function (...a) { __intlCount.n++; return new __RN(...a); };',
+        ctx,
+    );
+    // Warm them, then call each MANY times: the property is that the count does not
+    // grow with the calls, which is exactly what a per-call constructor fails.
+    vm.runInContext('todayDashed(); gbp(1); __intlCount = { d: 0, n: 0 };', ctx);
+    const counted = vm.runInContext(
+        'for (let i = 0; i < 200; i++) { todayDashed(); ukNowMinutes(); gbp(i + 0.5); } __intlCount;',
+        ctx,
+    );
+    check(`600 clock/money calls construct no new date formatter (${counted.d})`, counted.d === 0);
+    check(`…and no new number formatter (${counted.n})`, counted.n === 0);
+    // …and the money format is unchanged by the swap from toLocaleString.
+    const money = vm.runInContext('[gbp(0), gbp(1234.5), gbp(-12.345), gbp(1e6)].join(" | ")', ctx);
+    check(`the money format is byte-identical (${money})`, money === '£0.00 | £1,234.50 | £-12.35 | £1,000,000.00');
+    vm.runInContext('Intl.DateTimeFormat = __RD; Intl.NumberFormat = __RN;', ctx);
+}
+
 // ============================================================
 //  §13 — NO SILENT CAPS, and the number is stated ONCE.
 //  The activity log asks for 250 rows and rendered them with nothing saying so,
