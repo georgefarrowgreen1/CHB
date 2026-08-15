@@ -163,6 +163,7 @@ $REGISTRY = [
     'chat-lib.php' => ['lib', [], 'chat thread helpers'],
     'config.php' => ['lib', [], 'constants only'],
     'csp-lib.php' => ['lib', [], 'pure CSP severity/matcher for csp-report.php (no I/O, no entry)'],
+    'backup-crypt.php' => ['lib', [], 'pure AES-256-CBC/PBKDF2 encryption of the weekly dump before it is emailed (openssl container format); required by backup.php, no entry point of its own'],
     'sweep-lib.php' => ['lib', [], 'pure safe-to-move arithmetic for accounts.php (no I/O, no entry)'],
     'bank-lib.php' => ['lib', [], 'Square linked-bank-account cache + the can-money-move decision; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],
     'payouts-lib.php' => ['lib', [], 'Square payout cache + landed/on-its-way decisions; required by accounts.php, self-repair.php and square-setup.php (no entry of its own)'],

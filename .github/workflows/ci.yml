@@ -159,6 +159,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-csp-report.php
 
+      - name: Weekly backup encryption (opens with the real openssl binary)
+        working-directory: Cottage Holidays Blakeney
+        run: php test-backup-crypt.php
+
       - name: Web Push payload encryption (RFC 8291)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webpush.php

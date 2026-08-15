@@ -297,6 +297,50 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The weekly backup leaves the host ENCRYPTED, or it does not leave
+
+**Found in a security review, and it was the biggest real exposure in the app.**
+`backup.php` emailed the full gzipped dump to the owner "so a copy lives off the
+host" — every guest's name, email, phone, address, postcode, booking history and
+chat messages, in plaintext, weekly, into a mailbox that keeps it for ever and
+syncs it to every signed-in device. The off-site copy is worth having; the
+plaintext is not.
+- **THE RULE IS ABSOLUTE: encrypted or not attached.** There is deliberately no
+  path back to a plaintext attachment — not when the passphrase is missing, too
+  short, unreadable, or when the host has no OpenSSL. Any of those sends the
+  REPORT with no file and says why. "We couldn't encrypt it" must never degrade
+  into "here is everything about your guests". `backup_encrypt()` returns `''`
+  on every refusal precisely so the caller has nothing to attach.
+- **THE FORMAT IS OPENSSL'S OWN CONTAINER** (`Salted__` + 8-byte salt +
+  AES-256-CBC, key/IV via PBKDF2-HMAC-SHA256, 10,000 iterations) — byte for byte
+  what `openssl enc -aes-256-cbc -pbkdf2` produces. A backup you cannot open is
+  not a backup: recovery is ONE standard command on any Mac or Linux box, with
+  no PHP and no this app, and that command travels IN the email
+  (`backup_recovery_command()`, never carrying the passphrase).
+- **THE GATE DECRYPTS WITH THE REAL `openssl` BINARY**, not with our own
+  `backup_decrypt` — encrypt-then-decrypt with one's own code proves only that
+  the two halves agree, and if both are wrong nobody finds out until the day it
+  matters. Same discipline test-webpush.php follows against RFC 8291's vectors.
+  test-backup-crypt.php (27 checks, CI-wired, deploy-excluded) also asserts the
+  printed command IS the command that worked, so the instructions and the file
+  cannot drift.
+- **The passphrase is a PRIVATE content key** (`backup-passphrase`, encrypted at
+  rest) set in Manage → System check, with a `BACKUP_PASSPHRASE` config const
+  winning as every other secret here does. NB the bacs-details trade (don't
+  encrypt, a failed decrypt becomes garbage in a guest's inbox) does NOT apply:
+  an unreadable value here means the dump is not attached, which is the safe
+  outcome. The field never echoes the stored value back — a password box that
+  redisplays a secret hands it to whoever opens the page — and the state line
+  says only WHETHER one is set.
+- **Length is the only rule** (≥12 chars): character-class rules push people
+  toward "Passw0rd!" while a long phrase they can remember is stronger.
+- Break-tested both ways: restoring the raw-dump attachment fails §5, and
+  dropping the passphrase check fails three of §4.
+- NB the gate's counter is named **`bck()`**, not `chk()` — PHPStan analyses
+  every test file as ONE set and two suites already declare a 2-argument
+  `chk()`. A unique name is the fix, not a matching signature (the `ok()` lesson
+  in the invoice notes).
+
 ## The arrival email waits for the owner (migration-114)
 
 **Asked for, and the two judgements are the OWNER'S, not defaults**: the arrival

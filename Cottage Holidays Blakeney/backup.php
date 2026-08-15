@@ -385,6 +385,7 @@ $emailErr = null;
 try {
     if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && $res['bytes'] < 8 * 1024 * 1024) {
         require_once __DIR__ . '/mailer.php';
+        require_once __DIR__ . '/backup-crypt.php';
         $nice = number_format($res['bytes'] / 1024, 0) . ' KB';
         // Photos/uploads are archived on the host but too big to attach —
         // remind the owner to pull a copy down now and then.
@@ -394,16 +395,39 @@ try {
                 number_format(filesize($fz) / 1048576, 1) .
                 ' MB) — download a copy occasionally from Settings → Health check → "Download files".'
             : '';
+        // THE DUMP IS ENCRYPTED OR IT IS NOT ATTACHED. This file is every guest's
+        // name, email, phone, address and message history, and an emailed copy
+        // lives in a mailbox for ever. So: passphrase set and encryption working
+        // → send the ciphertext with its recovery command; anything else → send
+        // the REPORT with no attachment and say why. There is deliberately no
+        // path back to a plaintext attachment, including when the passphrase is
+        // missing, too short, or unreadable — "we couldn't encrypt it" must
+        // never degrade into "here is everything about your guests".
+        $pass = (string) content_value('backup-passphrase');
+        if (defined('BACKUP_PASSPHRASE') && trim((string) BACKUP_PASSPHRASE) !== '') {
+            $pass = (string) BACKUP_PASSPHRASE; // a config const wins, like every other secret here
+        }
+        $why = backup_crypt_available()
+            ? backup_pass_problem($pass)
+            : "This server can't encrypt (its OpenSSL support is missing).";
+        $blob = $why === '' ? backup_encrypt(file_get_contents($res['file']), $pass) : '';
+        $atts = [];
+        $encNote = '';
+        if ($blob !== '') {
+            $encName = basename($res['file']) . '.enc';
+            $atts[] = ['filename' => $encName, 'mime' => 'application/octet-stream', 'content' => $blob];
+            $encNote = 'Attached and encrypted with your backup passphrase. To open it: '
+                . backup_recovery_command($encName)
+                . ' — then unzip as usual. Keep the passphrase somewhere other than this inbox.';
+        } else {
+            $encNote = 'No copy is attached: ' . $why
+                . ' The backup is safe on the server — set a passphrase in Manage → System check to have it emailed to you encrypted,'
+                . ' or download it from there whenever you like.';
+        }
         // Composed by backup_report_body() in mailer.php — previewable, and the render
         // gate proves it builds. The attachment stays here: it is a file, not content.
-        $m = backup_report_body($nice, $filesNote);
-        $r = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html'], [
-            [
-                'filename' => basename($res['file']),
-                'mime' => 'application/gzip',
-                'content' => file_get_contents($res['file']),
-            ],
-        ]);
+        $m = backup_report_body($nice, trim($filesNote . ' ' . $encNote));
+        $r = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $m['subject'], $m['text'], $m['html'], $atts);
         $emailed = !empty($r['ok']);
         $emailErr = $r['error'] ?? null;
     }
@@ -422,6 +446,9 @@ json_out([
     'verify_error' => $verify['error'] ?? null,
     'tables' => $verify['tables'] ?? null,
     'emailed' => $emailed,
+    // Stated so the owner (and the gate) can tell a report-only email from one
+    // carrying the encrypted dump — "emailed" alone can't say which.
+    'attached_encrypted' => isset($blob) && $blob !== '',
     'email_error' => $emailErr,
     'files_ran' => !empty($filesRes['ran']),
     'files_bytes' => $filesRes['bytes'] ?? null,

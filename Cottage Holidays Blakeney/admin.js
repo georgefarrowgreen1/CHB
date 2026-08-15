@@ -21584,6 +21584,17 @@ async function loadDiagnostics() {
                         <button class="btn-sm btn-edit" ${chbAttrs('runFilesBackupNow', CHB_SELF)}>Archive files now</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download_files">Download files</button>
                     </div>
+                    <!-- The emailed copy is ENCRYPTED or it is not sent. Without a
+                         passphrase the Monday email carries the report only — the
+                         backup itself stays on the server, downloadable above. -->
+                    <div class="acr-cap" style="margin-top:18px;">The emailed copy</div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:6px 0 10px;">The backup holds every guest's name, address, phone and messages, and an email lives in your inbox for ever — so it is only attached once you set a passphrase to lock it with. <strong>Keep the passphrase somewhere other than that inbox</strong>; without it the file cannot be opened, by you or anyone else.</p>
+                    <label class="modal-label" for="backup-pass">Backup passphrase</label>
+                    <input type="password" class="input-glass" id="backup-pass" autocomplete="new-password" placeholder="a few unrelated words" style="max-width:340px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+                        <button class="btn-sm btn-edit" ${chbAttrs('saveBackupPass', CHB_SELF)}>Save passphrase</button>
+                        <span id="backup-pass-state" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                    </div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
@@ -21592,6 +21603,7 @@ async function loadDiagnostics() {
                     <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
                 </div>`;
     refreshBackupStatus();
+    refreshBackupPassState();
     refreshHeroStatus();
 }
 // One-tap error correction: runs self-repair.php (the same nightly job) on demand.
@@ -21729,6 +21741,39 @@ async function verifyBackupNow(btn) {
         btn.disabled = false;
         btn.textContent = 'Verify latest';
     }
+}
+// THE PASSPHRASE THE EMAILED BACKUP IS LOCKED WITH. Stored under the PRIVATE
+// key 'backup-passphrase' (encrypted at rest, db.php), never echoed back into
+// the field — a password box that redisplays a stored secret hands it to
+// anyone who opens the page. The state line says whether one is set, not what
+// it is; the length rule is the server's own (backup_pass_problem).
+async function saveBackupPass(btn) {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('backup-pass'));
+    const state = document.getElementById('backup-pass-state');
+    const v = el ? el.value.trim() : '';
+    if (v && v.length < 12) {
+        glassAlert('That passphrase is too short — use at least 12 characters. A few unrelated words is ideal.');
+        return;
+    }
+    if (!v && !(await glassConfirm('Clear the passphrase? Monday\'s email will then carry the report only, with no copy of the backup attached.'))) return;
+    try {
+        await saveContent('backup-passphrase', v);
+    } catch (e) {
+        return; // saveContent has already told them, and rethrows so we stop here
+    }
+    if (el) el.value = '';
+    if (state) state.textContent = v ? 'Saved — Monday\'s backup will be attached, encrypted.' : 'Cleared — the backup stays on the server only.';
+    toast(v ? 'Passphrase saved — the emailed backup is encrypted from now on.' : 'Passphrase cleared.');
+}
+// Is one set? Read, never shown. adminPrivateContent FIRST (an internal/private
+// key is absent from the anonymous boot GET — the bacs-details rule).
+function refreshBackupPassState() {
+    const state = document.getElementById('backup-pass-state');
+    if (!state) return;
+    const set = String((adminPrivateContent && adminPrivateContent['backup-passphrase']) || '').trim() !== '';
+    state.textContent = set
+        ? 'A passphrase is set — the emailed copy is encrypted.'
+        : 'No passphrase yet — the backup is not attached to the email.';
 }
 async function runBackupNow(btn) {
     if (btn) {
