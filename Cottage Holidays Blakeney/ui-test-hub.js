@@ -746,6 +746,43 @@ let approveWill409 = false;
   });
   ok(payInk.figInk === payInk.lblInk, `the settled figure wears the house ink, not status green (${payInk.figInk})`);
   ok(payInk.mark, 'the ✓ is the one green mark on the payline');
+  // THE MONEY SITS ON THE SAME RIGHT RAIL AS EVERY OTHER SUMMARY. Reported from
+  // a phone: the payline's figure sat mid-row while Guest details and Emails
+  // pinned their capsules right, because .bhub-fold-row is space-between and the
+  // payline had THREE children (main / figure / chevron) where bhubFoldGrp gives
+  // every other row two (label / .bhub-fold-right). Asserted as an OUTCOME — the
+  // figure's right edge against the other rows' — so it cannot pass on any future
+  // markup that happens to carry the class while landing the money elsewhere.
+  // Measured against each row's OWN content edge, never across rows: the money
+  // block sits one card deeper than the fold groups, so their absolute rails
+  // differ by 2px of card inset — real, invisible, and nothing to do with this.
+  const rail = await page.evaluate(() => {
+    const edge = (row) => {
+      const grp = row.querySelector('.bhub-fold-right');
+      if (!grp) return null; // no right-hand group at all — the defect itself
+      const rr = row.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(row).paddingRight) || 0;
+      return Math.round(rr.right - pad - grp.getBoundingClientRect().right);
+    };
+    const payRow = document.querySelector('#booking-hub-content .bhub-payline');
+    const fig = document.querySelector('#booking-hub-content .bhub-payline-fig');
+    const chev = document.querySelector('#booking-hub-content .bhub-payline .bhub-chev');
+    return {
+      pay: payRow ? edge(payRow) : null,
+      others: [...document.querySelectorAll('#booking-hub-content .bhub-fold-grp .bhub-fold-row')].map(edge),
+      // How far the money sits from the chevron it should be packed against.
+      packed: fig && chev ? Math.round(chev.getBoundingClientRect().left - fig.getBoundingClientRect().right) : null,
+    };
+  });
+  // Vacuity guard: without sibling rows there is no shared rule to compare to.
+  ok(rail.others.length >= 2, `found ${rail.others.length} sibling summaries to measure the rail against`);
+  ok(
+    rail.pay === 0 && rail.others.every((o) => o === 0),
+    `every summary's value group ends on its row's own right rail (payline ${rail.pay}, others ${rail.others.join('/')})`,
+  );
+  // The direct anti-regression: as three space-between siblings the money floated
+  // into the middle of the row, hundreds of pixels from its own chevron.
+  ok(rail.packed != null && rail.packed <= 14, `the money is packed against the chevron, not spread (${rail.packed}px)`);
   // The full breakdown DISCLOSES IN PLACE now (the iOS restyle retired the
   // old #breakdown-modal pop-up): the fold opens under the payline with the
   // full maths, the payline itself stays the one row, and the control reports
