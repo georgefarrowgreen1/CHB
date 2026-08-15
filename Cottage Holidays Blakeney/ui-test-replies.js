@@ -7,6 +7,9 @@
 //  4. a template's buttons ride along; the guard matrix per record, both ways
 //     (card+due offers pay; transfer withholds it WITH the reason; an enquiry
 //     gets no buttons at all)
+//  4b. applicability — what doesn't apply isn't offered: scope (when),
+//     unresolvable tokens and all-buttons-refused each HIDE a row; a library
+//     where nothing fits says so; Manage still lists everything
 //  5. send carries the action ids; a 409 refusal lands in the modal, not a toast
 //  6. Manage → Saved replies: edit + delete round-trip
 //  7. the store sanitiser: garbage degrades to the empty state, never a crash
@@ -182,17 +185,71 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const g10 = await page.evaluate(() => {
     window.emailTplToggle();
     const f = emailTplFacts();
+    const balRow = Array.from(document.querySelectorAll('#etpl-panel .etpl-row')).find((r) => /balance/.test(r.textContent));
     return {
       payWhy: etplActGuard('pay', f),
       invWhy: etplActGuard('invoice', f),
       regWhy: etplActGuard('register', f),
-      carryOff: document.querySelectorAll('#etpl-panel .etpl-carry.is-off').length,
+      balChips: balRow ? Array.from(balRow.querySelectorAll('.etpl-carry')).map((c) => c.textContent.trim()) : null,
     };
   });
   ok(/transfer/.test(g10.payWhy) && /invoice/.test(g10.payWhy), `pay withheld on the transfer rail WITH the reason (${g10.payWhy.slice(0, 44)}…)`);
   ok(g10.invWhy === '', 'invoice still offered off the card rail');
   ok(/already submitted/.test(g10.regWhy), 'register withheld once submitted');
-  ok(g10.carryOff >= 1, "the picker strikes through a template's unavailable buttons");
+  // A refused button is DROPPED from the row, not struck through — the chips
+  // preview exactly what will ride along (the same filter insert applies).
+  ok(!!g10.balChips && g10.balChips.join() === 'View your invoice',
+    `the row previews only the buttons that will ride (${g10.balChips && g10.balChips.join(', ')})`);
+
+  console.log("4b. what doesn't apply isn't offered");
+  // The owner's screenshot: a paid pre-arrival BOOKING offered enquiry replies,
+  // an after-stay thank-you and a struck-out register ask. Scope + tokens +
+  // all-buttons-refused each hide a row; Manage still lists everything.
+  await page.evaluate(() => {
+    const lib = JSON.stringify([
+      { id: 'bal2', name: 'Balance nudge', body: 'The balance of {{balance}} is due.', actions: ['pay'], uses: 0 },
+      { id: 'enqw', name: 'Enquiry welcome', body: 'We would love to have you to stay.', when: 'enquiry', actions: [], uses: 0 },
+      { id: 'aft', name: 'Hope you got home safely', body: 'Thank you for coming.', when: 'after', actions: [], uses: 0 },
+      { id: 'regask', name: 'A register ask', body: 'Please add your guest details when you have a minute.', actions: ['register'], uses: 0 },
+    ]);
+    siteContent['email-templates'] = lib;
+    adminPrivateContent['email-templates'] = lib;
+  });
+  const fit9 = await page.evaluate(() => {
+    window.openBookingEmail('b9'); // card, owing, register NOT submitted, pre-stay
+    window.emailTplToggle();
+    return Array.from(document.querySelectorAll('#etpl-panel .etpl-row .etpl-row-name')).map((e) => e.textContent.trim()).sort().join(' | ');
+  });
+  ok(fit9 === 'A register ask | Balance nudge', `a pre-stay owing booking gets exactly the rows that apply (${fit9})`);
+  const fit10 = await page.evaluate(() => {
+    window.openBookingEmail('b10'); // register submitted; transfer rail; money owing
+    window.emailTplToggle();
+    return {
+      rows: Array.from(document.querySelectorAll('#etpl-panel .etpl-row .etpl-row-name')).map((e) => e.textContent.trim()).sort().join(' | '),
+      balChips: document.querySelectorAll('#etpl-panel .etpl-carry').length,
+    };
+  });
+  // The register ask's only job is DONE here → the row hides. The balance
+  // nudge's Pay button is refused for the CHANNEL (transfer rail) while the
+  // money is still owed → the words stay, the button goes.
+  ok(fit10.rows === 'Balance nudge', `a template whose every button is MOOT is hidden, not struck (${fit10.rows})`);
+  ok(fit10.balChips === 0, 'a channel-refused button is dropped while the words survive');
+  const fitEnq = await page.evaluate(() => {
+    window.openEnquiryEmail(enquiries[0].id);
+    window.emailTplToggle();
+    return Array.from(document.querySelectorAll('#etpl-panel .etpl-row .etpl-row-name')).map((e) => e.textContent.trim()).sort().join(' | ');
+  });
+  ok(fitEnq === 'Enquiry welcome', `an enquiry gets the enquiry reply — no balance, no buttons, no after-stay (${fitEnq})`);
+  // Templates exist but none fits → the honest state, not "Nothing saved yet".
+  const noneFits = await page.evaluate(() => {
+    const lib = JSON.stringify([{ id: 'aft', name: 'Hope you got home safely', body: 'Thank you for coming.', when: 'after', actions: [], uses: 0 }]);
+    siteContent['email-templates'] = lib;
+    adminPrivateContent['email-templates'] = lib;
+    window.openBookingEmail('b9');
+    window.emailTplToggle();
+    return (document.getElementById('etpl-panel') || {}).textContent || '';
+  });
+  ok(/None of your saved replies fits this record/.test(noneFits), 'a library where nothing fits says so — never "Nothing saved yet"');
   const gEnq = await page.evaluate(() => {
     window.openEnquiryEmail(enquiries[0].id);
     return (document.getElementById('etpl-acts') || {}).textContent || '';
@@ -230,13 +287,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => window.closeEnquiryEmailModal());
 
   console.log('6. Manage → Saved replies: edit + delete round-trip');
+  // Re-seed the §3 library — §4b's applicability fixtures replaced it. Manage
+  // lists EVERYTHING regardless of any record's applicability (the authoring
+  // surface), which is itself one of this section's facts.
+  await page.evaluate(() => {
+    const lib = JSON.stringify([
+      { id: 'bal', name: 'A nudge about the balance', body: 'Just a quick note that the balance of {{balance}} for {{dates}} is due before you arrive.', actions: ['pay', 'invoice'], uses: 9 },
+      { id: 'quay', name: 'The quay and the beach', body: 'The quay is six minutes on foot from {{cottage}}.', actions: [], when: 'after', uses: 14 },
+    ]);
+    siteContent['email-templates'] = lib;
+    adminPrivateContent['email-templates'] = lib;
+  });
   await page.evaluate(() => { window.settingsOpen && nav('view-settings'); window.settingsOpen('replies'); });
   await page.waitForTimeout(300);
   const m1 = await page.evaluate(() => Array.from(document.querySelectorAll('#replies-body .etpl-row-name')).map((e) => e.textContent.trim()));
-  ok(m1.length === 2, `the Manage page lists the library (${m1.length} rows)`);
+  ok(m1.length === 2, `the Manage page lists the whole library, scoped rows included (${m1.length} rows)`);
+  const scopeSub = await page.evaluate(() => Array.from(document.querySelectorAll('#replies-body .etpl-row-sub')).map((e) => e.textContent).join(' | '));
+  ok(/after the stay/i.test(scopeSub), `a scoped row names its scope in the sub (${scopeSub.slice(0, 60)}…)`);
   await page.evaluate(() => window.emailTplEditOpen('bal'));
+  const m1b = await page.evaluate(() => {
+    const sel = document.getElementById('etpl-ed-when');
+    return { has: !!sel, opts: sel ? sel.options.length : 0 };
+  });
+  ok(m1b.has && m1b.opts === 5, `the edit form carries the Shows-for select (${m1b.opts} options)`);
   await page.evaluate(() => {
     document.getElementById('etpl-ed-name').value = 'Renamed by the gate';
+    document.getElementById('etpl-ed-when').value = 'before';
     return window.emailTplEditSave('bal');
   });
   await page.waitForTimeout(300);
@@ -244,6 +320,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(m2.includes('Renamed by the gate'), 'an edit sticks and repaints');
   const editPost = posts.filter((p) => p.action === 'set' && p.key === 'email-templates').pop();
   ok(!!editPost && /Renamed by the gate/.test(editPost.value), 'the edit reaches the store');
+  const editWhen = editPost ? (JSON.parse(editPost.value).find((t) => t.id === 'bal') || {}).when : '';
+  ok(editWhen === 'before', `…and the chosen scope rides with it (${editWhen})`);
   await page.evaluate(() => { window.glassConfirm = async () => true; });
   await page.evaluate(() => window.emailTplDelete('quay'));
   await page.waitForTimeout(300);
@@ -302,11 +380,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return {
       count: names.length,
       hasBalance: names.some((n) => /A nudge about the balance/.test(n)),
+      // The enquiry-only and after-stay starters must NOT show on a pre-stay
+      // booking — the applicability rule applied to the starters themselves.
+      offScope: names.some((n) => /dates are free|dates are taken|After your stay|deposit is on its way back/.test(n)),
       balEnabled: !!balRow && !balRow.disabled,
       balResolved: !!balRow && /£\d/.test(balRow.textContent),
     };
   });
-  ok(s8.count >= 6 && s8.hasBalance, `an untouched library offers the starters (${s8.count} rows)`);
+  ok(s8.count >= 3 && s8.hasBalance && !s8.offScope, `an untouched library offers the starters that FIT this record (${s8.count} rows, none off-scope)`);
   ok(s8.balEnabled && s8.balResolved, 'the balance starter resolves through bookingDue and is insertable on an owing booking');
   // An EXPLICITLY EMPTIED library ('[]') stays empty — deleting the last
   // starter must not resurrect the set (absent and emptied are different facts).
