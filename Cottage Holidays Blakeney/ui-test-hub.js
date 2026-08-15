@@ -1131,7 +1131,10 @@ let approveWill409 = false;
   // with the hub above it.
   await page.click('[data-act="openBookingEmail"]');
   await page.waitForTimeout(400);
-  await page.click('[data-act="draftBookingReply"]');
+  // Re-aimed: the draft affordance is the ONE shared ✨ control now
+  // (draftComposeReply dispatches to the booking drafter on a booking) — the
+  // injected per-booking twin was the same action twice in one screen-height.
+  await page.click('[data-act="draftComposeReply"]');
   await page.waitForTimeout(200);
   const draft = await page.evaluate(() => (document.getElementById('enq-email-body') || {}).value || '');
   // £390: section B part-paid this booking £100 against its £440+£50, and the
