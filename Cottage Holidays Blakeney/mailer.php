@@ -1443,7 +1443,7 @@ function send_enquiry_ack($enq, $accountExists = false)
 // Build the branded reply email (subject + text + HTML) WITHOUT sending it, so the
 // same output can be shown as a live preview in the composer and then sent. Single
 // source of truth for both the preview endpoint and send_enquiry_reply_email().
-function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
+function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $actions = [])
 {
     $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
     $prop = function_exists('prop_display')
@@ -1470,9 +1470,19 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
 
     $subject = trim((string) $subject) ?: 'Your ' . $noun . ' — ' . $prop;
 
+    // Saved-reply buttons: $actions is the VALIDATED list from
+    // email_reply_actions() — [['id','label','url'], …] — never raw client ids.
+    // The text half carries each as its own label + URL line, the shape the
+    // confirmation's text half already uses for the same three links.
+    $actText = '';
+    foreach (is_array($actions) ? $actions : [] as $a) {
+        $actText .= "\n" . $a['label'] . ': ' . $a['url'] . "\n";
+    }
+
     $text =
         "Hello {$name},\n\n" .
         trim((string) $message) .
+        ($actText !== '' ? "\n" . $actText : '') .
         "\n\n---\nYour {$noun} details\n" .
         "Cottage: {$prop}\n" .
         'Dates: ' . email_date($e['check_in'] ?? '') . ' to ' . email_date($e['check_out'] ?? '') . "\n" .
@@ -1526,10 +1536,23 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
                 : '');
     }
 
+    // The buttons land between the owner's words and the quote — where the
+    // confirmation puts its own. First one filled (email_btn), the rest outlined
+    // (email_btn2): two filled buttons compete for one decision. Both take the
+    // HOUSE accent+ink pair — the per-cottage accent measured 3.30:1 under words
+    // on the enquiry nudges, which is why buttons never wear it.
+    $actBtns = '';
+    $actFirst = true;
+    foreach (is_array($actions) ? $actions : [] as $a) {
+        $actBtns .= $actFirst ? email_btn($a['url'], $a['label']) : email_btn2($a['url'], $a['label']);
+        $actFirst = false;
+    }
+
     $inner =
         email_h('About your ' . $noun, $accent) .
         email_p('Hello ' . email_esc($name) . ',') .
         email_p($msgHtml) .
+        $actBtns .
         $quote .
         email_p('<strong style="color:#2A2622;">Your ' . $noun . ' details</strong>', true) .
         email_rows($dRows) .
@@ -1541,14 +1564,117 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
 // Send the branded reply email (owner writes the message; the guest's details
 // ride along underneath). Builds via build_enquiry_reply_email() so the sent
 // email is byte-identical to the composer preview.
-function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $attachments = [])
+function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $attachments = [], $actions = [])
 {
     $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
     if (empty($e['email'])) {
         return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
     }
-    $m = build_enquiry_reply_email($e, $subject, $message, $ctx);
+    $m = build_enquiry_reply_email($e, $subject, $message, $ctx, $actions);
     return smtp_send($m['email'], $m['name'], $m['subject'], $m['text'], $m['html'], is_array($attachments) ? $attachments : []);
+}
+
+// ---- Saved-reply buttons ---------------------------------------------------
+// The three buttons a manual reply may carry: pay / invoice / register. Each
+// inherits the CONFIRMATION email's own condition for the same link (the block
+// in send_confirmation_email) — reused, not re-decided, so a reply and a system
+// email can never disagree about whether a guest can pay. PURE by design: the
+// endpoint resolves the live facts (email_reply_facts) and this only decides,
+// which is what lets test-payrail drive the whole matrix with no database.
+// Returns the validated buttons in the order asked, plus every refusal WITH its
+// sentence — a button the owner attached must never be dropped in silence.
+function email_reply_actions($ctx, $facts, $requested)
+{
+    $labels = [
+        'pay' => 'Pay the balance',
+        'invoice' => 'View your invoice',
+        'register' => 'Add your guest details',
+    ];
+    $ok = [];
+    $refused = [];
+    $seen = [];
+    foreach (is_array($requested) ? $requested : [] as $id) {
+        $id = (string) $id;
+        if (isset($seen[$id])) {
+            continue;
+        }
+        $seen[$id] = true;
+        if (!isset($labels[$id])) {
+            $refused[] = ['id' => $id, 'label' => $id, 'why' => 'Unknown button.'];
+            continue;
+        }
+        $why = '';
+        if ($ctx !== 'booking') {
+            $why = 'Buttons need a booking — this is still an enquiry.';
+        } elseif ($id === 'pay') {
+            if ((float) ($facts['due'] ?? 0) <= 0.001) {
+                $why = 'Nothing is owed — this stay is paid in full.';
+            } elseif (($facts['rail'] ?? 'card') !== 'card') {
+                $why = 'This guest pays by transfer — the invoice carries your bank details instead.';
+            } elseif (empty($facts['square'])) {
+                $why = 'Card payments are switched off.';
+            }
+        } elseif ($id === 'register') {
+            if (!empty($facts['regDone'])) {
+                $why = 'Guest details are already submitted — asking again would read as a mistake.';
+            } elseif (!empty($facts['stayOver'])) {
+                $why = 'The stay is over.';
+            }
+        }
+        // invoice: every booking has one, and off the card rail it is the page
+        // that carries the bank details — no further condition.
+        if ($why === '') {
+            $url = (string) ($facts['urls'][$id] ?? '');
+            if ($url === '') {
+                $why = 'No link available for this booking.';
+            }
+        }
+        if ($why !== '') {
+            $refused[] = ['id' => $id, 'label' => $labels[$id], 'why' => $why];
+            continue;
+        }
+        $ok[] = ['id' => $id, 'label' => $labels[$id], 'url' => $facts['urls'][$id]];
+    }
+    return ['actions' => $ok, 'refused' => $refused];
+}
+
+// The facts email_reply_actions() decides on, resolved from a live booking row.
+// Impure on purpose — the ledger-backed balance, the register count and the
+// signed URLs — so the decision above stays pure. Degrades safe: an unreadable
+// register counts as NOT submitted (a second ask is the smaller harm), and an
+// unreadable balance as nothing owed (the pay button stands down rather than
+// asking for money nothing can verify).
+function email_reply_facts($b)
+{
+    $id = (int) ($b['id'] ?? 0);
+    $due = 0.0;
+    try {
+        if (function_exists('booking_amount_due')) {
+            $due = (float) (booking_amount_due($b, 'balance')['due'] ?? 0);
+        }
+    } catch (\Throwable $e) {
+    }
+    $regDone = false;
+    try {
+        $s = db()->prepare('SELECT COUNT(*) FROM guest_registrations WHERE booking_id = ?');
+        $s->execute([$id]);
+        $regDone = (int) $s->fetchColumn() > 0;
+    } catch (\Throwable $e) {
+    }
+    return [
+        'due' => $due,
+        'rail' => payment_rail($b),
+        'square' => function_exists('square_enabled') && square_enabled() && function_exists('pay_token'),
+        'regDone' => $regDone,
+        'stayOver' => !empty($b['check_out']) && (string) $b['check_out'] < date('Y-m-d'),
+        'urls' => $id > 0
+            ? [
+                'pay' => site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id,
+                'invoice' => site_base_url() . 'invoice.php?b=' . $id . '&token=' . invoice_token($id),
+                'register' => site_base_url() . 'guest-details.php?b=' . $id . '&token=' . guest_reg_token($id),
+            ]
+            : [],
+    ];
 }
 
 // Validate + normalise attachments from a JSON email_guest payload (admin-only)

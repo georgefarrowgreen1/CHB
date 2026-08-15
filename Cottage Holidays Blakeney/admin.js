@@ -308,6 +308,7 @@ function cmdkRegistry() {
         { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
         { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check backup diagnostics updates migrations database storage', sec: 'diagnostics' },
         { id: 'search-learning', label: 'Search learning', sub: "Teach the assistant & see what it's learned", kw: 'search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand', sec: 'search-learning' },
+        { id: 'replies', label: 'Saved replies', sub: 'Reply templates & the buttons they carry', kw: 'saved replies templates email canned reply library snippets compose', sec: 'replies' },
     ];
 }
 // The navigation thunk for a registry entry — a Manage section opens via
@@ -11582,6 +11583,7 @@ const SETTINGS_TITLES = {
     'follow-ups': 'Follow-up emails',
     'search-learning': 'Search learning',
     pricing: 'Pricing',
+    replies: 'Saved replies',
 };
 // Open the separate staging sandbox (where all testing now happens) in a new tab.
 const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
@@ -11736,6 +11738,7 @@ function settingsRenderSection(section) {
     else if (section === 'seasongrid') renderSeasonGrid();
     else if (section === 'search-learning') renderSearchLearning();
     else if (section === 'pricing') renderPricing();
+    else if (section === 'replies') renderSavedReplies();
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
@@ -24824,6 +24827,458 @@ async function draftEnquiryReply() {
     body.focus();
     try { body.setSelectionRange(0, 0); body.scrollTop = 0; } catch (e) {}
 }
+// ============================================================
+// Saved replies — the reply library in the shared composer.
+// A template is ONE PARAGRAPH + the buttons it carries, never a whole letter:
+// build_enquiry_reply_email writes the greeting above the owner's words and
+// the details/quote/sign-off below. Tokens resolve at INSERT via the
+// derivations the hub trusts (bookingDue/priceBreakdown/fmtStayRange), so the
+// server never sees a placeholder. Stored under the INTERNAL key
+// email-templates; read adminPrivateContent-first (the bacs-details rule).
+// ============================================================
+const EMAIL_TPL_KEY = 'email-templates';
+const EMAIL_TPL_MAX = 30;
+const EMAIL_TPL_ACTS = [
+    { id: 'pay', label: 'Pay the balance', what: 'Opens the pay screen with the balance ready' },
+    { id: 'invoice', label: 'View your invoice', what: 'The document they file — it carries your bank details off the card rail' },
+    { id: 'register', label: 'Add your guest details', what: 'The register everyone staying who is 16 or over must be on' },
+];
+let __etplChosen = []; // action ids attached to the email being written
+let __etplOpen = false; // the picker sheet
+let __etplPick = false; // the add-a-button list
+let __etplUndo = null; // { body, chosen, label } — one level, per compose
+let __etplQ = '';
+function emailTplActById(id) {
+    return EMAIL_TPL_ACTS.find((a) => a.id === id) || null;
+}
+// Sanitised: non-JSON / junk rows degrade to fewer templates, never a crash.
+function emailTplList() {
+    const raw = adminPrivateContent[EMAIL_TPL_KEY] ?? siteContent[EMAIL_TPL_KEY] ?? '';
+    let parsed = null;
+    try {
+        parsed = typeof raw === 'string' && raw ? JSON.parse(raw) : Array.isArray(raw) ? raw : null;
+    } catch (e) {}
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+        .filter((t) => t && typeof t === 'object' && typeof t.body === 'string' && t.body.trim())
+        .slice(0, EMAIL_TPL_MAX)
+        .map((t) => ({
+            id: String(t.id || '').slice(0, 24) || 't' + Math.random().toString(36).slice(2, 8),
+            name: String(t.name || '').slice(0, 60) || 'Saved reply',
+            body: String(t.body).slice(0, 2000),
+            actions: (Array.isArray(t.actions) ? t.actions : []).map(String).filter((id) => emailTplActById(id)).slice(0, 3),
+            uses: Math.max(0, parseInt(String(t.uses), 10) || 0),
+        }));
+}
+// Mirror-first (the chbPinStore rule): the picker re-reads the store on the
+// very next render, so both mirrors must be true before the network half runs.
+function emailTplStore(list, quiet) {
+    const json = JSON.stringify(list.slice(0, EMAIL_TPL_MAX));
+    siteContent[EMAIL_TPL_KEY] = json;
+    adminPrivateContent[EMAIL_TPL_KEY] = json;
+    const p = saveContent(EMAIL_TPL_KEY, json);
+    if (quiet) p.catch(() => {}); // a lost uses++ bump is not worth an alert
+    return p;
+}
+// The facts tokens + guards read — money via bookingDue / priceBreakdown,
+// never a second sum.
+function emailTplFacts() {
+    const t = __composeTarget;
+    if (!t) return null;
+    if (t.kind === 'booking') {
+        const b = t.b;
+        const pk = t.propKey;
+        let gt = null;
+        try {
+            gt = bookingDue(pk, b);
+        } catch (e) {}
+        return {
+            booking: true,
+            name: b.name || '',
+            cottage: (propertyMeta[pk] && propertyMeta[pk].name) || pk,
+            checkIn: b.checkIn,
+            checkOut: b.checkOut,
+            party: b.guests || '',
+            total: gt ? gt.total : null,
+            balance: gt && gt.balance > 0.001 ? gt.balance : null,
+            rail: bookingOwnerArranged(b) ? 'bacs' : 'card',
+            regDone: !!b.regSubmitted,
+            stayOver: hasCheckedOut(b),
+        };
+    }
+    const enq = t.enq;
+    const pk = enq.propKey;
+    let total = null;
+    try {
+        const p = priceBreakdown(pk, enq.adults, enq.children, enq.checkIn, enq.checkOut);
+        if (p && p.total) total = p.total;
+    } catch (e) {}
+    return {
+        booking: false,
+        name: enq.name || '',
+        cottage: (propertyMeta[pk] && propertyMeta[pk].name) || pk,
+        checkIn: enq.checkIn,
+        checkOut: enq.checkOut,
+        party: enq.guests || '',
+        total,
+        balance: null,
+        rail: 'card',
+        regDone: false,
+        stayOver: false,
+    };
+}
+// {{token}} → this record's facts. Unresolvable = MISSING, never a fallback —
+// "£0.00" in an inbox is a wrong figure; a named refusal costs nothing.
+function emailTplResolve(body, f) {
+    const missing = [];
+    const map = {
+        first: (f.name || '').trim().split(/\s+/)[0] || '',
+        cottage: f.cottage || '',
+        dates: f.checkIn && f.checkOut ? fmtStayRange(f.checkIn, f.checkOut) : '',
+        nights: f.checkIn && f.checkOut ? String(nightsBetween(f.checkIn, f.checkOut)) : '',
+        party: f.party || '',
+        total: f.total != null ? gbp(f.total) : '',
+        balance: f.balance != null ? gbp(f.balance) : '',
+    };
+    const text = String(body).replace(/\{\{(\w+)\}\}/g, (m, k) => {
+        const v = map[k];
+        if (v == null || v === '') {
+            missing.push('{{' + k + '}}');
+            return m;
+        }
+        return v;
+    });
+    return { text, missing: [...new Set(missing)] };
+}
+// The CLIENT half of the guards — UX only; email_reply_actions() re-derives
+// all of them at preview AND send, so this can never make a bad button send.
+// Square's state is left to the server on purpose (it lives in config).
+function etplActGuard(id, f) {
+    if (!f || !f.booking) return 'Buttons need a booking — available once this enquiry is approved.';
+    if (id === 'pay') {
+        if (f.balance == null) return 'Nothing is owed — this stay is paid in full.';
+        if (f.rail !== 'card') return 'This guest pays by transfer — the invoice carries your bank details instead.';
+    }
+    if (id === 'register') {
+        if (f.regDone) return 'Guest details are already submitted — asking again would read as a mistake.';
+        if (f.stayOver) return 'The stay is over.';
+    }
+    return '';
+}
+// Inject the chrome ONCE (index.html untouched — delegated data-acts cover
+// injected markup), then reset per-compose state and render.
+function emailTplSetup() {
+    const draftBtn = document.getElementById('enq-email-draft');
+    if (draftBtn && !document.getElementById('etpl-toggle')) {
+        draftBtn.insertAdjacentHTML(
+            'beforebegin',
+            `<button type="button" class="btn-sm btn-edit" id="etpl-toggle" data-act="emailTplToggle" title="Insert one of your saved replies">Saved replies</button>`,
+        );
+    }
+    const bodyEl = document.getElementById('enq-email-body');
+    if (bodyEl && !document.getElementById('etpl-panel')) {
+        bodyEl.insertAdjacentHTML('afterend', '<div id="etpl-panel" hidden></div><div id="etpl-acts"></div>');
+    }
+    __etplChosen = [];
+    __etplOpen = false;
+    __etplPick = false;
+    __etplUndo = null;
+    __etplQ = '';
+    etplRender();
+}
+function emailTplToggle() {
+    __etplOpen = !__etplOpen;
+    __etplPick = false;
+    etplRender();
+    if (__etplOpen) {
+        const q = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
+        if (q) setTimeout(() => q.focus(), 30);
+    }
+}
+function etplRender() {
+    const panel = document.getElementById('etpl-panel');
+    const actsEl = document.getElementById('etpl-acts');
+    if (!panel || !actsEl) return;
+    const f = emailTplFacts();
+    const toggle = document.getElementById('etpl-toggle');
+    if (toggle) toggle.classList.toggle('is-on', __etplOpen);
+    // ---- the picker sheet ----
+    panel.hidden = !__etplOpen;
+    if (__etplOpen && f) {
+        const ql = __etplQ.trim().toLowerCase();
+        const list = emailTplList()
+            .filter((t) => !ql || (t.name + ' ' + t.body).toLowerCase().includes(ql))
+            .sort((a, b) => b.uses - a.uses);
+        const rows = list
+            .map((t) => {
+                const res = emailTplResolve(t.body, f);
+                const off = res.missing.length > 0;
+                const snippet = res.text.replace(/\s+/g, ' ').slice(0, 110);
+                const chips = t.actions
+                    .map((id) => {
+                        const a = emailTplActById(id);
+                        const why = etplActGuard(id, f);
+                        return `<span class="etpl-carry${why ? ' is-off' : ''}">${escapeHtml(a.label)}</span>`;
+                    })
+                    .join('');
+                return `<button type="button" class="etpl-row" ${chbAttrs('emailTplInsert', t.id)}${off ? ' disabled' : ''}>
+                    <span class="etpl-row-name">${escapeHtml(t.name)}${t.uses >= 3 ? `<span class="etpl-uses">used ${t.uses}×</span>` : ''}</span>
+                    <span class="etpl-row-sub">${escapeHtml(snippet)}${res.text.length > 110 ? '…' : ''}</span>
+                    ${chips ? `<span class="etpl-carryrow">${chips}</span>` : ''}
+                    ${off ? `<span class="etpl-row-no">${escapeHtml(res.missing.join(', '))} has nothing to resolve to here.</span>` : ''}
+                </button>`;
+            })
+            .join('');
+        panel.innerHTML = `
+            <input type="search" class="input-glass etpl-q" id="etpl-q" placeholder="Search your saved replies…" value="${escapeHtml(__etplQ)}" data-act-input="emailTplSearch" aria-label="Search your saved replies">
+            ${rows || `<p class="etpl-none">${ql ? 'Nothing matches “' + escapeHtml(__etplQ) + '”.' : 'Nothing saved yet — write a reply below, then “Save as a template”.'}</p>`}`;
+    }
+    // ---- the buttons row ----
+    __etplChosen = __etplChosen.filter((id) => !etplActGuard(id, f));
+    const chips = __etplChosen
+        .map(
+            (id, i) => `<span class="etpl-chip${i === 0 ? ' is-primary' : ''}">${escapeHtml(emailTplActById(id).label)}
+                <span class="etpl-chip-rank">${i === 0 ? 'Primary' : 'Secondary'}</span>
+                <button type="button" class="etpl-chip-x" ${chbAttrs('emailTplRemove', id)} aria-label="Remove the ${escapeHtml(emailTplActById(id).label)} button">✕</button></span>`,
+        )
+        .join('');
+    let pick = '';
+    if (__etplPick && f && f.booking) {
+        const on = EMAIL_TPL_ACTS.filter((a) => !etplActGuard(a.id, f) && !__etplChosen.includes(a.id));
+        const off = EMAIL_TPL_ACTS.filter((a) => etplActGuard(a.id, f));
+        pick = `<div class="etpl-pick">
+            ${on.map((a) => `<button type="button" class="etpl-pick-row" ${chbAttrs('emailTplAdd', a.id)}><span class="etpl-pick-name">${escapeHtml(a.label)}</span><span class="etpl-pick-sub">${escapeHtml(a.what)}</span></button>`).join('')}
+            ${on.length ? '' : `<p class="etpl-none">Every button that works for this guest is already attached.</p>`}
+            ${off.length ? `<p class="etpl-offcap">Not available here</p>${off.map((a) => `<p class="etpl-offrow"><strong>${escapeHtml(a.label)}</strong> — ${escapeHtml(etplActGuard(a.id, f))}</p>`).join('')}` : ''}
+        </div>`;
+    }
+    const undoBit = __etplUndo
+        ? `<button type="button" class="etpl-undo" data-act="emailTplUndo">Undo “${escapeHtml(__etplUndo.label)}”</button>`
+        : '';
+    actsEl.innerHTML =
+        f && f.booking
+            ? `<div class="etpl-actbar">
+                <span class="etpl-actlab">Buttons in this email</span>
+                ${undoBit}
+                <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : '+ Add a button'}</button>
+                <button type="button" class="btn-sm btn-edit" data-act="emailTplSaveAs" title="Keep this message + its buttons for next time">Save as a template</button>
+            </div>
+            ${__etplChosen.length ? `<div class="etpl-chips">${chips}</div>` : ''}
+            ${pick}`
+            : `<div class="etpl-actbar">
+                <span class="etpl-actlab">Buttons need a booking — available once this enquiry is approved.</span>
+                ${undoBit}
+                <button type="button" class="btn-sm btn-edit" data-act="emailTplSaveAs">Save as a template</button>
+            </div>`;
+}
+function emailTplSearch(el) {
+    __etplQ = /** @type {HTMLInputElement} */ (el).value;
+    // Repaint only the rows — rebuilding the input mid-keystroke is the
+    // bank-details trap, so stash and restore the caret.
+    const q = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
+    const at = q ? q.selectionStart : null;
+    etplRender();
+    const q2 = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));
+    if (q2) {
+        q2.focus();
+        if (at != null) {
+            try {
+                q2.setSelectionRange(at, at);
+            } catch (e) {}
+        }
+    }
+}
+function emailTplInsert(id) {
+    const f = emailTplFacts();
+    const t = emailTplList().find((x) => x.id === id);
+    if (!t || !f) return;
+    const res = emailTplResolve(t.body, f);
+    if (res.missing.length) return; // the row is disabled; belt for a stale render
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (!ta) return;
+    __etplUndo = { body: ta.value, chosen: __etplChosen.slice(), label: t.name };
+    const at = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
+    const pre = ta.value.slice(0, at).replace(/\s+$/, '');
+    const post = ta.value.slice(at).replace(/^\s+/, '');
+    ta.value = [pre, res.text, post].filter(Boolean).join('\n\n');
+    // The template's own buttons ride along — minus any this record refuses.
+    t.actions.forEach((aid) => {
+        if (!etplActGuard(aid, f) && !__etplChosen.includes(aid)) __etplChosen.push(aid);
+    });
+    const all = emailTplList().map((x) => (x.id === id ? { ...x, uses: x.uses + 1 } : x));
+    emailTplStore(all, true);
+    __etplOpen = false;
+    etplRender();
+    ta.focus();
+}
+function emailTplUndo() {
+    if (!__etplUndo) return;
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (ta) ta.value = __etplUndo.body;
+    __etplChosen = __etplUndo.chosen.slice();
+    __etplUndo = null;
+    etplRender();
+}
+function emailTplPickToggle() {
+    __etplPick = !__etplPick;
+    __etplOpen = false;
+    etplRender();
+}
+function emailTplAdd(id) {
+    const f = emailTplFacts();
+    if (!f || etplActGuard(id, f) || __etplChosen.includes(id)) return;
+    __etplUndo = { body: (/** @type {HTMLTextAreaElement} */ (document.getElementById('enq-email-body'))).value, chosen: __etplChosen.slice(), label: emailTplActById(id).label };
+    __etplChosen.push(id);
+    __etplPick = false;
+    etplRender();
+}
+function emailTplRemove(id) {
+    __etplChosen = __etplChosen.filter((x) => x !== id);
+    etplRender();
+}
+async function emailTplSaveAs() {
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    const f = emailTplFacts();
+    const v = ta ? ta.value.trim() : '';
+    if (!v) {
+        glassAlert('Write a message first — a template is the paragraph you would send.');
+        return;
+    }
+    // The composer already writes "Hello <first>," — a greeting here says
+    // hello twice (the drafter's own shipped defect), so it is refused.
+    if (/^\s*(hi|hello|hey|dear|good (morning|afternoon|evening))\b/i.test(v)) {
+        glassAlert(`Not saved — it opens with a greeting. The email already says “Hello ${escapeHtml(((f && f.name) || 'the guest').trim().split(/\s+/)[0])},” above your words, so this template would say hello twice. Start at the first real sentence.`);
+        return;
+    }
+    // This guest's facts go back to tokens (longest value first, or a value
+    // inside another would half-replace).
+    let body = v;
+    if (f) {
+        const pairs = [
+            [f.checkIn && f.checkOut ? fmtStayRange(f.checkIn, f.checkOut) : '', '{{dates}}'],
+            [f.cottage, '{{cottage}}'],
+            [f.balance != null ? gbp(f.balance) : '', '{{balance}}'],
+            [f.total != null ? gbp(f.total) : '', '{{total}}'],
+            [(f.name || '').trim().split(/\s+/)[0], '{{first}}'],
+        ].filter((p) => p[0] && String(p[0]).length >= 3);
+        pairs.sort((a, b) => String(b[0]).length - String(a[0]).length);
+        pairs.forEach(([val, tok]) => {
+            body = body.split(String(val)).join(tok);
+        });
+    }
+    const name = (v.split(/[.\n]/)[0] || '').trim().slice(0, 40) || 'Saved reply';
+    const prev = siteContent[EMAIL_TPL_KEY];
+    const list = emailTplList();
+    list.unshift({
+        id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name,
+        body: body.slice(0, 2000),
+        actions: __etplChosen.slice(0, 3),
+        uses: 0,
+    });
+    try {
+        await emailTplStore(list);
+        toast(`Saved “${name}” to your library — it's in Saved replies now, and editable under Manage.`);
+        etplRender();
+    } catch (e) {
+        // saveContent already told the owner. Put the mirrors back so a picker
+        // opened next does not show a template the server never accepted —
+        // mirror-first must not outlive a failed EXPLICIT save.
+        siteContent[EMAIL_TPL_KEY] = prev;
+        adminPrivateContent[EMAIL_TPL_KEY] = prev;
+    }
+}
+
+// ---- Manage → Saved replies: the library, editable ----
+// The composer fills it; this page is where a bad save stops being permanent.
+// No guards here: CARRYING a button is authorship — whether it goes on a given
+// email is decided per guest at compose, and again by the server at send.
+let __etplEditId = null;
+function renderSavedReplies() {
+    const host = document.getElementById('replies-body');
+    if (!host) return;
+    const list = emailTplList();
+    const actNames = (t) => (t.actions.length ? t.actions.map((id) => emailTplActById(id).label).join(', ') : 'no buttons');
+    const rows = list
+        .map((t) => {
+            if (__etplEditId === t.id) {
+                const boxes = EMAIL_TPL_ACTS.map(
+                    (a) => `<label class="etpl-cbx"><input type="checkbox" data-actid="${a.id}"${t.actions.includes(a.id) ? ' checked' : ''}> ${escapeHtml(a.label)}</label>`,
+                ).join('');
+                return `<div class="etpl-mrow is-edit">
+                    <label class="modal-label" for="etpl-ed-name">Name</label>
+                    <input type="text" class="input-glass" id="etpl-ed-name" maxlength="60" value="${escapeHtml(t.name)}">
+                    <label class="modal-label" for="etpl-ed-body">The paragraph — tokens like {{cottage}}, {{dates}} and {{balance}} fill in per guest</label>
+                    <textarea class="input-glass" id="etpl-ed-body" rows="4" maxlength="2000">${escapeHtml(t.body)}</textarea>
+                    <span class="modal-label">Buttons it carries</span>
+                    <div class="etpl-cbxrow" id="etpl-ed-acts">${boxes}</div>
+                    <div class="etpl-mbtns">
+                        <button type="button" class="btn-sm btn-edit" ${chbAttrs('emailTplEditSave', t.id)}>Save</button>
+                        <button type="button" class="btn-sm btn-edit" data-act="emailTplEditCancel">Cancel</button>
+                    </div>
+                </div>`;
+            }
+            return `<div class="etpl-mrow">
+                <span class="etpl-mmain"><span class="etpl-row-name">${escapeHtml(t.name)}</span>
+                <span class="etpl-row-sub">${t.uses ? `used ${t.uses}×` : 'never used'} · ${escapeHtml(actNames(t))}</span></span>
+                <span class="etpl-mbtns">
+                    <button type="button" class="btn-sm btn-edit" ${chbAttrs('emailTplEditOpen', t.id)}>Edit</button>
+                    <button type="button" class="btn-sm btn-edit etpl-del" ${chbAttrs('emailTplDelete', t.id)}>Delete</button>
+                </span>
+            </div>`;
+        })
+        .join('');
+    host.innerHTML = `
+        <p class="etpl-mcap">${list.length ? `${list.length} saved ${list.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers these, most-used first.` : 'Nothing saved yet. Write a reply in the email composer and tap "Save as a template" — the library fills itself.'}</p>
+        ${rows}`;
+}
+function emailTplEditOpen(id) {
+    __etplEditId = id;
+    renderSavedReplies();
+}
+function emailTplEditCancel() {
+    __etplEditId = null;
+    renderSavedReplies();
+}
+async function emailTplEditSave(id) {
+    const name = (/** @type {HTMLInputElement|null} */ (document.getElementById('etpl-ed-name')) || { value: '' }).value.trim();
+    const body = (/** @type {HTMLTextAreaElement|null} */ (document.getElementById('etpl-ed-body')) || { value: '' }).value.trim();
+    if (!name || !body) {
+        glassAlert('A saved reply needs a name and a paragraph.');
+        return;
+    }
+    const acts = Array.from(document.querySelectorAll('#etpl-ed-acts input[type=checkbox]'))
+        .filter((c) => /** @type {HTMLInputElement} */ (c).checked)
+        .map((c) => String(/** @type {HTMLElement} */ (c).dataset.actid));
+    const prev = siteContent[EMAIL_TPL_KEY];
+    const list = emailTplList().map((t) => (t.id === id ? { ...t, name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3) } : t));
+    try {
+        await emailTplStore(list);
+        __etplEditId = null;
+        renderSavedReplies();
+        toast(`“${name}” updated.`);
+    } catch (e) {
+        siteContent[EMAIL_TPL_KEY] = prev;
+        adminPrivateContent[EMAIL_TPL_KEY] = prev;
+    }
+}
+async function emailTplDelete(id) {
+    const t = emailTplList().find((x) => x.id === id);
+    if (!t) return;
+    const okGo = await glassConfirm(`Delete “${t.name}”? The composer stops offering it; emails already sent are untouched.`);
+    if (!okGo) return;
+    const prev = siteContent[EMAIL_TPL_KEY];
+    const list = emailTplList().filter((x) => x.id !== id);
+    try {
+        await emailTplStore(list);
+        renderSavedReplies();
+        toast(`“${t.name}” deleted.`);
+    } catch (e) {
+        siteContent[EMAIL_TPL_KEY] = prev;
+        adminPrivateContent[EMAIL_TPL_KEY] = prev;
+    }
+}
+
 // One shared composer (#enq-email-modal). __composeTarget carries which kind of
 // record we're emailing so sendEnquiryEmail() posts to the right endpoint.
 let __composeTarget = null;
@@ -24878,6 +25333,7 @@ function openEnquiryEmail(enqId) {
     }
     const m = document.getElementById('enq-email-modal');
     if (m) m.classList.add('open');
+    emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
 }
 function closeEnquiryEmailModal() {
@@ -24886,6 +25342,10 @@ function closeEnquiryEmailModal() {
     backToComposeEdit(); // reset to the compose view for next time
     __composeTarget = null;
     __composeAttachments = [];
+    __etplChosen = [];
+    __etplUndo = null;
+    __etplOpen = false;
+    __etplPick = false;
     renderComposeAttachChips();
 }
 // Toggle the composer back from the preview to the editing view.
@@ -24926,6 +25386,9 @@ async function previewComposedEmail() {
             id: rec.dbId,
             subject: subject.trim(),
             message: body.trim(),
+            // The preview must show the buttons or it is not the email that
+            // goes out; the server validates them against the live state.
+            ...(t.kind === 'booking' && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
         });
         const frame = document.getElementById('enq-email-preview-frame');
         if (frame)
@@ -25031,6 +25494,7 @@ async function sendEnquiryEmail() {
             subject: subject.trim(),
             message: body.trim(),
             attachments: __composeAttachments.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
+            ...(t.kind === 'booking' && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
         });
         closeEnquiryEmailModal();
         toast(`Email sent to ${rec.name || rec.email}.`);
@@ -25109,6 +25573,7 @@ function openBookingEmail(bookingId) {
     }
     const m = document.getElementById('enq-email-modal');
     if (m) m.classList.add('open');
+    emailTplSetup();
     if (body) setTimeout(() => body.focus(), 150);
 }
 

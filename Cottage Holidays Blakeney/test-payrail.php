@@ -1999,6 +1999,74 @@ if (preg_match_all('/email_shell\(\s*([^,]{0,200}?),/s', $mlE, $mm)) {
 }
 chk('no preheader carries an HTML entity (' . count($preBad) . ' found)', $preBad === []);
 
+// ---------------------------------------------------------------------------
+//  SAVED-REPLY BUTTONS — the guard matrix, both ways.
+//  email_reply_actions() is PURE (the endpoint resolves the facts), which is
+//  what lets every guard be driven here with no database. Each condition is the
+//  confirmation email's own for the same link — asserting the matrix here keeps
+//  a manual reply and the system emails from ever disagreeing about whether a
+//  guest can pay.
+// ---------------------------------------------------------------------------
+echo "\n== saved-reply buttons ==\n";
+$erFacts = function ($over = []) {
+    return array_merge([
+        'due' => 250.0,
+        'rail' => 'card',
+        'square' => true,
+        'regDone' => false,
+        'stayOver' => false,
+        'urls' => ['pay' => 'https://x/p', 'invoice' => 'https://x/i', 'register' => 'https://x/r'],
+    ], $over);
+};
+$r = email_reply_actions('booking', $erFacts(), ['pay']);
+chk('pay offered on a card booking with money owing', count($r['actions']) === 1 && $r['refused'] === []);
+chk('…with the exact label + url', $r['actions'][0]['label'] === 'Pay the balance' && $r['actions'][0]['url'] === 'https://x/p');
+$r = email_reply_actions('booking', $erFacts(['rail' => 'bacs']), ['pay']);
+chk('pay REFUSED off the card rail', $r['actions'] === [] && count($r['refused']) === 1);
+chk('…and the refusal names the transfer + the invoice route', strpos($r['refused'][0]['why'], 'transfer') !== false && strpos($r['refused'][0]['why'], 'invoice') !== false);
+$r = email_reply_actions('booking', $erFacts(['due' => 0]), ['pay']);
+chk('pay REFUSED when nothing is owed', $r['actions'] === [] && strpos($r['refused'][0]['why'], 'Nothing is owed') !== false);
+$r = email_reply_actions('booking', $erFacts(['square' => false]), ['pay']);
+chk('pay REFUSED with Square off', $r['actions'] === [] && strpos($r['refused'][0]['why'], 'switched off') !== false);
+$r = email_reply_actions('booking', $erFacts(['rail' => 'bacs']), ['invoice']);
+chk('invoice OFFERED off the card rail (it carries the bank details)', count($r['actions']) === 1 && $r['refused'] === []);
+$r = email_reply_actions('booking', $erFacts(), ['register']);
+chk('register offered while nothing is submitted', count($r['actions']) === 1);
+$r = email_reply_actions('booking', $erFacts(['regDone' => true]), ['register']);
+chk('register REFUSED once submitted', $r['actions'] === [] && strpos($r['refused'][0]['why'], 'already submitted') !== false);
+$r = email_reply_actions('booking', $erFacts(['stayOver' => true]), ['register']);
+chk('register REFUSED after the stay', $r['actions'] === [] && strpos($r['refused'][0]['why'], 'over') !== false);
+$r = email_reply_actions('enquiry', $erFacts(), ['pay', 'invoice', 'register']);
+chk('an ENQUIRY refuses all three (no booking behind it)', $r['actions'] === [] && count($r['refused']) === 3);
+chk('…each naming the enquiry as the reason', strpos($r['refused'][0]['why'], 'still an enquiry') !== false);
+$r = email_reply_actions('booking', $erFacts(), ['sendmoney']);
+chk('an unknown id is a named refusal, never silently dropped', $r['actions'] === [] && $r['refused'][0]['why'] === 'Unknown button.');
+$r = email_reply_actions('booking', $erFacts(), ['pay', 'pay', 'invoice']);
+chk('a duplicate collapses to one button', count($r['actions']) === 2);
+$r = email_reply_actions('booking', $erFacts(), ['invoice', 'pay']);
+chk('the owner\'s order is preserved (first attached = the filled button)', $r['actions'][0]['id'] === 'invoice' && $r['actions'][1]['id'] === 'pay');
+$r = email_reply_actions('booking', $erFacts(['urls' => []]), ['pay']);
+chk('a missing url is a refusal, never an empty href', $r['actions'] === [] && strpos($r['refused'][0]['why'], 'No link') !== false);
+
+//  THE WIRING, not just the helper (the helper-tested-alone trap): both
+//  bookings.php blocks must validate through the resolver and pass the
+//  VALIDATED list — never raw client ids — into the builder/sender, and
+//  enquiries.php must refuse any buttons outright. Structural scans (function
+//  names + argument shapes), so a comment cannot satisfy them.
+$bkSrc = (string) file_get_contents(__DIR__ . '/bookings.php');
+$eqSrc = (string) file_get_contents(__DIR__ . '/enquiries.php');
+chk('bookings.php validates buttons in BOTH preview and send',
+    substr_count($bkSrc, "email_reply_actions('booking', email_reply_facts(\$b)") === 2);
+chk('…and passes only the VALIDATED list through',
+    substr_count($bkSrc, "\$acts['actions']") === 2);
+chk('…and a refusal is a 409 with the button named',
+    substr_count($bkSrc, "json_out(['error' => 'Can\\'t attach") === 2);
+chk('enquiries.php refuses buttons in BOTH preview and send',
+    substr_count($eqSrc, "json_out(['error' => 'Buttons need a booking") === 2);
+chk('send_enquiry_reply_email hands the actions to the builder',
+    preg_match('/function send_enquiry_reply_email\([^)]*\$actions = \[\]/', $mlE) === 1
+        && strpos($mlE, "build_enquiry_reply_email(\$e, \$subject, \$message, \$ctx, \$actions)") !== false);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
