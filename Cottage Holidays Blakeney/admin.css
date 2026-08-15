@@ -5678,6 +5678,7 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .etpl-mrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--glass-border); }
 .etpl-mrow.is-edit { display: block; }
 .etpl-mmain { min-width: 0; }
+.etpl-mnew { margin-top: 12px; }
 .etpl-mbtns { display: flex; gap: 6px; flex-shrink: 0; margin-top: 8px; }
 .etpl-mrow:not(.is-edit) .etpl-mbtns { margin-top: 0; }
 .etpl-del { color: var(--danger-text); }

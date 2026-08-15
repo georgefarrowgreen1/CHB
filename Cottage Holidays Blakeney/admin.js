@@ -25149,20 +25149,24 @@ function etplRender() {
     const undoBit = __etplUndo
         ? `<button type="button" class="etpl-undo" data-act="emailTplUndo">Undo “${escapeHtml(__etplUndo.label)}”</button>`
         : '';
+    // The composer WRITES the email; the library is authored under Manage.
+    // "Save as a template" used to sit here and was a third thing to read on
+    // the row that arms the buttons — and it asked, mid-message, a question
+    // about next time. Its greeting lint moved to the Manage editor (where a
+    // hand-written paragraph can open with a greeting just as easily), and
+    // "Write a new reply" there is the way in.
     actsEl.innerHTML =
         f && f.booking
             ? `<div class="etpl-actbar">
                 <span class="etpl-actlab">Buttons in this email</span>
                 ${undoBit}
                 <button type="button" class="btn-sm btn-edit" data-act="emailTplPickToggle">${__etplChosen.length ? '+ Add another' : '+ Add a button'}</button>
-                <button type="button" class="btn-sm btn-edit" data-act="emailTplSaveAs" title="Keep this message + its buttons for next time">Save as a template</button>
             </div>
             ${__etplChosen.length ? `<div class="etpl-chips">${chips}</div>` : ''}
             ${pick}`
             : `<div class="etpl-actbar">
                 <span class="etpl-actlab">Buttons need a booking — available once this enquiry is approved.</span>
                 ${undoBit}
-                <button type="button" class="btn-sm btn-edit" data-act="emailTplSaveAs">Save as a template</button>
             </div>`;
 }
 function emailTplSearch(el) {
@@ -25232,69 +25236,33 @@ function emailTplRemove(id) {
     __etplChosen = __etplChosen.filter((x) => x !== id);
     etplRender();
 }
-async function emailTplSaveAs() {
-    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
-    const f = emailTplFacts();
-    const v = ta ? ta.value.trim() : '';
-    if (!v) {
-        glassAlert('Write a message first — a template is the paragraph you would send.');
-        return;
-    }
-    // The composer already writes "Hello <first>," — a greeting here says
-    // hello twice (the drafter's own shipped defect), so it is refused.
-    if (/^\s*(hi|hello|hey|dear|good (morning|afternoon|evening))\b/i.test(v)) {
-        glassAlert(`Not saved — it opens with a greeting. The email already says “Hello ${escapeHtml(((f && f.name) || 'the guest').trim().split(/\s+/)[0])},” above your words, so this template would say hello twice. Start at the first real sentence.`);
-        return;
-    }
-    // This guest's facts go back to tokens (longest value first, or a value
-    // inside another would half-replace).
-    let body = v;
-    if (f) {
-        const pairs = [
-            [f.checkIn && f.checkOut ? fmtStayRange(f.checkIn, f.checkOut) : '', '{{dates}}'],
-            [f.cottage, '{{cottage}}'],
-            [f.balance != null ? gbp(f.balance) : '', '{{balance}}'],
-            [f.total != null ? gbp(f.total) : '', '{{total}}'],
-            [(f.name || '').trim().split(/\s+/)[0], '{{first}}'],
-        ].filter((p) => p[0] && String(p[0]).length >= 3);
-        pairs.sort((a, b) => String(b[0]).length - String(a[0]).length);
-        pairs.forEach(([val, tok]) => {
-            body = body.split(String(val)).join(tok);
-        });
-    }
-    const name = (v.split(/[.\n]/)[0] || '').trim().slice(0, 40) || 'Saved reply';
-    const prev = siteContent[EMAIL_TPL_KEY];
-    const list = emailTplList();
-    list.unshift({
-        id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        name,
-        body: body.slice(0, 2000),
-        actions: __etplChosen.slice(0, 3),
-        when: '', // every record until scoped under Manage — the tokens/buttons gate the rest
-        uses: 0,
-    });
-    try {
-        await emailTplStore(list);
-        toast(`Saved “${name}” to your library — it's in Saved replies now, and editable under Manage.`);
-        etplRender();
-    } catch (e) {
-        // saveContent already told the owner. Put the mirrors back so a picker
-        // opened next does not show a template the server never accepted —
-        // mirror-first must not outlive a failed EXPLICIT save.
-        siteContent[EMAIL_TPL_KEY] = prev;
-        adminPrivateContent[EMAIL_TPL_KEY] = prev;
-    }
-}
-
-// ---- Manage → Saved replies: the library, editable ----
-// The composer fills it; this page is where a bad save stops being permanent.
-// No guards here: CARRYING a button is authorship — whether it goes on a given
-// email is decided per guest at compose, and again by the server at send.
+// emailTplSaveAs is GONE with its button — see etplRender's note. The
+// greeting lint it carried lives on in emailTplEditSave, because a
+// hand-written paragraph opens with "Hi Rachel," just as readily.
+// ---- Manage → Saved replies: the library, WRITTEN and edited ----
+// This is the whole authoring surface now — the composer's "Save as a
+// template" is gone, so a way IN has to live here or the feature is one
+// nobody can add to (the mailboxTab defect: fully built, no button).
+// No button guards here: CARRYING a button is authorship — whether it goes on
+// a given email is decided per guest at compose, and again by the server.
 let __etplEditId = null;
+// A NEW reply is a pending row, not a stored one: emailTplList() drops any
+// entry with an empty body (correctly — that is what a junk row looks like),
+// so an unwritten template saved first would vanish on the next read. It
+// lives here until Save has a name and a paragraph to store.
+let __etplDraft = null;
+function emailTplNew() {
+    __etplDraft = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: '', body: '', actions: [], when: '', uses: 0 };
+    __etplEditId = __etplDraft.id;
+    renderSavedReplies();
+    const el = document.getElementById('etpl-ed-name');
+    if (el) setTimeout(() => el.focus(), 30);
+}
 function renderSavedReplies() {
     const host = document.getElementById('replies-body');
     if (!host) return;
-    const list = emailTplList();
+    const stored = emailTplList();
+    const list = __etplDraft ? [__etplDraft, ...stored] : stored;
     const actNames = (t) => (t.actions.length ? t.actions.map((id) => emailTplActById(id).label).join(', ') : 'no buttons');
     const rows = list
         .map((t) => {
@@ -25327,15 +25295,23 @@ function renderSavedReplies() {
             </div>`;
         })
         .join('');
+    const cap = emailTplStoreAbsent() && stored.length
+        ? `${stored.length} starter replies to begin with — edit or delete them freely, and write your own below.`
+        : stored.length
+          ? `${stored.length} saved ${stored.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers each one to the records it fits, most-used first.`
+          : 'Nothing saved yet — write your first reply below.';
     host.innerHTML = `
-        <p class="etpl-mcap">${emailTplStoreAbsent() && list.length ? `${list.length} starter replies to begin with — edit or delete them freely, and "Save as a template" in the composer adds your own.` : list.length ? `${list.length} saved ${list.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers these, most-used first.` : 'Nothing saved yet. Write a reply in the email composer and tap "Save as a template" — the library fills itself.'}</p>
-        ${rows}`;
+        <p class="etpl-mcap">${cap}</p>
+        ${rows}
+        ${__etplDraft ? '' : '<div class="etpl-mnew"><button type="button" class="btn-sm btn-edit" data-act="emailTplNew">Write a new reply</button></div>'}`;
 }
 function emailTplEditOpen(id) {
+    __etplDraft = null; // editing a stored row abandons an unwritten new one
     __etplEditId = id;
     renderSavedReplies();
 }
 function emailTplEditCancel() {
+    __etplDraft = null;
     __etplEditId = null;
     renderSavedReplies();
 }
@@ -25346,18 +25322,30 @@ async function emailTplEditSave(id) {
         glassAlert('A saved reply needs a name and a paragraph.');
         return;
     }
+    // The email template writes "Hello <first>," above these words, so a
+    // paragraph that greets says hello twice — the drafter's own shipped
+    // defect. Refused here because this is now the only way in.
+    if (/^\s*(hi|hello|hey|dear|good (morning|afternoon|evening))\b/i.test(body)) {
+        glassAlert('Not saved — it opens with a greeting. Every email already says “Hello <name>,” above your words, so this reply would say hello twice. Start at the first real sentence.');
+        return;
+    }
     const acts = Array.from(document.querySelectorAll('#etpl-ed-acts input[type=checkbox]'))
         .filter((c) => /** @type {HTMLInputElement} */ (c).checked)
         .map((c) => String(/** @type {HTMLElement} */ (c).dataset.actid));
     const whenEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('etpl-ed-when'));
     const when = whenEl && EMAIL_TPL_WHEN.some((w) => w.id && w.id === whenEl.value) ? whenEl.value : '';
     const prev = siteContent[EMAIL_TPL_KEY];
-    const list = emailTplList().map((t) => (t.id === id ? { ...t, name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3), when } : t));
+    const isNew = !!(__etplDraft && __etplDraft.id === id);
+    const fields = { name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3), when };
+    const list = isNew
+        ? [{ ...__etplDraft, ...fields }, ...emailTplList()]
+        : emailTplList().map((t) => (t.id === id ? { ...t, ...fields } : t));
     try {
         await emailTplStore(list);
+        __etplDraft = null;
         __etplEditId = null;
         renderSavedReplies();
-        toast(`“${name}” updated.`);
+        toast(isNew ? `“${name}” saved — the composer will offer it wherever it fits.` : `“${name}” updated.`);
     } catch (e) {
         siteContent[EMAIL_TPL_KEY] = prev;
         adminPrivateContent[EMAIL_TPL_KEY] = prev;
