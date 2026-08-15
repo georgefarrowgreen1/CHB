@@ -88,6 +88,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // quoted the rental balance while the booking's own row quoted the deposit-aware
   // figure, so one screen showed two numbers for one guest. See bookingDue().
   ok(s.labels.some((l) => /£580\.00 to collect from Sarah Pemberton/.test(l)), `chase row leads with the amount owed INCLUDING the untaken deposit (${s.labels.find((l) => /to collect from Sarah/.test(l)) || 'none'})`);
+  // With duties present the STRIP carries the state, so the title's verdict
+  // slot must be empty — "Nothing needs you" over six things that do is the
+  // one way this capsule can lie, and it now lives in a node of its own that
+  // a stale render could leave painted.
+  const busyCap = await page.evaluate(() => {
+    try { todayOpsLine(); } catch (e) {}
+    return ((document.getElementById('today-verdict') || {}).textContent || '').trim();
+  });
+  ok(busyCap === '', `no "nothing needs you" while six things do (${busyCap || 'empty'})`);
 
   // THE HEADER LINE THE OWNER READS FIRST, and the list its button links to.
   // Reported live: the header said "£290 to collect" while the booking's own row
@@ -206,12 +215,26 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   quietMode = true;
   await page.evaluate(async () => { __nyChats = 0; __nyMod = { rev: 0, ph: 0, exp: 0 }; __nyCronQuiet = false; await openBookings(); });
   await page.waitForTimeout(1400);
-  const q = await page.evaluate(() => ({
-    hidden: document.getElementById('needs-you').style.display === 'none',
-    ops: (document.getElementById('today-date') || {}).textContent || '',
-  }));
+  const q = await page.evaluate(() => {
+    const h1 = document.querySelector('#view-backoffice .bo-today-head .section-title');
+    const v = document.getElementById('today-verdict');
+    const hr = h1 ? h1.getBoundingClientRect() : null;
+    const vr = v ? v.getBoundingClientRect() : null;
+    return {
+      hidden: document.getElementById('needs-you').style.display === 'none',
+      ops: (document.getElementById('today-date') || {}).textContent || '',
+      cap: v ? v.textContent.trim() : '',
+      onDate: /Nothing needs you/.test((document.getElementById('today-date') || {}).textContent || ''),
+      // BESIDE the title, measured: same row (vertical overlap) and to its right.
+      beside: !!(hr && vr && vr.width > 0 && vr.left >= hr.right - 1 && vr.top < hr.bottom && vr.bottom > hr.top),
+    };
+  });
   ok(q.hidden, 'strip hides when nothing needs the owner');
   ok(/all quiet/.test(q.ops), `ops line says all quiet (${q.ops})`);
+  // The day's verdict answers "is anything wrong?" — a fact about the screen,
+  // so it sits with the title, not trailing the movements line beneath it.
+  ok(/Nothing needs you/.test(q.cap) && !q.onDate, `the verdict is in its own slot, off the date line (${q.cap})`);
+  ok(q.beside, 'and it renders BESIDE the Today title, on the same row');
 
   console.log('5. pricing ideas moved OFF the strip and onto Manage → Pricing');
   await page.evaluate(() => {

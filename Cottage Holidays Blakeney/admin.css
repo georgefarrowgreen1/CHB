@@ -885,11 +885,20 @@ body.light-mode .ny-act {
   color: var(--text-muted);
 }
 #bookings-verdict { margin-left: auto; }
-/* The day's ✓ capsule on the ops line (todayOpsLine — only when the Needs-you
-   strip below is empty; with duties present the strip carries the state). */
-#today-date .ops-cap {
-  margin-left: 8px;
-  vertical-align: 2px;
+/* The day's ✓ capsule BESIDE the Today title (todayOpsLine — only when the
+   Needs-you strip below is empty; with duties present the strip carries the
+   state). Wraps rather than squeezing the serif title at 390px. */
+.bo-today-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bo-today-head #today-verdict:empty {
+  display: none;
+}
+.bo-today-head .ops-cap {
+  vertical-align: 1px;
 }.tl-bar:not(.tl-ext):hover {
   transform: translateY(-1px);
   filter: brightness(1.08);
