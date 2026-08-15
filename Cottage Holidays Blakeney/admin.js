@@ -25030,7 +25030,7 @@ function etplRender() {
             })
             .join('');
         panel.innerHTML = `
-            <input type="search" class="input-glass etpl-q" id="etpl-q" placeholder="Search your saved replies…" value="${escapeHtml(__etplQ)}" data-act-input="emailTplSearch" aria-label="Search your saved replies">
+            <input type="search" class="input-glass etpl-q" id="etpl-q" placeholder="Search your saved replies…" value="${escapeHtml(__etplQ)}" data-act-input="emailTplSearch" data-pass="self" aria-label="Search your saved replies">
             ${rows || `<p class="etpl-none">${ql ? 'Nothing matches “' + escapeHtml(__etplQ) + '”.' : 'Nothing saved yet — write a reply below, then “Save as a template”.'}</p>`}`;
     }
     // ---- the buttons row ----
@@ -25072,7 +25072,9 @@ function etplRender() {
             </div>`;
 }
 function emailTplSearch(el) {
-    __etplQ = /** @type {HTMLInputElement} */ (el).value;
+    // Belt for the line above's lesson: never trust the arg to be there.
+    const src = /** @type {HTMLInputElement|null} */ (el && el.value != null ? el : document.getElementById('etpl-q'));
+    __etplQ = src ? src.value : '';
     // Repaint only the rows — rebuilding the input mid-keystroke is the
     // bank-details trap, so stash and restore the caret.
     const q = /** @type {HTMLInputElement|null} */ (document.getElementById('etpl-q'));

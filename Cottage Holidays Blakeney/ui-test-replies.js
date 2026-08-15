@@ -122,6 +122,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     disabled: document.querySelectorAll('#etpl-panel .etpl-row[disabled]').length,
   }));
   ok(p3.rows.length === 2 && /quay/.test(p3.rows[0]), `both templates listed, most-used first (${p3.rows.join(' | ')})`);
+  // TYPE in the search box FOR REAL — through the delegated dispatcher, which
+  // hands a plain-global handler NOTHING unless the markup passes it. The first
+  // ship had no data-pass and threw on the first keystroke on the owner's
+  // phone (admin.js?v=514:25075); this fill would have caught it, and the
+  // suite's own pageErrors check makes the throw loud.
+  await page.fill('#etpl-q', 'balance');
+  await page.waitForTimeout(200);
+  const p3q = await page.evaluate(() => ({
+    rows: Array.from(document.querySelectorAll('#etpl-panel .etpl-row .etpl-row-name')).map((e) => e.textContent.trim()),
+    q: (document.getElementById('etpl-q') || {}).value || '',
+  }));
+  ok(p3q.rows.length === 1 && /balance/.test(p3q.rows[0]) && p3q.q === 'balance',
+    `typing in the picker filters the rows (${p3q.rows.join(' | ')})`);
+  await page.fill('#etpl-q', '');
+  await page.waitForTimeout(150);
   ok(p3.disabled === 0, 'nothing is withheld on a booking with money owing');
   await page.evaluate(() => window.emailTplInsert('bal'));
   await page.waitForTimeout(300);
