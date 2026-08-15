@@ -783,7 +783,12 @@ function decrypt_value($stored)
 // Content keys whose values are encrypted at rest.
 function is_private_content_key($key)
 {
-    return strpos($key, 'ical-feeds-') === 0 ||
+    // The passphrase the weekly backup is encrypted under (backup-crypt.php).
+    // PRIVATE, and the decrypt-failure trade that kept bacs-details plaintext
+    // does not apply: an unreadable value here means the dump is NOT ATTACHED,
+    // which is the safe outcome — never a plaintext database in an inbox.
+    return $key === 'backup-passphrase' ||
+        strpos($key, 'ical-feeds-') === 0 ||
         strpos($key, 'arrival-') === 0 ||
         strpos($key, 'apikey-') === 0 ||
         strpos($key, 'welcome-') === 0 ||
