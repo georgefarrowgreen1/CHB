@@ -5719,3 +5719,13 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 #enq-email-modal #enq-email-ctl { flex: 1 1 100%; margin: 6px 0 2px; }
 #enq-email-modal #enq-email-ctl .btn-sm { flex: 1 1 0; min-height: 44px; text-align: center; }
 #enq-email-modal #enq-email-body { margin-top: 10px; }
+/* The arrival-review composer's read-only facts panel: what the template adds
+   under the owner's message. Shown so they don't retype the address and the
+   guest read everything twice. */
+.arv-facts { border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 12px 14px; margin-top: 10px; }
+.arv-cap { font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.arv-row { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; padding: 5px 0; font-size: 0.82rem; }
+.arv-row + .arv-row { border-top: 1px solid var(--glass-border); }
+.arv-row span { color: var(--text-muted); flex: 0 0 auto; }
+.arv-row b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.arv-note { font-size: 0.76rem; color: var(--text-muted); margin: 9px 0 0; }

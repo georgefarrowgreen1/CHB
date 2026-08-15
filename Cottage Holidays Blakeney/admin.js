@@ -9751,6 +9751,12 @@ function hydrateFollowUpToggles() {
     if (tg) tg.checked = siteContent['enquiry-nudge-off'] !== '1';
     const ag = document.getElementById('anniv-nudge-toggle');
     if (ag) ag.checked = siteContent['anniversary-nudge-off'] !== '1';
+    // NOT inverted, and adminPrivateContent FIRST — 'arrival-review' is an
+    // INTERNAL key, absent from the anonymous boot content GET, so reading
+    // siteContent alone would render the switch OFF over a real ON setting and
+    // one tap would silently turn reviewing off (the bacs-details rule).
+    const rv = /** @type {HTMLInputElement|null} */ (document.getElementById('arrival-review-toggle'));
+    if (rv) rv.checked = (adminPrivateContent['arrival-review'] ?? siteContent['arrival-review']) === '1';
 }
 // ---- Inbox folders: the Inbox is ONE comms dashboard — website enquiries,
 // guest chat and the cottage EMAIL mailbox behind a segmented folder switch.
@@ -17896,6 +17902,36 @@ function chbDuties() {
             });
         });
     } catch (e) {}
+    // 1a2) AN ARRIVAL EMAIL WAITING TO BE READ (review mode). The owner chose
+    // that nothing goes without them, so the app must NOT quietly send at the
+    // last minute — which makes this duty the only thing standing between the
+    // guest and no directions. It ESCALATES rather than nagging: amber while
+    // there is room, RED once they arrive tomorrow or today. Cleared by the
+    // send itself (bookings.php nulls the stamp), so it ends with the job done.
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) => {
+            (dbBookings[pk] || []).forEach((b) => {
+                if (!b.preArrivalReadyAt || b.preArrivalSent) return;
+                const ci = b.checkIn || '';
+                if (!ci || ci < today) return; // the stay has started — no email to send now
+                const days = nightsBetween(today, ci);
+                const soon = days <= 1;
+                out.push({
+                    kind: 'arrival-review',
+                    sev: soon ? 'danger' : 'warn', ic: 'mail',
+                    label: `Arrival email to send — ${b.name || 'guest'}`,
+                    sub: days === 0
+                        ? `They arrive TODAY and still have no directions — read it and send`
+                        : days === 1
+                          ? `They arrive tomorrow — nothing has gone yet`
+                          : `Arrives ${fmtDate(ci)} · ready for you to read, change and send`,
+                    act: 'Review', go: chbAttrs('openArrivalReview', String(b.id)),
+                    board: 'today', scope: 'bookings',
+                    run: () => { closeCmdK(); openArrivalReview(b.id); },
+                });
+            });
+        });
+    } catch (e) {}
     // 1b) AN AUTOMATIC PAYMENT THAT GAVE UP. The collector stands down after
     // three tries and the ordinary chase takes over — but "the automatic thing
     // stopped" is exactly what the owner arranged NOT to have to watch, so it
@@ -25597,6 +25633,21 @@ async function sendEnquiryEmail() {
     }
     try {
         const rec = t.kind === 'booking' ? t.b : t.enq;
+        // THE ARRIVAL REVIEW sends through the arrival TEMPLATE, not the reply
+        // composer: what the owner edited is the email's MESSAGE, and the dates,
+        // address, map link and "Open my booking" button are still generated —
+        // so the guest gets the designed email with the owner's own words in it.
+        if (t.arrival) {
+            await apiPost('bookings.php', { action: 'send_arrival', id: rec.dbId, note: body.trim() });
+            closeEnquiryEmailModal();
+            toast(`Arrival email sent to ${rec.name || rec.email}.`);
+            try {
+                await loadData();
+                if (typeof renderNeedsYou === 'function') renderNeedsYou();
+                if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice') renderBookings();
+            } catch (e) {}
+            return;
+        }
         await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
             action: 'email_guest',
             id: rec.dbId,
@@ -25627,6 +25678,65 @@ async function sendEnquiryEmail() {
 }
 // Compose a free-text email to a confirmed booking's guest (Bookings page).
 // Reuses the enquiry composer; the booking details + price ride along.
+// ---- The arrival email, reviewed before it goes ----------------------------
+// Reached from the "Arrival email ready to review" notification (?open=arrival-N),
+// the Needs-you duty, or the booking hub. It reuses the shared composer so the
+// preview, the attachments chip row and the send button are the ones already
+// gated — what differs is WHAT is editable: the MESSAGE only. The facts the
+// template adds (dates, address, directions, the booking-page button) are shown
+// beneath as a read-only reminder, because an owner who cannot see them will
+// write them out again by hand and the guest will read everything twice.
+async function openArrivalReview(bookingId) {
+    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
+    if (!b) {
+        glassAlert("That booking isn't loaded — open it from Today and try again.");
+        return;
+    }
+    if (!b.email) {
+        glassAlert('This booking has no email address on file, so there is nothing to send.');
+        return;
+    }
+    openBookingEmail(b.id);
+    if (!__composeTarget) return;
+    __composeTarget.arrival = true;
+    const bodyEl = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    const subjEl = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
+    if (bodyEl) bodyEl.value = 'Loading the arrival email…';
+    let pv = null;
+    try {
+        pv = await apiPost('bookings.php', { action: 'arrival_preview', id: b.dbId });
+    } catch (e) {
+        if (bodyEl) bodyEl.value = '';
+        glassAlert("Couldn't load the arrival email just now: " + e.message);
+        return;
+    }
+    // The SUBJECT is generated and stays that way — it names the arrival date,
+    // and an edited one would disagree with the email under it.
+    if (subjEl) {
+        subjEl.value = pv.subject || '';
+        subjEl.readOnly = true;
+    }
+    if (bodyEl) {
+        bodyEl.value = pv.message || '';
+        bodyEl.focus();
+        try { bodyEl.setSelectionRange(0, 0); bodyEl.scrollTop = 0; } catch (e) {}
+    }
+    const f = pv.facts || {};
+    const factRows = [
+        ['Arrive', f.arrive],
+        ['Leave', f.leave],
+        ['Address', f.address],
+    ].filter((r) => r[1]);
+    const host = document.getElementById('etpl-acts');
+    if (host) {
+        host.innerHTML = `<div class="arv-facts">
+            <div class="arv-cap">Added automatically, below your message</div>
+            ${factRows.map((r) => `<div class="arv-row"><span>${escapeHtml(r[0])}</span><b>${escapeHtml(String(r[1]))}</b></div>`).join('')}
+            <div class="arv-row"><span>Also</span><b>Directions link · “Open my booking” button · your phone number</b></div>
+            <p class="arv-note">The key safe code is never emailed — it appears on their booking page.</p>
+        </div>`;
+    }
+}
 function openBookingEmail(bookingId) {
     const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
     const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;

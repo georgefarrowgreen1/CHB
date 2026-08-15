@@ -1147,12 +1147,61 @@ if ($action === 'send_arrival') {
     // where one tap covers a set and a repeat covers the whole set again.
     resend_guard($id, 'email.arrival', (string) ($b['name'] ?? ''), 'arrival email');
     require_once __DIR__ . '/mailer.php'; // the arrival-email helpers live here
-    $res = send_arrival_for_booking($b);
+    // The REVIEWED message, when the owner wrote one. Capped, and plain text —
+    // send_arrival_email escapes it and turns its line breaks into <br>, so a
+    // typed apostrophe or a stray "<" can never reach the guest as markup.
+    $note = trim((string) ($in['note'] ?? ''));
+    if (mb_strlen($note) > 2000) {
+        $note = mb_substr($note, 0, 2000);
+    }
+    $res = send_arrival_for_booking($b, $note);
     if (!empty($res['ok'])) {
-        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        // The review stamp is CLEARED on a successful send, so the duty and the
+        // "ready to review" state end with the thing they were waiting for.
+        try {
+            db()->prepare('UPDATE bookings SET pre_arrival_ready_at = NULL WHERE id = ?')->execute([$id]);
+        } catch (\Throwable $e) {
+        }
+        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? '') . ($note !== '' ? ' (reviewed)' : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
+}
+
+// The arrival email as the owner will see it before sending: the editable
+// MESSAGE (prefilled from the same function the email renders, so the box and
+// the inbox agree) plus the facts the template adds for them. Read-only.
+if ($action === 'arrival_preview') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    require_once __DIR__ . '/mailer.php';
+    $disp = prop_display($b['prop_key'] ?? '');
+    $name = first_name($b['name'] ?? '', 'Guest');
+    $prop = $disp['name'] ?: 'your cottage';
+    // The address comes from the properties row, exactly as send_arrival_for_booking
+    // reads it — prop_display carries name/accent/slug only.
+    $addr = '';
+    try {
+        $ap = db()->prepare('SELECT address FROM properties WHERE prop_key = ?');
+        $ap->execute([$b['prop_key'] ?? '']);
+        $addr = trim((string) ($ap->fetchColumn() ?: ''));
+    } catch (\Throwable $e) {
+    }
+    json_out([
+        'ok' => true,
+        'subject' => 'You arrive ' . email_date($b['check_in']) . ' — everything you need for ' . $prop,
+        'message' => arrival_default_message($name, $prop),
+        'facts' => [
+            'cottage' => $prop,
+            'arrive' => email_date($b['check_in']) . ', from ' . email_time($b['check_in_time'] ?: '15:00'),
+            'leave' => $b['check_out'] ? email_date($b['check_out']) . ', by ' . email_time($b['check_out_time'] ?: '10:00') : '',
+            'address' => $addr,
+        ],
+    ]);
 }
 
 if ($action === 'send_confirmation') {

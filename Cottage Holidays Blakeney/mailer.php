@@ -2420,6 +2420,15 @@ function send_booking_emails($b)
 //  $b: prop_key, prop_name, guest name/email, check_in, check_out,
 //      check_in_time, address, info (owner-written arrival details).
 // ------------------------------------------------------------------
+// THE ARRIVAL EMAIL'S OPENING SENTENCE, stated once. It is the one part the
+// owner edits when arrival-review is on (bookings.php send_arrival takes a
+// `note`), so the composer must prefill from the SAME function the email
+// renders — otherwise the box shows one thing and the guest receives another.
+// Plain text in, escaped at the boundary by send_arrival_email.
+function arrival_default_message($name, $prop)
+{
+    return 'Hello ' . $name . ' — everything you need for ' . $prop . ' is below. We look forward to seeing you.';
+}
 function send_arrival_email($b)
 {
     if (empty($b['email'])) {
@@ -2438,6 +2447,9 @@ function send_arrival_email($b)
     $outTime = email_time($b['check_out_time'] ?: '10:00');
     $addr = trim($b['address'] ?? '');
     $phone = email_phone();
+    // The reviewed message. Absent (review off, or sent as-is) → the house
+    // sentence below, so nothing changes for the automatic path.
+    $note = trim((string) ($b['note'] ?? ''));
     // THE INSTRUCTION AND THE WAY TO FOLLOW IT TRAVEL TOGETHER. This email said "log in
     // to your account on our website and open My Bookings" and carried NO LINK — read on
     // a phone on the way to Norfolk, with nothing to tap. The entry code itself is still
@@ -2447,7 +2459,7 @@ function send_arrival_email($b)
 
     $subject = "You arrive {$inDate} — everything you need for {$prop}";
     $text =
-        "Hello {$name},\n\n" .
+        ($note !== '' ? $note . "\n\n" : "Hello {$name},\n\n") .
         "Arrive: {$inDate}, any time from {$time}\n" .
         ($outDate !== '' ? "Leave:  {$outDate}, by {$outTime}\n" : '') .
         "\n" .
@@ -2472,10 +2484,14 @@ function send_arrival_email($b)
     }
     $inner =
         email_h('You arrive ' . email_date($b['check_in'], false), $accent) .
-        email_p(
-            'Hello ' . email_esc($name) . ' — everything you need for <strong>' .
-                email_esc($prop) . '</strong> is below. We look forward to seeing you.',
-        ) .
+        // The owner's own words when they reviewed it, else the house sentence.
+        // email_p expects PRE-ESCAPED HTML (the asymmetry in CLAUDE.md), and a
+        // reviewed note is free text typed by a person — so it is escaped here
+        // and its line breaks become <br>, never raw markup from a text box.
+        email_p($note !== ''
+            ? nl2br(email_esc($note))
+            : 'Hello ' . email_esc($name) . ' — everything you need for <strong>' .
+                email_esc($prop) . '</strong> is below. We look forward to seeing you.') .
         email_rows($rows) .
         email_address_block($addr) .
         email_note(
@@ -3737,7 +3753,7 @@ function payment_receipt_body($b)
 
 // Build + send the arrival email for a saved booking row, then mark it sent.
 // Returns the smtp_send result. Never throws. Requires db() (always loaded).
-function send_arrival_for_booking($bk)
+function send_arrival_for_booking($bk, $note = '')
 {
     try {
         $p = db()->prepare('SELECT name, address FROM properties WHERE prop_key = ?');
@@ -3755,6 +3771,7 @@ function send_arrival_for_booking($bk)
             'check_out' => $bk['check_out'],
             'check_in_time' => $bk['check_in_time'] ?? '15:00',
             'address' => $prop['address'],
+            'note' => $note,
         ]);
         if (!empty($res['ok'])) {
             try {

@@ -45,8 +45,66 @@ try {
     json_out(['error' => 'Could not check bookings — has migration-pre-arrival.sql been run?'], 500);
 }
 
+// REVIEW MODE (content key 'arrival-review'): the owner reads and sends this
+// one by hand. The job then MARKS it ready and tells them — it must never send
+// on their behalf, which is the whole point of the setting, and there is
+// deliberately NO auto-send fallback: an email the owner meant to write is not
+// improved by the app writing it for them at the last minute. The escalating
+// duty (chbDuties) is what stops it being forgotten.
+$review = content_value('arrival-review') === '1';
+$readyCol = true; // pre_arrival_ready_at exists? (pre-migration installs: fall back to sending)
+if ($review) {
+    try {
+        db()->query('SELECT pre_arrival_ready_at FROM bookings LIMIT 0');
+    } catch (\Throwable $e) {
+        $readyCol = false;
+        $review = false; // never silently stop sending because a column is missing
+    }
+}
+
 $results = [];
+$readied = 0;
 foreach ($due as $b) {
+    if ($review) {
+        // Stamp ONCE — COALESCE, so a booking that has been waiting for two
+        // days doesn't re-notify on every daily pass. The duty carries the
+        // escalation; the push is the first word, not a drumbeat.
+        $already = !empty($b['pre_arrival_ready_at']);
+        if (!$already) {
+            try {
+                db()
+                    ->prepare('UPDATE bookings SET pre_arrival_ready_at = COALESCE(pre_arrival_ready_at, NOW()) WHERE id = ?')
+                    ->execute([(int) $b['id']]);
+            } catch (\Throwable $e) {
+            }
+            $who = trim((string) ($b['name'] ?? '')) ?: 'your guest';
+            alert_owner(
+                'Arrival email ready to review',
+                $who . ' arrives ' . uk_date($b['check_in']) . ' — read it, change anything, then send.',
+                [
+                    'category' => 'bookings',
+                    'email' => true,
+                    'tag' => 'arrival-' . (int) $b['id'],
+                    'url' => './?open=arrival-' . (int) $b['id'],
+                ],
+            );
+            log_activity('comms', 'email.arrival_ready', 'Arrival email ready to review — ' . $who, [
+                'actor' => 'cron',
+                'prop_key' => $b['prop_key'] ?? '',
+                'entity' => 'booking',
+                'entity_id' => (string) $b['id'],
+            ]);
+            $readied++;
+        }
+        $results[] = [
+            'booking' => (int) $b['id'],
+            'guest' => $b['name'],
+            'ok' => true,
+            'ready' => true,
+            'already' => $already,
+        ];
+        continue;
+    }
     $res = send_arrival_for_booking($b);
     // Optional SMS nudge to check the arrival email (never puts key codes in a
     // text). Only when the email actually SENT — otherwise the booking re-enters
@@ -140,7 +198,11 @@ if ($toAsk) {
 json_out([
     'ok' => true,
     'days_before' => $days,
-    'sent' => count(array_filter($results, fn($r) => $r['ok'])),
+    // In review mode nothing was SENT — saying "sent 3" would be the job
+    // reporting the opposite of what it did.
+    'review_mode' => $review,
+    'readied' => $readied,
+    'sent' => $review ? 0 : count(array_filter($results, fn($r) => $r['ok'])),
     'details' => $results,
     'review_requests_sent' => $reviewsSent,
     'review_days_after' => $reviewDays,

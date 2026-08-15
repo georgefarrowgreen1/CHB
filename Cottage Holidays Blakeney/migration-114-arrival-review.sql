@@ -1,0 +1,18 @@
+-- migration-114-arrival-review.sql
+--
+--  "Review the arrival email before it goes."
+--
+--  When the arrival-review setting is on, pre-arrival.php stops SENDING at the
+--  3-day mark and instead marks the booking ready for the owner to read, edit
+--  and send by hand. This column is that mark: set once (COALESCE, never
+--  clobbered by a later run), so the "ready to review" notification fires once
+--  per booking however many times the daily job passes over it.
+--
+--  It is deliberately NOT the same fact as pre_arrival_sent:
+--    ready_at set, sent NULL  → waiting for the owner (a duty, escalating)
+--    ready_at set, sent set   → the owner read it and sent it
+--    ready_at NULL, sent set  → sent automatically (review mode off) or by hand
+--
+--  Guarded like every other migration here: a duplicate column is treated as
+--  already-applied by migrate.php.
+ALTER TABLE bookings ADD COLUMN pre_arrival_ready_at DATETIME NULL;

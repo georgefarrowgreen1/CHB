@@ -297,6 +297,58 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## The arrival email waits for the owner (migration-114)
+
+**Asked for, and the two judgements are the OWNER'S, not defaults**: the arrival
+email may be read, edited and sent by hand instead of going on its own — and
+when it is, **nothing sends without them**. There is deliberately NO auto-send
+fallback: an email the owner meant to write is not improved by the app writing
+it at the last minute, so the ESCALATING DUTY is what stops it being forgotten.
+- **A SETTING, default OFF** (`arrival-review`, internal — classified in db.php).
+  Off is today's behaviour byte for byte, so nothing changes for anyone until it
+  is switched on in Manage → Follow-ups. The switch is NOT inverted (unlike the
+  two nudge toggles beside it: those store `-off`), and it hydrates from
+  **adminPrivateContent FIRST** — an internal key is absent from the anonymous
+  boot GET, so reading `siteContent` alone would paint it OFF over a real ON and
+  one tap would silently turn reviewing off (the bacs-details rule).
+- **`pre_arrival_ready_at` is not `pre_arrival_sent`** — "waiting for you" and
+  "it has gone" are different facts, and the pair is what makes the duty
+  self-clearing: the send NULLs the stamp, so the row ends with the job done.
+  The stamp is set with COALESCE so the daily job notifies ONCE per booking,
+  not every morning.
+- **A MISSING COLUMN NEVER STOPS THE SENDING.** pre-arrival.php probes for the
+  column and falls back to sending when it is absent (pre-migration installs) —
+  failing closed on "review" would silently stop every arrival email.
+- **The editable part is the MESSAGE; the facts stay generated.**
+  `arrival_default_message()` is that opening sentence stated ONCE, so the
+  composer prefills from the same function the email renders — otherwise the box
+  shows one thing and the guest receives another. Dates, address, directions and
+  the "Open my booking" button are still composed by the template, and the
+  composer shows them read-only beneath the box, because an owner who cannot see
+  them types them again and the guest reads everything twice. The SUBJECT names
+  the arrival date and is read-only for the same reason.
+  **The note is free text and is escaped at the boundary** (`nl2br(email_esc())`
+  — email_p expects PRE-ESCAPED HTML, the asymmetry in the mailer notes), so a
+  typed apostrophe or a stray `<` can never reach a guest as markup.
+- **The send goes through the ARRIVAL template, never the reply composer** —
+  `__composeTarget.arrival` routes `sendEnquiryEmail` to `send_arrival`, because
+  `email_guest` would wrap the words in the enquiry-reply shell and lose the
+  designed email. Gated as an absence too (no `email_guest` post).
+- **The duty ESCALATES rather than nagging**: amber while there is room, RED once
+  they arrive tomorrow or today ("They arrive TODAY and still have no
+  directions"). No ready stamp → no duty, so the app never invents a chore.
+- **A FAILED SEND KEEPS THE WAIT.** The stamp is cleared only on success —
+  clearing it on a failure would retire the duty while the guest still has
+  nothing, which is the exact lie this feature exists to prevent. Gated.
+- Gates: **test-integration §23** (the job MARKS instead of sending, once; the
+  preview; a failed send keeps the wait; an already-emailed booking is never
+  re-readied) — break-tested by forcing review off, which fires three;
+  **test-emails-render §8** (the note reaches both halves, is escaped, replaces
+  the house sentence rather than doubling it, and leaves the facts intact) —
+  break-tested by dropping the escaping; and **ui-test-arrival-review.js**
+  (the escalation both ways, the notification route, the read-only subject, the
+  send path) — break-tested on the severity and the send branch.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success

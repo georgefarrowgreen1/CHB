@@ -823,6 +823,11 @@ function is_internal_content_key($key)
         return true; // the owner's saved replies (admin.js reply library) — their
                      // own wording + which buttons each carries; never public
     }
+    if ($key === 'arrival-review') {
+        return true; // whether the arrival email waits for the owner to read and
+                     // send it (pre-arrival.php). An operating decision about
+                     // their own workflow — a guest has no business reading it
+    }
     if ($key === 'search-pins') {
         return true; // the owner's pinned landing questions (chbPinAdd) — their own
                      // phrasing about money and guests; never public
