@@ -455,6 +455,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Away auto-reply</span><span class="settings-row-sub">Auto-acknowledge a guest when you're not around</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="saved replies templates email canned reply library snippets compose buttons" data-act="settingsOpen" data-arg="replies">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Saved replies</span><span class="settings-row-sub">Reply templates &amp; the buttons they carry</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" data-kw="follow up emails nudge enquiry reminder anniversary past guests automation" data-act="settingsOpen" data-arg="follow-ups">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/><path d="M15.5 14.5l2 2 3.5-3.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Follow-up emails</span><span class="settings-row-sub">Automatic nudges to enquirers &amp; past guests</span></span><span class="settings-row-chev">›</span>
@@ -652,6 +656,12 @@
                  own page, off the Today ops strip. Built live by renderPricing(). -->
             <div class="settings-sec" id="sec-pricing" style="display:none;">
                 <div id="pricing-body"></div>
+            </div>
+
+            <!-- Saved replies: the composer's template library, editable. Built
+                 live by renderSavedReplies(). -->
+            <div class="settings-sec" id="sec-replies" style="display:none;">
+                <div id="replies-body"></div>
             </div>
 
             <!-- Test centre (staging only): preview, sample emails, test booking, test data -->

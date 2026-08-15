@@ -720,6 +720,35 @@ $dbl = build_enquiry_reply_email($ENQ, 'About your dates', "Hi {$firstName},\n\n
 chk('…and the counter really counts (a self-greeting body renders two)',
     preg_match_all('/\b(?:Hello|Hi|Dear)\s+' . preg_quote($firstName, '/') . '\b/i', (string) $dbl['html']) === 2);
 
+// ---------------------------------------------------------------------------
+//  §7  SAVED-REPLY BUTTONS RENDER THE DESIGN SYSTEM'S OWN
+//  The composer may attach validated buttons (email_reply_actions) to a manual
+//  reply. Rendered here through the REAL builder: the first is the FILLED
+//  email_btn, the rest the outlined email_btn2 — two filled buttons compete for
+//  one decision — and the text half carries each as its own label + URL line.
+//  The no-actions build is the vacuity guard: the markers asserted below must
+//  be ABSENT there, or the counts could be satisfied by shell furniture.
+echo "\n== §7 saved-reply buttons ==\n";
+$erActs = [
+    ['id' => 'pay', 'label' => 'Pay the balance', 'url' => 'https://example.test/index.html?pay=ERTOK&b=9'],
+    ['id' => 'invoice', 'label' => 'View your invoice', 'url' => 'https://example.test/invoice.php?b=9&token=ERINV'],
+];
+$erB = build_enquiry_reply_email($ENQ, 'About your stay', $replyBody, 'booking', $erActs);
+$erH = (string) $erB['html'];
+chk('§7 both button urls reach the html', strpos($erH, 'pay=ERTOK') !== false && strpos($erH, 'token=ERINV') !== false);
+// email_btn's VML arm carries arcsize; email_btn2's cell carries its outline —
+// exactly one of each, so first-filled/rest-outlined holds by construction.
+chk('§7 exactly one FILLED button (email_btn)', substr_count($erH, 'arcsize') === 1);
+chk('§7 exactly one OUTLINED button (email_btn2)', substr_count($erH, 'border:1px solid #D9CFB8') === 1);
+chk('§7 the first attached is the filled one', strpos($erH, 'pay=ERTOK') < strpos($erH, 'border:1px solid #D9CFB8'));
+chk('§7 the buttons land after the owner\'s words', strpos($erH, 'pay=ERTOK') > strpos($erH, 'lovely to hear from you'));
+$erT = (string) $erB['text'];
+chk('§7 the text half carries each as label + URL', strpos($erT, 'Pay the balance: https://example.test/index.html?pay=ERTOK&b=9') !== false
+    && strpos($erT, 'View your invoice: https://example.test/invoice.php?b=9&token=ERINV') !== false);
+$erNone = build_enquiry_reply_email($ENQ, 'About your stay', $replyBody, 'booking', []);
+chk('§7 no actions -> no button markup at all (the markers above measure BUTTONS)',
+    strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], '#D9CFB8') === false);
+
 @unlink($tmp);
 echo "\n== Summary ==\n";
 if ($fail) {

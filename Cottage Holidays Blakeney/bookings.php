@@ -1205,7 +1205,18 @@ if ($action === 'email_preview') {
     } catch (\Throwable $e) {
     }
     require_once __DIR__ . '/mailer.php';
-    $m = build_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking');
+    // Saved-reply buttons ride the preview too — the whole point of the preview
+    // is that it cannot drift from what goes out. A button the state refuses is
+    // a 409 WITH its sentence, never silently dropped: the owner attached it.
+    $acts = ['actions' => []];
+    if (!empty($in['actions']) && is_array($in['actions'])) {
+        $acts = email_reply_actions('booking', email_reply_facts($b), array_map('strval', $in['actions']));
+        if ($acts['refused']) {
+            $r0 = $acts['refused'][0];
+            json_out(['error' => 'Can\'t attach "' . $r0['label'] . '" — ' . $r0['why']], 409);
+        }
+    }
+    $m = build_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking', $acts['actions']);
     json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
 }
 
@@ -1235,9 +1246,21 @@ if ($action === 'email_guest') {
     }
     require_once __DIR__ . '/mailer.php';
     $atts = sanitize_email_attachments($in['attachments'] ?? []);
+    // Validate the saved-reply buttons against the booking's LIVE state at the
+    // moment of sending — the guest may have paid or registered since the owner
+    // attached one, and that genuinely changes the email's meaning. Refusing
+    // with the reason beats sending a button that lands on a page refusing it.
+    $acts = ['actions' => []];
+    if (!empty($in['actions']) && is_array($in['actions'])) {
+        $acts = email_reply_actions('booking', email_reply_facts($b), array_map('strval', $in['actions']));
+        if ($acts['refused']) {
+            $r0 = $acts['refused'][0];
+            json_out(['error' => 'Can\'t attach "' . $r0['label'] . '" — ' . $r0['why']], 409);
+        }
+    }
     $r = ['ok' => false, 'error' => 'send failed'];
     try {
-        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking', $atts);
+        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking', $atts, $acts['actions']);
     } catch (\Throwable $e) {
         $r = ['ok' => false, 'error' => $e->getMessage()];
     }
