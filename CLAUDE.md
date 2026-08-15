@@ -3037,23 +3037,32 @@ endpoints. Gated by ui-test-yourstay.js (countdown wording, balance/all-set stat
 **The My Stays companion** (app.js — the approved demo's PR-1; gated by
 ui-test-yourstay §21–25 + test-integration §19). The pre-arrival hub carries a
 STAY TIMELINE ("Your road to Blakeney", `guestStayTimelineHtml`) — booking
-confirmed / paid-so-far / the NOW money row / arrival details / door code /
-your stay / deposit back — where EVERY figure comes from the derivations the
+confirmed / paid-so-far / the NOW money row / your stay / deposit back — the
+ARRIVAL-DETAILS and DOOR-CODE rows were removed at the owner's ask (see
+below) — where EVERY figure comes from the derivations the
 card already trusts (`displayGrand` + `guestPayCta`; §21 asserts the now-row's
 figure EQUALS the Pay button's), and the money row follows the same
 armed/trouble/owner-arranged judgements as the hub line via
 `guestAutopayTroubleOf` (ONE definition, both readers).
-- **THE DOOR CODE IS SECURITY-GATED BY THE KEEPER'S OWN RULE, in three layers**:
-  digits only when the server released them (`door_code`), a DATE only from
-  `door_code_from` (minted by a real confirm), and the held-back line ("appears
-  once it's set on the key safe — never sent by email") only on the NEW
-  **`door_code_pending`** flag — my-bookings.php sends it only while the keeper
-  is ON for the cottage and no code is confirmed for THIS stay, because a
-  keeper-off cottage may have NO SAFE and a held-back card would assert one.
-  Nothing at all otherwise (§20's rule, kept). The arrival-day HERO
-  (`guestDoorCodeHeroHtml`, in-residence hub) is double-gated the same way:
-  released → big figure + Copy; pending on arrival day → masked `····` naming
-  the honest way in (call us); anything else → no card.
+- **THE DOOR CODE IS SECURITY-GATED BY THE KEEPER'S OWN RULE, in three layers**,
+  and the SERVER half is untouched by any of the removals: digits only when the
+  server released them (`door_code`), a DATE only from `door_code_from` (minted
+  by a real confirm), and `door_code_pending` only while the keeper is ON for
+  the cottage with no code confirmed for THIS stay — a keeper-off cottage may
+  have NO SAFE and a held-back promise would assert one. Gated in
+  test-integration §18.
+  **The guest now meets it in ONE place, not two.** The timeline's door-code
+  row (and the "Arrival details" row beside it) were removed at the owner's
+  ask, so the surviving surface is the arrival-day HERO
+  (`guestDoorCodeHeroHtml`, in-residence hub): released → big figure + Copy;
+  pending on arrival day → masked `····` naming the honest way in (call us);
+  anything else → no card. **The consequence, stated because it is a real
+  narrowing**: the reveal window opens `KEYSAFE_REVEAL_DAYS` (2) before
+  check-in, and the hero renders only from check-in day — so a code released on
+  the travel day is visible from arrival rather than two days early. Putting the
+  hero on the pre-arrival card would close that gap and was deliberately NOT
+  done unasked. ui-test-yourstay §20 drives all three server states and asserts
+  the pre-arrival card says nothing in ANY of them; §25 owns the hero.
 - **The weather strip rides weather.php** (public, no key): fetched once per
   session, the stay's own days only, absent beyond the ~2-week horizon or on
   failure — a blank strip claims nothing. Caption states forecast confidence.

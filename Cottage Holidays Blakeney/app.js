@@ -4588,16 +4588,6 @@ function guestStayTimelineHtml(propKey, b, gt) {
             if (rest > 0.005) rows.push(row('is-dim', 'Remaining balance', escapeHtml('Due' + (balanceDueBySuffix(b.balanceDueBy) || ' before your stay')), gbp(rest)));
         }
     }
-    rows.push(b.preArrivalSent
-        ? row('is-done', 'Arrival details', 'Sent — check your inbox', '')
-        : row('is-dim', 'Arrival details', 'Directions, entry and everything you need — about a week before', ''));
-    if (b.doorCode) {
-        rows.push(row('is-done', 'Key safe code', '', `<span class="gtj-code">${escapeHtml(b.doorCode)}</span>`));
-    } else if (b.doorCodeFrom) {
-        rows.push(row('is-dim', 'Your door code', escapeHtml(`Your key safe code appears here from ${fmtDate(b.doorCodeFrom)}`), ''));
-    } else if (b.doorCodePending) {
-        rows.push(row('is-dim', 'Your door code', "Appears here once it's set on the key safe — never sent by email", ''));
-    }
     rows.push(row('is-dim', 'Your stay', escapeHtml(`Check-in from ${b.checkInTime || '15:00'} on ${dpSpoken(b.checkIn)}`), ''));
     if (gt.dep > 0) rows.push(row('is-dim', 'Deposit back', '3–5 working days after checkout', gbp(gt.dep)));
     return `<div class="gtl"><div class="gtl-cap">Your road to Blakeney</div>${rows.join('')}</div>`;
