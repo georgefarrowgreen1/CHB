@@ -614,40 +614,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     '…with no date and no digits — the gate the demo was approved for');
   await page.close();
 
-  // 22) "WHEN WILL YOU ARRIVE?" — the one new fact. A tap posts the WINDOW
-  // CODE to my-bookings.php and the note + selection answer in place; a saved
-  // answer comes back selected on the next render.
-  console.log('22) the arrival-time answer');
-  page = await openPage({ name: 'Slot Guest', email: 'slot@x.co' },
+  // 22) THE REMOVED ASKS — "When will you arrive?" and the extras chips were
+  // taken out of the companion card completely (owner's ask). Asserted as an
+  // ABSENCE with the composers gone too: a stray call site would throw, and a
+  // leftover stylesheet block would dress markup nothing renders.
+  console.log('22) the removed asks stay removed');
+  page = await openPage({ name: 'Gone Guest', email: 'gone@x.co' },
     [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'paid', id: 4242 }, priced))]);
-  const posts = [];
-  await page.route(/my-bookings\.php$/, async (route) => {
-    if (route.request().method() === 'POST') {
-      posts.push(JSON.parse(route.request().postData() || '{}'));
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, window: '16-18' }) });
-    }
-    return route.fallback();
-  });
-  const slots = await page.evaluate(() => [...document.querySelectorAll('.my-stay-hub-soon .gslot')].map((s) => s.textContent.trim()));
-  ok(slots.join('|') === '3–4pm|4–6pm|6–8pm|After 8pm|Not sure yet', `the chips derive from the check-in hour (${slots.join('|')})`);
-  await page.click('.my-stay-hub-soon .gslot:nth-child(2)');
-  await page.waitForTimeout(400);
-  const slotState = await page.evaluate(() => ({
-    sel: (document.querySelector('.my-stay-hub-soon .gslot.is-sel') || {}).textContent || '',
-    note: (document.querySelector('.my-stay-hub-soon .gslot-note') || {}).textContent || '',
+  const removed = await page.evaluate(() => ({
+    slots: document.querySelectorAll('.gslots, .gslot, .gslot-row, .gslot-note').length,
+    extras: document.querySelectorAll('.gxtra, .gxchip, .gxtra-row, .gxtra-note').length,
+    words: /When will you arrive|Anything you'll need|Travel cot|Highchair|Firewood/i.test(
+      (document.querySelector('.my-stay-hub-soon') || {}).textContent || ''),
+    fns: ['guestArrivalSlotsHtml', 'guestSetArrivalWindow', 'guestExtrasHtml', 'guestAskExtra', 'arrivalWindowLabel']
+      .filter((f) => typeof window[f] === 'function'),
   }));
-  ok(posts.length === 1 && posts[0].action === 'set_arrival_window' && posts[0].id === 4242 && posts[0].window === '16-18',
-    `the tap posts the window CODE, never a label (${JSON.stringify(posts[0] || {})})`);
-  ok(/4–6pm/.test(slotState.sel) && /✓ Noted/.test(slotState.note), `the answer settles in place (${slotState.note.trim()})`);
-  await page.close();
-  // …and a stored answer renders selected with its note.
-  page = await openPage({ name: 'Slot Back', email: 'sb@x.co' },
-    [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'paid', arrival_window: '16-18' }, priced))]);
-  const preSel = await page.evaluate(() => ({
-    sel: (document.querySelector('.my-stay-hub-soon .gslot.is-sel') || {}).textContent || '',
-    note: (document.querySelector('.my-stay-hub-soon .gslot-note') || {}).textContent || '',
-  }));
-  ok(/4–6pm/.test(preSel.sel) && /around 4–6pm/.test(preSel.note), `a saved answer comes back selected (${preSel.note.trim()})`);
+  ok(removed.slots === 0 && removed.extras === 0, `no arrival-window or extras markup on the card (${removed.slots}/${removed.extras})`);
+  ok(!removed.words, 'and none of their words survive in the card');
+  ok(removed.fns.length === 0, `the composers are gone with them (${removed.fns.join(', ') || 'none'})`);
+  // The card still carries what remains — the timeline above them.
+  ok(await page.evaluate(() => !!document.querySelector('.my-stay-hub-soon .gtl')),
+    'the stay timeline is untouched — only the two asks went');
   await page.close();
 
   // 23) THE WEATHER STRIP — the stay's own days from the public forecast; a
@@ -684,36 +671,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => !document.querySelector('.my-stay-hub-soon .gwx')), 'a far-out stay has no weather slot');
   await page.close();
 
-  // 24) EXTRAS — one tap lands the ask in the EXISTING message thread, worded
-  // as an ask ("asked", never "booked"), and the chip says so.
-  console.log('24) extras asks');
-  page = await openPage({ name: 'Cot Guest', email: 'cot@x.co' },
-    [mk('jollyboat', d(10), d(13), Object.assign({ payment: 'paid' }, priced))]);
-  const sends = [];
-  await page.route(/messages\.php$/, async (route) => {
-    if (route.request().method() === 'POST') {
-      sends.push(JSON.parse(route.request().postData() || '{}'));
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
-    }
-    return route.fallback();
-  });
-  await page.click('.my-stay-hub-soon .gxchip');
-  await page.waitForTimeout(400);
-  const xtra = await page.evaluate(() => ({
-    chip: (document.querySelector('.my-stay-hub-soon .gxchip.is-asked') || {}).textContent || '',
-    note: (document.querySelector('.my-stay-hub-soon .gxtra-note') || {}).textContent || '',
-  }));
-  ok(sends.length === 1 && sends[0].action === 'send' && /travel cot/.test(sends[0].body) && /Jollyboat/.test(sends[0].body),
-    `the ask lands in the chat thread naming the cottage (${(sends[0] || {}).body})`);
-  ok(/✓ Travel cot — asked/.test(xtra.chip) && /we'll confirm/.test(xtra.note), `"asked" is the claim — we confirm, the app doesn't promise (${xtra.chip.trim()})`);
-  await page.close();
-
   // 25) ARRIVAL DAY — the door-code hero on the in-residence card. Digits only
   // when the server released them; the held-back state masks the figure and
-  // never invents digits; the card remembers the arrival-time answer.
+  // never invents digits.
   console.log('25) the arrival-day code hero');
   page = await openPage({ name: 'Hero Kate', email: 'hk@x.co' },
-    [mk('jollyboat', d(0), d(3), Object.assign({ payment: 'paid', door_code: '7302', arrival_window: '16-18' }, priced))], { at: todayAt(11, 0) });
+    [mk('jollyboat', d(0), d(3), Object.assign({ payment: 'paid', door_code: '7302' }, priced))], { at: todayAt(11, 0) });
   const hero = await page.evaluate(() => {
     const hub = document.querySelector('.my-stay-hub:not(.my-stay-hub-soon)');
     const code = hub && hub.querySelector('.hub-code');
@@ -725,7 +688,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(hero.fig === '7302' && hero.copy && !hero.locked, `a released code is the hero, with Copy (${hero.fig})`);
-  ok(/you said 4–6pm/.test(hero.sub), `the card remembers the arrival-time answer (${hero.sub.trim().slice(-30)})`);
+  ok(!/you said/.test(hero.sub), `…and no arrival-time read-back — that ask is gone (${hero.sub.trim().slice(-34)})`);
   await page.close();
   page = await openPage({ name: 'Locked Kate', email: 'lk@x.co' },
     [mk('jollyboat', d(0), d(3), Object.assign({ payment: 'paid', door_code_pending: true }, priced))], { at: todayAt(11, 0) });

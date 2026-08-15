@@ -433,7 +433,7 @@ if ($action === 'seed_stage') {
     // One stay. opts: pay (fraction of the rental already in: 0 | 0.25 | 1),
     // withDep (cash rail's bundled damages deposit — what makes a deposit
     // RETURNABLE end to end with no Square charge behind it), email, method,
-    // paidOn/createdN (day offsets), arrival (window code), plan_pct + due.
+    // paidOn/createdN (day offsets), plan_pct + due.
     $stay = function ($prop, $name, $ciN, $coN, $opts = []) use (&$made, $D) {
         $ci = $D($ciN);
         $co = $D($coN);
@@ -449,9 +449,9 @@ if ($action === 'seed_stage') {
             db()->prepare(
                 'INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, notes,
                     payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_per_night, agreed_nights,
-                    agreed_nightly, agreed_booking_fee, agreed_txn_pct, agreed_txn_fee, agreed_on, arrival_window,
+                    agreed_nightly, agreed_booking_fee, agreed_txn_pct, agreed_txn_fee, agreed_on,
                     deposit_pct_override, balance_due_date, created_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )->execute([
                 $prop['prop_key'],
                 $name,
@@ -474,7 +474,6 @@ if ($action === 'seed_stage') {
                 $p['transactionPct'],
                 $p['txFee'],
                 date('Y-m-d'),
-                $opts['arrival'] ?? null,
                 $opts['plan_pct'] ?? null,
                 $opts['due'] ?? null,
                 $D((int) ($opts['createdN'] ?? 0)) . ' 10:00:00',
@@ -490,7 +489,7 @@ if ($action === 'seed_stage') {
     // stay (door-code companion), a balance to pay (the sandbox-card walk) and
     // a finished one (review ask + deposit coming back).
     $stay($P(0), 'Harriet Webb', -2, 2, ['pay' => 1, 'paidOn' => -20, 'createdN' => -60]);
-    $stay($P(1), 'Sofia Laurent', 0, 4, ['pay' => 1, 'email' => $owner, 'arrival' => '16-18', 'paidOn' => -15, 'createdN' => -45]);
+    $stay($P(1), 'Sofia Laurent', 0, 4, ['pay' => 1, 'email' => $owner, 'paidOn' => -15, 'createdN' => -45]);
     $stay($P(2), 'Daniel Okafor', 10, 14, ['pay' => 0.25, 'email' => $owner, 'paidOn' => -8, 'createdN' => -30]);
     $stay($P(0), 'Priya Chandra', 40, 44, ['plan_pct' => 30, 'due' => $D(19), 'createdN' => -5]);
     $stay($P(1), 'Martin Gale', 2, 5, ['createdN' => -20]);

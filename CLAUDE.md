@@ -3054,25 +3054,27 @@ armed/trouble/owner-arranged judgements as the hub line via
   (`guestDoorCodeHeroHtml`, in-residence hub) is double-gated the same way:
   released → big figure + Copy; pending on arrival day → masked `····` naming
   the honest way in (call us); anything else → no card.
-- **"When will you arrive?" is the ONE new data field** (migration-110
-  `bookings.arrival_window`): window CODES only ('16-18' hour band / 'late' /
-  'unsure' — `arrival_window_valid` refuses free text), bands derived from the
-  booking's own check-in hour. Written by the guest via my-bookings.php POST
-  `set_arrival_window` (require_guest + ownership by email; **NO X-CSRF-Token
-  check, deliberately** — `csrf_issue_cookie()` only mints the cookie for ADMIN
-  sessions, so a CSRF check here refused every real guest client; break-tested
-  live, the posture is the same SameSite one every guest write takes). Read
-  back by the owner's hub when-line ("arriving 4–6pm", `arrivalWindowLabel` in
-  app.js) and the arrival-day card ("you said 4–6pm").
 - **The weather strip rides weather.php** (public, no key): fetched once per
   session, the stay's own days only, absent beyond the ~2-week horizon or on
   failure — a blank strip claims nothing. Caption states forecast confidence.
-- **Extras are one-tap ASKS** into the existing chat thread (the signed-in
-  sendChat payload, no new surface): "asked", never "booked" — we confirm, the
-  app doesn't promise.
-- NB test-integration can mint a REAL guest session over HTTP —
-  `auth.php guest_register` creates the session directly — which is how §19
-  drives the write path end to end (ownership 404, junk 400, clear-to-NULL).
+- **TWO ASKS WERE REMOVED FROM THIS CARD, and my-bookings.php is READ-ONLY
+  again because of it.** "When will you arrive?" (the window chips) and
+  "Anything you'll need?" (the extras chips) are gone at the owner's ask —
+  composers, handlers, CSS and the `set_arrival_window` route with them, plus
+  both places the owner read the answer back (the hub when-line's "arriving
+  4-6pm" and the arrival-day card's "you said"). `bookings.arrival_window`
+  (migration-110) is RETIRED, not dropped: nothing reads or writes it, and
+  deleting a column destroys what guests already told us for no gain.
+  **The removal exposed a real defect the gate caught**: with the route gone a
+  POST FELL THROUGH to the read and answered **200 with the whole payload**, so
+  a stale tab's write looked to it exactly like one that had worked. A POST is
+  refused **405** now. That in turn re-aimed an older §19 check which POSTed
+  `{action:'list'}` to prove a half-verified account "can read nothing" — it
+  was riding the write route's `require_guest()`, so it met the 405 first and
+  proved nothing; it GETs now, the way a real client reads.
+  ui-test-yourstay §22 asserts the ABSENCE (no markup, none of their words, and
+  the composers undefined — a stray call site would throw), break-tested by
+  putting the slots back.
 - **PR-2: THE STAY CARD REBUILT + AFTER THE STAY** (ui-test-yourstay §26–27).
   Booking cards are `.gb2` now: accent band (`--prop-<k>` inline var), serif
   name (h3 + `.guest-status-badge` KEPT — §8–10 read them), spoken when-line,

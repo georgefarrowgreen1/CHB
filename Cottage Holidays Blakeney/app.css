@@ -8118,14 +8118,12 @@ body.light-mode .feed-dot-bad {
     display: none;
   }
 }
-/* ---- The My Stays companion (approved demo): the stay timeline, arrival
-   window, weather strip, extras asks and the arrival-day code hero. Token
-   colours only, so both themes hold. The door code follows the keeper's gate —
-   see guestStayTimelineHtml / guestDoorCodeHeroHtml. ---- */
+/* ---- The My Stays companion (approved demo): the stay timeline, weather
+   strip and the arrival-day code hero. Token colours only, so both themes
+   hold. The door code follows the keeper's gate — see guestStayTimelineHtml /
+   guestDoorCodeHeroHtml. ---- */
 .gtl,
-.gslots,
-.gwx,
-.gxtra {
+.gwx {
   margin-top: 14px;
 }
 .gtl-cap {
@@ -8207,52 +8205,6 @@ body.light-mode .feed-dot-bad {
   font-size: 1.15rem;
   letter-spacing: 0.2em;
   color: var(--accent-text);
-}
-/* Arrival-window chips — real buttons at the house 44px touch floor. */
-.gslot-q {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-.gslot-row,
-.gxtra-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.gslot,
-.gxchip {
-  min-height: 44px;
-  padding: 8px 15px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-light);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--glass-border);
-}
-.gslot.is-sel {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-.gslot-note {
-  font-size: 0.76rem;
-  color: var(--ok-text);
-  min-height: 1em;
-  margin: 8px 0 0;
-}
-.gxchip.is-asked {
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
-  border-color: var(--ok);
-  color: var(--ok-text);
-}
-.gxtra-note {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  margin: 8px 0 0;
 }
 /* Weather strip — the stay's own days, absent beyond the forecast horizon. */
 .gwx-row {
