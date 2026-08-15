@@ -5684,3 +5684,28 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .etpl-cbxrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 4px; }
 .etpl-cbx { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 8px 13px; min-height: 44px; cursor: pointer; }
 .etpl-cbx input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
+
+/* The composer, iOS-restyled (scoped — the modal only ever opens for the
+   owner, after the bundle loads, so its restyle lives in the owner-only
+   sheet). Sentence case everywhere: .btn-sm's global uppercase at 0.68rem +
+   nowrap is what CLIPPED "✨ Draft reply" off the right edge at 390px, and
+   SUBJECT/MESSAGE shouting over quiet grouped fields is the pre-restyle look
+   the rest of the back office has already left behind. */
+#enq-email-modal .modal-label { text-transform: none; letter-spacing: 0.02em; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
+#enq-email-modal .btn-sm { text-transform: none; letter-spacing: 0; font-size: 0.8rem; font-weight: 600; padding: 9px 14px; min-height: 40px; border-radius: 999px; }
+#enq-email-modal .enq-ctx { border-radius: var(--r-lg); }
+#enq-email-modal .etpl-actlab { font-size: 0.8rem; }
+/* The context card under a long name + long email at 390px: the who-row WRAPS
+   (the cottage tag drops under rather than squeezing the name to a mid-word
+   break), the name block owns the leftover width, and the address — which has
+   no natural break points — may break anywhere. */
+#enq-email-modal .enq-ctx-who { flex-wrap: wrap; }
+#enq-email-modal .enq-ctx-name { flex: 1 1 160px; min-width: 0; }
+#enq-email-modal .enq-ctx-name .enq-ctx-mut { overflow-wrap: anywhere; }
+/* The two library controls are a deliberate two-up row between the Message
+   label and the box — each takes half the rail (the Preview/Send pair's own
+   geometry at the modal foot), with real air before the textarea instead of
+   sitting on its lip. */
+#enq-email-modal #enq-email-ctl { flex: 1 1 100%; margin: 6px 0 2px; }
+#enq-email-modal #enq-email-ctl .btn-sm { flex: 1 1 0; min-height: 44px; text-align: center; }
+#enq-email-modal #enq-email-body { margin-top: 10px; }

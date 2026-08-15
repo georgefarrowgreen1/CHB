@@ -24970,6 +24970,8 @@ function etplActGuard(id, f) {
 function emailTplSetup() {
     const draftBtn = document.getElementById('enq-email-draft');
     if (draftBtn && !document.getElementById('etpl-toggle')) {
+        // Into the #enq-email-ctl group, so the two controls wrap AS A UNIT at
+        // phone width instead of scattering across two ragged rows.
         draftBtn.insertAdjacentHTML(
             'beforebegin',
             `<button type="button" class="btn-sm btn-edit" id="etpl-toggle" data-act="emailTplToggle" title="Insert one of your saved replies">Saved replies</button>`,
@@ -25284,6 +25286,18 @@ async function emailTplDelete(id) {
 // One shared composer (#enq-email-modal). __composeTarget carries which kind of
 // record we're emailing so sendEnquiryEmail() posts to the right endpoint.
 let __composeTarget = null;
+// The one ✨ Draft control, whichever record is open — the booking drafter and
+// the enquiry drafter are different composers, and having each on its own
+// button put two identical-looking ✨ actions in one screen-height.
+function draftComposeReply() {
+    const t = __composeTarget;
+    if (!t) return;
+    if (t.kind === 'booking' && t.b) {
+        draftBookingReply(t.b.id);
+        return;
+    }
+    return draftEnquiryReply();
+}
 // Takes an id OR the enquiry itself. The object form is load-bearing: declining
 // is a soft delete, so once loadData() has run the row is out of `enquiries`
 // (`declined_at IS NULL`) and an id lookup finds nothing — the decline ask hands
@@ -25559,10 +25573,9 @@ function openBookingEmail(bookingId) {
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
-        // ✨ Draft reply — the enquiry drafter's idea on bookings: fills the body
-        // from this booking's own facts (times, balance via bookingDue) for the
-        // owner to edit, never auto-sends.
-        ctx.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;"><button class="btn-sm btn-edit" ${chbAttrs('draftBookingReply', String(b.id))}>✨ Draft reply</button></div>`);
+        // The ✨ Draft control is the SHARED one beside Message
+        // (draftComposeReply) — a second copy injected here put the same
+        // action twice in one screen-height, running different code.
     }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your booking — ${propName}, ${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}`;

@@ -78,6 +78,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     panelHidden: (document.getElementById('etpl-panel') || {}).hidden,
   }));
   ok(c1.toggle, 'the Saved-replies button is injected beside the drafter');
+  // ONE ✨ draft control, and it must WORK on a booking: the static button ran
+  // the enquiry drafter only, so bookings grew an injected twin — two
+  // identical-looking ✨ actions in one screen-height, running different code
+  // (the owner's screenshot). draftComposeReply dispatches on the record.
+  const drafts = await page.evaluate(() => ({
+    count: document.querySelectorAll('#enq-email-modal [data-act="draftComposeReply"], #enq-email-modal [data-act="draftBookingReply"], #enq-email-modal [data-act="draftEnquiryReply"]').length,
+    filled: (() => { window.draftComposeReply(); return ((document.getElementById('enq-email-body') || {}).value || '').length > 20; })(),
+  }));
+  ok(drafts.count === 1, `exactly ONE draft control in the composer (${drafts.count})`);
+  ok(drafts.filled, 'and it drafts from the BOOKING on a booking (the dispatch)');
+  await page.evaluate(() => { document.getElementById('enq-email-body').value = ''; });
   ok(/Buttons in this email/.test(c1.acts), 'the buttons row renders on a booking');
   ok(c1.panelHidden === true, 'the picker starts closed');
 
@@ -232,6 +243,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(300);
   const m3 = await page.evaluate(() => Array.from(document.querySelectorAll('#replies-body .etpl-row-name')).map((e) => e.textContent.trim()));
   ok(m3.length === 1 && !/quay/i.test(m3.join()), 'delete removes the row');
+
+  console.log('6b. nothing clips at phone width');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => { nav('view-backoffice'); window.openBookingEmail('b9'); });
+  await page.waitForTimeout(400);
+  const clip = await page.evaluate(() => {
+    const box = document.querySelector('#enq-email-modal .reviews-modal-box');
+    const r = box.getBoundingClientRect();
+    const out = [];
+    box.querySelectorAll('button, input, label').forEach((el) => {
+      const b = el.getBoundingClientRect();
+      if (b.width && (b.right > r.right + 1 || b.left < r.left - 1)) out.push((el.id || el.textContent.trim().slice(0, 18)) + ' ' + Math.round(b.right) + '>' + Math.round(r.right));
+    });
+    return { out: out.slice(0, 4), scroll: box.scrollWidth <= box.clientWidth + 1 };
+  });
+  ok(clip.out.length === 0 && clip.scroll, `no control clips outside the modal at 390px (${clip.out.join(' | ')})`);
+  // the draft control reads in sentence case, not the global uppercase shout
+  const caseCk = await page.evaluate(() => ({
+    btn: getComputedStyle(document.getElementById('enq-email-draft')).textTransform,
+    lab: getComputedStyle(document.querySelector('#enq-email-modal .modal-label')).textTransform,
+  }));
+  ok(caseCk.btn === 'none' && caseCk.lab === 'none', `the composer is sentence case (btn ${caseCk.btn}, label ${caseCk.lab})`);
+  await page.evaluate(() => window.closeEnquiryEmailModal());
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(200);
 
   console.log('7. the store sanitiser');
   const s7 = await page.evaluate(() => {
