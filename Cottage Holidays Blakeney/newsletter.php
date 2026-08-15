@@ -133,15 +133,25 @@ if ($action === 'broadcast') {
     $results = smtp_send_batch($msgs);
     $sent = 0;
     $failed = 0;
-    foreach ($results as $res) {
+    $queued = 0;
+    foreach ($results as $i => $res) {
         if (!empty($res['ok'])) {
             $sent++;
-        } else {
-            $failed++;
+            continue;
+        }
+        $failed++;
+        // A failed recipient used to be a NUMBER in the report and nothing
+        // else — their copy was gone, and the only remedy re-sent to everyone.
+        // The outbox retries just theirs (per-recipient message, their own
+        // unsubscribe token intact).
+        if (email_queueable($res) && isset($msgs[$i])) {
+            if (email_outbox_add('newsletter', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], [], null, null, $msgs[$i]['headers'] ?? [], $res['error'] ?? '')) {
+                $queued++;
+            }
         }
     }
     log_activity('settings', 'newsletter.broadcast', 'Newsletter sent — “' . mb_substr($subject, 0, 80) . '” (' . $sent . ' recipients)', ['entity' => 'newsletter']);
-    json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'subscribers' => count($subs)]);
+    json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'queued' => $queued, 'subscribers' => count($subs)]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

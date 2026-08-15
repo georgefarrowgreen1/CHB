@@ -269,6 +269,9 @@ function smtp_transmit(
             'error' => mb_substr($detail !== '' ? $msg . ' — ' . $detail : $msg, 0, 200),
             'retryable' => smtp_transient($reply),
             'dirty' => smtp_code($rst) !== 250,
+            // Pre-payload rejection: the message body never went out, so a
+            // later retry (the outbox) can never double-send it.
+            'sent_uncertain' => false,
         ];
     };
 
@@ -379,10 +382,14 @@ function smtp_transmit(
             'error' => mb_substr('Message not accepted: ' . trim($finalReply), 0, 200),
             'retryable' => false,
             'dirty' => true,
+            // The payload WAS transmitted — the server may have accepted it
+            // despite the error, so no layer above (outbox included) may ever
+            // retry this message.
+            'sent_uncertain' => true,
         ];
     }
 
-    return ['ok' => true, 'error' => '', 'retryable' => false, 'dirty' => false];
+    return ['ok' => true, 'error' => '', 'retryable' => false, 'dirty' => false, 'sent_uncertain' => false];
 }
 
 /**
@@ -432,6 +439,7 @@ function smtp_send(
         $res = smtp_transmit($fp = $open['fp'], $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders);
         smtp_quit($fp);
         if ($res['ok']) {
+            email_outbox_kick(); // a proven-working link is the moment to retry queued mail
             return ['ok' => true, 'error' => ''];
         }
         $last = $res;
@@ -442,7 +450,11 @@ function smtp_send(
         break;
     }
     smtp_fail_log($toName, $last['error'] ?? 'send failed');
-    return ['ok' => false, 'error' => $last['error'] ?? 'send failed'];
+    return [
+        'ok' => false,
+        'error' => $last['error'] ?? 'send failed',
+        'sent_uncertain' => !empty($last['sent_uncertain']),
+    ];
 }
 
 /**
@@ -510,7 +522,7 @@ function smtp_send_batch($messages)
             $m['message_id'] ?? null,
             $m['headers'] ?? [],
         );
-        $results[$i] = ['ok' => $res['ok'], 'error' => $res['error']];
+        $results[$i] = ['ok' => $res['ok'], 'error' => $res['error'], 'sent_uncertain' => !empty($res['sent_uncertain'])];
         if (!$res['ok']) {
             smtp_fail_log($m['name'] ?? '', $res['error']);
         }
@@ -601,6 +613,235 @@ function owner_alert_text_html($subject, $text)
 // Send ONE owner/admin notification to every recipient (owner_recipients()).
 // Returns the primary send's result so existing callers keep their {ok,error}
 // contract; copies to the extra addresses are best-effort.
+// ============================================================
+// The email OUTBOX — durable retry for one-shot transactional emails.
+// The stamp-on-success crons (pre-arrival, review ask, waitlist, payment
+// chasers) already self-heal: a failed send re-enters their due window on the
+// next pass. The ONE-SHOT emails did not — a transport blip lost the booking
+// confirmation, the enquiry acknowledgement, the owner's new-enquiry alert and
+// any failed newsletter recipient, forever, with only an activity warn to show
+// for it. The outbox is that missing half, as ONE pattern instead of four
+// postures. Two rules carry all of its safety:
+//   • A message is queued ONLY when the payload provably never went out
+//     (email_queueable — sent_uncertain rows are never retried by any layer).
+//   • A flow with its own stamp-on-success retry must NEVER also queue here —
+//     two retry mechanisms for one email is a double send. test-payrail scans
+//     those files for smtp_send_reliable and fails if one adopts it.
+// Decisions are PURE (email_queueable / email_outbox_backoff /
+// email_outbox_step) so test-payrail drives them with no database; the IO
+// wrappers stay thin and never throw into the caller's failure path.
+// ============================================================
+
+// May this failed smtp_send result be retried later? False when the payload
+// may have been accepted (a retry could double-send), and false for 'Mail
+// disabled' (retrying can never succeed, and every dev/CI send would queue).
+function email_queueable($res)
+{
+    if (!is_array($res) || !empty($res['ok'])) {
+        return false;
+    }
+    if (!empty($res['sent_uncertain'])) {
+        return false;
+    }
+    return ($res['error'] ?? '') !== 'Mail disabled';
+}
+
+// Retry curve in MINUTES: 10, 20, 40, 80, 160, 320, then capped at 360 — quick
+// enough that a greylist clears same-morning, slow enough not to hammer a
+// genuinely down relay.
+function email_outbox_backoff($tries)
+{
+    return (int) min(360, 10 * pow(2, max(0, (int) $tries)));
+}
+
+// The row transition after one drain attempt — pure, so the give-up boundary
+// is testable in both directions. Gives up after 8 tries or 48 hours: an email
+// two days late is no longer the email it was, and the give-up is LOUD (the
+// drain logs a warn into Needs attention).
+function email_outbox_step($row, $ok, $nowTs)
+{
+    if ($ok) {
+        return ['outcome' => 'sent'];
+    }
+    $tries = (int) ($row['tries'] ?? 0) + 1;
+    $createdTs = strtotime((string) ($row['created_at'] ?? '')) ?: $nowTs;
+    if ($tries >= 8 || $nowTs - $createdTs >= 48 * 3600) {
+        return ['outcome' => 'gaveup', 'tries' => $tries];
+    }
+    return [
+        'outcome' => 'retry',
+        'tries' => $tries,
+        'next_try_at' => date('Y-m-d H:i:s', $nowTs + email_outbox_backoff($tries) * 60),
+    ];
+}
+
+// Queue one message (smtp_send argument shape). Never throws — this runs on a
+// path that is already failing, and losing the queue insert must not turn a
+// lost email into a broken endpoint. Capped so a relay that stays down cannot
+// grow the table without bound.
+function email_outbox_add($ctx, $toEmail, $toName, $subject, $text, $html, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [], $lastError = '')
+{
+    // An oversized attachment (the weekly DB backup rides send_owner) is not
+    // worth queueing: base64 in a table row, for an email whose next weekly run
+    // regenerates it anyway. The message queues only when its attachments fit.
+    $attBytes = 0;
+    foreach (is_array($attachments) ? $attachments : [] as $a) {
+        $attBytes += strlen((string) ($a['content'] ?? ''));
+    }
+    if ($attBytes > 512 * 1024) {
+        return false;
+    }
+    try {
+        $pending = (int) db()
+            ->query('SELECT COUNT(*) FROM email_outbox WHERE sent_at IS NULL AND gave_up_at IS NULL')
+            ->fetchColumn();
+        if ($pending >= 500) {
+            smtp_fail_log($toName, 'outbox full — ' . $ctx . ' not queued');
+            return false;
+        }
+        db()
+            ->prepare(
+                'INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, body_html, reply_to, message_id, extra_headers, attachments, last_error)
+                 VALUES (DATE_ADD(NOW(), INTERVAL 10 MINUTE), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            )
+            ->execute([
+                mb_substr((string) $ctx, 0, 40),
+                mb_substr((string) $toEmail, 0, 190),
+                mb_substr((string) $toName, 0, 190),
+                mb_substr((string) $subject, 0, 300),
+                (string) $text,
+                $html !== null ? (string) $html : null,
+                $replyTo !== null && $replyTo !== '' ? mb_substr((string) $replyTo, 0, 190) : null,
+                $messageId !== null && $messageId !== '' ? mb_substr((string) $messageId, 0, 120) : null,
+                $extraHeaders ? json_encode($extraHeaders) : null,
+                // System one-shots carry at most a ~1KB ICS; the manual composer
+                // (multi-MB attachments) is deliberately never queued.
+                $attachments ? json_encode(array_map(fn($a) => [
+                    'filename' => (string) ($a['filename'] ?? 'attachment'),
+                    'mime' => (string) ($a['mime'] ?? 'application/octet-stream'),
+                    'content_b64' => base64_encode((string) ($a['content'] ?? '')),
+                ], $attachments)) : null,
+                mb_substr((string) $lastError, 0, 220),
+            ]);
+        return true;
+    } catch (\Throwable $e) {
+        // Un-migrated table / DB trouble: the send already failed and was
+        // warn-logged; the queue is best-effort on top.
+        return false;
+    }
+}
+
+// smtp_send + queue-on-failure. For ONE-SHOT emails only — see the module
+// header for the double-retry rule. Returns smtp_send's shape plus
+// 'queued' => true when the message is in the outbox.
+function smtp_send_reliable($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = [], $replyTo = null, $messageId = null, $extraHeaders = [])
+{
+    $res = smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders);
+    if (!empty($res['ok']) || !email_queueable($res)) {
+        return $res;
+    }
+    $queued = email_outbox_add($ctx, $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders, $res['error'] ?? '');
+    if ($queued) {
+        $res['queued'] = true;
+    }
+    return $res;
+}
+
+// Retry due rows, oldest first. Runs from self-repair daily and from
+// email_outbox_kick after any successful send (a proven-working link is the
+// only real evidence the relay is back). Re-entrancy-guarded: the drain's own
+// sends go through smtp_send, whose success hook calls the kick.
+function email_outbox_drain($max = 10)
+{
+    static $draining = false;
+    if ($draining) {
+        return ['sent' => 0, 'retried' => 0, 'gaveup' => 0];
+    }
+    $draining = true;
+    $out = ['sent' => 0, 'retried' => 0, 'gaveup' => 0];
+    try {
+        $rows = db()
+            ->prepare('SELECT * FROM email_outbox WHERE sent_at IS NULL AND gave_up_at IS NULL AND next_try_at <= NOW() ORDER BY id LIMIT ' . max(1, (int) $max));
+        $rows->execute();
+        foreach ($rows->fetchAll() as $row) {
+            $atts = [];
+            if (!empty($row['attachments'])) {
+                $parsed = json_decode((string) $row['attachments'], true);
+                foreach (is_array($parsed) ? $parsed : [] as $a) {
+                    $bin = base64_decode((string) ($a['content_b64'] ?? ''), true);
+                    if ($bin !== false && $bin !== '') {
+                        $atts[] = ['filename' => (string) ($a['filename'] ?? 'attachment'), 'mime' => (string) ($a['mime'] ?? 'application/octet-stream'), 'content' => $bin];
+                    }
+                }
+            }
+            $hdrs = [];
+            if (!empty($row['extra_headers'])) {
+                $parsed = json_decode((string) $row['extra_headers'], true);
+                if (is_array($parsed)) {
+                    $hdrs = $parsed;
+                }
+            }
+            $res = smtp_send(
+                (string) $row['to_email'],
+                (string) $row['to_name'],
+                (string) $row['subject'],
+                (string) ($row['body_text'] ?? ''),
+                $row['body_html'] !== null && $row['body_html'] !== '' ? (string) $row['body_html'] : null,
+                $atts,
+                $row['reply_to'] !== null && $row['reply_to'] !== '' ? (string) $row['reply_to'] : null,
+                $row['message_id'] !== null && $row['message_id'] !== '' ? (string) $row['message_id'] : null,
+                $hdrs,
+            );
+            // A retry that itself ends sent_uncertain is TERMINAL: the payload
+            // went out, so this row may never be tried again either way.
+            $step = email_outbox_step($row, !empty($res['ok']), time());
+            if (!empty($res['sent_uncertain'])) {
+                $step = ['outcome' => 'gaveup', 'tries' => (int) $row['tries'] + 1];
+            }
+            if ($step['outcome'] === 'sent') {
+                db()->prepare('UPDATE email_outbox SET sent_at = NOW(), tries = tries + 1 WHERE id = ?')->execute([(int) $row['id']]);
+                $out['sent']++;
+            } elseif ($step['outcome'] === 'gaveup') {
+                db()->prepare('UPDATE email_outbox SET gave_up_at = NOW(), tries = ?, last_error = ? WHERE id = ?')
+                    ->execute([$step['tries'], mb_substr((string) ($res['error'] ?? ''), 0, 220), (int) $row['id']]);
+                if (function_exists('log_activity')) {
+                    log_activity('system', 'email.gaveup', 'Email given up after retries — ' . $row['context'] . ' to ' . $row['to_name'], [
+                        'severity' => 'warn',
+                        'entity' => 'email',
+                        'meta' => ['detail' => mb_substr((string) ($res['error'] ?? ''), 0, 200)],
+                    ]);
+                }
+                $out['gaveup']++;
+            } else {
+                db()->prepare('UPDATE email_outbox SET tries = ?, next_try_at = ?, last_error = ? WHERE id = ?')
+                    ->execute([$step['tries'], $step['next_try_at'], mb_substr((string) ($res['error'] ?? ''), 0, 220), (int) $row['id']]);
+                $out['retried']++;
+                // The relay is still refusing — stop burning the batch on it.
+                break;
+            }
+        }
+    } catch (\Throwable $e) {
+        // Un-migrated table or DB trouble — the daily pass will try again.
+    }
+    $draining = false;
+    return $out;
+}
+
+// Cheap post-success probe: drain a few due rows while the link is provably
+// up. Swallows everything — a queued retry must never break a live send path.
+function email_outbox_kick()
+{
+    static $kicked = false;
+    if ($kicked || !function_exists('db')) {
+        return;
+    }
+    $kicked = true; // once per request — the daily drain covers the rest
+    try {
+        email_outbox_drain(3);
+    } catch (\Throwable $e) {
+    }
+}
+
 function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, $messageId = null)
 {
     $rcpts = owner_recipients();
@@ -627,6 +868,13 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
         ];
     }
     $results = smtp_send_batch($msgs);
+    // Owner alerts are one-shots with no stamp-on-success pass behind them —
+    // queue each failed copy so "Payment received" survives a relay blip.
+    foreach ($results as $i => $r) {
+        if (empty($r['ok']) && email_queueable($r) && isset($msgs[$i])) {
+            email_outbox_add('owner-alert', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], $msgs[$i]['attachments'] ?? [], $msgs[$i]['reply_to'] ?? null, $msgs[$i]['message_id'] ?? null, [], $r['error'] ?? '');
+        }
+    }
     return $results[0] ?? ['ok' => false, 'error' => 'No owner email'];
 }
 
@@ -1433,7 +1681,9 @@ function send_enquiry_ack($enq, $accountExists = false)
         email_note(email_esc($acctLine)) .
         email_btn($url, $accountExists ? 'Sign in' : 'Visit the site');
     $html = email_shell($pre, $inner);
-    return smtp_send($email, $name, $subject, $text, $html);
+    // One-shot with no stamp-on-success cron behind it: a transport blip used
+    // to lose the promise email forever. Queue-on-failure (the outbox rules).
+    return smtp_send_reliable('enquiry-ack', $email, $name, $subject, $text, $html);
 }
 
 // Owner's direct reply to an enquirer, sent from the back office Inbox. The
@@ -2077,7 +2327,9 @@ function send_booking_emails($b)
         $atts = $ics
             ? [['filename' => 'booking-' . ($b['ref'] ?? 'CHB') . '.ics', 'mime' => 'text/calendar', 'content' => $ics]]
             : [];
-        $out['guest'] = smtp_send($b['email'], $b['name'], $subject, $body, $html, $atts);
+        // Approval deliberately never breaks on an email problem — which made a
+        // failed confirmation silently unrecoverable. It queues now.
+        $out['guest'] = smtp_send_reliable('confirmation', $b['email'], $b['name'], $subject, $body, $html, $atts);
     } else {
         $out['guest']['error'] = 'No guest email on file';
     }

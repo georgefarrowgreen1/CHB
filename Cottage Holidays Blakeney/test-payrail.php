@@ -2067,6 +2067,51 @@ chk('send_enquiry_reply_email hands the actions to the builder',
     preg_match('/function send_enquiry_reply_email\([^)]*\$actions = \[\]/', $mlE) === 1
         && strpos($mlE, "build_enquiry_reply_email(\$e, \$subject, \$message, \$ctx, \$actions)") !== false);
 
+// ---------------------------------------------------------------------------
+//  THE EMAIL OUTBOX — pure decisions, both directions of every boundary.
+//  A message may be queued for retry ONLY when the payload provably never went
+//  out; the give-up boundary is 8 tries or 48 hours; and the flows that already
+//  retry via stamp-on-success columns must never ALSO queue (two retry
+//  mechanisms for one email is a double send).
+// ---------------------------------------------------------------------------
+echo "\n== email outbox ==\n";
+chk('a successful send is not queueable', !email_queueable(['ok' => true]));
+chk('an ordinary transport failure IS queueable', email_queueable(['ok' => false, 'error' => 'RCPT TO rejected — 451 grey', 'sent_uncertain' => false]));
+chk('sent_uncertain is NEVER queueable (the payload went out)', !email_queueable(['ok' => false, 'error' => 'Message not accepted: 554', 'sent_uncertain' => true]));
+chk('Mail disabled is not queueable (it can never succeed)', !email_queueable(['ok' => false, 'error' => 'Mail disabled']));
+chk('backoff curve: 10, 20, 40, 80 minutes…', email_outbox_backoff(0) === 10 && email_outbox_backoff(1) === 20 && email_outbox_backoff(2) === 40 && email_outbox_backoff(3) === 80);
+chk('…capped at 6 hours', email_outbox_backoff(6) === 360 && email_outbox_backoff(20) === 360);
+$obNow = time();
+$obRow = ['tries' => 0, 'created_at' => date('Y-m-d H:i:s', $obNow - 3600)];
+$st = email_outbox_step($obRow, true, $obNow);
+chk('a successful retry is SENT', $st['outcome'] === 'sent');
+$st = email_outbox_step($obRow, false, $obNow);
+chk('a young failure RETRIES with the backoff applied', $st['outcome'] === 'retry' && $st['tries'] === 1 && $st['next_try_at'] === date('Y-m-d H:i:s', $obNow + 20 * 60));
+$st = email_outbox_step(['tries' => 7, 'created_at' => date('Y-m-d H:i:s', $obNow - 3600)], false, $obNow);
+chk('the 8th failure GIVES UP', $st['outcome'] === 'gaveup' && $st['tries'] === 8);
+$st = email_outbox_step(['tries' => 2, 'created_at' => date('Y-m-d H:i:s', $obNow - 48 * 3600)], false, $obNow);
+chk('48 hours old gives up whatever the tries', $st['outcome'] === 'gaveup');
+$st = email_outbox_step(['tries' => 2, 'created_at' => date('Y-m-d H:i:s', $obNow - 48 * 3600 + 60)], false, $obNow);
+chk('…and a minute inside the window still retries (the boundary, both ways)', $st['outcome'] === 'retry');
+// With MAIL_ENABLED undefined the send fails 'Mail disabled', which is not
+// queueable — so the reliable wrapper must return WITHOUT touching the
+// database (this suite has none) and without a queued flag.
+$st = smtp_send_reliable('gate', 'x@example.org', 'X', 'S', 'b');
+chk('smtp_send_reliable never queues an unqueueable failure', empty($st['ok']) && empty($st['queued']));
+
+//  THE WIRING. The three one-shot senders queue; the stamp-on-success flows
+//  must never adopt the reliable wrapper or the outbox (structural scans).
+chk('the enquiry ack queues on failure', strpos($mlE, "smtp_send_reliable('enquiry-ack'") !== false);
+chk('the booking confirmation queues on failure', strpos($mlE, "smtp_send_reliable('confirmation'") !== false);
+chk('send_owner queues each failed owner copy', preg_match("/function send_owner\\(.*?email_outbox_add\\('owner-alert'/s", $mlE) === 1);
+$nlSrc = (string) file_get_contents(__DIR__ . '/newsletter.php');
+chk('the newsletter queues failed recipients', strpos($nlSrc, "email_outbox_add('newsletter'") !== false);
+foreach (['pre-arrival.php', 'waitlist-lib.php', 'payments-due.php', 'autopay-lib.php'] as $obF) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $obF);
+    chk("$obF keeps its own stamp-on-success retry (no outbox — double-retry rule)",
+        strpos($src, 'smtp_send_reliable') === false && strpos($src, 'email_outbox_add') === false);
+}
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";

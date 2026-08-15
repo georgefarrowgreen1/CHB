@@ -89,6 +89,9 @@ with_server('reject-data', function ($log) {
     $r = smtp_send('guest@example.org', 'Guest', 'PostData test', 'body');
     ok('send failed', empty($r['ok']));
     ok('error mentions rejection', strpos($r['error'] ?? '', 'Message not accepted') !== false);
+    // The payload went out, so NO layer may retry — the outbox keys off this.
+    ok('flagged sent_uncertain (outbox must never queue it)', !empty($r['sent_uncertain']));
+    ok('…and email_queueable refuses it', function_exists('email_queueable') && !email_queueable($r));
     $ev = file_get_contents($log);
     ok('exactly 1 connection (never retried)', substr_count($ev, 'CONNECT') === 1);
     ok('exactly 1 payload transmitted', substr_count($ev, 'DATA-OK') === 1);
@@ -120,6 +123,8 @@ with_server('rcpt2-550', function ($log) {
     $rs = smtp_send_batch($msgs);
     ok('msg1 ok', !empty($rs[0]['ok']));
     ok('msg2 failed with RCPT error', empty($rs[1]['ok']) && strpos($rs[1]['error'], 'RCPT TO rejected') !== false);
+    // Rejected BEFORE the payload: this one IS safely retryable by the outbox.
+    ok('pre-payload rejection is not sent_uncertain', empty($rs[1]['sent_uncertain']));
     ok('msg3 ok', !empty($rs[2]['ok']));
     $ev = file_get_contents($log);
     ok('still exactly 1 connection', substr_count($ev, 'CONNECT') === 1);

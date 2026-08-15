@@ -297,6 +297,37 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## Email delivery is at-least-once now — the OUTBOX (migration-113)
+
+**Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
+crons (pre-arrival, review ask, waitlist, payment chasers) re-enter their due
+window on the next pass — they self-heal and must NEVER also queue. The
+ONE-SHOTS had nothing: a transport blip lost the booking confirmation, the
+enquiry ack (the "we'll reply by tomorrow" promise), every owner alert and any
+failed newsletter recipient, forever, with only an activity warn to show for
+it. `email_outbox` (mailer.php) is that missing half — queue on failure, retry
+with backoff (10min doubling, capped 6h), give up LOUDLY at 8 tries / 48h
+(`email.gaveup` warn → Needs attention), pruned by self-repair (sent 7d,
+gave-up 30d).
+- **`sent_uncertain` is the safety fact.** smtp_transmit now states on every
+  return whether the payload went out; after-DATA ambiguity may NEVER be
+  retried by any layer (`email_queueable` refuses it, and a drain retry that
+  itself ends sent_uncertain is terminal). smtp_send_batch carries the flag
+  too — send_owner's per-recipient queueing reads it there.
+- **Decisions are PURE** (`email_queueable` / `email_outbox_backoff` /
+  `email_outbox_step`) — test-payrail drives the matrix with no DB; test-smtp
+  gates the flag against the fake server; test-integration §22 gates the SQL
+  lifecycle through the real self-repair drain.
+- **Wired**: `smtp_send_reliable` on the ack + confirmation; send_owner queues
+  failed copies ('owner-alert'); newsletter queues failed recipients. The
+  MANUAL composer is deliberately NOT queued — the owner is looking at the
+  error and retries; queueing would double-send when they do. 'Mail disabled'
+  never queues. Attachments over 512KB (the weekly backup) never queue.
+- **Drain triggers**: self-repair daily, plus `email_outbox_kick` after any
+  successful smtp_send (a send that just worked is the only real proof the
+  relay is back — the op-queue probe rule, server-side; once per request,
+  re-entrancy-guarded).
+
 ## The Money area is FIVE ANSWERS, not an index
 
 `renderMoneyOverview` (admin.js) renders the landing in the hub's fold anatomy
