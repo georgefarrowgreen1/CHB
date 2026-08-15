@@ -24863,15 +24863,58 @@ function emailTplActById(id) {
 // paragraph, no greeting (the template writes "Hello <first>," above), and
 // every figure is a {{token}} resolved per guest — never a number typed here.
 const EMAIL_TPL_DEFAULTS = [
-    { id: 'd-balance', name: 'A nudge about the balance', body: "Just a gentle reminder that {{balance}} is still to pay for your stay at {{cottage}} ({{dates}}). The button below takes you straight to the payment page — and if anything has changed, just reply and we'll sort it out together.", actions: ['pay'], uses: 0 },
-    { id: 'd-free', name: 'The dates are free', body: "Good news — {{cottage}} is free for {{dates}}, and the total for your stay would be {{total}}. If you'd like to go ahead, just reply and we'll get everything set up for you.", actions: [], uses: 0 },
-    { id: 'd-taken', name: 'Those dates are taken', body: "Thank you so much for thinking of us. Unfortunately those exact dates are already taken — but if your plans have any give in them, let us know roughly when suits and we'll happily look for the nearest free dates either side.", actions: [], uses: 0 },
-    { id: 'd-register', name: 'Before you arrive', body: "We're really looking forward to welcoming you to {{cottage}}. If you have a spare minute before you travel, the button below is where you add the names of everyone staying — it only takes a moment, and it means everything is ready for your arrival.", actions: ['register'], uses: 0 },
-    { id: 'd-invoice', name: 'Your invoice', body: "Your invoice for your stay at {{cottage}} ({{dates}}) is behind the button below — it's yours to save or print for your records. If anything on it doesn't look right, just reply and we'll put it straight.", actions: ['invoice'], uses: 0 },
-    { id: 'd-paid', name: 'Payment received — thank you', body: "Your payment has arrived safely — thank you. Everything is set for your stay at {{cottage}}, and we'll send your arrival details about a week before you're due.", actions: [], uses: 0 },
-    { id: 'd-after', name: 'After your stay — thank you', body: "Thank you for staying with us at {{cottage}} — it was a pleasure to have you. We hope the journey home was easy, and we'd be delighted to welcome you back whenever Blakeney calls again.", actions: [], uses: 0 },
-    { id: 'd-depback', name: 'Your deposit is on its way back', body: "Your refundable deposit is on its way back to you — it usually lands within 3–5 working days. Thank you for looking after {{cottage}} so well; we'd love to have you back.", actions: [], uses: 0 },
+    { id: 'd-balance', name: 'A nudge about the balance', body: "Just a gentle reminder that {{balance}} is still to pay for your stay at {{cottage}} ({{dates}}). The button below takes you straight to the payment page — and if anything has changed, just reply and we'll sort it out together.", actions: ['pay'], when: 'booking', uses: 0 },
+    { id: 'd-free', name: 'The dates are free', body: "Good news — {{cottage}} is free for {{dates}}, and the total for your stay would be {{total}}. If you'd like to go ahead, just reply and we'll get everything set up for you.", actions: [], when: 'enquiry', uses: 0 },
+    { id: 'd-taken', name: 'Those dates are taken', body: "Thank you so much for thinking of us. Unfortunately those exact dates are already taken — but if your plans have any give in them, let us know roughly when suits and we'll happily look for the nearest free dates either side.", actions: [], when: 'enquiry', uses: 0 },
+    { id: 'd-register', name: 'Before you arrive', body: "We're really looking forward to welcoming you to {{cottage}}. If you have a spare minute before you travel, the button below is where you add the names of everyone staying — it only takes a moment, and it means everything is ready for your arrival.", actions: ['register'], when: 'before', uses: 0 },
+    { id: 'd-invoice', name: 'Your invoice', body: "Your invoice for your stay at {{cottage}} ({{dates}}) is behind the button below — it's yours to save or print for your records. If anything on it doesn't look right, just reply and we'll put it straight.", actions: ['invoice'], when: 'booking', uses: 0 },
+    { id: 'd-paid', name: 'Payment received — thank you', body: "Your payment has arrived safely — thank you. Everything is set for your stay at {{cottage}}, and we'll send your arrival details about a week before you're due.", actions: [], when: 'before', uses: 0 },
+    { id: 'd-after', name: 'After your stay — thank you', body: "Thank you for staying with us at {{cottage}} — it was a pleasure to have you. We hope the journey home was easy, and we'd be delighted to welcome you back whenever Blakeney calls again.", actions: [], when: 'after', uses: 0 },
+    { id: 'd-depback', name: 'Your deposit is on its way back', body: "Your refundable deposit is on its way back to you — it usually lands within 3–5 working days. Thank you for looking after {{cottage}} so well; we'd love to have you back.", actions: [], when: 'after', uses: 0 },
 ];
+// When a template SHOWS — the picker offers only what applies to the record
+// on screen (owner's screenshot: a paid pre-arrival booking offered "The
+// dates are free", an after-stay thank-you and a struck-out register button).
+// '' = every record; the rest name the moment. Manage always lists everything.
+const EMAIL_TPL_WHEN = [
+    { id: '', label: 'Every record' },
+    { id: 'enquiry', label: 'Enquiries only' },
+    { id: 'booking', label: 'Bookings only' },
+    { id: 'before', label: 'Bookings — before the stay' },
+    { id: 'after', label: 'Bookings — after the stay' },
+];
+function emailTplWhenLabel(id) {
+    const w = EMAIL_TPL_WHEN.find((x) => x.id === id);
+    return w ? w.label : '';
+}
+// A refused button is refused one of two ways, and only one kills the row:
+// the JOB IS GONE (nothing owed, register already in, stay over — the
+// template's premise went with it) or the CHANNEL is wrong (a transfer-rail
+// guest still owes the money; the words apply, the card button doesn't).
+// The first hides the template; the second just drops the button.
+function etplActMoot(id, f) {
+    if (!f || !f.booking) return true;
+    if (id === 'pay') return f.balance == null;
+    if (id === 'register') return f.regDone || f.stayOver;
+    return false; // invoice — a booking always has one
+}
+// The one decision: does this template apply to the record being emailed?
+// Three gates, each a fact about THIS record — the declared scope, tokens
+// with nothing to resolve to (a balance nudge on a settled stay), and a
+// template whose every button is MOOT here (a register ask once the details
+// are in). A row that fails is HIDDEN, not struck through: an option that
+// no longer applies is not an option.
+function emailTplApplies(t, f) {
+    if (!f) return false;
+    const w = t.when || '';
+    if (w === 'enquiry' && f.booking) return false;
+    if ((w === 'booking' || w === 'before' || w === 'after') && !f.booking) return false;
+    if (w === 'before' && f.stayOver) return false;
+    if (w === 'after' && !f.stayOver) return false;
+    if (emailTplResolve(t.body, f).missing.length) return false;
+    if (t.actions.length && t.actions.every((id) => etplActMoot(id, f))) return false;
+    return true;
+}
 // The key has never been saved (≠ emptied '[]', ≠ garbage) — the one state
 // that shows the starters, and the caption that explains where they came from.
 function emailTplStoreAbsent() {
@@ -24895,6 +24938,7 @@ function emailTplList() {
             name: String(t.name || '').slice(0, 60) || 'Saved reply',
             body: String(t.body).slice(0, 2000),
             actions: (Array.isArray(t.actions) ? t.actions : []).map(String).filter((id) => emailTplActById(id)).slice(0, 3),
+            when: EMAIL_TPL_WHEN.some((w) => w.id && w.id === t.when) ? String(t.when) : '',
             uses: Math.max(0, parseInt(String(t.uses), 10) || 0),
         }));
 }
@@ -25050,32 +25094,38 @@ function etplRender() {
     panel.hidden = !__etplOpen;
     if (__etplOpen && f) {
         const ql = __etplQ.trim().toLowerCase();
-        const list = emailTplList()
-            .filter((t) => !ql || (t.name + ' ' + t.body).toLowerCase().includes(ql))
-            .sort((a, b) => b.uses - a.uses);
+        const all = emailTplList();
+        // Applicability FIRST, search second: a template that no longer applies
+        // to this record is not an option, so it is not a search result either.
+        // A row that renders is always insertable — the old disabled-with-reason
+        // and struck-through-button states are gone with the rows they explained.
+        const fits = all.filter((t) => emailTplApplies(t, f));
+        const list = fits.filter((t) => !ql || (t.name + ' ' + t.body).toLowerCase().includes(ql)).sort((a, b) => b.uses - a.uses);
         const rows = list
             .map((t) => {
                 const res = emailTplResolve(t.body, f);
-                const off = res.missing.length > 0;
                 const snippet = res.text.replace(/\s+/g, ' ').slice(0, 110);
+                // Only the buttons that will actually ride along — a refused one
+                // is dropped here exactly as emailTplInsert drops it.
                 const chips = t.actions
-                    .map((id) => {
-                        const a = emailTplActById(id);
-                        const why = etplActGuard(id, f);
-                        return `<span class="etpl-carry${why ? ' is-off' : ''}">${escapeHtml(a.label)}</span>`;
-                    })
+                    .filter((id) => !etplActGuard(id, f))
+                    .map((id) => `<span class="etpl-carry">${escapeHtml(emailTplActById(id).label)}</span>`)
                     .join('');
-                return `<button type="button" class="etpl-row" ${chbAttrs('emailTplInsert', t.id)}${off ? ' disabled' : ''}>
+                return `<button type="button" class="etpl-row" ${chbAttrs('emailTplInsert', t.id)}>
                     <span class="etpl-row-name">${escapeHtml(t.name)}${t.uses >= 3 ? `<span class="etpl-uses">used ${t.uses}×</span>` : ''}</span>
                     <span class="etpl-row-sub">${escapeHtml(snippet)}${res.text.length > 110 ? '…' : ''}</span>
                     ${chips ? `<span class="etpl-carryrow">${chips}</span>` : ''}
-                    ${off ? `<span class="etpl-row-no">${escapeHtml(res.missing.join(', '))} has nothing to resolve to here.</span>` : ''}
                 </button>`;
             })
             .join('');
+        const noneMsg = ql
+            ? 'Nothing matches “' + escapeHtml(__etplQ) + '”.'
+            : all.length
+              ? 'None of your saved replies fits this record — the full library is under Manage.'
+              : 'Nothing saved yet — write a reply below, then “Save as a template”.';
         panel.innerHTML = `
             <input type="search" class="input-glass etpl-q" id="etpl-q" placeholder="Search your saved replies…" value="${escapeHtml(__etplQ)}" data-act-input="emailTplSearch" data-pass="self" aria-label="Search your saved replies">
-            ${rows || `<p class="etpl-none">${ql ? 'Nothing matches “' + escapeHtml(__etplQ) + '”.' : 'Nothing saved yet — write a reply below, then “Save as a template”.'}</p>`}`;
+            ${rows || `<p class="etpl-none">${noneMsg}</p>`}`;
     }
     // ---- the buttons row ----
     __etplChosen = __etplChosen.filter((id) => !etplActGuard(id, f));
@@ -25220,6 +25270,7 @@ async function emailTplSaveAs() {
         name,
         body: body.slice(0, 2000),
         actions: __etplChosen.slice(0, 3),
+        when: '', // every record until scoped under Manage — the tokens/buttons gate the rest
         uses: 0,
     });
     try {
@@ -25256,6 +25307,8 @@ function renderSavedReplies() {
                     <input type="text" class="input-glass" id="etpl-ed-name" maxlength="60" value="${escapeHtml(t.name)}">
                     <label class="modal-label" for="etpl-ed-body">The paragraph — tokens like {{cottage}}, {{dates}} and {{balance}} fill in per guest</label>
                     <textarea class="input-glass" id="etpl-ed-body" rows="4" maxlength="2000">${escapeHtml(t.body)}</textarea>
+                    <label class="modal-label" for="etpl-ed-when">Shows for</label>
+                    <select class="input-glass" id="etpl-ed-when">${EMAIL_TPL_WHEN.map((w) => `<option value="${w.id}"${(t.when || '') === w.id ? ' selected' : ''}>${escapeHtml(w.label)}</option>`).join('')}</select>
                     <span class="modal-label">Buttons it carries</span>
                     <div class="etpl-cbxrow" id="etpl-ed-acts">${boxes}</div>
                     <div class="etpl-mbtns">
@@ -25266,7 +25319,7 @@ function renderSavedReplies() {
             }
             return `<div class="etpl-mrow">
                 <span class="etpl-mmain"><span class="etpl-row-name">${escapeHtml(t.name)}</span>
-                <span class="etpl-row-sub">${t.uses ? `used ${t.uses}×` : 'never used'} · ${escapeHtml(actNames(t))}</span></span>
+                <span class="etpl-row-sub">${t.uses ? `used ${t.uses}×` : 'never used'} · ${escapeHtml(actNames(t))}${t.when ? ` · ${escapeHtml(emailTplWhenLabel(t.when).toLowerCase())}` : ''}</span></span>
                 <span class="etpl-mbtns">
                     <button type="button" class="btn-sm btn-edit" ${chbAttrs('emailTplEditOpen', t.id)}>Edit</button>
                     <button type="button" class="btn-sm btn-edit etpl-del" ${chbAttrs('emailTplDelete', t.id)}>Delete</button>
@@ -25296,8 +25349,10 @@ async function emailTplEditSave(id) {
     const acts = Array.from(document.querySelectorAll('#etpl-ed-acts input[type=checkbox]'))
         .filter((c) => /** @type {HTMLInputElement} */ (c).checked)
         .map((c) => String(/** @type {HTMLElement} */ (c).dataset.actid));
+    const whenEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('etpl-ed-when'));
+    const when = whenEl && EMAIL_TPL_WHEN.some((w) => w.id && w.id === whenEl.value) ? whenEl.value : '';
     const prev = siteContent[EMAIL_TPL_KEY];
-    const list = emailTplList().map((t) => (t.id === id ? { ...t, name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3) } : t));
+    const list = emailTplList().map((t) => (t.id === id ? { ...t, name: name.slice(0, 60), body: body.slice(0, 2000), actions: acts.slice(0, 3), when } : t));
     try {
         await emailTplStore(list);
         __etplEditId = null;
