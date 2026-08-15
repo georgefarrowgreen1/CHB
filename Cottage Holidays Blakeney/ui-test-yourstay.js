@@ -870,6 +870,40 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/reply to your confirmation email/i.test(backSay),
     '…and is given a way to ask about a stay they expected to see');
 
+  // 31) THE TWO HEADER PILLS SIT ON ONE LINE — reported from a photo: "Call to
+  // discuss is higher than account and settings". Their BOXES were always
+  // identical; what differed was the content INSIDE them, because a <button>
+  // uses the UA's line-height:normal while an <a> inherits the page's, so the
+  // icon and label sat 3px apart. Asserted on the ICON, which is what the eye
+  // actually compares, and swept across desktop widths.
+  console.log('\n31) the account header pills line up');
+  const pillPage = await openPage({ name: 'Pill Guest', email: 'pill@x.co' }, []);
+  await pillPage.setViewportSize({ width: 1280, height: 900 });
+  await pillPage.waitForTimeout(200);
+  const pill = await pillPage.evaluate(() => {
+    const out = [];
+    for (const w of [1024, 1280, 1440]) {
+      const b = document.getElementById('acct-settings-btn');
+      const a = document.getElementById('acct-call-btn');
+      if (!b || !a) return null;
+      const rb = b.getBoundingClientRect(), ra = a.getBoundingClientRect();
+      const ib = b.querySelector('svg').getBoundingClientRect(), ia = a.querySelector('svg').getBoundingClientRect();
+      out.push({
+        w,
+        boxTop: +(ra.top - rb.top).toFixed(1),
+        boxH: +(ra.height - rb.height).toFixed(1),
+        // the inked content, not just the pill: this is what was 3px out
+        icon: +(ia.top - ib.top).toFixed(1),
+      });
+    }
+    return out;
+  });
+  ok(!!pill && pill.every((r) => Math.abs(r.boxTop) < 0.6 && Math.abs(r.boxH) < 0.6),
+    `both pills are the same box on one line (${pill && JSON.stringify(pill.map((r) => r.boxTop))})`);
+  ok(!!pill && pill.every((r) => Math.abs(r.icon) < 0.6),
+    `…and their icons sit at the same height inside — the reported 3px lift (${pill && JSON.stringify(pill.map((r) => r.icon))})`);
+  await pillPage.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

@@ -6219,6 +6219,18 @@ body.owner-mode .chat-widget {
   color: var(--text-light);
   white-space: nowrap;
   text-decoration: none;
+  /* THE SAME PILL WHETHER IT IS A <button> OR AN <a>. A button uses the UA's
+     line-height:normal while an anchor INHERITS the page's (17.4px), so two
+     pills sitting side by side had identical boxes with their icon and label
+     3px apart vertically — reported as "Call to discuss is higher than Account
+     & settings". Stating the line-height makes the two element types agree.
+     inline-flex centres the icon against the words rather than hanging both
+     off a text baseline, which is what made the difference visible at all. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1.2;
 }
 .btn-sm:hover {
   transform: translateY(-2px);
