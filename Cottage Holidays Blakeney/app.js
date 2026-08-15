@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 520;
+const ADMIN_BUNDLE_V = 521;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1784,7 +1784,6 @@ function mapBookingFromApi(row) {
         // The guest's own "when will you arrive?" answer — a window CODE
         // ('16-18', 'late', 'unsure'); '' = not answered. Rides SELECT * on the
         // owner path too once migration-110 has run.
-        arrivalWindow: typeof row.arrival_window === 'string' ? row.arrival_window : '',
         // The raw plan columns (owner rows carry them via SELECT *): the back
         // office derives DISPLAY from these; every charged figure stays
         // server-derived.
@@ -4402,7 +4401,7 @@ async function renderGuestBookings() {
                             <span class="legend-swatch swatch-${propKey}"></span>
                             <div>
                                 <div class="hub-title">You're staying at <strong>${escapeHtml(meta.name)}</strong></div>
-                                <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left${b.checkIn === todayStr && b.arrivalWindow && b.arrivalWindow !== 'unsure' ? ' · you said ' + escapeHtml(arrivalWindowLabel(b.arrivalWindow)) : ''}</div>
+                                <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
                             </div>
                         </div>
                         ${guestDoorCodeHeroHtml(b)}
@@ -4589,73 +4588,9 @@ function guestStayTimelineHtml(propKey, b, gt) {
             if (rest > 0.005) rows.push(row('is-dim', 'Remaining balance', escapeHtml('Due' + (balanceDueBySuffix(b.balanceDueBy) || ' before your stay')), gbp(rest)));
         }
     }
-    rows.push(b.preArrivalSent
-        ? row('is-done', 'Arrival details', 'Sent — check your inbox', '')
-        : row('is-dim', 'Arrival details', 'Directions, entry and everything you need — about a week before', ''));
-    if (b.doorCode) {
-        rows.push(row('is-done', 'Key safe code', '', `<span class="gtj-code">${escapeHtml(b.doorCode)}</span>`));
-    } else if (b.doorCodeFrom) {
-        rows.push(row('is-dim', 'Your door code', escapeHtml(`Your key safe code appears here from ${fmtDate(b.doorCodeFrom)}`), ''));
-    } else if (b.doorCodePending) {
-        rows.push(row('is-dim', 'Your door code', "Appears here once it's set on the key safe — never sent by email", ''));
-    }
     rows.push(row('is-dim', 'Your stay', escapeHtml(`Check-in from ${b.checkInTime || '15:00'} on ${dpSpoken(b.checkIn)}`), ''));
     if (gt.dep > 0) rows.push(row('is-dim', 'Deposit back', '3–5 working days after checkout', gbp(gt.dep)));
     return `<div class="gtl"><div class="gtl-cap">Your road to Blakeney</div>${rows.join('')}</div>`;
-}
-// "When will you arrive?" — the one NEW fact the guest is asked for. Window
-// CODES, never free text ('16-18' hour band, 'late', 'unsure'), derived from
-// the booking's own check-in hour so a 4pm cottage offers 4pm bands. The
-// answer lands on the booking (my-bookings.php set_arrival_window) and the
-// owner's hub when-line reads it back.
-function arrivalWindowLabel(code) {
-    const c = String(code || '');
-    if (c === 'late') return 'later in the evening';
-    if (c === 'unsure') return 'not sure yet';
-    const m = c.match(/^(\d{1,2})-(\d{1,2})$/);
-    if (!m) return '';
-    const a = +m[1], z = +m[2];
-    const n = (h) => ((h + 11) % 12) + 1;
-    const s = (h) => (h >= 12 ? 'pm' : 'am');
-    return s(a) === s(z) ? `${n(a)}–${n(z)}${s(z)}` : `${n(a)}${s(a)}–${n(z)}${s(z)}`;
-}
-function guestArrivalSlotsHtml(b) {
-    const h0 = parseInt(String(b.checkInTime || '15:00'), 10) || 15;
-    const n = (h) => ((h + 11) % 12) + 1;
-    const s = (h) => (h >= 12 ? 'pm' : 'am');
-    const codes = [`${h0}-${h0 + 1}`, `${h0 + 1}-${h0 + 3}`, `${h0 + 3}-${h0 + 5}`, 'late', 'unsure'];
-    const lbl = (c) => (c === 'late' ? `After ${n(h0 + 5)}${s(h0 + 5)}` : c === 'unsure' ? 'Not sure yet' : arrivalWindowLabel(c));
-    return `
-        <div class="gslots">
-            <div class="gtl-cap">When will you arrive?</div>
-            <p class="gslot-q">Helps us have everything ready. Check-in is from ${escapeHtml(b.checkInTime || '15:00')}.</p>
-            <div class="gslot-row" role="group" aria-label="When will you arrive?">
-                ${codes.map((c) => `<button type="button" class="gslot${b.arrivalWindow === c ? ' is-sel' : ''}" ${chbAttrs('guestSetArrivalWindow', String(b.dbId), c, CHB_SELF)}>${escapeHtml(lbl(c))}</button>`).join('')}
-            </div>
-            <p class="gslot-note" role="status">${b.arrivalWindow && b.arrivalWindow !== 'unsure' ? '✓ Noted — around ' + escapeHtml(arrivalWindowLabel(b.arrivalWindow)) + '.' : ''}</p>
-        </div>`;
-}
-async function guestSetArrivalWindow(bookingId, code, btn) {
-    const wrap = btn && btn.closest ? btn.closest('.gslots') : null;
-    try {
-        await apiPost('my-bookings.php', { action: 'set_arrival_window', id: Number(bookingId), window: code });
-    } catch (e) {
-        glassAlert("Couldn't save that just now: " + e.message);
-        return;
-    }
-    // Mirror locally so a re-render agrees without a refetch.
-    const hit = (guestBookingsCache || []).find((m) => m.booking && m.booking.dbId === Number(bookingId));
-    if (hit) hit.booking.arrivalWindow = code;
-    if (wrap) {
-        wrap.querySelectorAll('.gslot').forEach((el) => el.classList.remove('is-sel'));
-        if (btn && btn.classList) btn.classList.add('is-sel');
-        const note = wrap.querySelector('.gslot-note');
-        if (note) {
-            note.textContent = code === 'unsure'
-                ? 'No problem — tell us whenever you know.'
-                : `✓ Noted — we'll have everything ready for around ${arrivalWindowLabel(code)}.`;
-        }
-    }
 }
 // The stay's weather — the coast tier's own public Open-Meteo feed
 // (weather.php), rendered async into the card once per session. Absent when
@@ -4696,41 +4631,6 @@ async function renderGuestStayWeather() {
             <div class="gwx-row">${mine.map((d) => `<div class="gwx-d"><span class="gwx-dn">${escapeHtml(dpSpoken(d.date).split(' ')[0])}</span><span class="gwx-ic" aria-hidden="true">${gwxIcon(d.code)}</span><span class="gwx-t">${Math.round(Number(d.tmax) || 0)}°</span><span class="gwx-s">${escapeHtml(String(d.summary || '').toLowerCase())}</span></div>`).join('')}</div>
             <div class="gwx-note">Forecast firms up as you get closer — updated daily.</div>`;
     });
-}
-// Extras: one-tap asks that land in the EXISTING message thread — we confirm,
-// the app doesn't promise ("asked", never "booked"). Posts the same payload a
-// signed-in guest's sendChat sends, so nothing new to monitor.
-const GUEST_EXTRAS = ['Travel cot', 'Highchair', 'Early check-in', 'Firewood'];
-function guestExtrasHtml(propKey, b) {
-    return `
-        <div class="gxtra">
-            <div class="gtl-cap">Anything you'll need?</div>
-            <div class="gxtra-row">${GUEST_EXTRAS.map((x) => `<button type="button" class="gxchip" ${chbAttrs('guestAskExtra', x, String(b.dbId), String(propKey), CHB_SELF)}>${escapeHtml(x)}</button>`).join('')}</div>
-            <p class="gxtra-note" role="status">One tap asks us — it lands in your messages, and we'll confirm.</p>
-        </div>`;
-}
-async function guestAskExtra(item, bookingId, propKey, btn) {
-    if (btn && btn.classList && btn.classList.contains('is-asked')) {
-        toggleChat(); // already asked — the conversation is where the answer lands
-        return;
-    }
-    const hit = (guestBookingsCache || []).find((m) => m.booking && m.booking.dbId === Number(bookingId));
-    const b = hit && hit.booking;
-    const meta = propertyMeta[propKey] || { name: propKey };
-    const when = b ? `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}` : '';
-    const body = `Could we have a ${String(item).toLowerCase()} for our stay at ${meta.name}${when ? ` (${when})` : ''}? — asked from My Stays`;
-    try {
-        await apiPost('messages.php', { action: 'send', body, attachment: '' });
-    } catch (e) {
-        glassAlert("Couldn't send that just now: " + e.message);
-        return;
-    }
-    if (btn && btn.classList) {
-        btn.classList.add('is-asked');
-        btn.textContent = '✓ ' + item + ' — asked';
-    }
-    const note = btn && btn.closest && btn.closest('.gxtra') ? btn.closest('.gxtra').querySelector('.gxtra-note') : null;
-    if (note) note.textContent = "Sent with your booking details — we'll confirm in Messages.";
 }
 // Arrival-day door-code hero (the in-residence hub). Double-gated: digits only
 // when the server released them; on arrival day with the keeper ON but no
@@ -4908,9 +4808,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
             </div>
             ${cta ? `<div class="hub-cta">${cta}</div>` : ''}
             ${guestStayTimelineHtml(propKey, b, gt)}
-            ${guestArrivalSlotsHtml(b)}
             ${guestWeatherStripHtml(b)}
-            ${guestExtrasHtml(propKey, b)}
             <div class="hub-grid">
                 <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                 <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
@@ -18158,7 +18056,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'verdicttop';
+    const BUILD = 'noarrask';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

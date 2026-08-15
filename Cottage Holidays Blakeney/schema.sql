@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     deposit_pct_override    DECIMAL(5,2)  NULL,  -- this booking's deposit %, replacing square-deposit-pct
     deposit_amount_override DECIMAL(10,2) NULL,  -- …or a fixed £ deposit (wins over the pct; capped at the total)
     balance_due_date        DATE          NULL,  -- when the balance falls due, replacing check-in − PAYMENT_BALANCE_DAYS
-    arrival_window     VARCHAR(20)   NULL,  -- guest's own "when will you arrive?" window code (migration-110); NULL = not answered
+    arrival_window     VARCHAR(20)   NULL,  -- RETIRED: the "when will you arrive?" ask was removed. Nothing reads or writes it; kept because dropping a column destroys what guests already told us, and an unused NULL column costs nothing.
     terms_accepted_at  DATETIME      NULL,
     no_dogs_at         DATETIME      NULL,           -- guest confirmed no dog (carried from the enquiry)
     terms_version      VARCHAR(20)   NULL,

@@ -3037,42 +3037,53 @@ endpoints. Gated by ui-test-yourstay.js (countdown wording, balance/all-set stat
 **The My Stays companion** (app.js — the approved demo's PR-1; gated by
 ui-test-yourstay §21–25 + test-integration §19). The pre-arrival hub carries a
 STAY TIMELINE ("Your road to Blakeney", `guestStayTimelineHtml`) — booking
-confirmed / paid-so-far / the NOW money row / arrival details / door code /
-your stay / deposit back — where EVERY figure comes from the derivations the
+confirmed / paid-so-far / the NOW money row / your stay / deposit back — the
+ARRIVAL-DETAILS and DOOR-CODE rows were removed at the owner's ask (see
+below) — where EVERY figure comes from the derivations the
 card already trusts (`displayGrand` + `guestPayCta`; §21 asserts the now-row's
 figure EQUALS the Pay button's), and the money row follows the same
 armed/trouble/owner-arranged judgements as the hub line via
 `guestAutopayTroubleOf` (ONE definition, both readers).
-- **THE DOOR CODE IS SECURITY-GATED BY THE KEEPER'S OWN RULE, in three layers**:
-  digits only when the server released them (`door_code`), a DATE only from
-  `door_code_from` (minted by a real confirm), and the held-back line ("appears
-  once it's set on the key safe — never sent by email") only on the NEW
-  **`door_code_pending`** flag — my-bookings.php sends it only while the keeper
-  is ON for the cottage and no code is confirmed for THIS stay, because a
-  keeper-off cottage may have NO SAFE and a held-back card would assert one.
-  Nothing at all otherwise (§20's rule, kept). The arrival-day HERO
-  (`guestDoorCodeHeroHtml`, in-residence hub) is double-gated the same way:
-  released → big figure + Copy; pending on arrival day → masked `····` naming
-  the honest way in (call us); anything else → no card.
-- **"When will you arrive?" is the ONE new data field** (migration-110
-  `bookings.arrival_window`): window CODES only ('16-18' hour band / 'late' /
-  'unsure' — `arrival_window_valid` refuses free text), bands derived from the
-  booking's own check-in hour. Written by the guest via my-bookings.php POST
-  `set_arrival_window` (require_guest + ownership by email; **NO X-CSRF-Token
-  check, deliberately** — `csrf_issue_cookie()` only mints the cookie for ADMIN
-  sessions, so a CSRF check here refused every real guest client; break-tested
-  live, the posture is the same SameSite one every guest write takes). Read
-  back by the owner's hub when-line ("arriving 4–6pm", `arrivalWindowLabel` in
-  app.js) and the arrival-day card ("you said 4–6pm").
+- **THE DOOR CODE IS SECURITY-GATED BY THE KEEPER'S OWN RULE, in three layers**,
+  and the SERVER half is untouched by any of the removals: digits only when the
+  server released them (`door_code`), a DATE only from `door_code_from` (minted
+  by a real confirm), and `door_code_pending` only while the keeper is ON for
+  the cottage with no code confirmed for THIS stay — a keeper-off cottage may
+  have NO SAFE and a held-back promise would assert one. Gated in
+  test-integration §18.
+  **The guest now meets it in ONE place, not two.** The timeline's door-code
+  row (and the "Arrival details" row beside it) were removed at the owner's
+  ask, so the surviving surface is the arrival-day HERO
+  (`guestDoorCodeHeroHtml`, in-residence hub): released → big figure + Copy;
+  pending on arrival day → masked `····` naming the honest way in (call us);
+  anything else → no card. **The consequence, stated because it is a real
+  narrowing**: the reveal window opens `KEYSAFE_REVEAL_DAYS` (2) before
+  check-in, and the hero renders only from check-in day — so a code released on
+  the travel day is visible from arrival rather than two days early. Putting the
+  hero on the pre-arrival card would close that gap and was deliberately NOT
+  done unasked. ui-test-yourstay §20 drives all three server states and asserts
+  the pre-arrival card says nothing in ANY of them; §25 owns the hero.
 - **The weather strip rides weather.php** (public, no key): fetched once per
   session, the stay's own days only, absent beyond the ~2-week horizon or on
   failure — a blank strip claims nothing. Caption states forecast confidence.
-- **Extras are one-tap ASKS** into the existing chat thread (the signed-in
-  sendChat payload, no new surface): "asked", never "booked" — we confirm, the
-  app doesn't promise.
-- NB test-integration can mint a REAL guest session over HTTP —
-  `auth.php guest_register` creates the session directly — which is how §19
-  drives the write path end to end (ownership 404, junk 400, clear-to-NULL).
+- **TWO ASKS WERE REMOVED FROM THIS CARD, and my-bookings.php is READ-ONLY
+  again because of it.** "When will you arrive?" (the window chips) and
+  "Anything you'll need?" (the extras chips) are gone at the owner's ask —
+  composers, handlers, CSS and the `set_arrival_window` route with them, plus
+  both places the owner read the answer back (the hub when-line's "arriving
+  4-6pm" and the arrival-day card's "you said"). `bookings.arrival_window`
+  (migration-110) is RETIRED, not dropped: nothing reads or writes it, and
+  deleting a column destroys what guests already told us for no gain.
+  **The removal exposed a real defect the gate caught**: with the route gone a
+  POST FELL THROUGH to the read and answered **200 with the whole payload**, so
+  a stale tab's write looked to it exactly like one that had worked. A POST is
+  refused **405** now. That in turn re-aimed an older §19 check which POSTed
+  `{action:'list'}` to prove a half-verified account "can read nothing" — it
+  was riding the write route's `require_guest()`, so it met the 405 first and
+  proved nothing; it GETs now, the way a real client reads.
+  ui-test-yourstay §22 asserts the ABSENCE (no markup, none of their words, and
+  the composers undefined — a stray call site would throw), break-tested by
+  putting the slots back.
 - **PR-2: THE STAY CARD REBUILT + AFTER THE STAY** (ui-test-yourstay §26–27).
   Booking cards are `.gb2` now: accent band (`--prop-<k>` inline var), serif
   name (h3 + `.guest-status-badge` KEPT — §8–10 read them), spoken when-line,

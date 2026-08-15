@@ -1612,7 +1612,10 @@ $r = http($gj, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Ke
     'password' => 'longenough1', 'address' => '1 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
 it_check('registering an email that already has bookings does NOT sign you in',
     ($r['json']['ok'] ?? false) === true && ($r['json']['verify'] ?? false) === true && !isset($r['json']['guest']), $r['raw']);
-$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'list']);
+// Asked the way a real client asks — my-bookings is read-only, so the read is
+// a GET. This used to POST, riding the write route's require_guest(); with
+// that route gone the POST meets the 405 first and the check proved nothing.
+$r = http($gj, 'GET', '/my-bookings.php');
 it_check('…and that half-made account can read nothing', $r['code'] === 401, $r['raw']);
 // The bypass that makes the refusal real: the password was chosen by whoever
 // registered, so accepting it here would reopen the door the check just shut.
@@ -1630,20 +1633,15 @@ $gj2 = [];
 $r = http($gj2, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Fresh Guest', 'email' => 'fresh-guest@gmail.com',
     'password' => 'longenough1', 'address' => '2 Test Lane, Norwich', 'postcode' => 'NR25 7AB']);
 it_check('a brand-new email still signs straight in', ($r['json']['ok'] ?? false) === true && empty($r['json']['verify']) && !empty($r['json']['guest']), $r['raw']);
+// The guest arrival-window write was REMOVED with its feature, so my-bookings
+// is read-only to guests again. Asserted as an absence THROUGH THE ENDPOINT:
+// a live route would answer 200/400/404 on its own terms, and any POST now
+// meets the same refusal whatever it carries.
 $r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
-it_check('the guest stores their arrival window on their own booking', ($r['json']['ok'] ?? false) === true && ($r['json']['window'] ?? '') === '16-18', $r['raw']);
-$aw = $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn();
-it_check('…and the column carries the CODE, never a label', $aw === '16-18', var_export($aw, true));
-$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksFarBid, 'window' => '16-18']);
-it_check("someone else's booking is a 404, not a write", $r['code'] === 404, $r['raw']);
-it_check('…and their row is untouched', $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksFarBid")->fetchColumn() === null, '');
-$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => 'about 6ish']);
-it_check('free text is refused in words — only codes reach the column', $r['code'] === 400 && ($r['json']['error'] ?? '') !== '', $r['raw']);
-$r = http($guest, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '16-18']);
-it_check('no guest session → 401', $r['code'] === 401, $r['raw']);
-$r = http($gj, 'POST', '/my-bookings.php', ['action' => 'set_arrival_window', 'id' => $ksBid, 'window' => '']);
-it_check('an empty window clears the answer to NULL', ($r['json']['ok'] ?? false) === true
-    && $rootDb->query("SELECT arrival_window FROM bookings WHERE id = $ksBid")->fetchColumn() === null, $r['raw']);
+it_check('the removed arrival-window write is refused, not honoured', $r['code'] === 405, $r['raw']);
+$colGone = $rootDb->query("SHOW COLUMNS FROM bookings LIKE 'arrival_window'")->fetch();
+it_check('…and nothing wrote to the retired column', !$colGone
+    || (int) $rootDb->query('SELECT COUNT(*) FROM bookings WHERE arrival_window IS NOT NULL')->fetchColumn() === 0, '');
 
 // ---- 20. Staging seats + the stage seeder --------------------------------
 // The one-tap "Back office" seat mints an ADMIN session, so its boundary gets
