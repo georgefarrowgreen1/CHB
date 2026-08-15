@@ -112,8 +112,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const saved = posts.filter((p) => p.__url === 'content.php' && p.action === 'set' && p.key === 'email-templates').pop();
   ok(!!saved, 'the save posts to the email-templates content key');
   const savedList = saved ? JSON.parse(saved.value) : [];
-  ok(savedList.length === 1 && /\{\{balance\}\}/.test(savedList[0].body) && /\{\{cottage\}\}/.test(savedList[0].body),
+  ok(savedList.length >= 1 && /\{\{balance\}\}/.test(savedList[0].body) && /\{\{cottage\}\}/.test(savedList[0].body),
     `the stored copy is tokenised for the next guest (${(savedList[0] || {}).body || ''})`);
+  // The first save lands on a never-saved store, so it MATERIALISES the
+  // starter set behind it — they were already on screen, and now they are
+  // ordinary editable rows rather than a phantom that reappears.
+  const defCount = await page.evaluate(() => EMAIL_TPL_DEFAULTS.length);
+  ok(savedList.length === 1 + defCount && savedList.slice(1).every((t) => /^d-/.test(t.id)),
+    `…and the starters materialise behind it (${savedList.length} stored, ${defCount} starters)`);
 
   console.log('3. the picker resolves tokens through bookingDue');
   // Seed a library with a button-carrying template (the mirrors are the read path).
@@ -281,6 +287,48 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     };
   });
   ok(s7.list === 0 && s7.none, 'garbage in the store degrades to the honest empty state');
+
+  console.log('8. the starter library');
+  // A NEVER-SAVED store (key absent) offers the starter set — the feature
+  // demonstrating itself instead of opening on "Nothing saved yet".
+  const s8 = await page.evaluate(() => {
+    delete siteContent['email-templates'];
+    delete adminPrivateContent['email-templates'];
+    __etplQ = '';
+    __etplOpen = true;
+    etplRender();
+    const names = Array.from(document.querySelectorAll('#etpl-panel .etpl-row .etpl-row-name')).map((e) => e.textContent.trim());
+    const balRow = Array.from(document.querySelectorAll('#etpl-panel .etpl-row')).find((r) => /nudge about the balance/.test(r.textContent));
+    return {
+      count: names.length,
+      hasBalance: names.some((n) => /A nudge about the balance/.test(n)),
+      balEnabled: !!balRow && !balRow.disabled,
+      balResolved: !!balRow && /£\d/.test(balRow.textContent),
+    };
+  });
+  ok(s8.count >= 6 && s8.hasBalance, `an untouched library offers the starters (${s8.count} rows)`);
+  ok(s8.balEnabled && s8.balResolved, 'the balance starter resolves through bookingDue and is insertable on an owing booking');
+  // An EXPLICITLY EMPTIED library ('[]') stays empty — deleting the last
+  // starter must not resurrect the set (absent and emptied are different facts).
+  const s8b = await page.evaluate(() => {
+    siteContent['email-templates'] = '[]';
+    adminPrivateContent['email-templates'] = '[]';
+    etplRender();
+    return {
+      rows: document.querySelectorAll('#etpl-panel .etpl-row').length,
+      none: /Nothing saved yet/.test((document.getElementById('etpl-panel') || {}).textContent || ''),
+    };
+  });
+  ok(s8b.rows === 0 && s8b.none, 'an explicitly emptied library stays empty — the starters never resurrect');
+  // The Manage caption names the starters for what they are while the store is
+  // untouched (the #replies-body host is still in the DOM from §6).
+  const s8c = await page.evaluate(() => {
+    delete siteContent['email-templates'];
+    delete adminPrivateContent['email-templates'];
+    renderSavedReplies();
+    return (document.querySelector('#replies-body .etpl-mcap') || {}).textContent || '';
+  });
+  ok(/starter replies to begin with/.test(s8c), `Manage says these are starters, not saves (${s8c.slice(0, 50)}…)`);
   ok(pageErrors.length === 0, `no page errors across the run (${pageErrors.slice(0, 2).join(' | ')})`);
 
   await done(fails);
