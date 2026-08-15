@@ -1936,6 +1936,48 @@ it_check('(fixture) a content write succeeds', $r['code'] === 200, $r['raw']);
 $b3 = @file_get_contents($BASE . '/bootstrap.php', false, stream_context_create(['http' => ['method' => 'GET', 'timeout' => 30, 'ignore_errors' => true]]));
 it_check('a write is visible to the very next request (no stale memo)', strpos((string) $b3, 'Memo Probe') !== false, substr((string) $b3, 0, 160));
 
+// ---------------------------------------------------------------------------
+//  §22  THE EMAIL OUTBOX — the row lifecycle against the real schema, driven
+//  through the real daily pass (self-repair's drain). MAIL_ENABLED is off in
+//  this harness, so every drain attempt fails with 'Mail disabled' — which is
+//  exactly what lets the TRANSITIONS be asserted deterministically: a due row
+//  retries with backoff, a row at the boundary gives up LOUDLY (the warn that
+//  reaches Needs attention), and pruning removes only what is finished. The
+//  send semantics themselves are gated in test-smtp (sent_uncertain) and
+//  test-payrail (the pure decisions); this section owns the SQL.
+echo "\n== §22 email outbox lifecycle ==\n";
+$rootDb->exec("USE `$DB_NAME`");
+$rootDb->exec("DELETE FROM email_outbox");
+$rootDb->exec("INSERT INTO email_outbox (next_try_at, context, to_email, to_name, subject, body_text, last_error)
+               VALUES (DATE_SUB(NOW(), INTERVAL 1 MINUTE), 'confirmation', 'g@example.org', 'Gate Guest', 'S', 'b', 'seed')");
+$obId = (int) $rootDb->lastInsertId();
+$r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('self-repair runs with a due outbox row', $r['code'] === 200, $r['raw']);
+$row = $rootDb->query("SELECT * FROM email_outbox WHERE id = $obId")->fetch(PDO::FETCH_ASSOC);
+it_check('a failed retry moves the row FORWARD (tries + backoff), never sends it',
+    $row && (int) $row['tries'] === 1 && $row['sent_at'] === null && $row['gave_up_at'] === null
+        && strtotime($row['next_try_at']) > time(), json_encode($row));
+it_check("…and records why ('Mail disabled')", $row && strpos((string) $row['last_error'], 'Mail disabled') !== false, (string) ($row['last_error'] ?? ''));
+// The give-up boundary: force the row to its 8th attempt and drain again.
+$rootDb->exec("UPDATE email_outbox SET tries = 7, next_try_at = DATE_SUB(NOW(), INTERVAL 1 MINUTE) WHERE id = $obId");
+$r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+$row = $rootDb->query("SELECT * FROM email_outbox WHERE id = $obId")->fetch(PDO::FETCH_ASSOC);
+it_check('the 8th failure gives up — kept as the audit trail, never retried again',
+    $row && $row['gave_up_at'] !== null && (int) $row['tries'] === 8, json_encode($row));
+$warn = $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'email.gaveup'")->fetchColumn();
+it_check('…and the give-up is LOUD (an email.gaveup warn in the activity log)', (int) $warn >= 1, (string) $warn);
+// Pruning removes only FINISHED rows: an old sent receipt goes, a pending row
+// stays whatever its age (it is still owed a retry until it gives up).
+$rootDb->exec("INSERT INTO email_outbox (created_at, next_try_at, context, to_email, subject, body_text, sent_at)
+               VALUES (DATE_SUB(NOW(), INTERVAL 10 DAY), NOW(), 'confirmation', 'old@example.org', 'S', 'b', DATE_SUB(NOW(), INTERVAL 8 DAY))");
+$rootDb->exec("INSERT INTO email_outbox (created_at, next_try_at, context, to_email, subject, body_text)
+               VALUES (NOW(), DATE_ADD(NOW(), INTERVAL 1 HOUR), 'enquiry-ack', 'pending@example.org', 'S', 'b')");
+$r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+$left = $rootDb->query("SELECT to_email FROM email_outbox ORDER BY id")->fetchAll(PDO::FETCH_COLUMN);
+it_check('pruning removes the old sent receipt and keeps pending + gave-up rows',
+    !in_array('old@example.org', $left, true) && in_array('pending@example.org', $left, true) && in_array('g@example.org', $left, true),
+    json_encode($left));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

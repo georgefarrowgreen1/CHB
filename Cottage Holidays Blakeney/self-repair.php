@@ -349,6 +349,27 @@ try {
 // sends). Guarded: an un-migrated table is simply skipped.
 try {
     db()->exec('DELETE FROM op_ledger WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)');
+    // Email outbox: sent rows are receipts nobody reads after a week; gave-up
+    // rows keep a month as the audit trail behind their Needs-attention warn.
+    db()->exec('DELETE FROM email_outbox WHERE sent_at IS NOT NULL AND sent_at < DATE_SUB(NOW(), INTERVAL 7 DAY)');
+    db()->exec("DELETE FROM email_outbox WHERE gave_up_at IS NOT NULL AND gave_up_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+} catch (\Throwable $e) {
+}
+
+// ---- 4e. Email outbox: retry queued one-shot emails --------------------------
+// The confirmation / enquiry-ack / owner-alert / newsletter copies whose
+// transport send failed (mailer.php email_outbox_*). The kick after any
+// successful send handles the same-day case; this daily pass is the floor, and
+// the give-up path inside the drain logs the warn that reaches Needs attention.
+try {
+    require_once __DIR__ . '/mailer.php';
+    $obx = email_outbox_drain(25);
+    if (($obx['sent'] ?? 0) > 0) {
+        log_activity('system', 'email.outbox', 'Retried queued email — ' . $obx['sent'] . ' sent', [
+            'actor' => 'cron',
+            'entity' => 'email',
+        ]);
+    }
 } catch (\Throwable $e) {
 }
 
