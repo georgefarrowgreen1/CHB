@@ -1,7 +1,8 @@
 // Saved replies — the reply library in the shared composer + Manage.
 //  1. the composer grows the library chrome (injected, index.html untouched)
-//  2. save-as-template: the greeting lint refuses, a clean save REVERSE-TOKENISES
-//     (this guest's facts go back to {{tokens}} in the stored copy)
+//  2. writing a new reply — the composer has NO save-as-template control, so
+//     Manage carries the only way in: a blank draft is refused, a greeting is
+//     refused, a clean one stores its words + scope + button
 //  3. the picker resolves tokens per record — the balance EQUALS bookingDue's own
 //     figure (equality of derivations, never a second sum)
 //  4. a template's buttons ride along; the guard matrix per record, both ways
@@ -95,34 +96,65 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/Buttons in this email/.test(c1.acts), 'the buttons row renders on a booking');
   ok(c1.panelHidden === true, 'the picker starts closed');
 
-  console.log('2. save-as-template: lint, then reverse-tokenisation');
-  const alerts = [];
+  console.log('2. writing a new reply — Manage is the whole way in');
+  // "Save as a template" is GONE from the composer (owner's ask), so Manage
+  // must carry an authoring affordance or the library is one nobody can add
+  // to. That is this section: no composer control, a "Write a new reply"
+  // button, the greeting lint on the way through, and a stored round trip.
+  const due9 = await page.evaluate(() => gbp(bookingDue('21a', findBookingById('b9')).balance));
   await page.evaluate(() => { window.glassAlert = (m) => { (window.__alerts = window.__alerts || []).push(String(m)); }; });
+  const gone = await page.evaluate(() => ({
+    btns: document.querySelectorAll('#enq-email-modal [data-act="emailTplSaveAs"]').length,
+    fn: typeof window.emailTplSaveAs,
+    bar: (document.getElementById('etpl-acts') || {}).textContent || '',
+  }));
+  ok(gone.btns === 0 && gone.fn === 'undefined' && !/Save as a template/.test(gone.bar),
+    `the composer no longer offers "Save as a template" (${gone.btns} buttons, fn ${gone.fn})`);
+  await page.evaluate(() => { window.settingsOpen && nav('view-settings'); window.settingsOpen('replies'); });
+  await page.waitForTimeout(300);
+  const wayIn = await page.evaluate(() => document.querySelectorAll('#replies-body [data-act="emailTplNew"]').length);
+  ok(wayIn === 1, 'Manage carries the way in — one "Write a new reply" button');
+  // A blank draft must NOT be stored: emailTplList() drops an empty body, so
+  // a row saved before it is written would vanish on the next read.
+  await page.evaluate(() => window.emailTplNew());
+  const blank = await page.evaluate(() => {
+    document.getElementById('etpl-ed-name').value = 'Half a thought';
+    document.getElementById('etpl-ed-body').value = '';
+    return window.emailTplEditSave(document.getElementById('etpl-ed-name').closest('.etpl-mrow') ? __etplDraft.id : '');
+  });
+  const blankAlert = await page.evaluate(() => (window.__alerts || []).pop() || '');
+  ok(/needs a name and a paragraph/.test(blankAlert), `an unwritten reply is refused, not stored (${blankAlert.slice(0, 34)}…)`);
+  // The greeting lint moved here with the feature — a hand-written paragraph
+  // opens with "Hi Rachel," just as readily as a composed one did.
   await page.evaluate(() => {
-    document.getElementById('enq-email-body').value = 'Hello there,\n\nThe quay is six minutes away.';
-    return window.emailTplSaveAs();
+    document.getElementById('etpl-ed-body').value = 'Hello there, the quay is six minutes away.';
+    return window.emailTplEditSave(__etplDraft.id);
   });
   const lint = await page.evaluate(() => (window.__alerts || []).pop() || '');
-  ok(/opens with a greeting/.test(lint) && /hello twice/.test(lint), `a greeting template is refused with the reason (${lint.slice(0, 40)}…)`);
-  // A clean save: the body names THIS guest's cottage + balance, so the stored
-  // copy must carry {{cottage}} / {{balance}} instead — reverse-tokenised.
-  const due9 = await page.evaluate(() => gbp(bookingDue('21a', findBookingById('b9')).balance));
-  await page.evaluate((due) => {
-    document.getElementById('enq-email-body').value = `Just a reminder that the balance of ${due} for your stay at 21A Westgate Street is due before you arrive.`;
-    return window.emailTplSaveAs();
-  }, due9);
+  ok(/opens with a greeting/.test(lint) && /hello twice/.test(lint), `a greeting reply is refused with the reason (${lint.slice(0, 40)}…)`);
+  // A clean save: name + paragraph + scope + a button, stored as one row.
+  await page.evaluate(() => {
+    document.getElementById('etpl-ed-body').value = 'The balance of {{balance}} is due before you arrive.';
+    document.getElementById('etpl-ed-when').value = 'before';
+    const box = document.querySelector('#etpl-ed-acts input[data-actid="pay"]');
+    if (box) box.checked = true;
+    return window.emailTplEditSave(__etplDraft.id);
+  });
   await page.waitForTimeout(300);
   const saved = posts.filter((p) => p.__url === 'content.php' && p.action === 'set' && p.key === 'email-templates').pop();
   ok(!!saved, 'the save posts to the email-templates content key');
   const savedList = saved ? JSON.parse(saved.value) : [];
-  ok(savedList.length >= 1 && /\{\{balance\}\}/.test(savedList[0].body) && /\{\{cottage\}\}/.test(savedList[0].body),
-    `the stored copy is tokenised for the next guest (${(savedList[0] || {}).body || ''})`);
-  // The first save lands on a never-saved store, so it MATERIALISES the
+  const mine = savedList[0] || {};
+  ok(/Half a thought/.test(mine.name) && /\{\{balance\}\}/.test(mine.body) && mine.when === 'before' && (mine.actions || []).join() === 'pay',
+    `the written reply stores its words, scope and button (${mine.name} · ${mine.when} · ${(mine.actions || []).join()})`);
+  // The first write lands on a never-saved store, so it MATERIALISES the
   // starter set behind it — they were already on screen, and now they are
   // ordinary editable rows rather than a phantom that reappears.
   const defCount = await page.evaluate(() => EMAIL_TPL_DEFAULTS.length);
   ok(savedList.length === 1 + defCount && savedList.slice(1).every((t) => /^d-/.test(t.id)),
     `…and the starters materialise behind it (${savedList.length} stored, ${defCount} starters)`);
+  await page.evaluate(() => { window.__alerts = []; nav('view-backoffice'); window.openBookingEmail('b9'); });
+  await page.waitForTimeout(250);
 
   console.log('3. the picker resolves tokens through bookingDue');
   // Seed a library with a button-carrying template (the mirrors are the read path).
