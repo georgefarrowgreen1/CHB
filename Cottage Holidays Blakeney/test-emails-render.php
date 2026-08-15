@@ -749,6 +749,46 @@ $erNone = build_enquiry_reply_email($ENQ, 'About your stay', $replyBody, 'bookin
 chk('§7 no actions -> no button markup at all (the markers above measure BUTTONS)',
     strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], '#D9CFB8') === false);
 
+// ── §8 THE ARRIVAL EMAIL'S REVIEWED MESSAGE ────────────────────────────────
+// When review mode is on the owner edits the email's opening MESSAGE and the
+// facts stay generated. Three things have to hold: the words reach both halves,
+// they are ESCAPED (a text box is free text — an apostrophe or a "<" must never
+// arrive as markup), and everything the owner did NOT write is still there.
+$avB = [
+    'prop_key' => 'jollyboat', 'prop_name' => 'Jollyboat', 'name' => 'Wren Hollis',
+    'email' => 'wren@example.test', 'check_in' => '2026-09-06', 'check_out' => '2026-09-11',
+    'check_in_time' => '15:00', 'check_out_time' => '10:00', 'address' => '3 Quay Lane, Blakeney',
+];
+// Rendered through the SAME capture the rest of this file uses: call the real
+// sender, read what the transport received.
+$avRender = function ($payload) {
+    send_arrival_email($payload);
+    $m = end($GLOBALS['CAP']) ?: ['html' => '', 'text' => '', 'subject' => ''];
+    return ['html' => (string) ($m['html'] ?? ''), 'text' => (string) ($m['text'] ?? ''), 'subject' => (string) ($m['subject'] ?? '')];
+};
+// The default (no note) — what the automatic path has always sent.
+$avPlain = $avRender($avB);
+chk('§8 with no note the house sentence is still there',
+    strpos($avPlain['html'], 'everything you need for') !== false
+    && strpos($avPlain['text'], 'Hello Wren,') !== false);
+// The reviewed note, carrying characters a text box really produces.
+$avNote = "We've left the milk in the fridge & the fire laid.\nRing if the lane <floods>.";
+$avRev = $avRender(array_merge($avB, ['note' => $avNote]));
+$avH = $avRev['html'];
+$avT = $avRev['text'];
+chk('§8 the owner\'s words reach the HTML half', strpos($avH, 'left the milk in the fridge') !== false);
+chk('§8 …and the text half', strpos($avT, "We've left the milk in the fridge") !== false);
+chk('§8 free text is ESCAPED, never markup', strpos($avH, '<floods>') === false
+    && strpos($avH, '&lt;floods&gt;') !== false && strpos($avH, '&amp;') !== false);
+chk('§8 line breaks survive as <br>, not as run-on prose', strpos($avH, 'laid.<br') !== false);
+chk('§8 the house sentence is REPLACED, not doubled',
+    strpos($avH, 'everything you need for') === false && strpos($avT, 'Hello Wren,') === false);
+// The generated facts are untouched by any of it — that is the whole promise.
+chk('§8 the facts are still generated beneath it (dates, address, button)',
+    strpos($avH, 'Sun 6 Sep 2026') !== false && strpos($avH, 'Quay Lane') !== false
+    && strpos($avH, 'open=stay') !== false);
+chk('§8 the subject is untouched by the note', strpos($avRev['subject'], 'You arrive') === 0);
+
 @unlink($tmp);
 echo "\n== Summary ==\n";
 if ($fail) {

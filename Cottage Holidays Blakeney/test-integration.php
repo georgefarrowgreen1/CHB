@@ -1643,6 +1643,76 @@ $colGone = $rootDb->query("SHOW COLUMNS FROM bookings LIKE 'arrival_window'")->f
 it_check('…and nothing wrote to the retired column', !$colGone
     || (int) $rootDb->query('SELECT COUNT(*) FROM bookings WHERE arrival_window IS NOT NULL')->fetchColumn() === 0, '');
 
+// ══════════════════════════════════════════════════════════════════════════
+// §23 THE ARRIVAL EMAIL, REVIEWED BEFORE IT GOES. The owner's rule is that
+// NOTHING leaves without them, so the two things worth proving against the
+// real stack are (a) the daily job MARKS instead of sending, once, and
+// (b) the send route actually sends AND clears the waiting state. Driven
+// through the live cron URL and the live endpoint, never by calling helpers.
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA723 the arrival email waits for the owner\n";
+
+$arIn = date('Y-m-d', time() + 2 * 86400);   // arrives in 2 days — inside the 3-day window
+$arOut = date('Y-m-d', time() + 5 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Arrival Review','arrev@gmail.com','$arIn','$arOut',2,0,'paid',300,300,300,0,3)");
+$arBid = (int) $rootDb->lastInsertId();
+
+// OFF (the default): the job sends, exactly as it always has.
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('with review OFF the job reports a send, not a wait',
+    ($r['json']['review_mode'] ?? null) === false, $r['raw']);
+// NB mail is DISABLED in this environment, so the send itself cannot succeed
+// here — what is provable is that the job took the SENDING path (it reported
+// review_mode false and readied nothing), and that it left no waiting state.
+$row0 = $rootDb->query("SELECT pre_arrival_ready_at FROM bookings WHERE id = $arBid")->fetch();
+it_check('…and marks nothing as waiting for the owner', $row0['pre_arrival_ready_at'] === null, var_export($row0, true));
+
+// Now REVIEW MODE, with a second booking that has not been emailed.
+$r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'arrival-review', 'value' => '1']);
+it_check('(fixture) review mode saved', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Waits For Me','waits@gmail.com','$arIn','$arOut',2,0,'paid',300,300,300,0,3)");
+$arBid2 = (int) $rootDb->lastInsertId();
+
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('with review ON the job says so and sends nothing',
+    ($r['json']['review_mode'] ?? null) === true && (int) ($r['json']['sent'] ?? -1) === 0, $r['raw']);
+$row = $rootDb->query("SELECT pre_arrival_ready_at, pre_arrival_sent FROM bookings WHERE id = $arBid2")->fetch();
+it_check('…the booking is marked READY', !empty($row['pre_arrival_ready_at']), var_export($row, true));
+it_check('…and NOT sent — the whole point of the setting', $row['pre_arrival_sent'] === null, var_export($row, true));
+
+// The stamp is set ONCE: a second daily pass must not re-notify.
+$firstStamp = $row['pre_arrival_ready_at'];
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('a second run readies nothing new', (int) ($r['json']['readied'] ?? -1) === 0, $r['raw']);
+it_check('…and the stamp is unchanged (one notification, not a drumbeat)',
+    $rootDb->query("SELECT pre_arrival_ready_at FROM bookings WHERE id = $arBid2")->fetchColumn() === $firstStamp, '');
+
+// The preview the composer prefills from — the owner's editable message.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'arrival_preview', 'id' => $arBid2]);
+it_check('the preview offers a message to edit', !empty($r['json']['message']) && strpos((string) $r['json']['message'], 'Waits') !== false, $r['raw']);
+it_check('…and the facts it will add, so nothing is typed twice',
+    !empty($r['json']['facts']['arrive']) && !empty($r['json']['subject']), $r['raw']);
+
+// SENDING IT BY HAND. Mail is disabled here, so this proves the half that
+// matters more anyway: a send that FAILS must not pretend. The route answers
+// 5xx, the booking is not marked sent, and the waiting state SURVIVES — a
+// cleared stamp on a failed send would retire the duty and the guest would
+// arrive with nothing while the owner believed it had gone.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'send_arrival', 'id' => $arBid2, 'note' => 'We have left the milk in the fridge for you.']);
+it_check('a send that fails says so (never a 2xx)', $r['code'] >= 500, $r['raw']);
+$row2 = $rootDb->query("SELECT pre_arrival_ready_at, pre_arrival_sent FROM bookings WHERE id = $arBid2")->fetch();
+it_check('…the booking is NOT marked sent', $row2['pre_arrival_sent'] === null, var_export($row2, true));
+it_check('…and it is STILL waiting for the owner — the duty survives a failed send',
+    !empty($row2['pre_arrival_ready_at']), var_export($row2, true));
+// A booking whose email has already gone is never re-readied by a later run.
+$rootDb->exec("UPDATE bookings SET pre_arrival_ready_at = NULL, pre_arrival_sent = NOW() WHERE id = $arBid2");
+$r = http($admin, 'GET', '/pre-arrival.php?cron=' . $SECRET);
+it_check('a booking already emailed is never re-readied',
+    $rootDb->query("SELECT pre_arrival_ready_at FROM bookings WHERE id = $arBid2")->fetchColumn() === null, $r['raw']);
+
+// Put the setting back so nothing downstream inherits it.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'arrival-review', 'value' => '']);
+
 // ---- 20. Staging seats + the stage seeder --------------------------------
 // The one-tap "Back office" seat mints an ADMIN session, so its boundary gets
 // executable checks in every direction that matters: the staging Host, the
