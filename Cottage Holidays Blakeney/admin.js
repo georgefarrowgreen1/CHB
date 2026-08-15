@@ -11068,13 +11068,20 @@ function renderBookingHub() {
     // every gate that finds the disclose control keeps firing. The SUB spans
     // the row's full width UNDER the label/figure line — beside the serif
     // figure it squeezed into a three-line sliver at 390px (measured).
-    const payRow = (inner) =>
-        `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${inner}<span class="bhub-chev" aria-hidden="true">›</span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
+    // THE FIGURE AND THE CHEVRON ARE ONE RIGHT-HAND GROUP, exactly as
+    // bhubFoldGrp composes every other summary. .bhub-fold-row is
+    // `justify-content: space-between`, which distributes the free space
+    // between ALL its children — so as three siblings (main / figure /
+    // chevron) the money landed in the MIDDLE of the row while Guest details
+    // and Emails pinned their capsules to the right rail. Reported from a
+    // phone; the same booking's four rows read as two different layouts.
+    const payRow = (mainHtml, figHtml) =>
+        `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${mainHtml}<span class="bhub-fold-right">${figHtml}<span class="bhub-chev" aria-hidden="true">›</span></span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
     const payline = gt.fullyPaid
-        ? payRow(`${paylineMain('Paid in full')}<span class="bhub-payline-fig">${gbp(gt.total)} <span class="bhub-payok" aria-hidden="true">✓</span></span>`)
+        ? payRow(paylineMain('Paid in full'), `<span class="bhub-payline-fig">${gbp(gt.total)} <span class="bhub-payok" aria-hidden="true">✓</span></span>`)
         : gt.paid > 0.001
-          ? payRow(`${paylineMain('Received so far')}<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span>`)
-          : payRow(`${paylineMain('Total')}<span class="bhub-payline-fig">${gbp(gt.total)}</span>`);
+          ? payRow(paylineMain('Received so far'), `<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span>`)
+          : payRow(paylineMain('Total'), `<span class="bhub-payline-fig">${gbp(gt.total)}</span>`);
     // The deposit's return ACTION lives in the pipeline's next-action banner
     // ("Return the deposit", once the stay is over and it's still held), and its
     // STATE now rides the fold line's suffix in every state — so no separate
