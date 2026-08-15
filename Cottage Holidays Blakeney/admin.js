@@ -24851,8 +24851,36 @@ let __etplQ = '';
 function emailTplActById(id) {
     return EMAIL_TPL_ACTS.find((a) => a.id === id) || null;
 }
+// The STARTER set — what the picker offers before the owner has ever saved
+// anything, so the feature demonstrates itself instead of opening on "Nothing
+// saved yet". Shown ONLY while the key is ABSENT: an explicitly emptied
+// library stores '[]' and stays empty (deleting the last starter must not
+// resurrect it), and garbage still degrades to EMPTY, never to these —
+// friendly defaults over corruption would mask a real loss. Any write
+// (a save, an edit, a delete, even a uses++ bump) materialises whatever is
+// on screen, so the starters become ordinary editable rows the first time
+// the library is touched. Bodies follow the composer's own rules: ONE
+// paragraph, no greeting (the template writes "Hello <first>," above), and
+// every figure is a {{token}} resolved per guest — never a number typed here.
+const EMAIL_TPL_DEFAULTS = [
+    { id: 'd-balance', name: 'A nudge about the balance', body: "Just a gentle reminder that {{balance}} is still to pay for your stay at {{cottage}} ({{dates}}). The button below takes you straight to the payment page — and if anything has changed, just reply and we'll sort it out together.", actions: ['pay'], uses: 0 },
+    { id: 'd-free', name: 'The dates are free', body: "Good news — {{cottage}} is free for {{dates}}, and the total for your stay would be {{total}}. If you'd like to go ahead, just reply and we'll get everything set up for you.", actions: [], uses: 0 },
+    { id: 'd-taken', name: 'Those dates are taken', body: "Thank you so much for thinking of us. Unfortunately those exact dates are already taken — but if your plans have any give in them, let us know roughly when suits and we'll happily look for the nearest free dates either side.", actions: [], uses: 0 },
+    { id: 'd-register', name: 'Before you arrive', body: "We're really looking forward to welcoming you to {{cottage}}. If you have a spare minute before you travel, the button below is where you add the names of everyone staying — it only takes a moment, and it means everything is ready for your arrival.", actions: ['register'], uses: 0 },
+    { id: 'd-invoice', name: 'Your invoice', body: "Your invoice for your stay at {{cottage}} ({{dates}}) is behind the button below — it's yours to save or print for your records. If anything on it doesn't look right, just reply and we'll put it straight.", actions: ['invoice'], uses: 0 },
+    { id: 'd-paid', name: 'Payment received — thank you', body: "Your payment has arrived safely — thank you. Everything is set for your stay at {{cottage}}, and we'll send your arrival details about a week before you're due.", actions: [], uses: 0 },
+    { id: 'd-after', name: 'After your stay — thank you', body: "Thank you for staying with us at {{cottage}} — it was a pleasure to have you. We hope the journey home was easy, and we'd be delighted to welcome you back whenever Blakeney calls again.", actions: [], uses: 0 },
+    { id: 'd-depback', name: 'Your deposit is on its way back', body: "Your refundable deposit is on its way back to you — it usually lands within 3–5 working days. Thank you for looking after {{cottage}} so well; we'd love to have you back.", actions: [], uses: 0 },
+];
+// The key has never been saved (≠ emptied '[]', ≠ garbage) — the one state
+// that shows the starters, and the caption that explains where they came from.
+function emailTplStoreAbsent() {
+    const raw = adminPrivateContent[EMAIL_TPL_KEY] ?? siteContent[EMAIL_TPL_KEY];
+    return raw == null || raw === '';
+}
 // Sanitised: non-JSON / junk rows degrade to fewer templates, never a crash.
 function emailTplList() {
+    if (emailTplStoreAbsent()) return EMAIL_TPL_DEFAULTS.map((t) => ({ ...t, actions: t.actions.slice() }));
     const raw = adminPrivateContent[EMAIL_TPL_KEY] ?? siteContent[EMAIL_TPL_KEY] ?? '';
     let parsed = null;
     try {
@@ -24986,6 +25014,20 @@ function emailTplSetup() {
     __etplPick = false;
     __etplUndo = null;
     __etplQ = '';
+    // The library is INTERNAL content, so after an anonymous boot + sign-in the
+    // key may simply not have been fetched yet — which reads as "never saved"
+    // (i.e. the starters) over a real library, one uses++ write from clobbering
+    // it. Refresh the way openArea does, fire-and-forget; the composer never
+    // waits, and the picker repaints when the truth lands.
+    if (!__adminPrivateLoaded) {
+        apiPost('content.php', { action: 'get_all' })
+            .then((r) => {
+                adminPrivateContent = r.content || {};
+                __adminPrivateLoaded = true;
+                etplRender();
+            })
+            .catch(() => {});
+    }
     etplRender();
 }
 function emailTplToggle() {
@@ -25233,7 +25275,7 @@ function renderSavedReplies() {
         })
         .join('');
     host.innerHTML = `
-        <p class="etpl-mcap">${list.length ? `${list.length} saved ${list.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers these, most-used first.` : 'Nothing saved yet. Write a reply in the email composer and tap "Save as a template" — the library fills itself.'}</p>
+        <p class="etpl-mcap">${emailTplStoreAbsent() && list.length ? `${list.length} starter replies to begin with — edit or delete them freely, and "Save as a template" in the composer adds your own.` : list.length ? `${list.length} saved ${list.length === 1 ? 'reply' : 'replies'} — the composer's "Saved replies" picker offers these, most-used first.` : 'Nothing saved yet. Write a reply in the email composer and tap "Save as a template" — the library fills itself.'}</p>
         ${rows}`;
 }
 function emailTplEditOpen(id) {
