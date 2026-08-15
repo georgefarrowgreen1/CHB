@@ -18286,15 +18286,23 @@ function todayOpsLine() {
     });
     const { parts, owed } = chbOpsParts(tuples);
     if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
-    // The day's VERDICT rides the line as the house capsule — but only the ✓,
-    // and only when the Needs-you strip below is empty: with duties present the
-    // strip carries the state, and a capsule repeating its badge is noise.
-    let cap = '';
-    try {
-        if (!(needsYouItems() || []).length) cap = ' <span class="st-cap is-ok ops-cap"><span class="st-tick" aria-hidden="true">✓</span>Nothing needs you</span>';
-    } catch (e) {}
     // innerHTML: every part is generated (counts + the owed button) — no user text.
-    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today') + cap;
+    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    // The day's VERDICT sits BESIDE THE TITLE, not trailing the date line —
+    // it answers "is anything wrong?", which is a fact about the screen, while
+    // the line beneath it lists the day's movements. Only the ✓, and only when
+    // the Needs-you strip below is empty: with duties present the strip carries
+    // the state, and a capsule repeating its badge is noise. Written to its own
+    // slot, so it is CLEARED on the render that grows a duty (leaving the last
+    // one painted would say "nothing needs you" above a list of things that do).
+    const vEl = document.getElementById('today-verdict');
+    if (vEl) {
+        let cap = '';
+        try {
+            if (!(needsYouItems() || []).length) cap = '<span class="st-cap is-ok ops-cap"><span class="st-tick" aria-hidden="true">✓</span>Nothing needs you</span>';
+        } catch (e) {}
+        vEl.innerHTML = cap;
+    }
 }
 // Unified back office: load data once, render calendar and inbox.
 // ═══════════════════════════════════════════════════════════════════════════

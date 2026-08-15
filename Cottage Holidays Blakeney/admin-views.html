@@ -23,7 +23,14 @@
 
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin: 0;">Today</h1>
+                <!-- The day's verdict sits BESIDE the title, the same
+                     title + capsule anatomy as the Bookings caption row
+                     (.bk-caprow / #bookings-verdict). Filled by
+                     todayOpsLine(); empty while duties are present. -->
+                <div class="bo-today-head">
+                    <h1 class="section-title" style="margin: 0;">Today</h1>
+                    <span id="today-verdict"></span>
+                </div>
                 <p class="lead bo-today-date" id="today-date" style="text-align:left;margin:4px 0 0;"></p>
             </div>
         </div>
