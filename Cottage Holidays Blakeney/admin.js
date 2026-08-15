@@ -25721,13 +25721,35 @@ async function openArrivalReview(bookingId) {
         bodyEl.focus();
         try { bodyEl.setSelectionRange(0, 0); bodyEl.scrollTop = 0; } catch (e) {}
     }
+    // NAME THE SCREEN FOR WHAT IT IS. The owner tapped "review the arrival
+    // email"; a modal headed "Email guest" makes them check they opened the
+    // right thing. Restored by openBookingEmail on the next ordinary compose.
+    const ttl = document.getElementById('enq-email-title');
+    if (ttl) ttl.textContent = 'Arrival email';
+    // AND THE REPLY TOOLS STAND DOWN. Saved replies inserts an enquiry-reply
+    // paragraph and ✨ Draft reply writes a booking reply — either would REPLACE
+    // the arrival message with something that belongs in a different email.
+    const ctl = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
+    if (ctl) ctl.style.display = 'none'; // NOT .hidden: its inline display:flex outranks the attribute
+    // The reply library's BUTTON bar goes too — it attaches Pay/Invoice/Register
+    // buttons to the reply template, and this email builds its own.
+    const acts = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
+    if (acts) acts.style.display = 'none';
     const f = pv.facts || {};
     const factRows = [
         ['Arrive', f.arrive],
         ['Leave', f.leave],
         ['Address', f.address],
     ].filter((r) => r[1]);
-    const host = document.getElementById('etpl-acts');
+    // ITS OWN NODE, not #etpl-acts: that belongs to the reply library, whose
+    // own async content refresh re-renders it — which silently WIPED this panel
+    // on a slow-ish load. Caught by the gate, not by looking.
+    let host = document.getElementById('arv-facts-host');
+    if (!host) {
+        const after = document.getElementById('etpl-acts') || document.getElementById('enq-email-body');
+        if (after) after.insertAdjacentHTML('afterend', '<div id="arv-facts-host"></div>');
+        host = document.getElementById('arv-facts-host');
+    }
     if (host) {
         host.innerHTML = `<div class="arv-facts">
             <div class="arv-cap">Added automatically, below your message</div>
@@ -25741,6 +25763,18 @@ function openBookingEmail(bookingId) {
     const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
     const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;
     if (!b || !loc) return;
+    // Undo whatever an arrival review left behind — this is the ordinary
+    // composer again (openArrivalReview calls THIS first, then re-dresses it).
+    const t0 = document.getElementById('enq-email-title');
+    if (t0) t0.textContent = 'Email guest';
+    const c0 = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
+    if (c0) c0.style.display = '';
+    const fh = document.getElementById('arv-facts-host');
+    if (fh) fh.innerHTML = '';
+    const a0 = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
+    if (a0) a0.style.display = '';
+    const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
+    if (s0) s0.readOnly = false;
     if (!b.email) {
         glassAlert('This booking has no email address on file.');
         return;

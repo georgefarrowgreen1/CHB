@@ -340,6 +340,20 @@ it at the last minute, so the ESCALATING DUTY is what stops it being forgotten.
 - **A FAILED SEND KEEPS THE WAIT.** The stamp is cleared only on success —
   clearing it on a failure would retire the duty while the guest still has
   nothing, which is the exact lie this feature exists to prevent. Gated.
+- **LOOKING AT IT FOUND THREE THINGS THE GATES DID NOT.** The modal still read
+  "Email guest" after the owner tapped *review the arrival email*; the reply
+  library's tools were live, so **✨ Draft reply would have replaced the arrival
+  message with a booking reply**; and the facts panel was rendered into
+  `#etpl-acts`, which the reply library's own async content refresh
+  re-renders — silently wiping it. The panel has its own node
+  (`#arv-facts-host`) now, and `openBookingEmail` restores every piece of
+  chrome the review dressed, because the two share one modal.
+  **AND THE FIRST FIX FOR THE STAND-DOWN DID NOT WORK WHILE ITS CHECK PASSED**:
+  `#enq-email-ctl` carries an inline `display:flex`, which outranks the
+  `hidden` attribute — so `el.hidden` read true while the row was still on
+  screen. Hidden via `style.display` now, and the gate measures
+  `getClientRects().length` — the paint, not the attribute. Same family as the
+  contrast traps: the property is not the pixel.
 - Gates: **test-integration §23** (the job MARKS instead of sending, once; the
   preview; a failed send keeps the wait; an already-emailed booking is never
   re-readied) — break-tested by forcing review off, which fires three;
