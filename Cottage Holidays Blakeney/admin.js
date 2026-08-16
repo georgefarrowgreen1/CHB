@@ -14723,7 +14723,8 @@ async function returnDeposit(bookingId) {
     if (!(await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)))
         return;
     try {
-        const r = await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
+        const r = await chbWithReauth('returning ' + gbp(amount), () =>
+            apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note }));
         // THE GUEST'S EMAIL IS THE ONLY PLACE A RETENTION REASON EXISTS. The endpoint
         // reports the send as `email: {ok, error}`; this threw it away and toasted
         // success, so with SMTP down the money moved, the owner believed the guest had
@@ -14781,12 +14782,13 @@ async function cancelBooking(bookingId) {
     )
         return;
     try {
-        const r = await apiPost('bookings.php', {
-            action: 'cancel',
-            id: booking.dbId,
-            refund_amount: refund,
-            reason: reason.trim(),
-        });
+        const r = await chbWithReauth(refund > 0 ? 'refunding ' + gbp(refund) : 'cancelling with a refund', () =>
+            apiPost('bookings.php', {
+                action: 'cancel',
+                id: booking.dbId,
+                refund_amount: refund,
+                reason: reason.trim(),
+            }));
         // MONEY STILL OWED IS NOT A TOAST. The booking row has just been deleted,
         // and it was the only record that this deposit is owed — so it is gone
         // from the ring fence, from "Deposits to return" and from the duty list.
@@ -19526,10 +19528,14 @@ async function odsDepConfirmRun() {
         });
         if (!okd) continue; // kept for the next reconnect — never silently dropped
         try {
-            await apiPost('bookings.php', Object.assign(
+            // A RETURN is money out and takes the step-up like every other
+            // refund; KEEPING one is not, so it stays a single confirmation.
+            // The photo rides either way.
+            const post = () => apiPost('bookings.php', Object.assign(
                 { action: d2.choice === 'keep' ? 'keep_deposit' : 'return_deposit', id: d2.dbId, note: d2.note },
                 d2.photo ? { photo_data: d2.photo } : {},
             ));
+            await (d2.choice === 'keep' ? post() : chbWithReauth('returning ' + gbp(d2.amt), post));
             odsDepSave(odsDepDecisions().filter((x) => x.dbId !== d2.dbId));
             toast(d2.choice === 'keep' ? 'Deposit kept — booked as income.' : gbp(d2.amt) + ' on its way back to ' + (d2.nm || 'the guest') + '.');
         } catch (e) {
@@ -25723,6 +25729,78 @@ async function sendEnquiryEmail() {
 }
 // Compose a free-text email to a confirmed booking's guest (Bookings page).
 // Reuses the enquiry composer; the booking details + price ride along.
+// ============================================================================
+//  CONFIRM IT IS YOU — the step-up in front of every refund.
+//
+//  The server decides (require_reauth in db.php); this is the affordance. Two
+//  ways to prove it, in the order that costs the owner least: a PASSKEY when
+//  the device has one (Face ID / Touch ID — one tap, nothing typed on a phone
+//  at a changeover), otherwise the account PASSWORD.
+//
+//  chbWithReauth wraps a call rather than guarding it: the action runs
+//  normally, and only a 'reauth_required' refusal raises the prompt and
+//  retries. That way the SERVER owns the rule — the client cannot forget to
+//  ask, and a window that is still fresh costs nothing at all.
+// ============================================================================
+async function chbReauthPasskey() {
+    if (!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.get)) return false;
+    try {
+        const begin = await apiPost('passkeys.php', { action: 'admin_reauth_begin' });
+        const publicKey = prepGetOptions(begin.options.publicKey || begin.options);
+        // The WebAuthn DOM types return a bare Credential; the assertion fields
+        // live on PublicKeyCredential. Cast once rather than four times.
+        const assertion = /** @type {any} */ (await navigator.credentials.get({ publicKey }));
+        await apiPost('passkeys.php', {
+            action: 'admin_reauth_finish',
+            id: bufToB64url(assertion.rawId),
+            clientDataJSON: bufToB64url(assertion.response.clientDataJSON),
+            authenticatorData: bufToB64url(assertion.response.authenticatorData),
+            signature: bufToB64url(assertion.response.signature),
+        });
+        return true;
+    } catch (e) {
+        if (e && e.name === 'NotAllowedError') return false; // cancelled — fall back to the password
+        glassAlert("That passkey didn't confirm: " + (e.message || e) + '\n\nYou can use your password instead.');
+        return false;
+    }
+}
+// Ask once. Returns true only when the server has stamped the window.
+async function chbReauthPrompt(what) {
+    const askedFor = what || 'this';
+    if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
+        const useKey = await glassConfirm(
+            'Confirm it is you before ' + askedFor + '.\n\nOK = Face ID / Touch ID / device PIN\nCancel = type your password',
+            'Use a passkey',
+        );
+        if (useKey && (await chbReauthPasskey())) return true;
+    }
+    const got = await glassForm('Confirm it is you before ' + askedFor + '.', [
+        { id: 'pw', label: 'Your password', type: 'password' },
+    ], { okLabel: 'Confirm' });
+    if (!got || !got.pw) return false;
+    try {
+        await apiPost('auth.php', { action: 'admin_reauth_password', password: got.pw });
+        return true;
+    } catch (e) {
+        glassAlert(e.message || 'That password did not match.');
+        return false;
+    }
+}
+// Run fn; if the server asks for a fresh confirmation, get one and run it ONCE
+// more. Any other failure is the caller's to handle, exactly as before.
+async function chbWithReauth(what, fn) {
+    try {
+        return await fn();
+    } catch (e) {
+        if (!e || e.code !== 'reauth_required') throw e;
+        if (!(await chbReauthPrompt(what))) {
+            // Not confirmed = not done. Said plainly, because the money did NOT
+            // move and the owner must not be left thinking it did.
+            throw Object.assign(new Error('Not confirmed — nothing was refunded.'), { code: 'reauth_cancelled' });
+        }
+        return await fn();
+    }
+}
 // ---- The arrival email, reviewed before it goes ----------------------------
 // Reached from the "Arrival email ready to review" notification (?open=arrival-N),
 // the Needs-you duty, or the booking hub. It reuses the shared composer so the

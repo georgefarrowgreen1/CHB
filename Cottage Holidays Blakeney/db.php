@@ -344,6 +344,58 @@ function csrf_issue_cookie()
         $_COOKIE['csrf'] = $t;
     }
 }
+// ============================================================================
+//  STEP-UP: proving it is still YOU before money goes back out.
+//
+//  A signed-in admin session is a long-lived thing — sliding expiry, kept on a
+//  phone in a pocket. Everything else in the back office is recoverable if that
+//  session is borrowed for five minutes; a REFUND is not. So the three actions
+//  that push money out of the business (refund, return_deposit, and a
+//  cancellation carrying a refund) require a FRESH proof on top of the session:
+//  a passkey assertion or the account password, re-entered.
+//
+//  It is a WINDOW, not a per-action prompt. Returning five deposits after a
+//  changeover is one confirmation, not five — a control people are forced to
+//  repeat is a control they route around. REAUTH_WINDOW is short enough that a
+//  borrowed phone is unlikely to still be inside it.
+// ============================================================================
+const REAUTH_WINDOW = 300; // seconds a re-confirmation stays good
+
+// Record that the CURRENT admin just proved themselves again. Bound to the
+// admin id, so it cannot survive a switch of account within one session.
+function reauth_stamp()
+{
+    $_SESSION['reauth_at'] = time();
+    $_SESSION['reauth_admin'] = (int) ($_SESSION['admin_id'] ?? 0);
+}
+
+// Is that proof still fresh? Pure enough to test: everything it reads is the
+// session and the clock.
+function reauth_fresh($window = REAUTH_WINDOW)
+{
+    $at = (int) ($_SESSION['reauth_at'] ?? 0);
+    $who = (int) ($_SESSION['reauth_admin'] ?? 0);
+    $admin = (int) ($_SESSION['admin_id'] ?? 0);
+    if ($at <= 0 || $admin <= 0 || $who !== $admin) {
+        return false;
+    }
+    // A clock that has gone BACKWARDS (host time corrected) must not read as a
+    // fresh confirmation for the next N minutes — treat the future as stale.
+    $age = time() - $at;
+    return $age >= 0 && $age < (int) $window;
+}
+
+// The gate itself. 401 with a CODE the client acts on, and a sentence for the
+// owner — never a bare "Unauthorized", which would read as being logged out.
+function require_reauth($what = 'this')
+{
+    if (!reauth_fresh()) {
+        json_out([
+            'error' => 'Confirm it is you before ' . $what . '.',
+            'code' => 'reauth_required',
+        ], 401);
+    }
+}
 function require_admin()
 {
     if (empty($_SESSION['admin_id'])) {

@@ -298,6 +298,27 @@ switch ($action) {
     case 'admin_status':
         json_out(['admin' => !empty($_SESSION['admin_id'])]);
 
+    // STEP-UP by password: prove it is still you, right now, before a refund.
+    // Throttled on the SAME identifier as sign-in, so this cannot become a
+    // quieter way to guess the owner's password; a failure is recorded there
+    // too. Never mints or extends a session — it only stamps the window.
+    case 'admin_reauth_password':
+        require_admin();
+        $pw = $in['password'] ?? '';
+        $stmt = db()->prepare('SELECT username, password_hash FROM admins WHERE id = ?');
+        $stmt->execute([$_SESSION['admin_id']]);
+        $row = $stmt->fetch();
+        $ident = 'admin:' . strtolower((string) ($row['username'] ?? ''));
+        throttle_check($ident);
+        if (!$row || !password_verify($pw, $row['password_hash'] ?? AUTH_DUMMY_HASH)) {
+            throttle_record($ident, false);
+            log_activity('account', 'admin.reauth_fail', 'Confirmation failed before a refund', ['level' => 'warn']);
+            json_out(['error' => 'That password did not match.'], 403);
+        }
+        throttle_record($ident, true);
+        reauth_stamp();
+        json_out(['ok' => true]);
+
     case 'admin_change_password':
         require_admin();
         $current = $in['current'] ?? '';

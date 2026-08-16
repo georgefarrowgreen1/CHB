@@ -304,6 +304,50 @@ if ($action === 'admin_login_finish') {
     json_out(['ok' => true]);
 }
 
+// STEP-UP by passkey: the same assertion the owner signs in with, asked for
+// again before a refund. Two differences from admin_login_finish, and both
+// matter: the credential must belong to the admin ALREADY signed in (a
+// borrowed session must not be re-confirmed by someone else's passkey), and
+// it stamps the re-auth window rather than creating a session.
+if ($action === 'admin_reauth_begin') {
+    require_admin();
+    $args = $wa->getGetArgs([], 30, true, true, true, true, false);
+    $_SESSION['pk_admin_reauth_challenge'] = b64url_encode($wa->getChallenge()->getBinaryString());
+    json_out(['options' => normalize_args($args)]);
+}
+
+if ($action === 'admin_reauth_finish') {
+    require_admin();
+    if (empty($_SESSION['pk_admin_reauth_challenge'])) {
+        json_out(['error' => 'No confirmation in progress'], 400);
+    }
+    $challenge = b64url_decode($_SESSION['pk_admin_reauth_challenge']);
+    unset($_SESSION['pk_admin_reauth_challenge']); // one shot: a challenge is never reusable
+    $row = db()->prepare('SELECT * FROM admin_passkeys WHERE credential_id = ?');
+    $row->execute([$in['id'] ?? '']);
+    $cred = $row->fetch();
+    // THE BINDING: this passkey must be the signed-in owner's own.
+    if (!$cred || (int) $cred['admin_id'] !== (int) $_SESSION['admin_id']) {
+        json_out(['error' => 'That passkey is not registered to this account.'], 401);
+    }
+    try {
+        $wa->processGet(
+            b64url_decode($in['clientDataJSON'] ?? ''),
+            b64url_decode($in['authenticatorData'] ?? ''),
+            b64url_decode($in['signature'] ?? ''),
+            $cred['public_key'],
+            $challenge,
+            null, // synced passkeys have no reliable counter
+        );
+    } catch (\Throwable $e) {
+        log_activity('account', 'admin.reauth_fail', 'Passkey confirmation failed before a refund', ['level' => 'warn']);
+        json_out(['error' => 'That passkey could not be verified.'], 401);
+    }
+    db()->prepare('UPDATE admin_passkeys SET last_used_at = NOW() WHERE id = ?')->execute([$cred['id']]);
+    reauth_stamp();
+    json_out(['ok' => true]);
+}
+
 if ($action === 'admin_list') {
     require_admin();
     $s = db()->prepare(
