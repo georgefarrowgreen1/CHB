@@ -223,6 +223,30 @@ CREATE TABLE IF NOT EXISTS op_ledger (
     KEY idx_op_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The overnight queue (migration-115): what a machine on the owner's own
+-- network produced while nobody was asking, waiting for the owner to read.
+-- A row is a DRAFT plus a destination — never an instruction; nothing here is
+-- ever acted on by the app. `ref` UNIQUE is what makes a retried POST store
+-- once, and `expires_at` is stamped at ingest from the kind (nightshift-lib.php)
+-- so the deadline the owner was shown never moves. Retired and pruned by
+-- self-repair.php.
+CREATE TABLE IF NOT EXISTS night_items (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    ref         VARCHAR(64)  NOT NULL,
+    kind        VARCHAR(24)  NOT NULL,
+    title       VARCHAR(200) NOT NULL,
+    sub         VARCHAR(255) NOT NULL DEFAULT '',
+    body        TEXT         NOT NULL,
+    source      VARCHAR(255) NOT NULL DEFAULT '',
+    target      VARCHAR(120) NOT NULL DEFAULT '',
+    status      VARCHAR(16)  NOT NULL DEFAULT 'open',
+    created_at  DATETIME     NOT NULL,
+    expires_at  DATETIME     NOT NULL,
+    acted_at    DATETIME     NULL,
+    UNIQUE KEY uniq_night_ref (ref),
+    KEY idx_night_open (status, expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- One-shot transactional emails whose transport send failed, retried with
 -- backoff (email_outbox_drain in mailer.php; migration-113). Only queued when
 -- the payload provably never went out. Stamp-on-success cron flows never queue.

@@ -40,6 +40,15 @@
              the answer appears inline. Injected by chbAssistBar() (admin.js)
              so guests never download any of it. -->
 
+        <!-- READY FOR YOU — the overnight queue (nightshift.php), rendered by
+             renderNightReady() (admin.js). Above the Needs-you strip because it
+             is the newest thing on the page, and SEPARATE from it because a
+             draft is an offer, not a duty: folding four of them into the strip
+             would drown the arrival nobody has sent directions to. Hidden
+             entirely unless the setting is on and something is waiting — with
+             it off, this element never has any content at all. -->
+        <div id="night-ready" style="display:none;"></div>
+
         <!-- NEEDS YOU — the one prioritised to-do list: everything across the
              back office that's waiting on the owner (automation warnings,
              enquiries, balances to chase, deposits to return, chats,

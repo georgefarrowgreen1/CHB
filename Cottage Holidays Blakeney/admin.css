@@ -589,7 +589,39 @@ body.light-mode .tl-cell {
   border-radius: 50%;
   flex: none;
   margin-right: 7px;
-}.ny-row {
+}
+/* READY FOR YOU — the overnight queue's card on Today. The ROWS are the house
+   fold group (.bhub-fold-grp, shared with the hub and the Manage verdicts), so
+   only the prose inside a fold needs saying here. */
+.night-lede {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  max-width: 62ch;
+}
+#night-ready .bhub-fold-grp { margin-bottom: 10px; }
+.night-src {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+/* The body is what the machine WROTE, so its line breaks are meaning — it is
+   escaped at the render boundary and laid out with pre-line rather than being
+   turned into markup. */
+.night-body {
+  white-space: pre-line;
+  font-size: 0.9rem;
+  line-height: 1.62;
+  color: var(--text-light);
+  overflow-wrap: anywhere;
+}
+.night-acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.ny-row {
   display: flex;
   align-items: center;
   gap: 12px;

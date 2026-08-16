@@ -450,6 +450,74 @@ it at the last minute, so the ESCALATING DUTY is what stops it being forgotten.
   (the escalation both ways, the notification route, the read-only subject, the
   send path) — break-tested on the severity and the send branch.
 
+## The overnight queue — "Ready for you" (migration-115)
+
+**Asked for as "built this, give the option of a turn off/on toggle in settings"**,
+after the night-shift proposal. This is the RECEIVING half and only that: a machine
+on the owner's own network does work while nobody is asking and POSTs what it made;
+the app stores it, shows it once, and lets the owner use it or bin it. Nothing here
+produces anything — with no producer the feature is invisible, which is the point.
+- **DEFAULT OFF** (`night-shift`, INTERNAL — NB not private: `is_private_content_key`
+  matches on PREFIX, which is why `arrival-review` is silently both and encrypted at
+  rest, while this one is plaintext and present in an admin-session `siteContent`).
+  Off is byte-for-byte today's back office: no card, no request at boot, and
+  **ingest is REFUSED with a sentence** rather than stored for later — a machine
+  working every night into a table nobody will look at is the failure that refusal
+  exists to prevent. The switch is in Manage → System check beside the backup
+  passphrase (machine-facing settings live together) and shows the address to post
+  to, derived from `window.location` so a staging install is never told to post at
+  production. It never shows the secret.
+- **THREE RULES, each with a precedent already in the app.** *It never sends*: an
+  item is a draft plus a `target` — a screen the owner could already open — and
+  there is deliberately no field a producer can set that emails, charges or writes
+  a content key, so the worst a broken producer can do is put words on a screen
+  (ui-test §5 drives it: every request the whole flow makes is collected and checked
+  against the endpoints that move money). *It never states money*: nothing parses a
+  figure out of `body` and nothing downstream re-derives one. *It is never the only
+  copy*: an un-migrated table, a failed read and a silent producer all render the
+  same nothing.
+- **`ref` UNIQUE + `ON DUPLICATE KEY UPDATE id = id` is the whole exactly-once
+  mechanism** — not the op ledger, because a night item carries no response to
+  replay. `rowCount() === 0` is the correct answer to a retried POST and is not
+  reported as a skip: the item IS in the queue, which is what the producer asked.
+- **THE DEADLINE IS PER KIND, and that is what stops the queue becoming a pile.**
+  reply 3 days / price 7 / answer 14 / note 14 — what goes stale is what was about a
+  MOMENT, and an unknown kind gets the SHORTEST window, not the longest. Stamped at
+  ingest so changing the rule never re-dates a deadline the owner has been shown.
+  `nightLeft()` counts CALENDAR days at UTC midnight, not hours: the server stamps
+  `NOW() + INTERVAL N DAY`, so an hours-based count says "2 days" by teatime for
+  something promised three, which reads as the app losing a day.
+- **IT IS NOT A DUTY.** `chbDuties` drives the Home Screen badge, the search brief
+  and the Needs-you strip; four drafts a night would drown the arrival nobody has
+  sent directions to. A draft is an OFFER — the opportunity-vs-duty distinction
+  `renderNeedsYou` already makes — so it has its own card ABOVE the strip and a
+  deadline instead of a nag. The rows are the house `bhubFoldGrp`, so the fold rule
+  applies: a gate that MEASURES anything must open the fold first.
+- **BINNING IS REVERSIBLE, EXPIRING IS NOT.** `restore` only ever lifts a
+  `dismissed` row (gated 409 on an expired one) — the machine wrote it, so a
+  judgement made in a second deserves a second to change; but the deadline was the
+  point, and an expired draft is exactly what this feature exists to stop the owner
+  acting on.
+- Gates: **test-nightshift.php** (101 checks, pure, CI-wired, deploy-excluded —
+  counter named `nsk()`; the `target` vocabulary gets the most attention because it
+  is the one field that becomes a CLICK) — break-tested four ways; **test-integration
+  §25** (33 checks: the setting as a real door, the secret, exactly-once, the cap,
+  the sweep, and that the public content GET never carries the setting) —
+  break-tested five ways; and **ui-test-nightshift.js** — break-tested five ways.
+  **The off-is-off check needed a HOSTILE fixture to mean anything**: three
+  overlapping guards each sufficed on a cold boot, so deleting any one of them left
+  the gate green. It now serves a boot payload saying `on: 0` with a count of 3 AND
+  a list endpoint that hands the rows over if asked — the one shape where the client
+  has a reason to go and look — and the loader's refusal is the only thing standing.
+  The renderer's own refusal is gated separately by the toggle path.
+- NB PHPStan does not infer `never` from `json_out()`'s `exit()`, so a variable
+  first assigned inside a `try` whose `catch` calls it reads as possibly-undefined;
+  initialise it before the try rather than annotating json_out (which would unmatch
+  baseline entries elsewhere).
+- Budgets raised, and all three are OWNER-ONLY and immutable-cached: admin.js
+  489600 → 496000, admin.css 58700 → 59400, admin-views.html 22000 → 22600. app.js
+  stayed within its budget, which is the one that had to.
+
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
 **Two retry regimes, and a flow must be in exactly ONE.** The stamp-on-success
