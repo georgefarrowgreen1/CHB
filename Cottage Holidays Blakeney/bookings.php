@@ -1643,6 +1643,10 @@ function rental_refund_blocked($b)
     return $daysUntil < $within;
 }
 if ($action === 'refund') {
+    // MONEY GOING BACK OUT — prove it is still you. See require_reauth() in
+    // db.php: a signed-in session is long-lived and pocket-carried; a refund is
+    // the one action here that cannot be undone by noticing it later.
+    require_reauth('refunding a payment');
     if (!square_enabled()) {
         json_out(['error' => 'Square payments are not switched on yet.'], 400);
     }
@@ -1917,6 +1921,7 @@ if ($action === 'confirm_return_settled') {
 // Return the held refundable damage deposit (full or partial) after checkout.
 // Tracked as 'damages_return' so it never changes the rental payment status.
 if ($action === 'return_deposit') {
+    require_reauth('returning a deposit'); // money out — same rule as 'refund'
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -2104,6 +2109,13 @@ if ($action === 'cancel') {
         array_key_exists('refund_amount', $in) && $in['refund_amount'] !== null && $in['refund_amount'] !== ''
             ? round((float) $in['refund_amount'], 2)
             : 0.0;
+    // A cancellation is a booking action, not inherently a money one — the
+    // step-up is asked for only when this one actually SENDS MONEY BACK, either
+    // the typed refund or the damages deposit the block below returns
+    // automatically. Cancelling a booking nobody has paid for stays one tap.
+    if ($refundAmount > 0.005 || (float) damages_collected($b) > 0.005) {
+        require_reauth('refunding as part of this cancellation');
+    }
     $refundedByCard = 0.0;
     $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)
     // …and what could NOT be returned. Cancelling DELETES the booking row, which

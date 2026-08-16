@@ -297,6 +297,49 @@ table and looked like a different product from the confirmation that follows the
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
 
+## A refund asks whether it is still you (the step-up)
+
+**Asked for after the security review.** A signed-in admin session is long-lived
+and carried in a pocket; everything else in the back office is recoverable if it
+is borrowed for five minutes, and a REFUND is not. So the three actions that
+push money OUT require a fresh proof on top of the session — a passkey assertion
+or the account password, re-entered.
+- **`require_reauth()` / `reauth_fresh()` / `reauth_stamp()` (db.php).** The gate
+  answers **401 with `code: 'reauth_required'`** and a sentence — never a bare
+  "Unauthorized", which reads as being logged out. The stamp is bound to the
+  admin id, so it cannot survive a switch of account inside one session, and a
+  clock that has gone BACKWARDS reads as stale rather than fresh for N minutes.
+- **It is a WINDOW (`REAUTH_WINDOW`, 5 min), not a per-action prompt.** Returning
+  five deposits after a changeover is one confirmation. A control people are
+  forced to repeat is a control they route around.
+- **Gated where money LEAVES, and nowhere else**: `refund`, `return_deposit`, and
+  `cancel` — the last **only when it actually refunds** (a typed amount, or a
+  damages deposit the cancel path returns automatically). `keep_deposit` is not
+  gated: nothing goes out. Both halves are asserted, so this can neither erode
+  into "ask for nothing" nor swell into "ask for everything".
+- **Two ways to prove it, cheapest first**: `admin_reauth_password` (auth.php,
+  throttled on the SAME identifier as sign-in so it cannot become a quieter way
+  to guess the password, and a failure is logged as a warn) and
+  `admin_reauth_begin`/`_finish` (passkeys.php). The passkey one differs from
+  admin_login_finish in two ways that matter: the credential must belong to the
+  admin ALREADY signed in, and the challenge is consumed on use.
+- **`chbWithReauth(what, fn)` WRAPS rather than guards** (admin.js). The action
+  runs normally and only a `reauth_required` refusal raises the prompt and
+  retries ONCE — so the SERVER owns the rule, the client cannot forget to ask,
+  and a window still fresh costs nothing. The retry carries the same payload:
+  the owner's tap is not lost. Declining throws `reauth_cancelled` with "nothing
+  was refunded", because "not confirmed" must never read as "done".
+- Gates: **test-integration §24** (refused on a fresh session with the money
+  unmoved, a wrong password refused AND logged, the right one opening the way,
+  a guest session unable to confirm at all, and the two ungated actions staying
+  ungated) — break-tested by disabling the gate, which fires four; and
+  **ui-test-reauth.js** (prompt-then-retry with the same payload, a fresh window
+  asking nothing, declining sending nothing, a wrong password not refunding) —
+  break-tested by removing the retry, which fails the suite outright.
+- NB the suite's own money calls now step up first (`it_reauth()`), which keeps
+  the existing refund coverage exercising the REAL path rather than a weakened
+  one.
+
 ## The weekly backup leaves the host ENCRYPTED, or it does not leave
 
 **Found in a security review, and it was the biggest real exposure in the app.**
