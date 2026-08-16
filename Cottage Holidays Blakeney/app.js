@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 526;
+const ADMIN_BUNDLE_V = 527;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 212;
+const ADMIN_CSS_V = 213;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9686,6 +9686,13 @@ async function loadData() {
         // Customer emails waiting to be read: the count the CRON's poll left behind,
         // so no page ever waits on a mail server.
         /** @type {any} */ (window).__newMailPre = ab.newMail || null;
+        // OVERNIGHT WORK: whether the queue is switched on, and how many items are
+        // waiting. Only those two facts ride here — the rows themselves are prose
+        // and would bloat the one payload every owner screen waits on, so admin.js
+        // fetches them ONLY when this says there is something to fetch. An owner
+        // with the setting off pays nothing at all, which is what "additive by
+        // construction" has to mean at the boot as well as on the screen.
+        /** @type {any} */ (window).__nightPre = ab.night || null;
         /** @type {any} */ (window).__sigAt = Date.now();
     }
 
@@ -18069,7 +18076,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'refundconf';
+    const BUILD = 'nightshift';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

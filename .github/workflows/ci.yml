@@ -135,6 +135,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-keysafe.php
 
+      - name: Overnight queue (what a machine may put on the owner's screen, and the deadline)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-nightshift.php
+
       - name: SMS settings (config const still wins, the auth token never leaves the server)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-sms.php

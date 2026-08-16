@@ -356,6 +356,32 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4d-ii. The overnight queue: retire what has run out of time ------------
+// The DEADLINE is what stops this queue becoming a pile the owner learns to
+// scroll past, so it has to be enforced by something that runs whether or not
+// anyone opens Today. Two steps, and they are different facts: an OPEN row past
+// its deadline becomes `expired` (so "where did it go?" has an answer for a
+// fortnight), and any row already decided — used, binned or expired — is
+// deleted once it is older than that. Guarded: an un-migrated install has no
+// table, and the whole feature is additive.
+try {
+    require_once __DIR__ . '/nightshift-lib.php';
+    $keep = (int) NIGHT_KEEP_DAYS;
+    $ex = db()->prepare("UPDATE night_items SET status = 'expired', acted_at = NOW() WHERE status = 'open' AND expires_at <= NOW()");
+    $ex->execute();
+    $gone = $ex->rowCount();
+    db()->exec(
+        "DELETE FROM night_items
+          WHERE status <> 'open'
+            AND acted_at IS NOT NULL
+            AND acted_at < DATE_SUB(NOW(), INTERVAL $keep DAY)",
+    );
+    if ($gone > 0) {
+        $fixed[] = "retired $gone overnight item(s) nobody got to in time";
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 4e. Email outbox: retry queued one-shot emails --------------------------
 // The confirmation / enquiry-ack / owner-alert / newsletter copies whose
 // transport send failed (mailer.php email_outbox_*). The kick after any

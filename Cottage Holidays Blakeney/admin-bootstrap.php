@@ -112,9 +112,24 @@ $part = function (string $fn) {
         return null;
     }
 };
+// Overnight work: whether the queue is on, and how many items are waiting.
+// Two integers on a payload the back office already fetches, the same trade
+// $feeds makes — so Today can render (or, far more often, NOT render) the
+// "Ready for you" card with no request of its own, and admin.js only asks for
+// the rows when this says there are rows. Wrapped because an un-migrated
+// install has no table and that is not an error the owner needs to see.
+$night = ['on' => 0, 'n' => 0];
+try {
+    require_once __DIR__ . '/nightshift-lib.php';
+    $night = night_summary(db(), content_value('night-shift') === '1');
+} catch (\Throwable $e) {
+    $night = ['on' => 0, 'n' => 0];
+}
+
 $out = [
     'ok' => true,
     'feeds' => $feeds,
+    'night' => $night,
     'payoutTrouble' => $payoutTrouble,
     'newMail' => $newMail,
     'blocks' => ['ok' => true, 'blocks' => $blocks],

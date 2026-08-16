@@ -2127,6 +2127,204 @@ it_check('pruning removes the old sent receipt and keeps pending + gave-up rows'
     !in_array('old@example.org', $left, true) && in_array('pending@example.org', $left, true) && in_array('g@example.org', $left, true),
     json_encode($left));
 
+// ══════════════════════════════════════════════════════════════════════════
+// §25 THE OVERNIGHT QUEUE, through the real endpoints against the real
+// database. Three things are worth driving here and cannot be driven
+// anywhere else: the SETTING as a real gate (off must refuse the door, not
+// merely hide the card), the exactly-once property of `ref` under a retried
+// POST, and the sweep that enforces the deadline — the only thing standing
+// between this queue and a pile the owner learns to scroll past.
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA725 the overnight queue\n";
+
+$nsItem = function (array $over = []) {
+    return $over + [
+        'ref' => 'it-' . bin2hex(random_bytes(6)),
+        'kind' => 'note',
+        'title' => 'The week, read',
+        'body' => "Two enquiries went quiet after you quoted.",
+        'source' => 'the week',
+    ];
+};
+
+// OFF IS THE DEFAULT, and off refuses the door. Not "stores it quietly for
+// when you switch on" — a machine working every night into a table nobody
+// will look at is the failure this refusal exists to prevent.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [$nsItem()]]);
+it_check('with the setting off, ingest is REFUSED and says why',
+    $r['code'] === 409 && ($r['json']['code'] ?? '') === 'night_off', $r['raw']);
+$n = (int) $rootDb->query('SELECT COUNT(*) FROM night_items')->fetchColumn();
+it_check('…and nothing was stored', $n === 0, (string) $n);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+it_check('…and the owner is told the queue is off, with no items',
+    ($r['json']['on'] ?? true) === false && ($r['json']['items'] ?? null) === [], $r['raw']);
+
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+
+// THE SECRET IS THE DOOR. No session, no cookie — the same posture as the
+// cron URLs — so both halves are asserted: the wrong secret is refused even
+// with the setting on, and it is refused BEFORE anything is stored.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => 'not-the-secret', 'items' => [$nsItem()]]);
+it_check('a wrong secret is refused', $r['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'items' => [$nsItem()]]);
+it_check('no secret at all is refused', $r['code'] === 401, $r['raw']);
+$n = (int) $rootDb->query('SELECT COUNT(*) FROM night_items')->fetchColumn();
+it_check('…and still nothing stored', $n === 0, (string) $n);
+
+// A SIGNED-IN OWNER IS NOT A PRODUCER either — ingest checks the secret and
+// nothing else, so an admin session is no way in.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ingest', 'items' => [$nsItem()]]);
+it_check('an admin session is not a substitute for the secret', $r['code'] === 401, $r['raw']);
+
+// A REAL NIGHT'S WORK.
+$refReply = 'it-reply-' . bin2hex(random_bytes(4));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [
+    $nsItem(['ref' => $refReply, 'kind' => 'reply', 'title' => 'Reply to Rachel', 'target' => 'enquiry-1']),
+    $nsItem(['kind' => 'answer', 'title' => 'Somewhere to dry wetsuits']),
+    $nsItem(['kind' => 'nonsense', 'title' => 'Charge the card']),
+    $nsItem(['title' => '', 'body' => 'no title']),
+    $nsItem(['title' => 'Escape hatch', 'target' => 'javascript:alert(1)']),
+]]);
+it_check('the two good items are stored', ($r['json']['stored'] ?? 0) === 2, $r['raw']);
+it_check('…and the three bad ones are skipped, each with a reason',
+    count($r['json']['skipped'] ?? []) === 3
+        && !array_filter($r['json']['skipped'], fn($s) => trim((string) ($s['why'] ?? '')) === ''),
+    $r['raw']);
+$badTarget = (int) $rootDb->query("SELECT COUNT(*) FROM night_items WHERE target LIKE 'javascript%'")->fetchColumn();
+it_check('a target the app could not open never reached the table', $badTarget === 0, (string) $badTarget);
+
+// EXACTLY ONCE. The producer is a machine that cannot tell a lost reply from
+// a lost request, so it retries — and a retried night stores nothing twice.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [
+    $nsItem(['ref' => $refReply, 'kind' => 'reply', 'title' => 'Reply to Rachel', 'target' => 'enquiry-1']),
+]]);
+it_check('a retried POST stores nothing a second time', ($r['json']['stored'] ?? -1) === 0, $r['raw']);
+$dupes = (int) $rootDb->query("SELECT COUNT(*) FROM night_items WHERE ref = " . $rootDb->quote($refReply))->fetchColumn();
+it_check('…and there is still exactly one row for that ref', $dupes === 1, (string) $dupes);
+
+// THE OWNER READS IT.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+$items = $r['json']['items'] ?? [];
+it_check('the owner sees both open items', ($r['json']['on'] ?? false) === true && count($items) === 2, $r['raw']);
+$reply = null;
+foreach ($items as $it) {
+    if (($it['ref'] ?? '') === $refReply) {
+        $reply = $it;
+    }
+}
+it_check('…with its destination intact', $reply && ($reply['target'] ?? '') === 'enquiry-1', json_encode($reply));
+it_check('…and a deadline three days out, not fourteen (a reply is about a LIVE enquiry)',
+    $reply && substr((string) $reply['expires'], 0, 10) === date('Y-m-d', time() + 3 * 86400), json_encode($reply));
+
+// A GUEST NEVER SEES ANY OF IT — these are drafts about named guests.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'list']);
+it_check('a guest session cannot list the queue', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+
+// USING ONE HANDS BACK ITS DESTINATION and takes it out of the queue.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => $reply['id'], 'do' => 'use']);
+it_check('using an item returns the screen to open', ($r['json']['target'] ?? '') === 'enquiry-1', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+it_check('…and it leaves the queue', count($r['json']['items'] ?? []) === 1, $r['raw']);
+
+// BINNING IS REVERSIBLE — the machine wrote the row, not the owner.
+$other = $r['json']['items'][0];
+http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => $other['id'], 'do' => 'dismiss']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+it_check('binning empties the queue', count($r['json']['items'] ?? []) === 0, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => $other['id'], 'do' => 'restore']);
+it_check('…and it can be put straight back', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+it_check('…and it is there again', count($r['json']['items'] ?? []) === 1, $r['raw']);
+
+// RESTORE IS ONLY EVER A WAY BACK FROM A BIN. Something the sweep expired
+// must stay expired — the deadline was the point.
+$rootDb->exec("INSERT INTO night_items (ref, kind, title, body, status, created_at, expires_at, acted_at)
+               VALUES ('it-expired-1','reply','Stale draft','x','expired', NOW(), DATE_SUB(NOW(), INTERVAL 1 DAY), NOW())");
+$expId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => $expId, 'do' => 'restore']);
+it_check('an expired item cannot be restored', $r['code'] === 409, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => $expId, 'do' => 'send']);
+it_check('an act this app does not have is refused', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'act', 'id' => 99999999, 'do' => 'use']);
+it_check('an item that is not there says so', $r['code'] === 404, $r['raw']);
+
+// AN OPEN ITEM PAST ITS DEADLINE IS NEVER LISTED, even before the sweep runs.
+$rootDb->exec("INSERT INTO night_items (ref, kind, title, body, status, created_at, expires_at)
+               VALUES ('it-overdue-1','reply','Yesterday''s draft','x','open', DATE_SUB(NOW(), INTERVAL 4 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY))");
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'list']);
+$refs = array_column($r['json']['items'] ?? [], 'ref');
+it_check('an item past its deadline is not shown, sweep or no sweep', !in_array('it-overdue-1', $refs, true), json_encode($refs));
+
+// THE SWEEP retires it for real, and prunes what has been decided long enough.
+$rootDb->exec("INSERT INTO night_items (ref, kind, title, body, status, created_at, expires_at, acted_at)
+               VALUES ('it-old-used','note','Long gone','x','used', DATE_SUB(NOW(), INTERVAL 40 DAY), DATE_SUB(NOW(), INTERVAL 26 DAY), DATE_SUB(NOW(), INTERVAL 20 DAY))");
+http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+$st = $rootDb->query("SELECT status FROM night_items WHERE ref = 'it-overdue-1'")->fetchColumn();
+it_check('the daily sweep marks it expired (so "where did it go?" has an answer)', $st === 'expired', var_export($st, true));
+$gone = (int) $rootDb->query("SELECT COUNT(*) FROM night_items WHERE ref = 'it-old-used'")->fetchColumn();
+it_check('…and deletes what was decided a fortnight ago', $gone === 0, (string) $gone);
+$kept = (int) $rootDb->query("SELECT COUNT(*) FROM night_items WHERE ref = 'it-expired-1'")->fetchColumn();
+it_check('…while a recently-decided row is kept', $kept === 1, (string) $kept);
+
+// THE CAP. A producer that has gone wrong overnight fills a screen, not a disk.
+$rootDb->exec('DELETE FROM night_items');
+$fill = [];
+for ($i = 0; $i < 12; $i++) {
+    $fill[] = $nsItem(['ref' => 'it-cap-a-' . $i]);
+}
+http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => $fill]);
+$fill = [];
+for ($i = 0; $i < 12; $i++) {
+    $fill[] = $nsItem(['ref' => 'it-cap-b-' . $i]);
+}
+http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => $fill]);
+$fill = [];
+for ($i = 0; $i < 5; $i++) {
+    $fill[] = $nsItem(['ref' => 'it-cap-c-' . $i]);
+}
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => $fill]);
+$open = (int) $rootDb->query("SELECT COUNT(*) FROM night_items WHERE status = 'open'")->fetchColumn();
+it_check('the queue stops at its cap', $open === 24, (string) $open);
+it_check('…and the ones that did not fit are named, with the reason',
+    ($r['json']['stored'] ?? -1) === 0 && count($r['json']['skipped'] ?? []) === 5, $r['raw']);
+
+// A BATCH BIGGER THAN A NIGHT'S WORK is a bug at the other end, and refusing
+// the whole thing is how the other end finds out.
+$big = [];
+for ($i = 0; $i < 13; $i++) {
+    $big[] = $nsItem(['ref' => 'it-big-' . $i]);
+}
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => $big]);
+it_check('an over-large batch is refused whole', $r['code'] === 400, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => []]);
+it_check('an empty batch is refused', $r['code'] === 400, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'nonsense', 'secret' => $SECRET]);
+it_check('an unknown action is refused', $r['code'] === 400, $r['raw']);
+
+// THE BOOT PAYLOAD carries on/off and the count, so Today can render the card
+// with no request of its own.
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('the boot payload says the queue is on and how many are waiting',
+    ($r['json']['night']['on'] ?? 0) === 1 && ($r['json']['night']['n'] ?? 0) === 24, $r['raw']);
+
+// SWITCHING IT OFF closes the door again, and the count goes to nought — the
+// card cannot render from a stale flag.
+$rootDb->exec('DELETE FROM night_items');
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [$nsItem()]]);
+it_check('switched off, the door closes again', $r['code'] === 409, $r['raw']);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+it_check('…and the boot payload says off', ($r['json']['night']['on'] ?? 1) === 0, $r['raw']);
+
+// THE SETTING IS THE OWNER'S OWN. An internal key never reaches the public
+// content GET, so a visitor cannot learn whether the door is open.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$anon = [];
+$r = http($anon, 'GET', '/content.php');
+it_check('the public content GET never carries the night-shift setting',
+    !array_key_exists('night-shift', (array) ($r['json'] ?? [])), mb_substr($r['raw'], 0, 200));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

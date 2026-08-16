@@ -18202,6 +18202,190 @@ function chbOwedLater() {
     } catch (e) { chbSwallow(e, 'owed-later'); }
     return { total, n };
 }
+// ============================================================
+//  READY FOR YOU — the overnight queue on Today.
+//
+//  A machine on the owner's own network works while nobody is asking and posts
+//  what it produced to nightshift.php. This is where the owner meets it: ONE
+//  card, above the Needs-you strip, holding every kind of overnight work in the
+//  same shape — what it made, what it read to make it, and the two buttons.
+//
+//  IT IS NOT A DUTY, and that is deliberate rather than an oversight. chbDuties
+//  is "what is waiting on you" and it drives the Home Screen badge, the search
+//  brief and this page's strip; four drafts a night would drown the arrival
+//  nobody has sent directions to. A draft is an OFFER — the distinction
+//  renderNeedsYou already makes between a duty and an opportunity — so it gets
+//  its own card, above the strip because it is the newest thing on the page,
+//  and it has a DEADLINE instead of a nag: an item nobody opens expires rather
+//  than accumulating (nightshift-lib.php's per-kind TTL).
+//
+//  NOTHING HERE ACTS. "Open it" routes to a screen the owner could already
+//  reach; "Bin" hides a row. There is no send, no charge, no price change and
+//  no content write anywhere in this file — the server refuses to store an item
+//  that asks for one, and this is the second half of the same promise.
+// ============================================================
+let __nightOn = false;
+let __nightItems = [];
+let __nightBusy = false;
+// The kind decides the word, and the word says what the thing IS rather than
+// what produced it — the owner does not care which job wrote a row.
+const NIGHT_KIND_WORD = {
+    reply: 'Drafted reply',
+    answer: 'Answer to publish',
+    note: 'Something it read',
+    price: 'A price to weigh',
+};
+// The boot payload carries only on/off and a count (see loadData). Fetch the
+// rows ONLY when it says there are rows: an owner with the setting off, or a
+// quiet night, costs one integer and no request.
+async function loadNightItems(force) {
+    const pre = /** @type {any} */ (window).__nightPre;
+    __nightOn = !!(pre && pre.on);
+    if (!__nightOn) {
+        __nightItems = [];
+        renderNightReady();
+        return;
+    }
+    if (!force && !(pre && pre.n > 0)) {
+        __nightItems = [];
+        renderNightReady();
+        return;
+    }
+    renderNightReady(); // paint the card with "reading…" before the round trip
+    try {
+        const r = await apiPost('nightshift.php', { action: 'list' });
+        __nightOn = !!(r && r.on);
+        __nightItems = (r && Array.isArray(r.items) ? r.items : []).filter(Boolean);
+    } catch (e) {
+        // KEEP THE LAST GOOD COPY (the loadData rule). A dropped request must not
+        // empty a card the owner was reading; with nothing yet loaded there is
+        // nothing to keep and the card simply does not render.
+        chbSwallow(e, 'night-list');
+    }
+    renderNightReady();
+}
+// Days left, in words. The deadline is the whole reason this queue never
+// becomes a pile, so it is stated on every row rather than implied.
+//
+// Counted in CALENDAR DAYS, not in hours: the server stamps the deadline as
+// NOW() + INTERVAL N DAY, so an item ingested at four in the morning has 2.5
+// days left by teatime — and "goes in 2 days" for something the owner was
+// promised three of reads as the app losing a day. Both sides of the
+// subtraction are taken at UTC midnight so the clocks going back cannot make
+// a day 23 hours long (the ukShiftDays lesson).
+function nightLeft(expires) {
+    const s = String(expires || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const p = s.split('-').map(Number);
+    const n = typeof chbNow === 'function' ? chbNow() : new Date();
+    const days = Math.round(
+        (Date.UTC(p[0], p[1] - 1, p[2]) - Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000,
+    );
+    if (days <= 0) return 'goes today';
+    if (days === 1) return 'goes tomorrow';
+    return `goes in ${days} days`;
+}
+function renderNightReady() {
+    const host = document.getElementById('night-ready');
+    if (!host) return;
+    const pre = /** @type {any} */ (window).__nightPre;
+    if (!__nightOn) {
+        host.style.display = 'none';
+        host.innerHTML = '';
+        return;
+    }
+    const items = __nightItems;
+    // Nothing waiting is not a state worth a card: the whole point is that the
+    // queue is short or empty, so an empty one says nothing at all.
+    if (!items.length) {
+        const waiting = !!(pre && pre.n > 0);
+        if (!waiting) {
+            host.style.display = 'none';
+            host.innerHTML = '';
+            return;
+        }
+        host.style.display = '';
+        host.innerHTML =
+            `<h2 class="bo-sec-title night-title">Ready for you <span class="inbox-badge">${pre.n}</span></h2>` +
+            '<p class="night-lede">Reading what came in overnight…</p>';
+        return;
+    }
+    host.style.display = '';
+    host.innerHTML =
+        `<h2 class="bo-sec-title night-title">Ready for you <span class="inbox-badge">${items.length}</span></h2>` +
+        '<p class="night-lede">From overnight. Nothing here has been sent, changed or published — read it, use it, or bin it.</p>' +
+        items
+            .map((it) => {
+                const id = parseInt(it.id, 10) || 0;
+                const word = NIGHT_KIND_WORD[it.kind] || 'Overnight';
+                const left = nightLeft(it.expires);
+                const sub = [it.sub, left].filter(Boolean).map(escapeHtml).join(' · ');
+                const fold =
+                    (it.source ? `<p class="night-src">Written from ${escapeHtml(it.source)}</p>` : '') +
+                    `<div class="night-body">${escapeHtml(it.body)}</div>` +
+                    '<div class="night-acts">' +
+                    `<button type="button" class="btn-sm btn-accent" ${chbAttrs('nightUse', id)}>${it.target ? 'Open it' : 'Done'}</button>` +
+                    `<button type="button" class="btn-sm btn-edit" ${chbAttrs('nightDismiss', id)}>Bin it</button>` +
+                    '</div>';
+                return bhubFoldGrp(
+                    'night-' + id,
+                    escapeHtml(it.title),
+                    sub,
+                    stCap('unk', word),
+                    fold,
+                );
+            })
+            .join('');
+}
+// ONE writer for all three acts, so the optimistic removal, the refusal and the
+// re-render cannot drift apart between them.
+async function nightAct(id, what) {
+    if (__nightBusy) return null;
+    __nightBusy = true;
+    try {
+        return await apiPost('nightshift.php', { action: 'act', id: id, do: what });
+    } catch (e) {
+        toast(e.message || "Couldn't save that just now.", 'error');
+        return null;
+    } finally {
+        __nightBusy = false;
+    }
+}
+async function nightUse(id) {
+    const n = parseInt(id, 10) || 0;
+    const r = await nightAct(n, 'use');
+    if (!r || !r.ok) return;
+    __nightItems = __nightItems.filter((it) => (parseInt(it.id, 10) || 0) !== n);
+    renderNightReady();
+    // The target is whatever the app could already open. A target that no longer
+    // resolves (a booking since deleted) returns false and the owner simply stays
+    // where they are — the item is used either way, because they read it.
+    if (r.target) {
+        try {
+            await chbOpenTarget(r.target);
+        } catch (e) {
+            chbSwallow(e, 'night-open');
+        }
+    }
+}
+async function nightDismiss(id) {
+    const n = parseInt(id, 10) || 0;
+    const r = await nightAct(n, 'dismiss');
+    if (!r || !r.ok) return;
+    __nightItems = __nightItems.filter((it) => (parseInt(it.id, 10) || 0) !== n);
+    renderNightReady();
+    // Binning is one tap, so putting it back is one tap. The machine wrote the
+    // row, not the owner — a dismissal here is a judgement about a draft, and a
+    // judgement made in a second deserves a second to change.
+    toast('Binned.', undefined, { label: 'Undo', fn: () => nightRestore(n) });
+}
+async function nightRestore(id) {
+    const n = parseInt(id, 10) || 0;
+    const r = await nightAct(n, 'restore');
+    if (!r || !r.ok) return;
+    await loadNightItems(true);
+    toast('Put back.');
+}
 // The Today strip's FORMATTER. Escaping happens here, at the render boundary,
 // because this list is written with innerHTML.
 function needsYouItems() {
@@ -19777,6 +19961,12 @@ async function initBackOffice() {
     // owner opening the mailbox (armed once per page; timer + resume probes).
     try {
         chbMailWatch();
+    } catch (e) {}
+    // Overnight work, if the queue is switched on AND the boot payload says
+    // there is any. Fire-and-forget: the card paints when the rows land, and a
+    // failure leaves Today exactly as it was.
+    try {
+        loadNightItems();
     } catch (e) {}
     try {
         renderNeedsYou();
@@ -21602,6 +21792,23 @@ async function loadDiagnostics() {
                         <span id="backup-pass-state" style="font-size:0.8rem;color:var(--text-muted);"></span>
                     </div>
                 </div>
+                <!-- OVERNIGHT WORK. Off by default, and off is byte-for-byte the
+                     back office as it was: no card on Today, and nightshift.php
+                     REFUSES to store anything, so a producer left running into a
+                     switched-off queue is told rather than filling a table nobody
+                     will look at. The address is shown because the machine at the
+                     other end needs one; the secret never is (it is the same
+                     APP_SECRET the cron URLs use, and a settings page that
+                     redisplays a secret hands it to whoever opens the page). -->
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div class="label">Overnight work</div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A machine on your own network can work while nobody is asking &mdash; drafting replies, reading the week, answering the questions guests keep asking &mdash; and leave what it made on Today under &ldquo;Ready for you&rdquo;. Nothing it produces is ever sent, published or charged: you open it, use it or bin it.</p>
+                    <div class="acr-row" style="padding-left:0;padding-right:0;">
+                        <span class="acr-lbl">Accept overnight work<small>off is exactly today&rsquo;s back office &mdash; no card, and anything sent in is refused</small></span>
+                        <span class="chb-switch"><input type="checkbox" id="night-shift-toggle" ${chbChange('saveNightShift')} aria-label="Accept overnight work"><span class="chb-switch-track" aria-hidden="true"></span></span>
+                    </div>
+                    <div id="night-shift-state" style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;"></div>
+                </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
@@ -21610,8 +21817,58 @@ async function loadDiagnostics() {
                 </div>`;
     refreshBackupStatus();
     refreshBackupPassState();
+    refreshNightShiftState();
     refreshHeroStatus();
 }
+// The overnight-queue switch. adminPrivateContent FIRST — an internal key is
+// absent from the anonymous boot content GET, so reading siteContent alone
+// would paint the switch OFF over a real ON and one tap would silently turn
+// the queue off (the bacs-details rule). NOT inverted: '1' means accept.
+function refreshNightShiftState() {
+    const el = /** @type {HTMLInputElement|null} */ (document.getElementById('night-shift-toggle'));
+    if (!el) return;
+    const on = ((adminPrivateContent && adminPrivateContent['night-shift']) ?? siteContent['night-shift']) === '1';
+    el.checked = on;
+    const state = document.getElementById('night-shift-state');
+    if (!state) return;
+    if (!on) {
+        state.textContent = 'Off — nothing is accepted, and Today looks exactly as it does now.';
+        return;
+    }
+    // The address the machine posts to, so the owner has something to paste.
+    // Derived from where this page is actually served rather than typed out, or
+    // a staging install would be told to post at production.
+    const url = new URL('nightshift.php', window.location.href).href;
+    state.textContent = 'On — send work to ' + url + ' with the same secret your daily-jobs address uses.';
+}
+chbAct('saveNightShift', async function (el) {
+    const box = /** @type {HTMLInputElement} */ (el);
+    const on = !!box.checked;
+    try {
+        await saveContent('night-shift', on ? '1' : '');
+    } catch (e) {
+        box.checked = !on; // saveContent has already told them; put the switch back
+        return;
+    }
+    // saveContent does NOT write the mirrors, so a re-render would read the old
+    // value and paint the switch back (the acrOta lesson).
+    if (adminPrivateContent) adminPrivateContent['night-shift'] = on ? '1' : '';
+    siteContent['night-shift'] = on ? '1' : '';
+    refreshNightShiftState();
+    const w = /** @type {any} */ (window);
+    w.__nightPre = { on: on ? 1 : 0, n: on ? ((w.__nightPre || {}).n || 0) : 0 };
+    __nightOn = on;
+    if (!on) __nightItems = [];
+    try {
+        renderNightReady();
+    } catch (e) {}
+    if (on) {
+        try {
+            loadNightItems(true);
+        } catch (e) {}
+    }
+    toast(on ? 'Overnight work switched on.' : 'Overnight work switched off — nothing further will be accepted.');
+});
 // One-tap error correction: runs self-repair.php (the same nightly job) on demand.
 // It only ever fixes safe STATE drift — dead gallery links, lapsed Square card
 // holds, missing slug/accent, messy imported review names — and flags ambiguous

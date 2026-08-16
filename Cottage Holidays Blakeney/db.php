@@ -885,6 +885,12 @@ function is_internal_content_key($key)
                      // send it (pre-arrival.php). An operating decision about
                      // their own workflow — a guest has no business reading it
     }
+    if ($key === 'night-shift') {
+        return true; // whether the overnight queue is switched on (nightshift.php).
+                     // An operating decision about the owner's own machinery, and
+                     // it gates an INGEST route — a guest reading whether the door
+                     // is open is the one thing they must not learn from the app
+    }
     if ($key === 'search-pins') {
         return true; // the owner's pinned landing questions (chbPinAdd) — their own
                      // phrasing about money and guests; never public
