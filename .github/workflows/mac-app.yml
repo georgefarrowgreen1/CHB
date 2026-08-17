@@ -136,7 +136,11 @@ jobs:
         run: |
           set -euo pipefail
           DMG="$(ls dist/*.dmg | head -1)"
-          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          # ABSOLUTE, because the publish step below does NOT run in mac-app —
+          # a path relative to this step's working-directory resolves to nothing
+          # there, which is exactly how the first real run failed after a
+          # perfectly good build.
+          echo "dmg=$PWD/$DMG" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "$DMG" | cut -f1)" >> "$GITHUB_OUTPUT"
           # A universal build carries both architectures. Worth PROVING rather
@@ -165,10 +169,13 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          TARGET=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Let `gh release create` mint the tag from --target, rather than
+            # pushing one first: a tag pushed before a release that then fails
+            # is an orphan nobody will ever tidy up.
             TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
-            git tag "$TAG"
-            git push origin "$TAG"
+            TARGET="--target $GITHUB_SHA"
           fi
           SIGNED="unsigned — on first launch open System Settings → Privacy & Security and press Open Anyway"
           if [ "${{ steps.cert.outputs.have }}" = "true" ]; then SIGNED="signed, so it opens with a double-click"; fi
@@ -183,7 +190,7 @@ jobs:
             echo "It needs a model runner on the Mac (llama.cpp or Ollama) and the overnight"
             echo "queue switched on. mac-app/README.md covers both."
           } > notes.md
-          gh release create "$TAG" "${{ steps.out.outputs.dmg }}" \
+          gh release create "$TAG" "${{ steps.out.outputs.dmg }}" $TARGET \
             --title "Blakeney Hand ${TAG}" --notes-file notes.md
           echo "This build:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"
