@@ -185,5 +185,7 @@ jobs:
           } > notes.md
           gh release create "$TAG" "${{ steps.out.outputs.dmg }}" \
             --title "Blakeney Hand ${TAG}" --notes-file notes.md
-          echo "Download link for the Manage page:"
+          echo "This build:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"
+          echo "The link the site uses, which always points at the newest release:"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${{ steps.out.outputs.name }}"

@@ -46,11 +46,11 @@
         }
       },
       "icon": "build/icon.png",
-      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
+      "artifactName": "Blakeney-Hand-universal.${ext}"
     },
     "dmg": {
       "title": "Blakeney Hand",
-      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
+      "artifactName": "Blakeney-Hand-universal.${ext}"
     }
   }
 }
