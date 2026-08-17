@@ -1,0 +1,38 @@
+{
+  "name": "blakeney-hand",
+  "productName": "Blakeney Hand",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Drafts overnight on your own Mac and leaves the work on the Cottage Holidays Blakeney website for you to read.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/core-test.js",
+    "build": "electron-builder --mac --universal",
+    "build:arm": "electron-builder --mac --arm64",
+    "build:intel": "electron-builder --mac --x64"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "uk.co.cottageholidaysblakeney.hand",
+    "productName": "Blakeney Hand",
+    "files": ["src/**/*", "package.json"],
+    "directories": { "output": "dist" },
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "dmg": { "title": "Blakeney Hand" }
+  }
+}

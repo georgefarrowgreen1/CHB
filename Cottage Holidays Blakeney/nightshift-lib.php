@@ -255,3 +255,101 @@ function night_summary($pdo, $on)
     }
     return $out;
 }
+
+// ============================================================
+//  THE OTHER DIRECTION — the brief a producer reads before it writes.
+//
+//  The ingest secret lets a machine put something IN and nothing more, which
+//  is right, and it means a producer has no way to see the enquiries it is
+//  meant to answer. This is that missing read, and its shape is the whole
+//  safety argument for the feature:
+//
+//   * IT HANDS OVER THE FIGURES. `quote` and `deposit` are the site's own
+//     derivation (price_breakdown), already formatted. `dates_free` is the
+//     site's own clash check. So a producer is never in a position where
+//     inventing a number or an availability answer is the only way to write
+//     a sentence — it is quoting, not calculating. That is what makes "it
+//     never states money" enforceable rather than hoped for.
+//   * IT IS BOUNDED. A handful of waiting enquiries, a capped message, a
+//     capped set of the cottage's own answers. A compromised secret reads a
+//     page, not a history.
+//   * IT NAMES NOTHING ELSE. No payments, no ledger, no other guests' stays,
+//     no addresses, no phone numbers — nothing a drafted reply needs.
+// ============================================================
+
+// How many waiting enquiries one brief may carry.
+const NIGHT_BRIEF_MAX = 8;
+// Caps on the free text that rides with each one.
+const NIGHT_BRIEF_MSG_MAX = 2000;
+const NIGHT_BRIEF_FACTS_MAX = 12;
+const NIGHT_BRIEF_FACT_Q_MAX = 200;
+const NIGHT_BRIEF_FACT_A_MAX = 600;
+
+// A first name for a greeting, from however the guest typed their name.
+// Deliberately dumb: the first whitespace-separated word, trimmed of
+// punctuation. A one-word name is its own first name.
+function night_first_name($name)
+{
+    $n = trim(preg_replace('/\s+/', ' ', (string) $name));
+    if ($n === '') {
+        return '';
+    }
+    $first = explode(' ', $n)[0];
+    return trim($first, " \t.,;:'\"");
+}
+
+// One enquiry as a producer sees it. PURE — every fact is passed in, so the
+// gate can drive the whole shape with no database and no pricing engine.
+//
+// $price is price_breakdown()'s array (or null when the cottage has no rate
+// row); $free is the site's own clash answer; $facts is the cottage's own
+// published Q&A.
+function night_brief_enquiry(array $row, $propName, $price, $free, array $facts = [])
+{
+    $out = [
+        'id' => (int) ($row['id'] ?? 0),
+        'name' => (string) ($row['name'] ?? ''),
+        'first' => night_first_name($row['name'] ?? ''),
+        'cottage' => (string) ($propName !== '' ? $propName : ($row['prop_key'] ?? '')),
+        'prop' => (string) ($row['prop_key'] ?? ''),
+        'received' => (string) ($row['created_at'] ?? ''),
+        'check_in' => (string) ($row['check_in'] ?? ''),
+        'check_out' => (string) ($row['check_out'] ?? ''),
+        'adults' => (int) ($row['adults'] ?? 0),
+        'children' => (int) ($row['children'] ?? 0),
+        'message' => mb_substr(trim((string) ($row['message'] ?? '')), 0, NIGHT_BRIEF_MSG_MAX),
+        // The site's own answer, not something to work out. `null` means the
+        // site could not tell — which a producer must treat as "say nothing
+        // about availability", never as a yes.
+        'dates_free' => $free === null ? null : (bool) $free,
+        'nights' => null,
+        'quote' => '',
+        'deposit' => '',
+        'facts' => [],
+    ];
+    if (is_array($price)) {
+        $out['nights'] = (int) ($price['nights'] ?? 0);
+        // Already formatted, and formatted ONCE here, so a producer has no
+        // reason to do arithmetic on it or re-render it.
+        $out['quote'] = '£' . number_format((float) ($price['total'] ?? 0), 2);
+        $dep = (float) ($price['damagesDeposit'] ?? 0);
+        $out['deposit'] = $dep > 0 ? '£' . number_format($dep, 2) : '';
+    }
+    $n = 0;
+    foreach ($facts as $f) {
+        if ($n >= NIGHT_BRIEF_FACTS_MAX) {
+            break;
+        }
+        $q = trim((string) (is_array($f) ? ($f['q'] ?? '') : ''));
+        $a = trim((string) (is_array($f) ? ($f['a'] ?? '') : ''));
+        if ($q === '' || $a === '') {
+            continue;
+        }
+        $out['facts'][] = [
+            'q' => mb_substr($q, 0, NIGHT_BRIEF_FACT_Q_MAX),
+            'a' => mb_substr($a, 0, NIGHT_BRIEF_FACT_A_MAX),
+        ];
+        $n++;
+    }
+    return $out;
+}
