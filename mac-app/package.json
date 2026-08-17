@@ -19,11 +19,24 @@
   "build": {
     "appId": "uk.co.cottageholidaysblakeney.hand",
     "productName": "Blakeney Hand",
-    "files": ["src/**/*", "package.json"],
-    "directories": { "output": "dist" },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!build/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
     "mac": {
       "category": "public.app-category.business",
-      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "extendInfo": {
@@ -31,8 +44,13 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "icon": "build/icon.png",
+      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
     },
-    "dmg": { "title": "Blakeney Hand" }
+    "dmg": {
+      "title": "Blakeney Hand",
+      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
+    }
   }
 }

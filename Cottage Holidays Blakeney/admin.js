@@ -21855,6 +21855,12 @@ function refreshNightShiftState() {
 // button that offers a download nothing serves. Set a URL and it becomes a real
 // one-tap download — a GitHub release, your own web space, anywhere https.
 const NIGHT_APP_SOURCE = 'https://github.com/georgefarrowgreen1/CHB/tree/main/mac-app';
+// THE ONE PLACE A .dmg CAN COME FROM. A disk image is made by hdiutil and a
+// universal binary is merged by lipo — both Apple's, both macOS-only — so it
+// cannot be built here or on any Linux box. GitHub's macOS runners can, and on
+// this repo their minutes are free, so "Build it on GitHub" is the real answer
+// and not a workaround.
+const NIGHT_APP_BUILD = 'https://github.com/georgefarrowgreen1/CHB/actions/workflows/mac-app.yml';
 // The stored download URL is owner-written and lands in an `href`, so it is
 // validated on the way IN and again on the way OUT: an older write, a hand-edited
 // content row or a value from anywhere else must not become a javascript: link on
@@ -21867,19 +21873,24 @@ function refreshNightAppGet() {
     const host = document.getElementById('night-app-get');
     if (!host) return;
     const dl = nightAppUrl();
+    // Two links and a button, and each state offers exactly the next step: with
+    // nothing packaged the first thing to do is BUILD one; with a copy to hand it
+    // is DOWNLOAD it. Never a Download button pointing at nothing.
+    const link = (href, label, primary) =>
+        `<a class="btn-sm ${primary ? 'btn-accent' : 'btn-edit'}" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">${label}</a>`;
     host.innerHTML =
         '<p style="margin:0 0 10px;">Drafts overnight on a Mac of your own and leaves the work here. It runs on Intel and Apple silicon from one build, and nothing it writes is ever sent &mdash; every job leaves a draft for you to read.</p>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-        (dl
-            ? `<a class="btn-sm btn-accent" href="${escapeHtml(dl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">Download the Mac app</a>`
-            : '') +
-        `<a class="btn-sm btn-edit" href="${NIGHT_APP_SOURCE}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">${dl ? 'Source &amp; notes' : 'Get it and build it'}</a>` +
-        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${dl ? 'Change the download link' : 'Add a download link…'}</button>` +
+        (dl ? link(dl, 'Download the Mac app', true) : link(NIGHT_APP_BUILD, 'Build it on GitHub', true)) +
+        (dl ? link(NIGHT_APP_BUILD, 'Build a newer one') : link(NIGHT_APP_SOURCE, 'Source &amp; notes')) +
+        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${dl ? 'Change the download link' : 'Add a download link&hellip;'}</button>` +
         '</div>' +
         '<p style="margin:10px 0 0;">' +
         (dl
-            ? 'Downloads from the link you set. Keep it up to date when you build a newer copy.'
-            : 'There is no packaged copy yet, so this opens the source. Build it once with <code>npm install</code> then <code>npm run build</code> — the README there covers signing it so it opens with a double-click. Put the finished file anywhere on the web and add the link here.') +
+            ? 'Downloads from the link you set. Build a newer one whenever the app changes, then update the link.'
+            : 'There is no packaged copy yet &mdash; a disk image can only be made on a Mac, so GitHub builds it on one for you. ' +
+              '<strong>Run workflow</strong>, tick <em>publish a release</em>, and about ten minutes later it hands you a link to paste in here. ' +
+              'Or do it yourself on the Mac with <code>npm install</code> then <code>npm run build</code>.') +
         '</p>';
 }
 async function saveNightAppUrl(btn) {

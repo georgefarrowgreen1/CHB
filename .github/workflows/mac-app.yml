@@ -1,0 +1,189 @@
+# ============================================================
+#  Mac app — builds Blakeney Hand into a universal .dmg on a real Mac.
+#
+#  A .dmg cannot be made anywhere but macOS: the format is produced by `hdiutil`,
+#  and a universal binary is merged by `lipo`. Both are Apple's, both are
+#  macOS-only, so this is the only honest way to get one out of this repo —
+#  GitHub's macos-14 runners are Apple silicon Macs, and on a PUBLIC repo their
+#  minutes are free.
+#
+#  Two ways to start it:
+#    * Actions → "Mac app" → Run workflow          (a build you can download)
+#    * push a tag matching hand-v*                 (a build AND a release)
+#
+#  IT SIGNS AND NOTARISES ONLY IF YOU HAVE GIVEN IT THE MEANS TO. With the four
+#  Apple secrets set it produces an app that opens with a double-click; without
+#  them it produces an unsigned one that needs System Settings → Privacy &
+#  Security → Open Anyway on first launch. It never pretends: the release notes
+#  say which kind it is.
+#
+#    MAC_CERT_P12       base64 of your Developer ID Application .p12
+#    MAC_CERT_PASSWORD  the password for that .p12
+#    APPLE_ID           your Apple ID email
+#    APPLE_APP_PASSWORD an app-specific password from appleid.apple.com
+#    APPLE_TEAM_ID      your 10-character team id
+# ============================================================
+name: Mac app
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Also publish a GitHub release (so the site can link to it)'
+        type: boolean
+        default: false
+  push:
+    tags: ['hand-v*']
+
+permissions:
+  contents: write   # needed to create the release the download link points at
+
+concurrency:
+  group: mac-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    # macos-14 is Apple silicon. A universal build needs lipo, which is here and
+    # nowhere else — this is the whole reason the job cannot run on ubuntu.
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        working-directory: mac-app
+        run: npm install --no-audit --no-fund
+
+      # NEVER SHIP A BUILD WHOSE OWN TESTS FAILED. The core suite is the thing
+      # that checks the draft guard, and a .dmg that got past a broken guard is
+      # worse than no .dmg at all.
+      - name: The core suite (the draft guard, the engines, the model library)
+        working-directory: mac-app
+        run: node test/core-test.js
+
+      # The window, in the runner's own Chromium via playwright. Skips itself if
+      # playwright is not installed, so it can never be the reason a build fails
+      # for an unrelated reason.
+      - name: The window
+        working-directory: mac-app
+        run: |
+          npm install --no-save playwright@1.48.2 >/dev/null 2>&1 || true
+          npx playwright install chromium >/dev/null 2>&1 || true
+          node test/ui-test.js
+
+      # Comparing the secret in an expression yields a BOOLEAN, so the value
+      # itself never reaches a shell — every later step branches on this.
+      - name: Is there a signing certificate?
+        id: cert
+        run: echo "have=${{ secrets.MAC_CERT_P12 != '' }}" >> "$GITHUB_OUTPUT"
+
+      # The standard temporary-keychain dance. It exists only for this job and
+      # goes with the runner; nothing is written anywhere that outlives it.
+      - name: Import the certificate
+        if: steps.cert.outputs.have == 'true'
+        env:
+          P12: ${{ secrets.MAC_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Build the universal .dmg
+        working-directory: mac-app
+        env:
+          # With no certificate, tell electron-builder not to go looking for one:
+          # left to itself it picks up whatever identity it finds and fails half
+          # way through, which reads as a broken build rather than an unsigned one.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ steps.cert.outputs.have == 'true' && 'true' || 'false' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          EXTRA=""
+          if [ "${{ steps.cert.outputs.have }}" = "true" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            echo "Signing and notarising."
+            EXTRA="-c.mac.notarize=true"
+          elif [ "${{ steps.cert.outputs.have }}" = "true" ]; then
+            echo "Signing, but NOT notarising (no Apple ID / team id set)."
+          else
+            echo "Unsigned build — it will need Open Anyway on first launch."
+          fi
+          npx electron-builder --mac --universal $EXTRA
+          ls -lh dist/*.dmg
+
+      - name: What was built
+        id: out
+        working-directory: mac-app
+        run: |
+          set -euo pipefail
+          DMG="$(ls dist/*.dmg | head -1)"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$DMG" | cut -f1)" >> "$GITHUB_OUTPUT"
+          # A universal build carries both architectures. Worth PROVING rather
+          # than trusting the flag: lipo lists what is actually inside.
+          APP="$(ls -d dist/mac-universal/*.app 2>/dev/null | head -1 || true)"
+          if [ -n "$APP" ]; then
+            lipo -archs "$APP/Contents/MacOS/Blakeney Hand" || true
+          fi
+
+      # Always keep the file, even on a plain dispatch with no release: a build
+      # you cannot download is not a build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.out.outputs.name }}
+          path: mac-app/dist/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      # A RELEASE is what the site's download link can point at. Only on a tag,
+      # or when the dispatch explicitly asks — a release is public and permanent,
+      # so it is never a side effect of pressing Run.
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/hand-v') || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+          SIGNED="unsigned — on first launch open System Settings → Privacy & Security and press Open Anyway"
+          if [ "${{ steps.cert.outputs.have }}" = "true" ]; then SIGNED="signed, so it opens with a double-click"; fi
+          {
+            echo "Blakeney Hand for macOS — one universal build for Intel and Apple silicon."
+            echo
+            echo "This copy is **$SIGNED**."
+            echo
+            echo "Paste this file's download link into Manage → System check → The Mac app,"
+            echo "and the back office gets a one-tap download."
+            echo
+            echo "It needs a model runner on the Mac (llama.cpp or Ollama) and the overnight"
+            echo "queue switched on. mac-app/README.md covers both."
+          } > notes.md
+          gh release create "$TAG" "${{ steps.out.outputs.dmg }}" \
+            --title "Blakeney Hand ${TAG}" --notes-file notes.md
+          echo "Download link for the Manage page:"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"

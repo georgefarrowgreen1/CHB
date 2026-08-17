@@ -316,12 +316,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { painted: h.getClientRects().length > 0, links: links, text: h.textContent };
   });
   ok(get0.painted, 'the row is on the System check page');
-  ok(get0.links.length === 1 && /^https:\/\/github\.com\//.test(get0.links[0].href),
-    'with nothing packaged, the one link goes to the source', JSON.stringify(get0.links));
-  ok(get0.links[0].tgt === '_blank' && /noopener/.test(get0.links[0].rel || ''),
-    '…and opens outside the app, safely');
+  // THE PROPERTY THAT MATTERS: with nothing packaged there is no Download at all.
+  ok(!get0.links.some((a) => /Download/.test(a.t)), 'with nothing packaged there is NO download link', JSON.stringify(get0.links.map((a) => a.t)));
+  ok(get0.links.length === 2 && get0.links.every((a) => /^https:\/\/github\.com\//.test(a.href)),
+    '…just the two GitHub links', JSON.stringify(get0.links.map((a) => a.href)));
+  ok(/actions\/workflows\/mac-app\.yml$/.test(get0.links[0].href),
+    '…and the FIRST one is the build, because that is the next step', get0.links[0].href);
+  ok(get0.links.every((a) => a.tgt === '_blank' && /noopener/.test(a.rel || '')),
+    '…both open outside the app, safely');
   ok(/no packaged copy yet/.test(get0.text), '…and it SAYS there is no packaged copy rather than offering one');
-  ok(/npm run build/.test(get0.text), '…and names the one command that makes one');
+  ok(/only be made on a Mac/.test(get0.text), '…and why it cannot just appear');
+  ok(/npm run build/.test(get0.text), '…and names the command, for doing it by hand');
 
   // A DOWNLOAD LINK, once there is something to download.
   posts.length = 0;
@@ -375,7 +380,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return [...h.querySelectorAll('a')].map((a) => a.getAttribute('href'));
   });
   ok(!badHref.some((h) => /^javascript:/i.test(h)), 'a stored javascript: address never becomes a link', JSON.stringify(badHref));
-  ok(badHref.length === 1, '…it falls back to the source link alone');
+  ok(badHref.length === 2 && badHref.every((h) => /^https:\/\/github\.com\//.test(h)),
+    '…the row falls back to the two GitHub links, exactly as if nothing were set', JSON.stringify(badHref));
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 

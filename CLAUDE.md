@@ -569,6 +569,18 @@ signing and what is real; what matters HERE is the site half and the rules.
   RENDER (`nightAppUrl()`), because a value could arrive from an older write or a
   hand-edited content row; a `javascript:` address is refused at both ends and
   break-tested at both. Gated by ui-test-nightshift §7.
+- **A .dmg IS BUILT BY GITHUB, ON A MAC, BECAUSE IT CANNOT BE BUILT ANYWHERE ELSE.**
+  `hdiutil` makes the disk image and `lipo` merges the universal binary; both are
+  Apple's and both are macOS-only, so no Linux box and no session here can produce
+  one. `.github/workflows/mac-app.yml` runs on `macos-14` (an Apple silicon Mac),
+  and on this PUBLIC repo those minutes are free. Actions → Mac app → Run workflow,
+  or push a `hand-v*` tag. It runs BOTH suites first — a build whose own tests
+  failed is never shipped — then uploads the .dmg as an artifact and, on a tag or
+  an explicit tick, publishes a release whose asset URL is what the Manage row
+  links to. It signs and notarises only when the four Apple secrets exist, and the
+  release notes say which kind each copy is rather than implying signed.
+  NB the certificate reaches the runner through an `env:` mapping and never a
+  command line, and the decoded `.p12` is deleted inside the same step.
 - **TWO REAL DEFECTS THE DOWNLOAD ROW EXPOSED, both pre-existing.**
   (1) **`bump.js` collected BASENAMES with no folder filter**, so `mac-app/src/ui/app.css`
   made it bump the WEBSITE's `app.css ?v=` — every visitor re-downloading 73KB for a

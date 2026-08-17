@@ -48,7 +48,28 @@ are the ones with the tests.
 
 ---
 
-## Building it
+## Getting a .dmg
+
+**A disk image can only be made on a Mac.** The format is produced by `hdiutil`
+and a universal binary is merged by `lipo` — both Apple's, both macOS-only — so
+no Linux box and no CI runner other than a Mac can produce one.
+
+### The easy way: let GitHub build it
+
+`.github/workflows/mac-app.yml` runs on a `macos-14` runner, which is an Apple
+silicon Mac. On this repo those minutes are free.
+
+1. **Actions → Mac app → Run workflow.** Tick *publish a release* if you want a
+   permanent download link.
+2. It installs, runs the core suite and the window suite (**a build whose own
+   tests failed is never shipped**), then produces the universal `.dmg`.
+3. About ten minutes later it is a workflow artifact — and, if you asked for a
+   release, at a stable URL you can paste into **Manage → System check → The Mac
+   app**.
+
+Tagging `hand-v1.0` does the same thing and always publishes.
+
+### Or on your own Mac
 
 You need Xcode's command-line tools (`xcode-select --install`) and Node.
 
@@ -56,7 +77,7 @@ You need Xcode's command-line tools (`xcode-select --install`) and Node.
 cd mac-app
 npm install
 npm start            # run it from source, no packaging
-npm run build        # a universal .app in dist/, Intel + Apple silicon in one
+npm run build        # a universal .dmg in dist/, Intel + Apple silicon in one
 ```
 
 `npm run build:arm` / `npm run build:intel` produce a single-architecture build
@@ -70,12 +91,20 @@ An unsigned app is blocked by Gatekeeper on first launch. Two routes:
   notice and press **Open Anyway**. (macOS Sequoia removed the old
   Control-click → Open shortcut, so it has to be done there.) Fine for an app
   only you will ever run.
-- **Proper.** Join the Apple Developer Program, then sign and notarise:
+- **Proper.** Join the Apple Developer Program and give the workflow four
+  repository secrets; it then signs and notarises every build on its own, and the
+  release notes say which kind each copy is.
 
-  ```bash
-  export APPLE_ID=… APPLE_APP_SPECIFIC_PASSWORD=… APPLE_TEAM_ID=…
-  npm run build          # electron-builder signs and notarises when these are set
-  ```
+  | secret | what it is |
+  |---|---|
+  | `MAC_CERT_P12` | base64 of your Developer ID Application `.p12` |
+  | `MAC_CERT_PASSWORD` | that file's password |
+  | `APPLE_ID` | your Apple ID email |
+  | `APPLE_APP_PASSWORD` | an app-specific password from appleid.apple.com |
+  | `APPLE_TEAM_ID` | your 10-character team id |
+
+  Building by hand instead: `export APPLE_ID=… APPLE_APP_SPECIFIC_PASSWORD=…
+  APPLE_TEAM_ID=…` then `npm run build`.
 
   Apple runs an automated malware scan. There is no review, no guidelines and no
   cut of anything — it is not the App Store, it just makes the app open normally.
