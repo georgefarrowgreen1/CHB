@@ -103,6 +103,91 @@ route_actions([
         json_out(['ok' => true, 'id' => $id, 'status' => $status, 'target' => (string) $row['target']]);
     },
 
+    // ---- a machine reads what is waiting ---------------------------
+    // The mirror of ingest, and deliberately the SMALLEST read that lets a
+    // producer draft a reply without inventing anything: the waiting
+    // enquiries, each with the site's OWN quote and the site's OWN
+    // availability answer already worked out, plus that cottage's published
+    // questions and answers. See nightshift-lib.php's header for why the
+    // figures travel with the brief rather than being left to the far end.
+    //
+    // There is no verb in this handler. It reads, it caps, it answers.
+    'brief' => function ($in) {
+        rate_limit('night-brief', 40, 60);
+        $given = (string) ($in['secret'] ?? '');
+        if ($given === '' || !defined('APP_SECRET') || !hash_equals(APP_SECRET, $given)) {
+            log_activity('system', 'night.reject', 'Overnight queue: a brief was asked for with the wrong secret', [
+                'actor' => 'system',
+                'severity' => 'warn',
+            ]);
+            json_out(['error' => 'Not authorised.'], 401);
+        }
+        // ONE SWITCH CLOSES BOTH DIRECTIONS. Off must not leave a readable
+        // door open behind a queue nothing can be posted to.
+        if (!night_enabled()) {
+            json_out([
+                'error' => 'Overnight work is switched off in Manage → System check.',
+                'code' => 'night_off',
+            ], 409);
+        }
+        require_once __DIR__ . '/pricing.php';
+        $host = '';
+        try {
+            require_once __DIR__ . '/mailer.php';
+            $host = (string) email_host_name();
+        } catch (\Throwable $e) {
+            $host = '';
+        }
+        $out = [];
+        try {
+            $st = db()->prepare(
+                'SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
+                   FROM enquiries
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT ' . (int) NIGHT_BRIEF_MAX,
+            );
+            $st->execute();
+            $rows = $st->fetchAll();
+            foreach ($rows as $row) {
+                $pk = (string) $row['prop_key'];
+                // The site's own price, and the site's own clash answer. Both
+                // are wrapped: a cottage with no rate row, or a failed check,
+                // yields an ABSENT fact rather than a guessed one — and the
+                // producer's rule is that an absent fact is not mentioned.
+                $price = null;
+                try {
+                    $rate = get_rate($pk);
+                    if ($rate) {
+                        $price = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+                    }
+                } catch (\Throwable $e) {
+                    $price = null;
+                }
+                $free = null;
+                try {
+                    $free = !dates_clash($pk, $row['check_in'], $row['check_out']);
+                } catch (\Throwable $e) {
+                    $free = null;
+                }
+                $facts = [];
+                try {
+                    $faqs = content_json('faqs-' . $pk, []);
+                    if (is_array($faqs)) {
+                        $facts = $faqs;
+                    }
+                } catch (\Throwable $e) {
+                    $facts = [];
+                }
+                $out[] = night_brief_enquiry($row, (string) prop_display($pk), $price, $free, $facts);
+            }
+        } catch (\Throwable $e) {
+            // A read that fails answers "nothing waiting" rather than an error:
+            // the producer's correct response to both is to do nothing tonight.
+            $out = [];
+        }
+        json_out(['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX]);
+    },
+
     // ---- a machine reports a night's work --------------------------
     'ingest' => function ($in) {
         // Throttled BEFORE the secret is looked at, on the same table sign-in

@@ -139,6 +139,13 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-nightshift.php
 
+      # The Mac app that FEEDS the overnight queue. No dependencies at all — the
+      # whole core is plain Node — so this costs nothing and covers the part of
+      # that app where being wrong would be invisible: the draft guard.
+      - name: Mac app core (the draft guard, the engines, the model library)
+        working-directory: mac-app
+        run: node test/core-test.js
+
       - name: SMS settings (config const still wins, the auth token never leaves the server)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-sms.php
@@ -353,7 +360,7 @@ jobs:
             RANGE="${{ github.event.before }} ${{ github.sha }}"
           fi
           CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
-          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|\.github/workflows/ci\.yml'; then
+          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|mac-app/|\.github/workflows/ci\.yml'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running browser tests."
           else
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "No frontend changes → skipping browser tests (fast green)."
@@ -399,6 +406,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node ui-tests.js
 
+      # The Mac app's window, driven in a browser against a fake bridge. It
+      # skips itself if playwright is absent, so it can never be the reason CI
+      # is red for an unrelated reason.
+      - name: Mac app window (screens, escaping, the withdrawn engine)
+        if: steps.fe.outputs.run == 'true'
+        working-directory: mac-app
+        run: node test/ui-test.js
+
       # Accessibility gate: text-token contrast by arithmetic (both themes, every
       # surface), the accent-as-text ratchet, plus accessible names / minimum
       # font size / minimum control size read from a real render. Ratchets against
@@ -436,7 +451,7 @@ jobs:
             RANGE="${{ github.event.before }} ${{ github.sha }}"
           fi
           CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
-          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|\.github/workflows/ci\.yml'; then
+          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|mac-app/|\.github/workflows/ci\.yml'; then
             echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running layout gate."
           else
             echo "run=false" >> "$GITHUB_OUTPUT"; echo "No frontend changes → skipping layout gate (fast green)."

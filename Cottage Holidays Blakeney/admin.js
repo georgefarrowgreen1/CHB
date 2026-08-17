@@ -21808,6 +21808,14 @@ async function loadDiagnostics() {
                         <span class="chb-switch"><input type="checkbox" id="night-shift-toggle" ${chbChange('saveNightShift')} aria-label="Accept overnight work"><span class="chb-switch-track" aria-hidden="true"></span></span>
                     </div>
                     <div id="night-shift-state" style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;"></div>
+                    <!-- HOW YOU GET THE APP ONTO THE MAC. Two halves, because
+                         only one of them is true yet: the SOURCE always exists
+                         and always has its build instructions, and a DOWNLOAD
+                         appears once a packaged copy is somewhere to link to.
+                         A button that offers a download nothing serves would be
+                         worse than saying so. -->
+                    <div class="acr-cap" style="margin-top:18px;">The Mac app</div>
+                    <div id="night-app-get" style="font-size:0.8rem;color:var(--text-muted);"></div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
@@ -21818,6 +21826,7 @@ async function loadDiagnostics() {
     refreshBackupStatus();
     refreshBackupPassState();
     refreshNightShiftState();
+    refreshNightAppGet();
     refreshHeroStatus();
 }
 // The overnight-queue switch. adminPrivateContent FIRST — an internal key is
@@ -21840,6 +21849,73 @@ function refreshNightShiftState() {
     // a staging install would be told to post at production.
     const url = new URL('nightshift.php', window.location.href).href;
     state.textContent = 'On — send work to ' + url + ' with the same secret your daily-jobs address uses.';
+}
+// WHERE THE MAC APP COMES FROM. The source and its build instructions always
+// exist; a packaged copy may not, so the row shows what is true rather than a
+// button that offers a download nothing serves. Set a URL and it becomes a real
+// one-tap download — a GitHub release, your own web space, anywhere https.
+const NIGHT_APP_SOURCE = 'https://github.com/georgefarrowgreen1/CHB/tree/main/mac-app';
+// THE ONE PLACE A .dmg CAN COME FROM. A disk image is made by hdiutil and a
+// universal binary is merged by lipo — both Apple's, both macOS-only — so it
+// cannot be built here or on any Linux box. GitHub's macOS runners can, and on
+// this repo their minutes are free, so "Build it on GitHub" is the real answer
+// and not a workaround.
+const NIGHT_APP_BUILD = 'https://github.com/georgefarrowgreen1/CHB/actions/workflows/mac-app.yml';
+// The stored download URL is owner-written and lands in an `href`, so it is
+// validated on the way IN and again on the way OUT: an older write, a hand-edited
+// content row or a value from anywhere else must not become a javascript: link on
+// the one page that is always signed in as the owner.
+function nightAppUrl() {
+    const raw = String((adminPrivateContent && adminPrivateContent['nightshift-app-url']) ?? siteContent['nightshift-app-url'] ?? '').trim();
+    return /^https:\/\/[^\s"'<>]+$/i.test(raw) ? raw : '';
+}
+function refreshNightAppGet() {
+    const host = document.getElementById('night-app-get');
+    if (!host) return;
+    const dl = nightAppUrl();
+    // Two links and a button, and each state offers exactly the next step: with
+    // nothing packaged the first thing to do is BUILD one; with a copy to hand it
+    // is DOWNLOAD it. Never a Download button pointing at nothing.
+    const link = (href, label, primary) =>
+        `<a class="btn-sm ${primary ? 'btn-accent' : 'btn-edit'}" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">${label}</a>`;
+    host.innerHTML =
+        '<p style="margin:0 0 10px;">Drafts overnight on a Mac of your own and leaves the work here. It runs on Intel and Apple silicon from one build, and nothing it writes is ever sent &mdash; every job leaves a draft for you to read.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        (dl ? link(dl, 'Download the Mac app', true) : link(NIGHT_APP_BUILD, 'Build it on GitHub', true)) +
+        (dl ? link(NIGHT_APP_BUILD, 'Build a newer one') : link(NIGHT_APP_SOURCE, 'Source &amp; notes')) +
+        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${dl ? 'Change the download link' : 'Add a download link&hellip;'}</button>` +
+        '</div>' +
+        '<p style="margin:10px 0 0;">' +
+        (dl
+            ? 'Downloads from the link you set. Build a newer one whenever the app changes, then update the link.'
+            : 'There is no packaged copy yet &mdash; a disk image can only be made on a Mac, so GitHub builds it on one for you. ' +
+              '<strong>Run workflow</strong>, tick <em>publish a release</em>, and about ten minutes later it hands you a link to paste in here. ' +
+              'Or do it yourself on the Mac with <code>npm install</code> then <code>npm run build</code>.') +
+        '</p>';
+}
+async function saveNightAppUrl(btn) {
+    const now = nightAppUrl();
+    const v = await glassPrompt(
+        'Paste the address the Mac app downloads from. It must start with https:// — a GitHub release, your own web space, anywhere that serves the file.\n\nLeave it empty to remove the link.',
+        now,
+    );
+    if (v === null) return; // cancelled: nothing said, nothing changed
+    const url = String(v).trim();
+    if (url && !/^https:\/\/[^\s"'<>]+$/i.test(url)) {
+        glassAlert('That is not an https:// address, so it was not saved. A download link has to be one this back office can safely open.');
+        return;
+    }
+    try {
+        await saveContent('nightshift-app-url', url);
+    } catch (e) {
+        return; // saveContent has already said so, and rethrows so we stop here
+    }
+    // saveContent does not write the mirrors, so a re-render would read the old
+    // value and paint the old link (the acrOta lesson).
+    if (adminPrivateContent) adminPrivateContent['nightshift-app-url'] = url;
+    siteContent['nightshift-app-url'] = url;
+    refreshNightAppGet();
+    toast(url ? 'Download link saved.' : 'Download link removed — the row offers the source instead.');
 }
 chbAct('saveNightShift', async function (el) {
     const box = /** @type {HTMLInputElement} */ (el);

@@ -2325,6 +2325,92 @@ it_check('the public content GET never carries the night-shift setting',
     !array_key_exists('night-shift', (array) ($r['json'] ?? [])), mb_substr($r['raw'], 0, 200));
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 
+// ══════════════════════════════════════════════════════════════════════════
+// §26 THE BRIEF — the read a producer gets before it writes. The ingest secret
+// only ever let a machine put something IN; without a matching read, a producer
+// has no way to see the enquiries it is meant to answer. What matters here is
+// what the brief HANDS OVER (the site's own quote and the site's own
+// availability answer, so nothing has to be invented at the far end) and what
+// it WITHHOLDS (every contact detail a drafted reply does not need).
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA726 the brief a producer reads\n";
+
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('with the queue off, the brief is refused too — one switch, both directions',
+    $r['code'] === 409 && ($r['json']['code'] ?? '') === 'night_off', $r['raw']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => 'wrong']);
+it_check('a wrong secret cannot read it', $r['code'] === 401, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'brief']);
+it_check('an admin session is not a substitute for the secret here either', $r['code'] === 401, $r['raw']);
+
+// A real waiting enquiry, on dates that are free.
+$bfIn = date('Y-m-d', time() + 90 * 86400);
+$bfOut = date('Y-m-d', time() + 97 * 86400);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, phone, address, postcode, check_in, check_out, adults, children, message)
+               VALUES ('$propKey','Rachel Pemberton','rachel@gmail.com','07700 900123','9 Test Lane, Norwich','NR25 7AB','$bfIn','$bfOut',2,0,'Is it free that week, and do you take dogs?')");
+$bfId = (int) $rootDb->lastInsertId();
+// The cottage's own published answers — what a reply should be written FROM.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'faqs-' . $propKey,
+    'value' => [['q' => 'Do you take dogs?', 'a' => 'We are afraid not.'], ['q' => 'Parking?', 'a' => 'One car outside.']]]);
+
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$es = $r['json']['enquiries'] ?? [];
+$mine = null;
+foreach ($es as $e) {
+    if ((int) ($e['id'] ?? 0) === $bfId) {
+        $mine = $e;
+    }
+}
+it_check('the waiting enquiry is in the brief', $mine !== null, $r['raw']);
+it_check('…with the guest named and a first name worked out',
+    $mine && $mine['name'] === 'Rachel Pemberton' && $mine['first'] === 'Rachel', json_encode($mine));
+it_check('…and their message', $mine && strpos($mine['message'], 'take dogs') !== false, json_encode($mine));
+// THE FIGURES TRAVEL WITH THE BRIEF. This is the property that makes "it never
+// states money" enforceable: a producer is quoting, not calculating.
+it_check('the SITE quotes the price, already formatted',
+    $mine && preg_match('/^£[0-9,]+\.[0-9]{2}$/', (string) $mine['quote']) === 1, json_encode($mine['quote'] ?? null));
+it_check('…and it is the same figure price_breakdown gives for those dates',
+    $mine && (float) str_replace([',', '£'], '', $mine['quote']) > 0 && $mine['nights'] === 7, json_encode($mine));
+it_check('the SITE answers availability — free dates read free', $mine && $mine['dates_free'] === true, json_encode($mine));
+it_check('the cottage&rsquo;s own answers ride along', $mine && count($mine['facts']) === 2, json_encode($mine['facts'] ?? null));
+it_check('the host is named for the sign-off', isset($r['json']['host']), $r['raw']);
+// WHAT IT WITHHOLDS.
+$leaks = [];
+foreach (['email', 'phone', 'address', 'postcode'] as $k) {
+    if ($mine && array_key_exists($k, $mine)) {
+        $leaks[] = $k;
+    }
+}
+it_check('no contact detail a drafted reply does not need', count($leaks) === 0, implode(',', $leaks));
+it_check('…and the raw payload never contains the address either',
+    strpos($r['raw'], '9 Test Lane') === false && strpos($r['raw'], '07700 900123') === false, mb_substr($r['raw'], 0, 200));
+
+// TAKEN DATES SAY SO. The site owns the clash check, so a producer can never
+// promise a week that has gone.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Blocker','b@gmail.com','$bfIn','$bfOut',2,0,'paid',100,300,300,0,7)");
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$mine2 = null;
+foreach (($r['json']['enquiries'] ?? []) as $e) {
+    if ((int) ($e['id'] ?? 0) === $bfId) {
+        $mine2 = $e;
+    }
+}
+it_check('once the dates are taken, the brief says so', $mine2 && $mine2['dates_free'] === false, json_encode($mine2));
+
+// THE CAP. A producer reads a handful, never the history.
+for ($i = 0; $i < 12; $i++) {
+    $rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message)
+                   VALUES ('$propKey','Filler $i','f$i@gmail.com','$bfIn','$bfOut',2,0,'hello')");
+}
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('the brief is capped at a handful', count($r['json']['enquiries'] ?? []) === 8, (string) count($r['json']['enquiries'] ?? []));
+it_check('…and says what its own cap is', ($r['json']['cap'] ?? 0) === 8, $r['raw']);
+
+$rootDb->exec('DELETE FROM enquiries');
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

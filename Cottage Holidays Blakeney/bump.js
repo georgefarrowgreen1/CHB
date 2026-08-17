@@ -56,9 +56,18 @@ try {
     // may rename "a -> b" — strip the wrapping quotes and take the post-arrow half so
     // basename doesn't return admin.js" (trailing quote), which silently skipped the
     // ADMIN_BUNDLE_V / ADMIN_CSS_V bump for this space-containing repo path.
+    // ONLY PATHS INSIDE THE APP FOLDER COUNT, because what is collected here is
+    // BASENAMES — and the repo now holds mac-app/src/ui/app.css and
+    // mac-app/src/ui/app.js, whose basenames are the website's own. Without this
+    // filter, editing the Mac app's stylesheet bumped the WEBSITE's app.css ?v=
+    // and made every visitor re-download 73KB for nothing. Measured: it did
+    // exactly that on the run that added mac-app/. check-versions.js has always
+    // filtered on this prefix; bump.js is the half that had not caught up.
+    const PREFIX = 'Cottage Holidays Blakeney/';
     (branch + '\n' + tree).split('\n').forEach(l => {
         let p = l.trim().replace(/^"|"$/g, '');
         if (p.includes(' -> ')) p = p.split(' -> ').pop().replace(/^"|"$/g, '');
+        if (!p.startsWith(PREFIX)) return;
         const b = path.basename(p);
         if (b) changed.add(b);
     });

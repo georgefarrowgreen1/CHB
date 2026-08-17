@@ -885,6 +885,12 @@ function is_internal_content_key($key)
                      // send it (pre-arrival.php). An operating decision about
                      // their own workflow — a guest has no business reading it
     }
+    if ($key === 'nightshift-app-url') {
+        return true; // where the owner's own Mac app downloads from (Manage →
+                     // System check). Their infrastructure, not site content —
+                     // a guest has no business reading it, and it is only ever
+                     // rendered into a link on a page that is signed in as them
+    }
     if ($key === 'night-shift') {
         return true; // whether the overnight queue is switched on (nightshift.php).
                      // An operating decision about the owner's own machinery, and

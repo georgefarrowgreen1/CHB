@@ -168,6 +168,81 @@ nsk('the body is passed through unescaped, for the client to escape once', $raw[
 $missing = night_item_public([]);
 nsk('a row missing everything degrades to empty strings, never a warning', $missing['title'] === '' && $missing['kind'] === 'note');
 
+echo "§9 the brief — the read a producer gets, and what it deliberately withholds\n";
+$eRow = [
+    'id' => '42', 'prop_key' => 'jollyboat', 'name' => 'Rachel Pemberton',
+    'check_in' => '2026-10-12', 'check_out' => '2026-10-19', 'adults' => 2, 'children' => 0,
+    'message' => "Hi — is Jollyboat free that week, and do you take dogs?",
+    'created_at' => '2026-08-16 23:39:00',
+    // Everything below is present on the real row and must NOT come back:
+    'email' => 'rachel@example.com', 'phone' => '07700 900123',
+    'address' => '9 Test Lane, Norwich', 'postcode' => 'NR25 7AB',
+];
+$price = ['nights' => 7, 'total' => 892.5, 'damagesDeposit' => 75.0, 'perNight' => 127.5];
+$b = night_brief_enquiry($eRow, 'Jollyboat', $price, true, [
+    ['q' => 'Do you take dogs?', 'a' => 'We are afraid not, at any of the three cottages.'],
+    ['q' => 'Is there parking?', 'a' => 'One car, on the gravel by the front gate.'],
+]);
+nsk('the id comes back as an int', $b['id'] === 42);
+nsk('the guest is named', $b['name'] === 'Rachel Pemberton');
+nsk('…and a first name is worked out for the greeting', $b['first'] === 'Rachel');
+nsk('the cottage is named for a reader, not by key', $b['cottage'] === 'Jollyboat');
+nsk('…with the key alongside it', $b['prop'] === 'jollyboat');
+nsk('the message rides along', strpos($b['message'], 'do you take dogs') !== false);
+nsk('the site answers availability ITSELF', $b['dates_free'] === true);
+nsk('the site formats the QUOTE itself, once', $b['quote'] === '£892.50');
+nsk('…and the refundable deposit', $b['deposit'] === '£75.00');
+nsk('nights come from the price model, not from counting', $b['nights'] === 7);
+nsk('the cottage answers ride along', count($b['facts']) === 2 && $b['facts'][0]['q'] === 'Do you take dogs?');
+// WHAT A DRAFTED REPLY DOES NOT NEED. Every one of these is on the real row.
+foreach (['email', 'phone', 'address', 'postcode', 'terms_accepted_at'] as $k) {
+    nsk("'$k' is NOT in the brief", !array_key_exists($k, $b));
+}
+nsk('and nothing outside the stated shape leaks in', count(array_diff(array_keys($b), [
+    'id', 'name', 'first', 'cottage', 'prop', 'received', 'check_in', 'check_out',
+    'adults', 'children', 'message', 'dates_free', 'nights', 'quote', 'deposit', 'facts',
+])) === 0);
+
+echo "§10 what the brief does when the site cannot answer\n";
+$noPrice = night_brief_enquiry($eRow, 'Jollyboat', null, null, []);
+nsk('no rate row → an EMPTY quote, never a zero', $noPrice['quote'] === '');
+nsk('…and no deposit figure either', $noPrice['deposit'] === '');
+nsk('…and nights is null, not 0', $noPrice['nights'] === null);
+nsk('a failed clash check is NULL, never a cheerful true', $noPrice['dates_free'] === null);
+$taken = night_brief_enquiry($eRow, 'Jollyboat', $price, false, []);
+nsk('taken dates say so', $taken['dates_free'] === false);
+$noDep = night_brief_enquiry($eRow, 'Jollyboat', ['nights' => 3, 'total' => 400.0, 'damagesDeposit' => 0], true, []);
+nsk('a cottage with no deposit gets no deposit sentence to write', $noDep['deposit'] === '');
+
+echo "§11 the brief is bounded — a compromised secret reads a page, not a history\n";
+$long = night_brief_enquiry(['name' => 'A', 'message' => str_repeat('x', NIGHT_BRIEF_MSG_MAX + 500)], '', null, null, []);
+nsk('an over-long message is cut to the cap', mb_strlen($long['message']) === NIGHT_BRIEF_MSG_MAX);
+$many = [];
+for ($i = 0; $i < NIGHT_BRIEF_FACTS_MAX + 6; $i++) {
+    $many[] = ['q' => 'Q' . $i, 'a' => 'A' . $i];
+}
+$capped = night_brief_enquiry($eRow, '', null, null, $many);
+nsk('the cottage answers stop at the cap', count($capped['facts']) === NIGHT_BRIEF_FACTS_MAX);
+$fat = night_brief_enquiry($eRow, '', null, null, [[
+    'q' => str_repeat('q', NIGHT_BRIEF_FACT_Q_MAX + 50),
+    'a' => str_repeat('a', NIGHT_BRIEF_FACT_A_MAX + 50),
+]]);
+nsk('a long question is cut', mb_strlen($fat['facts'][0]['q']) === NIGHT_BRIEF_FACT_Q_MAX);
+nsk('…and a long answer is cut', mb_strlen($fat['facts'][0]['a']) === NIGHT_BRIEF_FACT_A_MAX);
+$junk = night_brief_enquiry($eRow, '', null, null, [['q' => '', 'a' => 'orphan'], ['q' => 'orphan', 'a' => ''], 'nonsense']);
+nsk('half-written or malformed answers are dropped rather than shipped', count($junk['facts']) === 0);
+nsk('the brief cap is a handful, not a page', NIGHT_BRIEF_MAX > 0 && NIGHT_BRIEF_MAX <= 20);
+
+echo "§12 first names, as people actually type them\n";
+nsk('two words', night_first_name('Rachel Pemberton') === 'Rachel');
+nsk('one word is its own first name', night_first_name('Rachel') === 'Rachel');
+nsk('extra spaces', night_first_name('  Rachel   Pemberton ') === 'Rachel');
+nsk('a title is NOT stripped (better a formal greeting than a wrong one)', night_first_name('Mrs Pemberton') === 'Mrs');
+nsk('trailing punctuation goes', night_first_name('Rachel, Pemberton') === 'Rachel');
+nsk('a double-barrelled first name survives', night_first_name('Mary-Anne Coe') === 'Mary-Anne');
+nsk('empty is empty', night_first_name('') === '');
+nsk('null is empty, never a warning', night_first_name(null) === '');
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

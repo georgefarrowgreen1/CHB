@@ -307,6 +307,82 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(posts.some((p) => p.__url === 'nightshift.php' && p.action === 'list'),
     '…and it fetches straight away rather than waiting for a reload');
 
+
+  // ── 7. GETTING THE APP ───────────────────────────────────────────────────
+  console.log('7. how the Mac app is got, and what the row claims');
+  const get0 = await page.evaluate(() => {
+    const h = document.getElementById('night-app-get');
+    const links = [...h.querySelectorAll('a')].map((a) => ({ href: a.getAttribute('href'), t: a.textContent.trim(), tgt: a.getAttribute('target'), rel: a.getAttribute('rel') }));
+    return { painted: h.getClientRects().length > 0, links: links, text: h.textContent };
+  });
+  ok(get0.painted, 'the row is on the System check page');
+  // THE PROPERTY THAT MATTERS: with nothing packaged there is no Download at all.
+  ok(!get0.links.some((a) => /Download/.test(a.t)), 'with nothing packaged there is NO download link', JSON.stringify(get0.links.map((a) => a.t)));
+  ok(get0.links.length === 2 && get0.links.every((a) => /^https:\/\/github\.com\//.test(a.href)),
+    '…just the two GitHub links', JSON.stringify(get0.links.map((a) => a.href)));
+  ok(/actions\/workflows\/mac-app\.yml$/.test(get0.links[0].href),
+    '…and the FIRST one is the build, because that is the next step', get0.links[0].href);
+  ok(get0.links.every((a) => a.tgt === '_blank' && /noopener/.test(a.rel || '')),
+    '…both open outside the app, safely');
+  ok(/no packaged copy yet/.test(get0.text), '…and it SAYS there is no packaged copy rather than offering one');
+  ok(/only be made on a Mac/.test(get0.text), '…and why it cannot just appear');
+  ok(/npm run build/.test(get0.text), '…and names the command, for doing it by hand');
+
+  // A DOWNLOAD LINK, once there is something to download.
+  posts.length = 0;
+  await page.evaluate(() => { window.glassPrompt = async () => 'https://example.test/BlakeneyHand-1.0.dmg'; });
+  await page.evaluate(() => document.querySelector('[data-act="saveNightAppUrl"]').click());
+  await page.waitForTimeout(400);
+  const savedUrl = posts.find((p) => p.__url === 'content.php' && p.action === 'set' && p.key === 'nightshift-app-url');
+  ok(savedUrl && savedUrl.value === 'https://example.test/BlakeneyHand-1.0.dmg', 'setting a link saves it', JSON.stringify(savedUrl));
+  const get1 = await page.evaluate(() => {
+    const h = document.getElementById('night-app-get');
+    const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
+    return { href: dl ? dl.getAttribute('href') : null, painted: dl ? dl.getClientRects().length > 0 : false, text: h.textContent };
+  });
+  ok(get1.href === 'https://example.test/BlakeneyHand-1.0.dmg' && get1.painted,
+    'a real Download link appears, pointing at exactly that', JSON.stringify(get1.href));
+  ok(!/no packaged copy yet/.test(get1.text), '…and the row stops saying there is nothing to download');
+
+  const looks = await page.evaluate(() => {
+    const h = document.getElementById('night-app-get');
+    const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
+    const quiet = [...h.querySelectorAll('a')].find((a) => !/Download/.test(a.textContent));
+    const c = (el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, fg: s.color, w: s.fontWeight }; };
+    return { dl: c(dl), quiet: c(quiet) };
+  });
+  ok(looks.dl.bg !== looks.quiet.bg && looks.dl.bg !== 'rgba(0, 0, 0, 0)',
+    'the Download pill is FILLED, not the same outline as the quiet one beside it', JSON.stringify(looks));
+  ok(looks.dl.fg !== looks.quiet.fg, '…and takes its own ink');
+
+  // A NON-HTTPS ADDRESS IS REFUSED, and nothing is stored.
+  posts.length = 0;
+  await page.evaluate(() => {
+    window.glassPrompt = async () => 'javascript:alert(1)';
+    window.__alerted = null;
+    window.glassAlert = async (m) => { window.__alerted = m; };
+  });
+  await page.evaluate(() => document.querySelector('[data-act="saveNightAppUrl"]').click());
+  await page.waitForTimeout(350);
+  ok(!posts.some((p) => p.key === 'nightshift-app-url'), 'a javascript: address is never saved');
+  ok(/https/.test(await page.evaluate(() => window.__alerted || '')), '…and it says why');
+
+  // AND THE RENDER GUARDS IT TOO, because a value could have been written by
+  // something other than that prompt.
+  const badHref = await page.evaluate(() => {
+    siteContent['nightshift-app-url'] = 'javascript:alert(1)';
+    // NB adminPrivateContent is a top-level `let`, so it is a global LEXICAL
+    // binding and not a window property — `window.adminPrivateContent` is
+    // undefined and a guard on it silently skips the write.
+    adminPrivateContent['nightshift-app-url'] = 'javascript:alert(1)';
+    refreshNightAppGet();
+    const h = document.getElementById('night-app-get');
+    return [...h.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  });
+  ok(!badHref.some((h) => /^javascript:/i.test(h)), 'a stored javascript: address never becomes a link', JSON.stringify(badHref));
+  ok(badHref.length === 2 && badHref.every((h) => /^https:\/\/github\.com\//.test(h)),
+    '…the row falls back to the two GitHub links, exactly as if nothing were set', JSON.stringify(badHref));
+
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED` : '\nall checks passed');
