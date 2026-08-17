@@ -561,6 +561,27 @@ signing and what is real; what matters HERE is the site half and the rules.
   includes `mac-app/` or a change there would skip both browser jobs).
 - NB the ui-test resolves playwright **relative to this file**, from the website's
   node_modules — an absolute path worked here and would have silently skipped in CI.
+- **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
+  work card): the SOURCE link always exists, and a **Download** button appears only
+  once `nightshift-app-url` is set — a button offering a download nothing serves is
+  worse than saying there is nothing packaged yet. The stored URL is owner-written and
+  lands in an `href`, so it is validated `^https://` on the way IN *and* again at
+  RENDER (`nightAppUrl()`), because a value could arrive from an older write or a
+  hand-edited content row; a `javascript:` address is refused at both ends and
+  break-tested at both. Gated by ui-test-nightshift §7.
+- **TWO REAL DEFECTS THE DOWNLOAD ROW EXPOSED, both pre-existing.**
+  (1) **`bump.js` collected BASENAMES with no folder filter**, so `mac-app/src/ui/app.css`
+  made it bump the WEBSITE's `app.css ?v=` — every visitor re-downloading 73KB for a
+  file that had not changed. Measured on the very run that added `mac-app/`.
+  `check-versions.js` has always filtered on the `Cottage Holidays Blakeney/` prefix;
+  bump.js is the half that had not caught up, and now does.
+  (2) **`btn-accent` has only ever been styled with `.btn-glass`**, so
+  `class="btn-sm btn-accent"` rendered as a plain outlined pill — which is what the
+  overnight card's **"Open it"** silently was, indistinguishable from the Bin it beside
+  it. `.btn-sm.btn-accent` now exists in admin.css (owner-only), with `--accent-ink`
+  rather than white: measured, white on the light-mode accent is **2.96:1** and this
+  pair is 8.56 dark / 6.23 light. Gated by measuring the PAINT of the two pills against
+  each other, so it cannot regress to "the class is present".
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 

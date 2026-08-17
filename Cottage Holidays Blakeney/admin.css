@@ -590,6 +590,24 @@ body.light-mode .tl-cell {
   flex: none;
   margin-right: 7px;
 }
+/* A PRIMARY .btn-sm, which did not exist. `btn-accent` has only ever been
+   styled in COMBINATION with .btn-glass (.btn-glass.btn-accent in app.css), so
+   `class="btn-sm btn-accent"` rendered as a plain outlined pill — which is what
+   the overnight card's "Open it" and the Mac-app download link both silently
+   were, indistinguishable from the Bin it beside them. Caught on the download
+   row's own screenshot.
+   The ink is --accent-ink and never white: measured, white on the light-mode
+   accent is 2.96:1 and this pair is 8.56 dark / 6.23 light. Owner-only, so it
+   lives here rather than in the stylesheet every visitor downloads. */
+.btn-sm.btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+@media (hover: hover) {
+  .btn-sm.btn-accent:hover { filter: brightness(1.06); }
+}
 /* READY FOR YOU — the overnight queue's card on Today. The ROWS are the house
    fold group (.bhub-fold-grp, shared with the hub and the Manage verdicts), so
    only the prose inside a fold needs saying here. */
