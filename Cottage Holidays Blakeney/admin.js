@@ -17895,6 +17895,29 @@ function chbDuties() {
             });
         });
     } catch (e) {}
+    // 1a1b) THE MAC HAS GONE QUIET. The failure the owner will actually live
+    // with is not a stolen key — it is a Mac that stopped and said nothing, so
+    // the drafts simply never appear and there is no moment at which anything
+    // goes wrong. Three nights, not one: a Mac that was off overnight, or a
+    // night with nothing waiting, is not a fault. The server decides (one
+    // definition, night_quiet_problem) and sends the number on the boot
+    // payload; -1 means the question does not apply — nothing paired, or it
+    // has never once reported, both of which are setup rather than failure.
+    try {
+        const npre = /** @type {any} */ (window).__nightPre;
+        const quiet = npre && typeof npre.quiet === 'number' ? npre.quiet : -1;
+        if (npre && npre.on && quiet >= 3) {
+            out.push({
+                kind: 'nightquiet',
+                sev: 'warn', ic: 'alert',
+                label: 'The Mac has sent nothing for ' + quiet + ' nights',
+                sub: 'Overnight work is on, but nothing has arrived since then — the Mac may be off, asleep, or no longer connected',
+                act: 'Check it', go: chbAttrs('openArea'),
+                board: 'today', scope: 'settings',
+                run: () => { closeCmdK(); openArea(); settingsOpen('diagnostics'); },
+            });
+        }
+    } catch (e) {}
     // 1a2) AN ARRIVAL EMAIL WAITING TO BE READ (review mode). The owner chose
     // that nothing goes without them, so the app must NOT quietly send at the
     // last minute — which makes this duty the only thing standing between the
@@ -21799,18 +21822,22 @@ async function loadDiagnostics() {
                         <span class="chb-switch"><input type="checkbox" id="night-shift-toggle" ${chbChange('saveNightShift')} aria-label="Accept overnight work"><span class="chb-switch-track" aria-hidden="true"></span></span>
                     </div>
                     <div id="night-shift-state" style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;"></div>
-                    <!-- HOW YOU GET THE APP ONTO THE MAC. Two halves, because
-                         only one of them is true yet: the SOURCE always exists
-                         and always has its build instructions, and a DOWNLOAD
-                         appears once a packaged copy is somewhere to link to.
-                         A button that offers a download nothing serves would be
-                         worse than saying so. -->
-                    <!-- The app's own key — see nightshift-lib.php. -->
-                    <div class="acr-cap" style="margin-top:18px;">The app&rsquo;s key</div>
-                    <div id="night-key-row" style="font-size:0.8rem;color:var(--text-muted);"></div>
+                    <!-- TWO THINGS ON THE CARD: the switch above, and the
+                         download. Asked for, and right — those are the two an
+                         owner touches. Everything about CONNECTING a Mac is
+                         done once per machine and then never again, so it sits
+                         behind a disclosure rather than in front of the one
+                         control that gets used.
 
-                    <div class="acr-cap" style="margin-top:18px;">The Mac app</div>
-                    <div id="night-app-get" style="font-size:0.8rem;color:var(--text-muted);"></div>
+                         It is folded, not deleted: it is the only route to
+                         pairing, and without it a Mac can connect only with the
+                         daily-jobs secret — the thing we just took away from
+                         it. -->
+                    <div id="night-app-get" style="font-size:0.8rem;color:var(--text-muted);margin-top:14px;"></div>
+                    <details class="night-setup">
+                        <summary>Set up a Mac</summary>
+                        <div id="night-key-row" style="font-size:0.8rem;color:var(--text-muted);"></div>
+                    </details>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
@@ -21880,32 +21907,60 @@ function nightAppCustom() {
 // THE KEY, SHOWN ONCE — the row reports only WHETHER one is set, and a new one
 // revokes the old. See nightshift-lib.php for why the app has its own at all.
 let __nightKeySet = false;
+// THE PAIRED MACS. A list, because one stored key meant two Macs could only
+// work by sharing it — indistinguishable, unstoppable separately, and with
+// nothing to say when either last did anything.
+let __nightDevs = [];
+function nightAgoWords(ts) {
+    if (!ts) return 'not yet';
+    const mins = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+    if (mins < 60) return mins <= 1 ? 'just now' : mins + ' minutes ago';
+    const h = Math.round(mins / 60);
+    if (h < 24) return h === 1 ? 'an hour ago' : h + ' hours ago';
+    const d = Math.round(h / 24);
+    return d === 1 ? 'yesterday' : d + ' days ago';
+}
 async function refreshNightKeyRow() {
     const host = document.getElementById('night-key-row');
     if (!host) return;
-    let set = false;
     try {
-        const r = await apiPost('nightshift.php', { action: 'key_state' });
-        set = !!(r && r.set);
+        const r = await apiPost('nightshift.php', { action: 'devices' });
+        __nightDevs = (r && r.devices) || [];
     } catch (e) { /* the row still renders; it just cannot claim either way */ }
-    __nightKeySet = set;
+    __nightKeySet = __nightDevs.length > 0;
+    const rows = __nightDevs.map((d) =>
+        '<div class="acr-row"><div class="acr-lbl">' + escapeHtml(d.label)
+        + '<small>' + (d.quiet >= 3
+            ? '<em>nothing for ' + d.quiet + ' nights</em>'
+            : 'last heard from ' + escapeHtml(nightAgoWords(d.seen)))
+        + '</small></div>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('stopNightDevice', d.i, d.label) + '>Stop this Mac</button></div>'
+    ).join('');
     host.innerHTML =
-        '<p style="margin:0 0 10px;">' + (set
-            ? 'A key is set. The app uses it instead of your daily-jobs secret, so it can read the enquiries waiting and post drafts &mdash; and nothing else.'
-            : 'The app is still using your daily-jobs secret, which also opens the scripts that collect payments and email guests. Give it its own key instead.')
+        '<p style="margin:0 0 10px;">' + (__nightKeySet
+            ? 'Each Mac has its own key, so you can stop one without stopping the other.'
+            : 'The app is still using your daily-jobs secret, which also opens the scripts that collect payments and email guests. Connect it properly instead.')
         + '</p>'
-        + '<button class="btn-sm ' + (set ? 'btn-edit' : 'btn-accent') + '" ' + chbAttrs('newNightKey', CHB_SELF) + '>'
-        + (set ? 'Replace the key&hellip;' : 'Give the app its own key') + '</button>';
+        + (rows ? '<div class="acr-well" style="margin-bottom:10px;">' + rows + '</div>' : '')
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        + '<button class="btn-sm btn-accent" ' + chbAttrs('connectNightMac', CHB_SELF) + '>Connect a Mac</button>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('newNightKey', CHB_SELF) + '>Give it a key instead&hellip;</button>'
+        + '</div>'
+        // The two rare ones, moved off the card and in here beside the other
+        // things you do once per machine.
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
+        + '<a class="btn-sm btn-edit" href="' + escapeHtml(NIGHT_APP_BUILD) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">Build a newer one</a>'
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('saveNightAppUrl', CHB_SELF) + '>'
+        + (nightAppCustom() ? 'Use the standard link' : 'Host it yourself&hellip;') + '</button>'
+        + '</div>'
+        + '<p style="margin:10px 0 0;">A disk image can only be made on a Mac, so it builds on one at GitHub. '
+        + 'When the app changes, <strong>Build a newer one</strong> and the download picks it up on its own.</p>';
 }
+
+// THE PASTE, KEPT. The connect code needs the site reachable from the browser
+// AND the Mac at the same moment; this one does not, so it stays as the way
+// through when that fails. Whichever way the key arrived, the site cannot tell.
 chbAct('newNightKey', async function () {
-    // From the state the row rendered from, not by sniffing the button: an
-    // attribute selector naming an action, written in source, is read by
-    // smoke-test 6a-iii as markup and reported as an action that does not exist.
-    if (__nightKeySet && !(await glassConfirm(
-        'Generating a new key stops the old one working straight away, so the Mac app will need the new one pasted in before it can run again.',
-        'Generate a new key'))) {
-        return;
-    }
     let r;
     try {
         r = await apiPost('nightshift.php', { action: 'new_key' });
@@ -21914,10 +21969,6 @@ chbAct('newNightKey', async function () {
         return;
     }
     if (!r || !r.key) { glassAlert("Couldn't generate a key just now."); return; }
-    // No way back to it: the stored copy is encrypted and content.php will
-    // not serve it.
-    // glassAlert takes ONE argument, and writes with innerText — so the blank
-    // lines survive and an HTML entity would print itself. Plain text only.
     // Copied for you: bare text gets photographed or retyped. Best-effort — the
     // key is on screen either way, so a refused clipboard loses nothing.
     let copied = false;
@@ -21926,11 +21977,59 @@ chbAct('newNightKey', async function () {
         copied = true;
     } catch (e) { /* not permitted: the text below still shows it */ }
     await glassAlert(
-        "The app's key" + (copied ? ' — copied to your clipboard.' : '.')
+        "A key for one Mac" + (copied ? ' — copied to your clipboard.' : '.')
         + '\n\n' + r.key
         + '\n\nPaste it into the Mac app under Connection. It will not be shown'
-        + ' again; generate another if it is lost.',
+        + ' again; connect that Mac afresh if it is lost.',
     );
+    refreshNightKeyRow();
+});
+
+// THE CONNECT CODE — the ordinary way in. Eight characters read off this
+// screen and typed into the Mac, instead of sixty-four pasted.
+//
+// THE SITE MINTS IT, not the app. The other direction (the app shows a code,
+// you approve it here) is how a television pairs, and it is worse here: the
+// app would have to write to the site BEFORE holding any credential, which
+// means an anonymous row carrying text a stranger chose, rendered in this
+// back office. This way nothing unauthenticated is ever stored or shown.
+chbAct('connectNightMac', async function () {
+    let r;
+    try {
+        r = await apiPost('nightshift.php', { action: 'connect_code' });
+    } catch (e) {
+        glassAlert("Couldn't start a connection just now.");
+        return;
+    }
+    if (!r || !r.code) { glassAlert("Couldn't start a connection just now."); return; }
+    const mins = Math.max(1, Math.round((r.seconds || 600) / 60));
+    await glassAlert(
+        'Type this into the Mac app, on its Connection screen:\n\n'
+        + r.code
+        + '\n\nIt works once, for the next ' + mins + ' minutes. Nothing else is'
+        + ' needed — the app gives itself a key and this code stops working.',
+    );
+    refreshNightKeyRow();
+});
+
+// STOPPING ONE MAC. The label goes with the index because the list can move
+// under a screen the owner has been looking at, and stopping the wrong Mac is
+// a silent failure they find at two in the morning.
+chbAct('stopNightDevice', async function (el, i, label) {
+    if (!(await glassConfirm(
+        'Stop "' + label + '"? It will not be able to read enquiries or post drafts'
+        + ' again until it is connected afresh. Anything it has already left here stays.',
+        'Stop this Mac'))) {
+        return;
+    }
+    try {
+        await apiPost('nightshift.php', { action: 'stop_device', i: Number(i), label: String(label) });
+    } catch (e) {
+        glassAlert((e && e.message) || "Couldn't stop it just now.");
+        refreshNightKeyRow();
+        return;
+    }
+    toast('Stopped — ' + label + ' can no longer connect.');
     refreshNightKeyRow();
 });
 
@@ -21939,21 +22038,12 @@ function refreshNightAppGet() {
     if (!host) return;
     const dl = nightAppUrl();
     const own = nightAppCustom();
-    const link = (href, label, primary) =>
-        `<a class="btn-sm ${primary ? 'btn-accent' : 'btn-edit'}" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">${label}</a>`;
+    // ONE BUTTON. Build-a-newer-one and host-it-yourself moved into the fold
+    // below: both are things done rarely and deliberately, and standing beside
+    // Download they made three pills of which only one is ever wanted.
     host.innerHTML =
-        '<p style="margin:0 0 10px;">Drafts overnight on a Mac of your own and leaves the work here. It runs on Intel and Apple silicon from one build, and nothing it writes is ever sent &mdash; every job leaves a draft for you to read.</p>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-        link(dl, 'Download the Mac app', true) +
-        link(NIGHT_APP_BUILD, 'Build a newer one') +
-        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${own ? 'Use the standard link' : 'Host it yourself&hellip;'}</button>` +
-        '</div>' +
-        '<p style="margin:10px 0 0;">' +
-        (own
-            ? 'Downloading from your own address. <strong>Use the standard link</strong> to go back to the newest build GitHub made.'
-            : 'Always the newest build GitHub made &mdash; a disk image can only be made on a Mac, so it builds on one there. ' +
-              'When the app changes, <strong>Build a newer one</strong> and this link picks it up on its own.') +
-        '</p>';
+        `<a class="btn-sm btn-accent" href="${escapeHtml(dl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">Download the Mac app</a>`
+        + (own ? '<p style="margin:10px 0 0;">From your own address.</p>' : '');
 }
 async function saveNightAppUrl(btn) {
     const now = nightAppUrl();

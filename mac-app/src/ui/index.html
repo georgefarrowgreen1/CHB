@@ -97,9 +97,17 @@
         <div class="row"><div class="main"><b>Site</b>
           <span>The address shown in Manage &rarr; System check on your website.</span></div>
           <div class="rail"><input class="field wide" id="siteUrl" type="url" spellcheck="false" placeholder="https://…/nightshift.php" aria-label="Site address"></div></div>
-        <div class="row alt"><div class="main"><b>Secret</b>
+        <!-- THE ORDINARY WAY IN. Eight characters read off the website beats
+             sixty-four pasted, and the code is single-use and short-lived, so
+             one seen over a shoulder is worthless within the hour. -->
+        <div class="row alt"><div class="main"><b>Connect</b>
+          <span id="connectSays">On the website: Manage &rarr; System check &rarr; Connect a Mac. Type the code it shows.</span></div>
+          <div class="rail"><input class="field" id="codeIn" type="text" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345" aria-label="Connect code"><button class="tbtn prime" type="button" id="doConnect">Connect</button></div></div>
+        <!-- KEPT, because the code needs the website and this Mac reachable at
+             the same moment and this does not. -->
+        <div class="row"><div class="main"><b>Or paste a key</b>
           <span id="secretSays">Stored in the macOS Keychain, never in a file beside the app.</span></div>
-          <div class="rail"><input class="field" id="secretIn" type="password" placeholder="paste to change" aria-label="Site secret"><button class="tbtn" type="button" id="saveSecret">Save</button></div></div>
+          <div class="rail"><input class="field" id="secretIn" type="password" placeholder="paste to change" aria-label="Site key"><button class="tbtn" type="button" id="saveSecret">Save</button></div></div>
         <div class="row"><div class="main"><b>State</b><span id="connSays">Not tested yet.</span></div>
           <div class="rail"><span class="chip n" id="connChip">Unknown</span><button class="tbtn" type="button" id="testBtn">Test now</button></div></div>
       </div>

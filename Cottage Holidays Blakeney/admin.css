@@ -5773,3 +5773,18 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .arv-row span { color: var(--text-muted); flex: 0 0 auto; }
 .arv-row b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .arv-note { font-size: 0.76rem; color: var(--text-muted); margin: 9px 0 0; }
+
+/* THE SET-UP FOLD on the Overnight work card. The card carries the switch and
+   the download — the two an owner touches — and everything about connecting a
+   Mac is done once per machine, so it sits behind this rather than in front of
+   them. Quiet on purpose: a summary that shouts is the clutter it replaced. */
+.night-setup { margin-top: 14px; }
+.night-setup > summary {
+    cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+    color: var(--text-muted); padding: 6px 0; min-height: 44px;
+}
+.night-setup > summary::-webkit-details-marker { display: none; }
+.night-setup > summary::after { content: '›'; font-size: 1rem; transition: transform 0.18s var(--fluid-bezier); }
+.night-setup[open] > summary::after { transform: rotate(90deg); }
+.night-setup > summary:hover { color: var(--accent-text); }

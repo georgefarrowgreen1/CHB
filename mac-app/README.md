@@ -50,15 +50,23 @@ are the ones with the tests.
    **Overnight work**. That page shows the address to paste into **Connection**
    here, and — under **The app's key** — a button that gives this app its own.
 
-   **Use that button.** The app used to be told to paste in the site's
-   daily-jobs secret, and that one key also opens the scripts that collect
-   instalments from guests' cards, email every guest, run migrations and dump
-   the database. Nothing about drafting a reply needs any of that. The app's own
-   key opens the overnight queue and nothing else, and generating a new one
-   revokes the old immediately.
+   **Tap Connect a Mac.** It shows an eight-character code; type that into this
+   app's Connection screen and it gives itself a key. The code works **once**
+   and expires in ten minutes, so one glimpsed over a shoulder is worthless
+   shortly after.
 
-   The key is shown **once**, when it is generated. It is encrypted at rest and
-   the site will not serve it back — generate another if it is lost.
+   The app used to be told to paste in the site's daily-jobs secret, and that
+   one key also opens the scripts that collect instalments from guests' cards,
+   email every guest, run migrations and dump the database. Nothing about
+   drafting a reply needs any of that.
+
+   **Each Mac gets its own key**, so the website can list them, say when each
+   was last heard from, and stop one without stopping the other. If a Mac says
+   nothing for three nights, the back office raises it — because the failure you
+   will actually meet is not a stolen key, it is a Mac that quietly stopped.
+
+   *Give it a key instead…* is still there, and pastes a key the old way. Use it
+   when the website and this Mac are not both to hand at the same moment.
 
 4. **An https address.** The app refuses a plain `http://` one, because the key
    travels with every request and http sends it in the clear. `http://localhost`

@@ -206,6 +206,24 @@
         if (t.id === 'skipBtn') { toast('Skipped. The next run is tomorrow at ' + S.nextRunAt + '.'); return; }
         if (t.id === 'addBtn') { openSheet(); return; }
         if (t.id === 'cancelBtn') { $('scrim').hidden = true; return; }
+        if (t.id === 'doConnect') {
+            var code = $('codeIn').value;
+            if (!code.trim()) { toast('Type the code the website is showing.'); return; }
+            $('doConnect').disabled = true;
+            var cr = await window.hand.connect(code.trim());
+            $('doConnect').disabled = false;
+            if (!cr || !cr.ok) {
+                // The SITE's own sentence — it knows whether the code was
+                // expired, used, wrong, or never minted, and those want
+                // different things done about them.
+                toast((cr && cr.say) || 'That code did not work.');
+                return;
+            }
+            $('codeIn').value = '';
+            toast('Connected' + (cr.host ? ' to ' + cr.host : '') + '.');
+            refresh();
+            return;
+        }
         if (t.id === 'saveSecret') {
             var v = $('secretIn').value;
             if (!v.trim()) { toast('Paste the secret first.'); return; }

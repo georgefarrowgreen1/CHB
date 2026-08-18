@@ -2238,6 +2238,100 @@ it_check('regenerating recovers it',
 $rootDb->query('DELETE FROM night_items');
 $minted = $fresh;
 
+// ── THE CONNECT CODE, THE DEVICE LIST, AND THE QUIET MAC ─────────────────
+// Driven through the real endpoints, because the connect route is the only
+// UNAUTHENTICATED action this file has and its refusals are the whole design.
+$rootDb->prepare('DELETE FROM content WHERE item_key IN (?, ?)')
+    ->execute(['apikey-nightshift', 'apikey-nightshift-code']);
+
+// A code cannot be used before there is one.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => 'ABCD2345']);
+it_check('connecting with no code waiting is refused', $r['code'] === 401, $r['raw']);
+it_check('…and says there is no code, rather than "invalid"',
+    stripos($r['raw'], 'no connect code') !== false, $r['raw']);
+
+// The owner mints one.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'connect_code']);
+it_check('the owner can mint a connect code', $r['code'] === 200 && !empty($r['json']['code']), $r['raw']);
+$pretty = (string) ($r['json']['code'] ?? '');
+it_check('…printed in halves for reading aloud', (bool) preg_match('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/', $pretty), $pretty);
+it_check('…with no I, O, 0 or 1 in it', !preg_match('/[IO01]/', $pretty), $pretty);
+// A STRANGER MUST NOT BE ABLE TO ASK FOR ONE.
+$r2 = http($guest, 'POST', '/nightshift.php', ['action' => 'connect_code']);
+it_check('a stranger cannot mint a connect code', $r2['code'] === 401 || $r2['code'] === 403, (string) $r2['code']);
+
+// The wrong code is refused, and does not burn the right one.
+$wrong = ($pretty[0] === 'A' ? 'B' : 'A') . substr(str_replace('-', '', $pretty), 1);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $wrong]);
+it_check('a wrong code is refused', $r['code'] === 401, $r['raw']);
+
+// The right one works, and the app gets a key of ITS OWN.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => strtolower($pretty)]);
+it_check('the right code connects, typed loosely', $r['code'] === 200 && !empty($r['json']['key']), $r['raw']);
+$devKey = (string) ($r['json']['key'] ?? '');
+it_check('…and the key it earns is not the code', $devKey !== '' && stripos($devKey, str_replace('-', '', $pretty)) === false);
+it_check('…and it opens the route',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $devKey, 'items' => [$nsItem()]])['code'] === 200);
+$rootDb->query('DELETE FROM night_items');
+
+// SINGLE USE. The second attempt is refused, and says which fact it is.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $pretty]);
+it_check('the same code cannot be used twice', $r['code'] === 401, $r['raw']);
+it_check('…and says it was USED, not that it expired',
+    stripos($r['raw'], 'already been used') !== false, $r['raw']);
+
+// THE SITE STORES ONLY A HASH — a copy of the row opens nothing.
+$stored = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'apikey-nightshift'")->fetchColumn();
+it_check('the device row is ciphertext', $stored !== '' && strpos($stored, $devKey) === false);
+// NB there is deliberately NO check here that the row holds a hash rather than
+// the key. One was written and removed: the row is ciphertext either way, so
+// it passed with hashing torn out — measuring the encryption, not the hashing,
+// and reading like proof of something it never touched. That property is
+// asserted where it can actually be seen, on the plain structure, in
+// test-nightshift §14 ("the stored shape carries no key, only a hash"), which
+// does fail when night_key_hash stops hashing.
+
+// LAST SEEN was stamped by the request that worked.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+it_check('the owner can list what is paired', $r['code'] === 200 && count($r['json']['devices'] ?? []) === 1, $r['raw']);
+it_check('…with a last-seen from the request that worked', (int) ($r['json']['devices'][0]['seen'] ?? 0) > 0);
+it_check('…and never a key or a hash on that screen',
+    strpos($r['raw'], $devKey) === false && !preg_match('/[0-9a-f]{64}/', $r['raw']), substr($r['raw'], 0, 120));
+
+// TWO MACS, EACH ON ITS OWN KEY — the thing one stored key could not do.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'connect_code', 'label' => 'MacBook']);
+$second = (string) ($r['json']['code'] ?? '');
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $second]);
+$devKey2 = (string) ($r['json']['key'] ?? '');
+it_check('a second Mac connects with its own code', $devKey2 !== '' && $devKey2 !== $devKey);
+it_check('…and BOTH keys work', 
+    http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey])['code'] === 200
+    && http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey2])['code'] === 200);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+it_check('…and the list shows two, named', count($r['json']['devices'] ?? []) === 2
+    && ($r['json']['devices'][1]['label'] ?? '') === 'MacBook', $r['raw']);
+
+// STOPPING ONE STOPS ONLY ONE.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'stop_device', 'i' => 0, 'label' => $r['json']['devices'][0]['label']]);
+it_check('stopping one Mac is accepted', $r['code'] === 200, $r['raw']);
+it_check('…that Mac stops working',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey])['code'] === 401);
+it_check('…and the OTHER one carries on — the whole point of a list',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey2])['code'] === 200);
+// A STALE SCREEN MUST NOT STOP THE WRONG MAC.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'stop_device', 'i' => 0, 'label' => 'Some other Mac']);
+it_check('a stop whose label no longer matches is refused', $r['code'] === 409, $r['raw']);
+it_check('…and the Mac is still working',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey2])['code'] === 200);
+
+$rootDb->prepare('DELETE FROM content WHERE item_key IN (?, ?)')
+    ->execute(['apikey-nightshift', 'apikey-nightshift-code']);
+$rootDb->query('DELETE FROM night_items');
+// THIS BLOCK IS DELIBERATELY CHATTY — two dozen requests to prove the refusals
+// — and the brief route is throttled at 40/60s. Left alone it starves the
+// checks BELOW, which then fail for a reason that has nothing to do with them.
+$rootDb->query('DELETE FROM login_attempts');
+
 // GENERATING A NEW ONE REVOKES THE OLD — the whole revocation story.
 $r2 = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
 $second = (string) ($r2['json']['key'] ?? '');

@@ -421,3 +421,236 @@ function night_brief_enquiry(array $row, $propName, $price, $free, array $facts 
     }
     return $out;
 }
+
+// ── THE PAIRED MACS ──────────────────────────────────────────────────────
+//
+// One key became a LIST, and that is a change in kind rather than degree.
+// With a single stored key, two Macs work only by sharing it — which means
+// they cannot be told apart, cannot be stopped separately, and nothing can
+// say when either of them last did anything. Everything below follows from
+// wanting those three.
+//
+// THE SITE STORES ONLY A HASH. It never needs the key again after the moment
+// it hands it over: authentication is "does the hash of what arrived match a
+// hash on file", so the plaintext has no reason to exist here. A copy of the
+// content table then yields nothing that opens anything.
+//
+//   [ { h: sha256 hex, label, added: unix, seen: unix|0 }, … ]
+//
+// A LEGACY SINGLE STRING READS AS ONE DEVICE. Anyone who generated a key
+// under the first version has it stored as the key itself; night_devices()
+// turns that into a one-entry list on READ, so their Mac keeps working and
+// the shape converts the next time anything is written.
+const NIGHT_DEV_MAX = 8;          // more Macs than this is a different product
+const NIGHT_DEV_LABEL_MAX = 40;
+// How long a Mac may say nothing before the owner is told. THREE nights, not
+// one: a Mac that was off for a night, or a night with no enquiries waiting,
+// is not a fault and must not raise one.
+const NIGHT_QUIET_NIGHTS = 3;
+
+function night_key_hash($key)
+{
+    return hash('sha256', (string) $key);
+}
+
+// Whatever is stored → a clean list. Never throws, and anything it cannot
+// make sense of becomes an empty list rather than a guess.
+function night_devices($stored)
+{
+    // The legacy shape: the key itself, as a plain string.
+    if (is_string($stored)) {
+        $s = trim($stored);
+        if (strlen($s) < NIGHT_KEY_MIN) {
+            return [];
+        }
+        return [[
+            'h' => night_key_hash($s),
+            'label' => 'This Mac',
+            'added' => 0,
+            'seen' => 0,
+            'legacy' => true,
+        ]];
+    }
+    if (!is_array($stored)) {
+        return [];
+    }
+    $out = [];
+    foreach ($stored as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $h = strtolower((string) ($row['h'] ?? ''));
+        if (!preg_match('/^[0-9a-f]{64}$/', $h)) {
+            continue;   // not a hash we wrote
+        }
+        $out[] = [
+            'h' => $h,
+            'label' => night_dev_label($row['label'] ?? ''),
+            'added' => max(0, (int) ($row['added'] ?? 0)),
+            'seen' => max(0, (int) ($row['seen'] ?? 0)),
+            'legacy' => false,
+        ];
+        if (count($out) >= NIGHT_DEV_MAX) {
+            break;
+        }
+    }
+    return $out;
+}
+
+// A label is the owner's own words and lands on a screen. Kept to plain text
+// here so nothing downstream has to remember to.
+function night_dev_label($raw)
+{
+    // WHITESPACE COLLAPSES FIRST, then the control characters go. The other
+    // order strips a newline before it can become a space, so "Mac\nmini"
+    // reads back as "Macmini" — a label the owner did not type.
+    $s = preg_replace('/\s+/u', ' ', (string) $raw);
+    $s = trim((string) preg_replace('/[\x00-\x1f\x7f]/u', '', (string) $s));
+    if ($s === '') {
+        return 'A Mac';
+    }
+    return mb_substr($s, 0, NIGHT_DEV_LABEL_MAX);
+}
+
+// Which device does this key belong to? Returns its index, or -1.
+// hash_equals on both sides, so the comparison is not a timing oracle for
+// which device exists.
+function night_device_index($devices, $given)
+{
+    $g = (string) $given;
+    if (strlen($g) < NIGHT_KEY_MIN) {
+        return -1;
+    }
+    $gh = night_key_hash($g);
+    foreach ((array) $devices as $i => $d) {
+        if (isset($d['h']) && hash_equals((string) $d['h'], $gh)) {
+            return $i;
+        }
+    }
+    return -1;
+}
+
+// Has this Mac gone quiet? Returns the number of whole days since it was last
+// heard from, or -1 when the question does not apply.
+//
+// IT ONLY APPLIES TO A MAC THAT HAS WORKED. A device paired an hour ago and a
+// device that has never once posted are not faults — the first has not had a
+// night yet and the second is mid-setup. Inventing a chore out of either is
+// how a warning becomes something the owner learns to ignore.
+function night_quiet_days($device, $nowTs)
+{
+    $seen = (int) (($device['seen'] ?? 0));
+    if ($seen <= 0) {
+        return -1;              // never heard from: not a fault, just not yet
+    }
+    $n = (int) $nowTs;
+    if ($n <= $seen) {
+        return 0;               // a clock that went backwards is not a warning
+    }
+    return (int) floor(($n - $seen) / 86400);
+}
+
+// The one decision about whether to raise the duty, so the badge, the strip
+// and the brief cannot disagree about it.
+function night_quiet_problem($devices, $nowTs)
+{
+    $list = (array) $devices;
+    if (!count($list)) {
+        return -1;              // nothing paired: nothing to be quiet
+    }
+    $best = -1;
+    foreach ($list as $d) {
+        $q = night_quiet_days($d, $nowTs);
+        if ($q < 0) {
+            continue;
+        }
+        // The FRESHEST Mac decides. With two paired, one working, there is no
+        // problem — the work is getting done.
+        if ($best < 0 || $q < $best) {
+            $best = $q;
+        }
+    }
+    if ($best < 0 || $best < NIGHT_QUIET_NIGHTS) {
+        return -1;
+    }
+    return $best;
+}
+
+// ── THE CONNECT CODE ─────────────────────────────────────────────────────
+//
+// So the owner types eight characters rather than pastes sixty-four.
+//
+// THE SITE MINTS IT, NOT THE APP. The other direction is how a television
+// pairs, and it is worse here: for the app to show a code it must write to
+// the site BEFORE it holds any credential, which means an anonymous endpoint
+// that stores a row carrying text the requester chose and then renders it in
+// the back office. This way the public endpoint stores nothing, shows nothing
+// a stranger wrote, and grants nothing without a live code.
+//
+// The alphabet drops I, O, 0 and 1 — a code is read off a screen and typed on
+// another machine, and those are the four that get read wrong.
+const NIGHT_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const NIGHT_CODE_LEN = 8;
+const NIGHT_CODE_TTL = 600;      // ten minutes: long enough to walk to the Mac
+
+function night_code_make()
+{
+    $a = NIGHT_CODE_ALPHABET;
+    $n = strlen($a);
+    $out = '';
+    for ($i = 0; $i < NIGHT_CODE_LEN; $i++) {
+        $out .= $a[random_int(0, $n - 1)];
+    }
+    return $out;
+}
+
+// Typed by a person, so read it forgivingly: case, spaces and the dash the
+// screen shows are all noise. What is NOT forgiven is a character outside the
+// alphabet — that is a typo, and silently dropping it would make two different
+// typings mean the same code.
+function night_code_normalise($raw)
+{
+    $s = strtoupper(trim((string) $raw));
+    $s = str_replace([' ', '-', "\t"], '', $s);
+    if (!preg_match('/^[' . NIGHT_CODE_ALPHABET . ']{' . NIGHT_CODE_LEN . '}$/', $s)) {
+        return '';
+    }
+    return $s;
+}
+
+// XXXX-XXXX, for reading aloud and typing.
+function night_code_pretty($code)
+{
+    $s = (string) $code;
+    if (strlen($s) !== NIGHT_CODE_LEN) {
+        return $s;
+    }
+    return substr($s, 0, 4) . '-' . substr($s, 4);
+}
+
+// Is this code good, right now? Returns '' or a SENTENCE, because every one of
+// these reaches the owner on the Mac's screen and "invalid" explains nothing.
+//
+// A USED CODE AND AN EXPIRED ONE ARE DIFFERENT FACTS. "Someone has already
+// used this" is worth knowing — it means either you did, or somebody else did.
+function night_code_problem($rec, $given, $nowTs)
+{
+    $code = night_code_normalise($given);
+    if ($code === '') {
+        return 'That is not a connect code — it is eight letters and numbers, as shown on the website.';
+    }
+    if (!is_array($rec) || empty($rec['h'])) {
+        return 'There is no connect code waiting. Tap Connect a Mac on the website and try again.';
+    }
+    if (!empty($rec['used'])) {
+        return 'That code has already been used. Tap Connect a Mac on the website for a new one.';
+    }
+    $exp = (int) ($rec['exp'] ?? 0);
+    if ($exp <= 0 || (int) $nowTs > $exp) {
+        return 'That code has expired. Tap Connect a Mac on the website for a new one.';
+    }
+    if (!hash_equals((string) $rec['h'], night_key_hash($code))) {
+        return 'That code does not match the one on the website.';
+    }
+    return '';
+}

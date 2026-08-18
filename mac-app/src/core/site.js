@@ -177,6 +177,29 @@ function makeSite(opts) {
                 skipped: Array.isArray(r.json.skipped) ? r.json.skipped : [],
             };
         },
+        // CONNECT WITH A CODE. The one call made BEFORE this app holds anything:
+        // it hands over eight characters the owner read off the website and gets
+        // back a key of its own. The code is single-use and short-lived at the
+        // far end, so a failure here is final — there is no retrying it.
+        async connect(code) {
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, say: bad }; }
+            let r;
+            try {
+                r = await send(url, { action: 'connect', code: String(code || '') });
+            } catch (e) {
+                return { ok: false, say: 'Could not reach the site to connect.' };
+            }
+            if (!r.ok || !r.json || !r.json.ok || !r.json.key) {
+                // The site's own sentence, because it knows which of expired,
+                // used, wrong or none this was — and they want different things
+                // done about them.
+                const say = (r.json && r.json.error) || 'The site refused that code.';
+                return { ok: false, say: String(say) };
+            }
+            return { ok: true, key: String(r.json.key), host: String(r.json.host || '') };
+        },
+
         // Is the far end there, switched on, and does it accept the secret?
         // Used by the Connection screen's Test now, and it reports the DISTINCT
         // states rather than a boolean, because "off" and "wrong secret" want

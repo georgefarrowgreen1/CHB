@@ -59,7 +59,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // above: §6 reads this one to prove the switch shows what is saved rather
   // than a default, so it stays on.
   let stored = { 'night-shift': '1' };
-  let keySet = false;
+  // Two Macs, one of them quiet — the case a single stored key could not
+  // represent at all, and the one the duty is about.
+  let devices = [];
   const posts = [];
   const gets = [];
 
@@ -85,8 +87,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         }
       }
       if (file === 'content.php' && b.action === 'get_all') return json({ ok: true, content: stored });
-      if (file === 'nightshift.php' && b.action === 'key_state') { return json({ ok: true, set: keySet }); }
-      if (file === 'nightshift.php' && b.action === 'new_key') { keySet = true; return json({ ok: true, key: 'k'.repeat(64) }); }
+      if (file === 'nightshift.php' && b.action === 'key_state') { return json({ ok: true, set: devices.length > 0 }); }
+      if (file === 'nightshift.php' && b.action === 'devices') { return json({ ok: true, devices, quietAfter: 3 }); }
+      if (file === 'nightshift.php' && b.action === 'connect_code') { return json({ ok: true, code: 'ABCD-2345', seconds: 600 }); }
+      if (file === 'nightshift.php' && b.action === 'new_key') { devices.push({ i: devices.length, label: 'A Mac', seen: 0, quiet: -1 }); return json({ ok: true, key: 'k'.repeat(64) }); }
+      if (file === 'nightshift.php' && b.action === 'stop_device') { devices = devices.filter((d) => d.i !== b.i); return json({ ok: true, stopped: b.label, left: devices.length }); }
       if (file === 'content.php' && b.action === 'set') { stored[b.key] = b.value; return json({ ok: true }); }
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [], threads: [] });
     }
@@ -327,10 +332,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // ── 7. GETTING THE APP ───────────────────────────────────────────────────
   console.log('7. how the Mac app is got, and what the row claims');
-  const get0 = await page.evaluate(() => {
+  // RE-AIMED: the card carries ONE link now — the download — and the rare
+  // controls plus their explanation moved into the set-up fold. So the facts
+  // are asserted where they now live, and the fold is opened to read it.
+  const get0 = await page.evaluate(async () => {
+    const d = document.querySelector('details.night-setup');
+    if (d) { d.open = true; }
+    await refreshNightKeyRow();
     const h = document.getElementById('night-app-get');
+    const f = document.getElementById('night-key-row');
     const links = [...h.querySelectorAll('a')].map((a) => ({ href: a.getAttribute('href'), t: a.textContent.trim(), tgt: a.getAttribute('target'), rel: a.getAttribute('rel') }));
-    return { painted: h.getClientRects().length > 0, links: links, text: h.textContent };
+    const foldLinks = [...f.querySelectorAll('a')].map((a) => ({ href: a.getAttribute('href'), t: a.textContent.trim(), tgt: a.getAttribute('target'), rel: a.getAttribute('rel') }));
+    return { painted: h.getClientRects().length > 0, links, foldLinks, text: h.textContent, foldText: f.textContent };
   });
   ok(get0.painted, 'the row is on the System check page');
   // THE DEFAULT IS A LINK THAT NEVER NEEDS UPDATING. GitHub keeps
@@ -339,40 +352,55 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const dlLink = get0.links.find((a) => /Download/.test(a.t));
   ok(dlLink && /\/releases\/latest\/download\/Cottage-Holidays-Blakeney\.dmg$/.test(dlLink.href),
     'with nothing set, Download points at the LATEST release, not one particular build', dlLink && dlLink.href);
-  ok(get0.links.length === 2 && get0.links.every((a) => /^https:\/\/github\.com\//.test(a.href)),
-    '…beside the link that builds a newer one', JSON.stringify(get0.links.map((a) => a.t)));
-  ok(get0.links.every((a) => a.tgt === '_blank' && /noopener/.test(a.rel || '')),
-    '…both open outside the app, safely');
-  ok(/newest build GitHub made/.test(get0.text), '…and it says the link follows the newest build');
-  ok(/only be made on a Mac/.test(get0.text), '…and why it is built there rather than here');
+  ok(get0.links.length === 1, '…and it is the ONLY control on the card besides the switch',
+    JSON.stringify(get0.links.map((a) => a.t)));
+  ok(get0.links.concat(get0.foldLinks).every((a) => a.tgt === '_blank' && /noopener/.test(a.rel || '')),
+    '…every outward link opens outside the app, safely');
+  ok(get0.foldLinks.some((a) => /Build a newer one/.test(a.t)),
+    '…the build link moved into the fold rather than away', JSON.stringify(get0.foldLinks.map((a) => a.t)));
+  ok(/only be made on a Mac/.test(get0.foldText), '…and so did why it is built there rather than here');
 
   // A URL OF YOUR OWN OVERRIDES IT.
   posts.length = 0;
   await page.evaluate(() => { window.glassPrompt = async () => 'https://example.test/mine/BlakeneyHand.dmg'; });
-  await page.evaluate(() => document.querySelector('[data-act="saveNightAppUrl"]').click());
+  await page.evaluate(() => { const d = document.querySelector('details.night-setup'); if (d) d.open = true;
+    document.querySelector('[data-act="saveNightAppUrl"]').click(); });
   await page.waitForTimeout(400);
   const savedUrl = posts.find((p) => p.__url === 'content.php' && p.action === 'set' && p.key === 'nightshift-app-url');
   ok(savedUrl && savedUrl.value === 'https://example.test/mine/BlakeneyHand.dmg', 'an address of your own is saved', JSON.stringify(savedUrl));
-  const get1 = await page.evaluate(() => {
+  const get1 = await page.evaluate(async () => {
+    await refreshNightKeyRow();
     const h = document.getElementById('night-app-get');
+    const f = document.getElementById('night-key-row');
     const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
-    const btn = h.querySelector('[data-act="saveNightAppUrl"]');
-    return { href: dl ? dl.getAttribute('href') : null, painted: dl ? dl.getClientRects().length > 0 : false, btn: btn.textContent.trim(), text: h.textContent };
+    const btn = f.querySelector('[data-act="saveNightAppUrl"]');
+    return { href: dl ? dl.getAttribute('href') : null, painted: dl ? dl.getClientRects().length > 0 : false,
+      btn: btn ? btn.textContent.trim() : '', text: h.textContent };
   });
   ok(get1.href === 'https://example.test/mine/BlakeneyHand.dmg' && get1.painted,
     '…and Download follows it', JSON.stringify(get1.href));
-  ok(/standard link/i.test(get1.btn), '…with a way back to the standard one', get1.btn);
-  ok(/your own address/.test(get1.text), '…and the row says which it is using');
+  ok(/standard link/i.test(get1.btn), '…with a way back to the standard one, in the fold', get1.btn);
+  ok(/your own address/.test(get1.text), '…and the card says which it is using');
 
   // THE PRIMARY PILL IS FILLED. Measured against the quiet one beside it, so it
   // cannot regress to "the class is present".
-  const looks = await page.evaluate(() => {
-    const h = document.getElementById('night-app-get');
-    const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
-    const quiet = [...h.querySelectorAll('a')].find((a) => !/Download/.test(a.textContent));
+  // The quiet pill to compare against now lives in the fold, so it is read
+  // from there — the point is that Download is FILLED where a quiet one is not.
+  const looks = await page.evaluate(async () => {
+    // OPEN THE FOLD FIRST — a computed style inside a closed <details> is not
+    // what the owner sees, and the quiet pill to compare against lives there.
+    const d = document.querySelector('details.night-setup');
+    if (d) { d.open = true; }
+    await refreshNightKeyRow();
+    const dl = [...document.getElementById('night-app-get').querySelectorAll('a')]
+      .find((a) => /Download/.test(a.textContent));
+    const quiet = [...document.getElementById('night-key-row').querySelectorAll('a,button')]
+      .find((a) => /Build a newer one/.test(a.textContent));
+    if (!dl || !quiet) { return { missing: true, dl: !!dl, quiet: !!quiet }; }
     const c = (el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, fg: s.color }; };
     return { dl: c(dl), quiet: c(quiet) };
   });
+  ok(!looks.missing, 'both pills are on screen to compare', JSON.stringify(looks));
   ok(looks.dl.bg !== looks.quiet.bg && looks.dl.bg !== 'rgba(0, 0, 0, 0)',
     'the Download pill is FILLED, not the same outline as the quiet one beside it', JSON.stringify(looks));
   ok(looks.dl.fg !== looks.quiet.fg, '…and takes its own ink');
@@ -384,7 +412,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.__alerted = null;
     window.glassAlert = async (m) => { window.__alerted = m; };
   });
-  await page.evaluate(() => document.querySelector('[data-act="saveNightAppUrl"]').click());
+  await page.evaluate(() => { const d = document.querySelector('details.night-setup'); if (d) d.open = true;
+    document.querySelector('[data-act="saveNightAppUrl"]').click(); });
   await page.waitForTimeout(350);
   ok(!posts.some((p) => p.key === 'nightshift-app-url'), 'a javascript: address is never saved');
   ok(/https/.test(await page.evaluate(() => window.__alerted || '')), '…and it says why');
@@ -403,32 +432,118 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(badHref.some((h) => /releases\/latest\/download/.test(h)),
     '…and the row falls back to the release link, not to no download at all', JSON.stringify(badHref));
 
-  // ── 8. THE APP'S OWN KEY ────────────────────────────────────────────────
-  // It was told to use APP_SECRET, which opens ~20 cron endpoints including
-  // the one that collects instalments from guests' cards.
-  console.log("8. the app's own key");
+  // ── 8. THE PAIRED MACS ─────────────────────────────────────────────────
+  console.log('8. connecting a Mac, and stopping one');
+  // THE FOLD RULE: the set-up controls live behind a <details> now, and a
+  // real click on a control inside a closed one does nothing. Open it first.
   const k0 = await page.evaluate(async () => {
+    const d = document.querySelector('details.night-setup');
+    if (d) { d.open = true; }
     await refreshNightKeyRow();
     const h = document.getElementById('night-key-row');
-    return { painted: h.getClientRects().length > 0, text: h.textContent, btn: (h.querySelector('button') || {}).textContent };
+    return { painted: h.getClientRects().length > 0, text: h.textContent,
+      btns: [...h.querySelectorAll('button')].map((b) => b.textContent.trim()) };
   });
-  ok(k0.painted, 'the key row is on the System check page');
-  ok(/daily-jobs secret/.test(k0.text), '…with no key set it SAYS what the app is using instead', k0.text.slice(0, 60));
-  ok(/collect payments|email guests/.test(k0.text), '…and what that secret also opens');
-  ok(/own key/i.test(k0.btn || ''), '…and offers one', k0.btn);
+  ok(k0.painted, 'the card is on the System check page');
+  ok(/daily-jobs secret/.test(k0.text), '…with nothing paired it says what the app is using instead');
+  ok(k0.btns.some((b) => /Connect a Mac/.test(b)), '…and Connect a Mac leads', JSON.stringify(k0.btns));
+  ok(k0.btns.some((b) => /key instead/.test(b)), '…with the paste kept as the way through when that cannot work');
 
+  // THE CODE, read off this screen and typed into the Mac.
   posts.length = 0;
-  // RECORD it — an alert stub that discards its message cannot prove the key
-  // was shown, which is the one thing this section is here for.
   await page.evaluate(() => { window.__alerted = null; window.glassAlert = async (m) => { window.__alerted = m; return true; }; });
-  await page.evaluate(() => document.querySelector('[data-act="newNightKey"]').click());
+  await page.evaluate(() => document.querySelector('[data-act="connectNightMac"]').click());
   await page.waitForTimeout(400);
-  ok(posts.some((p) => p.__url === 'nightshift.php' && p.action === 'new_key'), 'the button mints one');
-  const shown = await page.evaluate(() => window.__alerted || '');
-  ok(/k{40}/.test(String(shown)), '…and shows it once, to paste in', String(shown).slice(0, 40));
-  const k1 = await page.evaluate(() => document.getElementById('night-key-row').textContent);
-  ok(/A key is set/.test(k1), '…then the row says one is set');
-  ok(!/k{40}/.test(k1), '…and never redisplays it');
+  ok(posts.some((p) => p.__url === 'nightshift.php' && p.action === 'connect_code'), 'Connect a Mac asks the site for a code');
+  const shown = String(await page.evaluate(() => window.__alerted || ''));
+  ok(/ABCD-2345/.test(shown), '…and shows it, in halves, to read across the room', shown.slice(0, 60));
+  ok(/once/.test(shown) && /minutes/.test(shown), '…saying it works once, and for how long');
+  ok(!/[0-9a-f]{40}/.test(shown), '…and never a key — the app earns its own');
+
+  // TWO MACS, one of them quiet. A single stored key could not say this.
+  await page.evaluate(async () => {
+    const now = Math.floor(Date.now() / 1000);
+    window.__devs = [
+      { i: 0, label: 'Mac mini', seen: now - 300, quiet: 0 },
+      { i: 1, label: 'MacBook', seen: now - 86400 * 5, quiet: 5 },
+    ];
+  });
+  // Drive the REAL renderer against that pair.
+  await page.evaluate(async () => {
+    window.apiPost = async () => ({ ok: true, devices: window.__devs, quietAfter: 3 });
+    await refreshNightKeyRow();
+  });
+  const list = await page.evaluate(() => {
+    const h = document.getElementById('night-key-row');
+    return { text: h.textContent, stops: h.querySelectorAll('[data-act="stopNightDevice"]').length };
+  });
+  ok(/Mac mini/.test(list.text) && /MacBook/.test(list.text), 'both Macs are named', list.text.slice(0, 80));
+  ok(list.stops === 2, '…each with its own Stop, which one key could never offer', String(list.stops));
+  ok(/nothing for 5 nights/.test(list.text), '…and the quiet one says how long it has been quiet');
+  ok(/minutes ago|just now/.test(list.text), '…while the working one says when it last spoke');
+  ok(!/[0-9a-f]{40}/.test(list.text), '…and no key or hash is on the screen');
+
+  // ── 8b. THE CARD OFFERS TWO THINGS ─────────────────────────────────────
+  // Asked for: the switch and the download, and nothing else in front of them.
+  // Everything about connecting a Mac is done once per machine and folds away.
+  const cardOffers = await page.evaluate(() => {
+    const d = document.querySelector('details.night-setup');
+    if (d) { d.open = false; }
+    const sec = document.getElementById('sec-diagnostics') || document.body;
+    // NOT getClientRects(). This Chromium reports LAYOUT BOXES for the content
+    // of a CLOSED <details> while painting nothing (CLAUDE.md records the same
+    // trap biting an overlap scanner on the hub's email rows), so a rect test
+    // counts every folded control as visible and this check reported five.
+    // Being inside a closed fold is the honest test of not being on the card.
+    const shown = [...sec.querySelectorAll('#night-app-get a, #night-app-get button, #night-key-row a, #night-key-row button')]
+      .filter((el) => !el.closest('details:not([open])'))
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => el.textContent.trim());
+    return { shown, foldOpen: d ? d.open : null, hasFold: !!d };
+  });
+  ok(cardOffers.hasFold, 'the set-up controls have a fold to live in');
+  ok(cardOffers.foldOpen === false, '…which starts closed');
+  ok(cardOffers.shown.length === 1 && /Download/.test(cardOffers.shown[0]),
+    'the card offers exactly one control besides the switch: the download',
+    JSON.stringify(cardOffers.shown));
+  const swOn = await page.evaluate(() => {
+    const el = document.getElementById('night-shift-toggle');
+    return el ? el.getClientRects().length > 0 : false;
+  });
+  ok(swOn, '…and the on/off switch is still right there');
+  // Folded, NOT deleted — it is the only route to pairing.
+  const reachable = await page.evaluate(() => {
+    const d = document.querySelector('details.night-setup');
+    d.open = true;
+    return [...d.querySelectorAll('button, a')].filter((el) => el.getClientRects().length > 0)
+      .map((el) => el.textContent.trim());
+  });
+  ok(reachable.some((b) => /Connect a Mac/.test(b)), '…and opening it still reaches Connect a Mac', JSON.stringify(reachable));
+  ok(reachable.some((b) => /Build a newer one/.test(b)), '…and the rare ones moved in here rather than away');
+
+  // ── 9. A MAC THAT HAS GONE QUIET ───────────────────────────────────────
+  // The failure that will actually happen is not a stolen key — it is a Mac
+  // that stopped and said nothing, so the drafts simply never appear.
+  console.log('9. the duty when the Mac goes quiet');
+  const dutyFor = async (night) => page.evaluate((n) => {
+    window.__nightPre = n;
+    return (chbDuties() || []).filter((d) => d.kind === 'nightquiet')
+      .map((d) => ({ label: d.label, sub: d.sub, sev: d.sev }));
+  }, night);
+
+  ok((await dutyFor({ on: 1, quiet: 3 })).length === 1, 'three nights quiet raises a duty');
+  // THE BOUNDARY, FROM BOTH SIDES — a Mac off for one night is not a fault.
+  ok((await dutyFor({ on: 1, quiet: 2 })).length === 0, '…two nights does not');
+  ok((await dutyFor({ on: 1, quiet: 0 })).length === 0, '…nor a Mac that spoke today');
+  // -1 IS "THE QUESTION DOES NOT APPLY": nothing paired, or never reported.
+  ok((await dutyFor({ on: 1, quiet: -1 })).length === 0,
+    '…and a Mac that has never reported raises nothing — that is setup, not failure');
+  ok((await dutyFor({ on: 0, quiet: 9 })).length === 0,
+    '…and with the feature off there is no duty at all');
+  const d3 = await dutyFor({ on: 1, quiet: 4 });
+  ok(/4 nights/.test(d3[0].label), '…the row says how long', d3[0].label);
+  ok(/off, asleep, or no longer connected/.test(d3[0].sub), '…and what it might be');
+  ok(d3[0].sev === 'warn', '…amber, not red: nothing is broken, something has stopped');
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 
