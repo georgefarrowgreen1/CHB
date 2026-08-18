@@ -33,7 +33,7 @@
 
     var TITLES = [
         ['Tonight', function () { return S ? 'Next run ' + S.nextRunAt + ' · ' + S.nextRunSays : ''; }],
-        ['Jobs', function () { return S ? onCount() + ' of ' + S.jobs.length + ' switched on' : ''; }],
+        ['Jobs', function () { return S ? onCount() + ' job' + (onCount() === 1 ? '' : 's') + ' on' : ''; }],
         ['Models', function () { return S ? S.models.length + ' installed' : ''; }],
         ['Runner', function () { return S ? S.engineName + (S.engineServing ? ' · serving' : ' · not answering') : ''; }],
         ['Connection', function () { return S ? (S.secretSet ? S.siteUrl : 'type the code from your website') : ''; }],
@@ -95,7 +95,7 @@
 
         // TONIGHT
         var reply = S.jobs.filter(function (j) { return j.id === 'reply'; })[0] || {};
-        $('tonightSub').textContent = onCount() + ' of ' + S.jobs.length + ' jobs switched on.';
+        $('tonightSub').textContent = '';
         // NOT ANSWERING IS NOT A FAILURE ANY MORE. With auto-start on and a
         // model chosen, the night brings the engine up itself — so a red chip
         // here would report a problem the app is about to solve. It stays red
@@ -105,12 +105,12 @@
         var willStart = !S.engineServing && Rt.available && Rt.canStart && Rt.autoStart && !Rt.problem;
         $('tonightBox').innerHTML =
             row('Next run', S.nextRunAt + ', ' + S.nextRunSays, chip(reply.on ? 'ok' : 'n', reply.on ? 'Scheduled' : 'Nothing on')) +
-            row('Engine', esc(S.engineName) + ' · ' + esc(S.engineBase),
+            row('Engine', esc(S.engineName),
                 chip(S.engineServing ? 'ok' : willStart ? 'n' : 'bad',
                     S.engineServing ? 'Serving' : willStart ? 'Starts for the run' : 'Not answering'), true) +
-            row('Model for the reply job', reply.model ? esc(reply.model) : 'none chosen yet',
+            row('Model', reply.model ? esc(reply.model) : 'none chosen yet',
                 chip(reply.model ? 'ok' : 'warn', reply.model ? 'Chosen' : 'Choose one')) +
-            row('Site', esc(S.siteUrl) + (S.siteIsDefault ? '' : ' · your own'),
+            row('Site', esc(String(S.siteUrl).replace(/^https:\/\//,'').replace(/\/nightshift\.php$/,'')) + (S.siteIsDefault ? '' : ' · your own'),
                 chip(S.secretSet ? 'ok' : 'warn', S.secretSet ? 'Connected' : 'Needs a code'), true);
 
         var last = S.nights[0];
@@ -120,17 +120,18 @@
             }).join('')
             : '<p class="tiny">Nothing yet. Press <strong>Run now</strong> to try it, or wait for ' + esc(S.nextRunAt) + '.</p>';
         $('logNote').textContent = last
-            ? 'Kept for 30 nights. Nothing in this log leaves the Mac.'
+            ? 'Kept 30 nights, on this Mac only.'
             : '';
 
         // JOBS
-        $('jobsBox').innerHTML = S.jobs.map(function (j) {
+        var coming = S.jobs.filter(function (j) { return !j.built; }).map(function (j) { return j.name.toLowerCase(); });
+        $('jobsComing').textContent = coming.length ? 'Coming next: ' + coming.join(' \u00b7 ') + '.' : '';
+        $('jobsBox').innerHTML = S.jobs.filter(function (j) { return j.built; }).map(function (j) {
             var opts = ['<option value="">Choose a model…</option>'].concat(S.models.map(function (m) {
                 return '<option value="' + esc(m.id) + '"' + (m.id === j.model ? ' selected' : '') + '>' + esc(m.name) + ' · ' + m.sizeGB + ' GB</option>';
             })).join('');
-            return '<div class="row' + (j.built ? '' : ' dim') + '">' +
-                '<div class="main"><b>' + esc(j.name) + '</b><span>' + esc(j.what) +
-                (j.built ? '' : ' — not built yet') + '</span></div>' +
+            return '<div class="row">' +
+                '<div class="main"><b>' + esc(j.name) + '</b><span>' + esc(j.what) + '</span></div>' +
                 '<div class="rail">' +
                 '<select class="pop" data-job-model="' + esc(j.id) + '"' + (j.built ? '' : ' disabled') + ' aria-label="Model for ' + esc(j.name) + '">' + opts + '</select>' +
                 '<button class="sw' + (j.on ? ' on' : '') + '" type="button" data-job-on="' + esc(j.id) + '"' +
@@ -146,12 +147,12 @@
                     '<div class="rail">' + chip(m.fit, m.why) + '</div></div>';
             }).join('')
             : '<div class="row"><div class="main"><b>No models yet</b><span>Press <strong>Add model…</strong>. On 16 GB, an 8B or 14B at Q4 is the place to start.</span></div></div>';
-        $('modelsNote').textContent = 'Kept in ' + S.modelsDir + '. A model is a file — delete it there and it disappears from this list.';
+        $('modelsNote').textContent = 'A model is a file — delete it in the Models folder and it leaves this list.';
 
         // RUNNER
         $('machineBox').innerHTML =
             row('This Mac', esc(S.machineSays), chip(S.machine.appleSilicon ? 'ok' : 'n', S.machine.appleSilicon ? 'Apple silicon' : 'Intel')) +
-            row('Keep the Mac awake for a run', 'Released again as soon as the run finishes.',
+            row('Keep the Mac awake for a run', '',
                 '<button class="sw' + (S.keepAwake ? ' on' : '') + '" type="button" id="awakeSw" aria-label="Keep the Mac awake" aria-pressed="' + (S.keepAwake ? 'true' : 'false') + '"></button>', true);
         var R = S.runner || {};
         $('engineBox').innerHTML = S.engines.map(function (e) {
@@ -188,9 +189,8 @@
         $('autoSw').setAttribute('aria-pressed', R.autoStart ? 'true' : 'false');
 
         // CONNECTION
-        $('siteSays').textContent = S.siteIsDefault
-            ? 'Already set to ' + S.siteUrl.replace(/^https:\/\//, '').replace(/\/nightshift\.php$/, '') + '. Nothing to fill in.'
-            : 'Your own address: ' + S.siteUrl;
+        $('siteSays').textContent = (S.siteIsDefault ? '' : 'Your own address: ')
+            + S.siteUrl.replace(/^https:\/\//, '').replace(/\/nightshift\.php$/, '');
         // The RAW setting, not the resolved one: an empty box means "the standard
         // address", so pre-filling it with the default would turn the standard
         // address into an override the moment anything saved.
@@ -291,13 +291,23 @@
             await refresh();
             return;
         }
+        if (t.id === 'keyShow') {
+            $('keyReveal').hidden = true;
+            $('keyRow').hidden = false;
+            $('secretIn').focus();
+            return;
+        }
         if (t.id === 'siteEdit') {
             var er = $('siteEditRow');
             er.hidden = !er.hidden;
             if (!er.hidden) { $('siteUrl').focus(); }
             return;
         }
-        if (t.id === 'skipBtn') { toast('Skipped. The next run is tomorrow at ' + S.nextRunAt + '.'); return; }
+        // NB there is deliberately no skip handler: the old "Skip tonight"
+        // button showed a toast and skipped nothing — a control that does
+        // nothing is worse than no control, so it went with the copy cleanup.
+        // If skipping is ever wanted, it needs a real mechanism (a date the
+        // scheduler honours), not a button that claims one.
         if (t.id === 'addBtn') { openSheet(); return; }
         if (t.id === 'cancelBtn') { $('scrim').hidden = true; return; }
         if (t.id === 'doConnect') {

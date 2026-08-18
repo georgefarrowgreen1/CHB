@@ -469,6 +469,9 @@ function fakeSite(handler) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-models-'));
     fs.writeFileSync(path.join(tmp, 'Qwen2.5-14B-Instruct-Q4_K_M.gguf'), Buffer.alloc(2048));
     fs.writeFileSync(path.join(tmp, 'notes.txt'), 'not a model');
+    // The projector beside a vision model IS a .gguf and is NOT a model — the
+    // exact file seen offered live (a chosen mmproj can draft nothing).
+    fs.writeFileSync(path.join(tmp, 'mmproj-gemma-4-E4B-it-BF16.gguf'), Buffer.alloc(512));
     fs.mkdirSync(path.join(tmp, 'Qwen2.5-14B-Instruct-4bit'));
     fs.writeFileSync(path.join(tmp, 'Qwen2.5-14B-Instruct-4bit', 'config.json'), '{}');
     fs.writeFileSync(path.join(tmp, 'Qwen2.5-14B-Instruct-4bit', 'weights.safetensors'), Buffer.alloc(1024));
@@ -476,6 +479,14 @@ function fakeSite(handler) {
     ok('a .gguf file is found', inst.some(function (m) { return m.format === 'gguf' && /Qwen 2\.5 14B/.test(m.name); }));
     ok('an MLX folder is found', inst.some(function (m) { return m.format === 'mlx'; }));
     ok('a text file is not a model', inst.length === 2, JSON.stringify(inst.map(function (m) { return m.id; })));
+    ok('an mmproj projector is not offered as a model',
+        !inst.some(function (m) { return /mmproj/i.test(m.id); }), JSON.stringify(inst.map(function (m) { return m.id; })));
+    ok('…and the same predicate guards the download picker', models.isProjector('mmproj-gemma-4-E4B-it-BF16.gguf')
+        && models.isProjector('MMPROJ_model.gguf')
+        && !models.isProjector('Qwen2.5-14B-Instruct-Q4_K_M.gguf'));
+    // Prefix-anchored ON PURPOSE: "mmproj" mid-name is somebody's own naming,
+    // and over-matching would silently hide a real model from the list.
+    ok('…and it never matches mmproj mid-name', !models.isProjector('gemma-mmproj-notes.gguf'));
     ok('a missing folder is an empty library, not an error', models.installed(path.join(tmp, 'nope')).length === 0);
     fs.rmSync(tmp, { recursive: true, force: true });
 
