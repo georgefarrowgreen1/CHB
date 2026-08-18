@@ -399,7 +399,21 @@ route_actions([
                 } catch (\Throwable $e) {
                     $facts = [];
                 }
-                $out[] = night_brief_enquiry($row, (string) prop_display($pk), $price, $free, $facts);
+                // ['name'], NOT the row. prop_display() returns an ARRAY —
+                // name, accent, slug — and `(string)` on an array is the literal
+                // word "Array" in PHP. So every draft ever written opened
+                // "Array is a lovely cottage", and the cast is what hid it: it
+                // silenced the conversion into a plausible-looking string
+                // instead of letting it be a type error. Reported from a phone,
+                // on the first night this ever ran.
+                $name = prop_display($pk);
+                $out[] = night_brief_enquiry(
+                    $row,
+                    is_array($name) ? (string) ($name['name'] ?? $pk) : (string) $name,
+                    $price,
+                    $free,
+                    $facts,
+                );
             }
         } catch (\Throwable $e) {
             // A read that fails answers "nothing waiting" rather than an error:
