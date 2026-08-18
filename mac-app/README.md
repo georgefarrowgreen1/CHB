@@ -50,11 +50,20 @@ are the ones with the tests.
 
 ## Getting a .dmg
 
+The current build is always at
+
+<https://github.com/georgefarrowgreen1/CHB/releases/latest/download/Blakeney-Hand-universal.dmg>
+
+and that is the link **Manage → System check → The Mac app** uses. It carries no
+version on purpose, so it points at the newest release for ever and never has to
+be replaced.
+
 **A disk image can only be made on a Mac.** The format is produced by `hdiutil`
 and a universal binary is merged by `lipo` — both Apple's, both macOS-only — so
-no Linux box and no CI runner other than a Mac can produce one.
+no Linux box and no CI runner other than a Mac can produce one. That is why the
+file above comes from a GitHub runner rather than being committed here.
 
-### The easy way: let GitHub build it
+### Making a newer one: let GitHub build it
 
 `.github/workflows/mac-app.yml` runs on a `macos-14` runner, which is an Apple
 silicon Mac. On this repo those minutes are free.
@@ -63,9 +72,8 @@ silicon Mac. On this repo those minutes are free.
    permanent download link.
 2. It installs, runs the core suite and the window suite (**a build whose own
    tests failed is never shipped**), then produces the universal `.dmg`.
-3. About ten minutes later it is a workflow artifact — and, if you asked for a
-   release, at a stable URL you can paste into **Manage → System check → The Mac
-   app**.
+3. About three minutes later it is a workflow artifact — and, if you asked for a
+   release, it becomes the file the link above serves, with nothing to update.
 
 Tagging `hand-v1.0` does the same thing and always publishes.
 
