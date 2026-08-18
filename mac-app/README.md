@@ -19,7 +19,7 @@ Being exact about this, because it decides what you should trust.
 
 | | |
 |---|---|
-| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 213 checks, no network, no model, no Mac needed. |
+| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 227 checks, no network, no model, no Mac needed. |
 | **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock and power assertion) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
 
 That split is deliberate. The unverifiable parts are the ones where being wrong
@@ -214,7 +214,7 @@ src/core/
   updater.js         the fetch, the progress and the checksum
   config.js          settings on disk; the secret in the Keychain, never on disk
   api.js             the surface the window may call
-test/core-test.js    213 checks over all of the above
+test/core-test.js    227 checks over all of the above
 ```
 
 Settings, models and the night log live in

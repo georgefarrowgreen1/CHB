@@ -134,7 +134,7 @@ function release() {
 }
 
 // ── running ──────────────────────────────────────────────────────────────
-async function runNow() {
+async function runNow(openingNote) {
     if (!api) {
         return { ok: false, say: 'The app is still starting.' };
     }
@@ -144,7 +144,7 @@ async function runNow() {
             if (win && !win.isDestroyed()) {
                 win.webContents.send('hand:progress', p);
             }
-        });
+        }, openingNote);
     } finally {
         release();
         if (win && !win.isDestroyed()) {
@@ -158,7 +158,24 @@ async function runNow() {
 // or not at all. It fires when the wall clock passes the run time and not again
 // until the next day — the same "did this day already run" test the site's own
 // crons use.
-let lastRunDay = '';
+function dayKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Did today's run already happen? Read from the SETTINGS, not from a variable.
+// It was `let lastRunDay = ''`, which a restart cleared — so quitting and
+// reopening the app inside the run window ran the night a second time. cfg
+// .lastRun is stamped by api.runNow and survives.
+function ranToday(now) {
+    try {
+        const last = api._cfg().lastRun;
+        if (!last) { return false; }
+        return dayKey(new Date(last)) === dayKey(now);
+    } catch (e) {
+        return false;
+    }
+}
+
 function startClock() {
     clearInterval(tick);
     tick = setInterval(async function () {
@@ -170,16 +187,31 @@ function startClock() {
                 return;
             }
             const now = new Date();
-            const day = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
-            if (day === lastRunDay) {
+            if (ranToday(now)) {
                 return;
             }
             const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), +m[1], +m[2], 0, 0);
-            // A window of an hour after the time, so a Mac that was asleep at
-            // 02:00 and woke at 02:40 still does the night's work.
-            if (now >= due && now - due < 3600000) {
-                lastRunDay = day;
-                await runNow();
+            // PAST THE TIME IS PAST THE TIME — no window.
+            //
+            // This used to require `now - due < 3600000`, an hour's grace for a
+            // Mac that was asleep at 02:00 and woke at 02:40. Anything longer
+            // and the night was skipped ENTIRELY, silently, with no log line —
+            // so a Mac that sleeps overnight, which is most of them, would have
+            // done nothing at all, every night, for ever, while the app sat
+            // there looking like it was working. That is the worst failure this
+            // app has available to it.
+            //
+            // The work is "draft replies to the enquiries that are waiting". It
+            // is no less useful at 09:00 than at 02:00 — the owner reads it in
+            // the morning either way — so a missed night runs on the next tick
+            // after the Mac is awake, and says that is what happened.
+            if (now >= due) {
+                const lateBy = Math.round((now - due) / 60000);
+                const note = lateBy > 60
+                    ? 'ran ' + (lateBy >= 120 ? Math.round(lateBy / 60) + ' hours' : lateBy + ' minutes')
+                        + ' after ' + at + ' — this Mac was not awake at the run time'
+                    : '';
+                await runNow(note);
                 if (win && !win.isDestroyed()) {
                     win.webContents.send('hand:ran', true);
                 }

@@ -205,7 +205,7 @@ function makeApi(deps) {
         // would draft the same enquiries and post the same refs, which the site
         // would deduplicate — but the log would read as though it had worked
         // twice, which is a lie about a thing nobody watched.
-        async runNow(onProgress) {
+        async runNow(onProgress, openingNote) {
             if (running) {
                 return { ok: false, say: 'It is already working.' };
             }
@@ -220,6 +220,7 @@ function makeApi(deps) {
                     machine: mach,
                     now: now(),
                     onProgress: onProgress,
+                    openingNote: openingNote,
                 });
                 nights = nightMod.pushRecord(nights, rec);
                 writeNights();

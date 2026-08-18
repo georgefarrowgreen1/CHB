@@ -70,7 +70,7 @@ async function runNight(deps) {
     const now = d.now instanceof Date ? d.now : new Date();
     const log = [];
     const say = function (line, level) {
-        log.push({ at: hhmm(now, log.length), say: line, level: level || 'info' });
+        log.push({ at: hhmm(), say: line, level: level || 'info' });
     };
     const rec = {
         started: now.toISOString(),
@@ -85,6 +85,12 @@ async function runNight(deps) {
         log: log,
     };
 
+    // A LATE RUN SAYS IT IS LATE. The Mac may have been asleep at the run time;
+    // the work still happens, and the log has to explain why the stamps are not
+    // the hour the owner set, or the record reads as the clock being wrong.
+    if (d.openingNote) {
+        say(String(d.openingNote));
+    }
     say('woke · asking the site what is waiting');
     const brief = await d.site.brief();
     if (!brief.ok) {
@@ -169,8 +175,10 @@ function workedWords(started) {
     return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
 }
 
-function hhmm(base, n) {
-    const d = base instanceof Date ? new Date(base.getTime() + n * 1000) : new Date();
+// Wall clock, for the same reason jobs.js's stamp() is: base + a line count is
+// a function of how much was written, not of when it happened.
+function hhmm() {
+    const d = new Date();
     const p = function (v) { return String(v).padStart(2, '0'); };
     return p(d.getHours()) + ':' + p(d.getMinutes());
 }

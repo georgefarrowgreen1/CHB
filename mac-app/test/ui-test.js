@@ -148,6 +148,24 @@ function fakeState(over) {
         });
         ok('both shipped faces really load — CSP allows them', fonts.mont && fonts.play, JSON.stringify(fonts));
 
+        // NO INLINE STYLE ATTRIBUTES ANYWHERE. style-src 'self' blocks them, so
+        // nine sheet messages rendered flush to the edge with a console error
+        // behind each. A source check would miss one built at runtime; this
+        // reads the DOM after the sheet has drawn its own messages.
+        // OPEN THE SHEET FIRST. Every one of the nine offenders lived in a
+        // message written into #results when the sheet renders, so a scan of the
+        // resting page would have found nothing and proved nothing.
+        await page.evaluate(function () { document.getElementById('addBtn').click(); });
+        await page.waitForTimeout(200);
+        const inlineStyles = await page.evaluate(function () {
+            return [...document.querySelectorAll('[style]')].map(function (el) {
+                return el.tagName.toLowerCase() + '.' + (el.className || '') + ' = ' + el.getAttribute('style');
+            });
+        });
+        ok('no inline style attributes in the markup (CSP blocks them)',
+            inlineStyles.length === 0, JSON.stringify(inlineStyles).slice(0, 200));
+        await page.evaluate(function () { document.getElementById('scrim').hidden = true; });
+
         ok('it asked for its state on open', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'state'; }); }));
 
         // ── ONE SCREEN AT A TIME, measured as PAINT not attribute ──
