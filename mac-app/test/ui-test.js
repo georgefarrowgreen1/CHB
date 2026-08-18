@@ -485,6 +485,70 @@ function fakeState(over) {
 
         await ctx.close();
     }
+
+    // ── THE DOCK ICON'S SHAPE, measured on its own pixels ─────────────────
+    // core-test proves the file has an alpha channel; only rendering it proves
+    // the alpha is in the shape of a Mac icon. Done once rather than per theme
+    // — a PNG has no theme.
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1100, height: 1100 } });
+        const page = await ctx.newPage();
+        const src = 'data:image/png;base64,'
+            + fs.readFileSync(path.join(__dirname, '..', 'build', 'icon.png')).toString('base64');
+        const m = await page.evaluate(async function (dataUrl) {
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            const g = c.getContext('2d');
+            g.drawImage(img, 0, 0);
+            const d = g.getImageData(0, 0, c.width, c.height).data;
+            const alpha = function (x, y) { return d[(y * c.width + x) * 4 + 3]; };
+            let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1;
+            for (let y = 0; y < c.height; y++) {
+                for (let x = 0; x < c.width; x++) {
+                    if (alpha(x, y) > 8) {
+                        if (x < minX) { minX = x; }
+                        if (x > maxX) { maxX = x; }
+                        if (y < minY) { minY = y; }
+                        if (y > maxY) { maxY = y; }
+                    }
+                }
+            }
+            // How far in from the body's left edge the ink starts, on the very
+            // top row of the body. For a plain quarter-circle that is the
+            // radius; a continuous corner starts its curve further out.
+            let firstInk = 0;
+            while (firstInk < c.width && alpha(minX + firstInk, minY) <= 8) { firstInk++; }
+            return {
+                w: maxX - minX + 1, h: maxY - minY + 1,
+                left: minX, top: minY, right: c.width - 1 - maxX, bottom: c.height - 1 - maxY,
+                corners: [alpha(2, 2), alpha(c.width - 3, 2), alpha(2, c.height - 3), alpha(c.width - 3, c.height - 3)],
+                bodyCorner: alpha(minX + 2, minY + 2),
+                middle: alpha(c.width >> 1, c.height >> 1),
+                firstInk: firstInk,
+            };
+        }, src);
+
+        ok('the icon canvas is transparent at its corners — macOS masks nothing, so this is the silhouette',
+            m.corners.every(function (a) { return a === 0; }), JSON.stringify(m.corners));
+        ok('…and opaque in the middle', m.middle > 250, String(m.middle));
+        ok('the body is Apple\'s 824 on the 1024 grid',
+            Math.abs(m.w - 824) <= 2 && Math.abs(m.h - 824) <= 2, m.w + 'x' + m.h);
+        ok('…centred, so the shadow has its margin all round',
+            [m.left, m.top, m.right, m.bottom].every(function (v) { return Math.abs(v - 100) <= 2; }),
+            JSON.stringify([m.left, m.top, m.right, m.bottom]));
+        ok('…and its own corner is cut away, not square',
+            m.bodyCorner === 0, String(m.bodyCorner));
+        // THE SHAPE ITSELF. A plain border-radius corner begins exactly at the
+        // radius (measured: 168px in); the continuous curve begins further out
+        // (measured: 203). Anything at or under the radius is an arc.
+        ok('the corner is a CONTINUOUS curve, not a quarter-circle',
+            m.firstInk > 190, m.firstInk + 'px in (an arc measures ~168)');
+        await ctx.close();
+    }
+
     await browser.close();
     console.log('\n== Summary ==');
     if (fails) {

@@ -1064,6 +1064,28 @@ function fakeSite(handler) {
     ok('...and starting is refused in words', !cant.ok && !!cant.say);
     try { fs.rmSync(rTmp, { recursive: true, force: true }); } catch (e) {}
 
+    // ── §20 THE DOCK ICON ─────────────────────────────────────────────────
+    // macOS does NOT mask an app icon — the app supplies its own silhouette —
+    // so a file with no alpha channel can only ever be a hard-cornered square
+    // in the Dock, whatever it looks like on its own. This one is cheap and
+    // decisive; the SHAPE is measured on the rendered pixels in ui-test.js.
+    console.log('\n20) the Dock icon is a Mac icon, not a web one');
+    const iconFile = path.join(__dirname, '..', 'build', 'icon.png');
+    ok('the icon electron-builder is pointed at exists', fs.existsSync(iconFile));
+    const png = fs.readFileSync(iconFile);
+    ok('...and is a PNG', png.slice(1, 4).toString() === 'PNG');
+    const iw = png.readUInt32BE(16);
+    const ih = png.readUInt32BE(20);
+    ok('1024×1024 — the largest slice an .icns carries', iw === 1024 && ih === 1024, iw + 'x' + ih);
+    // Colour type 6 is RGBA, 4 is grey+alpha. 2 (plain RGB) is what the copied
+    // web icon was, and is the whole bug: no alpha, so no rounded corner.
+    ok('with an ALPHA CHANNEL, without which no corner can be rounded',
+        png[25] === 6 || png[25] === 4, 'colour type ' + png[25]);
+    ok('and it is not the website\'s icon copied over again',
+        !fs.existsSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png'))
+        || fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).length !== png.length
+        || !fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).equals(png));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');
