@@ -42,7 +42,6 @@
     ],
     "mac": {
       "category": "public.app-category.business",
-      "_comment_x64ArchFiles": "THE BUNDLED RUNNER IS ALREADY UNIVERSAL, and @electron/universal has to be told. A --universal build packages twice and merges the two bundles; any identical Mach-O in both is REFUSED, because normally that means a per-arch binary was copied by mistake. Ours is a lipo'd fat binary that is rightly the same in both, so it is named here and copied through rather than merged again. Without it the build dies with 'not covered by the x64ArchFiles rule'.",
       "x64ArchFiles": "**/runner/llama-server",
       "target": [
         {

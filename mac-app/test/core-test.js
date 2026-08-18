@@ -1145,6 +1145,21 @@ function fakeSite(handler) {
     // The value only takes effect if it is in the mac block that survives.
     ok('there is exactly one "mac" block for it to live in',
         (pkgRaw.match(/"mac":\s*\{/g) || []).length === 1);
+    // AND NO COMMENT KEYS. package.json has no comment syntax, and
+    // electron-builder validates `build` against a schema that REJECTS unknown
+    // properties — so a "_comment_x64ArchFiles" explaining the line above it
+    // failed a whole build with "configuration.mac has an unknown property".
+    // Explanations go in build/README.md, which can hold one.
+    const commentKeys = [];
+    (function walk(o, at) {
+        if (!o || typeof o !== 'object' || Array.isArray(o)) { return; }
+        Object.keys(o).forEach(function (k) {
+            if (/^_|comment/i.test(k)) { commentKeys.push(at + '.' + k); }
+            walk(o[k], at + '.' + k);
+        });
+    }(pkg.build, 'build'));
+    ok('no comment keys anywhere under build — the schema rejects them',
+        commentKeys.length === 0, commentKeys.join(', '));
 
     console.log('\n== Summary ==');
     if (fails) {
