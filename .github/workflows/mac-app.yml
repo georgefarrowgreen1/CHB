@@ -73,6 +73,17 @@ jobs:
             TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # AND A BUILD NUMBER FOR THE ABOUT PANEL. macOS reads its version from
+          # Info.plist, which took package.json's semver — so About said
+          # "Version 1.0.0 (1.0.0)" on every build ever made, while the sidebar
+          # said hand-build-20260818-0842. The one place someone looks to answer
+          # "which build am I on" was the one place that could not say.
+          #
+          # Dotted digits, not the tag itself: CFBundleVersion is specified as
+          # numbers and periods, and a string with letters and hyphens in it is
+          # asking for trouble at notarisation. Same digits as the tag, so the
+          # two are recognisably the same build.
+          echo "build=$(date -u +%Y%m%d.%H%M)" >> "$GITHUB_OUTPUT"
           echo "This build is $TAG"
 
       - name: Install
@@ -267,7 +278,7 @@ jobs:
           else
             echo "Unsigned build — it will need Open Anyway on first launch."
           fi
-          npx electron-builder --mac --universal $EXTRA
+          npx electron-builder --mac --universal $EXTRA -c.buildVersion="${{ steps.ver.outputs.build }}"
           ls -lh dist/*.dmg
 
       - name: What was built
