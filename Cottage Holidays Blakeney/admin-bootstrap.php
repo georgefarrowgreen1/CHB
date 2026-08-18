@@ -122,6 +122,17 @@ $night = ['on' => 0, 'n' => 0];
 try {
     require_once __DIR__ . '/nightshift-lib.php';
     $night = night_summary(db(), content_value('night-shift') === '1');
+    // HOW LONG THE MAC HAS BEEN QUIET, on the payload loadData already makes,
+    // so the duty costs no request of its own (the $feeds precedent). -1 when
+    // the question does not apply: nothing paired, or nothing has run yet.
+    $night['quiet'] = -1;
+    if (!empty($night['on'])) {
+        $raw = content_secret_json('apikey-nightshift', null);
+        if ($raw === null) {
+            $raw = trim((string) content_value('apikey-nightshift'));
+        }
+        $night['quiet'] = night_quiet_problem(night_devices($raw), time());
+    }
 } catch (\Throwable $e) {
     $night = ['on' => 0, 'n' => 0];
 }

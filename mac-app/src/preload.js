@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('hand', {
     state: function () { return ipcRenderer.invoke('hand:state'); },
     saveConfig: function (patch) { return ipcRenderer.invoke('hand:saveConfig', patch); },
     setSecret: function (v) { return ipcRenderer.invoke('hand:setSecret', v); },
+    // Hands over a connect code and is told whether it worked. The key it earns
+    // never crosses back — same posture as setSecret.
+    connect: function (code) { return ipcRenderer.invoke('hand:connect', code); },
     testSite: function () { return ipcRenderer.invoke('hand:testSite'); },
     searchModels: function (term) { return ipcRenderer.invoke('hand:searchModels', term); },
     modelFiles: function (id) { return ipcRenderer.invoke('hand:modelFiles', id); },

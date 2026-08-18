@@ -285,6 +285,92 @@ nsk('the value-only inference survives as the default',
 nsk('a generated key is long and random',
     strlen(night_key_make()) >= NIGHT_KEY_MIN && night_key_make() !== night_key_make());
 
+// ── §14 THE PAIRED MACS ───────────────────────────────────────────────────
+echo "\n14) one key per Mac, hashed, revocable\n";
+$k1 = str_repeat('1', 64);
+$k2 = str_repeat('2', 64);
+$now = 1787000000;
+
+// A LEGACY SINGLE KEY KEEPS WORKING. Anyone paired under the first version has
+// the key itself stored; it must read as one device, not as nothing.
+$legacy = night_devices($k1);
+nsk('a legacy single key reads as one device', count($legacy) === 1);
+nsk('…and its own key still opens it', night_device_index($legacy, $k1) === 0);
+nsk('…while another key does not', night_device_index($legacy, $k2) === -1);
+nsk('…and it is marked as legacy, so a write can convert it', !empty($legacy[0]['legacy']));
+
+$list = [
+    ['h' => night_key_hash($k1), 'label' => 'Mac mini', 'added' => $now - 86400 * 10, 'seen' => $now - 60],
+    ['h' => night_key_hash($k2), 'label' => 'MacBook', 'added' => $now - 86400 * 2, 'seen' => 0],
+];
+$dev = night_devices($list);
+nsk('two Macs are two devices', count($dev) === 2);
+nsk('…each opened by its OWN key only',
+    night_device_index($dev, $k1) === 0 && night_device_index($dev, $k2) === 1);
+nsk('…and an unknown key by neither', night_device_index($dev, str_repeat('9', 64)) === -1);
+// THE SITE STORES ONLY A HASH — the point of hashing at all.
+nsk('the stored shape carries no key, only a hash',
+    strpos(json_encode($dev), $k1) === false && strpos(json_encode($dev), $k2) === false);
+nsk('garbage rows are dropped, not guessed at',
+    count(night_devices([['h' => 'nope'], ['label' => 'no hash'], 'a string', ['h' => night_key_hash($k1)]])) === 1);
+nsk('a label is plain text and bounded',
+    night_dev_label("  a\nb  ") === 'a b' && mb_strlen(night_dev_label(str_repeat('x', 200))) === NIGHT_DEV_LABEL_MAX);
+nsk('…and an empty one still names something', night_dev_label('') !== '');
+nsk('the list is capped', count(night_devices(array_fill(0, 40, ['h' => night_key_hash($k1)]))) === NIGHT_DEV_MAX);
+
+// ── §15 THE QUIET MAC ─────────────────────────────────────────────────────
+// The failure the owner will actually live with is not a stolen key — it is a
+// Mac that quietly stopped and nothing said so.
+echo "\n15) a Mac that has gone quiet\n";
+$fresh = ['h' => night_key_hash($k1), 'seen' => $now - 3600];
+$stale = ['h' => night_key_hash($k1), 'seen' => $now - 86400 * 5];
+$never = ['h' => night_key_hash($k1), 'seen' => 0];
+nsk('a Mac heard from an hour ago is 0 days quiet', night_quiet_days($fresh, $now) === 0);
+nsk('one heard from five days ago is 5', night_quiet_days($stale, $now) === 5);
+// NEVER HEARD FROM IS NOT A FAULT: it is mid-setup, or has not had a night yet.
+nsk('one never heard from is not measured at all', night_quiet_days($never, $now) === -1);
+nsk('a clock that went backwards is not a warning', night_quiet_days(['seen' => $now + 9999], $now) === 0);
+
+nsk('nothing paired raises nothing', night_quiet_problem([], $now) === -1);
+nsk('a Mac that has never reported raises nothing', night_quiet_problem([$never], $now) === -1);
+nsk('one night quiet raises nothing', night_quiet_problem([['seen' => $now - 86400]], $now) === -1);
+nsk('two nights quiet raises nothing', night_quiet_problem([['seen' => $now - 86400 * 2]], $now) === -1);
+nsk('THREE nights quiet raises it', night_quiet_problem([['seen' => $now - 86400 * 3]], $now) === 3);
+// THE FRESHEST MAC DECIDES. With one working, the work is getting done.
+nsk('a working Mac beside a silent one is no problem',
+    night_quiet_problem([$stale, $fresh], $now) === -1);
+nsk('…both silent and it is raised', night_quiet_problem([$stale, $stale], $now) === 5);
+
+// ── §16 THE CONNECT CODE ──────────────────────────────────────────────────
+echo "\n16) the connect code\n";
+$code = night_code_make();
+nsk('a code is eight characters', strlen($code) === NIGHT_CODE_LEN);
+nsk('…from an alphabet with no I, O, 0 or 1', !preg_match('/[IO01]/', $code));
+nsk('…and two are different', night_code_make() !== night_code_make());
+nsk('it prints in halves for reading aloud', night_code_pretty('ABCD2345') === 'ABCD-2345');
+nsk('typed back loosely, it still matches',
+    night_code_normalise(' abcd-2345 ') === 'ABCD2345');
+// A CHARACTER OUTSIDE THE ALPHABET IS A TYPO, not noise to drop: silently
+// removing it would make two different typings mean one code.
+nsk('a character outside the alphabet is refused', night_code_normalise('ABCD-234I') === '');
+nsk('the wrong length is refused', night_code_normalise('ABCD') === '');
+
+$good = ['h' => night_key_hash('ABCD2345'), 'exp' => $now + 300, 'used' => 0];
+nsk('the right code, in time, is accepted', night_code_problem($good, 'abcd-2345', $now) === '');
+nsk('the wrong code is refused', night_code_problem($good, 'ABCD2346', $now) !== '');
+nsk('…and the refusal is a sentence, not "invalid"',
+    strlen(night_code_problem($good, 'ABCD2346', $now)) > 20);
+nsk('an expired code is refused, and says so',
+    stripos(night_code_problem(['h' => $good['h'], 'exp' => $now - 1, 'used' => 0], 'ABCD2345', $now), 'expired') !== false);
+// USED AND EXPIRED ARE DIFFERENT FACTS — "someone has already used this" is
+// worth knowing, because either you did or somebody else did.
+nsk('a used code says USED, not expired',
+    stripos(night_code_problem(['h' => $good['h'], 'exp' => $now + 300, 'used' => 1], 'ABCD2345', $now), 'already been used') !== false);
+nsk('no code waiting is refused with its own sentence',
+    stripos(night_code_problem([], 'ABCD2345', $now), 'no connect code') !== false);
+nsk('a malformed code never reaches the comparison',
+    night_code_problem($good, 'nonsense', $now) !== '');
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

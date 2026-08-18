@@ -227,6 +227,7 @@ function wire() {
     ipcMain.handle('hand:state', function () { return api.state(); });
     ipcMain.handle('hand:saveConfig', function (e, patch) { return api.saveConfig(patch); });
     ipcMain.handle('hand:setSecret', function (e, v) { return api.setSecret(v); });
+    ipcMain.handle('hand:connect', function (e, code) { return api.connect(code); });
     ipcMain.handle('hand:testSite', function () { return api.testSite(); });
     ipcMain.handle('hand:searchModels', function (e, term) { return api.searchModels(term); });
     ipcMain.handle('hand:modelFiles', function (e, id) { return api.modelFiles(id); });

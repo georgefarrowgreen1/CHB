@@ -166,6 +166,26 @@ function makeApi(deps) {
             return r.ok ? { ok: true, set: secrets.state().set } : r;
         },
 
+        // CONNECT WITH A CODE, and store what comes back. The window never sees
+        // the key: it hands over the code and is told whether it worked, which
+        // is the same posture as setSecret — there is no way to read a secret
+        // back out of this app and this must not become one.
+        async connect(code) {
+            if (!cfg.siteUrl) {
+                return { ok: false, say: 'Put the site address in first.' };
+            }
+            const r = await siteFor().connect(code);
+            if (!r.ok) { return r; }
+            const s = secrets.set(r.key);
+            if (!s.ok) {
+                // The key is spent — the code will not work twice — so say so
+                // rather than leaving the owner to try the same code again.
+                return { ok: false, say: (s.say || 'Could not store the key.')
+                    + ' That code is now used; start again on the website.' };
+            }
+            return { ok: true, host: r.host || '' };
+        },
+
         async testSite() {
             if (!cfg.siteUrl) {
                 return { ok: false, state: 'error', say: 'No site address yet.' };

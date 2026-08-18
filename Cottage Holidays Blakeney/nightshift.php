@@ -37,47 +37,70 @@ function night_enabled()
     return content_value('night-shift') === '1';
 }
 
-// The key the app should be using. PRIVATE (apikey- prefix), so it is
-// encrypted at rest like every other credential the site stores.
-function night_scoped_key()
+// THE PAIRED MACS. Stored under the same private key as before, which now
+// holds a LIST of hashes rather than one key — night_devices() reads the old
+// single-string shape as a one-entry list, so an existing Mac keeps working
+// and converts on the next write.
+const NIGHT_DEV_KEY = 'apikey-nightshift';
+const NIGHT_CODE_KEY = 'apikey-nightshift-code';
+
+function night_devices_read()
 {
-    return trim((string) content_value('apikey-nightshift'));
+    // A private key round-trips through json, so a list comes back as an array
+    // and a legacy single key as a string. Both are handed to the same reader.
+    $raw = content_secret_json(NIGHT_DEV_KEY, null);
+    if ($raw === null) {
+        $raw = trim((string) content_value(NIGHT_DEV_KEY));
+    }
+    return night_devices($raw);
 }
 
-// THE ONE DOOR CHECK for both machine routes. Answers 401 and logs, or
-// returns the kind of key that opened it.
-// Is a key ON FILE? Asked of the ROW, not of the value — a value that will not
-// decrypt still means a key was configured. See night_key_kind().
+function night_devices_write($list)
+{
+    content_set_secret(NIGHT_DEV_KEY, array_values((array) $list));
+}
+
+// Is a key ON FILE? Asked of the ROW, not of the value — see night_key_kind().
 function night_key_on_file()
 {
     try {
         $st = db()->prepare('SELECT 1 FROM content WHERE item_key = ? LIMIT 1');
-        $st->execute(['apikey-nightshift']);
+        $st->execute([NIGHT_DEV_KEY]);
         return (bool) $st->fetchColumn();
     } catch (\Throwable $e) {
-        // Cannot tell. Say NO, so a database hiccup does not lock the app out
-        // of a site that was working — the master fallback is the safe answer
-        // to "I do not know", where it is the unsafe answer to "it is broken".
         return false;
     }
 }
 
+// THE ONE DOOR CHECK for both machine routes. Answers 401 and logs, or
+// returns the kind of key that opened it.
 function night_require_key($given, $what)
 {
-    $kind = night_key_kind(
-        $given,
-        night_scoped_key(),
-        defined('APP_SECRET') ? APP_SECRET : '',
-        night_key_on_file(),
-    );
-    if ($kind === '') {
-        log_activity('system', 'night.reject', 'Overnight queue: a ' . $what . ' arrived with the wrong key', [
-            'actor' => 'system',
-            'severity' => 'warn',
-        ]);
-        json_out(['error' => 'Not authorised.'], 401);
+    $devices = night_devices_read();
+    $onFile = night_key_on_file();
+    $i = night_device_index($devices, $given);
+    if ($i >= 0) {
+        // LAST SEEN, stamped here because this is the only place that knows a
+        // request was genuine. Cheap: the app calls twice a night.
+        $devices[$i]['seen'] = time();
+        try {
+            night_devices_write($devices);
+        } catch (\Throwable $e) { /* a stamp we cannot write must not refuse a good request */ }
+        return 'scoped';
     }
-    return $kind;
+    // Nothing on file → the master secret still works, so an install that has
+    // not been paired yet keeps running. Something on file → only these keys do.
+    if (!$onFile && !count($devices)) {
+        $m = defined('APP_SECRET') ? APP_SECRET : '';
+        if ($m !== '' && (string) $given !== '' && hash_equals($m, (string) $given)) {
+            return 'master';
+        }
+    }
+    log_activity('system', 'night.reject', 'Overnight queue: a ' . $what . ' arrived with the wrong key', [
+        'actor' => 'system',
+        'severity' => 'warn',
+    ]);
+    json_out(['error' => 'Not authorised.'], 401);
 }
 
 route_actions([
@@ -95,18 +118,140 @@ route_actions([
     'new_key' => function ($in) {
         require_admin();
         $key = night_key_make();
-        content_set_secret('apikey-nightshift', $key);
-        log_activity('system', 'night.key', 'Overnight queue: a new app key was generated', [
+        $list = night_devices_read();
+        $list[] = [
+            'h' => night_key_hash($key),
+            'label' => night_dev_label($in['label'] ?? 'A Mac'),
+            'added' => time(),
+            'seen' => 0,
+        ];
+        // OLDEST OUT, not newest refused: someone adding a ninth Mac means to
+        // use it, and refusing at the door leaves them stuck.
+        while (count($list) > NIGHT_DEV_MAX) {
+            array_shift($list);
+        }
+        night_devices_write($list);
+        log_activity('system', 'night.key', 'Overnight queue: a key was generated for a Mac', [
             'actor' => 'owner',
             'severity' => 'info',
         ]);
         json_out(['ok' => true, 'key' => $key]);
     },
 
+    // THE CONNECT CODE. Minted by the SITE and read off this screen, so the
+    // owner types eight characters into the Mac instead of pasting sixty-four.
+    // One code at a time — a second replaces the first, because two live codes
+    // is two chances for the wrong one to be typed.
+    'connect_code' => function ($in) {
+        require_admin();
+        $code = night_code_make();
+        content_set_secret(NIGHT_CODE_KEY, [
+            'h' => night_key_hash($code),
+            'exp' => time() + NIGHT_CODE_TTL,
+            'used' => 0,
+            'label' => night_dev_label($in['label'] ?? 'A Mac'),
+        ]);
+        json_out([
+            'ok' => true,
+            'code' => night_code_pretty($code),
+            'seconds' => NIGHT_CODE_TTL,
+        ]);
+    },
+
+    // What is paired, and when each was last heard from. Never a key or a hash:
+    // a hash is not a credential, but it is also not the owner's business and
+    // putting it on a screen invites someone to think it is one.
+    'devices' => function ($in) {
+        require_admin();
+        $out = [];
+        foreach (night_devices_read() as $i => $d) {
+            $out[] = [
+                'i' => $i,
+                'label' => $d['label'],
+                'added' => $d['added'] ? (int) $d['added'] : 0,
+                'seen' => $d['seen'] ? (int) $d['seen'] : 0,
+                'quiet' => night_quiet_days($d, time()),
+                'legacy' => !empty($d['legacy']),
+            ];
+        }
+        json_out(['ok' => true, 'devices' => $out, 'quietAfter' => NIGHT_QUIET_NIGHTS]);
+    },
+
+    // Stop one Mac. By INDEX from the list just read, and the label must match
+    // what the owner was looking at — the list can move under a stale screen,
+    // and stopping the wrong Mac is a silent failure the owner finds at 2am.
+    'stop_device' => function ($in) {
+        require_admin();
+        $i = (int) ($in['i'] ?? -1);
+        $label = (string) ($in['label'] ?? '');
+        $list = night_devices_read();
+        if ($i < 0 || !isset($list[$i])) {
+            json_out(['error' => 'That Mac is not on the list any more. Reload and try again.'], 409);
+        }
+        if ($label !== '' && $list[$i]['label'] !== $label) {
+            json_out(['error' => 'The list has changed since you looked. Reload and try again.'], 409);
+        }
+        $gone = $list[$i]['label'];
+        array_splice($list, $i, 1);
+        night_devices_write($list);
+        log_activity('system', 'night.key', 'Overnight queue: a Mac was stopped (' . $gone . ')', [
+            'actor' => 'owner',
+            'severity' => 'info',
+        ]);
+        json_out(['ok' => true, 'stopped' => $gone, 'left' => count($list)]);
+    },
+
     // Is one set? Never what it is.
     'key_state' => function ($in) {
         require_admin();
-        json_out(['ok' => true, 'set' => strlen(night_scoped_key()) >= NIGHT_KEY_MIN]);
+        json_out(['ok' => true, 'set' => count(night_devices_read()) > 0]);
+    },
+
+    // ---- a Mac connects itself with a code ------------------------
+    //
+    // THE ONLY UNAUTHENTICATED ACTION HERE, and the only one there will be.
+    // It stores nothing a stranger wrote, shows nothing back, and grants
+    // nothing without a live code — the whole point of the site minting the
+    // code rather than the app. Throttled on the same table as sign-in, so it
+    // cannot become a quiet way to guess eight characters.
+    'connect' => function ($in) {
+        rate_limit('night-connect', 10, 300);
+        $rec = content_secret_json(NIGHT_CODE_KEY, []);
+        $bad = night_code_problem($rec, $in['code'] ?? '', time());
+        if ($bad !== '') {
+            log_activity('system', 'night.reject', 'Overnight queue: a connect code was refused', [
+                'actor' => 'system',
+                'severity' => 'info',
+            ]);
+            json_out(['error' => $bad, 'code' => 'connect_refused'], 401);
+        }
+        // BURNED BEFORE THE KEY IS MADE. If anything below fails the code is
+        // still spent — which is the safe direction: the owner taps Connect a
+        // Mac again, where the alternative is a live code after a half-done
+        // pairing.
+        $rec['used'] = 1;
+        content_set_secret(NIGHT_CODE_KEY, $rec);
+
+        $key = night_key_make();
+        $list = night_devices_read();
+        $list[] = [
+            'h' => night_key_hash($key),
+            'label' => night_dev_label($rec['label'] ?? 'A Mac'),
+            'added' => time(),
+            'seen' => 0,
+        ];
+        while (count($list) > NIGHT_DEV_MAX) {
+            array_shift($list);
+        }
+        night_devices_write($list);
+        log_activity('system', 'night.key', 'Overnight queue: a Mac connected with a code', [
+            'actor' => 'system',
+            'severity' => 'info',
+        ]);
+        // The setting is NOT checked here. Connecting a Mac while the feature
+        // is off is a reasonable order to do things in, and the queue refuses
+        // it with its own sentence the moment it tries to work.
+        json_out(['ok' => true, 'key' => $key, 'host' => (string) content_value('host-name')]);
     },
 
     // ---- the owner reads the queue ---------------------------------
