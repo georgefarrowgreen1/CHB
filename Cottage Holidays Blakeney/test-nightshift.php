@@ -371,6 +371,96 @@ nsk('no code waiting is refused with its own sentence',
 nsk('a malformed code never reaches the comparison',
     night_code_problem($good, 'nonsense', $now) !== '');
 
+echo "\n17) the week, the gaps and the questions — the other jobs' briefs\n";
+
+// THE WEEK. End-exclusive like every calendar here, contact details withheld,
+// figures formatted once, a settled stay stating NO figure at all.
+$names = ['jollyboat' => 'Jollyboat', '21a' => '21A Westgate'];
+$wrows = [
+    ['prop_key' => 'jollyboat', 'name' => 'Rachel Pemberton', 'check_in' => '2026-08-21', 'check_out' => '2026-08-24',
+        'adults' => 2, 'children' => 1, 'due' => 340.0,
+        'email' => 'rachel@x.test', 'phone' => '07700 900123'],
+    ['prop_key' => '21a', 'name' => 'Tom Ashby', 'check_in' => '2026-08-10', 'check_out' => '2026-08-19',
+        'adults' => 2, 'children' => 0, 'due' => 0.0],
+    ['prop_key' => 'jollyboat', 'name' => 'Far Future', 'check_in' => '2026-10-01', 'check_out' => '2026-10-04',
+        'adults' => 2, 'children' => 0, 'due' => 500.0],
+];
+$w = night_week_brief($wrows, $names, '2026-08-17');
+nsk('the window is a week', $w['from'] === '2026-08-17' && $w['to'] === '2026-08-24');
+nsk('an arrival inside it is named by FIRST name and cottage',
+    count($w['arrivals']) === 1 && $w['arrivals'][0]['first'] === 'Rachel' && $w['arrivals'][0]['cottage'] === 'Jollyboat');
+nsk('…with the site\'s own due figure, formatted once', $w['arrivals'][0]['due'] === '£340.00');
+nsk('…and the nights end-exclusive', $w['arrivals'][0]['nights'] === 3);
+nsk('a departure inside it rides too', count($w['departures']) === 1 && $w['departures'][0]['first'] === 'Tom');
+nsk('a settled stay states NO figure — "£0.00 outstanding" is noise',
+    $w['departures'][0]['cottage'] === '21A Westgate' && !isset($w['arrivals'][1]));
+nsk('October is not this week', strpos(json_encode($w), 'Far') === false);
+nsk('no contact detail survives into the week', strpos(json_encode($w), 'rachel@x.test') === false
+    && strpos(json_encode($w), '900123') === false);
+
+// THE GAPS. Occupied = bookings AND blocks; 2–4 nights only; window-bounded;
+// the figures are the injected model's own, formatted here.
+$occ = [
+    ['prop_key' => 'jollyboat', 'check_in' => '2026-09-09', 'check_out' => '2026-09-12'],
+    ['prop_key' => 'jollyboat', 'check_in' => '2026-09-15', 'check_out' => '2026-09-18'], // 3-night gap 12→15
+    ['prop_key' => '21a', 'check_in' => '2026-08-20', 'check_out' => '2026-08-22'],
+    ['prop_key' => '21a', 'check_in' => '2026-08-23', 'check_out' => '2026-08-26'],        // 1 night: changeover slack
+    ['prop_key' => 'pimpernel', 'check_in' => '2026-09-01', 'check_out' => '2026-09-03'],
+    ['prop_key' => 'pimpernel', 'check_in' => '2026-09-10', 'check_out' => '2026-09-12'],  // 7 nights: space, not a gap
+];
+$rateFor = function ($pk) { return $pk === 'pimpernel' ? null : ['couple_rate' => 120]; };
+$bd = function ($rate, $in, $out) {
+    $n = night_nights($in, $out);
+    return ['nights' => $n, 'nightly' => 120.0 * $n];
+};
+$gaps = night_gap_brief($occ, $names, $rateFor, $bd, '2026-08-17');
+nsk('exactly the 2–4 night hole is a gap', count($gaps) === 1);
+nsk('…named, dated and sized', $gaps[0]['cottage'] === 'Jollyboat' && $gaps[0]['from'] === '2026-09-12'
+    && $gaps[0]['to'] === '2026-09-15' && $gaps[0]['nights'] === 3);
+nsk('…with the current rate formatted once', $gaps[0]['rate'] === '£120.00');
+nsk('…and the offer at the back office\'s own 15% (not imminent)', $gaps[0]['offer'] === '£102.00');
+nsk('an IMMINENT gap cuts 20% — last-minute price is the only lever left', (function () use ($names, $bd) {
+    $occ2 = [
+        ['prop_key' => 'jollyboat', 'check_in' => '2026-08-15', 'check_out' => '2026-08-18'],
+        ['prop_key' => 'jollyboat', 'check_in' => '2026-08-21', 'check_out' => '2026-08-24'],
+    ];
+    $g = night_gap_brief($occ2, $names, function ($pk) { return ['couple_rate' => 120]; }, $bd, '2026-08-17');
+    return count($g) === 1 && $g[0]['offer'] === '£96.00';
+})());
+nsk('a cottage with no rate row offers NO gap — no honest figure, no gap',
+    strpos(json_encode($gaps), 'pimpernel') === false);
+nsk('the floor holds at £20', (function () use ($names) {
+    $occ3 = [
+        ['prop_key' => 'jollyboat', 'check_in' => '2026-09-09', 'check_out' => '2026-09-12'],
+        ['prop_key' => 'jollyboat', 'check_in' => '2026-09-15', 'check_out' => '2026-09-18'],
+    ];
+    $g = night_gap_brief($occ3, $names, function ($pk) { return ['couple_rate' => 10]; },
+        function ($rate, $in, $out) { $n = night_nights($in, $out); return ['nights' => $n, 'nightly' => 10.0 * $n]; },
+        '2026-08-17');
+    return count($g) === 1 && $g[0]['offer'] === '£20.00';
+})());
+
+// THE QUESTIONS. Most-asked first, capped, grounded in that cottage's own
+// published answers.
+$misses = [
+    ['q' => 'Do you have an EV charger?', 'n' => 2, 'prop' => 'jollyboat'],
+    ['q' => 'Can we bring a dog?', 'n' => 5, 'prop' => '21a'],
+    ['q' => 'Is there a cot?', 'n' => 1, 'prop' => ''],
+];
+$faqsFor = function ($pk) {
+    return $pk === '21a' ? [['q' => 'Do you take dogs?', 'a' => 'We are afraid not.']] : [];
+};
+$qs = night_questions_brief($misses, $names, $faqsFor);
+nsk('most-asked first, capped at ' . NIGHT_QUESTIONS_MAX, count($qs) === NIGHT_QUESTIONS_MAX && $qs[0]['q'] === 'Can we bring a dog?');
+nsk('…carrying how often it was asked', $qs[0]['asked'] === 5);
+nsk('…the cottage NAMED, never a raw key', $qs[0]['cottage'] === '21A Westgate');
+nsk('…and grounded in that cottage\'s own answers', count($qs[0]['facts']) === 1
+    && $qs[0]['facts'][0]['a'] === 'We are afraid not.');
+nsk('garbage in the store is dropped, not guessed at',
+    count(night_questions_brief([['x' => 1], 'a string', null], $names, $faqsFor)) === 0);
+nsk('a no-cottage question still says something for the label',
+    night_questions_brief([['q' => 'Is there a cot?', 'n' => 1, 'prop' => '']], $names, $faqsFor)[0]['cottage'] === 'the cottages');
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

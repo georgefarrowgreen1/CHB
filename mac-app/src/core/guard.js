@@ -211,7 +211,147 @@ function partyWords(adults, children) {
     return bits.join(', ');
 }
 
+// ── THE GENERAL CHECK, for the jobs that write NOTES rather than replies ──
+// (the week, the prices, an answer). Same spine as checkDraft — length, a
+// money whitelist, no links, no done-claims, no greeting — WITHOUT the
+// availability rules: those are about an enquiry's dates_free, and a week
+// note saying "Jollyboat is free 12–15 Sep" is restating the site's own gap
+// list, while an FAQ answer saying "parking is available" is not about the
+// calendar at all. Every fact these jobs see came from the site, so money is
+// the thing left to whitelist.
+function checkGeneral(draft, opts) {
+    const text = String(draft || '');
+    const o = opts || {};
+    const problems = [];
+    const min = o.minLen || 40;
+    const max = o.maxLen || 4000;
+    if (text.trim().length < min) {
+        problems.push('too short to be worth reading');
+    }
+    if (text.length > max) {
+        problems.push('far longer than it should be');
+    }
+    const allowed = Object.create(null);
+    (o.money || []).forEach(function (v) {
+        const n = normaliseMoney(v);
+        if (n) { allowed[n] = 1; }
+    });
+    const invented = moneyIn(text).filter(function (n) { return !allowed[n]; });
+    if (invented.length) {
+        problems.push('quotes a figure the site did not give it: £' + invented.join(', £'));
+    }
+    if (LINK_RE.test(text)) {
+        problems.push('contains a link — the app adds those, not the writing');
+    }
+    if (DONE_RE.test(text)) {
+        problems.push('claims something has already been done');
+    }
+    if (GREETING_RE.test(text)) {
+        problems.push('opens with a greeting — a note does not greet');
+    }
+    return { ok: problems.length === 0, problems: problems };
+}
+
+// "Fri 12 Sep", from ISO. Display only, like spokenRange in jobs.js.
+function spokenDay(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    if (!m) { return String(iso || ''); }
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MON[d.getUTCMonth()];
+}
+
+// Every £ figure a payload hands over, for the whitelist — walked rather than
+// listed per job, so a new formatted field cannot be forgotten by the guard.
+function moneyInFacts(obj) {
+    const out = [];
+    (function walk(v) {
+        if (typeof v === 'string') {
+            moneyIn(v).forEach(function (n) { out.push(n); });
+        } else if (Array.isArray(v)) {
+            v.forEach(walk);
+        } else if (v && typeof v === 'object') {
+            Object.keys(v).forEach(function (k) { walk(v[k]); });
+        }
+    }(obj));
+    return out;
+}
+
+// ── THE WEEK NOTE'S PROMPT. Contract beside check, as always. ──
+function buildWeekPrompt(w, host) {
+    const lines = [];
+    lines.push('You are writing a short Monday-morning note for ' + (host || 'the owner')
+        + ', who lets three holiday cottages in Blakeney, Norfolk. It appears on their own dashboard; no guest sees it.');
+    lines.push('Five to eight sentences, plain British English, no markdown, no lists. Read the facts and say what the week holds and what needs doing before it.');
+    lines.push('');
+    lines.push('RULES YOU MUST NOT BREAK:');
+    lines.push('1. Do NOT open with a greeting and do NOT sign off.');
+    lines.push('2. The only money you may write is a figure listed below, exactly as written.');
+    lines.push('3. Do NOT include links, and do NOT say anything has been booked, charged, sent or arranged.');
+    lines.push('4. Only the facts below. If there is little on, say it is a quiet week rather than padding.');
+    lines.push('');
+    lines.push('FACTS (the only things you may assert):');
+    (w.arrivals || []).forEach(function (a) {
+        lines.push('- Arriving: ' + a.first + ' at ' + a.cottage + ' on ' + spokenDay(a.date)
+            + (a.nights ? ' for ' + a.nights + ' nights' : '')
+            + (a.party ? ' (' + a.party + ')' : '')
+            + (a.due ? ' — ' + a.due + ' still to collect' : ' — paid up'));
+    });
+    (w.departures || []).forEach(function (d) {
+        lines.push('- Leaving: ' + d.first + ' from ' + d.cottage + ' on ' + spokenDay(d.date));
+    });
+    (w.gaps || []).forEach(function (g) {
+        lines.push('- Free: ' + g.cottage + ' has ' + g.nights + ' free nights ' + spokenDay(g.from) + ' to ' + spokenDay(g.to));
+    });
+    if (!((w.arrivals || []).length || (w.departures || []).length)) {
+        lines.push('- Nothing arrives or leaves this week.');
+    }
+    return lines.join('\n');
+}
+
+// ── THE PRICE NOTE'S PROMPT ──
+function buildPricePrompt(gaps, host) {
+    const lines = [];
+    lines.push('You are writing a short pricing note for ' + (host || 'the owner')
+        + ', who lets three holiday cottages in Blakeney, Norfolk. It appears on their own dashboard; no guest sees it.');
+    lines.push('One short paragraph per gap below: say the case for offering it at the suggested price, or for leaving it alone. Plain British English, no markdown.');
+    lines.push('');
+    lines.push('RULES YOU MUST NOT BREAK:');
+    lines.push('1. Do NOT open with a greeting and do NOT sign off.');
+    lines.push('2. The only money you may write is a figure listed below, exactly as written. Never calculate a new one.');
+    lines.push('3. Do NOT include links, and do NOT say any price has been changed — these are suggestions for the owner to weigh.');
+    lines.push('');
+    lines.push('FACTS (the only things you may assert):');
+    (gaps || []).forEach(function (g) {
+        lines.push('- ' + g.cottage + ': ' + g.nights + ' free nights, ' + spokenDay(g.from) + ' to ' + spokenDay(g.to)
+            + '. Current rate ' + g.rate + ' a night; the site suggests offering ' + g.offer + ' a night.');
+    });
+    return lines.join('\n');
+}
+
+// ── THE ANSWER'S PROMPT ──
+function buildAnswerPrompt(q, host) {
+    const lines = [];
+    lines.push('Guests of ' + (host || 'the owner') + '\'s holiday cottages in Blakeney keep asking a question the website could not answer. Draft the ANSWER that will be added to ' + (q.cottage || 'the cottage') + '\'s page — a guest will read it.');
+    lines.push('Two to four sentences, warm plain British English, no markdown.');
+    lines.push('');
+    lines.push('RULES YOU MUST NOT BREAK:');
+    lines.push('1. Answer ONLY from the published answers below. If they do not contain the answer, write exactly what you would need the owner to confirm, phrased as a note to the owner — never guess a fact about the cottage.');
+    lines.push('2. Do NOT write any money, any link, or any greeting.');
+    lines.push('3. Do NOT say anything about dates or availability.');
+    lines.push('');
+    lines.push('THE QUESTION (asked ' + (q.asked || 1) + ' time' + ((q.asked || 1) === 1 ? '' : 's') + '): ' + q.q);
+    lines.push('');
+    lines.push((q.facts || []).length ? 'PUBLISHED ANSWERS for ' + (q.cottage || 'the cottage') + ':' : 'There are NO published answers to draw on.');
+    (q.facts || []).forEach(function (f) {
+        lines.push('- ' + f.q + ' → ' + f.a);
+    });
+    return lines.join('\n');
+}
+
 module.exports = {
-    checkDraft, buildPrompt, moneyIn, normaliseMoney, partyWords,
+    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildPricePrompt, buildAnswerPrompt,
+    moneyIn, moneyInFacts, normaliseMoney, partyWords, spokenDay,
     MONEY_RE, FREE_CLAIM_RE, TAKEN_CLAIM_RE,
 };

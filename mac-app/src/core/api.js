@@ -94,10 +94,10 @@ function makeApi(deps) {
     // Everything the window needs to decide whether to offer a Start button,
     // and what to say instead when it cannot. Composed from the pure module so
     // the button, the night and the log all read one answer.
-    function runnerState(id) {
+    function runnerState(id, wantModel) {
         const engineId2 = id || engineId();
         const found = runnerMod.resolveRunner({ custom: cfg.runnerPath, resourcesDir: resourcesDir });
-        const model = (cfg.jobs.reply || {}).model || '';
+        const model = String(wantModel || (cfg.jobs.reply || {}).model || '');
         const modelPath = model ? path.join(cfg.modelsDir, model) : '';
         const problem = runnerMod.startProblem({
             engineId: engineId2,
@@ -126,20 +126,34 @@ function makeApi(deps) {
     // Bring the engine up if it is not already, and say what happened. Used by
     // the Start button AND by a night that finds nothing answering, so the two
     // cannot behave differently.
-    async function ensureEngine(id) {
+    //
+    // `wantModel` is which model must be SERVING — each job names its own, and
+    // an auto-started llama-server holds exactly one, so a night moving to a
+    // job with a different model swaps the server here. Only one WE started is
+    // ever stopped: an engine the owner runs is never ours to restart, and for
+    // those the model parameter on each request is what travels.
+    let startedModel = '';
+    async function ensureEngine(id, wantModel) {
         const engineId2 = id || engineId();
         const eng = engineFor(engineId2);
-        if (await eng.reachable()) {
+        const model = String(wantModel || (cfg.jobs.reply || {}).model || '');
+        const up = await eng.reachable();
+        const ours = !!(runner && runner.status && runner.status().running);
+        if (up && (!ours || !model || startedModel === model)) {
             return { ok: true, started: false, say: eng.name + ' is already answering.' };
         }
         if (!runner) {
-            return { ok: false, say: eng.name + ' is not answering on ' + eng.base + '.' };
+            return up
+                ? { ok: true, started: false, say: eng.name + ' is already answering.' }
+                : { ok: false, say: eng.name + ' is not answering on ' + eng.base + '.' };
         }
-        const st = runnerState(engineId2);
+        const st = runnerState(engineId2, model);
         if (st.problem) {
             return { ok: false, say: st.problem, install: st.install };
         }
-        const model = (cfg.jobs.reply || {}).model || '';
+        if (up && ours && startedModel !== model) {
+            await runner.stop();
+        }
         const r = await runner.start({
             bin: st.path,
             args: runnerMod.runnerArgs({
@@ -150,9 +164,11 @@ function makeApi(deps) {
             base: eng.base,
             reachable: function () { return eng.reachable(); },
         });
-        return r && r.ok
-            ? { ok: true, started: true, say: eng.name + ' · ' + runnerMod.readySay(r.ms) }
-            : { ok: false, say: (r && r.say) || 'The model server did not start.' };
+        if (r && r.ok) {
+            startedModel = model;
+            return { ok: true, started: true, say: eng.name + ' · ' + runnerMod.readySay(r.ms) };
+        }
+        return { ok: false, say: (r && r.say) || 'The model server did not start.' };
     }
 
     return {
@@ -358,7 +374,9 @@ function makeApi(deps) {
                     openingNote: openingNote,
                     // Only offered when the owner has left auto-start on. Off,
                     // the night behaves exactly as it did before this existed.
-                    ensureEngine: cfg.autoStart && runner ? function () { return ensureEngine(id); } : null,
+                    ensureEngineFor: cfg.autoStart && runner
+                        ? function (model) { return ensureEngine(id, model); }
+                        : null,
                 });
                 // WHAT WE STARTED, WE STOP. A model server left holding nine
                 // gigabytes of a Mac's memory until the next reboot is not a

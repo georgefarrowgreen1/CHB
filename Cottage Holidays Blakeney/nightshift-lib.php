@@ -654,3 +654,201 @@ function night_code_problem($rec, $given, $nowTs)
     }
     return '';
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  THE OTHER JOBS' BRIEFS — the week, the gaps, the questions.
+//
+//  Same contract as night_brief_enquiry: PURE composers over rows the endpoint
+//  fetches, every figure FORMATTED HERE so a producer has no arithmetic to do
+//  and its guard can whitelist exactly what was handed over, and the same
+//  withholding rule — no email, no phone, no address, no postcode, because a
+//  note to the owner needs none of them.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The week note's window, and honest caps like the enquiry brief's.
+const NIGHT_WEEK_DAYS = 7;
+const NIGHT_WEEK_ROWS_MAX = 12;   // arrivals + departures each
+const NIGHT_GAPS_MAX = 3;         // the price job weighs a couple, not a page
+const NIGHT_GAP_WINDOW_DAYS = 45; // how far ahead a gap is worth selling
+const NIGHT_QUESTIONS_MAX = 2;    // one good answer beats five thin ones
+
+// "£123.45" — money leaves this file formatted, once, exactly as the enquiry
+// brief's quote does. A producer that has to format money is one that can
+// misformat it.
+function night_money($n)
+{
+    return '£' . number_format((float) $n, 2);
+}
+
+// THE WEEK, from booking rows. $rows: [{prop_key,name,check_in,check_out,
+// adults,children,due}] where `due` is the SITE's own outstanding figure
+// (already derived; 0 means settled). $names maps prop_key → display name.
+// End-exclusive throughout, like every calendar in this app.
+function night_week_brief(array $rows, array $names, $fromIso, $days = NIGHT_WEEK_DAYS)
+{
+    $from = (string) $fromIso;
+    $to = date('Y-m-d', strtotime($from . ' +' . (int) $days . ' days'));
+    $arrivals = [];
+    $departures = [];
+    foreach ($rows as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $pk = (string) ($r['prop_key'] ?? '');
+        $cottage = (string) ($names[$pk] ?? $pk);
+        $in = (string) ($r['check_in'] ?? '');
+        $out = (string) ($r['check_out'] ?? '');
+        if ($in >= $from && $in < $to && count($arrivals) < NIGHT_WEEK_ROWS_MAX) {
+            $due = (float) ($r['due'] ?? 0);
+            $arrivals[] = [
+                'first' => night_first_name($r['name'] ?? ''),
+                'cottage' => $cottage,
+                'date' => $in,
+                'nights' => night_nights($in, $out),
+                'adults' => (int) ($r['adults'] ?? 0),
+                'children' => (int) ($r['children'] ?? 0),
+                // Formatted or ABSENT — "£0.00 outstanding" is noise, and a
+                // figure the site did not state must not exist here at all.
+                'due' => $due > 0 ? night_money($due) : '',
+            ];
+        }
+        // The window is [from, to) for BOTH lists — the first draft used
+        // <= here, so a stay ARRIVING this week whose checkout lands exactly
+        // on the window's edge was also reported as departing this week. Its
+        // own gate caught it: Rachel arrived Friday and "departed" next Monday
+        // in the same note.
+        if ($out > $from && $out < $to && count($departures) < NIGHT_WEEK_ROWS_MAX) {
+            $departures[] = [
+                'first' => night_first_name($r['name'] ?? ''),
+                'cottage' => $cottage,
+                'date' => $out,
+            ];
+        }
+    }
+    return ['from' => $from, 'to' => $to, 'arrivals' => $arrivals, 'departures' => $departures];
+}
+
+// Nights between two ISO dates, end-exclusive; 0 for anything unparseable.
+function night_nights($in, $out)
+{
+    $a = strtotime((string) $in);
+    $b = strtotime((string) $out);
+    if ($a === false || $b === false || $b <= $a) {
+        return 0;
+    }
+    return (int) round(($b - $a) / 86400);
+}
+
+// THE GAPS a price note may weigh: 2–4 free nights between OCCUPIED spans
+// (bookings and blocks together — an owner block occupies, so a hole the
+// owner is deliberately holding never reads as a gap to sell), starting
+// inside the window. Mirrors the back office's own chbGapScan bounds so the
+// two surfaces cannot disagree about what a gap is.
+//
+// $occupied: [{prop_key, check_in, check_out}] — bookings AND blocks.
+// $rateFor:  fn(prop_key) → rate row or null.
+// $breakdown: fn(rate, in, out) → price_breakdown result (injected so this
+//             stays pure and the gate can drive it with fixed maths).
+function night_gap_brief(array $occupied, array $names, $rateFor, $breakdown, $todayIso, $windowDays = NIGHT_GAP_WINDOW_DAYS)
+{
+    $today = (string) $todayIso;
+    $limit = date('Y-m-d', strtotime($today . ' +' . (int) $windowDays . ' days'));
+    $byProp = [];
+    foreach ($occupied as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $pk = (string) ($r['prop_key'] ?? '');
+        $in = (string) ($r['check_in'] ?? '');
+        $out = (string) ($r['check_out'] ?? '');
+        if ($pk === '' || $in === '' || $out === '' || $out <= $today) {
+            continue;
+        }
+        $byProp[$pk][] = ['in' => $in, 'out' => $out];
+    }
+    $gaps = [];
+    foreach ($byProp as $pk => $spans) {
+        usort($spans, function ($a, $b) { return strcmp($a['in'], $b['in']); });
+        for ($i = 0; $i < count($spans) - 1; $i++) {
+            $gapFrom = $spans[$i]['out'];
+            $gapTo = $spans[$i + 1]['in'];
+            $nights = night_nights($gapFrom, $gapTo);
+            // 1 night is changeover slack; 5+ is space, not a gap — the same
+            // judgement chbGapScan already ships.
+            if ($nights < 2 || $nights > 4) {
+                continue;
+            }
+            if ($gapFrom < $today || $gapFrom > $limit) {
+                continue;
+            }
+            $rate = $rateFor($pk);
+            if (!$rate) {
+                continue; // no rate row → no honest figure → no gap here
+            }
+            $bd = $breakdown($rate, $gapFrom, $gapTo);
+            $perNight = ($bd && !empty($bd['nights'])) ? (float) $bd['nightly'] / (int) $bd['nights'] : 0;
+            if ($perNight <= 0) {
+                continue;
+            }
+            // The offer depth is the back office's own rule: 20% when the gap
+            // is imminent (≤7 days — last-minute price is the only lever
+            // left), else 15%, floored at £20/night.
+            $imminent = night_nights($today, $gapFrom) <= 7;
+            $offer = max(20.0, round($perNight * ($imminent ? 0.80 : 0.85), 2));
+            $gaps[] = [
+                'cottage' => (string) ($names[$pk] ?? $pk),
+                'from' => $gapFrom,
+                'to' => $gapTo,
+                'nights' => $nights,
+                'rate' => night_money($perNight),
+                'offer' => night_money($offer),
+            ];
+            if (count($gaps) >= NIGHT_GAPS_MAX) {
+                return $gaps;
+            }
+        }
+    }
+    return $gaps;
+}
+
+// THE QUESTIONS guests kept asking that the site could not answer, most-asked
+// first, each with that cottage's own published answers to ground a draft in.
+// $misses is the guest-faq-misses list ({q,n,prop}); $faqsFor(prop) → [{q,a}].
+function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUESTIONS_MAX)
+{
+    if (!is_array($misses)) {
+        return [];
+    }
+    $rows = array_values(array_filter($misses, function ($m) {
+        return is_array($m) && trim((string) ($m['q'] ?? '')) !== '';
+    }));
+    usort($rows, function ($a, $b) {
+        return (int) ($b['n'] ?? 0) <=> (int) ($a['n'] ?? 0);
+    });
+    $out = [];
+    foreach ($rows as $m) {
+        if (count($out) >= (int) $max) {
+            break;
+        }
+        $pk = (string) ($m['prop'] ?? '');
+        $facts = [];
+        foreach ((array) $faqsFor($pk) as $f) {
+            if (count($facts) >= NIGHT_BRIEF_FACTS_MAX) {
+                break;
+            }
+            $q = trim((string) (is_array($f) ? ($f['q'] ?? '') : ''));
+            $a = trim((string) (is_array($f) ? ($f['a'] ?? '') : ''));
+            if ($q !== '' && $a !== '') {
+                $facts[] = ['q' => mb_substr($q, 0, NIGHT_BRIEF_FACT_Q_MAX), 'a' => mb_substr($a, 0, 500)];
+            }
+        }
+        $out[] = [
+            'q' => mb_substr(trim((string) $m['q']), 0, NIGHT_BRIEF_FACT_Q_MAX),
+            'asked' => max(1, (int) ($m['n'] ?? 1)),
+            'prop' => $pk,
+            'cottage' => (string) ($names[$pk] ?? ($pk !== '' ? $pk : 'the cottages')),
+            'facts' => $facts,
+        ];
+    }
+    return $out;
+}

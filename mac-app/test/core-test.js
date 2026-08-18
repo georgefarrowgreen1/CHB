@@ -1161,6 +1161,163 @@ function fakeSite(handler) {
     ok('no comment keys anywhere under build — the schema rejects them',
         commentKeys.length === 0, commentKeys.join(', '));
 
+    // ── §23 THE OTHER JOBS — the week, the prices, the answers ────────────
+    // The same discipline as the reply job: every figure comes from the site,
+    // the guard whitelists exactly what was handed over, and an older site
+    // that hands nothing over is reported honestly rather than read as a
+    // quiet week.
+    console.log('\n23) the week, the prices and the answers');
+
+    // The general check first — it is what all three lean on.
+    ok('a clean note passes', guard.checkGeneral(
+        'Rachel arrives at Jollyboat on Friday with £340.00 still to collect. A quiet week otherwise.',
+        { money: ['£340.00'] }).ok);
+    ok('an invented figure is refused', !guard.checkGeneral(
+        'Offer the gap at £99.00 and it will sell.', { money: ['£340.00'] }).ok);
+    ok('...and the refusal names the figure', /99\.00/.test(
+        guard.checkGeneral('Offer it at £99.00.', { money: [] }).problems.join(' ')));
+    ok('a link is refused', !guard.checkGeneral('See https://x.test for more. '.repeat(3), { money: [] }).ok);
+    ok('a greeting is refused', !guard.checkGeneral('Hi George, the week looks quiet enough overall for you.', { money: [] }).ok);
+    ok('a done-claim is refused', !guard.checkGeneral(
+        'I have now booked the gap for you and all is well with the week ahead.', { money: [] }).ok);
+    ok('availability words are NOT refused here — a note restates the site\'s own gap list',
+        guard.checkGeneral('Jollyboat is free for three nights midweek, worth an offer perhaps.', { money: [] }).ok);
+    ok('moneyInFacts walks the whole payload', JSON.stringify(guard.moneyInFacts(
+        { a: [{ due: '£12.00' }], b: { c: 'rate £9.50 a night' } })) === JSON.stringify(['12.00', '9.50']));
+
+    // THE SCHEDULE, on pinned dates — never the wall clock (the search-test
+    // lesson: a date-dependent test is only verified on the day it runs).
+    const MON = new Date(2026, 7, 17, 2, 0, 0);   // Monday 17 Aug 2026
+    const SUN = new Date(2026, 7, 16, 2, 0, 0);   // Sunday
+    const TUE = new Date(2026, 7, 18, 2, 0, 0);   // Tuesday
+    const allOn = { jobs: { reply: { on: true, model: 'm' }, week: { on: true, model: 'm' },
+        price: { on: true, model: 'm' }, answer: { on: true, model: 'm' }, voice: { on: true, model: 'm' } } };
+    const idsOf = function (plan) { return plan.due.map(function (x) { return x.job.id; }).sort().join(','); };
+    ok('Monday runs the reply AND both weekly-mon jobs', idsOf(jobs.jobsDueTonight(jobs.JOBS, allOn, MON)) === 'price,reply,week');
+    ok('Sunday runs the reply and the answers', idsOf(jobs.jobsDueTonight(jobs.JOBS, allOn, SUN)) === 'answer,reply');
+    ok('Tuesday runs the reply alone', idsOf(jobs.jobsDueTonight(jobs.JOBS, allOn, TUE)) === 'reply');
+    ok('...and SAYS the weekly ones are waiting, with their day',
+        jobs.jobsDueTonight(jobs.JOBS, allOn, TUE).waiting.map(function (w) { return w.until; }).sort().join(',') === 'Monday,Monday,Sunday');
+    ok('voice can never be due — not built, whatever the config claims',
+        jobs.jobsDueTonight(jobs.JOBS, allOn, MON).due.every(function (x) { return x.job.id !== 'voice'; }));
+    ok('a job switched off is neither due nor waiting', (function () {
+        const p = jobs.jobsDueTonight(jobs.JOBS, { jobs: { reply: { on: true, model: 'm' } } }, TUE);
+        return p.due.length === 1 && p.waiting.length === 0;
+    }()));
+
+    // THE WEEK JOB, driven with an obedient fake engine and then a lying one.
+    const WEEK = {
+        from: '2026-08-17', to: '2026-08-24',
+        arrivals: [{ first: 'Rachel', cottage: 'Jollyboat', date: '2026-08-21', nights: 3, adults: 2, children: 1, due: '£340.00' }],
+        departures: [{ first: 'Tom', cottage: 'Pimpernel', date: '2026-08-19' }],
+    };
+    const GAPS = [{ cottage: 'Jollyboat', from: '2026-09-12', to: '2026-09-15', nights: 3, rate: '£120.00', offer: '£102.00' }];
+    const obedient = function (text) {
+        return { write: async function () { return { ok: true, text: text, ms: 1200, tokens: 50, tokensPerSec: 40 }; } };
+    };
+    let out23 = await jobs.runWeekJob({ engine: obedient(
+        'Rachel arrives at Jollyboat on Friday for three nights with £340.00 still to collect. Tom leaves Pimpernel on Wednesday, so there is a changeover to plan. Jollyboat then has three free nights in September worth thinking about.'),
+        model: 'm', host: 'George', now: MON, week: WEEK, gaps: GAPS });
+    ok('the week job posts ONE note', out23.items.length === 1);
+    ok('...kind note, on the queue\'s own vocabulary', out23.items[0].kind === 'note');
+    ok('...titled and counted', out23.items[0].title === 'The week ahead' && /1 arrival · 1 departure · 1 gap/.test(out23.items[0].sub), out23.items[0].sub);
+    ok('...targeting Today, where the calendar lives', out23.items[0].target === 'view-backoffice');
+    ok('...with a deterministic ref for the night', out23.items[0].ref === 'mac-2026-08-17-note-week');
+    out23 = await jobs.runWeekJob({ engine: obedient('The week is quiet, but you could offer the gap at £95.00 and fill it easily enough I think.'),
+        model: 'm', host: 'George', now: MON, week: WEEK, gaps: GAPS });
+    ok('a week note that INVENTS a figure is refused', out23.items.length === 0
+        && /£95\.00/.test(out23.log.map(function (l) { return l.say; }).join(' ')));
+    out23 = await jobs.runWeekJob({ engine: obedient('x'), model: 'm', host: 'G', now: MON, week: undefined, gaps: [] });
+    ok('an older site is reported, not read as a quiet week', out23.items.length === 0
+        && /update the website/.test(out23.log.map(function (l) { return l.say; }).join(' ')));
+
+    // THE PRICE JOB.
+    out23 = await jobs.runPriceJob({ engine: obedient(
+        'Jollyboat has three free nights in mid September between two stays. At £120.00 a night they are unlikely to sell on their own; the suggested £102.00 is a fair last-minute price and worth offering.'),
+        model: 'm', host: 'George', now: MON, gaps: GAPS });
+    ok('the price job posts one case', out23.items.length === 1 && out23.items[0].kind === 'price');
+    ok('...naming the cottages in the sub', out23.items[0].sub === 'Jollyboat');
+    ok('...targeting the Pricing page', out23.items[0].target === 'settings:pricing');
+    out23 = await jobs.runPriceJob({ engine: obedient('Drop Jollyboat to £80.00 a night and it will go.'),
+        model: 'm', host: 'G', now: MON, gaps: GAPS });
+    ok('a price the site did not suggest is refused', out23.items.length === 0);
+    out23 = await jobs.runPriceJob({ engine: obedient('x'), model: 'm', host: 'G', now: MON, gaps: [] });
+    ok('no gaps is a SUCCESS with nothing posted', out23.items.length === 0
+        && !out23.log.some(function (l) { return l.level === 'fail'; }));
+    out23 = await jobs.runPriceJob({ engine: obedient('x'), model: 'm', host: 'G', now: MON, gaps: undefined });
+    ok('an older site is a named failure here too', out23.log.some(function (l) { return l.level === 'fail'; }));
+
+    // THE ANSWER JOB.
+    // NB the two questions share their first 24 ALPHANUMERICS on purpose —
+    // that is the slice makeRef keeps of a wordy id, so an un-hashed ref
+    // collides on exactly this pair and the site would silently drop the
+    // second answer as a duplicate. The first fixture here diverged at
+    // character 20 and let the un-hashed version pass (a vacuous break-test,
+    // caught by running it).
+    const QS = [
+        { q: 'Is there anywhere nearby to walk the dog in the morning?', asked: 4, prop: 'jollyboat', cottage: 'Jollyboat',
+            facts: [{ q: 'Do you take dogs?', a: 'We are afraid not.' }] },
+        { q: 'Is there anywhere nearby to walk the dog in the evening?', asked: 2, prop: 'jollyboat', cottage: 'Jollyboat', facts: [] },
+    ];
+    out23 = await jobs.runAnswerJob({ engine: obedient(
+        'We are afraid we cannot take dogs at Jollyboat, in the garden or the cottage, much as we love them.'),
+        model: 'm', host: 'George', now: MON, questions: QS });
+    ok('one answer per question', out23.items.length === 2 && out23.items.every(function (i) { return i.kind === 'answer'; }));
+    ok('...each with its OWN ref — two questions sharing first words must not collide',
+        out23.items[0].ref !== out23.items[1].ref, out23.items.map(function (i) { return i.ref; }).join(' '));
+    ok('...titled with the question and counted', /An answer for/.test(out23.items[0].title)
+        && /asked 4 times/.test(out23.items[0].sub));
+    ok('...targeting the screen where one tap makes it a live FAQ', out23.items[0].target === 'settings:search-learning');
+    out23 = await jobs.runAnswerJob({ engine: obedient('The cleaning fee is £30.00 and dogs are not allowed at the cottage.'),
+        model: 'm', host: 'G', now: MON, questions: [QS[0]] });
+    ok('an answer may write NO money at all — any figure is an invention', out23.items.length === 0);
+    ok('the no-facts prompt says there is nothing to draw on',
+        /NO published answers/.test(guard.buildAnswerPrompt(QS[1], 'G')));
+    ok('...and the with-facts prompt carries them',
+        /We are afraid not/.test(guard.buildAnswerPrompt(QS[0], 'G')));
+
+    // THE NIGHT RUNS THEM ALL, swapping the model server per job's model.
+    const nightCalls = [];
+    const swapRunnerEngine = {
+        id: 'llamacpp', name: 'llama.cpp', base: 'http://x',
+        reachable: async function () { return nightCalls.filter(function (c) { return c[0] === 'start'; }).length > nightCalls.filter(function (c) { return c[0] === 'stop'; }).length; },
+        write: async function (prompt) {
+            // Obedient per job: echo the one figure each prompt allows.
+            if (/Monday-morning note/.test(prompt)) { return { ok: true, text: 'Rachel arrives with £340.00 to collect; otherwise the week ahead looks manageable and calm.', ms: 1, tokens: 1 }; }
+            if (/pricing note/.test(prompt)) { return { ok: true, text: 'The gap at £120.00 a night is worth offering at the suggested £102.00 before it goes quietly unsold.', ms: 1, tokens: 1 }; }
+            return { ok: true, text: 'Thank you for asking about the cottage; the week you mention could suit a short stay rather well.', ms: 1, tokens: 1 };
+        },
+    };
+    let posted = null;
+    const nightSite = {
+        brief: async function () {
+            return { ok: true, host: 'George', enquiries: [], week: WEEK, gaps: GAPS, questions: [] };
+        },
+        ingest: async function (items) { posted = items; return { ok: true, stored: items.length, skipped: [] }; },
+    };
+    const swaps = [];
+    const rec23 = await night.runNight({
+        site: nightSite,
+        engine: swapRunnerEngine,
+        cfg: { jobs: { reply: { on: true, model: 'small.gguf' }, week: { on: true, model: 'big.gguf' },
+            price: { on: true, model: 'big.gguf' }, answer: { on: true, model: 'small.gguf' } } },
+        now: MON,
+        ensureEngineFor: async function (model) {
+            swaps.push(model);
+            nightCalls.push(['start', model]);
+            return { ok: true, started: true, say: 'ready' };
+        },
+    });
+    ok('a Monday night runs reply, week and price together', rec23.ok === true && posted && posted.length === 2,
+        JSON.stringify(posted && posted.map(function (i) { return i.kind; })));
+    ok('...posting the note and the price case in ONE ingest',
+        posted.map(function (i) { return i.kind; }).sort().join(',') === 'note,price');
+    ok('...and the engine was ensured PER MODEL, in job order',
+        swaps.join(',') === 'small.gguf,big.gguf', swaps.join(','));
+    ok('...with both models in the record', rec23.model === 'small.gguf, big.gguf', rec23.model);
+    ok('...and the answers job said it waits for Sunday',
+        rec23.log.some(function (l) { return /waits for Sunday/.test(l.say); }));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

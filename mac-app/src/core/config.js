@@ -67,7 +67,14 @@ const DEFAULTS = {
     siteUrl: '',
     engine: '',                 // '' = let the app pick by architecture
     modelsDir: '',              // '' = <appDir>/Models
-    jobs: { reply: { on: false, model: '', at: '02:00' } },
+    jobs: {
+        reply: { on: false, model: '', at: '02:00' },
+        // The weekly jobs. `at` is the reply job's clock — one wake a night —
+        // and these run in that wake when its local day is theirs.
+        answer: { on: false, model: '' },
+        week: { on: false, model: '' },
+        price: { on: false, model: '' },
+    },
     keepAwake: true,
     lastRun: null,
     // STARTING THE MODEL SERVER. Default ON, because the whole point is that

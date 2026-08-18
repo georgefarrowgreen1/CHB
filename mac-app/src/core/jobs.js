@@ -38,28 +38,28 @@ const JOBS = [
         what: 'Turns the questions the site could not answer into answers written from that cottage’s own content.',
         kind: 'answer',
         schedule: 'weekly-sun',
-        built: false,
+        built: true,
     },
     {
         id: 'week',
         name: 'Read the week',
-        what: 'Reads the week’s enquiries, reviews and messages and says what you might not have noticed.',
+        what: 'Reads the week ahead — arrivals, departures, gaps, money still to collect — and writes the Monday-morning note.',
         kind: 'note',
         schedule: 'weekly-mon',
-        built: false,
+        built: true,
     },
     {
         id: 'price',
         name: 'Price the fortnight',
-        what: 'Reads the site’s own pricing model and writes the case for the two decisions worth your attention.',
+        what: 'Weighs the gaps the site found, at the site’s own suggested prices — the case for each, for you to decide.',
         kind: 'price',
         schedule: 'weekly-mon',
-        built: false,
+        built: true,
     },
     {
         id: 'voice',
         name: 'Transcribe a walk-round',
-        what: 'Turns a voice memo into maintenance items and a shopping list.',
+        what: 'Turns a voice memo into maintenance items and a shopping list. Needs a speech model, not a chat one — not built.',
         kind: 'note',
         schedule: 'ondemand',
         built: false,
@@ -209,4 +209,183 @@ function stamp() {
     return p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
-module.exports = { JOBS, jobById, runReplyJob, replyTitle, replySub, spokenRange, sourceLine };
+
+// ── THE WEEK JOB. One note, Monday mornings. ────────────────────────────
+// ctx: { engine, model, host, now, week, gaps, onProgress }
+async function runWeekJob(ctx) {
+    const log = [];
+    const items = [];
+    const c = ctx || {};
+    const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
+    // ABSENT is "this site does not hand it over" — an older website. Honest
+    // and loud, because a weekly job silently doing nothing is the quiet-Mac
+    // failure all over again.
+    if (!c.week || typeof c.week !== 'object') {
+        say('the site did not hand over the week — update the website to use this job', 'fail');
+        return { items: items, log: log };
+    }
+    const w = Object.assign({}, c.week, { gaps: Array.isArray(c.gaps) ? c.gaps : [] });
+    (w.arrivals || []).forEach(function (a) { a.party = guard.partyWords(a.adults, a.children); });
+    const day = require('./site').today(c.now);
+    const r = await c.engine.write(guard.buildWeekPrompt(w, c.host), c.model);
+    if (!r.ok) {
+        say('the week note · ' + r.say, 'fail');
+        return { items: items, log: log };
+    }
+    // Every figure the site handed over is fair game and nothing else is.
+    const v = guard.checkGeneral(r.text, { money: guard.moneyInFacts(w) });
+    if (!v.ok) {
+        say('refused own week note: ' + v.problems.join('; '), 'fail');
+        return { items: items, log: log };
+    }
+    const nA = (w.arrivals || []).length;
+    const nD = (w.departures || []).length;
+    items.push({
+        ref: makeRef('note', 'week', day),
+        kind: 'note',
+        title: 'The week ahead',
+        sub: nA + ' arrival' + (nA === 1 ? '' : 's') + ' · ' + nD + ' departure' + (nD === 1 ? '' : 's')
+            + (w.gaps.length ? ' · ' + w.gaps.length + ' gap' + (w.gaps.length === 1 ? '' : 's') : ''),
+        body: r.text,
+        source: 'the site’s own calendar and ledger',
+        target: 'view-backoffice',
+    });
+    say('the week note · drafted in ' + Math.round(r.ms / 100) / 10 + 's', 'hit');
+    return { items: items, log: log };
+}
+
+// ── THE PRICE JOB. The case for each gap, at the site's own figures. ─────
+// ctx: { engine, model, host, now, gaps, onProgress }
+async function runPriceJob(ctx) {
+    const log = [];
+    const items = [];
+    const c = ctx || {};
+    const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
+    if (!Array.isArray(c.gaps)) {
+        say('the site did not hand over its gaps — update the website to use this job', 'fail');
+        return { items: items, log: log };
+    }
+    if (!c.gaps.length) {
+        // A quiet fortnight is a SUCCESS, the same rule as a quiet night.
+        say('no gaps worth selling — nothing to weigh');
+        return { items: items, log: log };
+    }
+    const day = require('./site').today(c.now);
+    const r = await c.engine.write(guard.buildPricePrompt(c.gaps, c.host), c.model);
+    if (!r.ok) {
+        say('the price note · ' + r.say, 'fail');
+        return { items: items, log: log };
+    }
+    const v = guard.checkGeneral(r.text, { money: guard.moneyInFacts(c.gaps) });
+    if (!v.ok) {
+        say('refused own price note: ' + v.problems.join('; '), 'fail');
+        return { items: items, log: log };
+    }
+    items.push({
+        ref: makeRef('price', 'fortnight', day),
+        kind: 'price',
+        title: c.gaps.length === 1 ? 'A gap worth a look' : c.gaps.length + ' gaps worth a look',
+        sub: c.gaps.map(function (g) { return g.cottage; }).filter(function (v2, i, a) { return a.indexOf(v2) === i; }).join(', '),
+        body: r.text,
+        source: 'the site’s own calendar and its own rates',
+        target: 'settings:pricing',
+    });
+    say('the price note · ' + c.gaps.length + ' gap' + (c.gaps.length === 1 ? '' : 's') + ' weighed in ' + Math.round(r.ms / 100) / 10 + 's', 'hit');
+    return { items: items, log: log };
+}
+
+// ── THE ANSWER JOB. One drafted FAQ answer per question guests kept asking. ─
+// ctx: { engine, model, host, now, questions, onProgress }
+async function runAnswerJob(ctx) {
+    const log = [];
+    const items = [];
+    const c = ctx || {};
+    const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
+    if (!Array.isArray(c.questions)) {
+        say('the site did not hand over the guest questions — update the website to use this job', 'fail');
+        return { items: items, log: log };
+    }
+    if (!c.questions.length) {
+        say('no unanswered guest questions — nothing to do');
+        return { items: items, log: log };
+    }
+    const day = require('./site').today(c.now);
+    for (let i = 0; i < c.questions.length; i++) {
+        const q = c.questions[i];
+        const r = await c.engine.write(guard.buildAnswerPrompt(q, c.host), c.model);
+        if (!r.ok) {
+            say('“' + shortQ(q.q) + '” · ' + r.say, 'fail');
+            continue;
+        }
+        // NO money whitelist here at all: an FAQ answer has no business
+        // quoting a figure, so every one is an invention by definition.
+        const v = guard.checkGeneral(r.text, { money: [] });
+        if (!v.ok) {
+            say('refused own answer: ' + v.problems.join('; '), 'fail');
+            continue;
+        }
+        items.push({
+            // HASHED, not sliced: makeRef keeps 24 alphanumerics of a wordy id,
+            // and two questions sharing their first words ("do you allow dogs
+            // in the garden" / "…in the cottage") would collide into ONE ref —
+            // the site's exactly-once rule would then silently drop the second
+            // answer as a duplicate of the first.
+            ref: makeRef('answer', qHash(q.q), day),
+            kind: 'answer',
+            title: 'An answer for “' + shortQ(q.q) + '”',
+            sub: (q.cottage || 'the cottages') + ' · asked ' + (q.asked || 1) + ' time' + ((q.asked || 1) === 1 ? '' : 's'),
+            body: r.text,
+            source: 'guests’ own questions and the cottage’s published answers',
+            // The screen where one tap turns a question into a live FAQ.
+            target: 'settings:search-learning',
+        });
+        say('“' + shortQ(q.q) + '” · answered in ' + Math.round(r.ms / 100) / 10 + 's', 'hit');
+    }
+    return { items: items, log: log };
+}
+
+// djb2 over the normalised question — deterministic per night per question,
+// which is what the exactly-once ref needs, and nothing more.
+function qHash(q) {
+    const s = String(q || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+        h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    }
+    return 'q' + h.toString(16);
+}
+
+function shortQ(q) {
+    const s = String(q || '').trim();
+    return s.length > 60 ? s.slice(0, 57) + '…' : s;
+}
+
+// ── WHICH JOBS RUN TONIGHT. Pure, so the schedule is testable on a pinned ──
+// date. `weekly-mon` means the run whose LOCAL day is Monday — the 02:00 run
+// into Monday morning, so the note greets the week it describes.
+function jobsDueTonight(jobs, cfg, now) {
+    const day = (now instanceof Date ? now : new Date()).getDay();
+    const due = [];
+    const waiting = [];
+    (jobs || JOBS).forEach(function (j) {
+        const conf = (cfg && cfg.jobs && cfg.jobs[j.id]) || {};
+        if (!j.built || !conf.on) {
+            return;
+        }
+        const match = j.schedule === 'nightly'
+            || (j.schedule === 'weekly-sun' && day === 0)
+            || (j.schedule === 'weekly-mon' && day === 1);
+        if (match) {
+            due.push({ job: j, model: String(conf.model || '') });
+        } else if (j.schedule === 'weekly-sun' || j.schedule === 'weekly-mon') {
+            waiting.push({ job: j, until: j.schedule === 'weekly-sun' ? 'Sunday' : 'Monday' });
+        }
+    });
+    return { due: due, waiting: waiting };
+}
+
+module.exports = {
+    JOBS, jobById, jobsDueTonight,
+    runReplyJob, runWeekJob, runPriceJob, runAnswerJob,
+    replyTitle, replySub, spokenRange, sourceLine,
+};
