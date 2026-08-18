@@ -414,7 +414,7 @@ $bd = function ($rate, $in, $out) {
     return ['nights' => $n, 'nightly' => 120.0 * $n];
 };
 $gaps = night_gap_brief($occ, $names, $rateFor, $bd, '2026-08-17');
-nsk('exactly the 2–4 night hole is a gap', count($gaps) === 1, json_encode($gaps));
+nsk('exactly the 2–4 night hole is a gap', count($gaps) === 1);
 nsk('…named, dated and sized', $gaps[0]['cottage'] === 'Jollyboat' && $gaps[0]['from'] === '2026-09-12'
     && $gaps[0]['to'] === '2026-09-15' && $gaps[0]['nights'] === 3);
 nsk('…with the current rate formatted once', $gaps[0]['rate'] === '£120.00');
