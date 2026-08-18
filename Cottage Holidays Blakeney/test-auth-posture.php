@@ -60,7 +60,11 @@ $REGISTRY = [
     'email-samples.php' => ['admin'],
     'expenses.php' => ['admin'],
     'mailbox.php' => ['admin'],
-    'nightshift.php' => ['admin', [$CRON], 'the overnight queue: list/act are the owner in a browser, ingest is a machine with APP_SECRET — both guards must be present'],
+    // The machine routes no longer take APP_SECRET directly: they take the
+    // route's OWN key (apikey-nightshift), which falls back to APP_SECRET only
+    // while no scoped key is set. So the marker to insist on is the door check
+    // itself — night_require_key — not the comparison it now delegates to.
+    'nightshift.php' => ['admin', ['night_require_key'], 'the overnight queue: list/act are the owner in a browser, brief/ingest are a machine holding this route\'s own scoped key — both guards must be present'],
     'notify-recipients.php' => ['admin'],
     'optimize-hero.php' => ['admin'],
     'pricing-suggest.php' => ['admin'],

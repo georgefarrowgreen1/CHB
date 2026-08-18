@@ -243,6 +243,31 @@ nsk('a double-barrelled first name survives', night_first_name('Mary-Anne Coe') 
 nsk('empty is empty', night_first_name('') === '');
 nsk('null is empty, never a warning', night_first_name(null) === '');
 
+// ── §13 THE APP'S OWN KEY ─────────────────────────────────────────────────
+// The route used to take APP_SECRET and nothing else — the key to ~20 cron
+// endpoints, including the one that CHARGES GUESTS' CARDS. Its own key now.
+echo "\n13) the key that opens this route\n";
+$long = str_repeat('a', 64);
+$master = str_repeat('m', 64);
+
+nsk('a scoped key opens it', night_key_kind($long, $long, $master) === 'scoped');
+nsk('the MASTER secret does NOT, once a scoped key exists',
+    night_key_kind($master, $long, $master) === '');
+nsk('...which is the whole point: the fix is not decoration',
+    night_key_kind($master, $long, $master) !== 'master');
+nsk('with NO scoped key the master still works, so nothing breaks on upgrade',
+    night_key_kind($master, '', $master) === 'master');
+nsk('a wrong key opens nothing either way',
+    night_key_kind('nope', $long, $master) === '' && night_key_kind('nope', '', $master) === '');
+nsk('an empty key opens nothing', night_key_kind('', $long, $master) === '');
+nsk('...even when nothing is configured at all', night_key_kind('', '', '') === '');
+// A SHORT stored value is not a key. Without this a one-character content row
+// would become the only accepted key AND lock the master out.
+nsk('a too-short stored key is ignored, not treated as the key',
+    night_key_kind('ab', 'ab', $master) === '' && night_key_kind($master, 'ab', $master) === 'master');
+nsk('a generated key is long and random',
+    strlen(night_key_make()) >= NIGHT_KEY_MIN && night_key_make() !== night_key_make());
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

@@ -90,6 +90,56 @@ const NIGHT_ACTS = [
 // short enough that the table never becomes an archive nobody asked for.
 const NIGHT_KEEP_DAYS = 14;
 
+// ── THE KEY THIS ROUTE ACCEPTS ───────────────────────────────────────────
+//
+// APP_SECRET IS THE WRONG KEY FOR A LAPTOP TO HOLD, and it was the only one
+// this route took. That secret opens roughly twenty cron endpoints, and the
+// list is not a list of small things: autopay-run.php COLLECTS INSTALMENTS
+// FROM GUESTS' CARDS, payments-due.php and the three nudge scripts EMAIL
+// EVERY GUEST, backup.php produces a full database dump, migrate.php runs
+// migrations. Most take it in a query string, so a leaked one is a URL.
+//
+// The Mac app's whole job is "read the enquiries waiting and post some
+// drafts". Giving it the key to charge cards to do that is a trade nobody
+// would make on purpose; it happened because the secret was already there.
+//
+// So the route takes its OWN key. Once one is set, APP_SECRET stops working
+// here — otherwise the hole is still open and the new key is decoration.
+// Until one is set, APP_SECRET still works, because a security fix that
+// silently stops the app running is a fix the owner reverses.
+//
+// Revoking is generating a new one. There is no list of devices because
+// there is one machine; when there are two, this is where that goes.
+const NIGHT_KEY_MIN = 24;
+
+// Which key opens the door, decided in one place so `brief` and `ingest`
+// cannot drift. Returns 'scoped' | 'master' | '' — the CALLER logs which,
+// because "it still used the master secret" is worth being able to see.
+function night_key_kind($given, $scoped, $master)
+{
+    $g = (string) $given;
+    if ($g === '') {
+        return '';
+    }
+    $s = (string) $scoped;
+    if (strlen($s) >= NIGHT_KEY_MIN) {
+        // A scoped key EXISTS, so it is the only one that opens this route.
+        return hash_equals($s, $g) ? 'scoped' : '';
+    }
+    $m = (string) $master;
+    if ($m === '') {
+        return '';
+    }
+    return hash_equals($m, $g) ? 'master' : '';
+}
+
+// A new key. 32 bytes of randomness, hex — long enough that the throttle is
+// belt and braces rather than the defence.
+function night_key_make()
+{
+    return bin2hex(random_bytes(32));
+}
+
 // How long an item of this kind is worth keeping. Unknown kinds get the
 // shortest window rather than the longest — an item nobody can describe
 // should not outlive the ones that can.

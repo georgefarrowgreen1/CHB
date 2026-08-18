@@ -19,7 +19,7 @@ Being exact about this, because it decides what you should trust.
 
 | | |
 |---|---|
-| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 227 checks, no network, no model, no Mac needed. |
+| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 237 checks, no network, no model, no Mac needed. |
 | **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock and power assertion) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
 
 That split is deliberate. The unverifiable parts are the ones where being wrong
@@ -47,8 +47,22 @@ are the ones with the tests.
    just drop a `.gguf` into the Models folder and it appears.
 
 3. **Overnight work switched on, on the website.** Manage → System check →
-   **Overnight work**. That page also shows the address to paste into
-   **Connection** here. The secret is the same one your daily-jobs address uses.
+   **Overnight work**. That page shows the address to paste into **Connection**
+   here, and — under **The app's key** — a button that gives this app its own.
+
+   **Use that button.** The app used to be told to paste in the site's
+   daily-jobs secret, and that one key also opens the scripts that collect
+   instalments from guests' cards, email every guest, run migrations and dump
+   the database. Nothing about drafting a reply needs any of that. The app's own
+   key opens the overnight queue and nothing else, and generating a new one
+   revokes the old immediately.
+
+   The key is shown **once**, when it is generated. It is encrypted at rest and
+   the site will not serve it back — generate another if it is lost.
+
+4. **An https address.** The app refuses a plain `http://` one, because the key
+   travels with every request and http sends it in the clear. `http://localhost`
+   is allowed, for a staging copy on the same machine.
 
 ---
 
@@ -214,7 +228,7 @@ src/core/
   updater.js         the fetch, the progress and the checksum
   config.js          settings on disk; the secret in the Keychain, never on disk
   api.js             the surface the window may call
-test/core-test.js    227 checks over all of the above
+test/core-test.js    237 checks over all of the above
 ```
 
 Settings, models and the night log live in
