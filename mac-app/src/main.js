@@ -136,10 +136,11 @@ function create() {
         minWidth: 760,
         minHeight: 520,
         title: 'Cottage Holidays Blakeney',
-        // The window draws its own title bar (see .titlebar in app.css), which
-        // is why the traffic lights are inset rather than sitting on a strip of
-        // chrome above the app's own.
+        // There is no title-bar band at all (macOS 26 pass): the sidebar is a
+        // floating glass slab and the traffic lights sit over its top-left
+        // corner, so they are placed to sit inside that slab's inset.
         titleBarStyle: 'hiddenInset',
+        trafficLightPosition: { x: 22, y: 22 },
         show: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),

@@ -19,12 +19,17 @@
      the main process, which is the only thing holding the secret. -->
 
 <div class="win">
-  <header class="titlebar">
-    <span class="tb-title"><b id="tbTitle">Tonight</b><span id="tbSub">Loading…</span></span>
-    <span class="tb-acts">
-      <button class="tbtn prime" type="button" id="runBtn">Run now</button>
-    </span>
-  </header>
+  <!-- macOS 26: NO TITLE-BAR BAND. The window is hiddenInset, so macOS puts
+       the traffic lights over the floating sidebar; a transparent strip keeps
+       the top edge draggable, and the one global action floats as a glass
+       capsule top-right. The screen's own large title replaces the bar's —
+       #tbTitle/#tbSub stay as visually-hidden live text so the screen name
+       and run progress are still announced (app.js writes them). -->
+  <div class="topdrag" aria-hidden="true"></div>
+  <div class="float-acts">
+    <button class="tbtn prime" type="button" id="runBtn">Run now</button>
+  </div>
+  <span class="vh" id="tbTitle" aria-live="polite"></span><span class="vh" id="tbSub" aria-live="polite"></span>
 
   <nav class="side" aria-label="Sections">
     <!-- THE IDENTITY. The site's own crown, and the business's name in
