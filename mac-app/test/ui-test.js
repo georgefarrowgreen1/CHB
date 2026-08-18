@@ -286,10 +286,10 @@ function fakeState(over) {
         await page.waitForTimeout(250);
         ok('a switched-off site is reported as off, in words', (await page.textContent('#connChip')).trim() === 'Off'
             && /switched off/.test(await page.textContent('#connSays')));
-        await page.evaluate(function () { window.__testAnswer = { ok: false, state: 'auth', say: 'The site refused the secret.' }; });
+        await page.evaluate(function () { window.__testAnswer = { ok: false, state: 'auth', say: 'The site refused this app\'s key.' }; });
         await page.click('#testBtn');
         await page.waitForTimeout(250);
-        ok('a refused secret is its own answer', (await page.textContent('#connChip')).trim() === 'Secret');
+        ok('a refused key is its own answer', (await page.textContent('#connChip')).trim() === 'Key refused');
         await page.fill('#secretIn', 'a-new-secret');
         await page.click('#saveSecret');
         await page.waitForTimeout(250);

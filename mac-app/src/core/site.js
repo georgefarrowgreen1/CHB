@@ -108,7 +108,7 @@ function makeSite(opts) {
         const code = (r.json && r.json.code) || '';
         const err = (r.json && r.json.error) || ('the site answered ' + r.status);
         if (r.status === 401) {
-            return { kind: 'auth', say: 'The site refused the secret. Check it in Connection.' };
+            return { kind: 'auth', say: 'The site refused this app\'s key. Connect again in Connection.' };
         }
         if (code === 'night_off') {
             return { kind: 'off', say: 'Overnight work is switched off on the site. Nothing was read or stored.' };

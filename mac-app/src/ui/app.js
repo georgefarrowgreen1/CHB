@@ -65,7 +65,7 @@
         $('modelsBadge').textContent = String(S.models.length);
         $('stateDot').className = 'dot' + (S.running ? ' busy' : !S.secretSet || !S.siteUrl ? ' off' : '');
         $('stateSays').textContent = S.running ? 'Working…'
-            : !S.siteUrl ? 'No site yet' : !S.secretSet ? 'No secret yet' : 'Ready';
+            : !S.siteUrl ? 'No site yet' : !S.secretSet ? 'Not connected' : 'Ready';
         $('runBtn').disabled = !!S.running;
         $('runBtn').textContent = S.running ? 'Working…' : 'Run now';
 
@@ -134,7 +134,10 @@
         if ($('siteUrl') !== document.activeElement) { $('siteUrl').value = S.siteUrl || ''; }
         $('secretSays').textContent = S.keychain
             ? (S.secretSet ? 'One is stored in the macOS Keychain. It is never shown, here or anywhere.'
-                : 'None stored yet. Paste the same secret your daily-jobs address uses.')
+                // NOT the daily-jobs secret any more — that one also opens the
+                // scripts that collect payments and email guests, and the site
+                // stopped accepting it here the moment a Mac was connected.
+                : 'None stored yet. Connect above, or paste a key the website generated.')
             : 'The Keychain is only available on macOS, so no secret can be stored on this machine.';
         $('nightsBox').innerHTML = S.nights.length
             ? S.nights.slice(0, 8).map(function (n) {
@@ -226,7 +229,7 @@
         }
         if (t.id === 'saveSecret') {
             var v = $('secretIn').value;
-            if (!v.trim()) { toast('Paste the secret first.'); return; }
+            if (!v.trim()) { toast('Paste the key first.'); return; }
             var sr = await window.hand.setSecret(v.trim());
             $('secretIn').value = '';
             toast(sr.ok ? 'Saved to the Keychain.' : sr.say);
@@ -238,7 +241,7 @@
             $('connChip').textContent = 'Testing…';
             var tr = await window.hand.testSite();
             $('connChip').className = 'chip ' + (tr.state === 'on' ? 'ok' : tr.state === 'off' ? 'warn' : 'bad');
-            $('connChip').textContent = tr.state === 'on' ? 'On' : tr.state === 'off' ? 'Off' : tr.state === 'auth' ? 'Secret' : 'Unreachable';
+            $('connChip').textContent = tr.state === 'on' ? 'On' : tr.state === 'off' ? 'Off' : tr.state === 'auth' ? 'Key refused' : 'Unreachable';
             $('connSays').textContent = tr.say;
             return;
         }

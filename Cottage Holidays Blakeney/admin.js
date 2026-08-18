@@ -21811,9 +21811,9 @@ async function loadDiagnostics() {
                      REFUSES to store anything, so a producer left running into a
                      switched-off queue is told rather than filling a table nobody
                      will look at. The address is shown because the machine at the
-                     other end needs one; the secret never is (it is the same
-                     APP_SECRET the cron URLs use, and a settings page that
-                     redisplays a secret hands it to whoever opens the page). -->
+                     other end needs one; no KEY ever is — pairing hands the app
+                     its own, and a settings page that redisplays a stored key
+                     hands it to whoever opens the page. -->
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Overnight work</div>
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A machine on your own network can work while nobody is asking &mdash; drafting replies, reading the week, answering the questions guests keep asking &mdash; and leave what it made on Today under &ldquo;Ready for you&rdquo;. Nothing it produces is ever sent, published or charged: you open it, use it or bin it.</p>
@@ -21871,9 +21871,12 @@ function refreshNightShiftState() {
     // Derived from where this page is actually served rather than typed out, or
     // a staging install would be told to post at production.
     const url = new URL('nightshift.php', window.location.href).href;
-    // WHICH key — this claimed the daily-jobs secret, false once one is generated.
+    // WHICH key. This used to name the daily-jobs secret as the way in — which
+    // is still what the route accepts while nothing else is on file, but it is
+    // the state this whole card exists to get you out of, so the line names the
+    // way IN rather than the fallback it is leaving behind.
     state.textContent = 'On — send work to ' + url
-        + (__nightKeySet ? ", using the app's own key." : ' with the same secret your daily-jobs address uses.');
+        + (__nightKeySet ? ", using the app's own key." : '. No Mac is connected yet — open Set up a Mac below.');
 }
 // WHERE THE MAC APP COMES FROM. The source and its build instructions always
 // exist; a packaged copy may not, so the row shows what is true rather than a
