@@ -43,6 +43,33 @@ function today(now) {
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
+// IS THIS AN ADDRESS WE MAY SEND A KEY TO?
+//
+// It took anything. Type http:// by mistake — or paste the wrong host — and
+// the app posted its key, in the clear, to whoever was listening or whoever
+// owned that host. The key is the thing that opens the site's queue, so the
+// address it travels to is part of the security boundary and belongs in the
+// same file as the calls that use it.
+//
+// localhost over http is allowed ON PURPOSE: a staging copy on the same
+// machine cannot be intercepted by anyone who is not already on it, and
+// refusing it would push people to test against production instead.
+function urlProblem(raw) {
+    const s = String(raw || '').trim();
+    if (!s) { return 'No address set yet.'; }
+    let u;
+    try {
+        u = new URL(s);
+    } catch (e) {
+        return 'That is not a web address.';
+    }
+    const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
+    if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) {
+        return 'The address must start with https:// — the key travels with every request, and http sends it in the clear.';
+    }
+    return '';
+}
+
 async function post(url, body, timeoutMs) {
     const ctl = new AbortController();
     const t = setTimeout(function () { ctl.abort(); }, timeoutMs || TIMEOUT_MS);
@@ -102,6 +129,10 @@ function makeSite(opts) {
             if (!url || !secret) {
                 return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
             }
+            // CHECKED AT USE, not only at save. The settings file can be edited
+            // by hand and was written by older builds that did not check.
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
             let r;
             try {
                 r = await send(url, { action: 'brief', secret: secret });
@@ -122,6 +153,8 @@ function makeSite(opts) {
             if (!url || !secret) {
                 return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
             }
+            const badUrl = urlProblem(url);
+            if (badUrl) { return { ok: false, refusal: { kind: 'setup', say: badUrl } }; }
             if (!Array.isArray(items) || !items.length) {
                 return { ok: true, stored: 0, skipped: [] };
             }
@@ -159,4 +192,4 @@ function makeSite(opts) {
     };
 }
 
-module.exports = { makeSite, makeRef, today, post };
+module.exports = { makeSite, makeRef, today, post, urlProblem };

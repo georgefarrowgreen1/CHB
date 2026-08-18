@@ -697,6 +697,36 @@ function fakeSite(handler) {
         });
         return bad.length === 0 || (console.log('      ' + bad.join(', ')), false);
     })());
+
+    // ── THE KEY'S ADDRESS ─────────────────────────────────────────────────
+    console.log('\n18) the key only travels somewhere safe');
+    ok('https is fine', site.urlProblem('https://example.test/nightshift.php') === '');
+    ok('http is REFUSED — the key travels with every request',
+        /https/.test(site.urlProblem('http://example.test/nightshift.php')));
+    ok('...and the refusal says why', /clear/.test(site.urlProblem('http://example.test/x.php')));
+    ok('http to localhost is allowed, for a staging copy on this machine',
+        site.urlProblem('http://localhost:8080/nightshift.php') === ''
+        && site.urlProblem('http://127.0.0.1:8080/nightshift.php') === '');
+    ok('nonsense is refused', site.urlProblem('not a url') !== '');
+    ok('empty is refused', site.urlProblem('') !== '');
+
+    // REFUSED AT USE, not only at save — a settings file can be hand-edited,
+    // and older builds wrote whatever was typed.
+    const httpSite = site.makeSite({ url: 'http://plain.test/nightshift.php', secret: 'k', post: async () => { throw new Error('should never be called'); } });
+    const hb = await httpSite.brief();
+    ok('brief refuses an http address without making the request', !hb.ok && /https/.test(hb.refusal.say));
+    const hi = await httpSite.ingest([{ ref: 'r', kind: 'note', title: 't', body: 'b' }]);
+    ok('...and so does ingest', !hi.ok && /https/.test(hi.refusal.say));
+
+    // And the settings write refuses it up front.
+    const apiTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-url-'));
+    const a2 = require('../src/core/api').makeApi({ dir: apiTmp });
+    const savedBad = await a2.saveConfig({ siteUrl: 'http://plain.test/nightshift.php' });
+    ok('saving an http address is refused at the keyboard', savedBad && savedBad.ok === false);
+    const savedOk = await a2.saveConfig({ siteUrl: 'https://plain.test/nightshift.php' });
+    ok('...and an https one is accepted', savedOk && savedOk.ok !== false);
+    try { fs.rmSync(apiTmp, { recursive: true, force: true }); } catch (e) {}
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

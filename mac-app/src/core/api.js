@@ -125,6 +125,12 @@ function makeApi(deps) {
         async saveConfig(patch) {
             const p = patch && typeof patch === 'object' ? patch : {};
             if (typeof p.siteUrl === 'string') {
+                // Told NOW, at the keyboard, rather than at two in the morning
+                // in a log nobody is reading.
+                const bad = siteMod.urlProblem(p.siteUrl);
+                if (p.siteUrl.trim() && bad) {
+                    return { ok: false, say: bad };
+                }
                 cfg.siteUrl = p.siteUrl.trim();
             }
             if (typeof p.engine === 'string' && (p.engine === '' || engineMod.ENGINES[p.engine])) {

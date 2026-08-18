@@ -85,7 +85,13 @@ if ($action === 'get_all') {
         // stored (sms_status()) and treats a blank field as "leave it alone", so
         // the secret has no route back out of the server. Contrast the WorldTides
         // key, which is round-tripped into its input on purpose.
-        if ($r['item_key'] === 'apikey-square-webhook' || $r['item_key'] === 'apikey-twilio-token') {
+        // The Mac app's own key joins them: it is SHOWN ONCE when it is
+        // generated and never again, so serving it back on every admin load
+        // would put it in the boot payload of every back-office page — which
+        // is precisely the "no route back out of the server" this list is for.
+        if ($r['item_key'] === 'apikey-square-webhook'
+            || $r['item_key'] === 'apikey-twilio-token'
+            || $r['item_key'] === 'apikey-nightshift') {
             continue;
         }
         $val = is_private_content_key($r['item_key']) ? decrypt_value($r['item_value']) : $r['item_value'];

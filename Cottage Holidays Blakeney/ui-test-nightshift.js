@@ -59,6 +59,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // above: §6 reads this one to prove the switch shows what is saved rather
   // than a default, so it stays on.
   let stored = { 'night-shift': '1' };
+  let keySet = false;
   const posts = [];
   const gets = [];
 
@@ -84,6 +85,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         }
       }
       if (file === 'content.php' && b.action === 'get_all') return json({ ok: true, content: stored });
+      if (file === 'nightshift.php' && b.action === 'key_state') { return json({ ok: true, set: keySet }); }
+      if (file === 'nightshift.php' && b.action === 'new_key') { keySet = true; return json({ ok: true, key: 'k'.repeat(64) }); }
       if (file === 'content.php' && b.action === 'set') { stored[b.key] = b.value; return json({ ok: true }); }
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [], threads: [] });
     }
@@ -399,6 +402,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!badHref.some((h) => /^javascript:/i.test(h)), 'a stored javascript: address never becomes a link', JSON.stringify(badHref));
   ok(badHref.some((h) => /releases\/latest\/download/.test(h)),
     '…and the row falls back to the release link, not to no download at all', JSON.stringify(badHref));
+
+  // ── 8. THE APP'S OWN KEY ────────────────────────────────────────────────
+  // It was told to use APP_SECRET, which opens ~20 cron endpoints including
+  // the one that collects instalments from guests' cards.
+  console.log("8. the app's own key");
+  const k0 = await page.evaluate(async () => {
+    await refreshNightKeyRow();
+    const h = document.getElementById('night-key-row');
+    return { painted: h.getClientRects().length > 0, text: h.textContent, btn: (h.querySelector('button') || {}).textContent };
+  });
+  ok(k0.painted, 'the key row is on the System check page');
+  ok(/daily-jobs secret/.test(k0.text), '…with no key set it SAYS what the app is using instead', k0.text.slice(0, 60));
+  ok(/collect payments|email guests/.test(k0.text), '…and what that secret also opens');
+  ok(/own key/i.test(k0.btn || ''), '…and offers one', k0.btn);
+
+  posts.length = 0;
+  // RECORD it — an alert stub that discards its message cannot prove the key
+  // was shown, which is the one thing this section is here for.
+  await page.evaluate(() => { window.__alerted = null; window.glassAlert = async (m) => { window.__alerted = m; return true; }; });
+  await page.evaluate(() => document.querySelector('[data-act="newNightKey"]').click());
+  await page.waitForTimeout(400);
+  ok(posts.some((p) => p.__url === 'nightshift.php' && p.action === 'new_key'), 'the button mints one');
+  const shown = await page.evaluate(() => window.__alerted || '');
+  ok(/k{40}/.test(String(shown)), '…and shows it once, to paste in', String(shown).slice(0, 40));
+  const k1 = await page.evaluate(() => document.getElementById('night-key-row').textContent);
+  ok(/A key is set/.test(k1), '…then the row says one is set');
+  ok(!/k{40}/.test(k1), '…and never redisplays it');
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 

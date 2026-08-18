@@ -21805,6 +21805,13 @@ async function loadDiagnostics() {
                          appears once a packaged copy is somewhere to link to.
                          A button that offers a download nothing serves would be
                          worse than saying so. -->
+                    <!-- THE APP'S OWN KEY. It used to be told to use APP_SECRET,
+                         which opens ~20 cron endpoints including the one that
+                         collects instalments from guests' cards — a key no
+                         laptop should hold to read enquiries. -->
+                    <div class="acr-cap" style="margin-top:18px;">The app&rsquo;s key</div>
+                    <div id="night-key-row" style="font-size:0.8rem;color:var(--text-muted);"></div>
+
                     <div class="acr-cap" style="margin-top:18px;">The Mac app</div>
                     <div id="night-app-get" style="font-size:0.8rem;color:var(--text-muted);"></div>
                 </div>
@@ -21818,6 +21825,7 @@ async function loadDiagnostics() {
     refreshBackupPassState();
     refreshNightShiftState();
     refreshNightAppGet();
+    refreshNightKeyRow();
     refreshHeroStatus();
 }
 // The overnight-queue switch. adminPrivateContent FIRST — an internal key is
@@ -21870,6 +21878,61 @@ function nightAppUrl() {
 function nightAppCustom() {
     return nightAppUrl() !== NIGHT_APP_LATEST;
 }
+// THE KEY, SHOWN ONCE. The state line says only WHETHER one is set — a key a
+// page redisplays is a key in every screenshot — and generating a second one
+// revokes the first, which is the whole revocation story for one machine.
+let __nightKeySet = false;
+async function refreshNightKeyRow() {
+    const host = document.getElementById('night-key-row');
+    if (!host) return;
+    let set = false;
+    try {
+        const r = await apiPost('nightshift.php', { action: 'key_state' });
+        set = !!(r && r.set);
+    } catch (e) { /* the row still renders; it just cannot claim either way */ }
+    __nightKeySet = set;
+    host.innerHTML =
+        '<p style="margin:0 0 10px;">' + (set
+            ? 'A key is set. The app uses it instead of your daily-jobs secret, so it can read the enquiries waiting and post drafts &mdash; and nothing else.'
+            : 'The app is still using your daily-jobs secret, which also opens the scripts that collect payments and email guests. Give it its own key instead.')
+        + '</p>'
+        + '<button class="btn-sm ' + (set ? 'btn-edit' : 'btn-accent') + '" ' + chbAttrs('newNightKey', CHB_SELF) + '>'
+        + (set ? 'Replace the key&hellip;' : 'Give the app its own key') + '</button>';
+}
+chbAct('newNightKey', async function () {
+    // Read from the state the row just rendered from, not by sniffing the
+    // button's own words: a DOM read here would break the moment the label
+    // changed — and an attribute selector naming an action, written in a
+    // source file, is itself picked up by smoke-test 6a-iii as if it were
+    // markup, so the scan reports an action that does not exist. (Which it
+    // just did, at me: a scan must not be able to see its own explanation.)
+    if (__nightKeySet && !(await glassConfirm(
+        'Generating a new key stops the old one working straight away, so the Mac app will need the new one pasted in before it can run again.',
+        'Generate a new key'))) {
+        return;
+    }
+    let r;
+    try {
+        r = await apiPost('nightshift.php', { action: 'new_key' });
+    } catch (e) {
+        glassAlert("Couldn't generate a key just now.");
+        return;
+    }
+    if (!r || !r.key) { glassAlert("Couldn't generate a key just now."); return; }
+    // SHOWN ONCE. There is deliberately no way back to it: the stored copy is
+    // encrypted and content.php refuses to serve it.
+    // ONE argument: glassAlert takes only a message, and the title I passed
+    // was being dropped on the floor. The dialog writes with innerText, so the
+    // blank line survives and an HTML entity would print itself — plain
+    // characters only.
+    await glassAlert(
+        "The app's key — paste this into the Mac app, under Connection.\n\n"
+        + r.key
+        + '\n\nIt will not be shown again. Generate another if it is lost.',
+    );
+    refreshNightKeyRow();
+});
+
 function refreshNightAppGet() {
     const host = document.getElementById('night-app-get');
     if (!host) return;
@@ -21913,6 +21976,7 @@ async function saveNightAppUrl(btn) {
     if (adminPrivateContent) adminPrivateContent['nightshift-app-url'] = url;
     siteContent['nightshift-app-url'] = url;
     refreshNightAppGet();
+    refreshNightKeyRow();
     toast(url ? 'Downloading from your own address now.' : 'Back to the newest build GitHub made.');
 }
 chbAct('saveNightShift', async function (el) {

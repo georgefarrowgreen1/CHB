@@ -2176,6 +2176,61 @@ it_check('…and still nothing stored', $n === 0, (string) $n);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'ingest', 'items' => [$nsItem()]]);
 it_check('an admin session is not a substitute for the secret', $r['code'] === 401, $r['raw']);
 
+// ── THE APP'S OWN KEY, END TO END ─────────────────────────────────────────
+// The route used to take APP_SECRET and nothing else — the key to ~20 cron
+// endpoints, one of which COLLECTS INSTALMENTS FROM GUESTS' CARDS. Driven
+// through the real endpoint, because the fallback and the lock-out are the two
+// halves that decide whether this is a fix or a decoration.
+$scoped = str_repeat('n', 64);
+$rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute(['apikey-nightshift']);
+it_check('with no scoped key, the master secret still works (nothing breaks on upgrade)',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [$nsItem()]])['code'] === 200);
+$rootDb->query('DELETE FROM night_items');
+
+// Mint one the way the owner's button does.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
+it_check('the owner can mint the app a key of its own', $r['code'] === 200 && !empty($r['json']['key']), $r['raw']);
+$minted = (string) ($r['json']['key'] ?? '');
+it_check('…and it is long and random', strlen($minted) >= 48, (string) strlen($minted));
+
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $minted, 'items' => [$nsItem()]]);
+it_check('the scoped key opens the route', $r['code'] === 200, $r['raw']);
+$rootDb->query('DELETE FROM night_items');
+
+// THE HALF THAT MATTERS. If the master still worked here the app would still be
+// holding the key to the payment scripts and this whole change would be theatre.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [$nsItem()]]);
+it_check('…and the MASTER secret no longer does', $r['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('…on the read route either', $r['code'] === 401, $r['raw']);
+$n = (int) $rootDb->query('SELECT COUNT(*) FROM night_items')->fetchColumn();
+it_check('…and the refused post stored nothing', $n === 0, (string) $n);
+
+// NEVER SERVED BACK. It is shown once, at the moment it is generated.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'key_state']);
+it_check('the owner can ask WHETHER a key is set', $r['code'] === 200 && ($r['json']['set'] ?? null) === true, $r['raw']);
+it_check('…and that answer never carries the key itself', strpos($r['raw'], $minted) === false);
+$r = http($admin, 'POST', '/content.php', ['action' => 'get_all']);
+it_check('…nor does the admin content payload', strpos($r['raw'], $minted) === false, substr($r['raw'], 0, 120));
+$r = http($guest, 'GET', '/content.php', []);
+it_check('…nor the public one', strpos($r['raw'], $minted) === false);
+
+// Encrypted at rest, like every other credential the site stores.
+$stored = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'apikey-nightshift'")->fetchColumn();
+it_check('the stored row is ciphertext, not the key', $stored !== '' && strpos($stored, $minted) === false);
+
+// GENERATING A NEW ONE REVOKES THE OLD — the whole revocation story.
+$r2 = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
+$second = (string) ($r2['json']['key'] ?? '');
+it_check('a second key is different from the first', $second !== '' && $second !== $minted);
+it_check('…and the first stops working immediately',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $minted, 'items' => [$nsItem()]])['code'] === 401);
+it_check('…while the new one works',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $second, 'items' => [$nsItem()]])['code'] === 200);
+$rootDb->query('DELETE FROM night_items');
+// Back to the master for the rest of this section.
+$rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute(['apikey-nightshift']);
+
 // A REAL NIGHT'S WORK.
 $refReply = 'it-reply-' . bin2hex(random_bytes(4));
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [

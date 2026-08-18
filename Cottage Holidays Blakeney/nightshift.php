@@ -37,7 +37,57 @@ function night_enabled()
     return content_value('night-shift') === '1';
 }
 
+// The key the app should be using. PRIVATE (apikey- prefix), so it is
+// encrypted at rest like every other credential the site stores.
+function night_scoped_key()
+{
+    return trim((string) content_value('apikey-nightshift'));
+}
+
+// THE ONE DOOR CHECK for both machine routes. Answers 401 and logs, or
+// returns the kind of key that opened it.
+function night_require_key($given, $what)
+{
+    $kind = night_key_kind($given, night_scoped_key(), defined('APP_SECRET') ? APP_SECRET : '');
+    if ($kind === '') {
+        log_activity('system', 'night.reject', 'Overnight queue: a ' . $what . ' arrived with the wrong key', [
+            'actor' => 'system',
+            'severity' => 'warn',
+        ]);
+        json_out(['error' => 'Not authorised.'], 401);
+    }
+    return $kind;
+}
+
 route_actions([
+    // ---- the owner mints the app's own key -------------------------
+    //
+    // SHOWN ONCE, on the way out of this call, and never again: the stored
+    // copy is encrypted at rest and the screen only ever reports WHETHER one
+    // is set. A key a page will redisplay is a key in every screenshot and
+    // every shoulder-surf, which is the rule the backup passphrase already
+    // follows.
+    //
+    // Generating a second one REVOKES the first, because the check compares
+    // against exactly one value. That is the whole revocation story and it is
+    // enough for one machine.
+    'new_key' => function ($in) {
+        require_admin();
+        $key = night_key_make();
+        content_set_secret('apikey-nightshift', $key);
+        log_activity('system', 'night.key', 'Overnight queue: a new app key was generated', [
+            'actor' => 'owner',
+            'severity' => 'info',
+        ]);
+        json_out(['ok' => true, 'key' => $key]);
+    },
+
+    // Is one set? Never what it is.
+    'key_state' => function ($in) {
+        require_admin();
+        json_out(['ok' => true, 'set' => strlen(night_scoped_key()) >= NIGHT_KEY_MIN]);
+    },
+
     // ---- the owner reads the queue ---------------------------------
     'list' => function ($in) {
         require_admin();
@@ -114,14 +164,7 @@ route_actions([
     // There is no verb in this handler. It reads, it caps, it answers.
     'brief' => function ($in) {
         rate_limit('night-brief', 40, 60);
-        $given = (string) ($in['secret'] ?? '');
-        if ($given === '' || !defined('APP_SECRET') || !hash_equals(APP_SECRET, $given)) {
-            log_activity('system', 'night.reject', 'Overnight queue: a brief was asked for with the wrong secret', [
-                'actor' => 'system',
-                'severity' => 'warn',
-            ]);
-            json_out(['error' => 'Not authorised.'], 401);
-        }
+        night_require_key((string) ($in['secret'] ?? ''), 'brief');
         // ONE SWITCH CLOSES BOTH DIRECTIONS. Off must not leave a readable
         // door open behind a queue nothing can be posted to.
         if (!night_enabled()) {
@@ -194,14 +237,7 @@ route_actions([
         // uses, so this cannot become a quieter way to guess APP_SECRET. A real
         // producer posts once or twice a night and never meets it.
         rate_limit('night-ingest', 20, 60);
-        $given = (string) ($in['secret'] ?? '');
-        if ($given === '' || !defined('APP_SECRET') || !hash_equals(APP_SECRET, $given)) {
-            log_activity('system', 'night.reject', 'Overnight queue: a POST arrived with the wrong secret', [
-                'actor' => 'system',
-                'severity' => 'warn',
-            ]);
-            json_out(['error' => 'Not authorised.'], 401);
-        }
+        night_require_key((string) ($in['secret'] ?? ''), 'POST');
         if (!night_enabled()) {
             json_out([
                 'error' => 'Overnight work is switched off in Manage → System check. Nothing was stored.',
