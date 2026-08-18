@@ -188,8 +188,20 @@ jobs:
           curl -sSL "https://github.com/ggml-org/llama.cpp/archive/refs/tags/$TAG.tar.gz" -o /tmp/llama.tgz
           mkdir -p /tmp/llama && tar -xzf /tmp/llama.tgz -C /tmp/llama --strip-components 1
           cd /tmp/llama
+          # NO TLS IN THE SERVER, and this is what the first build tripped on.
+          # llama.cpp's server vendors cpp-httplib, which builds WITH OpenSSL
+          # whenever CMake can find it. On an arm64 runner it finds an arm64
+          # OpenSSL: the arm64 slice linked fine and the x86_64 one died with a
+          # wall of undefined X509_* symbols "for architecture x86_64", because
+          # Homebrew has no x86_64 copy to cross-link against.
+          #
+          # Disabling the FIND rather than a llama.cpp option, because the flag
+          # names there have moved around between releases and this one is
+          # CMake's own. It costs nothing: this server listens on 127.0.0.1 for
+          # one local app, so https to it would be ceremony.
           COMMON="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF \
             -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_SERVER_SSL=OFF -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
             -DGGML_NATIVE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
           cmake -B b-arm64 $COMMON -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
@@ -197,6 +209,12 @@ jobs:
           cmake -B b-x64 $COMMON -DCMAKE_OSX_ARCHITECTURES=x86_64 \
             -DGGML_METAL=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
           cmake --build b-x64 --target llama-server -j "$(sysctl -n hw.ncpu)"
+          # NAME THE SLICE THAT IS MISSING. lipo's own error for an absent
+          # input is about a file path, which reads as a build-script bug
+          # rather than as "the x86_64 compile failed".
+          for a in arm64 x64; do
+            test -f "b-$a/bin/llama-server" || { echo "::error::the $a slice did not build"; exit 1; }
+          done
           mkdir -p "$GITHUB_WORKSPACE/mac-app/build/runner"
           lipo -create b-arm64/bin/llama-server b-x64/bin/llama-server \
             -output "$GITHUB_WORKSPACE/mac-app/build/runner/llama-server"

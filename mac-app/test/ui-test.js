@@ -129,6 +129,15 @@ function fakeState(over) {
                 },
                 downloadModel: async function (r) { window.__calls.push(['downloadModel', r]); return { ok: true, file: '/x/a.gguf' }; },
                 runNow: async function () { window.__calls.push(['runNow']); return { ok: true, night: { posted: 2 } }; },
+                // The updater. Absent entirely before this, which is why the
+                // version line was hidden in every test run and the menu check
+                // could not have passed: upCheck() returns early when the
+                // bridge has no checkUpdate.
+                checkUpdate: async function () {
+                    window.__calls.push(['checkUpdate']);
+                    return window.__updateAnswer
+                        || { ok: true, state: 'current', current: 'hand-build-20260818-0842', say: 'This is the newest version.' };
+                },
                 startEngine: async function () {
                     window.__calls.push(['startEngine']);
                     return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' };
@@ -137,6 +146,7 @@ function fakeState(over) {
                 startEngine: async function () { window.__calls.push(['startEngine']); return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' }; },
                 stopEngine: async function () { window.__calls.push(['stopEngine']); return { ok: true }; },
                 onProgress: function (fn) { window.__progress = fn; },
+                onOpenUpdates: function (fn) { window.__openUpdates = fn; },
                 onDownload: function () {},
                 onRan: function () {},
             };
@@ -384,6 +394,31 @@ function fakeState(over) {
         });
         ok('a job cannot be switched on before a model is chosen', noModelSave === 0, String(noModelSave));
         ok('…and it says why', await page.isVisible('#toast'));
+
+        // ── CHECK FOR UPDATES… FROM THE APP MENU ──────────────────────────
+        // The menu item is main.js's and unrunnable here; what IS drivable is
+        // what the window does when told. It must open the panel AND ask
+        // again — this app is meant to stay running for weeks, so the verdict
+        // from launch can be very old, and someone choosing the menu item is
+        // asking the question now.
+        const beforeMenu = await page.evaluate(function () {
+            return window.__calls.filter(function (c) { return c[0] === 'checkUpdate'; }).length;
+        });
+        const menu = await page.evaluate(async function () {
+            if (typeof window.__openUpdates !== 'function') { return { wired: false }; }
+            window.__openUpdates();
+            await new Promise(function (r) { setTimeout(r, 300); });
+            return {
+                wired: true,
+                shown: !document.getElementById('upScrim').hidden,
+                checks: window.__calls.filter(function (c) { return c[0] === 'checkUpdate'; }).length,
+            };
+        });
+        ok('the window listens for Check for Updates…', menu.wired);
+        ok('…and opens the update panel', menu.shown === true);
+        ok('…having asked again rather than showing the answer from launch',
+            menu.checks > beforeMenu, menu.checks + ' vs ' + beforeMenu);
+        await page.evaluate(function () { document.getElementById('upScrim').hidden = true; });
 
         // ── STARTING THE MODEL SERVER FROM THE WINDOW ──────────────────────
         // The affordance that closes the Terminal step. Everything about WHAT

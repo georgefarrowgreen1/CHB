@@ -1086,6 +1086,44 @@ function fakeSite(handler) {
         || fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).length !== png.length
         || !fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).equals(png));
 
+    // ── §21 CHECK FOR UPDATES… IN THE APP MENU ────────────────────────────
+    // The menu itself lives in main.js, which no suite can run — so this
+    // asserts the WIRING by source. Weaker than driving it, and said so: what
+    // it can prove is that the item exists, sits where a Mac app puts it, and
+    // is joined up end to end rather than pointing at nothing.
+    console.log('\n21) Check for Updates… is in the app menu');
+    const mainRaw = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+    // COMMENTS STRIPPED FIRST. Both the ordering check and the negative one
+    // failed against the COMMENT above the menu, which says "not
+    // `{ role: 'appMenu' }`" and names Check for Updates… four lines before
+    // the code does — a scan reading its own explanation, which is the trap
+    // CLAUDE.md records test-payrail hitting twice.
+    const mainSrc = mainRaw.split('\n').filter(function (l) { return !/^\s*\/\//.test(l); }).join('\n');
+    const preSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'preload.js'), 'utf8');
+    const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'app.js'), 'utf8');
+    ok('the item is there', /Check for Updates/.test(mainSrc));
+    // Apple's order: it goes directly under About, and role:'appMenu' cannot
+    // be inserted into — so the standard menu has to be written out, and the
+    // items it replaced must all still be present.
+    ok("...directly under About, where a Mac app puts it",
+        mainSrc.indexOf("role: 'about'") !== -1
+        && mainSrc.indexOf("role: 'about'") < mainSrc.indexOf('Check for Updates'));
+    ok('...and writing the menu out kept everything the role gave',
+        ["role: 'services'", "role: 'hide'", "role: 'hideOthers'", "role: 'unhide'", "role: 'quit'"]
+            .every(function (r) { return mainSrc.indexOf(r) !== -1; }));
+    ok('...and no longer leans on the role it replaced', !/role: 'appMenu'/.test(mainSrc));
+    // JOINED UP: menu → main → preload → window. A missing link anywhere makes
+    // the item do nothing, silently, which is the failure mode a source scan
+    // is actually good at catching.
+    ok('the click reaches the window', /hand:openUpdates/.test(mainSrc)
+        && /hand:openUpdates/.test(preSrc) && /onOpenUpdates/.test(preSrc)
+        && /onOpenUpdates/.test(uiSrc));
+    // CLOSING THE WINDOW DOES NOT QUIT THIS APP, so the menu is reachable with
+    // no window — and an item that quietly did nothing there would be the
+    // commonest way anyone ever met it.
+    ok('...and makes a window when there is not one', /function openUpdates\(\)[\s\S]{0,400}create\(\)/.test(mainSrc));
+    ok('...waiting for it to load before speaking to it', /did-finish-load/.test(mainSrc));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');
