@@ -1,3 +1,8 @@
 node_modules/
 dist/
 *.log
+
+# Written by the build (mac-app.yml) so the app knows its own release tag.
+# Never committed: a stale tag in the repo would make a dev build claim to be
+# a release, and the updater compares against exactly this value.
+src/release.json

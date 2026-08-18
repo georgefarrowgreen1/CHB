@@ -21,6 +21,16 @@ contextBridge.exposeInMainWorld('hand', {
     modelFiles: function (id) { return ipcRenderer.invoke('hand:modelFiles', id); },
     downloadModel: function (row) { return ipcRenderer.invoke('hand:downloadModel', row); },
     runNow: function () { return ipcRenderer.invoke('hand:runNow'); },
+    // The updater. `openFile` takes only the path this app downloaded AND
+    // verified — main.js checks it against what it last wrote, so the window
+    // cannot use this to open anything of its choosing.
+    checkUpdate: function () { return ipcRenderer.invoke('hand:checkUpdate'); },
+    downloadUpdate: function (v) { return ipcRenderer.invoke('hand:downloadUpdate', v); },
+    openFile: function (f) { return ipcRenderer.invoke('hand:openFile', f); },
+    openUrl: function (u) { return ipcRenderer.invoke('hand:openUrl', u); },
+    onUpdateProgress: function (fn) {
+        ipcRenderer.on('hand:updateProgress', function (e, p) { try { fn(p); } catch (err) { /* the window's problem */ } });
+    },
     // One-way, main → window: progress while a run is working, and progress
     // while a model downloads. The callback gets the payload and nothing else.
     onProgress: function (fn) {

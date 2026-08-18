@@ -20,6 +20,7 @@
 const { app, BrowserWindow, Menu, shell, ipcMain, powerSaveBlocker, dialog } = require('electron');
 const path = require('path');
 const { makeApi } = require('./core/api');
+const { makeUpdater } = require('./core/updater');
 
 let win = null;
 let api = null;
@@ -205,6 +206,79 @@ function wire() {
         });
     });
     ipcMain.handle('hand:runNow', function () { return runNow(); });
+
+    // ── THE BUILT-IN UPDATER ──────────────────────────────────────────────
+    // Checking and downloading happen HERE, in the main process: the window has
+    // connect-src 'none' and no way to reach the network at all, which is the
+    // point of that CSP. It gets a verdict and a progress number, nothing else.
+    //
+    // The last step is `shell.openPath`, which mounts the disk image and stops.
+    // This app does NOT replace itself — see the header of core/update.js: with
+    // no code signature the only guard on a downloaded binary is a checksum
+    // served by the same host as the binary, so installing unattended would
+    // trust one server completely. Mounting it and letting a person drag it
+    // across is the honest end of the chain.
+    ipcMain.handle('hand:checkUpdate', function () { return updater().check(); });
+    ipcMain.handle('hand:downloadUpdate', function (e, v) {
+        return updater().download(v, function (p) {
+            if (win && !win.isDestroyed()) { win.webContents.send('hand:updateProgress', p); }
+        });
+    });
+    ipcMain.handle('hand:openFile', function (e, f) {
+        // Only ever the file this app just downloaded and verified — never an
+        // arbitrary path from the window.
+        if (!lastVerified || String(f) !== lastVerified) {
+            return { ok: false, say: 'That file was not one this app downloaded.' };
+        }
+        shell.openPath(lastVerified);
+        return { ok: true };
+    });
+    ipcMain.handle('hand:openUrl', function (e, u) {
+        const s = String(u || '');
+        if (!/^https:\/\//i.test(s)) { return { ok: false, say: 'Only https addresses are opened.' }; }
+        shell.openExternal(s);
+        return { ok: true };
+    });
+}
+
+// One updater, built lazily so it reads the version the app is actually
+// running rather than one captured at load.
+let lastVerified = '';
+let _upd = null;
+function updater() {
+    if (!_upd) {
+        _upd = makeUpdater({ currentVersion: appVersion() });
+        const raw = _upd.download.bind(_upd);
+        // Remember what was verified, so openFile cannot be pointed anywhere else.
+        _upd.download = async function (v, onp) {
+            const r = await raw(v, onp);
+            if (r && r.ok && r.file) { lastVerified = r.file; }
+            return r;
+        };
+    }
+    return _upd;
+}
+
+// The version this copy reports. app.getVersion() reads the packaged
+// Info.plist; the RELEASE tag is what the feed compares against, and CI writes
+// it into the bundle at build time (see mac-app.yml). Falling back to
+// package.json's version keeps `npm start` from claiming to be up to date.
+function appVersion() {
+    // THE RELEASE TAG, WRITTEN IN AT BUILD TIME. This matters more than it
+    // looks: package.json's version is a semver ("1.0.0") while every tag CI
+    // publishes is dated ("hand-build-20260818-0842"), and update.js ranks a
+    // dated build above any semver — so an app that reported its package
+    // version would announce an update for ever, including the minute after
+    // you installed it. mac-app.yml writes release.json before packaging.
+    try {
+        const rel = require('./release.json');
+        if (rel && rel.tag) { return String(rel.tag); }
+    } catch (e) { /* running from source: fall through */ }
+    try {
+        return String(process.env.CHB_RELEASE_TAG || app.getVersion() || '');
+    } catch (e) {
+        return '';
+    }
 }
 
 app.whenReady().then(function () {

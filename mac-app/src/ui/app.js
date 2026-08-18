@@ -323,7 +323,111 @@
         });
     }
 
+    // ── THE UPDATER ───────────────────────────────────────────────────────
+    // The window never touches the network (connect-src 'none'); it asks the
+    // main process for a verdict and draws it. Three states have to look
+    // different, because collapsing them is how "couldn't check" ends up
+    // reading as "you are up to date":
+    //   current   — say so, quietly
+    //   available — offer the download, with its size
+    //   manual/unknown — say what is wrong, and never offer a file this app
+    //                    has not verified
+    var UP = null;      // the last verdict
+    var upFile = '';    // the verified path, once downloaded
+
+    function upSet(txt, isUpdate) {
+        $('verText').textContent = txt;
+        $('verBtn').className = 'side-ver' + (isUpdate ? ' has-update' : '');
+    }
+
+    function upPaint() {
+        var v = UP || {};
+        $('upNow').textContent = v.current || 'unknown';
+        $('upSays').textContent = v.say || '';
+        var chipEl = $('upChip');
+        var get = $('upGet');
+        var note = $('upNote');
+        get.hidden = true;
+        note.textContent = '';
+        if (v.state === 'current') {
+            chipEl.className = 'chip ok'; chipEl.textContent = 'Up to date';
+        } else if (v.state === 'available') {
+            chipEl.className = 'chip warn'; chipEl.textContent = v.version + ' available';
+            get.hidden = false;
+            get.textContent = upFile ? 'Open the installer' : 'Download' + (v.size ? ' (' + sizeWords(v.size) + ')' : '');
+            note.textContent = upFile
+                ? 'Downloaded and checked. Opening it mounts the disk image \u2014 drag the app to Applications, replacing the old one, then quit and reopen it.'
+                : 'It will be checked against its published checksum before anything opens.';
+        } else if (v.state === 'manual') {
+            chipEl.className = 'chip warn'; chipEl.textContent = v.version + ' available';
+            note.textContent = 'This app only installs downloads it can verify, so open this one in a browser instead.';
+            get.hidden = false; get.textContent = 'Open in a browser';
+        } else {
+            chipEl.className = 'chip n'; chipEl.textContent = 'Unknown';
+        }
+    }
+
+    // Mirrors core/update.js's sizeWords. Small enough that sharing it across
+    // the bridge would cost more than restating it.
+    function sizeWords(b) {
+        var n = Number(b) || 0;
+        if (n <= 0) { return ''; }
+        if (n < 1048576) { return Math.round(n / 1024) + ' KB'; }
+        return (n / 1048576).toFixed(0) + ' MB';
+    }
+
+    async function upCheck(loud) {
+        if (!window.hand.checkUpdate) { upSet('', false); $('verBtn').hidden = true; return; }
+        if (loud) { upSet('Checking\u2026', false); }
+        UP = await window.hand.checkUpdate();
+        upFile = '';
+        if (UP.state === 'current') { upSet('Up to date \u00b7 ' + (UP.current || ''), false); }
+        // SHORT, because the rail is 228px and a build tag is 24 characters —
+        // it wrapped to two ragged lines. The version itself is in the sheet,
+        // which is where you go to act on it.
+        else if (UP.state === 'available' || UP.state === 'manual') { upSet('Update available', true); }
+        else { upSet("Couldn't check for updates", false); }
+        if (!$('upScrim').hidden) { upPaint(); }
+    }
+
+    $('verBtn').addEventListener('click', function () {
+        $('upScrim').hidden = false;
+        upPaint();
+    });
+    $('upClose').addEventListener('click', function () { $('upScrim').hidden = true; });
+    $('upCheck').addEventListener('click', async function () {
+        $('upChip').textContent = 'Checking';
+        await upCheck(true);
+        upPaint();
+    });
+    $('upGet').addEventListener('click', async function () {
+        if (!UP) { return; }
+        if (UP.state === 'manual') { window.hand.openUrl(UP.url); return; }
+        if (upFile) { window.hand.openFile(upFile); return; }
+        $('upGet').disabled = true;
+        $('upProg').hidden = false;
+        var r = await window.hand.downloadUpdate(UP);
+        $('upGet').disabled = false;
+        $('upProg').hidden = true;
+        if (!r || !r.ok) {
+            $('upNote').textContent = (r && r.say) || 'The download did not finish.';
+            return;
+        }
+        upFile = r.file;
+        upPaint();
+    });
+    if (window.hand.onUpdateProgress) {
+        window.hand.onUpdateProgress(function (p) {
+            if (!p || !p.total) { return; }
+            $('upBar').style.width = Math.round((p.got / p.total) * 100) + '%';
+        });
+    }
+
+    // The main process tells us when a run makes progress, so the window says
+    // something during the forty seconds a draft takes.
+
     go(0);
     refresh();
+    upCheck(false);
     setInterval(function () { if (!S || !S.running) { refresh(); } }, 30000);
 })();

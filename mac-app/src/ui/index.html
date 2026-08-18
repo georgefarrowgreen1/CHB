@@ -2,7 +2,13 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<!-- font-src 'self' IS LOAD-BEARING. Without it default-src 'none' blocks the
+     two woff2 files this app ships, and the window silently falls back to the
+     system faces — which looks almost right, because the serif fallback is
+     still a serif, so it shipped unnoticed until a console error was read.
+     The CSP is otherwise as tight as a local page can be: connect-src 'none'
+     means this document cannot reach the network at all. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Cottage Holidays Blakeney</title>
 <link rel="stylesheet" href="app.css">
 </head>
@@ -38,6 +44,13 @@
     <div class="sgroup">Site</div>
     <button class="snav" type="button" data-v="4">Connection</button>
     <div class="side-foot"><span class="dot" id="stateDot"></span><span id="stateSays">Starting…</span></div>
+    <!-- THE APP'S OWN VERSION lives where app-level state already lives, rather
+         than on Tonight (which is about tonight's run) or Runner (the engines).
+         It is a button because it opens the update sheet; it says "up to date"
+         or "vX is available" and never nothing. -->
+    <button class="side-ver" type="button" id="verBtn" aria-live="polite">
+      <span id="verText">Checking for updates…</span>
+    </button>
   </nav>
 
   <main class="body">
@@ -94,6 +107,30 @@
     </section>
   </main>
 
+  <!-- the update sheet. NO inline style attributes: this page's CSP is
+       style-src 'self', which blocks a style="" attribute the same way it
+       blocks an inline <style> — the classes live in app.css. -->
+  <div class="scrim" id="upScrim" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="upTitle">
+      <div class="sheet-h">
+        <b id="upTitle">This app</b>
+        <p class="tiny" id="upSays">Checking&hellip;</p>
+      </div>
+      <div class="sheet-b up-body">
+        <div class="box"><div class="row">
+          <div class="main"><b>Installed</b><span id="upNow">&mdash;</span></div>
+          <div class="rail"><span class="chip n" id="upChip">Checking</span></div>
+        </div></div>
+        <p class="tiny up-note" id="upNote"></p>
+        <div class="prog up-prog" id="upProg" hidden><i id="upBar"></i></div>
+      </div>
+      <div class="sheet-f">
+        <button class="tbtn" type="button" id="upClose">Close</button>
+        <button class="tbtn" type="button" id="upCheck">Check again</button>
+        <button class="tbtn prime" type="button" id="upGet" hidden>Download</button>
+      </div>
+    </div>
+  </div>
   <!-- the Add model sheet -->
   <div class="scrim" id="scrim" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
