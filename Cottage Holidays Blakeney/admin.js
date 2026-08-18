@@ -21805,10 +21805,7 @@ async function loadDiagnostics() {
                          appears once a packaged copy is somewhere to link to.
                          A button that offers a download nothing serves would be
                          worse than saying so. -->
-                    <!-- THE APP'S OWN KEY. It used to be told to use APP_SECRET,
-                         which opens ~20 cron endpoints including the one that
-                         collects instalments from guests' cards — a key no
-                         laptop should hold to read enquiries. -->
+                    <!-- The app's own key — see nightshift-lib.php. -->
                     <div class="acr-cap" style="margin-top:18px;">The app&rsquo;s key</div>
                     <div id="night-key-row" style="font-size:0.8rem;color:var(--text-muted);"></div>
 
@@ -21878,9 +21875,8 @@ function nightAppUrl() {
 function nightAppCustom() {
     return nightAppUrl() !== NIGHT_APP_LATEST;
 }
-// THE KEY, SHOWN ONCE. The state line says only WHETHER one is set — a key a
-// page redisplays is a key in every screenshot — and generating a second one
-// revokes the first, which is the whole revocation story for one machine.
+// THE KEY, SHOWN ONCE — the row reports only WHETHER one is set, and a new one
+// revokes the old. See nightshift-lib.php for why the app has its own at all.
 let __nightKeySet = false;
 async function refreshNightKeyRow() {
     const host = document.getElementById('night-key-row');
@@ -21900,12 +21896,9 @@ async function refreshNightKeyRow() {
         + (set ? 'Replace the key&hellip;' : 'Give the app its own key') + '</button>';
 }
 chbAct('newNightKey', async function () {
-    // Read from the state the row just rendered from, not by sniffing the
-    // button's own words: a DOM read here would break the moment the label
-    // changed — and an attribute selector naming an action, written in a
-    // source file, is itself picked up by smoke-test 6a-iii as if it were
-    // markup, so the scan reports an action that does not exist. (Which it
-    // just did, at me: a scan must not be able to see its own explanation.)
+    // From the state the row rendered from, not by sniffing the button: an
+    // attribute selector naming an action, written in source, is read by
+    // smoke-test 6a-iii as markup and reported as an action that does not exist.
     if (__nightKeySet && !(await glassConfirm(
         'Generating a new key stops the old one working straight away, so the Mac app will need the new one pasted in before it can run again.',
         'Generate a new key'))) {
@@ -21919,12 +21912,10 @@ chbAct('newNightKey', async function () {
         return;
     }
     if (!r || !r.key) { glassAlert("Couldn't generate a key just now."); return; }
-    // SHOWN ONCE. There is deliberately no way back to it: the stored copy is
-    // encrypted and content.php refuses to serve it.
-    // ONE argument: glassAlert takes only a message, and the title I passed
-    // was being dropped on the floor. The dialog writes with innerText, so the
-    // blank line survives and an HTML entity would print itself — plain
-    // characters only.
+    // No way back to it: the stored copy is encrypted and content.php will
+    // not serve it.
+    // glassAlert takes ONE argument, and writes with innerText — so the blank
+    // lines survive and an HTML entity would print itself. Plain text only.
     await glassAlert(
         "The app's key — paste this into the Mac app, under Connection.\n\n"
         + r.key
