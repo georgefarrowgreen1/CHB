@@ -23,20 +23,15 @@ const { execFileSync } = require('child_process');
 
 const SERVICE = 'Cottage Holidays Blakeney';
 const ACCOUNT = 'site-secret';
-// What the app was called before it took the business's name. A Mac that ran
-// the first build has its settings, its models and its night log under here —
-// several GB of downloaded model in some cases — so the rename READS the old
-// folder when the new one does not exist yet rather than starting empty and
-// silently abandoning it.
-const WAS = 'Blakeney Hand';
+// NB the app was briefly called "Blakeney Hand", and this file carried a
+// fallback that read that folder and that Keychain entry when the new ones were
+// absent. It is gone: the only build ever published under the old name was
+// never installed, so the state it protected cannot exist, and a compatibility
+// path for an impossible state is code nothing will ever exercise or check.
 
 function appDir() {
     if (process.platform === 'darwin') {
-        const lib = path.join(os.homedir(), 'Library', 'Application Support');
-        const now = path.join(lib, SERVICE);
-        const old = path.join(lib, WAS);
-        if (!fs.existsSync(now) && fs.existsSync(old)) { return old; }
-        return now;
+        return path.join(os.homedir(), 'Library', 'Application Support', SERVICE);
     }
     // Not a Mac: only the test suite and development ever get here.
     return path.join(os.homedir(), '.cottage-holidays-blakeney');
@@ -133,15 +128,7 @@ function makeSecrets(opts) {
             try {
                 return run(['find-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w']).trim();
             } catch (e) {
-                // The rename moved the Keychain service too, so a Mac that ran
-                // the first build has its secret filed under the old name. Read
-                // it rather than reporting "no secret set" at someone who set
-                // one — the next `set` writes it under the new name.
-                try {
-                    return run(['find-generic-password', '-s', WAS, '-a', ACCOUNT, '-w']).trim();
-                } catch (e2) {
-                    return '';
-                }
+                return '';
             }
         },
         set(value) {
