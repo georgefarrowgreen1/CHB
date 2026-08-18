@@ -73,6 +73,17 @@ jobs:
             TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # AND A BUILD NUMBER FOR THE ABOUT PANEL. macOS reads its version from
+          # Info.plist, which took package.json's semver — so About said
+          # "Version 1.0.0 (1.0.0)" on every build ever made, while the sidebar
+          # said hand-build-20260818-0842. The one place someone looks to answer
+          # "which build am I on" was the one place that could not say.
+          #
+          # Dotted digits, not the tag itself: CFBundleVersion is specified as
+          # numbers and periods, and a string with letters and hyphens in it is
+          # asking for trouble at notarisation. Same digits as the tag, so the
+          # two are recognisably the same build.
+          echo "build=$(date -u +%Y%m%d.%H%M)" >> "$GITHUB_OUTPUT"
           echo "This build is $TAG"
 
       - name: Install
@@ -169,9 +180,14 @@ jobs:
       # ~12 minutes of compiling, so the finished universal binary is cached by
       # the llama.cpp tag: a rebuild of THIS app reuses it, and a new llama.cpp
       # release naturally misses and rebuilds.
+      # RESTORE and SAVE separately, because actions/cache only writes its
+      # cache when the JOB succeeds — and this compile is followed by packaging,
+      # which failed twice. Each failure therefore threw away a perfectly good
+      # binary and paid the ~7 minutes again on the next attempt. Exactly the
+      # loop the webkit job had in ci.yml, met a second time in the same day.
       - name: A llama-server we built before?
         id: llcache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           # The binary AND its licence — llama.cpp is MIT, so the notice ships
           # beside the copy of it we distribute, cache hit or miss alike.
@@ -228,6 +244,17 @@ jobs:
             -output "$GITHUB_WORKSPACE/mac-app/build/runner/llama-server"
           cp LICENSE "$GITHUB_WORKSPACE/mac-app/build/runner/LICENSE-llama.cpp.txt"
 
+      # Saved as soon as it exists, not at the end of the job. `if: always()`
+      # so a later failure cannot cost the compile a second time.
+      - name: Keep it for next time
+        if: always() && steps.llcache.outputs.cache-hit != 'true' && hashFiles('mac-app/build/runner/llama-server') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            mac-app/build/runner/llama-server
+            mac-app/build/runner/LICENSE-llama.cpp.txt
+          key: llama-server-universal-${{ steps.llver.outputs.tag }}
+
       # PROVED, NOT TRUSTED — this cannot be tested from the repo's Linux CI,
       # so the build that makes it is the gate: both architectures really in
       # the file, and the arm64 slice actually launches on this runner.
@@ -267,7 +294,7 @@ jobs:
           else
             echo "Unsigned build — it will need Open Anyway on first launch."
           fi
-          npx electron-builder --mac --universal $EXTRA
+          npx electron-builder --mac --universal $EXTRA -c.buildVersion="${{ steps.ver.outputs.build }}"
           ls -lh dist/*.dmg
 
       - name: What was built

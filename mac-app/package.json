@@ -42,6 +42,7 @@
     ],
     "mac": {
       "category": "public.app-category.business",
+      "x64ArchFiles": "**/runner/llama-server",
       "target": [
         {
           "target": "dmg",

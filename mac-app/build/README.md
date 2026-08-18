@@ -29,3 +29,27 @@ enough out to be the continuous curve rather than an arc.
 
 `electron-builder` converts it to an `.icns` at build time; nothing else needs
 changing when it is regenerated.
+
+## `runner/` — the bundled model server
+
+CI drops a universal `llama-server` here before packaging (see
+`.github/workflows/mac-app.yml`), and `package.json`'s `build.extraResources`
+puts it at `Contents/Resources/runner/`.
+
+**`build.mac.x64ArchFiles` must name it.** A `--universal` build packages twice
+and merges the two bundles, and `@electron/universal` refuses a Mach-O that is
+*identical* in both — normally that means a per-arch binary was copied by
+mistake. Ours is a lipo'd fat binary that is rightly the same in both, so it is
+named there and copied through rather than merged again. Without it:
+
+    ⨯ Detected file "Contents/Resources/runner/llama-server" that's the same in
+      both x64 and arm64 builds and not covered by the x64ArchFiles rule
+
+That explanation lives **here** and not beside the setting, because it cannot:
+`package.json` has no comment syntax, and electron-builder validates its config
+against a schema that rejects unknown properties. A `"_comment_…"` key next to
+`x64ArchFiles` cost a whole build with
+
+    ⨯ configuration.mac has an unknown property '_comment_x64ArchFiles'
+
+which is why `test/core-test.js` §22 now forbids one.

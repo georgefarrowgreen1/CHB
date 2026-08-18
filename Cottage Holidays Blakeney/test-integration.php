@@ -2576,6 +2576,26 @@ it_check('the waiting enquiry is in the brief', $mine !== null, $r['raw']);
 it_check('…with the guest named and a first name worked out',
     $mine && $mine['name'] === 'Rachel Pemberton' && $mine['first'] === 'Rachel', json_encode($mine));
 it_check('…and their message', $mine && strpos($mine['message'], 'take dogs') !== false, json_encode($mine));
+// THE COTTAGE IS NAMED, AND "Array" IS NOT A NAME.
+//
+// Every other field here was checked and this one was not — so every draft
+// ever written opened "Array is a lovely cottage", reported from a phone on
+// the first night this ran. prop_display() returns an ARRAY (name, accent,
+// slug) and the call site cast it with `(string)`, which in PHP yields the
+// literal word "Array": the cast silenced the conversion into something that
+// LOOKS like a name instead of letting it be a type error.
+//
+// The pure composer was gated and the CALL SITE was not, which is the
+// helper-tested-alone trap. Asserted against the properties row rather than a
+// literal, so renaming a cottage in Settings cannot make this fail.
+$expectName = (string) $rootDb->query(
+    "SELECT name FROM properties WHERE prop_key = " . $rootDb->quote($propKey),
+)->fetchColumn();
+it_check('the cottage is NAMED, not stringified into "Array"',
+    $mine && $mine['cottage'] !== 'Array' && $mine['cottage'] !== '', json_encode($mine['cottage'] ?? null));
+it_check('…and it is the name the properties row carries',
+    $mine && ($expectName === '' || $mine['cottage'] === $expectName),
+    json_encode([$mine['cottage'] ?? null, $expectName]));
 // THE FIGURES TRAVEL WITH THE BRIEF. This is the property that makes "it never
 // states money" enforceable: a producer is quoting, not calculating.
 it_check('the SITE quotes the price, already formatted',
