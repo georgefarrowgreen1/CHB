@@ -128,8 +128,10 @@ async function runReplyJob(ctx) {
     }
     say(enquiries.length + ' enquir' + (enquiries.length === 1 ? 'y' : 'ies') + ' waiting');
 
-    for (let i = 0; i < enquiries.length; i++) {
-        const f = enquiries[i];
+    const cleaned = saneRows(enquiries, saneEnquiry);
+    droppedLine(say, cleaned.dropped);
+    for (let i = 0; i < cleaned.rows.length; i++) {
+        const f = cleaned.rows[i];
         const who = (f.first || f.name || 'someone');
 
         // WHAT IS NOT WORTH DRAFTING. Skipping is a first-class outcome and it
@@ -147,7 +149,7 @@ async function runReplyJob(ctx) {
         const facts = Object.assign({}, f, { party: guard.partyWords(f.adults, f.children) });
         const prompt = guard.buildPrompt(facts, c.host);
         if (c.onProgress) {
-            try { c.onProgress({ i: i, of: enquiries.length, who: who }); } catch (e) { /* display only */ }
+            try { c.onProgress({ i: i, of: cleaned.rows.length, who: who }); } catch (e) { /* display only */ }
         }
         const r = await c.engine.write(prompt, c.model);
         if (!r.ok) {
@@ -209,6 +211,87 @@ function stamp() {
     return p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
+// ── THE WIRE IS NOT TRUSTED ──────────────────────────────────────────────
+// site.js checks the CONTAINERS (an array where an array belongs); these
+// check the FIELDS, because a field that is not the string the contract
+// promises reaches the model — and the owner's Ready-for-you card — as
+// "undefined" or "[object Object]": the cottage-name bug's own class, seen
+// from this side of the wire ("Array is a lovely cottage" shipped because a
+// cast silenced a type error into a plausible word). The site now carries
+// the same guard (night_str in nightshift-lib.php); this half survives a
+// stale site, a mangled body, or the next bug over there.
+// A string stays (trimmed), a finite number becomes one, all else is ''.
+function sane(v) {
+    if (typeof v === 'string') { return v.trim(); }
+    if (typeof v === 'number' && isFinite(v)) { return String(v); }
+    return '';
+}
+function saneNum(v, fallback) {
+    return (typeof v === 'number' && isFinite(v)) ? v : fallback;
+}
+function saneQa(list) {
+    return (Array.isArray(list) ? list : []).map(function (f) {
+        return { q: sane(f && f.q), a: sane(f && f.a) };
+    }).filter(function (f) { return f.q && f.a; });
+}
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
+// One shape each. A row that loses its LOAD-BEARING field — a date to speak,
+// a question to answer, a figure to quote — returns null and is DROPPED: a
+// dated note about an undated arrival is wrong, not incomplete. The drop is
+// COUNTED so the run can say so out loud.
+function saneArrival(a) {
+    const date = sane(a && a.date);
+    if (!ISO_DAY.test(date)) { return null; }
+    return { first: sane(a.first), cottage: sane(a.cottage), date: date,
+        nights: saneNum(a.nights, 0), adults: saneNum(a.adults, 0),
+        children: saneNum(a.children, 0), due: sane(a.due) };
+}
+function saneDeparture(d) {
+    const date = sane(d && d.date);
+    if (!ISO_DAY.test(date)) { return null; }
+    return { first: sane(d.first), cottage: sane(d.cottage), date: date };
+}
+function saneGap(g) {
+    const from = sane(g && g.from);
+    const to = sane(g && g.to);
+    const rate = sane(g && g.rate);
+    const offer = sane(g && g.offer);
+    if (!ISO_DAY.test(from) || !ISO_DAY.test(to) || !rate || !offer) { return null; }
+    return { cottage: sane(g.cottage), from: from, to: to,
+        nights: saneNum(g.nights, 0), rate: rate, offer: offer };
+}
+function saneQuestion(q) {
+    const text = sane(q && q.q);
+    if (!text) { return null; }
+    return { q: text, asked: saneNum(q.asked, 1) > 0 ? saneNum(q.asked, 1) : 1,
+        prop: sane(q.prop), cottage: sane(q.cottage), facts: saneQa(q.facts) };
+}
+function saneEnquiry(e) {
+    const id = saneNum(e && e.id, 0);
+    if (id <= 0) { return null; } // no id → no ref → nothing exactly-once can hold
+    return { id: id, name: sane(e.name), first: sane(e.first), cottage: sane(e.cottage),
+        prop: sane(e.prop), received: sane(e.received),
+        check_in: sane(e.check_in), check_out: sane(e.check_out),
+        adults: saneNum(e.adults, 0), children: saneNum(e.children, 0),
+        message: sane(e.message),
+        // true/false/null ONLY — anything else must read as "could not tell",
+        // never as a yes (the dates_free rule, held on this side too).
+        dates_free: e.dates_free === true ? true : (e.dates_free === false ? false : null),
+        nights: saneNum(e.nights, 0) || null,
+        quote: sane(e.quote), deposit: sane(e.deposit), facts: saneQa(e.facts) };
+}
+function saneRows(list, fn) {
+    const src = Array.isArray(list) ? list : [];
+    const rows = src.map(fn).filter(Boolean);
+    return { rows: rows, dropped: src.length - rows.length };
+}
+// The one sentence for a dropped row, wherever it happens.
+function droppedLine(say, n) {
+    if (n > 0) {
+        say('the site handed over ' + n + ' row' + (n === 1 ? '' : 's') + ' this app could not read — skipped', 'fail');
+    }
+}
+
 
 // ── THE WEEK JOB. One note, Monday mornings. ────────────────────────────
 // ctx: { engine, model, host, now, week, gaps, onProgress }
@@ -224,8 +307,13 @@ async function runWeekJob(ctx) {
         say('the site did not hand over the week — update the website to use this job', 'fail');
         return { items: items, log: log };
     }
-    const w = Object.assign({}, c.week, { gaps: Array.isArray(c.gaps) ? c.gaps : [] });
-    (w.arrivals || []).forEach(function (a) { a.party = guard.partyWords(a.adults, a.children); });
+    const wa = saneRows(c.week.arrivals, saneArrival);
+    const wd = saneRows(c.week.departures, saneDeparture);
+    const wg = saneRows(c.gaps, saneGap);
+    droppedLine(say, wa.dropped + wd.dropped + wg.dropped);
+    const w = { from: sane(c.week.from), to: sane(c.week.to),
+        arrivals: wa.rows, departures: wd.rows, gaps: wg.rows };
+    w.arrivals.forEach(function (a) { a.party = guard.partyWords(a.adults, a.children); });
     const day = require('./site').today(c.now);
     const r = await c.engine.write(guard.buildWeekPrompt(w, c.host), c.model);
     if (!r.ok) {
@@ -265,18 +353,25 @@ async function runPriceJob(ctx) {
         say('the site did not hand over its gaps — update the website to use this job', 'fail');
         return { items: items, log: log };
     }
-    if (!c.gaps.length) {
-        // A quiet fortnight is a SUCCESS, the same rule as a quiet night.
-        say('no gaps worth selling — nothing to weigh');
+    const pg = saneRows(c.gaps, saneGap);
+    droppedLine(say, pg.dropped);
+    if (!pg.rows.length) {
+        // A quiet fortnight is a SUCCESS, the same rule as a quiet night —
+        // unless every row was dropped as unreadable, which droppedLine has
+        // already reported as the failure it is.
+        if (!pg.dropped) {
+            say('no gaps worth selling — nothing to weigh');
+        }
         return { items: items, log: log };
     }
+    const gaps = pg.rows;
     const day = require('./site').today(c.now);
-    const r = await c.engine.write(guard.buildPricePrompt(c.gaps, c.host), c.model);
+    const r = await c.engine.write(guard.buildPricePrompt(gaps, c.host), c.model);
     if (!r.ok) {
         say('the price note · ' + r.say, 'fail');
         return { items: items, log: log };
     }
-    const v = guard.checkGeneral(r.text, { money: guard.moneyInFacts(c.gaps) });
+    const v = guard.checkGeneral(r.text, { money: guard.moneyInFacts(gaps) });
     if (!v.ok) {
         say('refused own price note: ' + v.problems.join('; '), 'fail');
         return { items: items, log: log };
@@ -284,13 +379,13 @@ async function runPriceJob(ctx) {
     items.push({
         ref: makeRef('price', 'fortnight', day),
         kind: 'price',
-        title: c.gaps.length === 1 ? 'A gap worth a look' : c.gaps.length + ' gaps worth a look',
-        sub: c.gaps.map(function (g) { return g.cottage; }).filter(function (v2, i, a) { return a.indexOf(v2) === i; }).join(', '),
+        title: gaps.length === 1 ? 'A gap worth a look' : gaps.length + ' gaps worth a look',
+        sub: gaps.map(function (g) { return g.cottage; }).filter(function (v2, i, a) { return a.indexOf(v2) === i; }).join(', '),
         body: r.text,
         source: 'the site’s own calendar and its own rates',
         target: 'settings:pricing',
     });
-    say('the price note · ' + c.gaps.length + ' gap' + (c.gaps.length === 1 ? '' : 's') + ' weighed in ' + Math.round(r.ms / 100) / 10 + 's', 'hit');
+    say('the price note · ' + gaps.length + ' gap' + (gaps.length === 1 ? '' : 's') + ' weighed in ' + Math.round(r.ms / 100) / 10 + 's', 'hit');
     return { items: items, log: log };
 }
 
@@ -305,13 +400,17 @@ async function runAnswerJob(ctx) {
         say('the site did not hand over the guest questions — update the website to use this job', 'fail');
         return { items: items, log: log };
     }
-    if (!c.questions.length) {
-        say('no unanswered guest questions — nothing to do');
+    const qs = saneRows(c.questions, saneQuestion);
+    droppedLine(say, qs.dropped);
+    if (!qs.rows.length) {
+        if (!qs.dropped) {
+            say('no unanswered guest questions — nothing to do');
+        }
         return { items: items, log: log };
     }
     const day = require('./site').today(c.now);
-    for (let i = 0; i < c.questions.length; i++) {
-        const q = c.questions[i];
+    for (let i = 0; i < qs.rows.length; i++) {
+        const q = qs.rows[i];
         const r = await c.engine.write(guard.buildAnswerPrompt(q, c.host), c.model);
         if (!r.ok) {
             say('“' + shortQ(q.q) + '” · ' + r.say, 'fail');

@@ -353,6 +353,19 @@ const NIGHT_BRIEF_FACTS_MAX = 12;
 const NIGHT_BRIEF_FACT_Q_MAX = 200;
 const NIGHT_BRIEF_FACT_A_MAX = 600;
 
+// A JSON-boundary string. `(string)` on an ARRAY is the literal word
+// "Array" — the cottage-name bug that shipped "Array is a lovely cottage" —
+// and the cast is what HID it, silencing a type error into a plausible
+// string. DB columns are scalars so plain casts are safe there; anything
+// read out of a JSON content row (published FAQs, the guest-question
+// misses, both writable outside this file) goes through this instead, so a
+// malformed entry becomes an ABSENT fact rather than the word "Array" in a
+// guest-facing draft.
+function night_str($v)
+{
+    return is_string($v) || is_int($v) || is_float($v) ? trim((string) $v) : '';
+}
+
 // A first name for a greeting, from however the guest typed their name.
 // Deliberately dumb: the first whitespace-separated word, trimmed of
 // punctuation. A one-word name is its own first name.
@@ -408,8 +421,8 @@ function night_brief_enquiry(array $row, $propName, $price, $free, array $facts 
         if ($n >= NIGHT_BRIEF_FACTS_MAX) {
             break;
         }
-        $q = trim((string) (is_array($f) ? ($f['q'] ?? '') : ''));
-        $a = trim((string) (is_array($f) ? ($f['a'] ?? '') : ''));
+        $q = night_str(is_array($f) ? ($f['q'] ?? '') : '');
+        $a = night_str(is_array($f) ? ($f['a'] ?? '') : '');
         if ($q === '' || $a === '') {
             continue;
         }
@@ -820,7 +833,7 @@ function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUE
         return [];
     }
     $rows = array_values(array_filter($misses, function ($m) {
-        return is_array($m) && trim((string) ($m['q'] ?? '')) !== '';
+        return is_array($m) && night_str($m['q'] ?? '') !== '';
     }));
     usort($rows, function ($a, $b) {
         return (int) ($b['n'] ?? 0) <=> (int) ($a['n'] ?? 0);
@@ -830,20 +843,20 @@ function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUE
         if (count($out) >= (int) $max) {
             break;
         }
-        $pk = (string) ($m['prop'] ?? '');
+        $pk = night_str($m['prop'] ?? '');
         $facts = [];
         foreach ((array) $faqsFor($pk) as $f) {
             if (count($facts) >= NIGHT_BRIEF_FACTS_MAX) {
                 break;
             }
-            $q = trim((string) (is_array($f) ? ($f['q'] ?? '') : ''));
-            $a = trim((string) (is_array($f) ? ($f['a'] ?? '') : ''));
+            $q = night_str(is_array($f) ? ($f['q'] ?? '') : '');
+            $a = night_str(is_array($f) ? ($f['a'] ?? '') : '');
             if ($q !== '' && $a !== '') {
                 $facts[] = ['q' => mb_substr($q, 0, NIGHT_BRIEF_FACT_Q_MAX), 'a' => mb_substr($a, 0, 500)];
             }
         }
         $out[] = [
-            'q' => mb_substr(trim((string) $m['q']), 0, NIGHT_BRIEF_FACT_Q_MAX),
+            'q' => mb_substr(night_str($m['q']), 0, NIGHT_BRIEF_FACT_Q_MAX),
             'asked' => max(1, (int) ($m['n'] ?? 1)),
             'prop' => $pk,
             'cottage' => (string) ($names[$pk] ?? ($pk !== '' ? $pk : 'the cottages')),

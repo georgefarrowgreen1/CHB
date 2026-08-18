@@ -2422,8 +2422,14 @@ foreach ($items as $it) {
     }
 }
 it_check('…with its destination intact', $reply && ($reply['target'] ?? '') === 'enquiry-1', json_encode($reply));
+// Compared against the row's OWN created stamp, never this process's clock:
+// the server stamps Europe/London while the harness may sit on UTC, so the
+// wall-clock form failed for the hour either side of midnight — found red at
+// 23:05 UTC, having been green at every other hour since it was written.
 it_check('…and a deadline three days out, not fourteen (a reply is about a LIVE enquiry)',
-    $reply && substr((string) $reply['expires'], 0, 10) === date('Y-m-d', time() + 3 * 86400), json_encode($reply));
+    $reply && substr((string) $reply['expires'], 0, 10)
+        === date('Y-m-d', strtotime(substr((string) $reply['created'], 0, 19)) + 3 * 86400),
+    json_encode($reply));
 
 // A GUEST NEVER SEES ANY OF IT — these are drafts about named guests.
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'list']);
@@ -2669,6 +2675,12 @@ it_check('…and the QUESTIONS guests kept asking, grounded in the cottage&rsquo
 it_check('the week withholds contact details exactly as the enquiries do',
     strpos($r['raw'], 'wendy@gmail.com') === false && strpos($r['raw'], '900555') === false,
     mb_substr($r['raw'], 0, 200));
+// The cottage-name bug's tombstone: `(string)` on an array is the literal
+// word "Array", and it shipped in every draft's cottage name before anything
+// swept for it. The REAL payload, whole — nothing this suite seeds contains
+// the word, so its presence can only ever be that class of bug again.
+it_check('the word Array appears nowhere in the whole real brief',
+    strpos($r['raw'], 'Array') === false, mb_substr($r['raw'], 0, 200));
 $rootDb->exec('DELETE FROM bookings WHERE id = ' . $wkBid . " OR name IN ('Gap Before','Gap After')");
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'guest-faq-misses', 'value' => []]);
 
