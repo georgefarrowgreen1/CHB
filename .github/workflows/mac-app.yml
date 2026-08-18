@@ -189,19 +189,27 @@ jobs:
           mkdir -p /tmp/llama && tar -xzf /tmp/llama.tgz -C /tmp/llama --strip-components 1
           cd /tmp/llama
           # NO TLS IN THE SERVER, and this is what the first build tripped on.
-          # llama.cpp's server vendors cpp-httplib, which builds WITH OpenSSL
-          # whenever CMake can find it. On an arm64 runner it finds an arm64
-          # OpenSSL: the arm64 slice linked fine and the x86_64 one died with a
-          # wall of undefined X509_* symbols "for architecture x86_64", because
-          # Homebrew has no x86_64 copy to cross-link against.
           #
-          # Disabling the FIND rather than a llama.cpp option, because the flag
-          # names there have moved around between releases and this one is
-          # CMake's own. It costs nothing: this server listens on 127.0.0.1 for
-          # one local app, so https to it would be ceremony.
+          # vendor/cpp-httplib/CMakeLists.txt does `elseif (LLAMA_OPENSSL)` →
+          # `find_package(OpenSSL)`, and LLAMA_OPENSSL defaults ON. CMake's find
+          # does not care what ARCHITECTURE the library is, so on this arm64
+          # runner it happily found Homebrew's arm64 OpenSSL for the x86_64
+          # pass too: the arm64 slice linked and the x86_64 one died with a wall
+          # of undefined X509_* symbols "for architecture x86_64".
+          #
+          # LLAMA_OPENSSL=OFF is the option's own name, read out of that file
+          # rather than guessed — an earlier attempt here set LLAMA_SERVER_SSL,
+          # which exists nowhere and was silently ignored. The
+          # CMAKE_DISABLE_FIND_PACKAGE belt stays because it is CMake's own and
+          # survives the option being renamed again; it is SAFE to pair with it
+          # only because that find_package is not REQUIRED, so a failed find
+          # skips the block rather than failing the configure. Checked.
+          #
+          # It costs nothing: this server listens on 127.0.0.1 for one local
+          # app, so https to it would be ceremony.
           COMMON="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF \
             -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=ON \
-            -DLLAMA_SERVER_SSL=OFF -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
+            -DLLAMA_OPENSSL=OFF -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=ON \
             -DGGML_NATIVE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
           cmake -B b-arm64 $COMMON -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
