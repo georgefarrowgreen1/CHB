@@ -278,7 +278,7 @@ function makeApi(deps) {
             if (!cfg.siteUrl) {
                 return { ok: false, say: 'Put the site address in first.' };
             }
-            const r = await siteFor().connect(code);
+            const r = await siteFor().connect(code, machineMod.deviceLabel(mach));
             if (!r.ok) { return r; }
             const s = secrets.set(r.key);
             if (!s.ok) {

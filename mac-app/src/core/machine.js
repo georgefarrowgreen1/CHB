@@ -52,6 +52,10 @@ function readMachine() {
         cpu: '',
         model: '',
         macos: '',
+        // WHAT THIS MAC IS CALLED, for the website's paired-devices list. Two
+        // Macs both reading "A Mac" cannot be told apart, which defeats the one
+        // thing that list is for — stopping one without stopping the other.
+        name: '',
         cores: os.cpus().length,
         ramBytes,
         ramGB: Math.round((ramBytes / 1073741824) * 10) / 10,
@@ -60,6 +64,13 @@ function readMachine() {
         m.cpu = sh('sysctl', ['-n', 'machdep.cpu.brand_string']);
         m.model = sh('sysctl', ['-n', 'hw.model']);
         m.macos = sh('sw_vers', ['-productVersion']);
+        // The name the owner gave it in System Settings ("George's Mac mini") —
+        // not hw.model, which is "Macmini9,1" and identifies a product line
+        // rather than a machine. The hostname is the fallback.
+        m.name = sh('scutil', ['--get', 'ComputerName']);
+    }
+    if (!m.name) {
+        try { m.name = String(os.hostname() || ''); } catch (e) { m.name = ''; }
     }
     // Translation means the real machine IS Apple silicon; say so, because the
     // engine choice depends on the hardware and not on how we were launched.
@@ -79,6 +90,31 @@ function describe(m) {
     bits.push(m.ramGB + ' GB');
     if (m.macos) bits.push('macOS ' + m.macos);
     return bits.join(' · ');
+}
+
+// THE NAME THIS MAC PAIRS UNDER. Sent once, at connect, and it is what the
+// website's Set-up-a-Mac list shows beside "Stop this Mac" — so it has to
+// identify a MACHINE, not a product line.
+//
+// A hostname arrives as "georges-mac-mini.local" or "Georges-MacBook-Pro"; the
+// suffix is noise and the hyphens read as a filename, so both go. Falls back to
+// the architecture rather than to nothing, because "A Mac" beside another
+// "A Mac" is the state this exists to prevent.
+const DEVICE_LABEL_MAX = 40;
+function deviceLabel(m) {
+    const mm = m || {};
+    let s = String(mm.name || '').trim().replace(/\.local\.?$/i, '');
+    if (/^[\w-]+$/.test(s) && s.indexOf('-') !== -1) {
+        s = s.replace(/-+/g, ' ');
+    }
+    s = s.replace(/\s+/g, ' ').trim();
+    if (!s) {
+        s = String(mm.model || '').trim();
+    }
+    if (!s) {
+        s = mm.appleSilicon ? 'Apple silicon Mac' : mm.arch === 'x64' ? 'Intel Mac' : 'A Mac';
+    }
+    return s.slice(0, DEVICE_LABEL_MAX);
 }
 
 // WILL THIS MODEL RUN HERE? Returns a verdict the UI can print verbatim.
@@ -112,4 +148,4 @@ function modelVerdict(m, sizeGB, opts) {
     return { fit: 'ok', why: 'Runs well here' };
 }
 
-module.exports = { readMachine, describe, modelVerdict, RAM_SOFT, RAM_HARD };
+module.exports = { readMachine, describe, deviceLabel, modelVerdict, RAM_SOFT, RAM_HARD, DEVICE_LABEL_MAX };

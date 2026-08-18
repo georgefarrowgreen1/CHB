@@ -181,12 +181,20 @@ function makeSite(opts) {
         // it hands over eight characters the owner read off the website and gets
         // back a key of its own. The code is single-use and short-lived at the
         // far end, so a failure here is final — there is no retrying it.
-        async connect(code) {
+        // `label` is what this Mac will be called in the website's paired list.
+        // Sent HERE and only here: the code record the site minted cannot know
+        // which machine would use it, so without this every device paired as
+        // "A Mac" and two of them were indistinguishable.
+        async connect(code, label) {
             const bad = urlProblem(url);
             if (bad) { return { ok: false, say: bad }; }
             let r;
             try {
-                r = await send(url, { action: 'connect', code: String(code || '') });
+                r = await send(url, {
+                    action: 'connect',
+                    code: String(code || ''),
+                    label: String(label || ''),
+                });
             } catch (e) {
                 return { ok: false, say: 'Could not reach the site to connect.' };
             }

@@ -483,6 +483,68 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/minutes ago|just now/.test(list.text), '…while the working one says when it last spoke');
   ok(!/[0-9a-f]{40}/.test(list.text), '…and no key or hash is on the screen');
 
+  // ── 8a2. STOP THIS MAC ACTUALLY STOPS IT ───────────────────────────────
+  // Reported live: two paired Macs and no way to revoke either. Everything
+  // above passed throughout — it counted the BUTTONS and never pressed one,
+  // which is the assert-the-affordance trap. The cause was the dispatcher:
+  // a chbAct-registered action is handed (el, event) and this one was written
+  // (el, i, label), so `i` was the click event, Number(event) was NaN, and the
+  // server answered 409 for ever.
+  const stopped = await page.evaluate(async () => {
+    const seen = [];
+    window.apiPost = async (file, body) => {
+      seen.push({ file, body });
+      if (body.action === 'stop_device') {
+        window.__devs = window.__devs.filter((d) => d.i !== body.i);
+        return { ok: true, stopped: body.label, left: window.__devs.length };
+      }
+      return { ok: true, devices: window.__devs, quietAfter: 3 };
+    };
+    let asked = '';
+    window.glassConfirm = async (msg) => { asked = msg; return true; };
+    const btn = document.querySelector('#night-key-row [data-act="stopNightDevice"]');
+    btn.click();
+    await new Promise((r) => setTimeout(r, 400));
+    const post = seen.filter((s) => s.body.action === 'stop_device').pop();
+    return {
+      asked: asked,
+      post: post ? post.body : null,
+      left: document.getElementById('night-key-row').textContent,
+    };
+  });
+  ok(stopped.post !== null, 'pressing Stop this Mac really posts a stop', JSON.stringify(stopped.post));
+  ok(stopped.post && stopped.post.i === 0,
+    '…carrying the row\'s INDEX as a number, not the click event',
+    JSON.stringify(stopped.post && stopped.post.i));
+  ok(stopped.post && stopped.post.label === 'Mac mini',
+    '…and the label the owner was looking at, so a moved list refuses instead of stopping the wrong one',
+    JSON.stringify(stopped.post && stopped.post.label));
+  ok(/Mac mini/.test(stopped.asked), '…having named the Mac in the confirm, not "undefined"', stopped.asked.slice(0, 90));
+  ok(!/Mac mini/.test(stopped.left) && /MacBook/.test(stopped.left),
+    '…and afterwards that Mac is off the list and the other one is not', stopped.left.slice(0, 80));
+
+  // ── 8a3. THE DISPATCHER CONTRACT, pinned ───────────────────────────────
+  // The bug above was one instance of a general defect: chbAttrs() is the
+  // documented way to pass arguments and it delivered NOTHING to a registered
+  // action, silently, while working for a plain window global. This asserts the
+  // contract itself so the next handler written with arguments cannot repeat it.
+  const contract = await page.evaluate(async () => {
+    let got = null;
+    chbAct('__probeArgs', function (el, ev, a, b) { got = { el: el === this, ev: !!(ev && ev.type), a: a, b: b }; });
+    const d = document.createElement('button');
+    d.setAttribute('data-act', '__probeArgs');
+    d.setAttribute('data-args', JSON.stringify([7, 'seven']));
+    document.body.appendChild(d);
+    d.click();
+    await new Promise((r) => setTimeout(r, 60));
+    d.remove();
+    return got;
+  });
+  ok(contract && contract.a === 7 && contract.b === 'seven',
+    'a registered action receives its data-args, with types intact', JSON.stringify(contract));
+  ok(contract && contract.el && contract.ev,
+    '…after the (element, event) pair every existing one already relies on', JSON.stringify(contract));
+
   // ── 8b. THE CARD OFFERS TWO THINGS ─────────────────────────────────────
   // Asked for: the switch and the download, and nothing else in front of them.
   // Everything about connecting a Mac is done once per machine and folds away.

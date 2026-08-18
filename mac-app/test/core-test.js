@@ -729,6 +729,62 @@ function fakeSite(handler) {
     ok('...and an https one is accepted', savedOk && savedOk.ok !== false);
     try { fs.rmSync(apiTmp, { recursive: true, force: true }); } catch (e) {}
 
+    // ── §18b WHICH MAC THIS IS ────────────────────────────────────────────
+    // Reported live: two paired Macs both read "A Mac" on the website, so the
+    // list could not tell the owner which one to stop — which is the only thing
+    // a per-device list is for.
+    console.log('\n18b) the Mac tells the site what it is called');
+    ok('the owner\'s own computer name wins',
+        machine.deviceLabel({ name: "George's Mac mini", model: 'Macmini9,1' }) === "George's Mac mini");
+    ok('a hostname loses its .local suffix',
+        machine.deviceLabel({ name: 'georges-mac-mini.local' }) === 'georges mac mini',
+        machine.deviceLabel({ name: 'georges-mac-mini.local' }));
+    ok('...and a hyphenated hostname reads as words rather than a filename',
+        machine.deviceLabel({ name: 'Georges-MacBook-Pro' }) === 'Georges MacBook Pro',
+        machine.deviceLabel({ name: 'Georges-MacBook-Pro' }));
+    ok('a real name with a hyphen in it is NOT mangled',
+        machine.deviceLabel({ name: 'Mac mini M2-2023' }) === 'Mac mini M2-2023',
+        machine.deviceLabel({ name: 'Mac mini M2-2023' }));
+    ok('with no name at all it falls back to the model',
+        machine.deviceLabel({ name: '', model: 'Macmini9,1' }) === 'Macmini9,1');
+    ok('...and with neither, to the architecture — never to "A Mac" twice over',
+        machine.deviceLabel({ appleSilicon: true }) === 'Apple silicon Mac'
+        && machine.deviceLabel({ arch: 'x64' }) === 'Intel Mac');
+    ok('a hostile name is capped', machine.deviceLabel({ name: 'x'.repeat(500) }).length === machine.DEVICE_LABEL_MAX);
+    ok('nothing at all still answers something', machine.deviceLabel(null) === 'A Mac');
+    ok('the real machine reports a name', typeof machine.readMachine().name === 'string');
+
+    // THE WIRING, not just the helper: connect must actually SEND it. Testing
+    // deviceLabel alone would pass with the call site reverted — the trap this
+    // codebase keeps catching.
+    let connectBody = null;
+    const labelSite = site.makeSite({
+        url: 'https://x.test/nightshift.php',
+        secret: 'k',
+        post: async function (u, body) {
+            connectBody = body;
+            return { ok: true, status: 200, json: { ok: true, key: 'K'.repeat(40), host: 'George' } };
+        },
+    });
+    await labelSite.connect('ABCD-2345', "George's Mac mini");
+    ok('connect posts the label alongside the code',
+        connectBody && connectBody.action === 'connect'
+        && connectBody.code === 'ABCD-2345'
+        && connectBody.label === "George's Mac mini", JSON.stringify(connectBody));
+    const labelTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-lbl-'));
+    connectBody = null;
+    const a6 = require('../src/core/api').makeApi({
+        dir: labelTmp,
+        machine: Object.assign({}, M16, { name: 'Studio in the loft' }),
+        makeSite: function () { return labelSite; },
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    await a6.saveConfig({ siteUrl: 'https://x.test/nightshift.php' });
+    await a6.connect('ABCD-2345');
+    ok('...and the api fills it in from THIS Mac, so the window never has to',
+        connectBody && connectBody.label === 'Studio in the loft', JSON.stringify(connectBody));
+    try { fs.rmSync(labelTmp, { recursive: true, force: true }); } catch (e) {}
+
     // ── §19 STARTING THE MODEL SERVER ─────────────────────────────────────
     // The decisions only. The spawn is main.js's and is untestable here by
     // design; everything that decides WHAT it spawns is in this section.
