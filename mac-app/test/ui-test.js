@@ -61,7 +61,7 @@ function fakeState(over) {
             { id: 'q.gguf', name: 'Qwen 2.5 14B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 9, fit: 'ok', why: 'Runs well here' },
             { id: 'big.gguf', name: 'Qwen 2.5 72B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 47, fit: 'no', why: 'Will not fit' },
         ],
-        modelsDir: '/Users/x/Library/Application Support/Blakeney Hand/Models',
+        modelsDir: '/Users/x/Library/Application Support/Cottage Holidays Blakeney/Models',
         siteUrl: 'https://example.test/nightshift.php',
         secretSet: true, secretHint: '••••••••', keychain: true, keepAwake: true,
         nextRun: new Date().toISOString(), nextRunAt: '02:00', nextRunSays: 'in 6 hours 42 minutes',

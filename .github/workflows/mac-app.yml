@@ -1,5 +1,6 @@
 # ============================================================
-#  Mac app — builds Blakeney Hand into a universal .dmg on a real Mac.
+#  Mac app — builds the Cottage Holidays Blakeney Mac companion into a
+#  universal .dmg on a real Mac.
 #
 #  A .dmg cannot be made anywhere but macOS: the format is produced by `hdiutil`,
 #  and a universal binary is merged by `lipo`. Both are Apple's, both are
@@ -147,7 +148,7 @@ jobs:
           # than trusting the flag: lipo lists what is actually inside.
           APP="$(ls -d dist/mac-universal/*.app 2>/dev/null | head -1 || true)"
           if [ -n "$APP" ]; then
-            lipo -archs "$APP/Contents/MacOS/Blakeney Hand" || true
+            lipo -archs "$APP/Contents/MacOS/Cottage Holidays Blakeney" || true
           fi
 
       # Always keep the file, even on a plain dispatch with no release: a build
@@ -180,7 +181,7 @@ jobs:
           SIGNED="unsigned — on first launch open System Settings → Privacy & Security and press Open Anyway"
           if [ "${{ steps.cert.outputs.have }}" = "true" ]; then SIGNED="signed, so it opens with a double-click"; fi
           {
-            echo "Blakeney Hand for macOS — one universal build for Intel and Apple silicon."
+            echo "Cottage Holidays Blakeney for macOS — one universal build for Intel and Apple silicon."
             echo
             echo "This copy is **$SIGNED**."
             echo
@@ -191,7 +192,7 @@ jobs:
             echo "queue switched on. mac-app/README.md covers both."
           } > notes.md
           gh release create "$TAG" "${{ steps.out.outputs.dmg }}" $TARGET \
-            --title "Blakeney Hand ${TAG}" --notes-file notes.md
+            --title "Cottage Holidays Blakeney ${TAG}" --notes-file notes.md
           echo "This build:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"
           echo "The link the site uses, which always points at the newest release:"

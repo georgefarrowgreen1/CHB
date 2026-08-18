@@ -32,7 +32,7 @@ function create() {
         height: 680,
         minWidth: 760,
         minHeight: 520,
-        title: 'Blakeney Hand',
+        title: 'Cottage Holidays Blakeney',
         // The window draws its own title bar (see .titlebar in app.css), which
         // is why the traffic lights are inset rather than sitting on a strip of
         // chrome above the app's own.
@@ -97,7 +97,7 @@ function menu() {
                 click: function () {
                     dialog.showMessageBox({
                         type: 'info',
-                        message: 'Blakeney Hand',
+                        message: 'Cottage Holidays Blakeney',
                         detail: 'Drafts work overnight on this Mac and leaves it on your website for you to read.'
                             + '\n\nNothing it writes is ever sent, published or charged: every job posts a draft, and the'
                             + ' website refuses anything that tries to do more.',

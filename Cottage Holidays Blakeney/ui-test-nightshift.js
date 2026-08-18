@@ -47,8 +47,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       body: "Two enquiries went quiet.\n\n<script>window.__pwned = 1;</script> O'Brien said 5 & 6.",
       source: '', target: '', created: iso(0), expires: iso(14) },
   ];
-  let nightOn = 1;
+  // BOOT WITH IT OFF, because §1 below asserts an ABSENCE of requests and the
+  // boot's own loadNightItems() is a request. Booting ON meant that request was
+  // in flight while §1 cleared the log, so on a loaded machine it landed AFTER
+  // the clear and §1 blamed the app for a call the boot had made — green here,
+  // red in CI, where the suites run three at a time. An owner who has the
+  // feature off has it off at boot too, so this is also the truer fixture.
+  let nightOn = 0;
   let staleCount = null; // a hostile boot payload: 'off' with a count that is not zero
+  // The STORED setting, which is a different fact from the boot payload's flag
+  // above: §6 reads this one to prove the switch shows what is saved rather
+  // than a default, so it stays on.
   let stored = { 'night-shift': '1' };
   const posts = [];
   const gets = [];
@@ -105,6 +114,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // ── 1. OFF IS OFF ────────────────────────────────────────────────────────
   console.log('1. with the setting off there is no card at all — and no request');
   nightOn = 0;
+  // LET THE BOOT FINISH BEFORE CLEARING THE LOG. nav() above starts work it
+  // does not await, so without this the assertion below can be judging requests
+  // the boot made rather than requests this section made. Belt to the braces of
+  // booting with it off — the two together mean the check cannot be timing-lucky.
+  await page.waitForTimeout(500);
   posts.length = 0;
   await drive();
   const offState = await page.evaluate(() => {
@@ -320,7 +334,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // /releases/latest/download/<file> pointing at the newest release, and the
   // build's filename carries no version so that URL cannot rot.
   const dlLink = get0.links.find((a) => /Download/.test(a.t));
-  ok(dlLink && /\/releases\/latest\/download\/Blakeney-Hand-universal\.dmg$/.test(dlLink.href),
+  ok(dlLink && /\/releases\/latest\/download\/Cottage-Holidays-Blakeney\.dmg$/.test(dlLink.href),
     'with nothing set, Download points at the LATEST release, not one particular build', dlLink && dlLink.href);
   ok(get0.links.length === 2 && get0.links.every((a) => /^https:\/\/github\.com\//.test(a.href)),
     '…beside the link that builds a newer one', JSON.stringify(get0.links.map((a) => a.t)));

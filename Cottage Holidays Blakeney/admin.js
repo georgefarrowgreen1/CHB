@@ -21864,7 +21864,7 @@ const NIGHT_APP_BUILD = 'https://github.com/georgefarrowgreen1/CHB/actions/workf
 // pointing at the newest release for ever, and the build's artifact name carries
 // no version for exactly this reason — so the back office links to "the current
 // build" rather than to one particular build somebody has to remember to replace.
-const NIGHT_APP_LATEST = 'https://github.com/georgefarrowgreen1/CHB/releases/latest/download/Blakeney-Hand-universal.dmg';
+const NIGHT_APP_LATEST = 'https://github.com/georgefarrowgreen1/CHB/releases/latest/download/Cottage-Holidays-Blakeney.dmg';
 // A stored URL OVERRIDES that, for hosting the file somewhere of your own. It is
 // owner-written and lands in an `href`, so it is validated on the way IN and
 // again on the way OUT: an older write, a hand-edited content row or a value

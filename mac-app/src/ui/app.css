@@ -1,156 +1,347 @@
 /* ============================================================
-   app.css — the window.
+   app.css — the window, wearing the website's design language.
 
-   macOS's own type and controls. `-apple-system` is SF Pro on a Mac and the
-   wordmark takes `ui-serif`, which is New York — Apple's own serif — so this
-   app bundles no font and nothing can fall back silently.
+   THIS IS NOT A GENERIC MAC APP AND MUST NOT DRIFT BACK INTO ONE. It was one:
+   Apple system blue for selection, flat grey slabs, green outlined boxes for
+   status, SF Pro throughout. Competent, and it said nothing about whose
+   business it belongs to — the one thing a companion app has to say.
 
-   Both appearances, driven by prefers-color-scheme, because macOS has both and
-   an app that only does one is an app that looks broken half the year.
+   Every token below is COPIED FROM the site's own app.css / admin.css, at its
+   measured value, so the two products are one:
+
+     the rose-gold accent           --accent / --accent-text / --accent-ink
+     the radius scale               --r-sm --r-md --r-lg --r-pill
+     the status colours + tints     --ok --warn --danger --info + -text
+     the liquid-glass material      --glass-bg --glass-filter --glass-rim
+     the well                       .acr-well's 4% fill + 8% hairline
+     the capsule                    .st-cap's 13-14% tint + 24% border
+     the two faces                  Montserrat (sans) + Playfair (identity)
+
+   INK vs FILL, the site's hardest-won rule, applies here exactly as it does
+   there: --accent is for FILLS, ICONS and BORDERS, which only have to clear
+   the 3:1 non-text bar; WORDS in the brand colour take --accent-text; and text
+   ON an accent fill takes --accent-ink, because the rose-gold is mid-light and
+   white fails against it (2.96:1, measured on the site).
+
+   Both appearances, driven by prefers-color-scheme — macOS has both, and the
+   site has both, so the app follows whichever the Mac is in.
    ============================================================ */
-:root{
-  --sys:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
-  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
-  --serif:ui-serif,"New York",Georgia,serif;
 
-  --win:#FFFFFF; --side:#EBEBEB; --side-2:#E2E2E4; --bar:#F6F6F6; --sunk:#F2F2F3;
-  --sep:rgba(0,0,0,.10); --sep-2:rgba(0,0,0,.055);
-  --t1:rgba(0,0,0,.88); --t2:rgba(0,0,0,.56); --t3:rgba(0,0,0,.42);
-  --sel:#0064E1; --sel-ink:#FFFFFF; --focus:rgba(0,100,225,.45);
-  --field:#FFFFFF; --field-line:rgba(0,0,0,.18);
-  --grn:#1E8E3E; --amb:#B26A00; --red:#C0392B;
-  --brand:#B4741F; --brand-fill:#E0A040;
+/* THE TWO REAL FACES, SHIPPED. The site's own subset files are copied into
+   fonts/ so nothing falls back silently to a system serif that isn't Playfair.
+
+   ONE @font-face PER FAMILY, WITH A RANGE. Both files are VARIABLE, and a
+   single-value `font-weight` descriptor PINS a variable file's wght axis — the
+   site shipped five declared weights rendering as one look for months because
+   of exactly that (see CLAUDE.md). The range is what makes 500/600/700 real. */
+@font-face{font-family:"Montserrat";src:url("fonts/montserrat-latin.woff2") format("woff2");
+  font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:"Playfair Display";src:url("fonts/playfair-latin.woff2") format("woff2");
+  font-weight:400 900;font-style:normal;font-display:swap}
+
+:root{
+  --font-sans:"Montserrat",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --font-serif:"Playfair Display",ui-serif,Georgia,serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+
+  /* Ground and ink — the site's dark theme, verbatim. */
+  --ground:#121316;
+  --text-light:#f4f5f7;
+  --text-muted:#b4b8c6;
+
+  /* Brand rose-gold. Three tokens because they do three different jobs. */
+  --accent:#d6a785;
+  --accent-text:#d6a785;   /* readable as WORDS on this dark ground (6.5:1) */
+  --accent-ink:#1b1208;    /* ink ON an accent fill — never white */
+  --accent-soft:rgba(214,167,133,.55);
+
+  /* Status. Base = fill, -text = the tint readable on glass. */
+  /* #81c784 is the site's; on this app's dark glass panel its own 14% tint
+     composites to 57,83,71 and that ink measures 4.17:1. A step lighter. */
+  --ok:#4caf50;      --ok-text:#a5d6a7;
+  --warn:#ffa726;    --warn-text:#ffb74d;
+  --danger:#e57373;  --danger-text:#ef9a9a;
+  --info:#4682a0;    --info-text:#79aec8;
+
+  /* Radius scale — the website's curvature, which is most of why its surfaces
+     read as one family. Not invented for this window. */
+  --r-sm:12px; --r-md:16px; --r-lg:22px; --r-pill:999px;
+
+  /* Liquid glass (Apple's iOS 26 / macOS Tahoe language, as the site states it):
+     blur AND lifted saturation so colour behind refracts, plus a specular rim
+     that reads as real thickness. */
+  --glass-bg:rgba(255,255,255,.045);
+  --glass-border:rgba(255,255,255,.09);
+  --glass-blur:24px;
+  --glass-filter:blur(var(--glass-blur)) saturate(180%) brightness(1.04);
+  --glass-rim:inset 0 1px 0 0 rgba(255,255,255,.16),inset 0 -1px 0 0 rgba(0,0,0,.06);
+  --btn-hover:rgba(255,255,255,.14);
+
+  --shadow-panel:0 8px 32px rgba(0,0,0,.2);
+  --shadow-float:0 12px 40px rgba(0,0,0,.45);
+
+  /* Ambient wash. On the website the glass sits over a photographic hero and
+     these blobs; in a window there is nothing behind it, so without them
+     "glass" would be a flat panel calling itself glass. */
+  --blob-1:#2a2d3a; --blob-2:#1b1e28; --blob-3:#222530;
+
+  --field:rgba(255,255,255,.05);
+  --spring:cubic-bezier(0.34,1.56,0.64,1);
+  --fluid:cubic-bezier(0.25,1,0.25,1);
 }
-@media (prefers-color-scheme: dark){
+
+@media (prefers-color-scheme: light){
   :root{
-    --win:#1E1E1E; --side:#252527; --side-2:#2E2E30; --bar:#2A2A2C; --sunk:#191919;
-    --sep:rgba(255,255,255,.12); --sep-2:rgba(255,255,255,.07);
-    --t1:rgba(255,255,255,.92); --t2:rgba(255,255,255,.58); --t3:rgba(255,255,255,.42);
-    --sel:#0A84FF; --sel-ink:#FFFFFF; --focus:rgba(10,132,255,.55);
-    --field:#1B1B1D; --field-line:rgba(255,255,255,.2);
-    --grn:#4FC96A; --amb:#F0A83C; --red:#FF6B5E;
-    --brand:#F0B45C; --brand-fill:#E0A040;
+    --ground:#f5f1e9;              /* warm linen / sand, the site's own */
+    --text-light:#1b2a34;          /* deep ink-slate */
+    /* A SHADE DARKER THAN THE SITE'S #52646e, for the same reason the green is:
+       the panels here cast the site's own --shadow-panel onto the bare linen,
+       and a footnote sitting under one measures its ground at 219,218,213 —
+       where #52646e lands at 4.40:1. This clears 5.05 there and 6.27 on open
+       linen. Monotonically safe: every ground in this window is lighter. */
+    --text-muted:#4a5b64;
+    --accent:#c6885e;              /* a touch deeper for contrast on light */
+    --accent-text:#965c35;         /* WORDS: 4.75:1 worst case on the site's four surfaces */
+    --accent-soft:rgba(198,136,94,.42);
+    /* Status text tuned against its own TINT, not the surface — the site's
+       a11y-test §1b lesson: clearing AA on the ground is not clearing it in use.
+       THE GREEN IS A SHADE DARKER THAN THE SITE'S #29712d, and that is not
+       drift: this app's panels are WHITE GLASS where the site's are its linen,
+       so the same 14% tint composites lighter here (measured 194,220,195) and
+       the site's ink lands at 4.10:1. Same rule, different ground — 5.32:1. */
+    --ok-text:#215e24; --warn-text:#8d4b00; --danger-text:#ad2020; --info-text:#316784;
+    --glass-bg:rgba(255,255,255,.78);
+    --glass-border:rgba(28,46,58,.12);
+    --glass-filter:blur(var(--glass-blur)) saturate(150%) brightness(1.02);
+    --glass-rim:inset 0 1px 0 0 rgba(255,255,255,.85),inset 0 -1px 0 0 rgba(30,54,72,.05);
+    --btn-hover:rgba(255,255,255,.72);
+    --shadow-panel:0 10px 34px rgba(30,54,72,.1);
+    --shadow-float:0 18px 50px rgba(30,54,72,.2);
+    --blob-1:#dceaf2; --blob-2:#ede6d6; --blob-3:#dcebe4;
+    --field:rgba(255,255,255,.7);
   }
 }
+
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;font-family:var(--sys);font-size:13px;line-height:1.45;color:var(--t1);
-  background:var(--win);-webkit-font-smoothing:antialiased;overflow:hidden;
-  -webkit-user-select:none;user-select:none}
+body{margin:0;font-family:var(--font-sans);font-size:13.5px;line-height:1.55;
+  color:var(--text-light);background:var(--ground);-webkit-font-smoothing:antialiased;
+  overflow:hidden;-webkit-user-select:none;user-select:none}
+/* The ambient wash the glass refracts. Fixed and behind everything. */
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(52% 44% at 12% 0%,var(--blob-1) 0%,transparent 70%),
+    radial-gradient(46% 40% at 96% 22%,var(--blob-3) 0%,transparent 72%),
+    radial-gradient(60% 50% at 60% 108%,var(--blob-2) 0%,transparent 70%);
+  /* Decorative, so it must not cost legibility: at .85 it darkened the bare
+     ground under the footnotes to 219,218,213 and took muted ink to 4.41:1. */
+  opacity:.55}
 button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:default}
-:focus-visible{outline:3px solid var(--focus);outline-offset:1px;border-radius:5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
 .mono{font-family:var(--mono)}
 input{-webkit-user-select:text;user-select:text}
 
-.win{display:grid;grid-template-columns:212px 1fr;grid-template-rows:52px 1fr;height:100%}
+.win{position:relative;z-index:1;display:grid;grid-template-columns:228px 1fr;
+  grid-template-rows:56px 1fr;height:100%}
 
-/* The titlebar is draggable except for its controls — the window has no system
-   title bar (titleBarStyle:'hiddenInset'), so this IS the title bar. */
-.titlebar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 16px 0 92px;
-  background:var(--bar);border-bottom:.5px solid var(--sep);-webkit-app-region:drag}
+/* ── THE TITLE BAR ──────────────────────────────────────────
+   The window has no system title bar (titleBarStyle:'hiddenInset'), so this IS
+   it: draggable everywhere except its own controls. Glass, like the site's
+   header. */
+.titlebar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 18px 0 92px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border-bottom:1px solid var(--glass-border);box-shadow:var(--glass-rim);
+  -webkit-app-region:drag}
 .tb-title{display:flex;flex-direction:column;min-width:0}
-.tb-title b{font-size:13px;font-weight:600;letter-spacing:-.01em}
-.tb-title span{font-size:11px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tb-acts{margin-left:auto;display:flex;gap:8px;flex:0 0 auto;-webkit-app-region:no-drag}
+.tb-title b{font-family:var(--font-serif);font-size:15px;font-weight:600;letter-spacing:-.01em}
+.tb-title span{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.tb-acts{margin-left:auto;display:flex;gap:9px;flex:0 0 auto;-webkit-app-region:no-drag}
 
-.tbtn{height:26px;padding:0 11px;border-radius:6px;background:var(--win);
-  border:.5px solid var(--field-line);font-size:12px;display:inline-flex;align-items:center;gap:6px;
-  box-shadow:0 .5px 1px rgba(0,0,0,.1);white-space:nowrap}
-.tbtn:hover{background:var(--side-2)}
-.tbtn.prime{background:var(--sel);border-color:transparent;color:var(--sel-ink);font-weight:500}
-.tbtn.prime:hover{filter:brightness(1.08)}
+/* Buttons: the site's pill vocabulary. Quiet ones are glass with a hairline;
+   the primary one is an ACCENT FILL carrying --accent-ink, never white. */
+.tbtn{height:30px;padding:0 14px;border-radius:var(--r-pill);
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border:1px solid var(--glass-border);font-size:12.5px;font-weight:500;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  transition:background .18s var(--fluid),transform .18s var(--spring)}
+.tbtn:hover{background:var(--btn-hover)}
+.tbtn:active{transform:scale(.97)}
+.tbtn.prime{background:var(--accent);border-color:transparent;color:var(--accent-ink);
+  font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.tbtn.prime:hover{background:var(--accent);filter:brightness(1.06)}
 .tbtn[disabled]{opacity:.45}
 
-.side{background:var(--side);border-right:.5px solid var(--sep);padding:10px 8px 12px;
+/* ── THE SIDEBAR ────────────────────────────────────────────── */
+.side{background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border-right:1px solid var(--glass-border);padding:14px 10px 14px;
   display:flex;flex-direction:column;gap:2px;overflow-y:auto}
-.brand{display:flex;align-items:center;gap:9px;padding:2px 8px 12px}
-.brand .mark{width:22px;height:22px;border-radius:6px;background:var(--brand-fill);flex:0 0 auto;
-  display:grid;place-items:center;font-family:var(--serif);font-weight:600;font-size:13px;color:#1B1305}
-.brand .nm{font-family:var(--serif);font-size:14px;font-weight:600;letter-spacing:-.01em}
-.sgroup{font-size:11px;font-weight:600;color:var(--t3);padding:11px 9px 4px}
-.snav{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:6px 9px;
-  border-radius:6px;font-size:13px;color:var(--t1)}
-.snav:hover{background:var(--side-2)}
-.snav[aria-current="true"]{background:var(--sel);color:var(--sel-ink)}
-.snav[aria-current="true"] .badge{background:rgba(255,255,255,.25);color:#fff}
-.snav .badge{margin-left:auto;font-size:10.5px;font-weight:600;background:var(--sep);color:var(--t2);
-  border-radius:9px;padding:1px 6px;min-width:19px;text-align:center}
-.side-foot{margin-top:auto;padding:9px;font-size:11px;color:var(--t3);
-  border-top:.5px solid var(--sep-2);display:flex;align-items:center;gap:7px}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--grn);flex:0 0 auto}
-.dot.busy{background:var(--amb)} .dot.bad{background:var(--red)} .dot.off{background:var(--t3)}
 
-.body{padding:22px 26px 28px;overflow-y:auto;min-width:0}
-.view{display:flex;flex-direction:column;gap:18px}
+/* THE IDENTITY: the crown, then the business's name in Playfair. This is the
+   only place the app says whose it is, so it says it properly. */
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 16px}
+.brand .mark{width:26px;height:26px;flex:0 0 auto;display:block}
+.brand .nm{font-family:var(--font-serif);font-size:14px;font-weight:600;
+  letter-spacing:-.01em;line-height:1.25}
+.brand .nm small{display:block;font-family:var(--font-sans);font-size:10px;font-weight:500;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:2px}
+
+/* Section captions take the site's .acr-cap track exactly. */
+.sgroup{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--text-muted);padding:14px 10px 5px}
+.snav{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 11px;
+  border-radius:var(--r-sm);font-size:13px;color:var(--text-light);
+  transition:background .16s var(--fluid)}
+.snav:hover{background:var(--btn-hover)}
+/* SELECTED IS THE BRAND, not Apple blue — and it carries --accent-ink. */
+.snav[aria-current="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.snav[aria-current="true"] .badge{background:rgba(27,18,8,.22);color:var(--accent-ink)}
+.snav .badge{margin-left:auto;font-size:10.5px;font-weight:600;
+  background:color-mix(in srgb,var(--text-light) 12%,transparent);color:var(--text-light);
+  border-radius:var(--r-pill);padding:1px 7px;min-width:20px;text-align:center}
+.side-foot{margin-top:auto;padding:11px 10px 2px;font-size:11.5px;color:var(--text-muted);
+  border-top:1px solid var(--glass-border);display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.dot.busy{background:var(--warn)} .dot.bad{background:var(--danger)} .dot.off{background:var(--text-muted)}
+
+/* ── THE BODY ───────────────────────────────────────────────── */
+.body{padding:26px 30px 32px;overflow-y:auto;min-width:0}
+.view{display:flex;flex-direction:column;gap:20px}
+/* `display` OUTRANKS the `hidden` attribute — this line is why one screen shows
+   at a time. It has bitten this project four times; do not remove it. */
 .view[hidden]{display:none}
-h1{font-size:21px;font-weight:700;letter-spacing:-.02em;margin:0}
-h2{font-size:13px;font-weight:600;margin:0 0 7px;color:var(--t2)}
-.sub{font-size:12.5px;color:var(--t2);margin:3px 0 0}
+h1{font-family:var(--font-serif);font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0}
+h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  margin:0 0 8px;color:var(--text-muted)}
+.sub{font-size:13px;color:var(--text-muted);margin:5px 0 0;max-width:62ch}
 .vhead{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .vhead .grow{min-width:0;flex:1 1 240px}
-.tiny{font-size:11px;color:var(--t3);margin:0}
+.tiny{font-size:11.5px;color:var(--text-muted);margin:0}
 
-.box{border:.5px solid var(--sep);border-radius:9px;background:var(--win);overflow:hidden}
-.row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:.5px solid var(--sep-2)}
+/* THE PANEL — glass, the site's top-level surface, with the well's hairline
+   rows inside it. It began as a bare .acr-well fill, which is right for a group
+   NESTED in a panel (where the site uses it) and reads as a grey slab when it
+   is the top surface itself — measured on the linen ground, where the 4% ink
+   fill greys the whole page. */
+.box{background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border:1px solid var(--glass-border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-panel),var(--glass-rim);overflow:hidden}
+.row{display:flex;align-items:center;gap:14px;padding:13px 17px;
+  border-top:1px solid color-mix(in srgb,var(--text-light) 8%,transparent)}
 .row:first-child{border-top:none}
-.row.alt{background:var(--sunk)}
+/* NO ZEBRA STRIPE. The site separates rows with a hairline and nothing else;
+   alternating fills turn a group into a spreadsheet. The class stays because
+   the markup and the JS use it — it just no longer paints. */
+.row.alt{background:none}
 .row .main{min-width:0;flex:1 1 auto}
-.row .main > b{display:block;font-size:13px;font-weight:500}
-.row .main > span{display:block;font-size:11.5px;color:var(--t2);margin-top:1px}
-.row .rail{flex:0 0 auto;display:flex;align-items:center;gap:9px}
-.row.dim .main > b,.row.dim .main > span{color:var(--t3)}
+.row .main > b{display:block;font-size:13.5px;font-weight:600}
+.row .main > span{display:block;font-size:12px;color:var(--text-muted);margin-top:2px;
+  line-height:1.5}
+.row .rail{flex:0 0 auto;display:flex;align-items:center;gap:10px}
+.row.dim .main > b,.row.dim .main > span{color:var(--text-muted)}
+/* A FIGURE IS SERIF, the site's rule — money and counts read as the brand. */
+.fig{font-family:var(--font-serif);font-size:17px;font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 
-.chip{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap;border:.5px solid currentColor}
-.chip.ok{color:var(--grn)} .chip.slow,.chip.warn{color:var(--amb)}
-.chip.no,.chip.bad{color:var(--red)} .chip.n,.chip.unknown{color:var(--t3)}
+/* THE CAPSULE — the site's .st-cap: a soft tint of its own colour with a
+   hairline of the same, never an outlined box. */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+  letter-spacing:.01em;padding:4px 11px;border-radius:var(--r-pill);white-space:nowrap;
+  border:1px solid transparent}
+.chip.ok{color:var(--ok-text);background:color-mix(in srgb,var(--ok) 14%,transparent);
+  border-color:color-mix(in srgb,var(--ok) 24%,transparent)}
+.chip.slow,.chip.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);
+  border-color:color-mix(in srgb,var(--warn) 24%,transparent)}
+.chip.no,.chip.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);
+  border-color:color-mix(in srgb,var(--danger) 24%,transparent)}
+.chip.n,.chip.unknown{color:var(--text-muted);font-weight:500;
+  background:color-mix(in srgb,var(--text-muted) 10%,transparent);
+  border-color:color-mix(in srgb,var(--text-muted) 18%,transparent)}
 
-.sw{width:38px;height:22px;border-radius:11px;background:var(--sep);position:relative;flex:0 0 auto;transition:background .18s}
-.sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
-  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .18s}
-.sw.on{background:var(--grn)} .sw.on::after{transform:translateX(16px)}
+/* THE SWITCH — the site's .chb-switch shape, filling with the BRAND when on.
+   It was green, which is the site's "paid/ok" status colour and means
+   something else there. */
+.sw{width:42px;height:25px;border-radius:var(--r-pill);flex:0 0 auto;position:relative;
+  background:color-mix(in srgb,var(--text-light) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--text-light) 10%,transparent);
+  transition:background .22s var(--fluid)}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .22s var(--spring)}
+.sw.on{background:var(--accent);border-color:transparent}
+.sw.on::after{transform:translateX(17px)}
 .sw[disabled]{opacity:.4}
 
-.seg{display:inline-flex;background:var(--sep-2);border-radius:7px;padding:2px;gap:2px}
-.seg button{padding:4px 11px;border-radius:5px;font-size:12px;white-space:nowrap}
-.seg button[aria-pressed="true"]{background:var(--win);box-shadow:0 .5px 1.5px rgba(0,0,0,.18);font-weight:500}
+.seg{display:inline-flex;background:color-mix(in srgb,var(--text-light) 7%,transparent);
+  border-radius:var(--r-pill);padding:3px;gap:3px}
+.seg button{padding:5px 13px;border-radius:var(--r-pill);font-size:12.5px;white-space:nowrap;
+  color:var(--text-muted);transition:background .16s var(--fluid)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
 .seg button[disabled]{opacity:.4}
 
-select.pop,.field{height:26px;border-radius:6px;border:.5px solid var(--field-line);background:var(--field);
-  padding:0 8px;font-family:var(--sys);font-size:12px;color:var(--t1);max-width:220px}
-select.pop{padding-right:4px}
-.field.wide{width:280px;max-width:40vw}
+select.pop,.field{height:32px;border-radius:var(--r-pill);
+  border:1px solid color-mix(in srgb,var(--text-light) 14%,transparent);
+  background:var(--field);padding:0 13px;font-family:var(--font-sans);font-size:12.5px;
+  color:var(--text-light);max-width:230px}
+select.pop{padding-right:6px}
+.field.wide{width:290px;max-width:40vw}
+.field::placeholder{color:var(--text-muted)}
 
-.log{background:var(--sunk);border:.5px solid var(--sep);border-radius:9px;padding:13px 15px;min-height:60px}
-.lrow{display:grid;grid-template-columns:44px 1fr;gap:12px;font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--t2)}
-.lrow b{font-weight:400;color:var(--t3)}
-.lrow.hit,.lrow.hit b{color:var(--brand)}
-.lrow.fail,.lrow.fail b{color:var(--red)}
-.lrow.skip{color:var(--t3)}
-.lrow.done,.lrow.done b{color:var(--t1);font-weight:600}
+/* THE NIGHT LOG stays monospaced — it is a machine's account of its own night,
+   and the columns have to line up. The brand shows in what it ACHIEVED. */
+.log{background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border:1px solid var(--glass-border);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-panel),var(--glass-rim);padding:16px 18px;min-height:64px}
+.lrow{display:grid;grid-template-columns:48px 1fr;gap:13px;font-family:var(--mono);
+  font-size:11.5px;line-height:1.75;color:var(--text-muted)}
+.lrow b{font-weight:400;color:var(--text-muted);opacity:.75}
+.lrow.hit,.lrow.hit b{color:var(--accent-text)}
+.lrow.fail,.lrow.fail b{color:var(--danger-text)}
+.lrow.warn,.lrow.warn b{color:var(--warn-text)}
+.lrow.skip{color:var(--text-muted);opacity:.72}
+.lrow.done,.lrow.done b{color:var(--text-light);font-weight:600}
 
-.prog{height:5px;border-radius:3px;background:var(--sep);overflow:hidden;width:120px}
-.prog i{display:block;height:100%;background:var(--sel);border-radius:3px;transition:width .2s}
+.prog{height:6px;border-radius:var(--r-pill);width:130px;overflow:hidden;
+  background:color-mix(in srgb,var(--text-light) 12%,transparent)}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);
+  transition:width .2s var(--fluid)}
 
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,.3);display:grid;place-items:start center;padding-top:60px;z-index:9}
+/* ── THE SHEET ──────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.42);backdrop-filter:blur(3px);
+  -webkit-backdrop-filter:blur(3px);display:grid;place-items:start center;padding-top:64px;z-index:9}
 .scrim[hidden]{display:none}
-.sheet{width:min(560px,92vw);background:var(--win);border-radius:11px;overflow:hidden;
-  box-shadow:0 24px 60px -14px rgba(0,0,0,.6),0 0 0 .5px var(--sep);display:flex;flex-direction:column}
-.sheet-h{padding:15px 18px 12px;border-bottom:.5px solid var(--sep);display:flex;flex-direction:column;gap:10px}
-.sheet-h b{font-size:14px;font-weight:600}
+.sheet{width:min(580px,92vw);border-radius:var(--r-lg);overflow:hidden;
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-float),var(--glass-rim);
+  display:flex;flex-direction:column}
+.sheet-h{padding:18px 20px 14px;border-bottom:1px solid var(--glass-border);
+  display:flex;flex-direction:column;gap:11px}
+.sheet-h b{font-family:var(--font-serif);font-size:16px;font-weight:600}
 .sheet-h .field{max-width:none}
-.sheet-b{padding:5px 0;max-height:300px;overflow-y:auto}
-.sheet-f{padding:11px 18px;border-top:.5px solid var(--sep);display:flex;gap:9px;justify-content:flex-end;background:var(--bar)}
-.mrow{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 18px}
-.mrow:hover{background:var(--sunk)}
+.sheet-b{padding:6px 0;max-height:320px;overflow-y:auto}
+.sheet-f{padding:13px 20px;border-top:1px solid var(--glass-border);display:flex;gap:10px;
+  justify-content:flex-end}
+.mrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 20px;
+  transition:background .16s var(--fluid)}
+.mrow:hover{background:var(--btn-hover)}
 .mrow .main{min-width:0;flex:1 1 auto}
-.mrow .main b{display:block;font-size:12.5px;font-weight:500}
-.mrow .main span{display:block;font-size:11px;color:var(--t2);font-family:var(--mono);margin-top:1px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mrow .sz{font-size:11.5px;color:var(--t2);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.mrow .main b{display:block;font-size:13px;font-weight:600}
+.mrow .main span{display:block;font-size:11px;color:var(--text-muted);font-family:var(--mono);
+  margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .sz{font-family:var(--font-serif);font-size:13.5px;font-weight:600;color:var(--text-muted);
+  flex:0 0 auto;font-variant-numeric:tabular-nums}
 
-.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:20;
-  background:var(--t1);color:var(--win);font-size:12.5px;padding:9px 15px;border-radius:8px;
-  box-shadow:0 10px 30px -8px rgba(0,0,0,.5);max-width:70vw}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);
+  -webkit-backdrop-filter:var(--glass-filter);
+  border:1px solid var(--glass-border);color:var(--text-light);font-size:12.5px;font-weight:500;
+  padding:11px 18px;border-radius:var(--r-pill);
+  box-shadow:var(--shadow-float),var(--glass-rim);max-width:70vw}
 .toast[hidden]{display:none}
 
-@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+@media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important}}
