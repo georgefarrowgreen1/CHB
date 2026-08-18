@@ -132,6 +132,22 @@ function fakeState(over) {
         await page.waitForTimeout(400);
 
         ok('no page errors', errs.length === 0, errs.join(' | '));
+        // THE FONTS ACTUALLY LOAD. They did not: default-src 'none' with no
+        // font-src blocked both woff2 files, and the window fell back to the
+        // system faces — which LOOKS nearly right, since a serif fallback is
+        // still a serif, so it shipped unseen. A declaration check would have
+        // passed too; this asks the font system whether the face arrived.
+        const fonts = await page.evaluate(async function () {
+            await document.fonts.ready;
+            const loaded = [...document.fonts].filter(function (f) { return f.status === 'loaded'; }).map(function (f) { return f.family; });
+            return {
+                loaded: loaded,
+                mont: document.fonts.check('600 14px Montserrat'),
+                play: document.fonts.check('600 26px "Playfair Display"'),
+            };
+        });
+        ok('both shipped faces really load — CSP allows them', fonts.mont && fonts.play, JSON.stringify(fonts));
+
         ok('it asked for its state on open', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'state'; }); }));
 
         // ── ONE SCREEN AT A TIME, measured as PAINT not attribute ──

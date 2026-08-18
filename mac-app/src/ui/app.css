@@ -336,6 +336,22 @@ select.pop{padding-right:6px}
 .mrow .sz{font-family:var(--font-serif);font-size:13.5px;font-weight:600;color:var(--text-muted);
   flex:0 0 auto;font-variant-numeric:tabular-nums}
 
+/* THE VERSION LINE, under the state dot: app-level state, where app-level
+   state already lives. A button, because it opens the update sheet. */
+.side-ver{width:100%;text-align:left;padding:6px 10px 2px;font-size:11px;
+  color:var(--text-muted);border-radius:var(--r-sm);
+  transition:background .16s var(--fluid)}
+.side-ver:hover{background:var(--btn-hover);color:var(--text-light)}
+.side-ver.has-update{color:var(--accent-text);font-weight:600}
+
+/* The update sheet's own spacing. These were inline style attributes for about
+   a minute, which this page's CSP (style-src 'self') blocks outright — the
+   same trap as an inline onclick under script-src. */
+.up-body{padding:16px 20px}
+.up-note{margin-top:12px}
+.up-prog{width:100%;margin-top:12px}
+.up-prog[hidden]{display:none}
+
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);
   -webkit-backdrop-filter:var(--glass-filter);

@@ -57,9 +57,35 @@ jobs:
         with:
           node-version: '20'
 
+      # THE TAG IS DECIDED BEFORE THE BUILD, not at publish time. The app has to
+      # be stamped with the version it will be released AS, or it cannot tell
+      # whether it is up to date — and it was decided in the publish step, which
+      # runs after packaging. Same value now feeds both.
+      - name: Decide the version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "This build is $TAG"
+
       - name: Install
         working-directory: mac-app
         run: npm install --no-audit --no-fund
+
+      # Written INTO the bundle (src/ is packaged), so the running app knows its
+      # own release tag. Without it appVersion() falls back to package.json's
+      # semver and the updater announces a newer version for ever.
+      - name: Stamp the release tag into the app
+        working-directory: mac-app
+        run: |
+          set -euo pipefail
+          printf '{ "tag": "%s" }\n' "${{ steps.ver.outputs.tag }}" > src/release.json
+          cat src/release.json
 
       # NEVER SHIP A BUILD WHOSE OWN TESTS FAILED. The core suite is the thing
       # that checks the draft guard, and a .dmg that got past a broken guard is
@@ -169,13 +195,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          # The SAME tag the app was stamped with above — deriving it twice is
+          # how the bundle ends up claiming a version the release does not have.
+          TAG="${{ steps.ver.outputs.tag }}"
           TARGET=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # Let `gh release create` mint the tag from --target, rather than
             # pushing one first: a tag pushed before a release that then fails
             # is an orphan nobody will ever tidy up.
-            TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
             TARGET="--target $GITHUB_SHA"
           fi
           SIGNED="unsigned — on first launch open System Settings → Privacy & Security and press Open Anyway"

@@ -28,6 +28,8 @@ const models = require('../src/core/models');
 const config = require('../src/core/config');
 const jobs = require('../src/core/jobs');
 const night = require('../src/core/night');
+const update = require('../src/core/update');
+const updater = require('../src/core/updater');
 
 let fails = 0;
 let passes = 0;
@@ -523,6 +525,122 @@ function fakeSite(handler) {
     ok('a Keychain that refuses does NOT fall back to a file', !res.ok && /not saved anywhere/.test(res.say));
     const notMac = config.makeSecrets({ platform: 'linux' });
     ok('off a Mac there is no Keychain and it says so', notMac.available === false && !notMac.set('x').ok);
+
+
+    // ── THE UPDATER ───────────────────────────────────────────────────────
+    // The decisions, which are the half that can be wrong invisibly. Every
+    // refusal is here, because the failure mode of an updater is installing
+    // something it should not have.
+    console.log('\n15) is there a newer version, and may we install it?');
+    const rel = (over) => Object.assign({
+        tag_name: 'hand-build-20260818-0842',
+        assets: [{
+            name: 'Cottage-Holidays-Blakeney.dmg',
+            browser_download_url: 'https://github.com/x/y/releases/download/t/Cottage-Holidays-Blakeney.dmg',
+            size: 178521944,
+            digest: 'sha256:a604591483a2953136e667eec978319ebe6989fd413b94159b64829ccff32534',
+        }],
+    }, over || {});
+    const A = 'Cottage-Holidays-Blakeney.dmg';
+
+    ok('a dated build parses', !!update.parseVersion('hand-build-20260818-0842'));
+    ok('a semver tag parses', !!update.parseVersion('hand-v1.2.0'));
+    ok('nonsense does not', update.parseVersion('latest') === null);
+    ok('a later build beats an earlier one',
+        update.compareVersions('hand-build-20260818-0842', 'hand-build-20260817-2253') === 1);
+    ok('the same build is the same', update.compareVersions('hand-build-20260818-0842', 'hand-build-20260818-0842') === 0);
+    ok('an earlier build loses', update.compareVersions('hand-build-20260817-2253', 'hand-build-20260818-0842') === -1);
+    ok('same day, later time wins', update.compareVersions('hand-build-20260818-0900', 'hand-build-20260818-0842') === 1);
+    // A DATED BUILD OUTRANKS A SEMVER ONE. CI publishes dated tags, so treating
+    // 1.0.0 as newer would offer a downgrade for ever.
+    ok('a CI build outranks a semver tag', update.compareVersions('hand-build-20260818-0842', 'hand-v1.0.0') === 1);
+    ok('an unreadable version compares to nothing', update.compareVersions('latest', 'hand-v1.0.0') === null);
+
+    ok('the same version reports current',
+        update.updateVerdict('hand-build-20260818-0842', rel(), A).state === 'current');
+    ok('a newer one reports available',
+        update.updateVerdict('hand-build-20260817-2253', rel(), A).state === 'available');
+    ok('...carrying the url, size and checksum', (function () {
+        const v = update.updateVerdict('hand-build-20260817-2253', rel(), A);
+        return /^https:/.test(v.url) && v.size === 178521944 && /^[0-9a-f]{64}$/.test(v.sha256);
+    })());
+    // NO CHECKSUM, NO DOWNLOAD — the whole safety story, since nothing here is
+    // code-signed. It is still OFFERED, as a link.
+    ok('no checksum means manual, never available',
+        update.updateVerdict('hand-build-20260817-2253', rel({ assets: [{ name: A, browser_download_url: 'https://x/y.dmg', size: 1, digest: '' }] }), A).state === 'manual');
+    ok('a digest that is not sha256 is treated as absent',
+        update.assetSha256({ digest: 'md5:abc' }) === '' && update.assetSha256({ digest: 'sha256:zz' }) === '');
+    ok('a release without our asset is unknown, not available',
+        update.updateVerdict('hand-build-20260817-2253', rel({ assets: [{ name: 'other.zip', browser_download_url: 'https://x', digest: 'sha256:' + 'a'.repeat(64) }] }), A).state === 'unknown');
+    ok('an unreadable tag never reports an update',
+        update.updateVerdict('hand-build-20260817-2253', rel({ tag_name: 'latest' }), A).state === 'unknown');
+    ok('nothing at all is unknown, and says so', (function () {
+        const v = update.updateVerdict('hand-v1.0.0', null, A);
+        return v.state === 'unknown' && /couldn't check/i.test(v.say);
+    })());
+    // EVERY state says something. A verdict with an empty sentence renders as a
+    // blank line where an explanation should be.
+    ok('every state carries a sentence', (function () {
+        const seen = {};
+        [
+            update.updateVerdict('hand-build-20260818-0842', rel(), A),                       // current
+            update.updateVerdict('hand-build-20260817-2253', rel(), A),                       // available
+            update.updateVerdict('hand-build-20260817-2253', rel({ assets: [{ name: A, browser_download_url: 'https://x/y.dmg', size: 1, digest: '' }] }), A), // manual
+            update.updateVerdict('hand-v1.0.0', null, A),                                     // unknown
+        ].forEach(function (v) { seen[v.state] = (v.say || '').length > 0; });
+        return ['current', 'available', 'manual', 'unknown'].every(function (s) { return seen[s] === true; });
+    })());
+
+    // The IO half's refusals, driven with a fake fetch — no network.
+    console.log('\n16) the updater refuses what it cannot trust');
+    const feedOf = (body, okStatus) => async function () {
+        return { ok: okStatus !== false, status: okStatus === false ? 500 : 200, json: async () => body };
+    };
+    const u1 = updater.makeUpdater({ fetch: feedOf(rel()), currentVersion: 'hand-build-20260817-2253' });
+    const c1 = await u1.check();
+    ok('a good feed yields available', c1.ok && c1.state === 'available', JSON.stringify(c1.state));
+    const u2 = updater.makeUpdater({ fetch: feedOf(null, false), currentVersion: 'hand-v1.0.0' });
+    const c2 = await u2.check();
+    ok('a failing feed is unknown, never "up to date"', c2.state === 'unknown' && !/up to date/i.test(c2.say), c2.say);
+    const u3 = updater.makeUpdater({ fetch: feedOf(rel()), currentVersion: 'x', feedUrl: 'http://insecure.test/f' });
+    ok('a non-https feed is refused', (await u3.check()).state === 'unknown');
+    const u4 = updater.makeUpdater({
+        fetch: feedOf(rel({ assets: [{ name: A, browser_download_url: 'http://plain.test/a.dmg', size: 1, digest: 'sha256:' + 'a'.repeat(64) }] })),
+        currentVersion: 'hand-build-20260817-2253',
+    });
+    ok('a non-https download address is refused', (await u4.check()).state === 'unknown');
+    // download() must not be reachable for a verdict that never earned it.
+    const d1 = await u1.download({ state: 'manual', url: 'https://x/y.dmg', sha256: '' });
+    ok('download refuses a verdict with no checksum', !d1.ok && /checksum/i.test(d1.say));
+    const d2 = await u1.download({ state: 'available', url: 'http://x/y.dmg', sha256: 'a'.repeat(64) });
+    ok('download refuses a non-https file', !d2.ok);
+
+    // THE POSITIVE CASE, and the one that matters most: a good file verifies
+    // and lands; a tampered one is refused AND DELETED, because a bad download
+    // left on disk is a bad download someone can open.
+    const crypto = require('crypto');
+    const payload = Buffer.from('a pretend disk image');
+    const goodSum = crypto.createHash('sha256').update(payload).digest('hex');
+    const bodyOf = (buf) => ({
+        ok: true, status: 200,
+        headers: { get: () => String(buf.length) },
+        body: (async function* () { yield buf; })(),
+    });
+    const upTmp = fs.mkdtempSync(path.join(os.tmpdir(), "chb-upd-"));
+    const uD = updater.makeUpdater({ fetch: async () => bodyOf(payload), currentVersion: 'x', tmpDir: upTmp });
+    let sawProgress = false;
+    const okDl = await uD.download({ state: 'available', url: 'https://x/y.dmg', sha256: goodSum, size: payload.length },
+        function () { sawProgress = true; });
+    ok('a matching file is accepted', okDl.ok && fs.existsSync(okDl.file), JSON.stringify(okDl.say || ''));
+    ok('...and progress was reported while it downloaded', sawProgress);
+    ok('...and nothing is left as a .part', !fs.existsSync(okDl.file + '.part'));
+
+    const uB = updater.makeUpdater({ fetch: async () => bodyOf(Buffer.from('tampered')), currentVersion: 'x', tmpDir: upTmp });
+    const badDl = await uB.download({ state: 'available', url: 'https://x/y.dmg', sha256: goodSum, size: 8 });
+    ok('a file that fails its checksum is refused', !badDl.ok && /checksum/i.test(badDl.say), badDl.say);
+    ok('...and is DELETED, not left where it could be opened',
+        !fs.existsSync(path.join(upTmp, "Cottage-Holidays-Blakeney.dmg.part")));
+    try { fs.rmSync(upTmp, { recursive: true, force: true }); } catch (e) {}
 
     console.log('\n== Summary ==');
     if (fails) {

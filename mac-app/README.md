@@ -19,7 +19,7 @@ Being exact about this, because it decides what you should trust.
 
 | | |
 |---|---|
-| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 184 checks, no network, no model, no Mac needed. |
+| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 213 checks, no network, no model, no Mac needed. |
 | **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock and power assertion) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
 
 That split is deliberate. The unverifiable parts are the ones where being wrong
@@ -121,6 +121,29 @@ An unsigned app is blocked by Gatekeeper on first launch. Two routes:
   Apple runs an automated malware scan. There is no review, no guidelines and no
   cut of anything — it is not the App Store, it just makes the app open normally.
 
+### Keeping it up to date
+
+The app checks for itself. The sidebar's bottom line says **Up to date** or
+**Update available**; clicking it opens a panel with the installed version, the
+new one, and a Download button that fetches the disk image *inside the app* with
+a progress bar.
+
+**It verifies before it opens anything.** The download is checked against the
+SHA-256 the release publishes, and a file that does not match is deleted rather
+than kept. A release published without a checksum is offered as a browser link
+instead — this app will not fetch and hand you a binary it cannot verify.
+
+**It stops short of installing itself, on purpose.** macOS's own updater refuses
+to replace an unsigned app, and that refusal is right: with no code signature
+the only guard on a downloaded binary is a checksum served by the same host as
+the binary, so one compromised server defeats both. So the last step is yours —
+the disk image opens, you drag the app across, replacing the old one, and
+reopen it. Sign the app (below) and that step can safely be automated.
+
+The update source is the GitHub release feed by default and is a single value in
+`src/core/updater.js`, so pointing it at your own web space is a one-line change
+rather than a rewrite.
+
 ### Starting it at login
 
 **System Settings → General → Login Items → +**, and choose the app. Closing its
@@ -187,9 +210,11 @@ src/core/
   guard.js           what a draft must pass. The most important file here.
   jobs.js            the work. One job built: drafted enquiry replies.
   night.js           one night, start to finish, and the log
+  update.js          is there a newer version, and may we install it? (pure)
+  updater.js         the fetch, the progress and the checksum
   config.js          settings on disk; the secret in the Keychain, never on disk
   api.js             the surface the window may call
-test/core-test.js    184 checks over all of the above
+test/core-test.js    213 checks over all of the above
 ```
 
 Settings, models and the night log live in
