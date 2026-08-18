@@ -213,6 +213,13 @@ input{-webkit-user-select:text;user-select:text}
 /* `display` OUTRANKS the `hidden` attribute — this line is why one screen shows
    at a time. It has bitten this project four times; do not remove it. */
 .view[hidden]{display:none}
+/* THE hidden ATTRIBUTE MUST WIN, EVERYWHERE. `.view[hidden]` was the only rule
+   that said so, so the first .row given a hidden attribute (Connection's folded
+   address box) stayed on screen: .row sets display:flex, which outranks the UA's
+   [hidden]{display:none}. That is the trap this file's own suite was written to
+   catch and it caught it — but a per-element rule would only move the trap along
+   to the next element, so it is stated once for the whole window. */
+[hidden]{display:none!important}
 h1{font-family:var(--font-serif);font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0}
 h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
   margin:0 0 8px;color:var(--text-muted)}
@@ -220,6 +227,13 @@ h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercas
 .vhead{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .vhead .grow{min-width:0;flex:1 1 240px}
 .tiny{font-size:11.5px;color:var(--text-muted);margin:0}
+
+/* THE ONE COMMAND TO TYPE, when llama.cpp is nowhere. Selectable on purpose —
+   it exists to be copied — and it is the only <pre> in the app, so it takes
+   the row's own ground rather than inventing a code style. */
+.fix{font-family:var(--mono);font-size:12px;margin:8px 0 0;padding:10px 12px;
+  background:var(--btn-hover);border:1px solid var(--glass-border);border-radius:var(--r-sm);
+  color:var(--text-light);-webkit-user-select:text;user-select:text;overflow-x:auto}
 
 /* THE PANEL — glass, the site's top-level surface, with the well's hairline
    rows inside it. It began as a bare .acr-well fill, which is right for a group

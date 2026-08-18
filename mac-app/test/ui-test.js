@@ -62,8 +62,15 @@ function fakeState(over) {
             { id: 'big.gguf', name: 'Qwen 2.5 72B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 47, fit: 'no', why: 'Will not fit' },
         ],
         modelsDir: '/Users/x/Library/Application Support/Cottage Holidays Blakeney/Models',
-        siteUrl: 'https://example.test/nightshift.php',
+        siteUrl: 'https://cottageholidaysblakeney.co.uk/nightshift.php',
+        siteIsDefault: true,
+        siteRaw: '',
         secretSet: true, secretHint: '••••••••', keychain: true, keepAwake: true,
+        runner: {
+            canStart: true, available: true, found: true, kind: 'bundled',
+            path: '/App/Contents/Resources/runner/llama-server', install: '',
+            problem: '', running: false, autoStart: true,
+        },
         nextRun: new Date().toISOString(), nextRunAt: '02:00', nextRunSays: 'in 6 hours 42 minutes',
         nights: [{
             started: '2026-08-17T02:14:00.000Z', ok: true, drafted: 2, posted: 2, skipped: 1, failed: 0,
@@ -122,6 +129,13 @@ function fakeState(over) {
                 },
                 downloadModel: async function (r) { window.__calls.push(['downloadModel', r]); return { ok: true, file: '/x/a.gguf' }; },
                 runNow: async function () { window.__calls.push(['runNow']); return { ok: true, night: { posted: 2 } }; },
+                startEngine: async function () {
+                    window.__calls.push(['startEngine']);
+                    return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' };
+                },
+                stopEngine: async function () { window.__calls.push(['stopEngine']); return { ok: true }; },
+                startEngine: async function () { window.__calls.push(['startEngine']); return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' }; },
+                stopEngine: async function () { window.__calls.push(['stopEngine']); return { ok: true }; },
                 onProgress: function (fn) { window.__progress = fn; },
                 onDownload: function () {},
                 onRan: function () {},
@@ -272,7 +286,26 @@ function fakeState(over) {
         // ── CONNECTION: the secret is never shown, and Test says what it found ──
         await page.click('[data-v="4"]');
         await page.waitForTimeout(150);
-        ok('the address is filled in', (await page.inputValue('#siteUrl')) === 'https://example.test/nightshift.php');
+        // THE ADDRESS IS NOT A QUESTION. This checked that a text field had been
+        // pre-filled with an address the owner had to supply in the first place;
+        // the app ships knowing it, so what matters is that the screen SAYS so
+        // and the box is folded away.
+        ok('the address is stated, not asked for',
+            /Already set to cottageholidaysblakeney\.co\.uk/.test(await page.textContent('#siteSays')),
+            await page.textContent('#siteSays'));
+        ok('…with nothing to fill in', /Nothing to fill in/.test(await page.textContent('#siteSays')));
+        ok('…and the address box folded away', await page.isHidden('#siteEditRow'));
+        // WITH A KEY STORED there is nothing to fill in, so nothing is grabbed.
+        ok('…and with a key already stored the code box is not seized',
+            await page.evaluate(function () { return document.activeElement.id !== 'codeIn'; }));
+        // It is still REACHABLE, because a staging copy needs it.
+        await page.click('#siteEdit');
+        await page.waitForTimeout(120);
+        ok('Change… opens the box for a staging copy', await page.isVisible('#siteEditRow'));
+        ok('…empty, because empty MEANS the standard address',
+            (await page.inputValue('#siteUrl')) === '');
+        await page.click('#siteEdit');
+        await page.waitForTimeout(120);
         ok('the secret field is a password field', (await page.getAttribute('#secretIn', 'type')) === 'password');
         ok('the secret is never printed on the page', (await page.textContent('#v4')).indexOf('••••') === -1);
         ok('…and it says one is stored', /Keychain/.test(await page.textContent('#secretSays')));
@@ -307,13 +340,27 @@ function fakeState(over) {
         // rather than showing empty boxes. Driven by reloading with a bare state
         // (a later addInitScript wins, so this genuinely re-boots the window).
         await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
-            siteUrl: '', secretSet: false, models: [], nights: [],
+            secretSet: false, models: [], nights: [],
             jobs: [{ id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: false, model: '', at: '02:00' }],
         })) + '; window.__nextState = null;');
         await page.reload();
         await page.waitForTimeout(350);
         ok('a first run has no page errors either', errs.length === 0, errs.join(' | '));
-        ok('the foot says what is missing', /No site yet/.test(await page.textContent('#stateSays')),
+        // "No site yet" is gone with the question it described: the only thing a
+        // fresh install is missing now is the code.
+        ok('the foot says what is missing — the code, not an address',
+            /Not connected/.test(await page.textContent('#stateSays')),
+            await page.textContent('#stateSays'));
+        // ONE THING TO DO, AND THE CURSOR IS IN IT.
+        await page.click('[data-v="4"]');
+        await page.waitForTimeout(200);
+        ok('a fresh install lands with the cursor in the code box',
+            await page.evaluate(function () { return document.activeElement.id === 'codeIn'; }),
+            await page.evaluate(function () { return document.activeElement.id; }));
+        await page.click('[data-v="0"]');
+        await page.waitForTimeout(120);
+        ok('…and never claims it lacks an address it ships with',
+            !/No site/.test(await page.textContent('#v4')) && !/not set yet/.test(await page.textContent('#v0')),
             await page.textContent('#stateSays'));
         ok('…and the dot is not green', (await page.getAttribute('#stateDot', 'class')).indexOf('off') !== -1);
         const empties = await page.evaluate(function () {
@@ -338,8 +385,170 @@ function fakeState(over) {
         ok('a job cannot be switched on before a model is chosen', noModelSave === 0, String(noModelSave));
         ok('…and it says why', await page.isVisible('#toast'));
 
+        // ── STARTING THE MODEL SERVER FROM THE WINDOW ──────────────────────
+        // The affordance that closes the Terminal step. Everything about WHAT
+        // gets started is core/runner.js's and gated there; this is about
+        // whether the owner can see and press the thing.
+        //
+        // Each case RELOADS with its own state, because the window renders from
+        // the state it already holds and a nav click does not re-ask — the first
+        // draft of this section drove `__nextState` and silently tested the
+        // default state four times over.
+        async function bootRunner(over) {
+            await page.addInitScript('window.__state = ' + JSON.stringify(fakeState(over)) + '; window.__nextState = null;');
+            await page.reload();
+            await page.waitForTimeout(350);
+            await page.click('[data-v="3"]');
+            await page.waitForTimeout(150);
+        }
+        const DOWN = {
+            engineServing: false,
+            engines: [
+                { id: 'llamacpp', name: 'llama.cpp', note: 'Metal on Apple silicon.', usable: true, serving: false, base: 'http://127.0.0.1:8080', why: '' },
+                { id: 'ollama', name: 'Ollama', note: 'If you already run Ollama.', usable: true, serving: false, base: 'http://127.0.0.1:11434', why: '' },
+            ],
+        };
+
+        await bootRunner({});
+        ok('nothing to start while it is already serving — no Start button',
+            (await page.$('#startEng')) === null);
+
+        await bootRunner(DOWN);
+        ok('a dead engine offers Start', (await page.$('#startEng')) !== null);
+        ok('…and says where it found llama.cpp rather than only offering a button',
+            /Resources\/runner\/llama-server/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
+
+        // THE TONIGHT VERDICT FOLLOWS. "Not answering" in red would report a
+        // problem the app is about to solve for itself.
+        await page.click('[data-v="0"]');
+        await page.waitForTimeout(150);
+        ok('Tonight says the engine STARTS for the run, not that it is broken',
+            /Starts for the run/.test(await page.textContent('#tonightBox')),
+            await page.textContent('#tonightBox'));
+        await page.click('[data-v="3"]');
+        await page.waitForTimeout(150);
+
+        // Pressing it calls the bridge and reports the sentence the main
+        // process gave — never a cheerful one of the window's own.
+        await page.click('#startEng');
+        await page.waitForTimeout(300);
+        ok('Start asks the main process to start it',
+            (await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'startEngine'; }).length; })) === 1);
+        ok('…and the toast is the answer that came back, word for word',
+            /ready after 4 seconds/.test(await page.textContent('#toastSays')),
+            await page.textContent('#toastSays'));
+
+        // A REFUSAL IS THE MAIN PROCESS'S SENTENCE TOO.
+        await bootRunner(DOWN);
+        await page.evaluate(function () { window.__startAnswer = { ok: false, say: 'That model file could not be loaded.' }; });
+        await page.click('#startEng');
+        await page.waitForTimeout(300);
+        ok('a refusal prints the real reason, not "it did not work"',
+            /could not be loaded/.test(await page.textContent('#toastSays')),
+            await page.textContent('#toastSays'));
+
+        // NOT INSTALLED: the button stands down and the one command appears.
+        await bootRunner(Object.assign({}, DOWN, {
+            runner: {
+                canStart: true, available: true, found: false, kind: '', path: '',
+                install: 'brew install llama.cpp',
+                problem: 'llama.cpp is not installed on this Mac yet.',
+                running: false, autoStart: true,
+            },
+        }));
+        ok('with nothing installed the Start button is disabled rather than lying',
+            (await page.evaluate(function () { var b = document.getElementById('startEng'); return !!b && b.disabled; })));
+        ok('…the problem is stated', /not installed/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
+        ok('…and the ONE COMMAND is on screen, and selectable',
+            (await page.evaluate(function () {
+                var el = document.getElementById('runnerFix');
+                return el && !el.hidden && el.textContent.indexOf('brew install llama.cpp') !== -1
+                    && getComputedStyle(el).userSelect !== 'none';
+            })));
+
+        // AN ENGINE THIS APP DOES NOT START SAYS SO, rather than offering a
+        // button that would do nothing.
+        await bootRunner(Object.assign({}, DOWN, {
+            engine: 'ollama',
+            runner: {
+                canStart: false, available: true, found: true, kind: 'bundled',
+                path: '/App/Contents/Resources/runner/llama-server', install: '',
+                problem: 'Ollama runs its own service, so this app does not start or stop it.',
+                running: false, autoStart: true,
+            },
+        }));
+        ok('Ollama gets no Start button', (await page.$('#startEng')) === null);
+        ok('…and the reason is on screen', /own service/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
+
         await ctx.close();
     }
+
+    // ── THE DOCK ICON'S SHAPE, measured on its own pixels ─────────────────
+    // core-test proves the file has an alpha channel; only rendering it proves
+    // the alpha is in the shape of a Mac icon. Done once rather than per theme
+    // — a PNG has no theme.
+    {
+        const ctx = await browser.newContext({ viewport: { width: 1100, height: 1100 } });
+        const page = await ctx.newPage();
+        const src = 'data:image/png;base64,'
+            + fs.readFileSync(path.join(__dirname, '..', 'build', 'icon.png')).toString('base64');
+        const m = await page.evaluate(async function (dataUrl) {
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            const g = c.getContext('2d');
+            g.drawImage(img, 0, 0);
+            const d = g.getImageData(0, 0, c.width, c.height).data;
+            const alpha = function (x, y) { return d[(y * c.width + x) * 4 + 3]; };
+            let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1;
+            for (let y = 0; y < c.height; y++) {
+                for (let x = 0; x < c.width; x++) {
+                    if (alpha(x, y) > 8) {
+                        if (x < minX) { minX = x; }
+                        if (x > maxX) { maxX = x; }
+                        if (y < minY) { minY = y; }
+                        if (y > maxY) { maxY = y; }
+                    }
+                }
+            }
+            // How far in from the body's left edge the ink starts, on the very
+            // top row of the body. For a plain quarter-circle that is the
+            // radius; a continuous corner starts its curve further out.
+            let firstInk = 0;
+            while (firstInk < c.width && alpha(minX + firstInk, minY) <= 8) { firstInk++; }
+            return {
+                w: maxX - minX + 1, h: maxY - minY + 1,
+                left: minX, top: minY, right: c.width - 1 - maxX, bottom: c.height - 1 - maxY,
+                corners: [alpha(2, 2), alpha(c.width - 3, 2), alpha(2, c.height - 3), alpha(c.width - 3, c.height - 3)],
+                bodyCorner: alpha(minX + 2, minY + 2),
+                middle: alpha(c.width >> 1, c.height >> 1),
+                firstInk: firstInk,
+            };
+        }, src);
+
+        ok('the icon canvas is transparent at its corners — macOS masks nothing, so this is the silhouette',
+            m.corners.every(function (a) { return a === 0; }), JSON.stringify(m.corners));
+        ok('…and opaque in the middle', m.middle > 250, String(m.middle));
+        ok('the body is Apple\'s 824 on the 1024 grid',
+            Math.abs(m.w - 824) <= 2 && Math.abs(m.h - 824) <= 2, m.w + 'x' + m.h);
+        ok('…centred, so the shadow has its margin all round',
+            [m.left, m.top, m.right, m.bottom].every(function (v) { return Math.abs(v - 100) <= 2; }),
+            JSON.stringify([m.left, m.top, m.right, m.bottom]));
+        ok('…and its own corner is cut away, not square',
+            m.bodyCorner === 0, String(m.bodyCorner));
+        // THE SHAPE ITSELF. A plain border-radius corner begins exactly at the
+        // radius (measured: 168px in); the continuous curve begins further out
+        // (measured: 203). Anything at or under the radius is an arc.
+        ok('the corner is a CONTINUOUS curve, not a quarter-circle',
+            m.firstInk > 190, m.firstInk + 'px in (an arc measures ~168)');
+        await ctx.close();
+    }
+
     await browser.close();
     console.log('\n== Summary ==');
     if (fails) {

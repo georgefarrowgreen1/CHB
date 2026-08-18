@@ -234,9 +234,21 @@ route_actions([
 
         $key = night_key_make();
         $list = night_devices_read();
+        // WHICH MAC THIS IS — the app's own name for itself, because the code
+        // record was minted before any machine had used it and could only ever
+        // supply a default. Reported live: two paired Macs both read "A Mac",
+        // so the list could not tell the owner which one to stop.
+        //
+        // It is text a holder of a valid code wrote, so night_dev_label()
+        // sanitises and caps it (and the client escapes it again on render) —
+        // the same posture every owner-written label here already has.
+        $label = trim((string) ($in['label'] ?? ''));
+        if ($label === '') {
+            $label = (string) ($rec['label'] ?? 'A Mac');
+        }
         $list[] = [
             'h' => night_key_hash($key),
-            'label' => night_dev_label($rec['label'] ?? 'A Mac'),
+            'label' => night_dev_label($label),
             'added' => time(),
             'seen' => 0,
         ];

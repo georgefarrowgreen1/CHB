@@ -2324,6 +2324,47 @@ it_check('a stop whose label no longer matches is refused', $r['code'] === 409, 
 it_check('…and the Mac is still working',
     http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $devKey2])['code'] === 200);
 
+// THE MAC NAMES ITSELF, and its name beats the code record's.
+// Reported live: two paired Macs both read "A Mac", because the label could
+// only come from the code — which is minted before any machine has used it and
+// therefore cannot know which one will. The app sends its own computer name now.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'connect_code', 'label' => 'FromTheCode']);
+$third = (string) ($r['json']['code'] ?? '');
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $third, 'label' => "George's Mac mini"]);
+it_check('a Mac that names itself connects', $r['code'] === 200 && !empty($r['json']['key']), $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+$labels = array_column($r['json']['devices'] ?? [], 'label');
+it_check('…and the list shows the MACHINE\'s name, not the code\'s',
+    in_array("George's Mac mini", $labels, true) && !in_array('FromTheCode', $labels, true),
+    json_encode($labels));
+// A label is text a holder of a valid code wrote, so what the OWNER IS SHOWN is
+// collapsed and capped. NB this check says "shown" and not "stored" on purpose:
+// night_devices() normalises on the way OUT as well, so break-testing the write
+// side's night_dev_label() leaves this green — it cannot see how the row was
+// written, and an earlier wording claiming "rather than stored raw" was
+// therefore a claim about something it never touched. The write-side call is
+// still worth keeping (it bounds what the encrypted row can grow to), and the
+// property it enforces alone is asserted on the plain structure in
+// test-nightshift, where it can actually be seen.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'connect_code']);
+$fourth = (string) ($r['json']['code'] ?? '');
+http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $fourth,
+    'label' => "<b>Mac</b>\n\tmini " . str_repeat('x', 200)]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+$last = (string) end($r['json']['devices'])['label'];
+it_check('a hostile label reaches the owner\'s screen collapsed and capped',
+    strlen($last) <= 64 && strpos($last, "\n") === false && strpos($last, "\t") === false
+    && strpos($last, '<b>Mac</b> mini') === 0, $last);
+// And with NO label from the app — an older copy — the code's own label stands,
+// so upgrading is never a regression.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'connect_code', 'label' => 'OlderApp']);
+$fifth = (string) ($r['json']['code'] ?? '');
+http($guest, 'POST', '/nightshift.php', ['action' => 'connect', 'code' => $fifth]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+it_check('…while an app that sends none still gets the code\'s label',
+    in_array('OlderApp', array_column($r['json']['devices'] ?? [], 'label'), true),
+    json_encode(array_column($r['json']['devices'] ?? [], 'label')));
+
 $rootDb->prepare('DELETE FROM content WHERE item_key IN (?, ?)')
     ->execute(['apikey-nightshift', 'apikey-nightshift-code']);
 $rootDb->query('DELETE FROM night_items');

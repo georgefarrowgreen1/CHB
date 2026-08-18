@@ -6,7 +6,14 @@
 //  nodeIntegration off) and reaches this through a preload bridge. So THIS list
 //  is the app's security boundary, and it is short on purpose — the window can
 //  ask for state, change settings, search and download models, test the site
-//  and run a night. It cannot read a file, spawn a process or post anywhere.
+//  and run a night. It cannot read a file or post anywhere.
+//
+//  STARTING THE MODEL SERVER IS DELEGATED, NOT DONE HERE. This file still has
+//  no child_process: `deps.runner` is an object with start/stop/status that
+//  main.js supplies over real processes and the suites supply as a fake. That
+//  keeps the one place in the app that spawns anything down to a dozen lines
+//  in the untested layer, and keeps every DECISION about it (core/runner.js)
+//  under test with no Mac.
 //
 //  Every method returns a plain object and never throws: a rejected promise in
 //  a renderer becomes an unhandled rejection nobody sees, so a failure comes
@@ -24,6 +31,7 @@ const configMod = require('./config');
 const siteMod = require('./site');
 const nightMod = require('./night');
 const jobsMod = require('./jobs');
+const runnerMod = require('./runner');
 
 function makeApi(deps) {
     const d = deps || {};
@@ -34,6 +42,14 @@ function makeApi(deps) {
     const makeSite = d.makeSite || siteMod.makeSite;
     const fetchImpl = d.fetch || (typeof fetch === 'function' ? fetch : null);
     const now = function () { return d.now ? d.now() : new Date(); };
+    // The one thing this file will not do for itself. Absent (a bare `npm test`
+    // constructing the api with no deps) it reports as unavailable rather than
+    // throwing — the Runner screen then reads exactly as it did before this
+    // feature existed.
+    const runner = d.runner || null;
+    // Where a bundled binary would sit. Injected, because process.resourcesPath
+    // only exists inside a packaged Electron app.
+    const resourcesDir = d.resourcesDir || '';
 
     let cfg = configMod.load(dir);
     let nights = readNights();
@@ -72,7 +88,71 @@ function makeApi(deps) {
         return makeEngine({ id: id || engineId() });
     }
     function siteFor() {
-        return makeSite({ url: cfg.siteUrl, secret: secrets.get() });
+        return makeSite({ url: configMod.siteUrl(cfg), secret: secrets.get() });
+    }
+
+    // Everything the window needs to decide whether to offer a Start button,
+    // and what to say instead when it cannot. Composed from the pure module so
+    // the button, the night and the log all read one answer.
+    function runnerState(id) {
+        const engineId2 = id || engineId();
+        const found = runnerMod.resolveRunner({ custom: cfg.runnerPath, resourcesDir: resourcesDir });
+        const model = (cfg.jobs.reply || {}).model || '';
+        const modelPath = model ? path.join(cfg.modelsDir, model) : '';
+        const problem = runnerMod.startProblem({
+            engineId: engineId2,
+            engineName: (engineMod.ENGINES[engineId2] || {}).name || engineId2,
+            modelPath: modelPath,
+            modelsDir: cfg.modelsDir,
+            runner: found,
+        });
+        const live = runner && runner.status ? runner.status() : { running: false };
+        return {
+            // Whether this app is ABLE to start this engine at all, which is a
+            // different question from whether it could start right now.
+            canStart: runnerMod.canStart(engineId2),
+            available: !!runner,
+            found: !!found.ok,
+            kind: found.kind || '',
+            path: found.path || '',
+            install: found.ok ? '' : found.install,
+            problem: problem,
+            running: !!(live && live.running),
+            startedByUs: !!(live && live.running),
+            autoStart: !!cfg.autoStart,
+        };
+    }
+
+    // Bring the engine up if it is not already, and say what happened. Used by
+    // the Start button AND by a night that finds nothing answering, so the two
+    // cannot behave differently.
+    async function ensureEngine(id) {
+        const engineId2 = id || engineId();
+        const eng = engineFor(engineId2);
+        if (await eng.reachable()) {
+            return { ok: true, started: false, say: eng.name + ' is already answering.' };
+        }
+        if (!runner) {
+            return { ok: false, say: eng.name + ' is not answering on ' + eng.base + '.' };
+        }
+        const st = runnerState(engineId2);
+        if (st.problem) {
+            return { ok: false, say: st.problem, install: st.install };
+        }
+        const model = (cfg.jobs.reply || {}).model || '';
+        const r = await runner.start({
+            bin: st.path,
+            args: runnerMod.runnerArgs({
+                modelPath: path.join(cfg.modelsDir, model),
+                base: eng.base,
+                appleSilicon: !!mach.appleSilicon,
+            }),
+            base: eng.base,
+            reachable: function () { return eng.reachable(); },
+        });
+        return r && r.ok
+            ? { ok: true, started: true, say: eng.name + ' · ' + runnerMod.readySay(r.ms) }
+            : { ok: false, say: (r && r.say) || 'The model server did not start.' };
     }
 
     return {
@@ -108,11 +188,21 @@ function makeApi(deps) {
                 }),
                 models: inst,
                 modelsDir: cfg.modelsDir,
-                siteUrl: cfg.siteUrl,
+                // THE ADDRESS IN FORCE, resolved — not the raw setting, which is
+                // '' on a fresh install and used to make the window say "no
+                // address yet" about an app that knew perfectly well where its
+                // site was. `siteIsDefault` lets it say "the standard address"
+                // rather than printing a URL nobody chose.
+                siteUrl: configMod.siteUrl(cfg),
+                siteIsDefault: configMod.siteIsDefault(cfg),
+                // The RAW setting too, so the Change… box shows what was
+                // actually overridden and an empty one still means "standard".
+                siteRaw: String(cfg.siteUrl || ''),
                 secretSet: secrets.state().set,
                 secretHint: secrets.state().hint,
                 keychain: secrets.available,
                 keepAwake: !!cfg.keepAwake,
+                runner: runnerState(id),
                 nextRun: next.toISOString(),
                 nextRunAt: (cfg.jobs.reply || {}).at || '02:00',
                 nextRunSays: nightMod.untilWords(next, now()),
@@ -126,7 +216,9 @@ function makeApi(deps) {
             const p = patch && typeof patch === 'object' ? patch : {};
             if (typeof p.siteUrl === 'string') {
                 // Told NOW, at the keyboard, rather than at two in the morning
-                // in a log nobody is reading.
+                // in a log nobody is reading. An EMPTY value is not a mistake —
+                // it means "back to the standard address" (see config.siteUrl),
+                // which is how the window's Change… offers a way out again.
                 const bad = siteMod.urlProblem(p.siteUrl);
                 if (p.siteUrl.trim() && bad) {
                     return { ok: false, say: bad };
@@ -138,6 +230,9 @@ function makeApi(deps) {
             }
             if (typeof p.keepAwake === 'boolean') {
                 cfg.keepAwake = p.keepAwake;
+            }
+            if (typeof p.autoStart === 'boolean') {
+                cfg.autoStart = p.autoStart;
             }
             if (p.job && typeof p.job.id === 'string') {
                 const j = jobsMod.jobById(p.job.id);
@@ -161,6 +256,26 @@ function makeApi(deps) {
             return r.ok ? { ok: true } : r;
         },
 
+        // ── THE MODEL SERVER ──────────────────────────────────────────────
+        // Start it, and wait until it actually answers rather than until the
+        // process exists: a spawned llama-server takes tens of seconds to load
+        // a 14B model, and "started" the moment the process appears would put
+        // a green light on a thing that cannot yet be asked anything.
+        async startEngine() {
+            const r = await ensureEngine();
+            return r.ok ? { ok: true, say: r.say, started: !!r.started } : r;
+        },
+
+        // Stop only what THIS app started. A llama-server the owner is running
+        // themselves is not ours to kill, and `runner.stop()` knows the
+        // difference because it only ever holds a child it spawned.
+        async stopEngine() {
+            if (!runner) {
+                return { ok: false, say: 'This app is not running a model server.' };
+            }
+            return runner.stop();
+        },
+
         async setSecret(value) {
             const r = secrets.set(String(value == null ? '' : value));
             return r.ok ? { ok: true, set: secrets.state().set } : r;
@@ -171,10 +286,7 @@ function makeApi(deps) {
         // is the same posture as setSecret — there is no way to read a secret
         // back out of this app and this must not become one.
         async connect(code) {
-            if (!cfg.siteUrl) {
-                return { ok: false, say: 'Put the site address in first.' };
-            }
-            const r = await siteFor().connect(code);
+            const r = await siteFor().connect(code, machineMod.deviceLabel(mach));
             if (!r.ok) { return r; }
             const s = secrets.set(r.key);
             if (!s.ok) {
@@ -187,9 +299,6 @@ function makeApi(deps) {
         },
 
         async testSite() {
-            if (!cfg.siteUrl) {
-                return { ok: false, state: 'error', say: 'No site address yet.' };
-            }
             if (!secrets.state().set) {
                 return { ok: false, state: 'auth', say: 'Not connected yet. Use the code from Manage \u2192 System check \u2192 Connect a Mac.' };
             }
@@ -247,7 +356,23 @@ function makeApi(deps) {
                     now: now(),
                     onProgress: onProgress,
                     openingNote: openingNote,
+                    // Only offered when the owner has left auto-start on. Off,
+                    // the night behaves exactly as it did before this existed.
+                    ensureEngine: cfg.autoStart && runner ? function () { return ensureEngine(id); } : null,
                 });
+                // WHAT WE STARTED, WE STOP. A model server left holding nine
+                // gigabytes of a Mac's memory until the next reboot is not a
+                // reasonable thing to leave behind at 02:17 — and one the owner
+                // was already running is never touched, because `startedEngine`
+                // is only true when this run spawned it.
+                if (rec.startedEngine && runner) {
+                    const stopped = await runner.stop();
+                    rec.log.push({
+                        at: nightMod.hhmm(),
+                        say: stopped && stopped.ok ? 'stopped the model server this run started' : 'left the model server running',
+                        level: 'info',
+                    });
+                }
                 nights = nightMod.pushRecord(nights, rec);
                 writeNights();
                 cfg.lastRun = rec.started;
@@ -269,10 +394,7 @@ function makeApi(deps) {
 
         // Where the queue lives, so the window can offer to open it.
         siteHomeUrl() {
-            const u = String(cfg.siteUrl || '');
-            if (!u) {
-                return '';
-            }
+            const u = configMod.siteUrl(cfg);
             try {
                 const parsed = new URL(u);
                 return parsed.origin + parsed.pathname.replace(/nightshift\.php$/, '');

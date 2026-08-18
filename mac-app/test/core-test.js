@@ -30,6 +30,7 @@ const jobs = require('../src/core/jobs');
 const night = require('../src/core/night');
 const update = require('../src/core/update');
 const updater = require('../src/core/updater');
+const runner = require('../src/core/runner');
 
 let fails = 0;
 let passes = 0;
@@ -727,6 +728,363 @@ function fakeSite(handler) {
     const savedOk = await a2.saveConfig({ siteUrl: 'https://plain.test/nightshift.php' });
     ok('...and an https one is accepted', savedOk && savedOk.ok !== false);
     try { fs.rmSync(apiTmp, { recursive: true, force: true }); } catch (e) {}
+
+    // ── §18a IT ALREADY KNOWS THE ADDRESS ─────────────────────────────────
+    // Asked for: "I shouldn't need to enter the web address, it should already
+    // know". This app carries one business's crown and can only ever talk to one
+    // site, so pasting that address into a fresh install was supplying a fact
+    // the app already had.
+    console.log('\n18a) the app ships knowing where its site is');
+    ok('a fresh install already has an address', config.siteUrl({}) !== '');
+    ok('...and it is the business\'s own', /cottageholidaysblakeney\.co\.uk/.test(config.siteUrl({})));
+    ok('...over https, so the app\'s own refusal would not reject it',
+        site.urlProblem(config.siteUrl({})) === '', site.urlProblem(config.siteUrl({})));
+    ok('...and it ends at the endpoint the site actually serves',
+        /\/nightshift\.php$/.test(config.siteUrl({})));
+    ok('an empty setting MEANS the standard one, the engine/modelsDir convention',
+        config.siteUrl({ siteUrl: '' }) === config.DEFAULT_SITE_URL
+        && config.siteUrl({ siteUrl: '   ' }) === config.DEFAULT_SITE_URL);
+    ok('...and reports itself as the standard one', config.siteIsDefault({ siteUrl: '' }));
+    ok('an override wins, and says it is not the standard',
+        config.siteUrl({ siteUrl: 'https://staging.test/nightshift.php' }) === 'https://staging.test/nightshift.php'
+        && !config.siteIsDefault({ siteUrl: 'https://staging.test/nightshift.php' }));
+
+    const dTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-dflt-'));
+    let dPosts = [];
+    const dSite = function (o) {
+        return {
+            url: o.url,
+            connect: async function () { dPosts.push(o.url); return { ok: true, key: 'K'.repeat(40), host: 'George' }; },
+            test: async function () { dPosts.push(o.url); return { ok: true, state: 'on', say: 'on' }; },
+        };
+    };
+    const a7 = require('../src/core/api').makeApi({
+        dir: dTmp, machine: M16, makeSite: dSite,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    const st7 = await a7.state();
+    ok('the window is handed a RESOLVED address on a fresh install',
+        /cottageholidaysblakeney/.test(st7.siteUrl) && st7.siteIsDefault === true, st7.siteUrl);
+    ok('...and the raw setting too, so Change… shows what was overridden and not the default',
+        st7.siteRaw === '');
+    // THE POINT: connect works with nothing typed in. It used to refuse with
+    // "Put the site address in first."
+    dPosts = [];
+    const c7 = await a7.connect('ABCD-2345');
+    ok('connecting needs only the code — no address typed anywhere',
+        c7 && c7.ok === true, JSON.stringify(c7));
+    ok('...and it went to the standard address', /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    dPosts = [];
+    await a7.testSite();
+    ok('Test now reaches it too', /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    ok('and the queue\'s home page is derivable, which needed an address before',
+        /^https:\/\/cottageholidaysblakeney\.co\.uk\//.test(a7.siteHomeUrl()), a7.siteHomeUrl());
+
+    // A STAGING COPY STILL OVERRIDES, AND CAN GO BACK. An empty save is the
+    // way out — the affordance behind the window's Change… box.
+    await a7.saveConfig({ siteUrl: 'https://staging.test/nightshift.php' });
+    dPosts = [];
+    await a7.testSite();
+    ok('an override is used instead', dPosts[0] === 'https://staging.test/nightshift.php', dPosts[0]);
+    const st7b = await a7.state();
+    ok('...and the window is told it is not the standard one',
+        st7b.siteIsDefault === false && st7b.siteRaw === 'https://staging.test/nightshift.php');
+    await a7.saveConfig({ siteUrl: '' });
+    dPosts = [];
+    await a7.testSite();
+    ok('clearing it goes back to the standard address rather than to nothing',
+        /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    try { fs.rmSync(dTmp, { recursive: true, force: true }); } catch (e) {}
+
+    // ── §18b WHICH MAC THIS IS ────────────────────────────────────────────
+    // Reported live: two paired Macs both read "A Mac" on the website, so the
+    // list could not tell the owner which one to stop — which is the only thing
+    // a per-device list is for.
+    console.log('\n18b) the Mac tells the site what it is called');
+    ok('the owner\'s own computer name wins',
+        machine.deviceLabel({ name: "George's Mac mini", model: 'Macmini9,1' }) === "George's Mac mini");
+    ok('a hostname loses its .local suffix',
+        machine.deviceLabel({ name: 'georges-mac-mini.local' }) === 'georges mac mini',
+        machine.deviceLabel({ name: 'georges-mac-mini.local' }));
+    ok('...and a hyphenated hostname reads as words rather than a filename',
+        machine.deviceLabel({ name: 'Georges-MacBook-Pro' }) === 'Georges MacBook Pro',
+        machine.deviceLabel({ name: 'Georges-MacBook-Pro' }));
+    ok('a real name with a hyphen in it is NOT mangled',
+        machine.deviceLabel({ name: 'Mac mini M2-2023' }) === 'Mac mini M2-2023',
+        machine.deviceLabel({ name: 'Mac mini M2-2023' }));
+    ok('with no name at all it falls back to the model',
+        machine.deviceLabel({ name: '', model: 'Macmini9,1' }) === 'Macmini9,1');
+    ok('...and with neither, to the architecture — never to "A Mac" twice over',
+        machine.deviceLabel({ appleSilicon: true }) === 'Apple silicon Mac'
+        && machine.deviceLabel({ arch: 'x64' }) === 'Intel Mac');
+    ok('a hostile name is capped', machine.deviceLabel({ name: 'x'.repeat(500) }).length === machine.DEVICE_LABEL_MAX);
+    ok('nothing at all still answers something', machine.deviceLabel(null) === 'A Mac');
+    ok('the real machine reports a name', typeof machine.readMachine().name === 'string');
+
+    // THE WIRING, not just the helper: connect must actually SEND it. Testing
+    // deviceLabel alone would pass with the call site reverted — the trap this
+    // codebase keeps catching.
+    let connectBody = null;
+    const labelSite = site.makeSite({
+        url: 'https://x.test/nightshift.php',
+        secret: 'k',
+        post: async function (u, body) {
+            connectBody = body;
+            return { ok: true, status: 200, json: { ok: true, key: 'K'.repeat(40), host: 'George' } };
+        },
+    });
+    await labelSite.connect('ABCD-2345', "George's Mac mini");
+    ok('connect posts the label alongside the code',
+        connectBody && connectBody.action === 'connect'
+        && connectBody.code === 'ABCD-2345'
+        && connectBody.label === "George's Mac mini", JSON.stringify(connectBody));
+    const labelTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-lbl-'));
+    connectBody = null;
+    const a6 = require('../src/core/api').makeApi({
+        dir: labelTmp,
+        machine: Object.assign({}, M16, { name: 'Studio in the loft' }),
+        makeSite: function () { return labelSite; },
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    await a6.saveConfig({ siteUrl: 'https://x.test/nightshift.php' });
+    await a6.connect('ABCD-2345');
+    ok('...and the api fills it in from THIS Mac, so the window never has to',
+        connectBody && connectBody.label === 'Studio in the loft', JSON.stringify(connectBody));
+    try { fs.rmSync(labelTmp, { recursive: true, force: true }); } catch (e) {}
+
+    // ── §19 STARTING THE MODEL SERVER ─────────────────────────────────────
+    // The decisions only. The spawn is main.js's and is untestable here by
+    // design; everything that decides WHAT it spawns is in this section.
+    console.log('\n19) the app starts the model server, so nobody opens a Terminal');
+
+    ok('only llama.cpp is startable', runner.canStart('llamacpp')
+        && !runner.canStart('ollama') && !runner.canStart('mlx') && !runner.canStart(''));
+
+    // WHERE IT LOOKS, AND IN WHAT ORDER.
+    const candPlain = runner.runnerCandidates({});
+    ok('with nothing bundled it looks in both Homebrew prefixes',
+        candPlain.length === 2
+        && candPlain[0].path === '/opt/homebrew/bin/llama-server'
+        && candPlain[1].path === '/usr/local/bin/llama-server',
+        JSON.stringify(candPlain));
+    const candBundled = runner.runnerCandidates({ resourcesDir: '/App/Contents/Resources' });
+    ok('a bundled copy is looked at AFTER Homebrew — see the order note in runner.js',
+        candBundled[candBundled.length - 1].kind === 'bundled'
+        && candBundled[candBundled.length - 1].path === '/App/Contents/Resources/runner/llama-server'
+        && candBundled[0].kind === 'homebrew',
+        JSON.stringify(candBundled));
+    const candCustom = runner.runnerCandidates({ custom: '/my/llama-server', resourcesDir: '/App/Contents/Resources' });
+    ok('...and an explicit path beats everything — it is the one the owner chose',
+        candCustom[0].kind === 'custom' && candCustom[0].path === '/my/llama-server');
+
+    // RESOLUTION. `exists` injected, so this runs on a machine with no
+    // llama.cpp anywhere — which is every machine this suite runs on.
+    const noneHere = runner.resolveRunner({ exists: function () { return false; } });
+    ok('nothing installed is reported as such', !noneHere.ok);
+    ok('...and the refusal NAMES THE FIX rather than just failing',
+        /brew install llama\.cpp/.test(noneHere.install || ''), JSON.stringify(noneHere));
+    const onlyIntel = runner.resolveRunner({ exists: function (p) { return p === '/usr/local/bin/llama-server'; } });
+    ok('an Intel-prefix Homebrew copy is found', onlyIntel.ok
+        && onlyIntel.kind === 'homebrew' && onlyIntel.path === '/usr/local/bin/llama-server');
+    const both = runner.resolveRunner({
+        resourcesDir: '/App/Contents/Resources',
+        exists: function () { return true; },
+    });
+    ok('with both present the HOMEBREW one wins — the owner installed it and macOS never quarantines it',
+        both.kind === 'homebrew');
+    const bundledOnly = runner.resolveRunner({
+        resourcesDir: '/App/Contents/Resources',
+        exists: function (p) { return p.indexOf('/App/') === 0; },
+    });
+    ok('...and a Mac with nothing installed still finds the bundled copy — the zero-install path',
+        bundledOnly.ok && bundledOnly.kind === 'bundled');
+    const customGone = runner.resolveRunner({ custom: '/gone/llama-server', exists: function () { return false; } });
+    ok('a custom path that is not there says so by name',
+        /\/gone\/llama-server/.test(customGone.say || ''), customGone.say);
+
+    // THE ARGUMENTS. An array, never a string, and derived from the engine's
+    // own base so the address it serves on cannot drift from the one the app
+    // then goes looking at.
+    const argsAS = runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:8080', appleSilicon: true });
+    ok('the arguments are an ARRAY, never a command line', Array.isArray(argsAS));
+    ok('the model, host and port all come through',
+        argsAS.indexOf('-m') !== -1 && argsAS[argsAS.indexOf('-m') + 1] === '/M/q.gguf'
+        && argsAS[argsAS.indexOf('--port') + 1] === '8080'
+        && argsAS[argsAS.indexOf('--host') + 1] === '127.0.0.1', JSON.stringify(argsAS));
+    ok('the port follows the ENGINE\'s base rather than being typed twice',
+        runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:11434' })[argsAS.indexOf('--port') + 1] === '11434');
+    ok('Apple silicon offloads to Metal (-ngl), or a 14B crawls', argsAS.indexOf('-ngl') !== -1);
+    const argsIntel = runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:8080', appleSilicon: false });
+    ok('...and an Intel Mac is not given a flag it has no device for', argsIntel.indexOf('-ngl') === -1);
+
+    // THE SAFETY LINE. The model path comes from settings the window can
+    // write, so it is checked rather than trusted.
+    ok('a model inside the Models folder is allowed',
+        runner.modelPathAllowed('/Users/g/Models/q.gguf', '/Users/g/Models'));
+    ok('one outside it is REFUSED', !runner.modelPathAllowed('/etc/passwd.gguf', '/Users/g/Models'));
+    ok('...and so is a climb out of it with ..',
+        !runner.modelPathAllowed('/Users/g/Models/../../evil.gguf', '/Users/g/Models'));
+    ok('...and a sibling folder that merely starts with the same letters',
+        !runner.modelPathAllowed('/Users/g/Models-old/q.gguf', '/Users/g/Models'));
+    ok('a non-gguf is refused whatever its folder',
+        !runner.modelPathAllowed('/Users/g/Models/thing.sh', '/Users/g/Models'));
+
+    // ONE DECISION about whether a start is possible, so the button and the
+    // night cannot disagree.
+    const foundOk = { ok: true, path: '/opt/homebrew/bin/llama-server', kind: 'homebrew' };
+    ok('everything present means no problem', runner.startProblem({
+        engineId: 'llamacpp', modelPath: '/M/q.gguf', modelsDir: '/M', runner: foundOk,
+    }) === '');
+    ok('Ollama is refused in words, not silently',
+        /own service/.test(runner.startProblem({ engineId: 'ollama', engineName: 'Ollama', modelPath: '/M/q.gguf', modelsDir: '/M', runner: foundOk })));
+    ok('no model chosen is its own sentence',
+        /No model/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '', modelsDir: '/M', runner: foundOk })));
+    ok('a model outside the folder is refused HERE too, not only at spawn',
+        /Models folder/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '/etc/x.gguf', modelsDir: '/M', runner: foundOk })));
+    ok('a missing binary reports the resolver\'s own sentence',
+        /not installed/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '/M/q.gguf', modelsDir: '/M', runner: noneHere })));
+
+    // AN EXIT, IN WORDS. The stderr tail is the only thing that tells a broken
+    // model file from a busy port, and both are things the owner can act on.
+    ok('a busy port is named as one', /already using that port/.test(runner.failSay(1, 'error: bind: Address already in use')));
+    ok('a broken model file is named as one', /could not be loaded/.test(runner.failSay(1, 'error loading model: bad magic')));
+    ok('running out of memory says to pick a smaller model',
+        /smaller one/.test(runner.failSay(1, 'ggml_metal_graph_compute: out of memory')));
+    ok('a vanished binary says how to reinstall it', /brew install/.test(runner.failSay('ENOENT', '')));
+    ok('an unrecognised exit still quotes the last line rather than shrugging',
+        /something specific/.test(runner.failSay(9, 'noise\nmore noise\nsomething specific')));
+    ok('a timeout names the address it waited on', /127\.0\.0\.1:8080/.test(runner.timeoutSay('http://127.0.0.1:8080')));
+
+    // ── THE API SURFACE, with a FAKE runner ───────────────────────────────
+    // This is the half that proves the wiring: startProblem alone passing is
+    // the helper-tested-alone trap, so the checks below drive api.startEngine
+    // and read what the fake was actually asked to spawn.
+    const rTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-run-'));
+    fs.mkdirSync(path.join(rTmp, 'Models'), { recursive: true });
+    fs.writeFileSync(path.join(rTmp, 'Models', 'q.gguf'), 'x');
+    // A stand-in for the BUNDLED binary, in the layout a packaged app has. The
+    // real resolveRunner runs against it — including its executable-bit check —
+    // so this exercises the shipped path rather than stubbing past it.
+    const rRes = path.join(rTmp, 'Resources');
+    fs.mkdirSync(path.join(rRes, 'runner'), { recursive: true });
+    fs.writeFileSync(path.join(rRes, 'runner', 'llama-server'), '#!/bin/sh\n');
+    fs.chmodSync(path.join(rRes, 'runner', 'llama-server'), 0o755);
+    let runSpawned = null;
+    let runStopped = 0;
+    let runAlive = false;
+    const runFakeRunner = {
+        status: function () { return { running: runAlive }; },
+        start: async function (o) { runSpawned = o; runAlive = true; return { ok: true, ms: 4200 }; },
+        stop: async function () { runStopped++; runAlive = false; return { ok: true }; },
+    };
+    let runEngineUp = false;
+    const runFakeEngine = function (o) {
+        return {
+            id: o.id, name: 'llama.cpp', base: 'http://127.0.0.1:8080',
+            reachable: async function () { return runEngineUp; },
+            write: async function () { return { ok: true, text: 'x', ms: 1, tokens: 1 }; },
+        };
+    };
+    const a3 = require('../src/core/api').makeApi({
+        dir: rTmp, machine: M16, runner: runFakeRunner, makeEngine: runFakeEngine, resourcesDir: rRes,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    await a3.saveConfig({ engine: 'llamacpp', job: { id: 'reply', on: true, model: 'q.gguf' } });
+
+    const st1 = await a3.state();
+    ok('the window is told it can start this engine', st1.runner && st1.runner.canStart && st1.runner.available);
+    ok('...and that nothing is running yet', st1.runner.running === false);
+
+    const started = await a3.startEngine();
+    ok('startEngine reports success', started && started.ok, JSON.stringify(started));
+    ok('...and it spawned the resolved binary, not something the window named',
+        runSpawned && /llama-server$/.test(runSpawned.bin), runSpawned && runSpawned.bin);
+    ok('...with the chosen model, from the app\'s own Models folder',
+        runSpawned && runSpawned.args.indexOf(path.join(rTmp, 'Models', 'q.gguf')) !== -1,
+        runSpawned && JSON.stringify(runSpawned.args));
+    ok('...and the ready time reaches the owner in words', /4 seconds/.test(started.say || ''), started.say);
+
+    runEngineUp = true;
+    const again = await a3.startEngine();
+    ok('starting one that is already answering does not spawn a second',
+        again.ok && again.started === false);
+
+    // A NIGHT THAT FINDS NOTHING ANSWERING STARTS IT — the behaviour this
+    // whole change exists for, driven through the real night orchestrator.
+    runEngineUp = false;
+    runSpawned = null;
+    runStopped = 0;
+    let runIngested = null;
+    const runFakeSite = function () {
+        return {
+            brief: async function () { return { ok: true, host: 'George', enquiries: [] }; },
+            ingest: async function (items) { runIngested = items; return { ok: true, stored: items.length, skipped: [] }; },
+        };
+    };
+    const a4 = require('../src/core/api').makeApi({
+        dir: rTmp, machine: M16, runner: runFakeRunner, makeEngine: runFakeEngine, makeSite: runFakeSite, resourcesDir: rRes,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    // The fake reports ready by flipping the engine up when start() is called.
+    runFakeRunner.start = async function (o) { runSpawned = o; runAlive = true; runEngineUp = true; return { ok: true, ms: 3000 }; };
+    const ranUp = await a4.runNow();
+    const lines = (ranUp.night && ranUp.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('a night with a dead engine STARTS it rather than giving up',
+        runSpawned !== null, lines);
+    ok('...and the log says it did', /starting it/.test(lines), lines);
+    ok('...and stops again what it started, rather than leaving 9GB held',
+        runStopped === 1 && /stopped the model server/.test(lines), lines);
+
+    // AND IT NEVER STOPS ONE IT DID NOT START.
+    runEngineUp = true;
+    runSpawned = null;
+    runStopped = 0;
+    const ranAlready = await a4.runNow();
+    const lines2 = (ranAlready.night && ranAlready.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('an engine the owner was already running is not spawned again', runSpawned === null, lines2);
+    ok('...and is NOT killed at the end of the run', runStopped === 0, lines2);
+
+    // OFF IS OFF. With auto-start switched off the night behaves exactly as it
+    // did before this feature existed.
+    await a4.saveConfig({ autoStart: false });
+    runEngineUp = false;
+    runSpawned = null;
+    const ranOff = await a4.runNow();
+    const lines3 = (ranOff.night && ranOff.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('with auto-start off nothing is spawned', runSpawned === null, lines3);
+    ok('...and the night gives the old honest refusal', /not answering/.test(lines3), lines3);
+    await a4.saveConfig({ autoStart: true });
+
+    // NO RUNNER AT ALL — a bare api, which is how every other suite builds it.
+    const a5 = require('../src/core/api').makeApi({ dir: rTmp, machine: M16, makeEngine: runFakeEngine });
+    const st5 = await a5.state();
+    ok('an api with no way to spawn says so rather than offering a dead button',
+        st5.runner && st5.runner.available === false);
+    const cant = await a5.startEngine();
+    ok('...and starting is refused in words', !cant.ok && !!cant.say);
+    try { fs.rmSync(rTmp, { recursive: true, force: true }); } catch (e) {}
+
+    // ── §20 THE DOCK ICON ─────────────────────────────────────────────────
+    // macOS does NOT mask an app icon — the app supplies its own silhouette —
+    // so a file with no alpha channel can only ever be a hard-cornered square
+    // in the Dock, whatever it looks like on its own. This one is cheap and
+    // decisive; the SHAPE is measured on the rendered pixels in ui-test.js.
+    console.log('\n20) the Dock icon is a Mac icon, not a web one');
+    const iconFile = path.join(__dirname, '..', 'build', 'icon.png');
+    ok('the icon electron-builder is pointed at exists', fs.existsSync(iconFile));
+    const png = fs.readFileSync(iconFile);
+    ok('...and is a PNG', png.slice(1, 4).toString() === 'PNG');
+    const iw = png.readUInt32BE(16);
+    const ih = png.readUInt32BE(20);
+    ok('1024×1024 — the largest slice an .icns carries', iw === 1024 && ih === 1024, iw + 'x' + ih);
+    // Colour type 6 is RGBA, 4 is grey+alpha. 2 (plain RGB) is what the copied
+    // web icon was, and is the whole bug: no alpha, so no rounded corner.
+    ok('with an ALPHA CHANNEL, without which no corner can be rounded',
+        png[25] === 6 || png[25] === 4, 'colour type ' + png[25]);
+    ok('and it is not the website\'s icon copied over again',
+        !fs.existsSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png'))
+        || fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).length !== png.length
+        || !fs.readFileSync(path.join(__dirname, '..', '..', 'Cottage Holidays Blakeney', 'icon-512.png')).equals(png));
 
     console.log('\n== Summary ==');
     if (fails) {

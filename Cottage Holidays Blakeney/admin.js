@@ -22018,7 +22018,9 @@ chbAct('connectNightMac', async function () {
 // STOPPING ONE MAC. The label goes with the index because the list can move
 // under a screen the owner has been looking at, and stopping the wrong Mac is
 // a silent failure they find at two in the morning.
-chbAct('stopNightDevice', async function (el, i, label) {
+// (el, event) FIRST, then the data-args — see chbRunAct. Written (el, i, label)
+// this read the click event as the index and 409'd for ever.
+chbAct('stopNightDevice', async function (el, ev, i, label) {
     if (!(await glassConfirm(
         'Stop "' + label + '"? It will not be able to read enquiries or post drafts'
         + ' again until it is connected afresh. Anything it has already left here stays.',

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 538;
+const ADMIN_BUNDLE_V = 539;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -443,6 +443,29 @@ try {
     st.textContent = 'body.net-off :is(' + CHB_NEEDS_NET.map((n) => '[data-act="' + n + '"]').join(',') + '){opacity:.55;filter:grayscale(.7)}';
     document.head.appendChild(st);
 } catch (e) {}
+// THE ARGUMENTS ON AN ELEMENT, stated once. Both dispatch branches read this —
+// they each had their own copy of the reading and only one of them had any, which
+// is how a registered action could carry data-args that reached nobody.
+function chbActArgs(el, event) {
+    const ds = el.dataset;
+    let args = [];
+    if ('args' in ds) {
+        // JSON arg list — carries EXACT types (string "5" vs number 5),
+        // authored by chbAttrs() for dynamic (innerHTML) handlers where a
+        // coerced data-arg could change a `===` comparison.
+        try { args = JSON.parse(ds.args); } catch (e) { args = []; }
+        if (!Array.isArray(args)) args = [];
+    } else {
+        if ('arg' in ds) args.push(chbArgVal(ds.arg));
+        if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
+        if ('arg3' in ds) args.push(chbArgVal(ds.arg3));
+    }
+    if ('pass' in ds) {
+        const p = ds.pass;
+        args.push(p === 'value' ? el.value : p === 'checked' ? el.checked : p === 'files' ? el.files : p === 'self' ? el : p === 'event' ? event : undefined);
+    }
+    return args;
+}
 function chbRunAct(el, name, event) {
     if (__chbNetOff && CHB_NEEDS_NET.indexOf(name) !== -1) {
         try {
@@ -453,31 +476,26 @@ function chbRunAct(el, name, event) {
     let r;
     const fn = CHB_ACTIONS[name];
     if (typeof fn === 'function') {
-        r = fn.call(el, el, event);
+        // A REGISTERED ACTION GETS ITS data-args TOO, appended after the pair it
+        // has always received. This was `fn.call(el, el, event)` and nothing
+        // else, so `chbAttrs('name', a, b)` — the documented way to pass
+        // arguments — silently delivered NOTHING to a chbAct handler while
+        // working perfectly for a plain window global. `stopNightDevice` was
+        // the first registered action ever written with arguments and it read
+        // the EVENT as its first one: Number(event) is NaN, the server saw no
+        // index, and "Stop this Mac" answered 409 for ever. Reported live.
+        //
+        // Appending is provably safe rather than merely likely: every other
+        // registered action declares (), (el) or (el, event), and JS drops
+        // trailing arguments a function did not ask for.
+        r = fn.apply(el, [el, event].concat(chbActArgs(el, event)));
     } else if (typeof window[name] === 'function') {
         // Plain global call — exact parity with the old inline `fn(...)` (this =
         // window). data-arg[2|3] carry up to three literal args in order; data-pass
         // appends one runtime value (this.value / .checked / .files, the element,
         // or the event) LAST, matching handlers like fn('key', this.value). With
         // none present this is the bare `fn()` case from phase 1.
-        const ds = el.dataset;
-        let args = [];
-        if ('args' in ds) {
-            // JSON arg list — carries EXACT types (string "5" vs number 5),
-            // authored by chbAttrs() for dynamic (innerHTML) handlers where a
-            // coerced data-arg could change a `===` comparison.
-            try { args = JSON.parse(ds.args); } catch (e) { args = []; }
-            if (!Array.isArray(args)) args = [];
-        } else {
-            if ('arg' in ds) args.push(chbArgVal(ds.arg));
-            if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
-            if ('arg3' in ds) args.push(chbArgVal(ds.arg3));
-        }
-        if ('pass' in ds) {
-            const p = ds.pass;
-            args.push(p === 'value' ? el.value : p === 'checked' ? el.checked : p === 'files' ? el.files : p === 'self' ? el : p === 'event' ? event : undefined);
-        }
-        r = window[name].apply(window, args);
+        r = window[name].apply(window, chbActArgs(el, event));
     } else {
         return;
     }
@@ -18076,7 +18094,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'walk818';
+    const BUILD = 'macstart';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

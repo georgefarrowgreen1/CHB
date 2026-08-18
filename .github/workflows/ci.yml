@@ -341,7 +341,11 @@ jobs:
   # the pinned Playwright version changes.
   browser-core:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 was the original ceiling and this job has outgrown it: measured at
+    # 780s (13.0 min) on a green run, i.e. two minutes of headroom. The layout
+    # job hit exactly this wall — see the note there — so the budget is raised
+    # here BEFORE it starts failing rather than after.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -383,6 +387,7 @@ jobs:
 
       - name: Install Playwright (Chromium)
         if: steps.fe.outputs.run == 'true'
+        timeout-minutes: 15
         working-directory: "Cottage Holidays Blakeney"
         run: |
           # The hosted runner's Microsoft/Azure apt repos intermittently serve an
@@ -392,7 +397,12 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
-          npx playwright install --with-deps chromium
+          # SPLIT, not `--with-deps`: the apt half runs every time (system
+          # packages are not what actions/cache holds) while the download half
+          # is skipped entirely on a cache hit. As one opaque step there was no
+          # way to tell which half was slow — see the layout job.
+          npx playwright install-deps chromium
+          npx playwright install chromium
 
       - name: Browser smoke test
         if: steps.fe.outputs.run == 'true'
@@ -430,7 +440,18 @@ jobs:
   # and catches iPhone-only overlaps Chromium can't reproduce.
   layout:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # THE WEBKIT LEG DIED HERE, TWICE, AND "CANCELLED" IS GITHUB'S WORD FOR
+    # TIMED OUT. Measured: the job ran 918s against a 900s ceiling and was
+    # killed during `playwright install --with-deps webkit`; the chromium leg
+    # finished the whole suite in 197s. WebKit's apt dependency set is far
+    # larger than Chromium's and is installed FRESH every run, because the
+    # browser cache does not cover system packages.
+    #
+    # Worse, it was self-perpetuating: actions/cache only SAVES on a successful
+    # job, so every timeout guaranteed the next run started cold and timed out
+    # again. Raising the ceiling is what breaks that loop — and it costs
+    # nothing on a healthy run, where only a struggling leg uses the headroom.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -474,13 +495,22 @@ jobs:
 
       - name: Install Playwright (${{ matrix.engine }})
         if: steps.fe.outputs.run == 'true'
+        # A STEP timeout, so a hang is reported as this step timing out rather
+        # than as the whole job being "cancelled" — which reads like somebody
+        # pressed a button and sent me looking for a person.
+        timeout-minutes: 18
         working-directory: "Cottage Holidays Blakeney"
         run: |
           # (Same Microsoft-apt-repo cleanup as browser-core.)
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
-          npx playwright install --with-deps ${{ matrix.engine }}
+          # Split so the two halves are TIMED SEPARATELY. Working out that
+          # "cancelled" meant "the apt half of --with-deps ran past the job
+          # ceiling" took reading a duration against a timeout; with these
+          # apart, the log says which one is slow.
+          npx playwright install-deps ${{ matrix.engine }}
+          npx playwright install ${{ matrix.engine }}
 
       - name: Layout regression gate (${{ matrix.engine }})
         if: steps.fe.outputs.run == 'true'
