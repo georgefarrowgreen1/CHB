@@ -981,9 +981,16 @@ let approveWill409 = false;
     banners: document.querySelectorAll('.bhub-next').length,
   }));
   ok(merged.inPay && merged.banners === 1, `a money ask renders once, as the Payments header (${merged.banners})`);
-  // The gap after this stay, priced: b5 follows two nights after b1's checkout.
-  const gapChipTx = await page.evaluate(() => (document.querySelector('.bhub-gap') || {}).textContent || '');
-  ok(/2 free nights/.test(gapChipTx) && /\/night/.test(gapChipTx), `the gap chip prices the hole after this stay (${gapChipTx.trim().slice(0, 60)})`);
+  // NO GAP OFFER ON A BOOKING'S PAGE. This fixture is built for it — b5 follows
+  // two nights after b1's checkout, which is exactly the hole the chip used to
+  // price — so the absence is proved against the case that would have shown it,
+  // not against an empty calendar where nothing would render anyway.
+  const gapGone = await page.evaluate(() => ({
+    chip: document.querySelectorAll('.bhub-gap').length,
+    words: /free night|offer at|Gap offer live/.test(document.getElementById('booking-hub-content').textContent),
+  }));
+  ok(gapGone.chip === 0 && !gapGone.words,
+    `no gap offer on the booking page (${gapGone.chip} chips, words ${gapGone.words})`);
   // The sticky bar: hidden on desktop (everything is on screen), under the
   // thumb on a phone, naming the SAME next action as the header.
   ok(await page.evaluate(() => getComputedStyle(document.querySelector('.bhub-sticky')).display === 'none'),

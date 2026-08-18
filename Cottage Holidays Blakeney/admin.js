@@ -11117,22 +11117,14 @@ function renderBookingHub() {
     const payAsk = __hubNext && __hubNext.money
         ? `<div class="bhub-next bhub-payask">${__hubNext.cap ? `<span class="bhub-next-cap">${escapeHtml(__hubNext.cap)}</span>` : ''}<span class="bhub-next-text">${__hubNext.text}</span><button class="btn-glass bhub-next-btn" ${__hubNext.onclick}>${__hubNext.btn}</button></div>`
         : '';
-    // THE GAP AFTER THIS STAY, priced. chbGapScan/chbGapPlan are the ONE
-    // decision every gap surface shares (Pricing page, brief, price questions);
-    // this only SURFACES that decision where the owner is already looking. An
-    // offer is one tap (the same undo-able dated override); a live offer
-    // reports itself and routes to Rates rather than re-suggesting.
-    let gapChip = '';
-    try {
-        if (!past) {
-            const g = (chbGapScan() || []).find((x) => x.pk === propKey && x.from === b.checkOut);
-            const plan = g ? chbGapPlan(g) : null;
-            if (plan && plan.kind === 'offer')
-                gapChip = `<button class="bhub-gap" ${chbAttrs('nyGapOffer', g.pk, g.from)}><span aria-hidden="true">◫</span><span><strong>${g.nights} free night${g.nights === 1 ? '' : 's'}</strong> after this stay — offer at <strong>${gbp(plan.offer)}/night</strong> (−${plan.pct}%)?</span></button>`;
-            else if (plan && plan.kind === 'live')
-                gapChip = `<button class="bhub-gap is-live" ${chbAttrs('settingsOpen', 'seasongrid')}><span aria-hidden="true">◫</span><span>Gap offer live after this stay at <strong>${gbp(plan.rate)}/night</strong> — edit in Rates</span></button>`;
-        }
-    } catch (e) {}
+    // NO GAP OFFER HERE. A dashed chip used to price the hole after this stay
+    // and offer it in one tap, on the reasoning that it surfaced the decision
+    // where the owner was already looking. Removed at the owner's ask: this
+    // page is about ONE booking and what it still needs, and a pricing
+    // suggestion for the NEXT booking is a different job wearing the same
+    // screen. The decision itself is untouched and still reachable where it
+    // belongs — chbGapScan/chbGapPlan drive Manage → Pricing, the search
+    // landing's brief and the price questions, all unchanged.
     // The plan panel AND the quiet money actions live INSIDE the fold: the
     // payask + sticky carry the one ask that matters; the rest is one tap
     // away behind the payline row.
@@ -11218,7 +11210,6 @@ function renderBookingHub() {
             </div>
             ${pipeHtml}
             ${payBlock}
-            ${gapChip}
         </div>`;
 
     // ---- Needs attention — outstanding DUTIES surface; what is fine says
