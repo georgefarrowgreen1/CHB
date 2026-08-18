@@ -265,6 +265,23 @@ nsk('...even when nothing is configured at all', night_key_kind('', '', '') === 
 // would become the only accepted key AND lock the master out.
 nsk('a too-short stored key is ignored, not treated as the key',
     night_key_kind('ab', 'ab', $master) === '' && night_key_kind($master, 'ab', $master) === 'master');
+// FAILS CLOSED, NOT OPEN. enc_key() derives from APP_SECRET, so ROTATING that
+// secret — what you do after a leak — makes every encrypted value unreadable.
+// Inferring "no key configured" from an empty VALUE therefore handed the route
+// straight back to the new master secret.
+nsk('a key ON FILE that will not decrypt refuses the master secret',
+    night_key_kind($master, '', $master, true) === '');
+nsk('…and refuses everything else too, rather than guessing',
+    night_key_kind('anything', '', $master, true) === '');
+nsk('…while a key on file that DOES decrypt still works',
+    night_key_kind($long, $long, $master, true) === 'scoped');
+nsk('with nothing on file the master still works',
+    night_key_kind($master, '', $master, false) === 'master');
+// The old inference is still the default when nothing is passed, so the
+// signature stayed compatible.
+nsk('the value-only inference survives as the default',
+    night_key_kind($master, '', $master) === 'master' && night_key_kind($long, $long, $master) === 'scoped');
+
 nsk('a generated key is long and random',
     strlen(night_key_make()) >= NIGHT_KEY_MIN && night_key_make() !== night_key_make());
 

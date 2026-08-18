@@ -21844,7 +21844,9 @@ function refreshNightShiftState() {
     // Derived from where this page is actually served rather than typed out, or
     // a staging install would be told to post at production.
     const url = new URL('nightshift.php', window.location.href).href;
-    state.textContent = 'On — send work to ' + url + ' with the same secret your daily-jobs address uses.';
+    // WHICH key — this claimed the daily-jobs secret, false once one is generated.
+    state.textContent = 'On — send work to ' + url
+        + (__nightKeySet ? ", using the app's own key." : ' with the same secret your daily-jobs address uses.');
 }
 // WHERE THE MAC APP COMES FROM. The source and its build instructions always
 // exist; a packaged copy may not, so the row shows what is true rather than a
@@ -21916,10 +21918,18 @@ chbAct('newNightKey', async function () {
     // not serve it.
     // glassAlert takes ONE argument, and writes with innerText — so the blank
     // lines survive and an HTML entity would print itself. Plain text only.
+    // Copied for you: bare text gets photographed or retyped. Best-effort — the
+    // key is on screen either way, so a refused clipboard loses nothing.
+    let copied = false;
+    try {
+        await navigator.clipboard.writeText(r.key);
+        copied = true;
+    } catch (e) { /* not permitted: the text below still shows it */ }
     await glassAlert(
-        "The app's key — paste this into the Mac app, under Connection.\n\n"
-        + r.key
-        + '\n\nIt will not be shown again. Generate another if it is lost.',
+        "The app's key" + (copied ? ' — copied to your clipboard.' : '.')
+        + '\n\n' + r.key
+        + '\n\nPaste it into the Mac app under Connection. It will not be shown'
+        + ' again; generate another if it is lost.',
     );
     refreshNightKeyRow();
 });

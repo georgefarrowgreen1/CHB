@@ -46,9 +46,30 @@ function night_scoped_key()
 
 // THE ONE DOOR CHECK for both machine routes. Answers 401 and logs, or
 // returns the kind of key that opened it.
+// Is a key ON FILE? Asked of the ROW, not of the value — a value that will not
+// decrypt still means a key was configured. See night_key_kind().
+function night_key_on_file()
+{
+    try {
+        $st = db()->prepare('SELECT 1 FROM content WHERE item_key = ? LIMIT 1');
+        $st->execute(['apikey-nightshift']);
+        return (bool) $st->fetchColumn();
+    } catch (\Throwable $e) {
+        // Cannot tell. Say NO, so a database hiccup does not lock the app out
+        // of a site that was working — the master fallback is the safe answer
+        // to "I do not know", where it is the unsafe answer to "it is broken".
+        return false;
+    }
+}
+
 function night_require_key($given, $what)
 {
-    $kind = night_key_kind($given, night_scoped_key(), defined('APP_SECRET') ? APP_SECRET : '');
+    $kind = night_key_kind(
+        $given,
+        night_scoped_key(),
+        defined('APP_SECRET') ? APP_SECRET : '',
+        night_key_on_file(),
+    );
     if ($kind === '') {
         log_activity('system', 'night.reject', 'Overnight queue: a ' . $what . ' arrived with the wrong key', [
             'actor' => 'system',
