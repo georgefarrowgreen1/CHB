@@ -47,8 +47,9 @@ are the ones with the tests.
    just drop a `.gguf` into the Models folder and it appears.
 
 3. **Overnight work switched on, on the website.** Manage → System check →
-   **Overnight work**. That page shows the address to paste into **Connection**
-   here, and — under **The app's key** — a button that gives this app its own.
+   **Overnight work**. Switching it on shows the address to paste into
+   **Connection** here; everything about pairing is behind **Set up a Mac**
+   under it, because it is done once per machine and then never again.
 
    **Tap Connect a Mac.** It shows an eight-character code; type that into this
    app's Connection screen and it gives itself a key. The code works **once**
@@ -65,8 +66,9 @@ are the ones with the tests.
    nothing for three nights, the back office raises it — because the failure you
    will actually meet is not a stolen key, it is a Mac that quietly stopped.
 
-   *Give it a key instead…* is still there, and pastes a key the old way. Use it
-   when the website and this Mac are not both to hand at the same moment.
+   *Give it a key instead…* on the website, and **Or paste a key** here, are
+   still there. Use them when the website and this Mac are not both to hand at
+   the same moment — a code needs each of them at once, and a key does not.
 
 4. **An https address.** The app refuses a plain `http://` one, because the key
    travels with every request and http sends it in the clear. `http://localhost`

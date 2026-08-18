@@ -191,7 +191,7 @@ function makeApi(deps) {
                 return { ok: false, state: 'error', say: 'No site address yet.' };
             }
             if (!secrets.state().set) {
-                return { ok: false, state: 'auth', say: 'No secret stored yet. Paste the one your daily-jobs address uses.' };
+                return { ok: false, state: 'auth', say: 'Not connected yet. Use the code from Manage \u2192 System check \u2192 Connect a Mac.' };
             }
             const t = await siteFor().test();
             return { ok: t.state === 'on', state: t.state, say: t.say };

@@ -204,7 +204,8 @@ function fakeSite(handler) {
 
     s = fakeSite(async function () { return { ok: false, status: 401, json: { error: 'Not authorised.' } }; });
     b = await s.brief();
-    ok('401 is reported as an AUTH problem, in words', !b.ok && b.refusal.kind === 'auth' && /secret/i.test(b.refusal.say));
+    ok('401 is reported as an AUTH problem, in words', !b.ok && b.refusal.kind === 'auth'
+        && /key/i.test(b.refusal.say) && /connect/i.test(b.refusal.say));
 
     s = fakeSite(async function () { return { ok: false, status: 409, json: { code: 'night_off', error: 'off' } }; });
     b = await s.brief();
