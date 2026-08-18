@@ -21,15 +21,20 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-const SERVICE = 'Blakeney Hand';
+const SERVICE = 'Cottage Holidays Blakeney';
 const ACCOUNT = 'site-secret';
+// NB the app was briefly called "Blakeney Hand", and this file carried a
+// fallback that read that folder and that Keychain entry when the new ones were
+// absent. It is gone: the only build ever published under the old name was
+// never installed, so the state it protected cannot exist, and a compatibility
+// path for an impossible state is code nothing will ever exercise or check.
 
 function appDir() {
     if (process.platform === 'darwin') {
         return path.join(os.homedir(), 'Library', 'Application Support', SERVICE);
     }
     // Not a Mac: only the test suite and development ever get here.
-    return path.join(os.homedir(), '.blakeney-hand');
+    return path.join(os.homedir(), '.cottage-holidays-blakeney');
 }
 
 const DEFAULTS = {

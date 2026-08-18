@@ -21858,45 +21858,52 @@ const NIGHT_APP_SOURCE = 'https://github.com/georgefarrowgreen1/CHB/tree/main/ma
 // THE ONE PLACE A .dmg CAN COME FROM. A disk image is made by hdiutil and a
 // universal binary is merged by lipo — both Apple's, both macOS-only — so it
 // cannot be built here or on any Linux box. GitHub's macOS runners can, and on
-// this repo their minutes are free, so "Build it on GitHub" is the real answer
-// and not a workaround.
+// this repo their minutes are free.
 const NIGHT_APP_BUILD = 'https://github.com/georgefarrowgreen1/CHB/actions/workflows/mac-app.yml';
-// The stored download URL is owner-written and lands in an `href`, so it is
-// validated on the way IN and again on the way OUT: an older write, a hand-edited
-// content row or a value from anywhere else must not become a javascript: link on
-// the one page that is always signed in as the owner.
+// AND THE LINK NEVER NEEDS UPDATING. GitHub keeps /releases/latest/download/<file>
+// pointing at the newest release for ever, and the build's artifact name carries
+// no version for exactly this reason — so the back office links to "the current
+// build" rather than to one particular build somebody has to remember to replace.
+const NIGHT_APP_LATEST = 'https://github.com/georgefarrowgreen1/CHB/releases/latest/download/Cottage-Holidays-Blakeney.dmg';
+// A stored URL OVERRIDES that, for hosting the file somewhere of your own. It is
+// owner-written and lands in an `href`, so it is validated on the way IN and
+// again on the way OUT: an older write, a hand-edited content row or a value
+// from anywhere else must not become a javascript: link on the one page that is
+// always signed in as the owner. Anything that fails falls back to the release
+// link rather than to nothing — a broken stored value should not remove the
+// working default.
 function nightAppUrl() {
     const raw = String((adminPrivateContent && adminPrivateContent['nightshift-app-url']) ?? siteContent['nightshift-app-url'] ?? '').trim();
-    return /^https:\/\/[^\s"'<>]+$/i.test(raw) ? raw : '';
+    return /^https:\/\/[^\s"'<>]+$/i.test(raw) ? raw : NIGHT_APP_LATEST;
+}
+function nightAppCustom() {
+    return nightAppUrl() !== NIGHT_APP_LATEST;
 }
 function refreshNightAppGet() {
     const host = document.getElementById('night-app-get');
     if (!host) return;
     const dl = nightAppUrl();
-    // Two links and a button, and each state offers exactly the next step: with
-    // nothing packaged the first thing to do is BUILD one; with a copy to hand it
-    // is DOWNLOAD it. Never a Download button pointing at nothing.
+    const own = nightAppCustom();
     const link = (href, label, primary) =>
         `<a class="btn-sm ${primary ? 'btn-accent' : 'btn-edit'}" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">${label}</a>`;
     host.innerHTML =
         '<p style="margin:0 0 10px;">Drafts overnight on a Mac of your own and leaves the work here. It runs on Intel and Apple silicon from one build, and nothing it writes is ever sent &mdash; every job leaves a draft for you to read.</p>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-        (dl ? link(dl, 'Download the Mac app', true) : link(NIGHT_APP_BUILD, 'Build it on GitHub', true)) +
-        (dl ? link(NIGHT_APP_BUILD, 'Build a newer one') : link(NIGHT_APP_SOURCE, 'Source &amp; notes')) +
-        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${dl ? 'Change the download link' : 'Add a download link&hellip;'}</button>` +
+        link(dl, 'Download the Mac app', true) +
+        link(NIGHT_APP_BUILD, 'Build a newer one') +
+        `<button class="btn-sm btn-edit" ${chbAttrs('saveNightAppUrl', CHB_SELF)}>${own ? 'Use the standard link' : 'Host it yourself&hellip;'}</button>` +
         '</div>' +
         '<p style="margin:10px 0 0;">' +
-        (dl
-            ? 'Downloads from the link you set. Build a newer one whenever the app changes, then update the link.'
-            : 'There is no packaged copy yet &mdash; a disk image can only be made on a Mac, so GitHub builds it on one for you. ' +
-              '<strong>Run workflow</strong>, tick <em>publish a release</em>, and about ten minutes later it hands you a link to paste in here. ' +
-              'Or do it yourself on the Mac with <code>npm install</code> then <code>npm run build</code>.') +
+        (own
+            ? 'Downloading from your own address. <strong>Use the standard link</strong> to go back to the newest build GitHub made.'
+            : 'Always the newest build GitHub made &mdash; a disk image can only be made on a Mac, so it builds on one there. ' +
+              'When the app changes, <strong>Build a newer one</strong> and this link picks it up on its own.') +
         '</p>';
 }
 async function saveNightAppUrl(btn) {
     const now = nightAppUrl();
     const v = await glassPrompt(
-        'Paste the address the Mac app downloads from. It must start with https:// — a GitHub release, your own web space, anywhere that serves the file.\n\nLeave it empty to remove the link.',
+        'Paste an address of your own to download the Mac app from — your web space, a shared drive, anywhere https.\n\nLeave it empty to go back to the newest build GitHub made.',
         now,
     );
     if (v === null) return; // cancelled: nothing said, nothing changed
@@ -21915,7 +21922,7 @@ async function saveNightAppUrl(btn) {
     if (adminPrivateContent) adminPrivateContent['nightshift-app-url'] = url;
     siteContent['nightshift-app-url'] = url;
     refreshNightAppGet();
-    toast(url ? 'Download link saved.' : 'Download link removed — the row offers the source instead.');
+    toast(url ? 'Downloading from your own address now.' : 'Back to the newest build GitHub made.');
 }
 chbAct('saveNightShift', async function (el) {
     const box = /** @type {HTMLInputElement} */ (el);

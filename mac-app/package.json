@@ -1,9 +1,15 @@
 {
-  "name": "blakeney-hand",
-  "productName": "Blakeney Hand",
+  "name": "cottage-holidays-blakeney",
+  "productName": "Cottage Holidays Blakeney",
   "version": "1.0.0",
   "private": true,
-  "description": "Drafts overnight on your own Mac and leaves the work on the Cottage Holidays Blakeney website for you to read.",
+  "description": "The Cottage Holidays Blakeney companion for Mac. It drafts work overnight on your own machine and leaves it on the website for you to read in the morning — every job posts a draft, and nothing it writes is ever sent.",
+  "author": {
+    "name": "Cottage Holidays Blakeney",
+    "url": "https://cottageholidaysblakeney.co.uk"
+  },
+  "homepage": "https://cottageholidaysblakeney.co.uk",
+  "license": "UNLICENSED",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,8 +23,9 @@
     "electron-builder": "^25.0.0"
   },
   "build": {
-    "appId": "uk.co.cottageholidaysblakeney.hand",
-    "productName": "Blakeney Hand",
+    "appId": "uk.co.cottageholidaysblakeney.mac",
+    "productName": "Cottage Holidays Blakeney",
+    "copyright": "© 2026 Cottage Holidays Blakeney",
     "files": [
       "src/**/*",
       "package.json",
@@ -41,16 +48,18 @@
       "gatekeeperAssess": false,
       "extendInfo": {
         "LSUIElement": false,
+        "CFBundleName": "Cottage Holidays Blakeney",
+        "NSHumanReadableCopyright": "© 2026 Cottage Holidays Blakeney",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
       },
       "icon": "build/icon.png",
-      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
+      "artifactName": "Cottage-Holidays-Blakeney.${ext}"
     },
     "dmg": {
-      "title": "Blakeney Hand",
-      "artifactName": "Blakeney-Hand-${version}-universal.${ext}"
+      "title": "Cottage Holidays Blakeney",
+      "artifactName": "Cottage-Holidays-Blakeney.${ext}"
     }
   }
 }

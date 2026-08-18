@@ -232,27 +232,60 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // The motion is still `transform` only — animating layout every frame is what
   // stuttered the dock icons.
   await page.evaluate(() => cmdkBack()); await page.waitForTimeout(700);
+  // SEEK THE DROP, DO NOT SAMPLE FRAMES OF IT.
+  //
+  // This collected a translateY per requestAnimationFrame for 700ms and asked
+  // for three distinct values. On a loaded runner rAF is starved hard enough
+  // that every callback fires AFTER the drop has finished: measured here as
+  // "1 distinct offset" with the first sample already at 0 — a working
+  // animation reported as a teleport, which is the opposite of the truth.
+  //
+  // The drop is a transition, and a transition is an Animation: pausing it and
+  // setting currentTime moves it to a phase, and the getComputedStyle after
+  // forces the flush that applies it. No frames, no clock. It still fails for
+  // the reason it exists — a box that teleports has no transition to seek, and
+  // one that never moves returns the same offset at every phase.
   const grow = await page.evaluate(async () => {
     const box = document.querySelector('#cmdk .cmdk-box');
-    const samples = [];
-    openCmdK();
-    const t0 = performance.now();
-    await new Promise((res) => {
-      const tick = () => {
-        const m = new DOMMatrixReadOnly(getComputedStyle(box).transform);
-        samples.push(+m.f.toFixed(2)); // translateY — the drop
-        if (performance.now() - t0 < 700) requestAnimationFrame(tick); else res();
-      };
-      requestAnimationFrame(tick);
-    });
-    return samples;
+    const yOf = () => +(new DOMMatrixReadOnly(getComputedStyle(box).transform)).f.toFixed(2);
+    // FINITE ONES ONLY. The box also carries the Siri aura, which runs for ever,
+    // so a bare "first animation" fallback can pick that — and seeking an
+    // infinite animation throws ("non-finite double") and moves no transform.
+    const grab = () => box.getAnimations().filter((a) => {
+      const d = a.effect && a.effect.getComputedTiming().activeDuration;
+      return Number.isFinite(d) && d > 0;
+    }).find((a) => a.transitionProperty === 'transform');
+
+    // The transition is created when `.open` lands and is GONE once it has
+    // finished, so on a stalled runner we can arrive after it — measured as
+    // "0 distinct offsets". Re-open until we catch one rather than reporting a
+    // working drop as a teleport; three attempts, and if none of them catches
+    // it the samples come back empty and the check says so.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { closeCmdK(); } catch (e) {}
+      await new Promise((r) => setTimeout(r, 220));
+      openCmdK();
+      getComputedStyle(box).transform; // flush, so the transition has begun
+      const t = grab();
+      if (!t) continue;
+      t.pause();
+      const dur = t.effect.getComputedTiming().activeDuration;
+      const samples = [];
+      for (const frac of [0, 0.15, 0.35, 0.6, 1]) {
+        t.currentTime = dur * frac;
+        samples.push(yOf()); // translateY — the drop
+      }
+      // finish(), NEVER play(): play() on an animation sitting at its end seeks
+      // back to the start and runs it again, so the geometry checks below then
+      // measured a box that was dropping a second time (header gap 78 of 80).
+      t.finish();
+      getComputedStyle(box).transform; // flush the resting style before measuring
+      return samples;
+    }
+    return [];
   });
   const distinct = new Set(grow).size;
-  // ≥3, not ≥5: a teleport yields at most TWO distinct offsets (the parked -10px
-  // and home) and fails the starts-above check below besides, so three proves a
-  // mid-flight frame — which is the whole claim. Five was an arbitrary margin that
-  // a janky CI runner missed on a WORKING drop (measured: 4 distinct offsets while
-  // the start/settle checks both passed — the heavier landing build eats frames).
+  // ≥3 proves a mid-flight position rather than a jump between two endpoints.
   ok(distinct >= 3, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
   ok(grow[0] < -1, `it starts above its resting place (first sample translateY ${grow[0]})`);
   ok(grow[grow.length - 1] === 0, `and settles home (last ${grow[grow.length - 1]})`);
@@ -1164,11 +1197,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const box = document.querySelector('#cmdk .cmdk-box');
     if (!box) return null;
     const name = getComputedStyle(box).animationName;
-    box.style.animationDelay = '0s';
+    // DRIVE THE ANIMATION'S OWN CLOCK, don't nudge a property and hope.
+    //
+    // This used an inline negative `animation-delay` to jump between phases,
+    // which is a real technique and still flaked on a loaded runner: changing
+    // the delay only re-samples the animation on its next tick, so both reads
+    // can come back from the same phase and the shadow looks frozen. Setting
+    // `currentTime` on the Animation moves it there, and the getComputedStyle
+    // right after forces the style flush that applies it — no clock, no frames.
+    const anim = box.getAnimations().find((x) => x.animationName === 'cmdkSiriAura')
+        || box.getAnimations()[0];
+    if (!anim) return { name, changed: false, why: 'no animation on the box' };
+    anim.pause();
+    anim.currentTime = 0;
     const a = getComputedStyle(box).boxShadow;
-    box.style.animationDelay = '-3s'; // half of the 6s cycle — the other keyframe
+    anim.currentTime = 3000; // half of the 6s cycle — the other keyframe
     const b = getComputedStyle(box).boxShadow;
-    box.style.animationDelay = '';
+    anim.play();
     return { name, changed: a !== b, a, b };
   });
   ok(!!aura && /cmdkSiriAura/.test(aura.name), `MOTION: the search card carries its Siri aura (${aura && aura.name})`);

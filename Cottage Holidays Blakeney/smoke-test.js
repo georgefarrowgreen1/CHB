@@ -1852,6 +1852,51 @@ console.log('\n§13 The activity log declares its own cap');
     );
 }
 
+// ============================================================
+//  §14 — THE MAC APP'S DOWNLOAD LINK NAMES THE FILE THE BUILD MAKES.
+//  The back office links to /releases/latest/download/<name>, and <name> is
+//  decided in mac-app/package.json by electron-builder's artifactName. They are
+//  two files that must agree, and nothing checked them — so renaming the app
+//  silently pointed the only download button at a 404, which is a dead end the
+//  owner discovers and nobody else can.
+//
+//  DERIVED, never a second copy of the string: the expectation is READ from
+//  package.json, so a future rename is caught rather than needing to be
+//  remembered in a third place.
+// ============================================================
+console.log('\n§14 The Mac app download link names the built file');
+{
+    const pkgPath = path.join(__dirname, '..', 'mac-app', 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+        check('mac-app/package.json is where this expects it', false);
+    } else {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        const artifact = String((pkg.build && pkg.build.dmg && pkg.build.dmg.artifactName) || '');
+        check('the dmg artifact name is declared', /\$\{ext\}$/.test(artifact), artifact);
+        const dmg = artifact.replace('${ext}', 'dmg');
+        // It must carry NO version, or /releases/latest/download/ rots the first
+        // time the app's version changes.
+        check('...and carries no version, so the latest-release URL cannot rot',
+            !/\d+\.\d+/.test(dmg), dmg);
+        const m = adminScript.match(/const NIGHT_APP_LATEST = '([^']+)'/);
+        check('admin.js states the download link once', !!m);
+        if (m) {
+            check('...pointing at the LATEST release, not one particular build',
+                /\/releases\/latest\/download\//.test(m[1]), m[1]);
+            check('...and naming exactly the file electron-builder produces',
+                m[1].endsWith('/' + dmg), m[1] + ' vs ' + dmg);
+        }
+        // The workflow proves the universal binary by name, and electron-builder
+        // names the executable after productName — so that line moves too.
+        const wf = path.join(__dirname, '..', '.github', 'workflows', 'mac-app.yml');
+        if (fs.existsSync(wf)) {
+            const y = fs.readFileSync(wf, 'utf8');
+            check('the workflow checks the architectures of the REAL binary name',
+                y.includes('MacOS/' + pkg.build.productName));
+        }
+    }
+}
+
 Promise.all(pendingChecks).then(() => {
     console.log('\n== Summary ==');
     if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }

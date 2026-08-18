@@ -1,5 +1,6 @@
 # ============================================================
-#  Mac app — builds Blakeney Hand into a universal .dmg on a real Mac.
+#  Mac app — builds the Cottage Holidays Blakeney Mac companion into a
+#  universal .dmg on a real Mac.
 #
 #  A .dmg cannot be made anywhere but macOS: the format is produced by `hdiutil`,
 #  and a universal binary is merged by `lipo`. Both are Apple's, both are
@@ -136,14 +137,18 @@ jobs:
         run: |
           set -euo pipefail
           DMG="$(ls dist/*.dmg | head -1)"
-          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+          # ABSOLUTE, because the publish step below does NOT run in mac-app —
+          # a path relative to this step's working-directory resolves to nothing
+          # there, which is exactly how the first real run failed after a
+          # perfectly good build.
+          echo "dmg=$PWD/$DMG" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$DMG")" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "$DMG" | cut -f1)" >> "$GITHUB_OUTPUT"
           # A universal build carries both architectures. Worth PROVING rather
           # than trusting the flag: lipo lists what is actually inside.
           APP="$(ls -d dist/mac-universal/*.app 2>/dev/null | head -1 || true)"
           if [ -n "$APP" ]; then
-            lipo -archs "$APP/Contents/MacOS/Blakeney Hand" || true
+            lipo -archs "$APP/Contents/MacOS/Cottage Holidays Blakeney" || true
           fi
 
       # Always keep the file, even on a plain dispatch with no release: a build
@@ -165,15 +170,18 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          TARGET=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Let `gh release create` mint the tag from --target, rather than
+            # pushing one first: a tag pushed before a release that then fails
+            # is an orphan nobody will ever tidy up.
             TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
-            git tag "$TAG"
-            git push origin "$TAG"
+            TARGET="--target $GITHUB_SHA"
           fi
           SIGNED="unsigned — on first launch open System Settings → Privacy & Security and press Open Anyway"
           if [ "${{ steps.cert.outputs.have }}" = "true" ]; then SIGNED="signed, so it opens with a double-click"; fi
           {
-            echo "Blakeney Hand for macOS — one universal build for Intel and Apple silicon."
+            echo "Cottage Holidays Blakeney for macOS — one universal build for Intel and Apple silicon."
             echo
             echo "This copy is **$SIGNED**."
             echo
@@ -183,7 +191,9 @@ jobs:
             echo "It needs a model runner on the Mac (llama.cpp or Ollama) and the overnight"
             echo "queue switched on. mac-app/README.md covers both."
           } > notes.md
-          gh release create "$TAG" "${{ steps.out.outputs.dmg }}" \
-            --title "Blakeney Hand ${TAG}" --notes-file notes.md
-          echo "Download link for the Manage page:"
+          gh release create "$TAG" "${{ steps.out.outputs.dmg }}" $TARGET \
+            --title "Cottage Holidays Blakeney ${TAG}" --notes-file notes.md
+          echo "This build:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"
+          echo "The link the site uses, which always points at the newest release:"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${{ steps.out.outputs.name }}"
