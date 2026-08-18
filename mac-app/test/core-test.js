@@ -1124,6 +1124,28 @@ function fakeSite(handler) {
     ok('...and makes a window when there is not one', /function openUpdates\(\)[\s\S]{0,400}create\(\)/.test(mainSrc));
     ok('...waiting for it to load before speaking to it', /did-finish-load/.test(mainSrc));
 
+    // ── §22 THE BUNDLED RUNNER AND THE UNIVERSAL MERGE ────────────────────
+    // These are ONE decision and they came apart: extraResources put a lipo'd
+    // llama-server into both per-arch bundles, and @electron/universal refuses
+    // an identical Mach-O in both unless x64ArchFiles names it — so the .dmg
+    // died at packaging with the runner already built and verified.
+    //
+    // A duplicate "mac" key while fixing it would have silently dropped the
+    // setting (later key wins), so the shape is asserted too.
+    console.log('\n22) the bundled runner is packaged, not merged again');
+    const pkgRaw = fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8');
+    const pkg = JSON.parse(pkgRaw);
+    const extra = (pkg.build && pkg.build.extraResources) || [];
+    const bundles = extra.some(function (e) { return e && e.to === 'runner'; });
+    ok('the runner is bundled as a resource', bundles, JSON.stringify(extra));
+    const x64 = pkg.build && pkg.build.mac && pkg.build.mac.x64ArchFiles;
+    ok('...and the universal merge is told about it, or packaging dies',
+        !bundles || (typeof x64 === 'string' && /runner/.test(x64)), String(x64));
+    ok('...naming the file it actually ships', !bundles || /llama-server/.test(String(x64)), String(x64));
+    // The value only takes effect if it is in the mac block that survives.
+    ok('there is exactly one "mac" block for it to live in',
+        (pkgRaw.match(/"mac":\s*\{/g) || []).length === 1);
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');
