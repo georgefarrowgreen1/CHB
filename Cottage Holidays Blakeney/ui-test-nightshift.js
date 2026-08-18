@@ -316,39 +316,44 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { painted: h.getClientRects().length > 0, links: links, text: h.textContent };
   });
   ok(get0.painted, 'the row is on the System check page');
-  // THE PROPERTY THAT MATTERS: with nothing packaged there is no Download at all.
-  ok(!get0.links.some((a) => /Download/.test(a.t)), 'with nothing packaged there is NO download link', JSON.stringify(get0.links.map((a) => a.t)));
+  // THE DEFAULT IS A LINK THAT NEVER NEEDS UPDATING. GitHub keeps
+  // /releases/latest/download/<file> pointing at the newest release, and the
+  // build's filename carries no version so that URL cannot rot.
+  const dlLink = get0.links.find((a) => /Download/.test(a.t));
+  ok(dlLink && /\/releases\/latest\/download\/Blakeney-Hand-universal\.dmg$/.test(dlLink.href),
+    'with nothing set, Download points at the LATEST release, not one particular build', dlLink && dlLink.href);
   ok(get0.links.length === 2 && get0.links.every((a) => /^https:\/\/github\.com\//.test(a.href)),
-    '…just the two GitHub links', JSON.stringify(get0.links.map((a) => a.href)));
-  ok(/actions\/workflows\/mac-app\.yml$/.test(get0.links[0].href),
-    '…and the FIRST one is the build, because that is the next step', get0.links[0].href);
+    '…beside the link that builds a newer one', JSON.stringify(get0.links.map((a) => a.t)));
   ok(get0.links.every((a) => a.tgt === '_blank' && /noopener/.test(a.rel || '')),
     '…both open outside the app, safely');
-  ok(/no packaged copy yet/.test(get0.text), '…and it SAYS there is no packaged copy rather than offering one');
-  ok(/only be made on a Mac/.test(get0.text), '…and why it cannot just appear');
-  ok(/npm run build/.test(get0.text), '…and names the command, for doing it by hand');
+  ok(/newest build GitHub made/.test(get0.text), '…and it says the link follows the newest build');
+  ok(/only be made on a Mac/.test(get0.text), '…and why it is built there rather than here');
 
-  // A DOWNLOAD LINK, once there is something to download.
+  // A URL OF YOUR OWN OVERRIDES IT.
   posts.length = 0;
-  await page.evaluate(() => { window.glassPrompt = async () => 'https://example.test/BlakeneyHand-1.0.dmg'; });
+  await page.evaluate(() => { window.glassPrompt = async () => 'https://example.test/mine/BlakeneyHand.dmg'; });
   await page.evaluate(() => document.querySelector('[data-act="saveNightAppUrl"]').click());
   await page.waitForTimeout(400);
   const savedUrl = posts.find((p) => p.__url === 'content.php' && p.action === 'set' && p.key === 'nightshift-app-url');
-  ok(savedUrl && savedUrl.value === 'https://example.test/BlakeneyHand-1.0.dmg', 'setting a link saves it', JSON.stringify(savedUrl));
+  ok(savedUrl && savedUrl.value === 'https://example.test/mine/BlakeneyHand.dmg', 'an address of your own is saved', JSON.stringify(savedUrl));
   const get1 = await page.evaluate(() => {
     const h = document.getElementById('night-app-get');
     const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
-    return { href: dl ? dl.getAttribute('href') : null, painted: dl ? dl.getClientRects().length > 0 : false, text: h.textContent };
+    const btn = h.querySelector('[data-act="saveNightAppUrl"]');
+    return { href: dl ? dl.getAttribute('href') : null, painted: dl ? dl.getClientRects().length > 0 : false, btn: btn.textContent.trim(), text: h.textContent };
   });
-  ok(get1.href === 'https://example.test/BlakeneyHand-1.0.dmg' && get1.painted,
-    'a real Download link appears, pointing at exactly that', JSON.stringify(get1.href));
-  ok(!/no packaged copy yet/.test(get1.text), '…and the row stops saying there is nothing to download');
+  ok(get1.href === 'https://example.test/mine/BlakeneyHand.dmg' && get1.painted,
+    '…and Download follows it', JSON.stringify(get1.href));
+  ok(/standard link/i.test(get1.btn), '…with a way back to the standard one', get1.btn);
+  ok(/your own address/.test(get1.text), '…and the row says which it is using');
 
+  // THE PRIMARY PILL IS FILLED. Measured against the quiet one beside it, so it
+  // cannot regress to "the class is present".
   const looks = await page.evaluate(() => {
     const h = document.getElementById('night-app-get');
     const dl = [...h.querySelectorAll('a')].find((a) => /Download/.test(a.textContent));
     const quiet = [...h.querySelectorAll('a')].find((a) => !/Download/.test(a.textContent));
-    const c = (el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, fg: s.color, w: s.fontWeight }; };
+    const c = (el) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, fg: s.color }; };
     return { dl: c(dl), quiet: c(quiet) };
   });
   ok(looks.dl.bg !== looks.quiet.bg && looks.dl.bg !== 'rgba(0, 0, 0, 0)',
@@ -368,20 +373,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/https/.test(await page.evaluate(() => window.__alerted || '')), '…and it says why');
 
   // AND THE RENDER GUARDS IT TOO, because a value could have been written by
-  // something other than that prompt.
+  // something other than that prompt — falling back to the WORKING default
+  // rather than to nothing.
   const badHref = await page.evaluate(() => {
     siteContent['nightshift-app-url'] = 'javascript:alert(1)';
-    // NB adminPrivateContent is a top-level `let`, so it is a global LEXICAL
-    // binding and not a window property — `window.adminPrivateContent` is
-    // undefined and a guard on it silently skips the write.
     adminPrivateContent['nightshift-app-url'] = 'javascript:alert(1)';
     refreshNightAppGet();
     const h = document.getElementById('night-app-get');
     return [...h.querySelectorAll('a')].map((a) => a.getAttribute('href'));
   });
   ok(!badHref.some((h) => /^javascript:/i.test(h)), 'a stored javascript: address never becomes a link', JSON.stringify(badHref));
-  ok(badHref.length === 2 && badHref.every((h) => /^https:\/\/github\.com\//.test(h)),
-    '…the row falls back to the two GitHub links, exactly as if nothing were set', JSON.stringify(badHref));
+  ok(badHref.some((h) => /releases\/latest\/download/.test(h)),
+    '…and the row falls back to the release link, not to no download at all', JSON.stringify(badHref));
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 
