@@ -25,8 +25,13 @@ const TIMEOUT_MS = 20000;
 function makeRef(kind, id, dayIso) {
     const day = String(dayIso || '').slice(0, 10).replace(/[^0-9-]/g, '');
     const k = String(kind || 'note').replace(/[^a-z]/gi, '').slice(0, 12) || 'note';
-    const n = String(parseInt(id, 10) || 0);
-    return 'mac-' + day + '-' + k + '-' + n;
+    // AN ID THAT DOES NOT PARSE MUST NOT BECOME 0. It did — `parseInt(id) || 0`
+    // — so every row with a missing or non-numeric id produced the SAME ref,
+    // and the site's exactly-once rule then quietly kept the first and dropped
+    // the rest as duplicates. Anything unparseable keeps its own characters.
+    const raw = String(id == null ? '' : id);
+    const n = /^\d+$/.test(raw) ? raw : raw.replace(/[^a-z0-9]/gi, '').slice(0, 24);
+    return 'mac-' + day + '-' + k + '-' + (n || 'x');
 }
 
 // Today, as the site's own calendar day. The app runs at 02:00 local, and the
@@ -128,7 +133,7 @@ function makeSite(opts) {
                 // the items may well be stored — which is exactly what the
                 // deterministic ref is for. Reported as uncertain so the log says
                 // so and tomorrow's identical ref settles it.
-                return { ok: false, uncertain: true, refusal: { kind: 'net', say: 'Posted, but the site&rsquo;s answer was lost. The reference makes a retry safe.' } };
+                return { ok: false, uncertain: true, refusal: { kind: 'net', say: "Posted, but the site's answer was lost. The reference makes a retry safe." } };
             }
             if (!r.ok || !r.json || !r.json.ok) {
                 return { ok: false, refusal: refusal(r) };

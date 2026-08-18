@@ -27,7 +27,14 @@
 // separators and pence. Deliberately greedy about what counts as money — a
 // false positive costs one draft, a false negative costs a wrong price in a
 // guest's inbox.
-const MONEY_RE = /£\s?\d[\d,]*(?:\.\d{1,2})?/g;
+// Money, in the three unambiguous forms. It was £ ONLY — so a draft that wrote
+// "GBP 892.50" or "892.50 pounds" carried a figure the guard never looked at.
+//
+// A BARE DECIMAL IS DELIBERATELY NOT MATCHED. "440.00" with no marker would
+// close the last gap, and it would also refuse a perfectly good reply that
+// mentions "10.30am" or "3.00" — dropping good drafts often enough to make the
+// job useless. The forms below cannot mean anything but money.
+const MONEY_RE = /£\s?\d[\d,]*(?:\.\d{1,2})?|\bGBP\s?\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*(?:\.\d{1,2})?\s?(?:pounds|quid)\b/gi;
 
 // Phrases that assert availability. The model may only say these when the
 // brief said the dates are free; when the brief did not know, silence is the
@@ -49,6 +56,7 @@ const TAKEN_CLAIM_RE = /\b(?:not\s+available|unavailable|already\s+(?:been\s+)?(
 // machine writing prose: a link (it cannot know a valid one), an attachment
 // promise, or any of the words that mean an action has already happened.
 const LINK_RE = /https?:\/\/|\bwww\./i;
+const GREETING_RE = /^\s*(?:hi|hey|hello|dear|good\s+(?:morning|afternoon|evening))\b/i;
 const DONE_RE = /\b(?:I(?:'ve| have)\s+(?:now\s+)?(?:booked|charged|refunded|cancelled|taken\s+payment)|your\s+card\s+has\s+been\s+charged|payment\s+(?:has\s+been\s+)?taken)\b/i;
 
 // Every distinct money string in a piece of text, normalised so "£ 892.50",
@@ -71,7 +79,7 @@ function moneyIn(text) {
 
 // "£1,234.5" → "1234.50". Returns '' for anything that will not parse.
 function normaliseMoney(str) {
-    const n = parseFloat(String(str || '').replace(/[£,\s]/g, ''));
+    const n = parseFloat(String(str || '').replace(/gbp|pounds|quid/gi, '').replace(/[£,\s]/g, ''));
     if (!isFinite(n)) {
         return '';
     }
@@ -133,7 +141,12 @@ function checkDraft(draft, facts) {
     // ── THE GREETING. The site's own reply template opens with "Hello <name>,"
     // of its own, so a draft that greets as well ships two greetings — which
     // really happened once and reached guests. ──
-    if (f.first && new RegExp('^\\s*(?:hi|hello|dear|good\\s+(?:morning|afternoon|evening))\\b', 'i').test(text)) {
+    // NOT gated on knowing the name. It was `if (f.first && ...)`, so an enquiry
+    // that arrived without a first name switched this check OFF — while the
+    // site's template still opens with its own "Hello ," regardless. The one
+    // case where the guard was disabled is the case where the template's
+    // greeting is at its most awkward.
+    if (GREETING_RE.test(text)) {
         problems.push('opens with a greeting — the email template adds one');
     }
 

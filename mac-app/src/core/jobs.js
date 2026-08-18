@@ -119,7 +119,7 @@ async function runReplyJob(ctx) {
     const enquiries = Array.isArray(c.enquiries) ? c.enquiries : [];
     const day = require('./site').today(c.now);
     const say = function (line, level) {
-        log.push({ at: stamp(c.now, log.length), say: line, level: level || 'info' });
+        log.push({ at: stamp(), say: line, level: level || 'info' });
     };
 
     if (!enquiries.length) {
@@ -139,10 +139,10 @@ async function runReplyJob(ctx) {
             say(who + ' · skipped: no message to answer', 'skip');
             continue;
         }
-        if (f.dates_free === false && !String(f.message || '').trim().length) {
-            say(who + ' · skipped: dates gone and nothing asked', 'skip');
-            continue;
-        }
+        // (There was a second skip here for "dates gone and nothing asked". It
+        // tested for an EMPTY message, which the branch above has already
+        // continued on — so it could never run, and its log line could never
+        // appear. Removed rather than guessed at.)
 
         const facts = Object.assign({}, f, { party: guard.partyWords(f.adults, f.children) });
         const prompt = guard.buildPrompt(facts, c.host);
@@ -196,8 +196,15 @@ function sourceLine(f) {
     return bits.join(', ');
 }
 
-function stamp(now, n) {
-    const d = now instanceof Date ? new Date(now.getTime() + n * 1000) : new Date();
+// THE REAL CLOCK, not the start time plus a line count.
+//
+// It was `now + n seconds`, which made the stamps a function of how many lines
+// had been written rather than of when anything happened: a run that took
+// twenty minutes stamped every line inside the same minute, directly beside a
+// "drafted in 4.1s" that contradicted it. `now` is still the record's own
+// `started` stamp, which is the one a test pins; these are wall-clock.
+function stamp() {
+    const d = new Date();
     const p = function (v) { return String(v).padStart(2, '0'); };
     return p(d.getHours()) + ':' + p(d.getMinutes());
 }

@@ -227,14 +227,14 @@
         var repo = t.closest ? t.closest('[data-repo]') : null;
         if (repo) {
             var rid = repo.getAttribute('data-repo');
-            $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">Reading what is inside ' + esc(rid) + '…</p>';
+            $('results').innerHTML = '<p class="tiny sheet-msg">Reading what is inside ' + esc(rid) + '…</p>';
             var fr = await window.hand.modelFiles(rid);
             if (!fr.ok) {
-                $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">' + esc(fr.say) + '</p>';
+                $('results').innerHTML = '<p class="tiny sheet-msg">' + esc(fr.say) + '</p>';
                 return;
             }
             if (!fr.rows.length) {
-                $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">No single-file GGUF in that repo.'
+                $('results').innerHTML = '<p class="tiny sheet-msg">No single-file GGUF in that repo.'
                     + (fr.sharded ? ' It is split across several files, which this build cannot join yet.' : '') + '</p>';
                 return;
             }
@@ -245,7 +245,7 @@
                     '<span class="sz">' + (fx.sizeGB ? fx.sizeGB + ' GB' : '?') + '</span>' +
                     '<button class="tbtn' + (fx.fit === 'no' ? '' : ' prime') + '" type="button" data-dl=\'' +
                     esc(dl).replace(/&#39;/g, '&apos;') + '\'>' + (fx.fit === 'no' ? 'Anyway' : 'Download') + '</button></div>';
-            }).join('') + '<p class="tiny" style="padding:11px 18px 5px">Sizes here are the real file sizes, so the verdicts are facts rather than estimates.</p>';
+            }).join('') + '<p class="tiny sheet-foot">Sizes here are the real file sizes, so the verdicts are facts rather than estimates.</p>';
             return;
         }
         var mrow = t.closest ? t.closest('[data-dl]') : null;
@@ -273,13 +273,17 @@
         await refresh();
     });
     document.addEventListener('keydown', function (e) {
+        // BOTH sheets. The update sheet was added without this, so Escape did
+        // nothing on it — a dialog you can only leave by finding its Close
+        // button. Topmost first, in case both are somehow open.
+        if (e.key === 'Escape' && !$('upScrim').hidden) { $('upScrim').hidden = true; return; }
         if (e.key === 'Escape' && !$('scrim').hidden) { $('scrim').hidden = true; }
     });
 
     // ── the Add model sheet ──────────────────────────────────────────────
     function openSheet() {
         $('scrim').hidden = false;
-        $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">Type a family name — qwen, llama, mistral, gemma.</p>';
+        $('results').innerHTML = '<p class="tiny sheet-msg">Type a family name — qwen, llama, mistral, gemma.</p>';
         $('q').value = '';
         $('q').focus();
     }
@@ -288,17 +292,17 @@
         var term = $('q').value;
         searchT = setTimeout(async function () {
             if (term.trim().length < 2) {
-                $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">Type a little more.</p>';
+                $('results').innerHTML = '<p class="tiny sheet-msg">Type a little more.</p>';
                 return;
             }
-            $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">Searching Hugging Face…</p>';
+            $('results').innerHTML = '<p class="tiny sheet-msg">Searching Hugging Face…</p>';
             var r = await window.hand.searchModels(term);
             if (!r.ok) {
-                $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">' + esc(r.say) + '</p>';
+                $('results').innerHTML = '<p class="tiny sheet-msg">' + esc(r.say) + '</p>';
                 return;
             }
             if (!r.rows.length) {
-                $('results').innerHTML = '<p class="tiny" style="padding:20px 18px">Nothing on Hugging Face matches that.</p>';
+                $('results').innerHTML = '<p class="tiny sheet-msg">Nothing on Hugging Face matches that.</p>';
                 return;
             }
             // A REPO IS NOT A FILE. "Qwen2.5-14B-Instruct-GGUF" holds a dozen

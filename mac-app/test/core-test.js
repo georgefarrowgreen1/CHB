@@ -642,6 +642,61 @@ function fakeSite(handler) {
         !fs.existsSync(path.join(upTmp, "Cottage-Holidays-Blakeney.dmg.part")));
     try { fs.rmSync(upTmp, { recursive: true, force: true }); } catch (e) {}
 
+
+    // ── WHAT THE BUG PASS FOUND ───────────────────────────────────────────
+    console.log('\n17) the defects found in the review, each with its own check');
+
+    // A GREETING IS REFUSED EVEN WHEN THE NAME IS UNKNOWN. It was gated on
+    // f.first, so an enquiry with no first name switched the check off — while
+    // the site's template greets regardless.
+    const greet = 'Hello there, thank you for asking about the cottage. It sleeps four and the beach is a short walk away, so it suits a family well.';
+    ok('a greeting is refused with a name known',
+        guard.checkDraft(greet, { first: 'Sam', dates_free: null }).problems.some((s) => /greeting/.test(s)));
+    ok('...and with NO name known, which is where it used to stop looking',
+        guard.checkDraft(greet, { dates_free: null }).problems.some((s) => /greeting/.test(s)));
+    ok('...while a draft that does not greet is fine',
+        !guard.checkDraft('Thank you for asking about the cottage. It sleeps four and the beach is a short walk away, so it suits a family well.', {}).problems.some((s) => /greeting/.test(s)));
+
+    // A REF MUST IDENTIFY ITS ROW. Every unparseable id used to become 0, so
+    // the site's exactly-once rule silently dropped all but the first.
+    ok('two rows with unparseable ids get DIFFERENT refs',
+        site.makeRef('reply', 'a1', '2026-08-18') !== site.makeRef('reply', 'b2', '2026-08-18'));
+    ok('...a numeric id is unchanged',
+        site.makeRef('reply', 42, '2026-08-18') === 'mac-2026-08-18-reply-42');
+    ok('...and a missing id is still a usable ref',
+        /^mac-2026-08-18-reply-.+$/.test(site.makeRef('reply', null, '2026-08-18')));
+    ok('the same row on the same night is the same ref, which is the whole point',
+        site.makeRef('reply', 42, '2026-08-18') === site.makeRef('reply', 42, '2026-08-18'));
+
+    // MONEY IN EVERY FORM IT CAN BE WRITTEN. The guard saw only "£", so a
+    // figure written "GBP 892.50" or "892.50 pounds" was never checked.
+    const mBody = ' Thank you for asking about the cottage, it sleeps four and suits a family well indeed. ';
+    const mFacts = { quote: '440.00', dates_free: null };
+    const invented = (s) => guard.checkDraft(mBody + s, mFacts).problems.some((x) => /figure the site did not give/.test(x));
+    ok('an invented £ figure is caught', invented('The total is £892.50.'));
+    ok('...and a GBP one', invented('The total is GBP 892.50.'));
+    ok('...and a "pounds" one', invented('The total is 892.50 pounds.'));
+    ok('...and a "quid" one', invented('That would be 900 quid.'));
+    ok("the site's OWN figure passes, however it is written",
+        !invented('The total is £440.00.') && !invented('That is 440 pounds.') && !invented('The total is £440.'));
+    // A BARE DECIMAL IS NOT MONEY, on purpose: refusing these would drop good
+    // drafts far more often than it would catch an invented figure.
+    ok('a time is not read as money',
+        !invented('Check-in is from 3.00 in the afternoon.') && !invented('We are usually there by 10.30am.'));
+
+    // NO HTML ENTITIES IN STRINGS THE WINDOW ESCAPES. The log renders through
+    // esc(), so "&rsquo;" arrived on screen as those eight characters.
+    ok('no core module puts an HTML entity in a sentence', (function () {
+        const bad = [];
+        ['site', 'guard', 'jobs', 'night', 'engine', 'models', 'config', 'api', 'update', 'updater'].forEach(function (f) {
+            const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core', f + '.js'), 'utf8');
+            src.split('\n').forEach(function (line, i) {
+                if (/^\s*(\/\/|\*)/.test(line)) { return; }          // comments may say &rsquo;
+                if (/&(?:rsquo|lsquo|mdash|ndash|hellip|amp|quot|nbsp);/.test(line)) { bad.push(f + ':' + (i + 1)); }
+            });
+        });
+        return bad.length === 0 || (console.log('      ' + bad.join(', ')), false);
+    })());
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

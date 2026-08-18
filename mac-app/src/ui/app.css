@@ -352,6 +352,14 @@ select.pop{padding-right:6px}
 .up-prog{width:100%;margin-top:12px}
 .up-prog[hidden]{display:none}
 
+/* Messages inside the model sheet. These were inline style attributes on
+   elements built with innerHTML — which this page's CSP (style-src 'self')
+   blocks outright, so every one of them rendered flush to the sheet's edge with
+   a console error behind it. Same trap as an inline onclick under script-src;
+   the fix is a class, every time. */
+.sheet-msg{padding:20px 18px}
+.sheet-foot{padding:11px 18px 5px}
+
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:20;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);
   -webkit-backdrop-filter:var(--glass-filter);
