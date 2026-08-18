@@ -22,7 +22,8 @@
 //  the window states and therefore wants one definition.
 // ============================================================
 'use strict';
-const { runReplyJob, jobById } = require('./jobs');
+const jobsMod = require('./jobs');
+const { runReplyJob, jobById } = jobsMod;
 
 const LOG_KEEP = 30; // nights
 
@@ -101,71 +102,112 @@ async function runNight(deps) {
     }
 
     const cfg = d.cfg || {};
-    const jobCfg = (cfg.jobs && cfg.jobs.reply) || {};
-    if (!jobCfg.on) {
-        say('every job is switched off — nothing to do');
+    // EVERY due job runs in this one wake — the nightly reply, and the weekly
+    // notes on the run whose local day is theirs. A job that is on but waits
+    // for its day is SAID, because "switched on and silent" must always have
+    // its reason in the log.
+    const plan = jobsMod.jobsDueTonight(jobsMod.JOBS, cfg, now);
+    plan.waiting.forEach(function (w) {
+        say(w.job.name + ' waits for ' + w.until);
+    });
+    if (!plan.due.length) {
+        say(plan.waiting.length ? 'nothing due tonight' : 'every job is switched off — nothing to do');
         rec.ok = true;
         return rec;
     }
-    if (!jobById('reply')) {
-        say('the reply job is missing from this build', 'fail');
-        return rec;
-    }
-    rec.model = String(jobCfg.model || '');
-    if (!rec.model) {
-        say('no model chosen for the reply job — pick one on the Models screen', 'fail');
-        return rec;
-    }
 
-    // Is the engine actually serving? Asked BEFORE any drafting, so a dead
-    // runner is one clear line rather than an error per enquiry.
-    //
-    // AND IF IT IS NOT, START IT. This used to be the end of the night — which
-    // meant the app did nothing, every night, on any Mac where the owner had
-    // not left a Terminal running llama-server. `ensureEngine` is the same
-    // function the Runner screen's Start button calls, so the button and the
-    // night cannot behave differently; it is absent (and this falls back to the
-    // old refusal) when the app has no way to spawn, which is every test that
-    // does not ask for one.
-    let up = await d.engine.reachable();
-    if (!up && d.ensureEngine) {
-        say('nothing answering on ' + d.engine.base + ' — starting it');
-        const started = await d.ensureEngine();
-        if (started && started.ok) {
-            rec.startedEngine = !!started.started;
-            say(started.say);
-            up = true;
-        } else {
-            say((started && started.say) || 'the model server did not start', 'fail');
-            if (started && started.install) {
-                say('install it with: ' + started.install, 'fail');
-            }
-            return rec;
+    const items = [];
+    const models = [];
+    let engineUp = false;
+    let engineModel = '';
+    for (let ji = 0; ji < plan.due.length; ji++) {
+        const job = plan.due[ji].job;
+        const model = plan.due[ji].model;
+        if (!model) {
+            say('no model chosen for ' + job.name.toLowerCase() + ' — pick one on the Jobs screen', 'fail');
+            continue;
         }
-    }
-    if (!up) {
-        say(d.engine.name + ' is not answering on ' + d.engine.base + ' — nothing was drafted', 'fail');
-        return rec;
-    }
-    say(d.engine.name + ' · ' + rec.model);
 
-    const out = await runReplyJob({
-        site: d.site,
-        engine: d.engine,
-        model: rec.model,
-        host: brief.host,
-        now: now,
-        enquiries: brief.enquiries,
-        onProgress: d.onProgress,
-    });
-    out.log.forEach(function (l) { log.push(l); });
-    rec.drafted = out.items.length;
-    rec.skipped = out.log.filter(function (l) { return l.level === 'skip'; }).length;
-    rec.failed = out.log.filter(function (l) { return l.level === 'fail'; }).length;
+        // THE ENGINE, PER MODEL. Each job names its own, and an auto-started
+        // llama-server holds exactly one — so a job needing a different model
+        // asks ensureEngineFor to swap it. On an engine we did not start the
+        // swap is impossible and the model parameter is what travels (Ollama
+        // honours it; a hand-run llama-server serves what it loaded).
+        if (!engineUp || engineModel !== model) {
+            if (d.ensureEngineFor) {
+                // ASK before announcing. The first draft printed "nothing
+                // answering — starting it" unconditionally, which on a healthy
+                // engine was a log line about an event that never happened.
+                const wasUp = await d.engine.reachable();
+                if (!wasUp) {
+                    say('nothing answering on ' + d.engine.base + ' — starting it');
+                }
+                const started = await d.ensureEngineFor(model);
+                if (!started || !started.ok) {
+                    say((started && started.say) || 'the model server did not start', 'fail');
+                    if (started && started.install) {
+                        say('install it with: ' + started.install, 'fail');
+                    }
+                    continue;
+                }
+                rec.startedEngine = rec.startedEngine || !!started.started;
+                if (started.started) {
+                    // A restart of a HEALTHY server can only mean the model
+                    // swap, so the log says which fact caused it — but only
+                    // once it has actually happened, because on an engine this
+                    // app did not start there is no swap to claim.
+                    say(wasUp ? 'swapped the model server for ' + model + ' — ' + started.say : started.say);
+                }
+                engineUp = true;
+                engineModel = model;
+            } else if (!engineUp) {
+                engineUp = await d.engine.reachable();
+                engineModel = model;
+                if (!engineUp) {
+                    say(d.engine.name + ' is not answering on ' + d.engine.base + ' — nothing was drafted', 'fail');
+                    continue;
+                }
+            }
+        }
+        say(job.name + ' · ' + d.engine.name + ' · ' + model);
+        if (models.indexOf(model) === -1) {
+            models.push(model);
+        }
+
+        const ctx = {
+            site: d.site,
+            engine: d.engine,
+            model: model,
+            host: brief.host,
+            now: now,
+            enquiries: brief.enquiries,
+            week: brief.week,
+            gaps: brief.gaps,
+            questions: brief.questions,
+            onProgress: d.onProgress,
+        };
+        const runner = job.id === 'reply' ? jobsMod.runReplyJob
+            : job.id === 'week' ? jobsMod.runWeekJob
+            : job.id === 'price' ? jobsMod.runPriceJob
+            : job.id === 'answer' ? jobsMod.runAnswerJob
+            : null;
+        if (!runner) {
+            say(job.name + ' is missing from this build', 'fail');
+            continue;
+        }
+        const out = await runner(ctx);
+        out.log.forEach(function (l) { log.push(l); });
+        out.items.forEach(function (it) { items.push(it); });
+    }
+    rec.model = models.join(', ');
+    rec.drafted = items.length;
+    rec.skipped = log.filter(function (l) { return l.level === 'skip'; }).length;
+    rec.failed = log.filter(function (l) { return l.level === 'fail'; }).length;
+    const out = { items: items };
 
     if (!out.items.length) {
         say('nothing to post · back to sleep', 'done');
-        rec.ok = true;
+        rec.ok = rec.failed === 0;
         return rec;
     }
 

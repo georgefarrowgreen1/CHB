@@ -283,9 +283,24 @@ Settings, models and the night log live in
 - **Keep a secret in a file.** If the Keychain refuses, nothing is stored
   anywhere and the app says so.
 
-## What is not built yet
+## The jobs
 
-Four of the five jobs on the **Jobs** screen are listed but not implemented —
-they are shown for shape and cannot be switched on. Drafted enquiry replies is
-the one that ships first, on purpose: it is the highest-value job and the honest
-test of whether any of this earns its keep.
+Four of the five are real now, each switched on per job with its own model:
+
+| job | runs | writes |
+|---|---|---|
+| **Draft enquiry replies** | nightly | a reply per waiting enquiry, from the site's own quote and calendar answer |
+| **Answer the questions guests keep asking** | Sunday nights | a drafted FAQ answer per recurring unanswered guest question, grounded in that cottage's published answers — one tap on the site makes it live |
+| **Read the week** | Monday nights | the Monday-morning note: arrivals, departures, gaps, and the site's own still-to-collect figures |
+| **Price the fortnight** | Monday nights | the case for each 2–4-night gap the site found, at the site's own suggested price — a suggestion to weigh, never a change |
+
+All of them follow the reply job's one rule: **the site states the facts, the
+model arranges the words.** Every figure travels with the brief already
+formatted, and the guard drops a draft that writes any other; the weekly jobs
+run in the same 02:00 wake, on the run whose local day is theirs. Each job may
+name a different model — the app swaps its own model server between jobs, and
+never touches one you started yourself.
+
+**Transcribe a walk-round is the one that stays unbuilt**, and honestly so: it
+needs a speech-recognition model (whisper), not a chat model — a different
+engine and its own bundling job. It cannot be switched on.

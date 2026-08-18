@@ -2616,6 +2616,62 @@ it_check('no contact detail a drafted reply does not need', count($leaks) === 0,
 it_check('…and the raw payload never contains the address either',
     strpos($r['raw'], '9 Test Lane') === false && strpos($r['raw'], '07700 900123') === false, mb_substr($r['raw'], 0, 200));
 
+// ── THE OTHER JOBS' FACTS RIDE THE SAME BRIEF ──────────────────────────────
+// The week (arrivals with the site's own due figure), the gaps (site-priced),
+// and the guest questions — through the REAL endpoint, so the queries and the
+// composers are proven together rather than the composers alone.
+$wkIn = date('Y-m-d', time() + 3 * 86400);
+$wkOut = date('Y-m-d', time() + 6 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights)
+    VALUES ('$propKey','Wendy Weekly','wendy@gmail.com','07700 900555','$wkIn','$wkOut',2,0,'deposit',100,400,400,0,3)");
+$wkBid = (int) $rootDb->lastInsertId();
+// A 3-night hole between two stays, inside the 45-day window: gap fodder.
+$g1In = date('Y-m-d', time() + 20 * 86400);
+$g1Out = date('Y-m-d', time() + 23 * 86400);
+$g2In = date('Y-m-d', time() + 26 * 86400);
+$g2Out = date('Y-m-d', time() + 29 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights)
+    VALUES ('$propKey','Gap Before','gb@gmail.com','$g1In','$g1Out',2,0,'paid',300,300,300,0,3),
+           ('$propKey','Gap After','ga@gmail.com','$g2In','$g2Out',2,0,'paid',300,300,300,0,3)");
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'guest-faq-misses',
+    'value' => [['q' => 'Is there an EV charger nearby?', 'n' => 3, 'prop' => $propKey, 'at' => date('Y-m-d')]]]);
+
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$wk = $r['json']['week'] ?? null;
+$wArr = null;
+foreach (($wk['arrivals'] ?? []) as $a) {
+    if (($a['first'] ?? '') === 'Wendy') {
+        $wArr = $a;
+    }
+}
+it_check('the brief hands over the WEEK, with the arrival named by first name and cottage',
+    $wArr !== null && ($wArr['cottage'] ?? '') === $expectName, json_encode($wk));
+it_check('…carrying the site&rsquo;s own outstanding figure, formatted',
+    $wArr && ($wArr['due'] ?? '') === '£300.00', json_encode($wArr));
+$gp = $r['json']['gaps'] ?? [];
+$gMine = null;
+foreach ($gp as $g) {
+    if (($g['from'] ?? '') === $g1Out) {
+        $gMine = $g;
+    }
+}
+it_check('…and the GAPS, found and dated by the site',
+    $gMine !== null && $gMine['to'] === $g2In && $gMine['nights'] === 3, json_encode($gp));
+it_check('…each priced by the site at rate AND offer',
+    $gMine && preg_match('/^£[0-9,]+\.[0-9]{2}$/', (string) $gMine['rate']) === 1
+    && preg_match('/^£[0-9,]+\.[0-9]{2}$/', (string) $gMine['offer']) === 1
+    && (float) str_replace(['£', ','], '', $gMine['offer']) < (float) str_replace(['£', ','], '', $gMine['rate']),
+    json_encode($gMine));
+$qs = $r['json']['questions'] ?? [];
+it_check('…and the QUESTIONS guests kept asking, grounded in the cottage&rsquo;s own answers',
+    count($qs) >= 1 && $qs[0]['q'] === 'Is there an EV charger nearby?' && $qs[0]['asked'] === 3
+    && count($qs[0]['facts']) === 2, json_encode($qs));
+it_check('the week withholds contact details exactly as the enquiries do',
+    strpos($r['raw'], 'wendy@gmail.com') === false && strpos($r['raw'], '900555') === false,
+    mb_substr($r['raw'], 0, 200));
+$rootDb->exec('DELETE FROM bookings WHERE id = ' . $wkBid . " OR name IN ('Gap Before','Gap After')");
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'guest-faq-misses', 'value' => []]);
+
 // TAKEN DATES SAY SO. The site owns the clash check, so a producer can never
 // promise a week that has gone.
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Blocker','b@gmail.com','$bfIn','$bfOut',2,0,'paid',100,300,300,0,7)");

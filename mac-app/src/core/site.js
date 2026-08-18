@@ -146,6 +146,12 @@ function makeSite(opts) {
                 ok: true,
                 host: String(r.json.host || ''),
                 enquiries: Array.isArray(r.json.enquiries) ? r.json.enquiries : [],
+                // The other jobs' facts. ABSENT (undefined) when the site is
+                // older and does not hand them over — which each job reports
+                // honestly, rather than reading an old site as a quiet week.
+                week: (r.json.week && typeof r.json.week === 'object') ? r.json.week : undefined,
+                gaps: Array.isArray(r.json.gaps) ? r.json.gaps : undefined,
+                questions: Array.isArray(r.json.questions) ? r.json.questions : undefined,
             };
         },
         // Post a night's work. Returns { ok, stored, skipped[] } or a refusal.

@@ -420,7 +420,97 @@ route_actions([
             // the producer's correct response to both is to do nothing tonight.
             $out = [];
         }
-        json_out(['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX]);
+
+        // ── THE OTHER JOBS' FACTS. Same posture as the enquiries: every ──
+        // figure formatted HERE, contact details withheld, and a read that
+        // fails yields an ABSENT section — a producer treats absent as
+        // "this site does not hand that over", never as an empty week.
+        require_once __DIR__ . '/pricing.php';
+        $nameOf = [];
+        try {
+            foreach (db()->query('SELECT prop_key, name FROM properties')->fetchAll() as $pr) {
+                $nameOf[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+            }
+        } catch (\Throwable $e) {
+            $nameOf = [];
+        }
+        $week = null;
+        try {
+            $today = date('Y-m-d');
+            $limit = date('Y-m-d', strtotime('+' . NIGHT_WEEK_DAYS . ' days'));
+            $st = db()->prepare(
+                'SELECT * FROM bookings
+                  WHERE check_out > ? AND check_in < ?
+                  ORDER BY check_in',
+            );
+            $st->execute([$today, $limit]);
+            $wrows = [];
+            foreach ($st->fetchAll() as $b) {
+                $due = 0.0;
+                try {
+                    $due = (float) booking_amount_due($b, 'balance')['due'];
+                } catch (\Throwable $e) {
+                    $due = 0.0; // an unpriceable row states no figure at all
+                }
+                $wrows[] = [
+                    'prop_key' => $b['prop_key'], 'name' => $b['name'],
+                    'check_in' => $b['check_in'], 'check_out' => $b['check_out'],
+                    'adults' => $b['adults'], 'children' => $b['children'],
+                    'due' => $due,
+                ];
+            }
+            $week = night_week_brief($wrows, $nameOf, $today);
+        } catch (\Throwable $e) {
+            $week = null;
+        }
+        $gaps = null;
+        try {
+            $today = date('Y-m-d');
+            $occ = [];
+            $st = db()->prepare('SELECT prop_key, check_in, check_out FROM bookings WHERE check_out > ?');
+            $st->execute([$today]);
+            foreach ($st->fetchAll() as $b) {
+                $occ[] = $b;
+            }
+            // Blocks OCCUPY too: an owner-held hole must never read as a gap
+            // to sell, and an OTA stay is as booked as one of ours.
+            $st = db()->prepare('SELECT prop_key, check_in, check_out FROM ical_blocks WHERE check_out > ?');
+            $st->execute([$today]);
+            foreach ($st->fetchAll() as $b) {
+                $occ[] = $b;
+            }
+            $gaps = night_gap_brief(
+                $occ,
+                $nameOf,
+                function ($pk) { return get_rate($pk); },
+                function ($rate, $in, $out) { return price_breakdown($rate, 2, 0, $in, $out); },
+                $today,
+            );
+        } catch (\Throwable $e) {
+            $gaps = null;
+        }
+        $questions = null;
+        try {
+            $questions = night_questions_brief(
+                content_json('guest-faq-misses', []),
+                $nameOf,
+                function ($pk) { return $pk !== '' ? content_json('faqs-' . $pk, []) : []; },
+            );
+        } catch (\Throwable $e) {
+            $questions = null;
+        }
+
+        $payload = ['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX];
+        if ($week !== null) {
+            $payload['week'] = $week;
+        }
+        if ($gaps !== null) {
+            $payload['gaps'] = $gaps;
+        }
+        if ($questions !== null) {
+            $payload['questions'] = $questions;
+        }
+        json_out($payload);
     },
 
     // ---- a machine reports a night's work --------------------------
