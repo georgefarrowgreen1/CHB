@@ -1156,7 +1156,12 @@ if (typeof ctx.chbCompute === 'function' && typeof ctx.chbAlmanac === 'function'
     // Tomorrow / That's today — so a bare "\d+ days until" fails on exactly two days.
     check('date arithmetic: "days until christmas" counts days', r && /(\d+ days until|Tomorrow —|That.s today —)/.test(r.label), lbl(r));
     r = comp('how long until 20 august');
-    check('"how long until 20 august" answers (regression: alt phrasing once threw)', r && !r.threw && /days until/.test(r.label), lbl(r));
+    // The christmas check above learned the two-days-a-year lesson and this
+    // sibling never did: on 19/20 August the honest answer is "Tomorrow —" /
+    // "That's today —" and a bare /days until/ failed. Found red in CI at
+    // 00:10 London on the 19th of August, green every other night.
+    check('"how long until 20 august" answers (regression: alt phrasing once threw)',
+        r && !r.threw && /(\d+ days until|Tomorrow —|That.s today —)/.test(r.label), lbl(r));
     r = comp('time in tokyo');
     check('world clock: "time in tokyo" gives a time', r && /\d{2}:\d{2}/.test(r.label), lbl(r));
     // Almanac.
