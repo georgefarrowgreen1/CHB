@@ -218,17 +218,23 @@ function fakeState(over) {
         ok("a guest called O'Brien & <b>Sons</b> arrives as TEXT", logInfo.text.indexOf("O'Brien & <b>Sons</b>") !== -1, logInfo.text);
         ok('…and its markup never became an element', logInfo.extraTags === 0);
 
-        // ── JOBS: what is not built cannot be switched on ──
+        // ── JOBS: what is not built gets no controls at all ──
+        // Re-aimed with the copy cleanup: an unbuilt job used to render a full
+        // row wearing a dead dropdown and a disabled switch; now it renders NO
+        // row and is named in the one "Coming next" line instead. A control
+        // you can't use yet isn't a control.
         await page.click('[data-v="1"]');
         await page.waitForTimeout(120);
         const jobRows = await page.evaluate(function () {
             return Array.prototype.map.call(document.querySelectorAll('#jobsBox .row'), function (r) {
                 const sw = r.querySelector('[data-job-on]');
-                return { dim: r.classList.contains('dim'), disabled: !!(sw && sw.disabled), on: !!(sw && sw.classList.contains('on')) };
+                return { disabled: !!(sw && sw.disabled), on: !!(sw && sw.classList.contains('on')) };
             });
         });
         ok('the built job has a live switch, on', jobRows[0] && !jobRows[0].disabled && jobRows[0].on);
-        ok('an unbuilt job is dimmed and its switch is disabled', jobRows[1] && jobRows[1].dim && jobRows[1].disabled);
+        ok('an unbuilt job renders no row', jobRows.length === 1, String(jobRows.length));
+        ok('…and is named in the Coming-next line', /Coming next: read the week/.test(await page.textContent('#jobsComing')),
+            await page.textContent('#jobsComing'));
         await page.click('[data-job-on="reply"]');
         await page.waitForTimeout(200);
         const saved = await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'saveConfig'; }).pop(); });
@@ -300,10 +306,12 @@ function fakeState(over) {
         // pre-filled with an address the owner had to supply in the first place;
         // the app ships knowing it, so what matters is that the screen SAYS so
         // and the box is folded away.
+        // Re-aimed with the copy cleanup: the row states the bare domain now —
+        // "Already set to… Nothing to fill in" described a form that isn't
+        // there. The FACT to keep is the same: stated, not asked for.
         ok('the address is stated, not asked for',
-            /Already set to cottageholidaysblakeney\.co\.uk/.test(await page.textContent('#siteSays')),
+            /^cottageholidaysblakeney\.co\.uk$/.test((await page.textContent('#siteSays')).trim()),
             await page.textContent('#siteSays'));
-        ok('…with nothing to fill in', /Nothing to fill in/.test(await page.textContent('#siteSays')));
         ok('…and the address box folded away', await page.isHidden('#siteEditRow'));
         // WITH A KEY STORED there is nothing to fill in, so nothing is grabbed.
         ok('…and with a key already stored the code box is not seized',
@@ -316,6 +324,13 @@ function fakeState(over) {
             (await page.inputValue('#siteUrl')) === '');
         await page.click('#siteEdit');
         await page.waitForTimeout(120);
+        // THE KEY ROW IS FOLDED. The everyday path is the code; the fallback
+        // must not sit as a permanent second form making two doors look equal.
+        ok('the paste-a-key form is folded until asked',
+            await page.isHidden('#keyRow') && await page.isVisible('#keyShow'));
+        await page.click('#keyShow');
+        await page.waitForTimeout(120);
+        ok('…and Paste a key… opens it', await page.isVisible('#keyRow'));
         ok('the secret field is a password field', (await page.getAttribute('#secretIn', 'type')) === 'password');
         ok('the secret is never printed on the page', (await page.textContent('#v4')).indexOf('••••') === -1);
         ok('…and it says one is stored', /Keychain/.test(await page.textContent('#secretSays')));

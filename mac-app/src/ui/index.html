@@ -22,7 +22,6 @@
   <header class="titlebar">
     <span class="tb-title"><b id="tbTitle">Tonight</b><span id="tbSub">Loading…</span></span>
     <span class="tb-acts">
-      <button class="tbtn" type="button" id="skipBtn">Skip tonight</button>
       <button class="tbtn prime" type="button" id="runBtn">Run now</button>
     </span>
   </header>
@@ -35,13 +34,10 @@
       <img class="mark" src="crown.svg" alt="" aria-hidden="true" width="26" height="26">
       <span class="nm">Cottage Holidays<br>Blakeney<small>Overnight work</small></span>
     </div>
-    <div class="sgroup">Overnight</div>
     <button class="snav" type="button" data-v="0" aria-current="true">Tonight</button>
     <button class="snav" type="button" data-v="1">Jobs<span class="badge" id="jobsBadge">0</span></button>
-    <div class="sgroup">Machine</div>
     <button class="snav" type="button" data-v="2">Models<span class="badge" id="modelsBadge">0</span></button>
     <button class="snav" type="button" data-v="3">Runner</button>
-    <div class="sgroup">Site</div>
     <button class="snav" type="button" data-v="4">Connection</button>
     <div class="side-foot"><span class="dot" id="stateDot"></span><span id="stateSays">Starting…</span></div>
     <!-- THE APP'S OWN VERSION lives where app-level state already lives, rather
@@ -64,18 +60,16 @@
 
     <!-- JOBS -->
     <section class="view" id="v1" hidden>
-      <div class="vhead"><div class="grow"><h1>Jobs</h1>
-        <p class="sub">Each job names its own model. A draft wants a fast one; reading a week wants a careful one.</p></div></div>
+      <div class="vhead"><div class="grow"><h1>Jobs</h1></div></div>
       <div class="box" id="jobsBox"></div>
-      <div class="box"><div class="row"><div class="main"><b>Nothing is ever sent</b>
-        <span>Every job posts a draft to the site for you to read. There is no job here that can email a guest, take a payment or change a price &mdash; and the site refuses one that tries.</span></div>
-        <div class="rail"><span class="chip ok">Enforced by the site</span></div></div></div>
+      <p class="tiny" id="jobsComing"></p>
+      <p class="tiny">Every job posts a draft for you to read. Nothing here can email a guest, take a payment or change a price &mdash; the site refuses one that tries.</p>
     </section>
 
     <!-- MODELS -->
     <section class="view" id="v2" hidden>
       <div class="vhead"><div class="grow"><h1>Models</h1>
-        <p class="sub">Downloaded here, run here, and yours. Every verdict below is measured against this Mac.</p></div>
+        <p class="sub">Each verdict is measured against this Mac.</p></div>
         <button class="tbtn prime" type="button" id="addBtn">Add model…</button></div>
       <div class="box" id="modelsBox"></div>
       <p class="tiny" id="modelsNote"></p>
@@ -83,8 +77,7 @@
 
     <!-- RUNNER -->
     <section class="view" id="v3" hidden>
-      <div class="vhead"><div class="grow"><h1>Runner</h1>
-        <p class="sub">One app, two engines. It picks by architecture, and you can override it to compare.</p></div></div>
+      <div class="vhead"><div class="grow"><h1>Runner</h1></div></div>
       <div class="box" id="machineBox"></div>
       <div><h2>Engine</h2><div class="box" id="engineBox"></div>
         <p class="tiny" id="runnerNote" hidden></p>
@@ -93,8 +86,8 @@
              decision and their Terminal, and an app that shells out to `brew`
              on their behalf is doing something they did not ask for. -->
         <pre class="fix" id="runnerFix" hidden></pre>
-        <div class="box"><div class="row"><div class="main"><b>Start it for a run</b>
-          <span>If nothing is answering when the work is due, start the model server, then stop it again afterwards.</span></div>
+        <div class="box"><div class="row"><div class="main"><b>Start the engine for a run</b>
+          <span>Started when work is due, stopped after.</span></div>
           <div class="rail"><button class="sw" type="button" id="autoSw" aria-label="Start the model server for a run" aria-pressed="false"></button></div></div></div>
       </div>
     </section>
@@ -102,7 +95,7 @@
     <!-- CONNECTION -->
     <section class="view" id="v4" hidden>
       <div class="vhead"><div class="grow"><h1>Connection</h1>
-        <p class="sub">One code, and that is all. This app can read what is waiting and post what it wrote &mdash; nothing else.</p></div></div>
+        <p class="sub">Reads what is waiting and posts what it wrote &mdash; nothing else.</p></div></div>
       <div class="box">
         <!-- THE ADDRESS IS NOT A QUESTION. This app carries one business's crown
              and can only ever talk to one site, so it ships knowing where that
@@ -120,12 +113,15 @@
              sixty-four pasted, and the code is single-use and short-lived, so
              one seen over a shoulder is worthless within the hour. -->
         <div class="row alt"><div class="main"><b>Connect</b>
-          <span id="connectSays">On the website: Manage &rarr; System check &rarr; Connect a Mac. Type the code it shows.</span></div>
+          <span id="connectSays">Manage &rarr; System check &rarr; Connect a Mac, on the website.</span></div>
           <div class="rail"><input class="field" id="codeIn" type="text" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345" aria-label="Connect code"><button class="tbtn prime" type="button" id="doConnect">Connect</button></div></div>
         <!-- KEPT, because the code needs the website and this Mac reachable at
              the same moment and this does not. -->
-        <div class="row"><div class="main"><b>Or paste a key</b>
-          <span id="secretSays">Stored in the macOS Keychain, never in a file beside the app.</span></div>
+        <div class="row" id="keyReveal"><div class="main"><b>No code to hand?</b>
+          <span>A key pasted from the website works when the two are not together.</span></div>
+          <div class="rail"><button class="tbtn" type="button" id="keyShow">Paste a key&hellip;</button></div></div>
+        <div class="row" id="keyRow" hidden><div class="main"><b>Key</b>
+          <span id="secretSays">Stored in the macOS Keychain, never in a file.</span></div>
           <div class="rail"><input class="field" id="secretIn" type="password" placeholder="paste to change" aria-label="Site key"><button class="tbtn" type="button" id="saveSecret">Save</button></div></div>
         <div class="row"><div class="main"><b>State</b><span id="connSays">Not tested yet.</span></div>
           <div class="rail"><span class="chip n" id="connChip">Unknown</span><button class="tbtn" type="button" id="testBtn">Test now</button></div></div>

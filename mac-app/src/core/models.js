@@ -30,6 +30,19 @@ const HF_API = 'https://huggingface.co/api/models';
 // the ones anybody actually wants.
 const KNOWN_GOOD = ['bartowski', 'unsloth', 'lmstudio-community', 'mlx-community', 'ggml-org', 'ggerganov', 'Qwen', 'meta-llama'];
 
+// A PROJECTOR IS NOT A MODEL. Vision repos ship an `mmproj-*.gguf` beside the
+// chat model — the multimodal projector, a companion file llama-server takes
+// via --mmproj and which cannot draft anything on its own. It is still a
+// .gguf, so both listings offered it as if it were a model, and picking it is
+// exactly how the reply job ended up pointed at a file that answers nothing
+// (seen live: mmproj-gemma-4-E4B-it-BF16.gguf chosen on the Jobs screen).
+// One predicate, used by the installed listing AND the download picker, so
+// the file can neither be offered for download nor resurface from disk.
+// Prefix-anchored on purpose: "mmproj" mid-name is somebody's own naming.
+function isProjector(name) {
+    return /^mmproj[-._]/i.test(String(name));
+}
+
 // ── WHAT IS INSTALLED ────────────────────────────────────────────────────
 // A directory of .gguf files (and MLX model folders). Never throws: a missing
 // folder is an empty library, which is the correct first-run state.
@@ -49,7 +62,7 @@ function installed(dir) {
         } catch (e) {
             return;
         }
-        if (st.isFile() && /\.gguf$/i.test(n)) {
+        if (st.isFile() && /\.gguf$/i.test(n) && !isProjector(n)) {
             out.push({
                 id: n,
                 file: full,
@@ -262,7 +275,8 @@ async function files(repoId, machine, opts) {
     const sibs = (j && Array.isArray(j.siblings)) ? j.siblings : [];
     const mlx = /^mlx-community\//i.test(id);
     const rows = sibs.filter(function (s) {
-        return s && typeof s.rfilename === 'string' && /\.gguf$/i.test(s.rfilename);
+        return s && typeof s.rfilename === 'string' && /\.gguf$/i.test(s.rfilename)
+            && !isProjector(s.rfilename);
     }).map(function (s) {
         const bytes = Number(s.size) || 0;
         const gb = bytes ? Math.round((bytes / 1073741824) * 10) / 10 : 0;
@@ -289,4 +303,4 @@ async function files(repoId, machine, opts) {
     return { ok: true, rows: rows, sharded: sibs.some(function (s) { return /-\d{5}-of-\d{5}\.gguf$/i.test(String(s.rfilename || '')); }) };
 }
 
-module.exports = { installed, search, mapRepo, download, files, prettyName, quantOf, paramsOf, KNOWN_GOOD, HF_API };
+module.exports = { installed, search, mapRepo, download, files, prettyName, quantOf, paramsOf, isProjector, KNOWN_GOOD, HF_API };
