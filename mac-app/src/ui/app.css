@@ -213,6 +213,13 @@ input{-webkit-user-select:text;user-select:text}
 /* `display` OUTRANKS the `hidden` attribute — this line is why one screen shows
    at a time. It has bitten this project four times; do not remove it. */
 .view[hidden]{display:none}
+/* THE hidden ATTRIBUTE MUST WIN, EVERYWHERE. `.view[hidden]` was the only rule
+   that said so, so the first .row given a hidden attribute (Connection's folded
+   address box) stayed on screen: .row sets display:flex, which outranks the UA's
+   [hidden]{display:none}. That is the trap this file's own suite was written to
+   catch and it caught it — but a per-element rule would only move the trap along
+   to the next element, so it is stated once for the whole window. */
+[hidden]{display:none!important}
 h1{font-family:var(--font-serif);font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0}
 h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
   margin:0 0 8px;color:var(--text-muted)}

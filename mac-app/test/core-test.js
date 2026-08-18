@@ -729,6 +729,73 @@ function fakeSite(handler) {
     ok('...and an https one is accepted', savedOk && savedOk.ok !== false);
     try { fs.rmSync(apiTmp, { recursive: true, force: true }); } catch (e) {}
 
+    // ── §18a IT ALREADY KNOWS THE ADDRESS ─────────────────────────────────
+    // Asked for: "I shouldn't need to enter the web address, it should already
+    // know". This app carries one business's crown and can only ever talk to one
+    // site, so pasting that address into a fresh install was supplying a fact
+    // the app already had.
+    console.log('\n18a) the app ships knowing where its site is');
+    ok('a fresh install already has an address', config.siteUrl({}) !== '');
+    ok('...and it is the business\'s own', /cottageholidaysblakeney\.co\.uk/.test(config.siteUrl({})));
+    ok('...over https, so the app\'s own refusal would not reject it',
+        site.urlProblem(config.siteUrl({})) === '', site.urlProblem(config.siteUrl({})));
+    ok('...and it ends at the endpoint the site actually serves',
+        /\/nightshift\.php$/.test(config.siteUrl({})));
+    ok('an empty setting MEANS the standard one, the engine/modelsDir convention',
+        config.siteUrl({ siteUrl: '' }) === config.DEFAULT_SITE_URL
+        && config.siteUrl({ siteUrl: '   ' }) === config.DEFAULT_SITE_URL);
+    ok('...and reports itself as the standard one', config.siteIsDefault({ siteUrl: '' }));
+    ok('an override wins, and says it is not the standard',
+        config.siteUrl({ siteUrl: 'https://staging.test/nightshift.php' }) === 'https://staging.test/nightshift.php'
+        && !config.siteIsDefault({ siteUrl: 'https://staging.test/nightshift.php' }));
+
+    const dTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-dflt-'));
+    let dPosts = [];
+    const dSite = function (o) {
+        return {
+            url: o.url,
+            connect: async function () { dPosts.push(o.url); return { ok: true, key: 'K'.repeat(40), host: 'George' }; },
+            test: async function () { dPosts.push(o.url); return { ok: true, state: 'on', say: 'on' }; },
+        };
+    };
+    const a7 = require('../src/core/api').makeApi({
+        dir: dTmp, machine: M16, makeSite: dSite,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    const st7 = await a7.state();
+    ok('the window is handed a RESOLVED address on a fresh install',
+        /cottageholidaysblakeney/.test(st7.siteUrl) && st7.siteIsDefault === true, st7.siteUrl);
+    ok('...and the raw setting too, so Change… shows what was overridden and not the default',
+        st7.siteRaw === '');
+    // THE POINT: connect works with nothing typed in. It used to refuse with
+    // "Put the site address in first."
+    dPosts = [];
+    const c7 = await a7.connect('ABCD-2345');
+    ok('connecting needs only the code — no address typed anywhere',
+        c7 && c7.ok === true, JSON.stringify(c7));
+    ok('...and it went to the standard address', /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    dPosts = [];
+    await a7.testSite();
+    ok('Test now reaches it too', /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    ok('and the queue\'s home page is derivable, which needed an address before',
+        /^https:\/\/cottageholidaysblakeney\.co\.uk\//.test(a7.siteHomeUrl()), a7.siteHomeUrl());
+
+    // A STAGING COPY STILL OVERRIDES, AND CAN GO BACK. An empty save is the
+    // way out — the affordance behind the window's Change… box.
+    await a7.saveConfig({ siteUrl: 'https://staging.test/nightshift.php' });
+    dPosts = [];
+    await a7.testSite();
+    ok('an override is used instead', dPosts[0] === 'https://staging.test/nightshift.php', dPosts[0]);
+    const st7b = await a7.state();
+    ok('...and the window is told it is not the standard one',
+        st7b.siteIsDefault === false && st7b.siteRaw === 'https://staging.test/nightshift.php');
+    await a7.saveConfig({ siteUrl: '' });
+    dPosts = [];
+    await a7.testSite();
+    ok('clearing it goes back to the standard address rather than to nothing',
+        /cottageholidaysblakeney/.test(dPosts[0] || ''), dPosts[0]);
+    try { fs.rmSync(dTmp, { recursive: true, force: true }); } catch (e) {}
+
     // ── §18b WHICH MAC THIS IS ────────────────────────────────────────────
     // Reported live: two paired Macs both read "A Mac" on the website, so the
     // list could not tell the owner which one to stop — which is the only thing

@@ -19,7 +19,7 @@ Being exact about this, because it decides what you should trust.
 
 | | |
 |---|---|
-| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain, and every decision about starting the model server (which binary, which arguments, what an exit means). `npm test` — 284 checks, no network, no model, no Mac needed. |
+| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain, and every decision about starting the model server (which binary, which arguments, what an exit means). `npm test` — 311 checks, no network, no model, no Mac needed. |
 | **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock, power assertion, and the ~20 lines that actually spawn and supervise llama-server) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
 
 That split is deliberate. The unverifiable parts are the ones where being wrong
@@ -59,14 +59,19 @@ are the ones with the tests.
    just drop a `.gguf` into the Models folder and it appears.
 
 3. **Overnight work switched on, on the website.** Manage → System check →
-   **Overnight work**. Switching it on shows the address to paste into
-   **Connection** here; everything about pairing is behind **Set up a Mac**
+   **Overnight work**. Everything about pairing is behind **Set up a Mac**
    under it, because it is done once per machine and then never again.
 
    **Tap Connect a Mac.** It shows an eight-character code; type that into this
    app's Connection screen and it gives itself a key. The code works **once**
    and expires in ten minutes, so one glimpsed over a shoulder is worthless
    shortly after.
+
+   **That is the only thing to fill in.** The app already knows the site's
+   address — it carries one business's crown and can only ever talk to one
+   site, so asking for it was asking you to supply a fact it had. A staging
+   copy overrides it under *Change…* on the Connection screen; emptying that
+   box puts the standard address back.
 
    The app used to be told to paste in the site's daily-jobs secret, and that
    one key also opens the scripts that collect instalments from guests' cards,
@@ -82,9 +87,9 @@ are the ones with the tests.
    still there. Use them when the website and this Mac are not both to hand at
    the same moment — a code needs each of them at once, and a key does not.
 
-4. **An https address.** The app refuses a plain `http://` one, because the key
-   travels with every request and http sends it in the clear. `http://localhost`
-   is allowed, for a staging copy on the same machine.
+4. **https, if you do override it.** The app refuses a plain `http://` address,
+   because the key travels with every request and http sends it in the clear.
+   `http://localhost` is allowed, for a staging copy on the same machine.
 
 ---
 
@@ -255,9 +260,11 @@ src/core/
                      what an exit code means — every decision, no spawning
   update.js          is there a newer version, and may we install it? (pure)
   updater.js         the fetch, the progress and the checksum
-  config.js          settings on disk; the secret in the Keychain, never on disk
+  config.js          settings on disk; the secret in the Keychain, never on disk.
+                     Also where the site's own address lives — '' means the
+                     standard one, the way '' means "pick for me" elsewhere
   api.js             the surface the window may call
-test/core-test.js    284 checks over all of the above
+test/core-test.js    311 checks over all of the above
 ```
 
 Settings, models and the night log live in

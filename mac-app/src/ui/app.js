@@ -36,7 +36,7 @@
         ['Jobs', function () { return S ? onCount() + ' of ' + S.jobs.length + ' switched on' : ''; }],
         ['Models', function () { return S ? S.models.length + ' installed' : ''; }],
         ['Runner', function () { return S ? S.engineName + (S.engineServing ? ' · serving' : ' · not answering') : ''; }],
-        ['Connection', function () { return S ? (S.siteUrl || 'no address yet') : ''; }],
+        ['Connection', function () { return S ? (S.secretSet ? S.siteUrl : 'type the code from your website') : ''; }],
     ];
     function onCount() {
         return S.jobs.filter(function (j) { return j.on; }).length;
@@ -65,6 +65,13 @@
             if (j === i) { el.removeAttribute('hidden'); } else { el.setAttribute('hidden', ''); }
         });
         paintTitle();
+        // THE CURSOR IS ALREADY IN THE ONE BOX THAT NEEDS FILLING IN. Opening
+        // Connection with no key stored, the code is the only thing left to do —
+        // so the owner types it rather than clicking to the field first. Once a
+        // key IS stored there is nothing to fill in and nothing is grabbed.
+        if (i === 4 && S && !S.secretSet) {
+            try { $('codeIn').focus(); } catch (e) { /* not painted yet */ }
+        }
     }
     function paintTitle() {
         $('tbTitle').textContent = TITLES[view][0];
@@ -76,9 +83,13 @@
         if (!S) { return; }
         $('jobsBadge').textContent = String(onCount());
         $('modelsBadge').textContent = String(S.models.length);
-        $('stateDot').className = 'dot' + (S.running ? ' busy' : !S.secretSet || !S.siteUrl ? ' off' : '');
+        // THE ADDRESS IS NEVER THE MISSING THING NOW — the app ships knowing it,
+        // so the only setting-up left is the code. This read `!S.siteUrl` and
+        // said "No site yet" on a fresh install, about an app that knew exactly
+        // where its site was.
+        $('stateDot').className = 'dot' + (S.running ? ' busy' : !S.secretSet ? ' off' : '');
         $('stateSays').textContent = S.running ? 'Working…'
-            : !S.siteUrl ? 'No site yet' : !S.secretSet ? 'Not connected' : 'Ready';
+            : !S.secretSet ? 'Not connected' : 'Ready';
         $('runBtn').disabled = !!S.running;
         $('runBtn').textContent = S.running ? 'Working…' : 'Run now';
 
@@ -99,8 +110,8 @@
                     S.engineServing ? 'Serving' : willStart ? 'Starts for the run' : 'Not answering'), true) +
             row('Model for the reply job', reply.model ? esc(reply.model) : 'none chosen yet',
                 chip(reply.model ? 'ok' : 'warn', reply.model ? 'Chosen' : 'Choose one')) +
-            row('Site', S.siteUrl ? esc(S.siteUrl) : 'not set yet',
-                chip(S.secretSet && S.siteUrl ? 'ok' : 'warn', S.secretSet && S.siteUrl ? 'Configured' : 'Needs setting up'), true);
+            row('Site', esc(S.siteUrl) + (S.siteIsDefault ? '' : ' · your own'),
+                chip(S.secretSet ? 'ok' : 'warn', S.secretSet ? 'Connected' : 'Needs a code'), true);
 
         var last = S.nights[0];
         $('lastLog').innerHTML = last
@@ -177,7 +188,14 @@
         $('autoSw').setAttribute('aria-pressed', R.autoStart ? 'true' : 'false');
 
         // CONNECTION
-        if ($('siteUrl') !== document.activeElement) { $('siteUrl').value = S.siteUrl || ''; }
+        $('siteSays').textContent = S.siteIsDefault
+            ? 'Already set to ' + S.siteUrl.replace(/^https:\/\//, '').replace(/\/nightshift\.php$/, '') + '. Nothing to fill in.'
+            : 'Your own address: ' + S.siteUrl;
+        // The RAW setting, not the resolved one: an empty box means "the standard
+        // address", so pre-filling it with the default would turn the standard
+        // address into an override the moment anything saved.
+        if ($('siteUrl') !== document.activeElement) { $('siteUrl').value = S.siteRaw || ''; }
+        if (!S.siteIsDefault) { $('siteEditRow').hidden = false; }
         $('secretSays').textContent = S.keychain
             ? (S.secretSet ? 'One is stored in the macOS Keychain. It is never shown, here or anywhere.'
                 // NOT the daily-jobs secret any more — that one also opens the
@@ -271,6 +289,12 @@
         if (t.id === 'autoSw') {
             await window.hand.saveConfig({ autoStart: !(S.runner || {}).autoStart });
             await refresh();
+            return;
+        }
+        if (t.id === 'siteEdit') {
+            var er = $('siteEditRow');
+            er.hidden = !er.hidden;
+            if (!er.hidden) { $('siteUrl').focus(); }
             return;
         }
         if (t.id === 'skipBtn') { toast('Skipped. The next run is tomorrow at ' + S.nextRunAt + '.'); return; }

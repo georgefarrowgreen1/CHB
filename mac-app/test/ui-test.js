@@ -62,7 +62,9 @@ function fakeState(over) {
             { id: 'big.gguf', name: 'Qwen 2.5 72B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 47, fit: 'no', why: 'Will not fit' },
         ],
         modelsDir: '/Users/x/Library/Application Support/Cottage Holidays Blakeney/Models',
-        siteUrl: 'https://example.test/nightshift.php',
+        siteUrl: 'https://cottageholidaysblakeney.co.uk/nightshift.php',
+        siteIsDefault: true,
+        siteRaw: '',
         secretSet: true, secretHint: '••••••••', keychain: true, keepAwake: true,
         runner: {
             canStart: true, available: true, found: true, kind: 'bundled',
@@ -284,7 +286,26 @@ function fakeState(over) {
         // ── CONNECTION: the secret is never shown, and Test says what it found ──
         await page.click('[data-v="4"]');
         await page.waitForTimeout(150);
-        ok('the address is filled in', (await page.inputValue('#siteUrl')) === 'https://example.test/nightshift.php');
+        // THE ADDRESS IS NOT A QUESTION. This checked that a text field had been
+        // pre-filled with an address the owner had to supply in the first place;
+        // the app ships knowing it, so what matters is that the screen SAYS so
+        // and the box is folded away.
+        ok('the address is stated, not asked for',
+            /Already set to cottageholidaysblakeney\.co\.uk/.test(await page.textContent('#siteSays')),
+            await page.textContent('#siteSays'));
+        ok('…with nothing to fill in', /Nothing to fill in/.test(await page.textContent('#siteSays')));
+        ok('…and the address box folded away', await page.isHidden('#siteEditRow'));
+        // WITH A KEY STORED there is nothing to fill in, so nothing is grabbed.
+        ok('…and with a key already stored the code box is not seized',
+            await page.evaluate(function () { return document.activeElement.id !== 'codeIn'; }));
+        // It is still REACHABLE, because a staging copy needs it.
+        await page.click('#siteEdit');
+        await page.waitForTimeout(120);
+        ok('Change… opens the box for a staging copy', await page.isVisible('#siteEditRow'));
+        ok('…empty, because empty MEANS the standard address',
+            (await page.inputValue('#siteUrl')) === '');
+        await page.click('#siteEdit');
+        await page.waitForTimeout(120);
         ok('the secret field is a password field', (await page.getAttribute('#secretIn', 'type')) === 'password');
         ok('the secret is never printed on the page', (await page.textContent('#v4')).indexOf('••••') === -1);
         ok('…and it says one is stored', /Keychain/.test(await page.textContent('#secretSays')));
@@ -319,13 +340,27 @@ function fakeState(over) {
         // rather than showing empty boxes. Driven by reloading with a bare state
         // (a later addInitScript wins, so this genuinely re-boots the window).
         await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
-            siteUrl: '', secretSet: false, models: [], nights: [],
+            secretSet: false, models: [], nights: [],
             jobs: [{ id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: false, model: '', at: '02:00' }],
         })) + '; window.__nextState = null;');
         await page.reload();
         await page.waitForTimeout(350);
         ok('a first run has no page errors either', errs.length === 0, errs.join(' | '));
-        ok('the foot says what is missing', /No site yet/.test(await page.textContent('#stateSays')),
+        // "No site yet" is gone with the question it described: the only thing a
+        // fresh install is missing now is the code.
+        ok('the foot says what is missing — the code, not an address',
+            /Not connected/.test(await page.textContent('#stateSays')),
+            await page.textContent('#stateSays'));
+        // ONE THING TO DO, AND THE CURSOR IS IN IT.
+        await page.click('[data-v="4"]');
+        await page.waitForTimeout(200);
+        ok('a fresh install lands with the cursor in the code box',
+            await page.evaluate(function () { return document.activeElement.id === 'codeIn'; }),
+            await page.evaluate(function () { return document.activeElement.id; }));
+        await page.click('[data-v="0"]');
+        await page.waitForTimeout(120);
+        ok('…and never claims it lacks an address it ships with',
+            !/No site/.test(await page.textContent('#v4')) && !/not set yet/.test(await page.textContent('#v0')),
             await page.textContent('#stateSays'));
         ok('…and the dot is not green', (await page.getAttribute('#stateDot', 'class')).indexOf('off') !== -1);
         const empties = await page.evaluate(function () {

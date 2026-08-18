@@ -37,6 +37,32 @@ function appDir() {
     return path.join(os.homedir(), '.cottage-holidays-blakeney');
 }
 
+// WHERE THE SITE IS. This app is not a generic tool — it carries the business's
+// crown, its name and its typefaces, and there is exactly one production site it
+// could ever talk to. Making the owner paste that address into a fresh install
+// was asking them to supply a fact the app already knew.
+//
+// `siteUrl: ''` therefore means THE STANDARD ADDRESS, not "unset" — the same
+// convention `engine: ''` ("let the app pick") and `modelsDir: ''` ("the one
+// beside the settings") already follow in this file. Everything reads it through
+// siteUrl() below, so a staging copy still overrides it and an empty value is
+// how you go back.
+const DEFAULT_SITE_URL = 'https://cottageholidaysblakeney.co.uk/nightshift.php';
+
+// The address in force. One definition, because "is a site configured" and
+// "which site" are asked in a dozen places and were each reading cfg.siteUrl
+// raw — which is '' on every fresh install.
+function siteUrl(cfg) {
+    const s = String((cfg && cfg.siteUrl) || '').trim();
+    return s || DEFAULT_SITE_URL;
+}
+
+// Is it the one we ship with? The window says so rather than printing a URL
+// nobody chose, and it is what makes "Change…" honest.
+function siteIsDefault(cfg) {
+    return siteUrl(cfg) === DEFAULT_SITE_URL;
+}
+
 const DEFAULTS = {
     siteUrl: '',
     engine: '',                 // '' = let the app pick by architecture
@@ -174,4 +200,5 @@ function makeSecrets(opts) {
     };
 }
 
-module.exports = { load, save, paths, appDir, merge, makeSecrets, DEFAULTS, SERVICE, ACCOUNT };
+module.exports = { load, save, paths, appDir, merge, makeSecrets, siteUrl, siteIsDefault,
+    DEFAULTS, DEFAULT_SITE_URL, SERVICE, ACCOUNT };

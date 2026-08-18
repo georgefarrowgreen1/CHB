@@ -88,7 +88,7 @@ function makeApi(deps) {
         return makeEngine({ id: id || engineId() });
     }
     function siteFor() {
-        return makeSite({ url: cfg.siteUrl, secret: secrets.get() });
+        return makeSite({ url: configMod.siteUrl(cfg), secret: secrets.get() });
     }
 
     // Everything the window needs to decide whether to offer a Start button,
@@ -188,7 +188,16 @@ function makeApi(deps) {
                 }),
                 models: inst,
                 modelsDir: cfg.modelsDir,
-                siteUrl: cfg.siteUrl,
+                // THE ADDRESS IN FORCE, resolved — not the raw setting, which is
+                // '' on a fresh install and used to make the window say "no
+                // address yet" about an app that knew perfectly well where its
+                // site was. `siteIsDefault` lets it say "the standard address"
+                // rather than printing a URL nobody chose.
+                siteUrl: configMod.siteUrl(cfg),
+                siteIsDefault: configMod.siteIsDefault(cfg),
+                // The RAW setting too, so the Change… box shows what was
+                // actually overridden and an empty one still means "standard".
+                siteRaw: String(cfg.siteUrl || ''),
                 secretSet: secrets.state().set,
                 secretHint: secrets.state().hint,
                 keychain: secrets.available,
@@ -207,7 +216,9 @@ function makeApi(deps) {
             const p = patch && typeof patch === 'object' ? patch : {};
             if (typeof p.siteUrl === 'string') {
                 // Told NOW, at the keyboard, rather than at two in the morning
-                // in a log nobody is reading.
+                // in a log nobody is reading. An EMPTY value is not a mistake —
+                // it means "back to the standard address" (see config.siteUrl),
+                // which is how the window's Change… offers a way out again.
                 const bad = siteMod.urlProblem(p.siteUrl);
                 if (p.siteUrl.trim() && bad) {
                     return { ok: false, say: bad };
@@ -275,9 +286,6 @@ function makeApi(deps) {
         // is the same posture as setSecret — there is no way to read a secret
         // back out of this app and this must not become one.
         async connect(code) {
-            if (!cfg.siteUrl) {
-                return { ok: false, say: 'Put the site address in first.' };
-            }
             const r = await siteFor().connect(code, machineMod.deviceLabel(mach));
             if (!r.ok) { return r; }
             const s = secrets.set(r.key);
@@ -291,9 +299,6 @@ function makeApi(deps) {
         },
 
         async testSite() {
-            if (!cfg.siteUrl) {
-                return { ok: false, state: 'error', say: 'No site address yet.' };
-            }
             if (!secrets.state().set) {
                 return { ok: false, state: 'auth', say: 'Not connected yet. Use the code from Manage \u2192 System check \u2192 Connect a Mac.' };
             }
@@ -389,10 +394,7 @@ function makeApi(deps) {
 
         // Where the queue lives, so the window can offer to open it.
         siteHomeUrl() {
-            const u = String(cfg.siteUrl || '');
-            if (!u) {
-                return '';
-            }
+            const u = configMod.siteUrl(cfg);
             try {
                 const parsed = new URL(u);
                 return parsed.origin + parsed.pathname.replace(/nightshift\.php$/, '');

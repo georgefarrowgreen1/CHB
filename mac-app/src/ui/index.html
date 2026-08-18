@@ -102,10 +102,19 @@
     <!-- CONNECTION -->
     <section class="view" id="v4" hidden>
       <div class="vhead"><div class="grow"><h1>Connection</h1>
-        <p class="sub">One address and one code. This app can read what is waiting and post what it wrote &mdash; nothing else.</p></div></div>
+        <p class="sub">One code, and that is all. This app can read what is waiting and post what it wrote &mdash; nothing else.</p></div></div>
       <div class="box">
+        <!-- THE ADDRESS IS NOT A QUESTION. This app carries one business's crown
+             and can only ever talk to one site, so it ships knowing where that
+             is; asking for it was asking the owner to supply a fact the app
+             already had. The field is still HERE — a staging copy needs it — but
+             folded behind Change… so a fresh install has exactly one thing to
+             fill in, which is the code. -->
         <div class="row"><div class="main"><b>Site</b>
-          <span>The address shown in Manage &rarr; System check on your website.</span></div>
+          <span id="siteSays">&mdash;</span></div>
+          <div class="rail"><button class="tbtn" type="button" id="siteEdit">Change&hellip;</button></div></div>
+        <div class="row" id="siteEditRow" hidden><div class="main"><b>Address</b>
+          <span>For a staging copy. Leave it empty for the standard one.</span></div>
           <div class="rail"><input class="field wide" id="siteUrl" type="url" spellcheck="false" placeholder="https://…/nightshift.php" aria-label="Site address"></div></div>
         <!-- THE ORDINARY WAY IN. Eight characters read off the website beats
              sixty-four pasted, and the code is single-use and short-lived, so
