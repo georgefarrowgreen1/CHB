@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('hand', {
     downloadUpdate: function (v) { return ipcRenderer.invoke('hand:downloadUpdate', v); },
     openFile: function (f) { return ipcRenderer.invoke('hand:openFile', f); },
     openUrl: function (u) { return ipcRenderer.invoke('hand:openUrl', u); },
+    // Check for Updates… in the app menu. Main → window only; the window
+    // cannot ask to be shown, it is simply told it has been.
+    onOpenUpdates: function (fn) {
+        ipcRenderer.on('hand:openUpdates', function () { try { fn(); } catch (err) { /* the window's problem */ } });
+    },
     onUpdateProgress: function (fn) {
         ipcRenderer.on('hand:updateProgress', function (e, p) { try { fn(p); } catch (err) { /* the window's problem */ } });
     },

@@ -167,8 +167,32 @@ function create() {
 // ── the menu ─────────────────────────────────────────────────────────────
 function menu() {
     const isMac = process.platform === 'darwin';
+    // THE APP MENU IS WRITTEN OUT, not `{ role: 'appMenu' }`, for one reason:
+    // Check for Updates… belongs directly under About, where every Mac app
+    // puts it and where people go looking for it. The role gives the standard
+    // menu with no way to insert into it, so the standard menu is restated
+    // here — About, the update item, Services, the three Hides, Quit, in
+    // Apple's own order — and nothing else about it changes.
+    const appMenu = {
+        label: app.name,
+        submenu: [
+            { role: 'about' },
+            {
+                label: 'Check for Updates…',
+                click: function () { openUpdates(); },
+            },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' },
+        ],
+    };
     const template = [
-        ...(isMac ? [{ role: 'appMenu' }] : []),
+        ...(isMac ? [appMenu] : []),
         {
             label: 'Run',
             submenu: [
@@ -211,6 +235,32 @@ function menu() {
         },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// Show the update panel, checking afresh on the way in.
+//
+// IT HAS TO BE ABLE TO MAKE A WINDOW. Closing the window does not quit this
+// app — it has to be there at two in the morning — so the menu bar is reachable
+// with no window at all, and a Check for Updates… that quietly did nothing in
+// that state would be the commonest way anyone ever used it.
+function openUpdates() {
+    if (!win || win.isDestroyed()) {
+        create();
+    }
+    const send = function () {
+        if (win && !win.isDestroyed()) {
+            win.show();
+            win.focus();
+            win.webContents.send('hand:openUpdates');
+        }
+    };
+    // A window created a moment ago has not loaded its script yet, so the
+    // message would land on nobody.
+    if (win.webContents.isLoading()) {
+        win.webContents.once('did-finish-load', send);
+    } else {
+        send();
+    }
 }
 
 // ── keeping the Mac awake for a run, and letting it go afterwards ─────────

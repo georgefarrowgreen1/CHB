@@ -506,10 +506,20 @@
         if (!$('upScrim').hidden) { upPaint(); }
     }
 
-    $('verBtn').addEventListener('click', function () {
+    function openUpdatePanel(recheck) {
         $('upScrim').hidden = false;
         upPaint();
-    });
+        if (recheck) {
+            $('upChip').textContent = 'Checking';
+            upCheck(true).then(upPaint);
+        }
+    }
+    $('verBtn').addEventListener('click', function () { openUpdatePanel(false); });
+    // Check for Updates… in the app menu. It ASKS AGAIN rather than showing
+    // the verdict from launch: the app is meant to stay running for weeks, so
+    // that answer can be very old, and someone choosing this menu item is
+    // asking the question now.
+    if (window.hand.onOpenUpdates) { window.hand.onOpenUpdates(function () { openUpdatePanel(true); }); }
     $('upClose').addEventListener('click', function () { $('upScrim').hidden = true; });
     $('upCheck').addEventListener('click', async function () {
         $('upChip').textContent = 'Checking';
