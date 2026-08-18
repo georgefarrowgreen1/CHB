@@ -19,13 +19,115 @@
 'use strict';
 const { app, BrowserWindow, Menu, shell, ipcMain, powerSaveBlocker, dialog } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 const { makeApi } = require('./core/api');
 const { makeUpdater } = require('./core/updater');
+const runnerMod = require('./core/runner');
 
 let win = null;
 let api = null;
 let tick = null;
 let blockerId = -1;
+
+// ── THE MODEL SERVER ─────────────────────────────────────────────────────
+//  The only thing this app spawns, and the only place it can.
+//
+//  Every DECISION about it is in core/runner.js and under test: which binary,
+//  from which paths, with which arguments, whether the model path is allowed,
+//  and what an exit means in words. What is left here is the twenty lines that
+//  cannot be tested without a Mac and a copy of llama.cpp — start it, watch for
+//  it to answer, and make sure it dies when we do.
+//
+//  READY MEANS ANSWERING, NOT RUNNING. A spawned llama-server exists
+//  immediately and cannot be asked anything for tens of seconds while it loads
+//  the model, so "started" is polled against the engine's own `/v1/models`
+//  rather than against the process. Reporting a green light on a process that
+//  is still reading nine gigabytes off an SSD would be the invented-progress
+//  failure the pay screen's narration rules already forbid.
+//
+//  AND IT NEVER OUTLIVES THE APP. A stray llama-server holding the model in
+//  memory until the next reboot is a real cost, so it is killed on quit, on an
+//  unexpected exit of this process, and by `stop()` when a run that started it
+//  has finished.
+let child = null;
+let childErr = '';
+
+function makeProcessRunner() {
+    return {
+        status() {
+            return { running: !!child };
+        },
+
+        async start(o) {
+            if (child) {
+                return { ok: true, ms: 0 };
+            }
+            const began = Date.now();
+            childErr = '';
+            let c;
+            try {
+                c = spawn(o.bin, o.args, {
+                    // No shell, ever: the arguments are an array from
+                    // runnerArgs() and must never be re-parsed by one.
+                    shell: false,
+                    // Tied to this process, so it cannot be left behind.
+                    detached: false,
+                    stdio: ['ignore', 'ignore', 'pipe'],
+                });
+            } catch (e) {
+                return { ok: false, say: runnerMod.failSay(e && e.code, String(e && e.message)) };
+            }
+            child = c;
+            let exited = null;
+            // Keep only the TAIL. llama-server prints a great deal at startup
+            // and the useful line is always the last one.
+            c.stderr.on('data', function (b) {
+                childErr = (childErr + String(b)).slice(-4000);
+            });
+            c.on('exit', function (code) { exited = code === null ? -1 : code; if (child === c) { child = null; } });
+            c.on('error', function (e) { childErr += '\n' + String(e && e.message); });
+
+            const deadline = began + runnerMod.READY_TIMEOUT_MS;
+            while (Date.now() < deadline) {
+                if (exited !== null) {
+                    return { ok: false, say: runnerMod.failSay(exited, childErr) };
+                }
+                if (await o.reachable()) {
+                    return { ok: true, ms: Date.now() - began };
+                }
+                await new Promise(function (r) { setTimeout(r, runnerMod.READY_POLL_MS); });
+            }
+            // Never leave one running that we have given up on: it holds the
+            // port, so the next attempt would fail for a different reason.
+            this.stop();
+            return { ok: false, say: runnerMod.timeoutSay(o.base) };
+        },
+
+        stop() {
+            const c = child;
+            if (!c) {
+                return { ok: false, say: 'Nothing to stop — this app is not running one.' };
+            }
+            child = null;
+            try {
+                c.kill('SIGTERM');
+                // A model server mid-load can ignore SIGTERM; this is the
+                // backstop, and it is a no-op once the process has gone.
+                setTimeout(function () { try { c.kill('SIGKILL'); } catch (e) { /* gone */ } }, 4000);
+            } catch (e) {
+                return { ok: false, say: 'Could not stop it: ' + (e && e.message ? e.message : 'unknown') };
+            }
+            return { ok: true, say: 'Stopped.' };
+        },
+    };
+}
+
+function killChild() {
+    if (child) {
+        try { child.kill('SIGKILL'); } catch (e) { /* gone */ }
+        child = null;
+    }
+}
 
 function create() {
     win = new BrowserWindow({
@@ -239,6 +341,8 @@ function wire() {
         });
     });
     ipcMain.handle('hand:runNow', function () { return runNow(); });
+    ipcMain.handle('hand:startEngine', function () { return api.startEngine(); });
+    ipcMain.handle('hand:stopEngine', function () { return api.stopEngine(); });
 
     // ── THE BUILT-IN UPDATER ──────────────────────────────────────────────
     // Checking and downloading happen HERE, in the main process: the window has
@@ -315,7 +419,13 @@ function appVersion() {
 }
 
 app.whenReady().then(function () {
-    api = makeApi({});
+    api = makeApi({
+        runner: makeProcessRunner(),
+        // Where a bundled llama-server lives inside the packaged app. Undefined
+        // outside a package (`npm start`), where resolveRunner falls through to
+        // Homebrew — which is exactly the pre-bundling behaviour.
+        resourcesDir: process.resourcesPath || '',
+    });
     wire();
     menu();
     create();
@@ -331,4 +441,10 @@ app.whenReady().then(function () {
 // overnight, and an app that quits when its window closes would not be there at
 // two in the morning. Quit from the menu (or Cmd+Q) when you mean it.
 app.on('window-all-closed', function () { /* stay running */ });
-app.on('before-quit', function () { release(); clearInterval(tick); });
+app.on('before-quit', function () { release(); clearInterval(tick); killChild(); });
+// The belt to before-quit's braces: a crash or a signal skips app events, and a
+// model server left holding the Mac's memory is the one piece of this app that
+// outlives it if nobody says otherwise.
+process.on('exit', killChild);
+process.on('SIGINT', function () { killChild(); process.exit(0); });
+process.on('SIGTERM', function () { killChild(); process.exit(0); });

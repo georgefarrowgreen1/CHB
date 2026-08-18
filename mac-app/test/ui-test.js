@@ -64,6 +64,11 @@ function fakeState(over) {
         modelsDir: '/Users/x/Library/Application Support/Cottage Holidays Blakeney/Models',
         siteUrl: 'https://example.test/nightshift.php',
         secretSet: true, secretHint: '••••••••', keychain: true, keepAwake: true,
+        runner: {
+            canStart: true, available: true, found: true, kind: 'bundled',
+            path: '/App/Contents/Resources/runner/llama-server', install: '',
+            problem: '', running: false, autoStart: true,
+        },
         nextRun: new Date().toISOString(), nextRunAt: '02:00', nextRunSays: 'in 6 hours 42 minutes',
         nights: [{
             started: '2026-08-17T02:14:00.000Z', ok: true, drafted: 2, posted: 2, skipped: 1, failed: 0,
@@ -122,6 +127,13 @@ function fakeState(over) {
                 },
                 downloadModel: async function (r) { window.__calls.push(['downloadModel', r]); return { ok: true, file: '/x/a.gguf' }; },
                 runNow: async function () { window.__calls.push(['runNow']); return { ok: true, night: { posted: 2 } }; },
+                startEngine: async function () {
+                    window.__calls.push(['startEngine']);
+                    return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' };
+                },
+                stopEngine: async function () { window.__calls.push(['stopEngine']); return { ok: true }; },
+                startEngine: async function () { window.__calls.push(['startEngine']); return window.__startAnswer || { ok: true, started: true, say: 'llama.cpp · ready after 4 seconds' }; },
+                stopEngine: async function () { window.__calls.push(['stopEngine']); return { ok: true }; },
                 onProgress: function (fn) { window.__progress = fn; },
                 onDownload: function () {},
                 onRan: function () {},
@@ -337,6 +349,104 @@ function fakeState(over) {
         });
         ok('a job cannot be switched on before a model is chosen', noModelSave === 0, String(noModelSave));
         ok('…and it says why', await page.isVisible('#toast'));
+
+        // ── STARTING THE MODEL SERVER FROM THE WINDOW ──────────────────────
+        // The affordance that closes the Terminal step. Everything about WHAT
+        // gets started is core/runner.js's and gated there; this is about
+        // whether the owner can see and press the thing.
+        //
+        // Each case RELOADS with its own state, because the window renders from
+        // the state it already holds and a nav click does not re-ask — the first
+        // draft of this section drove `__nextState` and silently tested the
+        // default state four times over.
+        async function bootRunner(over) {
+            await page.addInitScript('window.__state = ' + JSON.stringify(fakeState(over)) + '; window.__nextState = null;');
+            await page.reload();
+            await page.waitForTimeout(350);
+            await page.click('[data-v="3"]');
+            await page.waitForTimeout(150);
+        }
+        const DOWN = {
+            engineServing: false,
+            engines: [
+                { id: 'llamacpp', name: 'llama.cpp', note: 'Metal on Apple silicon.', usable: true, serving: false, base: 'http://127.0.0.1:8080', why: '' },
+                { id: 'ollama', name: 'Ollama', note: 'If you already run Ollama.', usable: true, serving: false, base: 'http://127.0.0.1:11434', why: '' },
+            ],
+        };
+
+        await bootRunner({});
+        ok('nothing to start while it is already serving — no Start button',
+            (await page.$('#startEng')) === null);
+
+        await bootRunner(DOWN);
+        ok('a dead engine offers Start', (await page.$('#startEng')) !== null);
+        ok('…and says where it found llama.cpp rather than only offering a button',
+            /Resources\/runner\/llama-server/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
+
+        // THE TONIGHT VERDICT FOLLOWS. "Not answering" in red would report a
+        // problem the app is about to solve for itself.
+        await page.click('[data-v="0"]');
+        await page.waitForTimeout(150);
+        ok('Tonight says the engine STARTS for the run, not that it is broken',
+            /Starts for the run/.test(await page.textContent('#tonightBox')),
+            await page.textContent('#tonightBox'));
+        await page.click('[data-v="3"]');
+        await page.waitForTimeout(150);
+
+        // Pressing it calls the bridge and reports the sentence the main
+        // process gave — never a cheerful one of the window's own.
+        await page.click('#startEng');
+        await page.waitForTimeout(300);
+        ok('Start asks the main process to start it',
+            (await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'startEngine'; }).length; })) === 1);
+        ok('…and the toast is the answer that came back, word for word',
+            /ready after 4 seconds/.test(await page.textContent('#toastSays')),
+            await page.textContent('#toastSays'));
+
+        // A REFUSAL IS THE MAIN PROCESS'S SENTENCE TOO.
+        await bootRunner(DOWN);
+        await page.evaluate(function () { window.__startAnswer = { ok: false, say: 'That model file could not be loaded.' }; });
+        await page.click('#startEng');
+        await page.waitForTimeout(300);
+        ok('a refusal prints the real reason, not "it did not work"',
+            /could not be loaded/.test(await page.textContent('#toastSays')),
+            await page.textContent('#toastSays'));
+
+        // NOT INSTALLED: the button stands down and the one command appears.
+        await bootRunner(Object.assign({}, DOWN, {
+            runner: {
+                canStart: true, available: true, found: false, kind: '', path: '',
+                install: 'brew install llama.cpp',
+                problem: 'llama.cpp is not installed on this Mac yet.',
+                running: false, autoStart: true,
+            },
+        }));
+        ok('with nothing installed the Start button is disabled rather than lying',
+            (await page.evaluate(function () { var b = document.getElementById('startEng'); return !!b && b.disabled; })));
+        ok('…the problem is stated', /not installed/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
+        ok('…and the ONE COMMAND is on screen, and selectable',
+            (await page.evaluate(function () {
+                var el = document.getElementById('runnerFix');
+                return el && !el.hidden && el.textContent.indexOf('brew install llama.cpp') !== -1
+                    && getComputedStyle(el).userSelect !== 'none';
+            })));
+
+        // AN ENGINE THIS APP DOES NOT START SAYS SO, rather than offering a
+        // button that would do nothing.
+        await bootRunner(Object.assign({}, DOWN, {
+            engine: 'ollama',
+            runner: {
+                canStart: false, available: true, found: true, kind: 'bundled',
+                path: '/App/Contents/Resources/runner/llama-server', install: '',
+                problem: 'Ollama runs its own service, so this app does not start or stop it.',
+                running: false, autoStart: true,
+            },
+        }));
+        ok('Ollama gets no Start button', (await page.$('#startEng')) === null);
+        ok('…and the reason is on screen', /own service/.test(await page.textContent('#runnerNote')),
+            await page.textContent('#runnerNote'));
 
         await ctx.close();
     }

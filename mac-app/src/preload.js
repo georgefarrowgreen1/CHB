@@ -24,6 +24,13 @@ contextBridge.exposeInMainWorld('hand', {
     modelFiles: function (id) { return ipcRenderer.invoke('hand:modelFiles', id); },
     downloadModel: function (row) { return ipcRenderer.invoke('hand:downloadModel', row); },
     runNow: function () { return ipcRenderer.invoke('hand:runNow'); },
+    // Start and stop the local model server. Note what these DON'T take: no
+    // binary path, no arguments, no model. The window says "start it" and the
+    // main process decides what that means from settings it already holds —
+    // otherwise this channel would be a way to run a command of the window's
+    // choosing, which is the one thing a spawn must never become.
+    startEngine: function () { return ipcRenderer.invoke('hand:startEngine'); },
+    stopEngine: function () { return ipcRenderer.invoke('hand:stopEngine'); },
     // The updater. `openFile` takes only the path this app downloaded AND
     // verified — main.js checks it against what it last wrote, so the window
     // cannot use this to open anything of its choosing.

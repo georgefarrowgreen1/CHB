@@ -30,6 +30,7 @@ const jobs = require('../src/core/jobs');
 const night = require('../src/core/night');
 const update = require('../src/core/update');
 const updater = require('../src/core/updater');
+const runner = require('../src/core/runner');
 
 let fails = 0;
 let passes = 0;
@@ -727,6 +728,218 @@ function fakeSite(handler) {
     const savedOk = await a2.saveConfig({ siteUrl: 'https://plain.test/nightshift.php' });
     ok('...and an https one is accepted', savedOk && savedOk.ok !== false);
     try { fs.rmSync(apiTmp, { recursive: true, force: true }); } catch (e) {}
+
+    // ── §19 STARTING THE MODEL SERVER ─────────────────────────────────────
+    // The decisions only. The spawn is main.js's and is untestable here by
+    // design; everything that decides WHAT it spawns is in this section.
+    console.log('\n19) the app starts the model server, so nobody opens a Terminal');
+
+    ok('only llama.cpp is startable', runner.canStart('llamacpp')
+        && !runner.canStart('ollama') && !runner.canStart('mlx') && !runner.canStart(''));
+
+    // WHERE IT LOOKS, AND IN WHAT ORDER.
+    const candPlain = runner.runnerCandidates({});
+    ok('with nothing bundled it looks in both Homebrew prefixes',
+        candPlain.length === 2
+        && candPlain[0].path === '/opt/homebrew/bin/llama-server'
+        && candPlain[1].path === '/usr/local/bin/llama-server',
+        JSON.stringify(candPlain));
+    const candBundled = runner.runnerCandidates({ resourcesDir: '/App/Contents/Resources' });
+    ok('a bundled copy is looked at AFTER Homebrew — see the order note in runner.js',
+        candBundled[candBundled.length - 1].kind === 'bundled'
+        && candBundled[candBundled.length - 1].path === '/App/Contents/Resources/runner/llama-server'
+        && candBundled[0].kind === 'homebrew',
+        JSON.stringify(candBundled));
+    const candCustom = runner.runnerCandidates({ custom: '/my/llama-server', resourcesDir: '/App/Contents/Resources' });
+    ok('...and an explicit path beats everything — it is the one the owner chose',
+        candCustom[0].kind === 'custom' && candCustom[0].path === '/my/llama-server');
+
+    // RESOLUTION. `exists` injected, so this runs on a machine with no
+    // llama.cpp anywhere — which is every machine this suite runs on.
+    const noneHere = runner.resolveRunner({ exists: function () { return false; } });
+    ok('nothing installed is reported as such', !noneHere.ok);
+    ok('...and the refusal NAMES THE FIX rather than just failing',
+        /brew install llama\.cpp/.test(noneHere.install || ''), JSON.stringify(noneHere));
+    const onlyIntel = runner.resolveRunner({ exists: function (p) { return p === '/usr/local/bin/llama-server'; } });
+    ok('an Intel-prefix Homebrew copy is found', onlyIntel.ok
+        && onlyIntel.kind === 'homebrew' && onlyIntel.path === '/usr/local/bin/llama-server');
+    const both = runner.resolveRunner({
+        resourcesDir: '/App/Contents/Resources',
+        exists: function () { return true; },
+    });
+    ok('with both present the HOMEBREW one wins — the owner installed it and macOS never quarantines it',
+        both.kind === 'homebrew');
+    const bundledOnly = runner.resolveRunner({
+        resourcesDir: '/App/Contents/Resources',
+        exists: function (p) { return p.indexOf('/App/') === 0; },
+    });
+    ok('...and a Mac with nothing installed still finds the bundled copy — the zero-install path',
+        bundledOnly.ok && bundledOnly.kind === 'bundled');
+    const customGone = runner.resolveRunner({ custom: '/gone/llama-server', exists: function () { return false; } });
+    ok('a custom path that is not there says so by name',
+        /\/gone\/llama-server/.test(customGone.say || ''), customGone.say);
+
+    // THE ARGUMENTS. An array, never a string, and derived from the engine's
+    // own base so the address it serves on cannot drift from the one the app
+    // then goes looking at.
+    const argsAS = runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:8080', appleSilicon: true });
+    ok('the arguments are an ARRAY, never a command line', Array.isArray(argsAS));
+    ok('the model, host and port all come through',
+        argsAS.indexOf('-m') !== -1 && argsAS[argsAS.indexOf('-m') + 1] === '/M/q.gguf'
+        && argsAS[argsAS.indexOf('--port') + 1] === '8080'
+        && argsAS[argsAS.indexOf('--host') + 1] === '127.0.0.1', JSON.stringify(argsAS));
+    ok('the port follows the ENGINE\'s base rather than being typed twice',
+        runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:11434' })[argsAS.indexOf('--port') + 1] === '11434');
+    ok('Apple silicon offloads to Metal (-ngl), or a 14B crawls', argsAS.indexOf('-ngl') !== -1);
+    const argsIntel = runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:8080', appleSilicon: false });
+    ok('...and an Intel Mac is not given a flag it has no device for', argsIntel.indexOf('-ngl') === -1);
+
+    // THE SAFETY LINE. The model path comes from settings the window can
+    // write, so it is checked rather than trusted.
+    ok('a model inside the Models folder is allowed',
+        runner.modelPathAllowed('/Users/g/Models/q.gguf', '/Users/g/Models'));
+    ok('one outside it is REFUSED', !runner.modelPathAllowed('/etc/passwd.gguf', '/Users/g/Models'));
+    ok('...and so is a climb out of it with ..',
+        !runner.modelPathAllowed('/Users/g/Models/../../evil.gguf', '/Users/g/Models'));
+    ok('...and a sibling folder that merely starts with the same letters',
+        !runner.modelPathAllowed('/Users/g/Models-old/q.gguf', '/Users/g/Models'));
+    ok('a non-gguf is refused whatever its folder',
+        !runner.modelPathAllowed('/Users/g/Models/thing.sh', '/Users/g/Models'));
+
+    // ONE DECISION about whether a start is possible, so the button and the
+    // night cannot disagree.
+    const foundOk = { ok: true, path: '/opt/homebrew/bin/llama-server', kind: 'homebrew' };
+    ok('everything present means no problem', runner.startProblem({
+        engineId: 'llamacpp', modelPath: '/M/q.gguf', modelsDir: '/M', runner: foundOk,
+    }) === '');
+    ok('Ollama is refused in words, not silently',
+        /own service/.test(runner.startProblem({ engineId: 'ollama', engineName: 'Ollama', modelPath: '/M/q.gguf', modelsDir: '/M', runner: foundOk })));
+    ok('no model chosen is its own sentence',
+        /No model/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '', modelsDir: '/M', runner: foundOk })));
+    ok('a model outside the folder is refused HERE too, not only at spawn',
+        /Models folder/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '/etc/x.gguf', modelsDir: '/M', runner: foundOk })));
+    ok('a missing binary reports the resolver\'s own sentence',
+        /not installed/.test(runner.startProblem({ engineId: 'llamacpp', modelPath: '/M/q.gguf', modelsDir: '/M', runner: noneHere })));
+
+    // AN EXIT, IN WORDS. The stderr tail is the only thing that tells a broken
+    // model file from a busy port, and both are things the owner can act on.
+    ok('a busy port is named as one', /already using that port/.test(runner.failSay(1, 'error: bind: Address already in use')));
+    ok('a broken model file is named as one', /could not be loaded/.test(runner.failSay(1, 'error loading model: bad magic')));
+    ok('running out of memory says to pick a smaller model',
+        /smaller one/.test(runner.failSay(1, 'ggml_metal_graph_compute: out of memory')));
+    ok('a vanished binary says how to reinstall it', /brew install/.test(runner.failSay('ENOENT', '')));
+    ok('an unrecognised exit still quotes the last line rather than shrugging',
+        /something specific/.test(runner.failSay(9, 'noise\nmore noise\nsomething specific')));
+    ok('a timeout names the address it waited on', /127\.0\.0\.1:8080/.test(runner.timeoutSay('http://127.0.0.1:8080')));
+
+    // ── THE API SURFACE, with a FAKE runner ───────────────────────────────
+    // This is the half that proves the wiring: startProblem alone passing is
+    // the helper-tested-alone trap, so the checks below drive api.startEngine
+    // and read what the fake was actually asked to spawn.
+    const rTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-run-'));
+    fs.mkdirSync(path.join(rTmp, 'Models'), { recursive: true });
+    fs.writeFileSync(path.join(rTmp, 'Models', 'q.gguf'), 'x');
+    // A stand-in for the BUNDLED binary, in the layout a packaged app has. The
+    // real resolveRunner runs against it — including its executable-bit check —
+    // so this exercises the shipped path rather than stubbing past it.
+    const rRes = path.join(rTmp, 'Resources');
+    fs.mkdirSync(path.join(rRes, 'runner'), { recursive: true });
+    fs.writeFileSync(path.join(rRes, 'runner', 'llama-server'), '#!/bin/sh\n');
+    fs.chmodSync(path.join(rRes, 'runner', 'llama-server'), 0o755);
+    let runSpawned = null;
+    let runStopped = 0;
+    let runAlive = false;
+    const runFakeRunner = {
+        status: function () { return { running: runAlive }; },
+        start: async function (o) { runSpawned = o; runAlive = true; return { ok: true, ms: 4200 }; },
+        stop: async function () { runStopped++; runAlive = false; return { ok: true }; },
+    };
+    let runEngineUp = false;
+    const runFakeEngine = function (o) {
+        return {
+            id: o.id, name: 'llama.cpp', base: 'http://127.0.0.1:8080',
+            reachable: async function () { return runEngineUp; },
+            write: async function () { return { ok: true, text: 'x', ms: 1, tokens: 1 }; },
+        };
+    };
+    const a3 = require('../src/core/api').makeApi({
+        dir: rTmp, machine: M16, runner: runFakeRunner, makeEngine: runFakeEngine, resourcesDir: rRes,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    await a3.saveConfig({ engine: 'llamacpp', job: { id: 'reply', on: true, model: 'q.gguf' } });
+
+    const st1 = await a3.state();
+    ok('the window is told it can start this engine', st1.runner && st1.runner.canStart && st1.runner.available);
+    ok('...and that nothing is running yet', st1.runner.running === false);
+
+    const started = await a3.startEngine();
+    ok('startEngine reports success', started && started.ok, JSON.stringify(started));
+    ok('...and it spawned the resolved binary, not something the window named',
+        runSpawned && /llama-server$/.test(runSpawned.bin), runSpawned && runSpawned.bin);
+    ok('...with the chosen model, from the app\'s own Models folder',
+        runSpawned && runSpawned.args.indexOf(path.join(rTmp, 'Models', 'q.gguf')) !== -1,
+        runSpawned && JSON.stringify(runSpawned.args));
+    ok('...and the ready time reaches the owner in words', /4 seconds/.test(started.say || ''), started.say);
+
+    runEngineUp = true;
+    const again = await a3.startEngine();
+    ok('starting one that is already answering does not spawn a second',
+        again.ok && again.started === false);
+
+    // A NIGHT THAT FINDS NOTHING ANSWERING STARTS IT — the behaviour this
+    // whole change exists for, driven through the real night orchestrator.
+    runEngineUp = false;
+    runSpawned = null;
+    runStopped = 0;
+    let runIngested = null;
+    const runFakeSite = function () {
+        return {
+            brief: async function () { return { ok: true, host: 'George', enquiries: [] }; },
+            ingest: async function (items) { runIngested = items; return { ok: true, stored: items.length, skipped: [] }; },
+        };
+    };
+    const a4 = require('../src/core/api').makeApi({
+        dir: rTmp, machine: M16, runner: runFakeRunner, makeEngine: runFakeEngine, makeSite: runFakeSite, resourcesDir: rRes,
+        secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '••' }; } },
+    });
+    // The fake reports ready by flipping the engine up when start() is called.
+    runFakeRunner.start = async function (o) { runSpawned = o; runAlive = true; runEngineUp = true; return { ok: true, ms: 3000 }; };
+    const ranUp = await a4.runNow();
+    const lines = (ranUp.night && ranUp.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('a night with a dead engine STARTS it rather than giving up',
+        runSpawned !== null, lines);
+    ok('...and the log says it did', /starting it/.test(lines), lines);
+    ok('...and stops again what it started, rather than leaving 9GB held',
+        runStopped === 1 && /stopped the model server/.test(lines), lines);
+
+    // AND IT NEVER STOPS ONE IT DID NOT START.
+    runEngineUp = true;
+    runSpawned = null;
+    runStopped = 0;
+    const ranAlready = await a4.runNow();
+    const lines2 = (ranAlready.night && ranAlready.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('an engine the owner was already running is not spawned again', runSpawned === null, lines2);
+    ok('...and is NOT killed at the end of the run', runStopped === 0, lines2);
+
+    // OFF IS OFF. With auto-start switched off the night behaves exactly as it
+    // did before this feature existed.
+    await a4.saveConfig({ autoStart: false });
+    runEngineUp = false;
+    runSpawned = null;
+    const ranOff = await a4.runNow();
+    const lines3 = (ranOff.night && ranOff.night.log || []).map(function (l) { return l.say; }).join(' | ');
+    ok('with auto-start off nothing is spawned', runSpawned === null, lines3);
+    ok('...and the night gives the old honest refusal', /not answering/.test(lines3), lines3);
+    await a4.saveConfig({ autoStart: true });
+
+    // NO RUNNER AT ALL — a bare api, which is how every other suite builds it.
+    const a5 = require('../src/core/api').makeApi({ dir: rTmp, machine: M16, makeEngine: runFakeEngine });
+    const st5 = await a5.state();
+    ok('an api with no way to spawn says so rather than offering a dead button',
+        st5.runner && st5.runner.available === false);
+    const cant = await a5.startEngine();
+    ok('...and starting is refused in words', !cant.ok && !!cant.say);
+    try { fs.rmSync(rTmp, { recursive: true, force: true }); } catch (e) {}
 
     console.log('\n== Summary ==');
     if (fails) {

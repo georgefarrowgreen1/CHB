@@ -42,6 +42,19 @@
         return S.jobs.filter(function (j) { return j.on; }).length;
     }
 
+    // What to say about starting the model server. It answers in this order —
+    // running, then the reason it cannot start, then what starting will do —
+    // because the first true one is the only one worth reading.
+    function runnerNote(R) {
+        if (!R || !R.available) { return ''; }
+        if (!R.canStart) {
+            return 'This app only starts llama.cpp. Ollama runs its own service and MLX is a sidecar you start yourself.';
+        }
+        if (R.running) { return 'This app started it, and will stop it when the app quits.'; }
+        if (R.problem) { return R.problem; }
+        return 'Found at ' + R.path + '. This app can start it for you — no Terminal needed.';
+    }
+
     function go(i) {
         view = i;
         Array.prototype.forEach.call(document.querySelectorAll('.snav'), function (n, j) {
@@ -72,10 +85,18 @@
         // TONIGHT
         var reply = S.jobs.filter(function (j) { return j.id === 'reply'; })[0] || {};
         $('tonightSub').textContent = onCount() + ' of ' + S.jobs.length + ' jobs switched on.';
+        // NOT ANSWERING IS NOT A FAILURE ANY MORE. With auto-start on and a
+        // model chosen, the night brings the engine up itself — so a red chip
+        // here would report a problem the app is about to solve. It stays red
+        // for the case that really is one: nothing answering and nothing this
+        // app can do about it.
+        var Rt = S.runner || {};
+        var willStart = !S.engineServing && Rt.available && Rt.canStart && Rt.autoStart && !Rt.problem;
         $('tonightBox').innerHTML =
             row('Next run', S.nextRunAt + ', ' + S.nextRunSays, chip(reply.on ? 'ok' : 'n', reply.on ? 'Scheduled' : 'Nothing on')) +
             row('Engine', esc(S.engineName) + ' · ' + esc(S.engineBase),
-                chip(S.engineServing ? 'ok' : 'bad', S.engineServing ? 'Serving' : 'Not answering'), true) +
+                chip(S.engineServing ? 'ok' : willStart ? 'n' : 'bad',
+                    S.engineServing ? 'Serving' : willStart ? 'Starts for the run' : 'Not answering'), true) +
             row('Model for the reply job', reply.model ? esc(reply.model) : 'none chosen yet',
                 chip(reply.model ? 'ok' : 'warn', reply.model ? 'Chosen' : 'Choose one')) +
             row('Site', S.siteUrl ? esc(S.siteUrl) : 'not set yet',
@@ -121,14 +142,39 @@
             row('This Mac', esc(S.machineSays), chip(S.machine.appleSilicon ? 'ok' : 'n', S.machine.appleSilicon ? 'Apple silicon' : 'Intel')) +
             row('Keep the Mac awake for a run', 'Released again as soon as the run finishes.',
                 '<button class="sw' + (S.keepAwake ? ' on' : '') + '" type="button" id="awakeSw" aria-label="Keep the Mac awake" aria-pressed="' + (S.keepAwake ? 'true' : 'false') + '"></button>', true);
+        var R = S.runner || {};
         $('engineBox').innerHTML = S.engines.map(function (e) {
+            // START, on the one engine this app can start. It appears only on
+            // the engine IN USE and only when nothing is answering — a Start
+            // button beside something already serving is a control with nothing
+            // to do, and one beside an engine you are not using would start the
+            // wrong thing.
+            var startable = R.canStart && R.available && S.engine === e.id && !e.serving;
+            var stoppable = R.running && S.engine === e.id && e.serving;
+            var act = '';
+            if (stoppable) {
+                act = '<button class="tbtn" type="button" id="stopEng">Stop</button>';
+            } else if (startable) {
+                act = '<button class="tbtn prime" type="button" id="startEng"'
+                    + (R.problem ? ' disabled' : '') + '>Start</button>';
+            }
             return '<div class="row' + (e.usable ? '' : ' dim') + '">' +
                 '<div class="main"><b>' + esc(e.name) + '</b><span>' + esc(e.usable ? e.note : e.why) + '</span></div>' +
                 '<div class="rail">' + chip(e.serving ? 'ok' : 'n', e.serving ? 'Serving on ' + esc(e.base).replace('http://', '') : 'Not answering') +
+                act +
                 '<button class="tbtn' + (S.engine === e.id ? ' prime' : '') + '" type="button" data-engine="' + esc(e.id) + '"' +
                 (e.usable ? '' : ' disabled') + '>' + (S.engine === e.id ? 'In use' : 'Use this') + '</button>' +
                 '</div></div>';
         }).join('');
+        // WHY IT CANNOT START, WHERE THE BUTTON WOULD HAVE BEEN. A disabled
+        // button with no sentence beside it is the state that sends someone
+        // looking through Settings for a thing that is not there.
+        $('runnerNote').textContent = runnerNote(R);
+        $('runnerNote').hidden = !runnerNote(R);
+        $('runnerFix').hidden = !(R.install && !R.found);
+        $('runnerFix').textContent = R.install || '';
+        $('autoSw').className = 'sw' + (R.autoStart ? ' on' : '');
+        $('autoSw').setAttribute('aria-pressed', R.autoStart ? 'true' : 'false');
 
         // CONNECTION
         if ($('siteUrl') !== document.activeElement) { $('siteUrl').value = S.siteUrl || ''; }
@@ -204,6 +250,27 @@
             toast(res.ok
                 ? (res.night && res.night.posted ? 'Posted ' + res.night.posted + ' to the site.' : 'Ran — nothing to post.')
                 : (res.say || 'It could not finish.'));
+            return;
+        }
+        if (t.id === 'startEng') {
+            // IT TAKES TENS OF SECONDS and the button says so, because a
+            // control that looks stuck is one people press again.
+            $('startEng').disabled = true;
+            $('startEng').textContent = 'Starting…';
+            var sr = await window.hand.startEngine();
+            await refresh();
+            toast(sr && sr.ok ? (sr.say || 'Started.') : ((sr && sr.say) || 'It did not start.'));
+            return;
+        }
+        if (t.id === 'stopEng') {
+            var xr = await window.hand.stopEngine();
+            await refresh();
+            toast(xr && xr.ok ? 'Stopped.' : ((xr && xr.say) || 'It did not stop.'));
+            return;
+        }
+        if (t.id === 'autoSw') {
+            await window.hand.saveConfig({ autoStart: !(S.runner || {}).autoStart });
+            await refresh();
             return;
         }
         if (t.id === 'skipBtn') { toast('Skipped. The next run is tomorrow at ' + S.nextRunAt + '.'); return; }

@@ -86,7 +86,17 @@
       <div class="vhead"><div class="grow"><h1>Runner</h1>
         <p class="sub">One app, two engines. It picks by architecture, and you can override it to compare.</p></div></div>
       <div class="box" id="machineBox"></div>
-      <div><h2>Engine</h2><div class="box" id="engineBox"></div></div>
+      <div><h2>Engine</h2><div class="box" id="engineBox"></div>
+        <p class="tiny" id="runnerNote" hidden></p>
+        <!-- The one command, selectable, when llama.cpp is nowhere. Not a
+             button that runs it: installing Homebrew packages is the owner's
+             decision and their Terminal, and an app that shells out to `brew`
+             on their behalf is doing something they did not ask for. -->
+        <pre class="fix" id="runnerFix" hidden></pre>
+        <div class="box"><div class="row"><div class="main"><b>Start it for a run</b>
+          <span>If nothing is answering when the work is due, start the model server, then stop it again afterwards.</span></div>
+          <div class="rail"><button class="sw" type="button" id="autoSw" aria-label="Start the model server for a run" aria-pressed="false"></button></div></div></div>
+      </div>
     </section>
 
     <!-- CONNECTION -->

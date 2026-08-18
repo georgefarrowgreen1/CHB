@@ -63,7 +63,7 @@ function untilWords(target, from) {
 }
 
 // ── THE RUN ──────────────────────────────────────────────────────────────
-// deps: { site, engine, cfg, machine, now, onProgress }
+// deps: { site, engine, cfg, machine, now, onProgress, ensureEngine }
 // Returns the night's record: what it did, what it posted, and every line.
 async function runNight(deps) {
     const d = deps || {};
@@ -119,7 +119,30 @@ async function runNight(deps) {
 
     // Is the engine actually serving? Asked BEFORE any drafting, so a dead
     // runner is one clear line rather than an error per enquiry.
-    const up = await d.engine.reachable();
+    //
+    // AND IF IT IS NOT, START IT. This used to be the end of the night — which
+    // meant the app did nothing, every night, on any Mac where the owner had
+    // not left a Terminal running llama-server. `ensureEngine` is the same
+    // function the Runner screen's Start button calls, so the button and the
+    // night cannot behave differently; it is absent (and this falls back to the
+    // old refusal) when the app has no way to spawn, which is every test that
+    // does not ask for one.
+    let up = await d.engine.reachable();
+    if (!up && d.ensureEngine) {
+        say('nothing answering on ' + d.engine.base + ' — starting it');
+        const started = await d.ensureEngine();
+        if (started && started.ok) {
+            rec.startedEngine = !!started.started;
+            say(started.say);
+            up = true;
+        } else {
+            say((started && started.say) || 'the model server did not start', 'fail');
+            if (started && started.install) {
+                say('install it with: ' + started.install, 'fail');
+            }
+            return rec;
+        }
+    }
     if (!up) {
         say(d.engine.name + ' is not answering on ' + d.engine.base + ' — nothing was drafted', 'fail');
         return rec;
@@ -191,4 +214,4 @@ function pushRecord(list, rec) {
     return out.slice(0, LOG_KEEP);
 }
 
-module.exports = { runNight, nextRun, untilWords, pushRecord, LOG_KEEP };
+module.exports = { runNight, nextRun, untilWords, pushRecord, hhmm, LOG_KEEP };

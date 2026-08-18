@@ -34,6 +34,12 @@
     "directories": {
       "output": "dist"
     },
+    "extraResources": [
+      {
+        "from": "build/runner",
+        "to": "runner"
+      }
+    ],
     "mac": {
       "category": "public.app-category.business",
       "target": [

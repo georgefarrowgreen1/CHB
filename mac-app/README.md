@@ -19,8 +19,8 @@ Being exact about this, because it decides what you should trust.
 
 | | |
 |---|---|
-| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain. `npm test` — 237 checks, no network, no model, no Mac needed. |
-| **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock and power assertion) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
+| **Verified here, with tests** | The whole of `src/core`: machine detection and model fit, both engine adapters, the model library, the site calls, the draft **guard**, the reply job, the night orchestrator, settings, the Keychain, and every decision about starting the model server (which binary, which arguments, what an exit means). `npm test` — 284 checks, no network, no model, no Mac needed. |
+| **Not verified anywhere yet** | `src/main.js` (the Electron window, menu, clock, power assertion, and the ~20 lines that actually spawn and supervise llama-server) and `src/ui` (the window's own markup and script — driven in a browser, but never inside Electron). And, most importantly, **whether the model's prose is any good**, which needs your data and your hardware. |
 
 That split is deliberate. The unverifiable parts are the ones where being wrong
 is obvious the first time you launch it; the parts where being wrong would be
@@ -31,15 +31,27 @@ are the ones with the tests.
 
 ## What you need first
 
-1. **A model runner serving on localhost.** Either is fine:
-   - **llama.cpp** — `brew install llama.cpp`, then
-     `llama-server -m ~/Library/Application\ Support/Cottage\ Holidays\ Blakeney/Models/your-model.gguf --port 8080`
-   - **Ollama** — `brew install ollama`, then `ollama serve` (it listens on 11434)
+1. **A model runner — and the app now carries its own.** A universal
+   `llama-server` (llama.cpp's, MIT-licensed, built by the same workflow that
+   builds the app) ships inside the bundle, and the app **starts and stops it
+   itself**: the Runner screen grows a **Start** button when nothing is
+   answering, and a night that wakes to a dead engine brings it up, drafts, and
+   shuts it down again. No Homebrew, no Terminal, no window left open.
 
-   The app talks to whichever answers, over the OpenAI-shaped
-   `/v1/chat/completions` both provide. That is why one app covers both
-   architectures: llama.cpp is compiled for each and the app never links a model
-   runtime into itself.
+   The old ways still work, and win when present:
+   - **llama.cpp via Homebrew** — `brew install llama.cpp`. A brew copy is
+     *preferred* over the bundled one, deliberately: it is the escape hatch if
+     macOS ever refuses to execute the bundled binary (a real possibility while
+     the app is unsigned — see *Getting it to open with a double-click*), because a brew-installed
+     binary is never quarantined.
+   - **Ollama** — `brew install ollama`, then `ollama serve` (it listens
+     on 11434). Ollama runs its own background service, so the app talks to it
+     but never starts or stops it, and says so.
+
+   Under the hood it is all the OpenAI-shaped `/v1/chat/completions`, which is
+   why one app covers every engine: nothing links a model runtime into the app
+   itself, and everything above the HTTP line stays testable with a fake
+   endpoint.
 
 2. **A model.** Use the **Models** screen — search Hugging Face, expand a repo,
    and every quantisation says whether it will run on *this* Mac, from its real
@@ -99,9 +111,12 @@ silicon Mac. On this repo those minutes are free.
 1. **Actions → Mac app → Run workflow.** Tick *publish a release* if you want a
    permanent download link.
 2. It installs, runs the core suite and the window suite (**a build whose own
-   tests failed is never shipped**), then produces the universal `.dmg`.
-3. About three minutes later it is a workflow artifact — and, if you asked for a
-   release, it becomes the file the link above serves, with nothing to update.
+   tests failed is never shipped**), compiles a universal `llama-server` from
+   llama.cpp's latest release to ride inside the bundle (cached by llama.cpp
+   version, so most runs skip it), then produces the universal `.dmg`.
+3. Five minutes later — twenty on a fresh llama.cpp release — it is a workflow
+   artifact; and, if you asked for a release, it becomes the file the link
+   above serves, with nothing to update.
 
 Tagging `hand-v1.0` does the same thing and always publishes.
 
@@ -180,6 +195,8 @@ the morning — so quit from the menu when you mean it.
 
 ```
 02:00  the clock ticks past the run time
+       ── nothing serving? START the model server (src/core/runner.js decides,
+          main.js spawns; stopped again when the run is done)
        ── ask the site what is waiting            (nightshift.php · brief)
        ── for each enquiry:
             build a prompt from the SITE's facts  (its quote, its calendar answer)
@@ -234,11 +251,13 @@ src/core/
   guard.js           what a draft must pass. The most important file here.
   jobs.js            the work. One job built: drafted enquiry replies.
   night.js           one night, start to finish, and the log
+  runner.js          starting llama-server: where it lives, which arguments,
+                     what an exit code means — every decision, no spawning
   update.js          is there a newer version, and may we install it? (pure)
   updater.js         the fetch, the progress and the checksum
   config.js          settings on disk; the secret in the Keychain, never on disk
   api.js             the surface the window may call
-test/core-test.js    237 checks over all of the above
+test/core-test.js    284 checks over all of the above
 ```
 
 Settings, models and the night log live in

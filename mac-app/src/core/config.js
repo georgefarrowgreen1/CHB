@@ -44,6 +44,15 @@ const DEFAULTS = {
     jobs: { reply: { on: false, model: '', at: '02:00' } },
     keepAwake: true,
     lastRun: null,
+    // STARTING THE MODEL SERVER. Default ON, because the whole point is that
+    // nobody should have to leave a Terminal window open overnight — and it is
+    // a switch rather than a hard-wired behaviour because someone already
+    // running llama-server their own way must be able to stop this app
+    // starting a second one on the same port.
+    autoStart: true,
+    // '' = look in the app's own bundle, then Homebrew. A path here is an
+    // explicit override and wins over both (see core/runner.js).
+    runnerPath: '',
 };
 
 function paths(dirOverride) {
