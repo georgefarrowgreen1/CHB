@@ -4555,14 +4555,8 @@ body.cmdk-open {
     margin: -2px 0 12px; padding-bottom: 12px;
     border-bottom: 1px solid var(--glass-border);
 }
-.bhub-gap {
-    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-    margin-top: 12px; padding: 10px 12px; font-size: 0.84rem; color: var(--text-light);
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-    border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
-    border-radius: var(--r-md, 12px); cursor: pointer; min-height: 44px;
-}
-.bhub-gap strong { color: var(--accent-text); }
+/* (.bhub-gap is GONE with the gap-offer chip it styled — see openBookingHub.
+   The gap decision still exists; it just does not live on a booking's page.) */
 /* ONE TYPE SIZE IN THE ACTIVITY STORY. The card had FIVE: 16px ledger rows
    towering over 13.12px event rows, plus 12.8 / 12.48 / 11.52 for the email
    body, its disclosure and the actor — three of them within 0.7px of each
