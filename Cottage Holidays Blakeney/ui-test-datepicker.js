@@ -1305,11 +1305,22 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
       return { s: read('24'), a: read('25'), b: read('26'), e: read('27'), free: read('05') };
     });
     // The pick now animates (the selection pop + the range wave — the approved
-    // booking-flow motion). This section's question is the RESTING paint, so the
-    // screenshots wait for the ~0.5s of decoration to settle; sampling mid-pop
-    // reads a scaled cell's pixels at the wrong spot and cried wolf on all four
-    // pixel checks the day the motion shipped.
-    await page.waitForTimeout(750);
+    // booking-flow motion). This section's question is the RESTING paint, and
+    // sampling mid-pop reads a scaled cell's pixels at the wrong spot: it cried
+    // wolf on all four pixel checks the day the motion shipped.
+    //
+    // ASK THE ANIMATIONS, DO NOT WAIT ON A CLOCK. This was `waitForTimeout(750)`,
+    // which is enough on an idle machine and NOT enough on a loaded CI runner —
+    // measured, it failed roughly one run in four with an in-range band reading
+    // 1:1 against its neighbour, i.e. not yet painted. getAnimations() knows
+    // exactly when the decoration has finished; the 1.5s cap is a backstop for a
+    // looping animation, never the thing being relied on.
+    await page.evaluate(() => Promise.race([
+        Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))),
+        new Promise((r) => setTimeout(r, 1500)),
+    ]));
+    // …and one more frame, so the last committed style has actually painted.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     // Vacuity guard: this whole section measures a SELECTED range, so if the picks did
     // not land there is nothing here to be legible and every check below would pass.
     ok(
@@ -1532,7 +1543,26 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   // THE CARD ITSELF, in landscape. Uncapped and unscrollable it ran 472px in a
   // 360px viewport: both month buttons off the top, Continue off the bottom.
   await page.setViewportSize({ width: 740, height: 360 });
-  await page.waitForTimeout(250);
+  // WAIT FOR THE LAYOUT TO CATCH UP WITH THE RESIZE, not for a clock.
+  //
+  // This was `waitForTimeout(250)` and failed roughly two runs in three on a
+  // loaded machine, reporting a card at top 43 / bottom 361 in a 360-tall
+  // viewport — one pixel over. The card was fine: `window.innerHeight` had
+  // already become 360 while the FIXED, inset-0 host was still laid out ~403
+  // tall, so centring a 317px card in it put the card 43px down. Measuring the
+  // card alone cannot see this — its own height was stable the whole time,
+  // which is why watching that settled instantly and proved nothing.
+  //
+  // The honest condition is that the host box now matches the viewport it is
+  // pinned to. Then the card's position means what the check thinks it means.
+  await page.waitForFunction(() => {
+    const c = document.querySelector('.datepicker-card');
+    if (!c) return false;
+    const host = c.parentElement.getBoundingClientRect();
+    return Math.abs(host.height - window.innerHeight) < 1
+        && Math.abs(host.top) < 1
+        && c.getBoundingClientRect().height > 0;
+  }, null, { timeout: 5000, polling: 'raf' });
   const fit = await page.evaluate(() => {
     const card = document.querySelector('.datepicker-card');
     const r = card.getBoundingClientRect();
@@ -1553,9 +1583,14 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
       nav: reachable('.dp-nav-btn'),
       done: reachable('#dp-done'),
       h: Math.round(r.height),
+      top: r.top, bottom: r.bottom, vh: window.innerHeight,
+      overflowY: getComputedStyle(card).overflowY,
     };
   });
-  ok(fit.fits && fit.scrolls, `at 740x360 the card fits the viewport and scrolls inside it (h ${fit.h})`);
+  ok(fit.fits && fit.scrolls,
+    `at 740x360 the card fits the viewport and scrolls inside it `
+    + `(h ${fit.h}, top ${Math.round(fit.top)}, bottom ${Math.round(fit.bottom)}, `
+    + `vh ${fit.vh}, overflowY ${fit.overflowY})`);
   ok(fit.nav === true, '…the month buttons are reachable');
   ok(fit.done === true, '…and so is Continue, which is the only way to finish');
   await page.evaluate(() => closeDatePicker());
