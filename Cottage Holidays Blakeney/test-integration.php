@@ -2219,6 +2219,25 @@ it_check('…nor the public one', strpos($r['raw'], $minted) === false);
 $stored = (string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'apikey-nightshift'")->fetchColumn();
 it_check('the stored row is ciphertext, not the key', $stored !== '' && strpos($stored, $minted) === false);
 
+// AND IT FAILS CLOSED WHEN THE KEY CANNOT BE READ. Driven for real: corrupt the
+// stored ciphertext, which is exactly what rotating APP_SECRET does to every
+// encrypted value, and check the master secret does NOT get the route back.
+$rootDb->prepare('UPDATE content SET item_value = ? WHERE item_key = ?')
+    ->execute(['enc1:' . base64_encode(random_bytes(40)), 'apikey-nightshift']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [$nsItem()]]);
+it_check('an unreadable key does NOT hand the route back to the master secret', $r['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $minted, 'items' => [$nsItem()]]);
+it_check('…and the old key does not work either — it refuses everything', $r['code'] === 401, $r['raw']);
+$n = (int) $rootDb->query('SELECT COUNT(*) FROM night_items')->fetchColumn();
+it_check('…and nothing was stored by any of it', $n === 0, (string) $n);
+// Regenerating is the way out, and it works.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
+$fresh = (string) ($r['json']['key'] ?? '');
+it_check('regenerating recovers it',
+    $fresh !== '' && http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $fresh, 'items' => [$nsItem()]])['code'] === 200);
+$rootDb->query('DELETE FROM night_items');
+$minted = $fresh;
+
 // GENERATING A NEW ONE REVOKES THE OLD — the whole revocation story.
 $r2 = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
 $second = (string) ($r2['json']['key'] ?? '');

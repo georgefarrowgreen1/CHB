@@ -115,15 +115,33 @@ const NIGHT_KEY_MIN = 24;
 // Which key opens the door, decided in one place so `brief` and `ingest`
 // cannot drift. Returns 'scoped' | 'master' | '' — the CALLER logs which,
 // because "it still used the master secret" is worth being able to see.
-function night_key_kind($given, $scoped, $master)
+// $configured — is a scoped key ON FILE? Passed separately from its VALUE,
+// because those are different questions and conflating them fails OPEN.
+//
+// enc_key() derives from APP_SECRET, so rotating APP_SECRET makes every
+// encrypted value unreadable and decrypt_value() returns ''. Inferring
+// "configured" from the value alone therefore read a perfectly present key as
+// ABSENT and fell straight back to the master secret — which means rotating
+// APP_SECRET after a leak silently re-opened this route to the new one. The
+// wrong direction, at the worst possible moment.
+//
+// A key on file that cannot be read is a BROKEN state, not an absent one: it
+// refuses everything and the owner regenerates. Failing closed costs a night's
+// drafts; failing open costs the thing this key was introduced to protect.
+function night_key_kind($given, $scoped, $master, $configured = null)
 {
     $g = (string) $given;
     if ($g === '') {
         return '';
     }
     $s = (string) $scoped;
-    if (strlen($s) >= NIGHT_KEY_MIN) {
-        // A scoped key EXISTS, so it is the only one that opens this route.
+    $has = $configured === null ? (strlen($s) >= NIGHT_KEY_MIN) : (bool) $configured;
+    if ($has) {
+        // A scoped key EXISTS, so it is the only one that opens this route —
+        // and if it is on file but unreadable, nothing does.
+        if (strlen($s) < NIGHT_KEY_MIN) {
+            return '';
+        }
         return hash_equals($s, $g) ? 'scoped' : '';
     }
     $m = (string) $master;
