@@ -141,30 +141,29 @@ button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:d
 .mono{font-family:var(--mono)}
 input{-webkit-user-select:text;user-select:text}
 
-.win{position:relative;z-index:1;display:grid;grid-template-columns:228px 1fr;
-  grid-template-rows:56px 1fr;height:100%}
+.win{position:relative;z-index:1;display:grid;grid-template-columns:244px 1fr;
+  grid-template-rows:1fr;height:100%;padding:12px}
 
-/* ── THE TITLE BAR ──────────────────────────────────────────
-   The window has no system title bar (titleBarStyle:'hiddenInset'), so this IS
-   it: draggable everywhere except its own controls. Glass, like the site's
-   header. */
-.titlebar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 18px 0 92px;
-  background:var(--glass-bg);backdrop-filter:var(--glass-filter);
-  -webkit-backdrop-filter:var(--glass-filter);
-  border-bottom:1px solid var(--glass-border);box-shadow:var(--glass-rim);
-  -webkit-app-region:drag}
-.tb-title{display:flex;flex-direction:column;min-width:0}
-.tb-title b{font-family:var(--font-serif);font-size:15px;font-weight:600;letter-spacing:-.01em}
-.tb-title span{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
-.tb-acts{margin-left:auto;display:flex;gap:9px;flex:0 0 auto;-webkit-app-region:no-drag}
+/* ── THE TOP EDGE (macOS 26) ────────────────────────────────
+   There is no title-bar band: the window is hiddenInset, macOS draws the
+   traffic lights over the sidebar's glass, and the screen's own large serif
+   title is the heading. What remains of the bar is its two jobs, kept
+   honestly: a transparent strip so the window can still be dragged, and the
+   one global action floating as a capsule in the top-right. */
+.topdrag{position:fixed;inset:0 0 auto 0;height:34px;-webkit-app-region:drag;z-index:5}
+.float-acts{position:fixed;top:14px;right:16px;z-index:6;display:flex;gap:9px;
+  -webkit-app-region:no-drag}
+.float-acts .tbtn{box-shadow:var(--shadow-panel),var(--glass-rim)}
+/* The screen name + run progress, announced but not drawn — the large title
+   carries the words on screen. */
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* Buttons: the site's pill vocabulary. Quiet ones are glass with a hairline;
    the primary one is an ACCENT FILL carrying --accent-ink, never white. */
-.tbtn{height:30px;padding:0 14px;border-radius:var(--r-pill);
+.tbtn{height:34px;padding:0 16px;border-radius:var(--r-pill);
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);
   -webkit-backdrop-filter:var(--glass-filter);
-  border:1px solid var(--glass-border);font-size:12.5px;font-weight:500;
+  border:1px solid var(--glass-border);font-size:13px;font-weight:500;
   display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
   transition:background .18s var(--fluid),transform .18s var(--spring)}
 .tbtn:hover{background:var(--btn-hover)}
@@ -173,11 +172,20 @@ input{-webkit-user-select:text;user-select:text}
   font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.18)}
 .tbtn.prime:hover{background:var(--accent);filter:brightness(1.06)}
 .tbtn[disabled]{opacity:.45}
+/* ONE ACCENT CAPSULE PER WINDOW: Run now owns the accent. A screen's own
+   action (Models' Add model…) is a quiet glass capsule in the content
+   header — two accent pills stacked in one corner read as two primaries,
+   which the first draft of the demo demonstrated on itself. */
+.vhead .tbtn.prime{background:var(--glass-bg);color:var(--text-light);
+  border:1px solid var(--glass-border);box-shadow:var(--glass-rim);font-weight:600}
+.vhead .tbtn.prime:hover{background:var(--btn-hover);filter:none}
 
 /* ── THE SIDEBAR ────────────────────────────────────────────── */
 .side{background:var(--glass-bg);backdrop-filter:var(--glass-filter);
   -webkit-backdrop-filter:var(--glass-filter);
-  border-right:1px solid var(--glass-border);padding:14px 10px 14px;
+  margin-right:12px;border-radius:20px;border:1px solid var(--glass-border);
+  box-shadow:var(--shadow-panel),var(--glass-rim);
+  padding:44px 10px 12px;
   display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 
 /* THE IDENTITY: the crown, then the business's name in Playfair. This is the
@@ -189,16 +197,18 @@ input{-webkit-user-select:text;user-select:text}
 .brand .nm small{display:block;font-family:var(--font-sans);font-size:10px;font-weight:500;
   letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:2px}
 
-/* Section captions take the site's .acr-cap track exactly. */
-.sgroup{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--text-muted);padding:14px 10px 5px}
-.snav{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:8px 11px;
-  border-radius:var(--r-sm);font-size:13px;color:var(--text-light);
+.snav{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 12px;
+  border-radius:14px;font-size:13px;color:var(--text-light);
   transition:background .16s var(--fluid)}
 .snav:hover{background:var(--btn-hover)}
-/* SELECTED IS THE BRAND, not Apple blue — and it carries --accent-ink. */
-.snav[aria-current="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
-.snav[aria-current="true"] .badge{background:rgba(27,18,8,.22);color:var(--accent-ink)}
+/* SELECTED IS THE BRAND, not Apple blue — and it selects the way Tahoe
+   does: a translucent tint of the accent with a hairline, not a solid slab.
+   The ink is --accent-text, the rose-gold readable as WORDS. */
+.snav[aria-current="true"]{background:color-mix(in srgb,var(--accent) 26%,transparent);
+  color:var(--accent-text);font-weight:600;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 32%,transparent)}
+.snav[aria-current="true"] .badge{background:color-mix(in srgb,var(--accent) 24%,transparent);
+  color:var(--accent-text)}
 .snav .badge{margin-left:auto;font-size:10.5px;font-weight:600;
   background:color-mix(in srgb,var(--text-light) 12%,transparent);color:var(--text-light);
   border-radius:var(--r-pill);padding:1px 7px;min-width:20px;text-align:center}
@@ -208,7 +218,7 @@ input{-webkit-user-select:text;user-select:text}
 .dot.busy{background:var(--warn)} .dot.bad{background:var(--danger)} .dot.off{background:var(--text-muted)}
 
 /* ── THE BODY ───────────────────────────────────────────────── */
-.body{padding:26px 30px 32px;overflow-y:auto;min-width:0}
+.body{padding:40px 26px 30px 14px;overflow-y:auto;min-width:0}
 .view{display:flex;flex-direction:column;gap:20px}
 /* `display` OUTRANKS the `hidden` attribute — this line is why one screen shows
    at a time. It has bitten this project four times; do not remove it. */
@@ -220,7 +230,7 @@ input{-webkit-user-select:text;user-select:text}
    catch and it caught it — but a per-element rule would only move the trap along
    to the next element, so it is stated once for the whole window. */
 [hidden]{display:none!important}
-h1{font-family:var(--font-serif);font-size:26px;font-weight:600;letter-spacing:-.02em;margin:0}
+h1{font-family:var(--font-serif);font-size:29px;font-weight:600;letter-spacing:-.02em;margin:0}
 h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
   margin:0 0 8px;color:var(--text-muted)}
 .sub{font-size:13px;color:var(--text-muted);margin:5px 0 0;max-width:62ch}
@@ -244,7 +254,7 @@ h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercas
   -webkit-backdrop-filter:var(--glass-filter);
   border:1px solid var(--glass-border);border-radius:var(--r-lg);
   box-shadow:var(--shadow-panel),var(--glass-rim);overflow:hidden}
-.row{display:flex;align-items:center;gap:14px;padding:13px 17px;
+.row{display:flex;align-items:center;gap:14px;padding:14px 18px;
   border-top:1px solid color-mix(in srgb,var(--text-light) 8%,transparent)}
 .row:first-child{border-top:none}
 /* NO ZEBRA STRIPE. The site separates rows with a hairline and nothing else;
@@ -279,14 +289,14 @@ h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercas
 /* THE SWITCH — the site's .chb-switch shape, filling with the BRAND when on.
    It was green, which is the site's "paid/ok" status colour and means
    something else there. */
-.sw{width:42px;height:25px;border-radius:var(--r-pill);flex:0 0 auto;position:relative;
+.sw{width:46px;height:28px;border-radius:var(--r-pill);flex:0 0 auto;position:relative;
   background:color-mix(in srgb,var(--text-light) 14%,transparent);
   border:1px solid color-mix(in srgb,var(--text-light) 10%,transparent);
   transition:background .22s var(--fluid)}
-.sw::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;
   background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .22s var(--spring)}
 .sw.on{background:var(--accent);border-color:transparent}
-.sw.on::after{transform:translateX(17px)}
+.sw.on::after{transform:translateX(18px)}
 .sw[disabled]{opacity:.4}
 
 .seg{display:inline-flex;background:color-mix(in srgb,var(--text-light) 7%,transparent);
@@ -296,7 +306,7 @@ h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercas
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
 .seg button[disabled]{opacity:.4}
 
-select.pop,.field{height:32px;border-radius:var(--r-pill);
+select.pop,.field{height:34px;border-radius:var(--r-pill);
   border:1px solid color-mix(in srgb,var(--text-light) 14%,transparent);
   background:var(--field);padding:0 13px;font-family:var(--font-sans);font-size:12.5px;
   color:var(--text-light);max-width:230px}

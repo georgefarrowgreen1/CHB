@@ -205,6 +205,32 @@ function fakeState(over) {
         ok('Models paints alone', JSON.stringify(await painted()) === '[false,false,true,false,false]');
         ok('…and the title bar follows', (await page.textContent('#tbTitle')).trim() === 'Models');
 
+        // ── MACOS 26 STRUCTURE: the facts that could regress silently ──
+        // Measured as PAINT (computed style + boxes), not class names.
+        const m26 = await page.evaluate(function () {
+            const cs = function (el) { return getComputedStyle(el); };
+            const side = document.querySelector('.side');
+            const run = document.getElementById('runBtn');
+            const add = document.getElementById('addBtn');
+            const r = document.getElementById('tbTitle').getBoundingClientRect();
+            return {
+                sideRadius: parseFloat(cs(side).borderTopLeftRadius) || 0,
+                sideMarginR: parseFloat(cs(side).marginRight) || 0,
+                runBg: cs(run).backgroundColor,
+                addBg: add ? cs(add).backgroundColor : '',
+                tbHidden: r.width <= 1 && r.height <= 1,
+                dragStrip: !!document.querySelector('.topdrag'),
+            };
+        });
+        ok('the sidebar is a floating slab, not a welded column',
+            m26.sideRadius >= 16 && m26.sideMarginR >= 8, JSON.stringify(m26));
+        ok('the screen name is announced, not drawn', m26.tbHidden);
+        // One accent capsule per window: the global Run now keeps the accent
+        // fill; a screen's own action (Add model…) paints as quiet glass.
+        ok('one accent capsule per window', !!m26.addBg && m26.runBg !== m26.addBg,
+            m26.runBg + ' vs ' + m26.addBg);
+        ok('the top edge is still draggable with the bar gone', m26.dragStrip);
+
         // ── ESCAPING. A guest name that is markup must be TEXT. ──
         await page.click('[data-v="0"]');
         await page.waitForTimeout(120);

@@ -1329,6 +1329,105 @@ function fakeSite(handler) {
     ok('...and the answers job said it waits for Sunday',
         rec23.log.some(function (l) { return /waits for Sunday/.test(l.say); }));
 
+    // ── §24 THE WIRE IS NOT TRUSTED: a hostile brief renders NO line noise ──
+    // The cottage-name bug's class from this side: a field that is not the
+    // string the contract promises must become an ABSENT fact or a DROPPED
+    // row — never "undefined", "[object Object]" or a mangled date in a
+    // prompt, an item title, or the owner's Ready-for-you card. The engine
+    // fake RECORDS every prompt so the sweep reads what the model would
+    // actually have been given, and the sweep covers prompts + items + log.
+    console.log('\n§24 a hostile brief never renders as line noise');
+    const seen24 = [];
+    const recorder24 = function (text) {
+        return { write: async function (prompt) { seen24.push(prompt);
+            return { ok: true, text: text, ms: 900, tokens: 40, tokensPerSec: 40 }; } };
+    };
+    const NOISE24 = ['undefined', '[object Object]', 'Invalid Date', 'NaN'];
+    const sweep24 = function (out) {
+        let all = seen24.join('\n');
+        out.items.forEach(function (it) { all += '\n' + it.title + '\n' + (it.sub || '') + '\n' + it.ref; });
+        out.log.forEach(function (l) { all += '\n' + l.say; });
+        return NOISE24.filter(function (t) { return all.indexOf(t) !== -1; });
+    };
+    // Every string field an object or undefined; every number a string or
+    // absent; one WELL-FORMED row beside the garbage in each list, because a
+    // scrubber that drops everything would pass the sweep and lose the job.
+    const HOSTILE_WEEK = {
+        from: { bad: 1 }, to: undefined,
+        arrivals: [
+            { first: ['R'], cottage: { n: 'x' }, date: { d: 1 }, nights: 'three', adults: null, due: { v: 9 } },
+            { first: 'Rachel', cottage: 'Jollyboat', date: '2026-08-21', nights: 3, adults: 2, children: 1, due: '£340.00' },
+        ],
+        departures: [{ first: 'Tom', cottage: 7 }, { first: 'Tom', cottage: 'Pimpernel', date: '2026-08-19' }],
+    };
+    const HOSTILE_GAPS = [
+        { cottage: {}, from: 'soonish', to: null, nights: '3', rate: {}, offer: undefined },
+        { cottage: 'Jollyboat', from: '2026-09-12', to: '2026-09-15', nights: 3, rate: '£120.00', offer: '£102.00' },
+    ];
+    const HOSTILE_QS = [
+        { q: { text: 'not a string' }, asked: 'many', cottage: [], facts: 'nope' },
+        { q: 'Is there an EV charger?', asked: 3, cottage: '21A Westgate',
+          facts: [{ q: ['bad'], a: 'x' }, { q: 'Parking?', a: 'Beside the cottage.' }] },
+    ];
+    seen24.length = 0;
+    const w24 = await jobs.runWeekJob({ engine: recorder24('A quiet week with £340.00 still to collect.'),
+        model: 'm', host: 'George', now: MON, week: HOSTILE_WEEK, gaps: HOSTILE_GAPS });
+    ok('the week: no line noise anywhere', sweep24(w24).length === 0, sweep24(w24).join(','));
+    ok('…the unreadable rows are dropped AND said', w24.log.some(function (l) {
+        return /3 rows this app could not read/.test(l.say) && l.level === 'fail'; }),
+        JSON.stringify(w24.log.map(function (l) { return l.say; })));
+    ok('…while the well-formed arrival still reaches the prompt', /Rachel at Jollyboat/.test(seen24.join('')) || /Arriving: Rachel/.test(seen24.join('')), seen24.join('').slice(0, 400));
+    seen24.length = 0;
+    const p24 = await jobs.runPriceJob({ engine: recorder24('Jollyboat could go out at £102.00 a night for those three nights.'),
+        model: 'm', host: 'George', now: MON, gaps: HOSTILE_GAPS });
+    ok('the prices: no line noise, one gap dropped and said', sweep24(p24).length === 0
+        && p24.log.some(function (l) { return /1 row this app could not read/.test(l.say); }), sweep24(p24).join(','));
+    ok('…and the surviving gap is still weighed', p24.items.length === 1 && /A gap worth a look/.test(p24.items[0].title));
+    // Every row unreadable → NOT the quiet-fortnight success message: the
+    // drop line is the story, and "no gaps worth selling" beside it would be
+    // the site's failure dressed as a quiet win.
+    seen24.length = 0;
+    const p24b = await jobs.runPriceJob({ engine: recorder24('x'), model: 'm', host: 'George', now: MON,
+        gaps: [HOSTILE_GAPS[0]] });
+    ok('all rows unreadable is a failure, not a quiet fortnight', p24b.items.length === 0
+        && !p24b.log.some(function (l) { return /no gaps worth selling/.test(l.say); })
+        && p24b.log.some(function (l) { return l.level === 'fail'; }),
+        JSON.stringify(p24b.log.map(function (l) { return l.say; })));
+    seen24.length = 0;
+    const a24 = await jobs.runAnswerJob({ engine: recorder24('There is a charger in the lane, a short walk away.'),
+        model: 'm', host: 'George', now: MON, questions: HOSTILE_QS });
+    ok('the answers: no line noise, the object question dropped', sweep24(a24).length === 0
+        && a24.items.length === 1 && /EV charger/.test(a24.items[0].title), sweep24(a24).join(','));
+    ok('…and its malformed fact is absent while the real one grounds the prompt',
+        seen24.join('').indexOf('Parking?') !== -1 && seen24.join('').indexOf('[object') === -1);
+    seen24.length = 0;
+    const r24 = await jobs.runReplyJob({ engine: recorder24('Thank you for asking — the dates you mention are free and we would love to have you.'),
+        model: 'm', host: 'George', now: MON, enquiries: [
+            { id: 'not-a-number', name: {}, message: 'Hi' },
+            { id: 3, name: 'Pat Doe', first: 'Pat', cottage: 'Jollyboat', prop: 'jollyboat',
+              check_in: '2026-09-04', check_out: '2026-09-07', adults: 2, children: 0,
+              message: 'Are the dates free?', dates_free: true, nights: 3, quote: '',
+              deposit: '', facts: [{ q: ['bad'], a: 'x' }] },
+        ] });
+    ok('the replies: an id-less row cannot be reffed, so it is dropped and said',
+        r24.log.some(function (l) { return /1 row this app could not read/.test(l.say); })
+        && r24.items.length === 1 && /reply-3$/.test(r24.items[0].ref),
+        JSON.stringify(r24.items.map(function (it) { return it.ref; })));
+    ok('…and no line noise reaches the reply prompt', sweep24(r24).length === 0, sweep24(r24).join(','));
+    // dates_free must never be COERCED to a yes: a truthy non-boolean reads
+    // as "could not tell", and the prompt then forbids availability talk.
+    seen24.length = 0;
+    await jobs.runReplyJob({ engine: recorder24('A fine stay awaits.'), model: 'm', host: 'George', now: MON,
+        enquiries: [{ id: 4, name: 'Jo', first: 'Jo', cottage: 'Jollyboat', message: 'Free?',
+            dates_free: 'yes', check_in: '2026-09-04', check_out: '2026-09-07' }] });
+    ok('a non-boolean dates_free reads as unknown, never a yes',
+        /Availability is unknown/.test(seen24.join('')) && seen24.join('').indexOf('ARE free') === -1,
+        seen24.join('').slice(0, 300));
+    ok('spokenDay never stringifies an object', jobs !== null
+        && require('../src/core/guard').spokenDay({ d: 1 }) === ''
+        && require('../src/core/guard').spokenDay('2026-08-21') === 'Fri 21 Aug'
+        && require('../src/core/guard').spokenDay('soon') === 'soon');
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

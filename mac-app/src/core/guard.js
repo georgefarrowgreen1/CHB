@@ -254,8 +254,13 @@ function checkGeneral(draft, opts) {
 
 // "Fri 12 Sep", from ISO. Display only, like spokenRange in jobs.js.
 function spokenDay(iso) {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
-    if (!m) { return String(iso || ''); }
+    // A non-string never passes through: String() on an object is
+    // "[object Object]" in the middle of a prompt — the cast-silences-a-
+    // type-error trap again. An unmatched STRING still comes back as itself
+    // (a caller may legitimately hold a word rather than a date).
+    if (typeof iso !== 'string') { return ''; }
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    if (!m) { return iso; }
     const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

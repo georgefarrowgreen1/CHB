@@ -22,10 +22,14 @@
 require_once __DIR__ . '/nightshift-lib.php';
 
 $fails = 0;
-function nsk($label, $cond)
+// The optional $why prints ONLY on failure — the same shape as the JS
+// suites' ok(). It exists because a third argument was twice passed to the
+// two-parameter version and silently discarded (PHPStan caught both);
+// making the context real beats deleting it.
+function nsk($label, $cond, $why = '')
 {
     global $fails;
-    echo ($cond ? '  ✓ ' : '  ✗ ') . $label . "\n";
+    echo ($cond ? '  ✓ ' : '  ✗ ') . $label . (!$cond && $why !== '' ? ' — ' . $why : '') . "\n";
     if (!$cond) {
         $fails++;
     }
@@ -460,6 +464,47 @@ nsk('garbage in the store is dropped, not guessed at',
     count(night_questions_brief([['x' => 1], 'a string', null], $names, $faqsFor)) === 0);
 nsk('a no-cottage question still says something for the label',
     night_questions_brief([['q' => 'Is there a cot?', 'n' => 1, 'prop' => '']], $names, $faqsFor)[0]['cottage'] === 'the cottages');
+
+// ── §18 THE WORD "Array" CAN NEVER REACH A DRAFT ─────────────────────────
+// The cottage-name bug's whole class: `(string)` on an array is the literal
+// word "Array", and the JSON content rows (published FAQs, the guest-question
+// misses) are the two inputs written OUTSIDE this file — one by the owner,
+// one by a public rate-limited endpoint. Hostile shapes go in; the sweep
+// asserts the word appears NOWHERE in the composed output, and that the
+// malformed entry became an ABSENT fact while its well-formed neighbour
+// survived (dropping everything would pass the sweep and lose the feature).
+echo "\n== §18 hostile JSON at the brief\'s boundaries ==\n";
+$hostileFaqs = [
+    ['q' => ['an', 'array'], 'a' => 'real answer'],          // array q
+    ['q' => 'Do you take dogs?', 'a' => ['nested' => 'no']], // array a
+    ['q' => 'Is there parking?', 'a' => 'Yes, beside the cottage.'], // survives
+    ['q' => 3.5, 'a' => 'numeric q is a string fact'],       // numeric is fine
+];
+$enq = night_brief_enquiry(
+    ['id' => 9, 'name' => 'Pat Doe', 'prop_key' => 'jollyboat', 'adults' => 2, 'children' => 0,
+     'check_in' => '2026-09-04', 'check_out' => '2026-09-07', 'message' => 'Hello'],
+    'Jollyboat', null, true, $hostileFaqs,
+);
+nsk('a malformed fact is absent, its neighbour survives', count($enq['facts']) === 2
+    && $enq['facts'][0]['q'] === 'Is there parking?', json_encode($enq['facts']));
+nsk('…and the word Array appears nowhere in the enquiry brief',
+    strpos(json_encode($enq), 'Array') === false, json_encode($enq['facts']));
+$hq = night_questions_brief(
+    [
+        ['q' => ['not', 'a', 'string'], 'n' => 9, 'prop' => '21a'],   // array q → dropped
+        ['q' => 'Is there an EV charger?', 'n' => 3, 'prop' => ['x']], // array prop → label falls back
+        ['q' => 'Can we park?', 'n' => 2, 'prop' => '21a'],
+    ],
+    ['21a' => '21A Westgate'],
+    function ($pk) use ($hostileFaqs) { return $pk === '21a' ? $hostileFaqs : []; },
+);
+nsk('an array question is dropped, not printed as Array', count($hq) === 2
+    && $hq[0]['q'] === 'Is there an EV charger?', json_encode(array_column($hq, 'q')));
+nsk('an array prop falls back to the honest label', $hq[0]['cottage'] === 'the cottages', $hq[0]['cottage']);
+nsk('…and the word Array appears nowhere in the questions brief',
+    strpos(json_encode($hq), 'Array') === false, json_encode($hq));
+nsk('…while the well-formed question keeps its grounded facts',
+    $hq[1]['cottage'] === '21A Westgate' && count($hq[1]['facts']) === 2, json_encode($hq[1]));
 
 echo "\n== Summary ==\n";
 if ($fails) {
