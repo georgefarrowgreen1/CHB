@@ -16,8 +16,10 @@
 //   * and every line above this file is testable with a fake HTTP endpoint,
 //     which is how the drafting logic gets verified without a model at all.
 //
-//  Deliberately NOT streaming. Nobody is watching at two in the morning, and a
-//  single response is one thing to time and one thing to check.
+//  The NIGHT work deliberately does not stream — nobody is watching at two in
+//  the morning, and a single response is one thing to time and one thing to
+//  check. The CHAT does (chatStream below): somebody is watching, and the
+//  difference between a dead app and a thinking model is words appearing.
 // ============================================================
 'use strict';
 
@@ -101,6 +103,64 @@ async function jsonPost(url, body, timeoutMs) {
     }
 }
 
+// The SSE transport for a STREAMED completion: parses `data: {…}` lines out
+// of the body as they arrive and hands each delta to `onDelta`. Chunks cut
+// lines in half, so a carry buffer joins them; `[DONE]` is the wire's own
+// full stop. Returns { ok, status, usage } — the TEXT was already delivered.
+// Injectable, like jsonPost, so the suites stream scripted chunks.
+async function ssePost(url, body, timeoutMs, signal, onDelta) {
+    const ctl = new AbortController();
+    const t = setTimeout(function () { ctl.abort(); }, timeoutMs || 180000);
+    const onAbort = function () { ctl.abort(); };
+    if (signal) { signal.addEventListener('abort', onAbort); }
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: ctl.signal,
+        });
+        if (!res.ok) {
+            let json = null;
+            try { json = JSON.parse(await res.text()); } catch (e) { json = null; }
+            return { ok: false, status: res.status, json: json };
+        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let carry = '';
+        let usage = null;
+        for (;;) {
+            const step = await reader.read();
+            if (step.done) { break; }
+            carry += dec.decode(step.value, { stream: true });
+            const lines = carry.split('\n');
+            carry = lines.pop();
+            for (let i = 0; i < lines.length; i++) {
+                const s = lines[i].trim();
+                if (!s.startsWith('data:')) { continue; }
+                const payload = s.slice(5).trim();
+                if (payload === '[DONE]') { continue; }
+                let j = null;
+                try { j = JSON.parse(payload); } catch (e) { continue; }
+                if (j && j.usage) { usage = j.usage; }
+                const d = j && j.choices && j.choices[0] && j.choices[0].delta;
+                if (d) {
+                    onDelta({
+                        content: typeof d.content === 'string' ? d.content : '',
+                        // llama.cpp under --jinja can carve the thinking into
+                        // its own field; it routes as thinking either way.
+                        reasoning: typeof d.reasoning_content === 'string' ? d.reasoning_content : '',
+                    });
+                }
+            }
+        }
+        return { ok: true, status: 200, usage: usage };
+    } finally {
+        clearTimeout(t);
+        if (signal) { signal.removeEventListener('abort', onAbort); }
+    }
+}
+
 async function jsonGet(url, timeoutMs) {
     const ctl = new AbortController();
     const t = setTimeout(function () { ctl.abort(); }, timeoutMs || 2500);
@@ -124,6 +184,19 @@ function makeEngine(opts) {
     const base = String(o.base || spec.base).replace(/\/+$/, '');
     const post = o.post || jsonPost;
     const get = o.get || jsonGet;
+    const stream = o.stream || ssePost;
+
+    // The boundary check chat() and chatStream() share — the engine must
+    // never rely on its caller, and the two must never drift apart about
+    // what a message is.
+    function cleanMsgs(messages) {
+        return (Array.isArray(messages) ? messages : [])
+            .filter(function (m) {
+                return m && (m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+                    && typeof m.content === 'string' && m.content.trim() !== '';
+            })
+            .map(function (m) { return { role: m.role, content: m.content }; });
+    }
 
     return {
         id: spec.id,
@@ -155,12 +228,7 @@ function makeEngine(opts) {
         // the engine must never rely on its caller.
         async chat(messages, model, opts2) {
             const p = opts2 || {};
-            const msgs = (Array.isArray(messages) ? messages : [])
-                .filter(function (m) {
-                    return m && (m.role === 'user' || m.role === 'assistant' || m.role === 'system')
-                        && typeof m.content === 'string' && m.content.trim() !== '';
-                })
-                .map(function (m) { return { role: m.role, content: m.content }; });
+            const msgs = cleanMsgs(messages);
             if (!msgs.some(function (m) { return m.role === 'user'; })) {
                 return { ok: false, say: 'Nothing to ask the model.' };
             }
@@ -207,6 +275,76 @@ function makeEngine(opts) {
                 tokens: out,
                 // Measured, not quoted. This is the figure the Runner screen shows
                 // and the only honest basis for choosing between engines.
+                tokensPerSec: out && ms ? Math.round((out / (ms / 1000)) * 10) / 10 : null,
+            };
+        },
+
+        // The same conversation, STREAMED — the Chat screen's door. `onEv`
+        // hears each piece as it arrives ({ token } for answer text,
+        // { think } for a reasoning model's own thinking); the return value
+        // is the whole reply, same shape as chat() plus `think` and
+        // `stopped`. Three rules:
+        //  * an ABORT (p.signal) is a decision, not a failure — it returns
+        //    ok:true with the partial text and stopped:true, because the
+        //    owner pressing Stop must keep what was already said;
+        //  * the thinking is REAL or absent: it is only ever what the model
+        //    itself put in reasoning_content — the <think>-in-content form
+        //    is split by the caller (chat.js owns that state machine);
+        //  * the boundary check is chat()'s own (cleanMsgs), so the two
+        //    doors cannot drift.
+        async chatStream(messages, model, opts2, onEv) {
+            const p = opts2 || {};
+            const cb = typeof onEv === 'function' ? onEv : function () {};
+            const msgs = cleanMsgs(messages);
+            if (!msgs.some(function (m) { return m.role === 'user'; })) {
+                return { ok: false, say: 'Nothing to ask the model.' };
+            }
+            const body = {
+                model: model || 'local',
+                messages: msgs,
+                temperature: typeof p.temperature === 'number' ? p.temperature : 0.35,
+                max_tokens: p.maxTokens || 700,
+                stream: true,
+            };
+            if (typeof p.grammar === 'string' && p.grammar !== '') {
+                body.grammar = p.grammar;
+            }
+            const started = Date.now();
+            let text = '';
+            let think = '';
+            let r;
+            try {
+                r = await stream(base + CHAT_PATH, body, p.timeoutMs, p.signal, function (d) {
+                    if (d && d.reasoning) { think += d.reasoning; cb({ think: d.reasoning }); }
+                    if (d && d.content) { text += d.content; cb({ token: d.content }); }
+                });
+            } catch (e) {
+                if (p.signal && p.signal.aborted) {
+                    const msA = Math.max(1, Date.now() - started);
+                    return { ok: true, stopped: true, text: text.trim(), think: think.trim(), ms: msA, tokens: 0, tokensPerSec: null };
+                }
+                return { ok: false, say: 'The model did not answer: ' + (e && e.message ? e.message : 'timed out') };
+            }
+            if (p.signal && p.signal.aborted) {
+                const msA = Math.max(1, Date.now() - started);
+                return { ok: true, stopped: true, text: text.trim(), think: think.trim(), ms: msA, tokens: 0, tokensPerSec: null };
+            }
+            if (!r || !r.ok) {
+                const why = (r && r.json && r.json.error && (r.json.error.message || r.json.error)) || (r ? 'HTTP ' + r.status : 'no answer');
+                return { ok: false, say: 'The model refused: ' + String(why).slice(0, 160) };
+            }
+            if (!text.trim() && !think.trim()) {
+                return { ok: false, say: 'The model answered with nothing.' };
+            }
+            const ms = Math.max(1, Date.now() - started);
+            const out = parseInt((r.usage || {}).completion_tokens, 10) || 0;
+            return {
+                ok: true,
+                stopped: false,
+                text: text.trim(),
+                think: think.trim(),
+                ms: ms,
+                tokens: out,
                 tokensPerSec: out && ms ? Math.round((out / (ms / 1000)) * 10) / 10 : null,
             };
         },
