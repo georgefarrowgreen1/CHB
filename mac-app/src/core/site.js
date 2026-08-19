@@ -163,6 +163,7 @@ function makeSite(opts) {
                 week: (r.json.week && typeof r.json.week === 'object') ? r.json.week : undefined,
                 gaps: Array.isArray(r.json.gaps) ? r.json.gaps : undefined,
                 questions: Array.isArray(r.json.questions) ? r.json.questions : undefined,
+                teach: (r.json.teach && typeof r.json.teach === 'object') ? r.json.teach : undefined,
             };
         },
         // Post a night's work. Returns { ok, stored, skipped[] } or a refusal.

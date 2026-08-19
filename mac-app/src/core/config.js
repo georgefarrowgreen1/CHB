@@ -74,6 +74,7 @@ const DEFAULTS = {
         answer: { on: false, model: '' },
         week: { on: false, model: '' },
         price: { on: false, model: '' },
+        teach: { on: false, model: '' },
     },
     keepAwake: true,
     lastRun: null,

@@ -884,6 +884,23 @@ route_actions([
         } catch (\Throwable $e) {
             $voice = [];
         }
+        // THE TEACH BRIEF (search × Mac, rung 4): the week's dead-end
+        // searches beside the canonical menu the owner's own client synced
+        // (search-canon rides chbAssistSyncPush like the learned/suppressed
+        // lists). Absent when either side is empty — a producer treats
+        // absent as "nothing to map", never as an error.
+        $teach = null;
+        try {
+            $teach = night_teach_brief(
+                content_json('search-misses', []),
+                content_json('search-canon', []),
+                content_json('nlu-learned', []),
+                content_json('nlu-suppressed', []),
+                date('Y-m-d'),
+            );
+        } catch (\Throwable $e) {
+            $teach = null;
+        }
         $payload = ['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX];
         if ($voice) {
             $payload['voice'] = $voice;
@@ -899,6 +916,9 @@ route_actions([
         }
         if ($questions !== null) {
             $payload['questions'] = $questions;
+        }
+        if ($teach !== null) {
+            $payload['teach'] = $teach;
         }
         json_out($payload);
     },

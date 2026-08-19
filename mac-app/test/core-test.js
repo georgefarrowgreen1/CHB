@@ -1644,6 +1644,48 @@ function fakeSite(handler) {
         engine: askEngine('x'), cfg: CFG25, now: MON });
     ok('an empty sweep carries the warm hint through', isw.warm === true && isw.log.length === 0);
 
+    // ── §28 THE TEACH JOB (search × Mac, rung 4) ─────────────────────────────
+    console.log('\n§28 the teach job');
+    const TEACH = { misses: [{ q: 'anyone owing us?', n: 3 }, { q: 'who is leaving', n: 5 }], options: ['who owes me money', 'leaving today'] };
+    let tprompts = [];
+    const teachEngine = function (answers) {
+        let k = 0;
+        return { write: async function (p) { tprompts.push(p); const t = answers[Math.min(k, answers.length - 1)]; k++; return { ok: true, text: t, ms: 400, tokens: 8, tokensPerSec: 40 }; } };
+    };
+    tprompts = [];
+    let tj = await jobs.runTeachJob({ teach: TEACH, engine: teachEngine(['who owes me money', 'leaving today']), model: 'tiny.gguf', now: MON });
+    ok('each dead end is placed on the menu and becomes ONE suggestion item',
+        tj.items.length === 2 && tj.items.every(function (it) { return it.kind === 'teach' && it.target === 'settings:search-learning'; }),
+        JSON.stringify(tj.items.map(function (i) { return i.ref; })));
+    ok('the title carries the FULL query and the sub the canonical, in the fixed teachable shape',
+        tj.items[0].title === '\u201canyone owing us?\u201d' && tj.items[0].sub === 'reads as \u201cwho owes me money\u201d',
+        tj.items[0].title + ' | ' + tj.items[0].sub);
+    ok('the ref is DAYLESS — one suggestion per phrasing ever, whatever night it runs',
+        /^mac--teach-q[0-9a-f]+$/.test(tj.items[0].ref), tj.items[0].ref);
+    ok('…and the prompt is the intent chooser with the menu in it',
+        /EXACTLY ONE line/.test(tprompts[0]) && /leaving today/.test(tprompts[0]));
+
+    // Junk from the model → the phrasing is LEFT ALONE, counted in one line.
+    tj = await jobs.runTeachJob({ teach: TEACH, engine: teachEngine(['I reckon the money one', 'none']), model: 't', now: MON });
+    ok('an unmappable phrasing is left alone and said once, never repaired',
+        tj.items.length === 0 && tj.log.some(function (l) { return /left alone/.test(l.say) && l.level === 'skip'; }),
+        JSON.stringify(tj.log.map(function (l) { return l.say; })));
+
+    // The site's absent/empty shapes, each honest.
+    tj = await jobs.runTeachJob({ engine: teachEngine(['x']), model: 't', now: MON });
+    ok('an older site (no teach block) is a named failure, not a quiet week',
+        tj.log.some(function (l) { return /update the website/.test(l.say); }));
+    tj = await jobs.runTeachJob({ teach: { misses: [{ q: 'x?', n: 1 }], options: [] }, engine: teachEngine(['x']), model: 't', now: MON });
+    ok('an empty menu is a named failure — a mapping could only be invented',
+        tj.items.length === 0 && tj.log.some(function (l) { return /no menu of questions/.test(l.say); }));
+    tj = await jobs.runTeachJob({ teach: { misses: [], options: ['a'] }, engine: teachEngine(['x']), model: 't', now: MON });
+    ok('no dead ends this week is a quiet line, not an error',
+        tj.log.some(function (l) { return /nothing to do/.test(l.say) && l.level === 'info'; }));
+    tj = await jobs.runTeachJob({ teach: { misses: [{ q: ['bad'], n: 1 }, 7, { q: 'ok one?', n: 1 }], options: ['who owes me money'] },
+        engine: teachEngine(['who owes me money']), model: 't', now: MON });
+    ok('garbage misses are absent, the readable one still maps',
+        tj.items.length === 1 && tj.items[0].title === '\u201cok one?\u201d', JSON.stringify(tj.items));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

@@ -41,7 +41,7 @@
 //   answer — a drafted answer to a question guests keep asking
 //   note   — something it read and wants to tell the owner (the week, a trend)
 //   price  — a case for changing a rate, for the owner to weigh
-const NIGHT_KINDS = ['reply', 'answer', 'note', 'price'];
+const NIGHT_KINDS = ['reply', 'answer', 'note', 'price', 'teach'];
 
 // Days each kind is worth keeping. See the header: staleness is about what
 // the item was ABOUT, not about how long the owner has been busy.
@@ -50,6 +50,7 @@ const NIGHT_TTL_DAYS = [
     'price'  => 7,
     'answer' => 14,
     'note'   => 14,
+    'teach'  => 14, // a phrasing suggestion is about the search box, not a moment
 ];
 
 // How many OPEN items the queue may hold. A cap the producer cannot argue
@@ -966,6 +967,64 @@ function night_ask_options($raw)
 const NIGHT_ASK_TTL_MIN = 10;
 const NIGHT_ASK_OPEN_MAX = 6;
 const NIGHT_ASK_Q_MAX = 300;
+
+// ── THE TEACH BRIEF — the week's dead-end searches beside the site's own ──
+// menu of canonical questions, for the overnight teach job. Pure: the caller
+// hands the four stored lists raw (they are owner-device JSON synced through
+// the content table), and garbage at any level is ABSENT, never the word
+// Array. A phrasing the owner already TAUGHT or made LITERAL is withheld —
+// a suggestion about a solved problem teaches the owner to ignore the queue.
+const NIGHT_TEACH_MAX = 10;
+const NIGHT_TEACH_WINDOW_DAYS = 7;
+function night_teach_brief($missesRaw, $canonRaw, $learnedRaw, $suppressedRaw, $todayIso)
+{
+    $opts = night_ask_options($canonRaw);
+    if (!$opts) {
+        return null; // no menu → a mapping could only be invented
+    }
+    $skip = [];
+    if (is_array($learnedRaw)) {
+        foreach ($learnedRaw as $l) {
+            $t = is_array($l) ? night_str($l['t'] ?? '') : '';
+            if ($t !== '') {
+                $skip[mb_strtolower($t)] = true;
+            }
+        }
+    }
+    if (is_array($suppressedRaw)) {
+        foreach ($suppressedRaw as $s) {
+            $t = night_str($s);
+            if ($t !== '') {
+                $skip[mb_strtolower($t)] = true;
+            }
+        }
+    }
+    // The window is CALENDAR days on the miss's own date stamp (the client
+    // writes todayDashed()), compared as strings — no timezone to mis-read.
+    $floor = date('Y-m-d', strtotime(night_str($todayIso) . ' -' . NIGHT_TEACH_WINDOW_DAYS . ' days'));
+    $out = [];
+    if (is_array($missesRaw)) {
+        foreach ($missesRaw as $m) {
+            if (!is_array($m)) {
+                continue;
+            }
+            $q = night_str($m['t'] ?? '');
+            $at = night_str($m['at'] ?? '');
+            if ($q === '' || mb_strlen($q) > 120 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $at) || $at < $floor) {
+                continue;
+            }
+            if (isset($skip[mb_strtolower($q)])) {
+                continue;
+            }
+            $out[] = ['q' => $q, 'n' => max(1, (int) ($m['n'] ?? 1))];
+        }
+    }
+    if (!$out) {
+        return null;
+    }
+    usort($out, fn ($a, $b) => $b['n'] <=> $a['n']);
+    return ['misses' => array_slice($out, 0, NIGHT_TEACH_MAX), 'options' => $opts];
+}
 
 // May this ask be filed at all? '' = yes, else the sentence for the owner.
 function night_ask_problem($kind, $entityId, $question)

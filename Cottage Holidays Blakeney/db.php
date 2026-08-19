@@ -1007,6 +1007,10 @@ function is_internal_content_key($key)
         'nlu-learned',
         'nlu-suppressed',
         'search-misses',
+        // The canonical-question menu the client's answer engine can compute
+        // (chbCanonList) — synced so the overnight teach job and the intent
+        // ask both choose from the site's OWN questions, never invented ones.
+        'search-canon',
         // Guest questions the on-device FAQ assistant couldn't answer
         // (guest-faq.php) — owner-only, surfaced on the Search learning page so
         // the recurring ones can become instant answers.
