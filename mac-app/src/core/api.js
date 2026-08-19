@@ -32,6 +32,7 @@ const siteMod = require('./site');
 const nightMod = require('./night');
 const jobsMod = require('./jobs');
 const runnerMod = require('./runner');
+const chatMod = require('./chat');
 
 function makeApi(deps) {
     const d = deps || {};
@@ -85,6 +86,30 @@ function makeApi(deps) {
             require('fs').mkdirSync(p.dir, { recursive: true });
             require('fs').writeFileSync(p.log, JSON.stringify(nights), 'utf8');
         } catch (e) { /* a log we cannot write is not worth stopping a run for */ }
+    }
+    // THE CHAT — one thread, on this Mac only, the nights.json posture.
+    function readChat() {
+        const p = configMod.paths(dir);
+        try {
+            return chatMod.chatThread(JSON.parse(require('fs').readFileSync(p.chat, 'utf8')));
+        } catch (e) {
+            return [];
+        }
+    }
+    function writeChat() {
+        const p = configMod.paths(dir);
+        try {
+            require('fs').mkdirSync(p.dir, { recursive: true });
+            require('fs').writeFileSync(p.chat, JSON.stringify(chatThread), 'utf8');
+        } catch (e) { /* a thread we cannot write still works for this session */ }
+    }
+    let chatThread = readChat();
+    let chatBusy = false;
+    // The chat's model: the owner's explicit pick, else the reply job's — the
+    // model already trusted with prose. '' means neither exists yet.
+    function chatModelId() {
+        const m = String(cfg.chatModel || (cfg.jobs.reply || {}).model || '');
+        return m;
     }
 
     // Which engine is in use: the owner's choice if they made one and it is
@@ -187,6 +212,23 @@ function makeApi(deps) {
         return { ok: false, say: (r && r.say) || 'The model server did not start.' };
     }
 
+    // Ten quiet minutes and an engine WE started stands down. One definition,
+    // re-armed by whatever used it last — an ask answered, a chat message —
+    // so the two ways of keeping it warm cannot hold two timers.
+    function armIdleStop() {
+        clearTimeout(askIdleStop);
+        askIdleStop = setTimeout(async function () {
+            try {
+                if (!running && !sweeping && !chatBusy && startedModel) {
+                    await runner.stop();
+                    startedModel = '';
+                    askLog.push({ at: nightMod.hhmm(), say: 'stopped the model server — ten quiet minutes', level: 'info' });
+                }
+            } catch (e) { /* leaving it running is the safe failure */ }
+        }, 10 * 60 * 1000);
+        if (askIdleStop.unref) { askIdleStop.unref(); }
+    }
+
     return {
         // Everything the window paints on open. One call, so the UI never has to
         // orchestrate four.
@@ -269,6 +311,9 @@ function makeApi(deps) {
             }
             if (typeof p.engine === 'string' && (p.engine === '' || engineMod.ENGINES[p.engine])) {
                 cfg.engine = p.engine;
+            }
+            if (typeof p.chatModel === 'string') {
+                cfg.chatModel = p.chatModel;
             }
             if (typeof p.keepAwake === 'boolean') {
                 cfg.keepAwake = p.keepAwake;
@@ -509,17 +554,7 @@ function makeApi(deps) {
                 // engine (an ask existed). A stop while a NIGHT run holds the
                 // engine is impossible — runNight and this never overlap.
                 if ((out.answered || out.failed) && startedModel && runner) {
-                    clearTimeout(askIdleStop);
-                    askIdleStop = setTimeout(async function () {
-                        try {
-                            if (!running && !sweeping && startedModel) {
-                                await runner.stop();
-                                startedModel = '';
-                                askLog.push({ at: nightMod.hhmm(), say: 'stopped the model server — ten quiet minutes', level: 'info' });
-                            }
-                        } catch (e) { /* leaving it running is the safe failure */ }
-                    }, 10 * 60 * 1000);
-                    if (askIdleStop.unref) { askIdleStop.unref(); }
+                    armIdleStop();
                 }
                 return { ok: true, answered: out.answered };
             } catch (e) {
@@ -527,6 +562,69 @@ function makeApi(deps) {
             } finally {
                 sweeping = false;
             }
+        },
+
+        // ── THE CHAT — the owner talking to their own model. Not the ──
+        // business channel: no guard (the only reader is the owner), no route
+        // to the site, and chat.js's header says why. The engine handling is
+        // the ask sweep's own — ensure, then ten-quiet-minutes idle-stop.
+        chatHistory() {
+            return { ok: true, thread: chatThread.slice(), model: chatModelId() };
+        },
+        async chatSend(text) {
+            const t = String(typeof text === 'string' ? text : '').trim().slice(0, chatMod.CHAT_MSG_CHARS);
+            if (!t) {
+                return { ok: false, say: 'Type a message first.' };
+            }
+            if (chatBusy) {
+                return { ok: false, say: 'One at a time — the model is still answering.' };
+            }
+            if (running) {
+                // Tonight's run holds the engine and swaps models underneath it.
+                return { ok: false, say: 'Tonight’s work is using the engine — a minute or two and it’s yours.' };
+            }
+            const model = chatModelId();
+            if (!model) {
+                return { ok: false, say: 'No model yet — add one under Library, or pick one for the reply job.' };
+            }
+            chatBusy = true;
+            try {
+                const id = engineId();
+                const eng = engineFor(id);
+                // The screenshot this feature answers: llama.cpp's own web UI
+                // saying "Server unavailable". Here the app STARTS it instead.
+                if (cfg.autoStart && runner) {
+                    const up = await ensureEngine(id, model);
+                    if (!up.ok) {
+                        return { ok: false, say: up.say };
+                    }
+                } else if (!(await eng.reachable())) {
+                    return { ok: false, say: eng.name + ' is not answering on ' + eng.base + ' — start it under Settings → Engine.' };
+                }
+                // The question joins the thread BEFORE the call: it was said,
+                // whatever the model does about it.
+                chatThread = chatMod.chatPush(chatThread, { role: 'user', text: t, at: nightMod.hhmm() });
+                writeChat();
+                const r = await eng.chat(chatMod.chatForModel(chatThread), model, {
+                    temperature: 0.7, maxTokens: 900, timeoutMs: 180000,
+                });
+                if (!r.ok) {
+                    return { ok: false, say: r.say };
+                }
+                chatThread = chatMod.chatPush(chatThread, { role: 'assistant', text: r.text, at: nightMod.hhmm() });
+                writeChat();
+                if (startedModel && runner) {
+                    armIdleStop();
+                }
+                return { ok: true, reply: r.text, ms: r.ms, tokensPerSec: r.tokensPerSec, model: model };
+            } finally {
+                chatBusy = false;
+            }
+        },
+        chatClear() {
+            chatThread = [];
+            writeChat();
+            return { ok: true };
         },
 
         // Where the queue lives, so the window can offer to open it.

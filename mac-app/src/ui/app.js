@@ -43,6 +43,7 @@
         ['Activity', function () { return S ? (S.asks.today + ' answered today') : ''; }],
         ['Work', function () { return S ? onCount() + ' job' + (onCount() === 1 ? '' : 's') + ' on' : ''; }],
         ['Library', function () { return S ? S.models.length + ' installed' : ''; }],
+        ['Chat', function () { return C && C.thread.length ? Math.ceil(C.thread.length / 2) + ' turns, on this Mac only' : 'a private conversation'; }],
     ];
     function onCount() {
         return S.jobs.filter(function (j) { return j.on; }).length;
@@ -80,11 +81,16 @@
         Array.prototype.forEach.call(document.querySelectorAll('.snav[data-v]'), function (n) {
             if (parseInt(n.getAttribute('data-v'), 10) === i) { n.setAttribute('aria-current', 'true'); } else { n.removeAttribute('aria-current'); }
         });
-        [0, 1, 2, 3].forEach(function (j) {
+        [0, 1, 2, 3, 4].forEach(function (j) {
             var el = $('v' + j);
             if (j === i) { el.removeAttribute('hidden'); } else { el.setAttribute('hidden', ''); }
         });
         paintTitle();
+        // Chat loads lazily on first open — its thread is a file the other
+        // screens never need — and the cursor lands in the box, ready.
+        if (i === 4) {
+            chatLoad().then(function () { try { $('chatIn').focus(); } catch (e) { /* not painted */ } });
+        }
     }
     function paintTitle() {
         $('tbTitle').textContent = TITLES[view][0];
@@ -383,6 +389,91 @@
         });
     }
 
+    // ── THE CHAT ─────────────────────────────────────────────────────────
+    // One thread, held by the main process (chats.json). The window renders
+    // whatever it is handed and escapes it here — a model's reply is TEXT
+    // whatever markup it writes, the same rule the feed follows.
+    var C = null;              // { thread, model } — the last chat state handed over
+    var chatWaiting = false;   // a send in flight → the thinking bubble
+    async function chatLoad() {
+        if (!window.hand.chatHistory) { return; }
+        try { C = await window.hand.chatHistory(); } catch (e) { C = { thread: [], model: '' }; }
+        renderChat();
+    }
+    function chatBubble(m) {
+        return '<div class="bub ' + (m.role === 'user' ? 'user' : 'bot') + '">' + esc(m.text)
+            + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>';
+    }
+    function renderChat() {
+        if (!C) { return; }
+        var log = $('chatLog');
+        var html = (C.thread || []).map(chatBubble).join('');
+        if (!html && !chatWaiting) {
+            html = '<div class="chatempty"><b>Ask your Mac anything</b>'
+                + 'The same model that drafts your replies, talking just to you. '
+                + 'It starts the engine itself on your first message.</div>';
+        }
+        if (chatWaiting) {
+            html += '<div class="bub bot think" aria-hidden="true"><i></i><i></i><i></i></div>';
+        }
+        log.innerHTML = html;
+        log.scrollTop = log.scrollHeight;
+        // The model picker — the owner's pick, else the reply job's, said so.
+        var sel = $('chatModel');
+        if (S && sel !== document.activeElement) {
+            sel.innerHTML = S.models.length
+                ? S.models.map(function (m) {
+                    return '<option value="' + esc(m.id) + '"' + (m.id === C.model ? ' selected' : '') + '>' + esc(m.name) + ' · ' + m.sizeGB + ' GB</option>';
+                }).join('')
+                : '<option value="">No models yet</option>';
+        }
+        $('chatNote').textContent = !S ? ''
+            : !S.models.length ? 'Add a model under Library first — the chat uses whichever one you pick here.'
+            : !S.engineServing ? 'The engine is cold — it starts itself on your first message, which adds a few seconds once.'
+            : '';
+        if (view === 4) { paintTitle(); }
+    }
+    async function chatSend() {
+        var box = $('chatIn');
+        var text = String(box.value || '').trim();
+        if (!text || chatWaiting) { return; }
+        // Optimistic: the question is on screen at once; the main process is
+        // appending the same message to the thread, and the reload after the
+        // answer reconciles the two.
+        C = C || { thread: [], model: '' };
+        C.thread = C.thread.concat([{ role: 'user', text: text, at: '' }]);
+        chatWaiting = true;
+        box.value = '';
+        $('chatSendBtn').disabled = true;
+        renderChat();
+        var r = null;
+        try {
+            r = await window.hand.chatSend(text);
+        } catch (e) {
+            r = { ok: false, say: 'The app could not reach its own engine.' };
+        }
+        chatWaiting = false;
+        $('chatSendBtn').disabled = false;
+        if (!r || !r.ok) {
+            // The refusal is the main process's own sentence — engine cold and
+            // unstartable, no model, tonight's run holding the engine.
+            toast((r && r.say) || 'The model did not answer.');
+            await chatLoad();
+            box.value = text; // their words come back rather than vanishing
+            box.focus();
+            return;
+        }
+        await chatLoad();
+        $('chatLive').textContent = 'Replied: ' + r.reply.slice(0, 120);
+        if (r.tokensPerSec) {
+            $('chatNote').textContent = esc0(r.model) + ' · ' + r.tokensPerSec + ' tokens a second, on this Mac';
+        }
+        box.focus();
+    }
+    // textContent needs no escaping — this exists so the linter-visible intent
+    // ("this is a display string") survives refactors that move it to HTML.
+    function esc0(v) { return String(v == null ? '' : v); }
+
     async function refresh() {
         try {
             S = await window.hand.state();
@@ -409,6 +500,13 @@
                 x.setAttribute('aria-pressed', x === fc ? 'true' : 'false');
             });
             applyFilter();
+            return;
+        }
+        if (t.id === 'chatSendBtn') { chatSend(); return; }
+        if (t.id === 'chatNew') {
+            if (window.hand.chatClear) { await window.hand.chatClear(); }
+            await chatLoad();
+            $('chatIn').focus();
             return;
         }
         // The checklist's own controls.
@@ -570,6 +668,18 @@
         if (sel) {
             await window.hand.saveConfig({ job: { id: sel.getAttribute('data-job-model'), model: sel.value } });
             await refresh();
+            return;
+        }
+        if (ev.target && ev.target.id === 'chatModel') {
+            await window.hand.saveConfig({ chatModel: ev.target.value });
+            await chatLoad();
+        }
+    });
+    // Enter sends; Shift+Enter is a new line — the habit every chat teaches.
+    $('chatIn').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatSend();
         }
     });
     $('siteUrl').addEventListener('blur', async function () {
