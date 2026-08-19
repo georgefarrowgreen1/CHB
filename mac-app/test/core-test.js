@@ -1433,6 +1433,14 @@ function fakeSite(handler) {
     {
         const cfgMod = require('../src/core/config');
         ok('openAtLogin defaults off', cfgMod.DEFAULTS.openAtLogin === false);
+        ok('moveDeclined defaults off', cfgMod.DEFAULTS.moveDeclined === false);
+        const upd = require('../src/core/update');
+        const base = { isMac: true, packaged: true, inApplications: false, declined: false };
+        ok('the move is offered exactly when it should be', upd.shouldOfferMove(base) === true
+            && upd.shouldOfferMove(Object.assign({}, base, { isMac: false })) === false
+            && upd.shouldOfferMove(Object.assign({}, base, { packaged: false })) === false
+            && upd.shouldOfferMove(Object.assign({}, base, { inApplications: true })) === false
+            && upd.shouldOfferMove(Object.assign({}, base, { declined: true })) === false);
         const merged = cfgMod.merge(cfgMod.DEFAULTS, { openAtLogin: true });
         ok('…and a stored true survives the merge', merged.openAtLogin === true);
     }

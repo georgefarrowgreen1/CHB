@@ -25203,7 +25203,7 @@ async function draftEnquiryOnMac(enquiryId) {
     const e = enquiries.find((x) => String(x.id) === String(enquiryId));
     if (!e || !e.dbId) return;
     openEnquiryEmail(e.id);
-    const body = document.getElementById('enq-email-body');
+    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
     if (!body) return;
     const before = body.value;
     try { toast('Asking your Mac — a few seconds…'); } catch (err) {}
@@ -25214,7 +25214,7 @@ async function draftEnquiryOnMac(enquiryId) {
         try { glassAlert(String((err && err.message) || err)); } catch (e2) {}
         return;
     }
-    const now = document.getElementById('enq-email-body');
+    const now = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
     if (!now) return; // the composer was closed while the Mac worked
     if (now.value === before) {
         now.value = text;
@@ -25225,7 +25225,7 @@ async function draftEnquiryOnMac(enquiryId) {
     // The owner typed while the Mac worked: offer, never overwrite.
     try {
         toast('Your Mac finished a draft', '', { label: 'Use it', fn: () => {
-            const b = document.getElementById('enq-email-body');
+            const b = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
             if (b) { b.value = text; b.focus(); }
         } });
     } catch (err) {}

@@ -352,6 +352,42 @@ function startAskPoll() {
 // visible (and removable) in System Settings → General → Login Items like any
 // other app. Applied at boot and after every settings save; setting it to the
 // value it already holds is a no-op, so this is safe to call freely.
+// THE APP MOVES ITSELF, so nobody has to drag it out of Downloads or —
+// worse — run it off the read-only disk image for ever. Electron's
+// moveToApplicationsFolder() copies/moves and relaunches from the new home;
+// the JUDGEMENT of whether to offer lives in core/update.js where it is
+// gated, and "Not now" is remembered so the question is asked exactly once.
+function maybeOfferMove() {
+    try {
+        const updateMod = require('./core/update');
+        const cfg = api._cfg();
+        if (!updateMod.shouldOfferMove({
+            isMac: process.platform === 'darwin',
+            packaged: app.isPackaged,
+            inApplications: app.isInApplicationsFolder(),
+            declined: !!cfg.moveDeclined,
+        })) {
+            return;
+        }
+        const { dialog } = require('electron');
+        const pick = dialog.showMessageBoxSync({
+            type: 'question',
+            message: 'Move to your Applications folder?',
+            detail: 'Cottage Holidays Blakeney can move itself there now — nothing to drag. Your settings, models and key are kept either way.',
+            buttons: ['Move to Applications', 'Not now'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        if (pick === 0) {
+            // Relaunches from the new location by itself; a failure (no
+            // permission, disk full) leaves the app running where it is.
+            app.moveToApplicationsFolder();
+            return;
+        }
+        api.saveConfig({ moveDeclined: true });
+    } catch (e) { /* an offer that cannot be made is simply not made */ }
+}
+
 function applyLoginItem() {
     try {
         if (process.platform === 'darwin' && api) {
@@ -514,6 +550,7 @@ app.whenReady().then(function () {
     });
     wire();
     menu();
+    maybeOfferMove();
     create();
     startClock();
     startAskPoll();

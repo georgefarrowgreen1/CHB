@@ -92,6 +92,9 @@ const DEFAULTS = {
     // where the engine settings live. main.js applies it via macOS's own
     // login-items mechanism, so it shows in System Settings like anything else.
     openAtLogin: false,
+    // "Not now" to the move-to-Applications offer is remembered here, so the
+    // offer is made exactly once (see core/update.js shouldOfferMove).
+    moveDeclined: false,
 };
 
 function paths(dirOverride) {

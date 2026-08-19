@@ -270,6 +270,9 @@ function makeApi(deps) {
             if (typeof p.openAtLogin === 'boolean') {
                 cfg.openAtLogin = p.openAtLogin;
             }
+            if (typeof p.moveDeclined === 'boolean') {
+                cfg.moveDeclined = p.moveDeclined;
+            }
             if (p.job && typeof p.job.id === 'string') {
                 const j = jobsMod.jobById(p.job.id);
                 if (!j) {
