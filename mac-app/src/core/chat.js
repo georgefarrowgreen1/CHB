@@ -39,7 +39,7 @@ function chatSystemLine(host) {
     const who = String(host || '').trim();
     return 'You are a helpful assistant running locally on '
         + (who ? who + '’s' : 'the owner’s')
-        + ' own Mac, inside the Blakeney Hand app. You are talking to '
+        + ' own Mac, inside the Cottage Holidays Blakeney AI app. You are talking to '
         + (who || 'the owner') + ' directly. This is a private conversation: '
         + 'you cannot send messages, emails or anything else — nothing you '
         + 'write here reaches the website or a guest. Answer plainly and '

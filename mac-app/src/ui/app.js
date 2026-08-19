@@ -166,9 +166,7 @@
             : !S.secretSet ? 'Not connected'
             : !setupDone() ? 'Nearly set up' : 'Listening';
         $('homeLive').hidden = !(st.connected && !S.running);
-        $('runBtn').disabled = !!S.running;
-        $('runBtn').textContent = S.running ? 'Working…' : 'Run now';
-        if (!S.running) { $('runSub').textContent = ''; }
+        $('runSub').textContent = S.running ? 'Working…' : '';
 
         // HOME — the checklist until setup is done, the heartbeat after.
         var fresh = !setupDone();
@@ -203,7 +201,7 @@
                 : willStart ? 'the engine starts itself when work is due'
                 : 'nothing answering, and nothing this app can start — see Settings → Engine';
             // The latest — the last few things it did, newest first; before
-            // anything has happened at all, the honest offer is Run now.
+            // anything has happened at all, the honest offer is a hand-run (\u2318R).
             var latest = (S.asks.log || []).slice(-3).reverse()
                 .map(function (l) { return feedRow(l, 'ask'); }).join('');
             if (!latest && S.nights[0]) {
@@ -214,7 +212,7 @@
             $('latestCap').hidden = !latest;
             $('homeNote').innerHTML = latest
                 ? 'Everything it has done is under <strong>Activity</strong> — the asks and the nights together.'
-                : 'Nothing yet. Press <strong>Run now</strong> to try it, or wait for ' + esc(r.at || '02:00') + '.';
+                : 'Nothing yet. Press <strong>\u2318R</strong> to run it now, or wait for ' + esc(r.at || '02:00') + '.';
         } else {
             // THE CHECKLIST. Each step is actionable IN PLACE, and each is
             // judged from the same state everything else renders from.
@@ -254,7 +252,7 @@
                 + (n.log || []).map(function (l) { return feedRow(l, 'night'); }).join('');
         });
         $('feed').innerHTML = feed
-            || '<div class="arow"><span class="aico quiet">·</span><span class="amain info">Nothing yet. Press <strong>Run now</strong> to try it, or wait for ' + esc(r.at || '02:00') + '.</span></div>';
+            || '<div class="arow"><span class="aico quiet">·</span><span class="amain info">Nothing yet. Press <strong>\u2318R</strong> to run it now, or wait for ' + esc(r.at || '02:00') + '.</span></div>';
         $('logNote').textContent = feed ? 'Kept 30 nights, on this Mac only.' : '';
         applyFilter();
 
@@ -541,17 +539,7 @@
             await refresh();
             return;
         }
-        if (t.id === 'runBtn') {
-            $('runBtn').disabled = true;
-            $('runBtn').textContent = 'Working…';
-            var res = await window.hand.runNow();
-            await refresh();
-            go(0);
-            toast(res.ok
-                ? (res.night && res.night.posted ? 'Posted ' + res.night.posted + ' to the site — they’re on Today, under Ready for you.' : 'Ran — nothing to post.')
-                : (res.say || 'It could not finish.'));
-            return;
-        }
+
         if (t.id === 'startEng') {
             // It takes tens of seconds and the button says so — a control that
             // looks stuck is one people press again.
@@ -675,6 +663,28 @@
             await chatLoad();
         }
     });
+    // ⌘R / Ctrl+R runs tonight's work now — the button it replaces was a
+    // control for something the app already does by itself (the schedule,
+    // the late catch-up, the asks). preventDefault matters: Ctrl+R is the
+    // renderer's own reload, and a hand-run that also reloaded the window
+    // would throw away the narration it exists to show.
+    var runningByHand = false;
+    async function runByHand() {
+        if (runningByHand || (S && S.running)) { return; }
+        runningByHand = true;
+        $('runSub').textContent = 'Working…';
+        try {
+            var res = await window.hand.runNow();
+            await refresh();
+            go(0);
+            toast(res.ok
+                ? (res.night && res.night.posted ? 'Posted ' + res.night.posted + ' to the site — they’re on Today, under Ready for you.' : 'Ran — nothing to post.')
+                : (res.say || 'It could not finish.'));
+        } finally {
+            runningByHand = false;
+        }
+    }
+
     // Enter sends; Shift+Enter is a new line — the habit every chat teaches.
     $('chatIn').addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -691,6 +701,7 @@
         // ⌘, is Settings, the macOS habit. Escape closes the topmost thing —
         // the sheets first, then Settings.
         if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); openSettings(0); return; }
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); runByHand(); return; }
         if (e.key === 'Escape' && !$('upScrim').hidden) { $('upScrim').hidden = true; return; }
         if (e.key === 'Escape' && !$('scrim').hidden) { $('scrim').hidden = true; return; }
         if (e.key === 'Escape' && !$('setScrim').hidden) { $('setScrim').hidden = true; }
@@ -842,6 +853,10 @@
             $('upBar').style.width = Math.round((p.got / p.total) * 100) + '%';
         });
     }
+
+    // A run finished ANYWHERE — the menu, the crown, the 02:00 schedule —
+    // repaints the window, so a screen left open never shows a stale night.
+    if (window.hand.onRan) { window.hand.onRan(function () { refresh(); }); }
 
     go(0);
     refresh();

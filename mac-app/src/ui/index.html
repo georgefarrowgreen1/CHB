@@ -9,7 +9,7 @@
      The CSP is otherwise as tight as a local page can be: connect-src 'none'
      means this document cannot reach the network at all. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
-<title>Cottage Holidays Blakeney</title>
+<title>Cottage Holidays Blakeney AI</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -23,14 +23,16 @@
 
 <div class="win">
   <div class="topdrag" aria-hidden="true"></div>
-  <div class="float-acts"><span class="runsub" id="runSub"></span>
-    <button class="tbtn prime" type="button" id="runBtn">Run now</button></div>
+  <!-- No Run button: the app runs itself (the 02:00 schedule, the late
+       catch-up, the all-day asks). A hand-run is ⌘R / Ctrl+R — also in the
+       app menu and the menu-bar crown — and this capsule narrates it. -->
+  <div class="float-acts"><span class="runsub" id="runSub" role="status" aria-live="polite"></span></div>
   <span class="vh" id="tbTitle" aria-live="polite"></span><span class="vh" id="tbSub" aria-live="polite"></span>
 
   <nav class="side" aria-label="Sections">
     <div class="brand">
       <img class="mark" src="crown.svg" alt="" aria-hidden="true" width="26" height="26">
-      <span class="nm">Cottage Holidays<br>Blakeney<small>The Hand</small></span>
+      <span class="nm">Cottage Holidays<br>Blakeney<small>AI</small></span>
     </div>
     <button class="snav" type="button" data-v="0" aria-current="true">Home<span class="live" id="homeLive" hidden></span></button>
     <button class="snav" type="button" data-v="4">Chat</button>

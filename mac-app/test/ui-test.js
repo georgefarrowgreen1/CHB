@@ -228,14 +228,15 @@ function fakeState(over) {
         const m26 = await page.evaluate(function () {
             const cs = function (el) { return getComputedStyle(el); };
             const side = document.querySelector('.side');
-            const run = document.getElementById('runBtn');
-            const add = document.getElementById('addBtn');
             const r = document.getElementById('tbTitle').getBoundingClientRect();
             return {
                 sideRadius: parseFloat(cs(side).borderTopLeftRadius) || 0,
                 sideMarginR: parseFloat(cs(side).marginRight) || 0,
-                runBg: cs(run).backgroundColor,
-                addBg: add ? cs(add).backgroundColor : '',
+                // The Run button is RETIRED — the app runs itself, ⌘R is the
+                // hand-run — so the floating chrome must hold NO buttons, and
+                // the narration slot must still exist for a run to speak in.
+                floatButtons: document.querySelectorAll('.float-acts button').length,
+                runSub: !!document.getElementById('runSub'),
                 tbHidden: r.width <= 1 && r.height <= 1,
                 dragStrip: !!document.querySelector('.topdrag'),
             };
@@ -243,10 +244,8 @@ function fakeState(over) {
         ok('the sidebar is a floating slab, not a welded column',
             m26.sideRadius >= 16 && m26.sideMarginR >= 8, JSON.stringify(m26));
         ok('the screen name is announced, not drawn', m26.tbHidden);
-        // One accent capsule per window: the global Run now keeps the accent
-        // fill; a screen's own action (Add model…) paints as quiet glass.
-        ok('one accent capsule per window', !!m26.addBg && m26.runBg !== m26.addBg,
-            m26.runBg + ' vs ' + m26.addBg);
+        ok('the Run button is gone — no control floats where it stood, only the narration slot',
+            m26.floatButtons === 0 && m26.runSub, JSON.stringify(m26));
         ok('the top edge is still draggable with the bar gone', m26.dragStrip);
 
         // ── THE SETTINGS WINDOW: the gear opens it, Escape closes it, and
@@ -467,13 +466,25 @@ function fakeState(over) {
         ok('saving a secret sends it once and clears the field', setC && setC[1] === 'a-new-secret'
             && (await page.inputValue('#secretIn')) === '');
 
-        // ── RUN NOW ──
+        // ── THE HAND-RUN IS THE KEYBOARD ── The button is retired: the app
+        // runs itself (the schedule, the late catch-up, the asks), and ⌘R /
+        // Ctrl+R is the deliberate override — dispatched HERE as a real
+        // keydown, because preventDefault is load-bearing (Ctrl+R is the
+        // renderer's own reload, and a hand-run that reloaded the window
+        // would throw away its own narration).
         await page.keyboard.press('Escape');
         await page.waitForTimeout(120);
-        await page.click('#runBtn');
+        await page.keyboard.press('Control+r');
         await page.waitForTimeout(400);
-        ok('Run now asks the core to run', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'runNow'; }); }));
-        ok('…and lands back on Home', JSON.stringify(await painted()) === '[true,false,false,false,false]');
+        ok('Ctrl+R asks the core to run', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'runNow'; }); }));
+        ok('…and lands back on Home, window intact (no reload: the call log survives)',
+            JSON.stringify(await painted()) === '[true,false,false,false,false]'
+            && await page.evaluate(function () { return window.__calls.length > 3; }));
+        // A second run must not stack on the first mid-flight; a second press
+        // after it finished is a fresh run.
+        await page.keyboard.press('Meta+r');
+        await page.waitForTimeout(300);
+        ok('⌘R works too', (await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'runNow'; }).length; })) === 2);
 
         // ── THE CHAT: the owner and their model, and nothing else ──────────
         // The rules that matter: the reply is TEXT whatever the model writes,
@@ -589,7 +600,7 @@ function fakeState(over) {
         await page.waitForTimeout(120);
         await page.click('[data-v="1"]');
         await page.waitForTimeout(120);
-        ok('…and the empty feed offers Run now instead of nothing', /Run now/.test(await page.textContent('#feed')),
+        ok('…and the empty feed offers the hand-run (⌘R) instead of nothing', /⌘R/.test(await page.textContent('#feed')),
             await page.textContent('#feed'));
         await page.click('[data-v="3"]');
         await page.waitForTimeout(150);
