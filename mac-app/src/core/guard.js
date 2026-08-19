@@ -388,6 +388,68 @@ function checkIntent(reply, options) {
     return '';
 }
 
+// THE DIGEST PROMPT (the analyst). The model is handed the QUESTION and the
+// history records the site's own semantic index matched — and may only
+// ARRANGE what is in them. Everything else is the guard's job on the way out.
+function buildDigestPrompt(q, rows) {
+    const lines = [];
+    lines.push('A holiday-cottage owner asked their business dashboard:');
+    lines.push('QUESTION: ' + String(q || ''));
+    lines.push('');
+    lines.push('Below are the ONLY records you may use. Write a short summary — two to four plain sentences — answering the question FROM THESE RECORDS ALONE.');
+    lines.push('RULES YOU MUST NOT BREAK:');
+    lines.push('1. State ONLY what the records state. If they do not answer the question, say so in one sentence.');
+    lines.push('2. NEVER write a figure, name, or date that is not in a record below.');
+    lines.push('3. No greeting, no sign-off, no markdown, no links.');
+    lines.push('');
+    lines.push('RECORDS:');
+    (Array.isArray(rows) ? rows : []).forEach(function (r, i) { lines.push((i + 1) + '. ' + String(r)); });
+    return lines.join('\n');
+}
+// THE DIGEST CHECK — grounding by arithmetic, not trust. Every £figure in the
+// summary must appear in the rows (separators and trailing .00 forgiven both
+// ways), and every mid-sentence Capitalised word must appear in them too —
+// a proper noun the records never mention is an invention whatever it names.
+// Refusal is the safe direction: a dropped summary costs a retry, an invented
+// figure costs the owner a decision made on a number nobody stated.
+function checkDigest(text, rows) {
+    const problems = [];
+    const t = String(text || '').trim();
+    if (!t) { problems.push('the summary is empty'); }
+    if (t.length > 1200) { problems.push('the summary runs long — it should be two to four sentences'); }
+    const hay = (Array.isArray(rows) ? rows : []).map(function (r) { return String(r || ''); }).join(' ');
+    const hayLow = hay.toLowerCase();
+    // Money grounding.
+    const norm = function (n) { const x = String(n).replace(/,/g, ''); return x.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, ''); };
+    const hayNums = {};
+    (hay.match(/£\s*[\d,]+(?:\.\d+)?/g) || []).forEach(function (m) { hayNums[norm(m.replace(/[£\s]/g, ''))] = true; });
+    (t.match(/£\s*[\d,]+(?:\.\d+)?/g) || []).forEach(function (m) {
+        const n = norm(m.replace(/[£\s]/g, ''));
+        if (!hayNums[n]) { problems.push('states ' + m.trim() + ', which is in none of the records'); }
+    });
+    // Name grounding: a capitalised word mid-sentence that the records never
+    // contain. Sentence-initial words are exempt (they are capitalised by
+    // grammar, not identity), as are a few words of ordinary prose.
+    const COMMON = { I: 1, The: 1, A: 1, An: 1, If: 1, No: 1, Yes: 1, One: 1, Two: 1, Three: 1, Nothing: 1, None: 1, Guests: 1, Guest: 1 };
+    const seen = {};
+    // Sentence-initial is judged by what PRECEDES the word — an optional
+    // (^|…) group is skipped as unmatched at string start on V8, so the
+    // obvious regex called the first word of every summary a proper noun.
+    const re = /\b([A-Z][a-z]{2,})\b/g;
+    let m2;
+    while ((m2 = re.exec(t)) !== null) {
+        const word = m2[1];
+        const before = t.slice(0, m2.index).replace(/["'\u201c\u2018(\s]+$/, '');
+        const initial = before === '' || /[.!?:]$/.test(before);
+        if (initial || COMMON[word] || seen[word]) { continue; }
+        seen[word] = true;
+        if (hayLow.indexOf(word.toLowerCase()) === -1) {
+            problems.push('names \u201c' + word + '\u201d, which appears in none of the records');
+        }
+    }
+    return { ok: problems.length === 0, problems: problems };
+}
+
 // THE CHAT PROMPT. A chat reply is CONVERSATION, not a letter: a greeting is
 // fine (there is no template adding one), but the never-list is stricter —
 // nothing done-claimed, no codes, no money at all, and nothing the thread's
@@ -430,7 +492,7 @@ function buildAnswerPrompt(q, host) {
 }
 
 module.exports = {
-    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildChatPrompt, buildIntentPrompt, checkIntent, buildPricePrompt, buildAnswerPrompt,
+    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildChatPrompt, buildIntentPrompt, checkIntent, buildDigestPrompt, checkDigest, buildPricePrompt, buildAnswerPrompt,
     moneyIn, moneyInFacts, normaliseMoney, partyWords, spokenDay,
     MONEY_RE, FREE_CLAIM_RE, TAKEN_CLAIM_RE,
 };

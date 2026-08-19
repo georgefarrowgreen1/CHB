@@ -2981,6 +2981,37 @@ $intNone = (int) ($r['json']['id'] ?? 0);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $intNone, 'text' => 'none']);
 it_check("'none' is accepted as an answer in its own right", ($r['json']['ok'] ?? false) === true, $r['raw']);
 
+// THE DIGEST ASK (the analyst): the summary's grounding travels WITH the ask,
+// and the door re-checks the money on the way back against what it stored.
+$drows = ['Sarah said the boiler took £120 to fix.', 'Tom said the pressure kept dropping.'];
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'digest', 'question' => 'what did guests say about the boiler?']);
+it_check('a digest ask with no records is refused in words',
+    $r['code'] === 400 && strpos($r['raw'], 'records') !== false, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'digest',
+    'question' => 'what did guests say about the boiler?', 'rows' => $drows]);
+$digId = (int) ($r['json']['id'] ?? 0);
+it_check('a digest ask files with its records', $digId > 0, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 0]);
+$dv = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $digId) {
+        $dv = $a;
+    }
+}
+it_check('the machine reads the question AND the records together',
+    $dv && (($dv['digest']['q'] ?? '') === 'what did guests say about the boiler?')
+    && ($dv['digest']['rows'] ?? []) === $drows, json_encode($dv));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $digId, 'text' => 'Boiler repairs ran to about £450 overall.']);
+it_check('a summary stating money the records never stated is refused at the door',
+    $r['code'] === 400 && strpos($r['raw'], '£450') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $digId, 'text' => 'Two boiler mentions this year — a £120 fix, and a pressure drop Tom reported.']);
+it_check('a grounded summary lands', ($r['json']['ok'] ?? false) === true && empty($r['json']['replayed']), $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $digId]);
+it_check('…and the owner collects it',
+    ($r['json']['status'] ?? '') === 'answered' && strpos((string) $r['json']['answer'], '£120 fix') !== false, $r['raw']);
+
 // LONG-POLL DEGENERATE TIMING: a held ask_status on an already-settled row and
 // a held asks read with rows waiting must both answer at once — the wait is
 // for the EMPTY case only, so these calls prove the hold never taxes a result.

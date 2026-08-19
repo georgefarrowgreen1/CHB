@@ -478,6 +478,14 @@ route_actions([
         if ($kind === 'intent' && !$opts) {
             json_out(['error' => 'An intent ask needs the list of questions the site can answer.'], 400);
         }
+        // A DIGEST ask carries the history rows the summary must be built
+        // from — the same column, its own caps (a record is a paragraph).
+        if ($kind === 'digest') {
+            $opts = night_ask_rows($in['rows'] ?? null);
+            if (!$opts) {
+                json_out(['error' => 'A digest ask needs the records the summary is built from.'], 400);
+            }
+        }
         $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
         $st->execute([$kind, $entityId, night_str($in['prop'] ?? ''), night_str($question),
             $opts ? json_encode($opts) : null]);
@@ -596,6 +604,15 @@ route_actions([
                     continue; // a menu that decodes to nothing offers nothing
                 }
                 $one['intent'] = ['q' => night_str($a['question']), 'options' => $opts];
+            } elseif ($a['kind'] === 'digest') {
+                // The question and the ROWS the summary must be built from —
+                // the grounding travels with the ask, and the answer route
+                // re-checks the money against these same stored rows.
+                $rows = night_ask_rows(json_decode((string) ($a['options'] ?? ''), true));
+                if (!$rows) {
+                    continue; // nothing to summarise offers nothing
+                }
+                $one['digest'] = ['q' => night_str($a['question']), 'rows' => $rows];
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as
                 // the enquiry brief: words and a first name, never contact
@@ -711,6 +728,16 @@ route_actions([
                 $t = trim((string) $in['text']);
                 if ($t !== 'none' && !in_array($t, $opts, true)) {
                     json_out(['error' => 'An intent answer must be one of the offered questions, or the word none.'], 400);
+                }
+            }
+            // A DIGEST ANSWER'S MONEY IS GROUNDED IN ITS OWN ROWS — the Mac's
+            // guard enforces this too; the door re-checks against what was
+            // actually STORED, so a figure the rows never stated cannot land.
+            if ($meta && $meta['kind'] === 'digest') {
+                $rows = night_ask_rows(json_decode((string) ($meta['options'] ?? ''), true));
+                $bad = night_digest_answer_problem((string) $in['text'], $rows);
+                if ($bad !== '') {
+                    json_out(['error' => $bad], 400);
                 }
             }
         } catch (\Throwable $e) {

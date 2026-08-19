@@ -42,6 +42,9 @@
 //   note   — something it read and wants to tell the owner (the week, a trend)
 //   price  — a case for changing a rate, for the owner to weigh
 const NIGHT_KINDS = ['reply', 'answer', 'note', 'price', 'teach'];
+// Ask kinds live in NIGHT_ASK_KINDS below — the queue's kinds and the ask
+// channel's kinds are different vocabularies on purpose (a 'digest' is asked
+// and answered in a minute; it never becomes a queue row).
 
 // Days each kind is worth keeping. See the header: staleness is about what
 // the item was ABOUT, not about how long the owner has been busy.
@@ -938,7 +941,7 @@ function night_voice_examples($templates)
 // expired ask is REFUSED an answer rather than quietly accepting one late).
 // The open cap is small for the same reason the queue's is: a runaway
 // clicker, or a stuck Mac, must not turn the table into a pile.
-const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat', 'intent'];
+const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat', 'intent', 'digest'];
 // The INTENT ask's list: the site's canonical questions. Small and bounded —
 // this is a menu the model picks from, not a corpus.
 const NIGHT_ASK_OPTS_MAX = 40;
@@ -1027,6 +1030,64 @@ function night_teach_brief($missesRaw, $canonRaw, $learnedRaw, $suppressedRaw, $
 }
 
 // May this ask be filed at all? '' = yes, else the sentence for the owner.
+// ── THE DIGEST ASK'S ROWS — the history records the summary must be built ──
+// FROM, and the whole grounding story: the model may only arrange what is in
+// these rows, and the door re-checks the money on the way back. Bigger caps
+// than the intent menu (a history record is a paragraph, not a label).
+const NIGHT_ASK_ROWS_MAX = 8;
+const NIGHT_ASK_ROW_CHARS = 300;
+function night_ask_rows($raw)
+{
+    if (!is_array($raw)) {
+        return [];
+    }
+    $out = [];
+    foreach ($raw as $r) {
+        $s = night_str($r);
+        if ($s === '') {
+            continue;
+        }
+        $out[] = mb_substr($s, 0, NIGHT_ASK_ROW_CHARS);
+        if (count($out) >= NIGHT_ASK_ROWS_MAX) {
+            break;
+        }
+    }
+    return $out;
+}
+
+// A DIGEST ANSWER IS CHECKED AGAINST ITS OWN ROWS at the door: every £figure
+// it states must appear in the rows it was built from — the Mac's guard
+// enforces this too, and the door re-checks because the door must never rely
+// on the caller. Figures are compared with separators stripped, so £1,200 in
+// the summary matches £1200 in a row.
+function night_digest_answer_problem($text, $rows)
+{
+    $t = (string) (is_string($text) ? $text : '');
+    if (!preg_match_all('/£\s*([\d,]+(?:\.\d+)?)/u', $t, $m)) {
+        return '';
+    }
+    $hay = '';
+    foreach ((is_array($rows) ? $rows : []) as $r) {
+        $hay .= ' ' . night_str($r);
+    }
+    $hayNums = [];
+    if (preg_match_all('/£\s*([\d,]+(?:\.\d+)?)/u', $hay, $hm)) {
+        foreach ($hm[1] as $n) {
+            $hayNums[str_replace(',', '', $n)] = true;
+        }
+    }
+    foreach ($m[1] as $n) {
+        $norm = str_replace(',', '', $n);
+        // £120 in a row grounds £120.00 in the summary, and the reverse.
+        $trim = rtrim(rtrim($norm, '0'), '.');
+        $ok = isset($hayNums[$norm]) || isset($hayNums[$norm . '.00']) || isset($hayNums[$trim]) || isset($hayNums[$trim . '.00']);
+        if (!$ok) {
+            return 'The summary states £' . $n . ', which appears in none of the records it was built from.';
+        }
+    }
+    return '';
+}
+
 function night_ask_problem($kind, $entityId, $question)
 {
     if (!in_array($kind, NIGHT_ASK_KINDS, true)) {
@@ -1041,6 +1102,9 @@ function night_ask_problem($kind, $entityId, $question)
     }
     if ($kind === 'intent' && night_str($question) === '') {
         return 'An intent ask needs the query to place.';
+    }
+    if ($kind === 'digest' && night_str($question) === '') {
+        return 'A digest ask needs the question the summary answers.';
     }
     if ($kind === 'answer') {
         $q = night_str($question);

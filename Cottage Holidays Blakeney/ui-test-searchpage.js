@@ -2288,6 +2288,53 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate((q) => { const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false); }, oddQ4);
   await page.waitForTimeout(1800);
   ok(!macAsks.some((b) => b.action === 'ask'), 'a Mac known asleep is never asked');
+  // ── §24 SEARCH × MAC — the analyst: a grounded summary over the records ──
+  // the semantic tier matched, landing ABOVE them (the receipts stay). The
+  // rows are seeded in the tier's own shape (_txt carries the record text);
+  // the kick itself is source-gated in search-test.
+  console.log('\n§24 search × Mac: the analyst');
+  await page.evaluate(() => {
+    siteContent['night-shift'] = '1';
+    window.__nightPre = { mac: { seen: Math.floor(Date.now() / 1000), listening: true } };
+    openCmdK();
+  });
+  const digQ = 'summarise what guests said about the boiler';
+  macAsks.length = 0; macAnswer = null;
+  await page.evaluate((q) => {
+    const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false);
+    const rows = [
+      { type: 'review', id: 'dg-r1', label: 'the boiler took £120 to fix…', sub: 'Review', _sem: true,
+        _txt: 'Review from Sarah: the boiler took £120 to fix and rattled all week.', run: () => {} },
+      { type: 'message', id: 'dg-m1', label: 'boiler pressure kept dropping', sub: 'Chat message', _sem: true,
+        _txt: 'Tom said the boiler pressure kept dropping.', run: () => {} },
+    ];
+    __cmdkResults = __cmdkResults.concat(rows); cmdkRender(true);
+    chbMacDigest(q.toLowerCase(), rows);
+  }, digQ);
+  await waitNode(() => macAsks.some((b) => b.action === 'ask' && b.kind === 'digest'), 6000);
+  const dAsk = macAsks.find((b) => b.action === 'ask' && b.kind === 'digest');
+  ok(!!dAsk && Array.isArray(dAsk.rows) && dAsk.rows.length === 2 && /£120/.test(dAsk.rows[0]),
+    'after the settle the digest ask files with the records themselves');
+  st = await page.evaluate(() => ({ shim: __cmdkResults[0] && __cmdkResults[0].id === 'mac-digest' && /Reading 2 records/.test(__cmdkResults[0].label || '') }));
+  ok(st.shim, 'the shimmer leads while the Mac reads');
+  macAnswer = 'Two boiler mentions — Sarah’s £120 fix, and the pressure drop Tom reported.';
+  await page.waitForFunction(() => __cmdkResults[0] && __cmdkResults[0].id === 'mac-digest' && /£120 fix/.test(__cmdkResults[0].label || ''), null, { timeout: 15000 });
+  st = await page.evaluate(() => ({
+    sub: __cmdkResults[0].sub || '',
+    receipts: __cmdkResults.filter((r) => r && r._sem).length,
+    painted: /Summed up on your Mac/.test(document.querySelector('#cmdk-results').textContent || ''),
+  }));
+  ok(/Summed up on your Mac/.test(st.sub) && st.painted, 'the summary lands attributed');
+  ok(st.receipts === 2, `the records stay beneath it — the receipts (${st.receipts})`);
+  // A question that isn't summarise-shaped never spends an ask, nor does a
+  // single record (it is already on screen).
+  macAsks.length = 0;
+  await page.evaluate(() => {
+    chbMacDigest('what did sarah say about the boiler', [{ _txt: 'a' }, { _txt: 'b' }]);
+    chbMacDigest('summarise the boiler complaints', [{ _txt: 'only one record' }]);
+  });
+  await page.waitForTimeout(1800);
+  ok(!macAsks.some((b) => b.action === 'ask'), 'a non-summarise question and a lone record both refuse to file');
   await page.evaluate(() => { closeCmdK(); delete window.__nightPre; siteContent['night-shift'] = ''; });
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');

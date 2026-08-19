@@ -541,6 +541,26 @@ nsk('a non-array menu is [], never the word Array',
 nsk('the menu caps at ' . NIGHT_ASK_OPTS_MAX,
     count(night_ask_options(array_map(fn ($i) => 'q' . $i, range(1, NIGHT_ASK_OPTS_MAX + 10)))) === NIGHT_ASK_OPTS_MAX);
 
+// ── §20b THE DIGEST ASK — a summary grounded in its own records ───────────
+echo "\n== §20b the digest ask ==\n";
+nsk("'digest' is an ask kind, needing its question",
+    night_ask_problem('digest', 0, 'what did guests say about the boiler?') === ''
+    && night_ask_problem('digest', 0, '  ') !== '');
+$rows20 = night_ask_rows(['Sarah said the boiler took £120 to fix.', '', ['array'], str_repeat('long ', 100), 42]);
+nsk('the rows are cleaned at the boundary — an over-long one is CUT, not dropped (a record is evidence)',
+    count($rows20) === 3 && $rows20[0] === 'Sarah said the boiler took £120 to fix.'
+    && mb_strlen($rows20[1]) === NIGHT_ASK_ROW_CHARS && $rows20[2] === '42', json_encode(array_map('mb_strlen', $rows20)));
+nsk('the rows cap at ' . NIGHT_ASK_ROWS_MAX . ', and a non-array is []',
+    count(night_ask_rows(array_fill(0, 20, 'r'))) === NIGHT_ASK_ROWS_MAX && night_ask_rows('x') === []);
+$dr = ['Sarah paid £120 for the boiler.', 'Tom said the pressure kept dropping, refund of £1,200 agreed.'];
+nsk('a summary whose money is IN the records passes',
+    night_digest_answer_problem('Two boiler mentions — a £120 fix and a £1200 refund.', $dr) === '');
+nsk('…separators and trailing .00 forgiven both ways',
+    night_digest_answer_problem('The fix cost £120.00.', $dr) === '');
+nsk('a figure the records never state is refused, named in the sentence',
+    strpos(night_digest_answer_problem('Repairs ran to about £450 overall.', $dr), '£450') !== false);
+nsk('a summary with no money at all sails through', night_digest_answer_problem('Mostly boiler grumbles.', $dr) === '');
+
 // ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
 echo "\n== §21 the voice examples ==\n";
 $tpls = [
