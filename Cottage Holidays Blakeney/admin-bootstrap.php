@@ -131,7 +131,11 @@ try {
         if ($raw === null) {
             $raw = trim((string) content_value('apikey-nightshift'));
         }
-        $night['quiet'] = night_quiet_problem(night_devices($raw), time());
+        $devs = night_devices($raw);
+        $night['quiet'] = night_quiet_problem($devs, time());
+        // Live presence for the Draft-on-your-Mac buttons — free, the same
+        // devices read (the $feeds precedent: never a request of its own).
+        $night['mac'] = night_mac_presence($devs, time());
     }
 } catch (\Throwable $e) {
     $night = ['on' => 0, 'n' => 0];

@@ -1445,6 +1445,21 @@ function fakeSite(handler) {
         ok('…and a stored true survives the merge', merged.openAtLogin === true);
     }
 
+    // Stood-down enquiries are SAID: a shorter brief must never read as
+    // enquiries going missing (integration step 2 — a binned draft stays
+    // binned, and the log names why the night was quieter).
+    {
+        const r1 = await jobs.runReplyJob({ engine: { write: async () => ({ ok: true, text: 'x', ms: 1 }) },
+            model: 'm', host: 'G', now: MON, enquiries: [], stoodDown: 2 });
+        ok('an empty brief with stood-down rows says so', r1.log.some(function (l) {
+            return /2 stood down/.test(l.say) && /already dealt/.test(l.say); }),
+            JSON.stringify(r1.log.map(function (l) { return l.say; })));
+        const r2 = await jobs.runReplyJob({ engine: { write: async () => ({ ok: true, text: 'x', ms: 1 }) },
+            model: 'm', host: 'G', now: MON, enquiries: [], stoodDown: 0 });
+        ok('…and a genuinely quiet night keeps its own sentence', r2.log.some(function (l) {
+            return /nothing waiting/.test(l.say); }));
+    }
+
     // ── §25 THE ASK SWEEP — the daytime half, same rules at a moment's tempo ──
     console.log('\n§25 the ask sweep');
     const posted25 = [];

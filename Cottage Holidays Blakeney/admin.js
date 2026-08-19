@@ -11944,7 +11944,7 @@ function renderSearchLearning() {
                 <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
                 <div class="sl-row-acts">
                     <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
-                    ${chbMacDraftReady() ? `<button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAskMac', r.q, String(r.prop || ''))}>✨ Draft on your Mac</button>` : ''}
+                    ${chbMacDraftBtnHtml('slAskMac', r.q, String(r.prop || ''), 'btn-sm btn-edit sl-teach')}
                     <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
                 </div>
             </div>`;
@@ -18401,12 +18401,16 @@ async function nightDismiss(id) {
     const n = parseInt(id, 10) || 0;
     const r = await nightAct(n, 'dismiss');
     if (!r || !r.ok) return;
+    const wasReply = __nightItems.some((it) => (parseInt(it.id, 10) || 0) === n && it.kind === 'reply');
     __nightItems = __nightItems.filter((it) => (parseInt(it.id, 10) || 0) !== n);
     renderNightReady();
     // Binning is one tap, so putting it back is one tap. The machine wrote the
     // row, not the owner — a dismissal here is a judgement about a draft, and a
-    // judgement made in a second deserves a second to change.
-    toast('Binned.', undefined, { label: 'Undo', fn: () => nightRestore(n) });
+    // judgement made in a second deserves a second to change. A binned REPLY
+    // also STAYS binned: the brief withholds that enquiry, so the same draft
+    // does not reappear tomorrow — and the toast says so, or the owner learns
+    // it by wondering.
+    toast(wasReply ? 'Binned — it won\u2019t be drafted again.' : 'Binned.', undefined, { label: 'Undo', fn: () => nightRestore(n) });
 }
 async function nightRestore(id) {
     const n = parseInt(id, 10) || 0;
@@ -25183,6 +25187,29 @@ function chbMacDraftReady() {
     // which only ever hides an offer.
     return String(siteContent['night-shift'] || '') === '1';
 }
+// IS THE MAC LISTENING RIGHT NOW? The bootstrap carries the devices' last-seen
+// (night.mac — the same read the quiet duty makes), and the ask poll keeps it
+// within ~6 minutes while the app runs. The button reads this so it never
+// offers a 90-second wait against a Mac known to be asleep.
+function chbMacPresence() {
+    const pre = /** @type {any} */ (window).__nightPre;
+    const m = pre && pre.mac;
+    if (!m || !m.seen) { return { listening: false, words: 'not seen yet' }; }
+    if (m.listening) { return { listening: true, words: 'listening' }; }
+    return { listening: false, words: 'last seen ' + relTime(new Date(m.seen * 1000).toISOString()) };
+}
+// The button (or the honest capsule when the Mac is asleep) — ONE composer,
+// because the enquiry hub and Search learning must tell the same story.
+function chbMacDraftBtnHtml(act, arg1, arg2, cls) {
+    if (!chbMacDraftReady()) return '';
+    const p = chbMacPresence();
+    // `cls` lets each surface keep its own control vocabulary — the hub's
+    // quiet link tier, Search learning's pill row — one composer either way.
+    if (p.listening) {
+        return `<button type="button" class="${cls || 'bhub-actlink bhub-msg-draft'}" ${chbAttrs(act, arg1, arg2 || '')}>✨ Draft on your Mac</button>`;
+    }
+    return `<span class="bhub-mut" style="font-size:12px;">Your Mac is asleep · ${escapeHtml(p.words)}</span>`;
+}
 async function chbAskMac(kind, payload) {
     const filed = await apiPost('nightshift.php', Object.assign({ action: 'ask', kind }, payload));
     const id = filed && filed.id;
@@ -25307,7 +25334,7 @@ function renderEnquiryHub() {
             <span class="bhub-msg-cap">Their message</span>
             ${e.message ? `<p class="bhub-msg-text">“${escapeHtml(e.message)}”</p>` : '<p class="bhub-msg-text bhub-mut" style="margin:0;">No message — they just asked for the dates.</p>'}
             ${e.email && e.message ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>` : ''}
-            ${e.email && e.message && chbMacDraftReady() ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('draftEnquiryOnMac', String(e.id))}>✨ Draft on your Mac</button>` : ''}
+            ${e.email && e.message ? chbMacDraftBtnHtml('draftEnquiryOnMac', String(e.id)) : ''}
         </div>`;
     // ---- The QUOTE — money is a quote here, not a ledger: one row, the
     // schedule approval implies in the sub, breakdown + price/plan controls

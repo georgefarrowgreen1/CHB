@@ -181,6 +181,7 @@ async function runNight(deps) {
             host: brief.host,
             now: now,
             enquiries: brief.enquiries,
+            stoodDown: brief.stoodDown,
             week: brief.week,
             gaps: brief.gaps,
             questions: brief.questions,
