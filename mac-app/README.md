@@ -34,7 +34,7 @@ are the ones with the tests.
 1. **A model runner — and the app now carries its own.** A universal
    `llama-server` (llama.cpp's, MIT-licensed, built by the same workflow that
    builds the app) ships inside the bundle, and the app **starts and stops it
-   itself**: the Runner screen grows a **Start** button when nothing is
+   itself**: Settings → Engine grows a **Start** button when nothing is
    answering, and a night that wakes to a dead engine brings it up, drafts, and
    shuts it down again. No Homebrew, no Terminal, no window left open.
 
@@ -63,14 +63,14 @@ are the ones with the tests.
    under it, because it is done once per machine and then never again.
 
    **Tap Connect a Mac.** It shows an eight-character code; type that into this
-   app's Connection screen and it gives itself a key. The code works **once**
+   app's Settings → Website tab and it gives itself a key. The code works **once**
    and expires in ten minutes, so one glimpsed over a shoulder is worthless
    shortly after.
 
    **That is the only thing to fill in.** The app already knows the site's
    address — it carries one business's crown and can only ever talk to one
    site, so asking for it was asking you to supply a fact it had. A staging
-   copy overrides it under *Change…* on the Connection screen; emptying that
+   copy overrides it under *Change…* on Settings → Website; emptying that
    box puts the standard address back.
 
    The app used to be told to paste in the site's daily-jobs secret, and that
