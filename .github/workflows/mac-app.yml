@@ -343,15 +343,25 @@ jobs:
           }
           boot "arm64, native"
           # Rosetta: present on real owner Macs that hit this path; installed
-          # here if the runner image lacks it. If it cannot be installed the
-          # leg is SKIPPED AND SAID — never silently green.
+          # here if the runner image lacks it — BOUNDED, because softwareupdate
+          # on these runners can hang indefinitely (measured: 29 minutes on a
+          # step whose real work is 30 seconds, the whole build stalled behind
+          # it). macOS has no GNU timeout, so the bound is a watched child.
+          # If Rosetta cannot be had in 3 minutes the leg is SKIPPED AND SAID —
+          # never silently green, and never the thing that starves the build.
           if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
-            softwareupdate --install-rosetta --agree-to-license || true
+            softwareupdate --install-rosetta --agree-to-license & SU=$!
+            for i in $(seq 1 36); do
+              kill -0 "$SU" 2>/dev/null || break
+              sleep 5
+            done
+            kill "$SU" 2>/dev/null || true
+            wait "$SU" 2>/dev/null || true
           fi
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
             boot "x86_64, under Rosetta" arch -x86_64
           else
-            echo "Rosetta unavailable on this runner — x86_64 boot NOT proven."
+            echo "Rosetta unavailable on this runner — x86_64 boot NOT proven (the arm64 leg above is the load-bearing one)."
           fi
 
       - name: What was built
