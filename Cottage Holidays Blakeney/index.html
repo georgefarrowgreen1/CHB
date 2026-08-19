@@ -1217,6 +1217,10 @@
                 <option>Check-in is from 3pm and check-out by 10am.</option>
                 <option>Could you let me know your preferred dates and party size?</option>
             </select>
+            <!-- Admin-only, revealed by admin.js's presence watcher when the
+                 owner's Mac is listening (integration step 5) — a guest never
+                 sees it, and an asleep Mac is never offered. -->
+            <button type="button" class="btn-glass btn-sm" id="msg-mac-draft" data-act="draftChatOnMac" hidden>✨ Draft on your Mac</button>
             <div id="msg-attach-preview" class="chat-attach-preview" style="display:none;"></div>
             <div class="chat-composer">
                 <button type="button" id="msg-attach-btn" class="chat-attach-btn" data-act="adminAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
@@ -1964,7 +1968,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=880"></script>
+    <script defer src="app.js?v=881"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

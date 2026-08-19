@@ -154,7 +154,7 @@ async function runReplyJob(ctx) {
         // appear. Removed rather than guessed at.)
 
         const facts = Object.assign({}, f, { party: guard.partyWords(f.adults, f.children) });
-        const prompt = guard.buildPrompt(facts, c.host);
+        const prompt = guard.buildPrompt(facts, c.host, c.voice);
         if (c.onProgress) {
             try { c.onProgress({ i: i, of: cleaned.rows.length, who: who }); } catch (e) { /* display only */ }
         }
@@ -273,6 +273,16 @@ function saneQuestion(q) {
     return { q: text, asked: saneNum(q.asked, 1) > 0 ? saneNum(q.asked, 1) : 1,
         prop: sane(q.prop), cottage: sane(q.cottage), facts: saneQa(q.facts) };
 }
+function saneChat(c2) {
+    const t = c2 && typeof c2 === 'object' ? c2 : null;
+    if (!t) { return null; }
+    const msgs = (Array.isArray(t.msgs) ? t.msgs : []).map(function (m) {
+        return { who: (m && m.who) === 'you' ? 'you' : 'guest', text: sane(m && m.text) };
+    }).filter(function (m) { return m.text; });
+    if (!msgs.length) { return null; } // a conversation with no words drafts nothing
+    return { first: sane(t.first), msgs: msgs.slice(-6) };
+}
+
 function saneEnquiry(e) {
     const id = saneNum(e && e.id, 0);
     if (id <= 0) { return null; } // no id → no ref → nothing exactly-once can hold
@@ -526,9 +536,11 @@ async function runAskSweep(ctx) {
         // an answer ask the answer job's — the owner already chose which
         // model suits which work. Either falls back to the other, because an
         // ask with SOME model beats one refused for configuration.
-        const kind = a.kind === 'answer' ? 'answer' : 'reply';
-        const model = (jobs[kind] || {}).model
-            || (jobs[kind === 'reply' ? 'answer' : 'reply'] || {}).model || '';
+        const kind = a.kind === 'answer' ? 'answer' : a.kind === 'chat' ? 'chat' : 'reply';
+        // A chat reply is reply-shaped work, so it uses the reply job's model.
+        const modelKind = kind === 'chat' ? 'reply' : kind;
+        const model = (jobs[modelKind] || {}).model
+            || (jobs[modelKind === 'reply' ? 'answer' : 'reply'] || {}).model || '';
         if (!model) {
             say('an ask is waiting but no job has a model chosen — pick one on the Jobs screen', 'fail');
             failed++;
@@ -554,7 +566,7 @@ async function runAskSweep(ctx) {
             }
             f.party = guard.partyWords(f.adults, f.children);
             who = f.first || f.name || 'an enquiry';
-            const r = await c.engine.write(guard.buildPrompt(f, got.host), model);
+            const r = await c.engine.write(guard.buildPrompt(f, got.host, got.voice), model);
             if (!r.ok) {
                 say(who + ' · ' + r.say, 'fail');
                 failed++;
@@ -563,6 +575,30 @@ async function runAskSweep(ctx) {
             const v = guard.checkDraft(r.text, f);
             if (!v.ok) {
                 say('refused own draft for ' + who + ': ' + v.problems.join('; '), 'fail');
+                failed++;
+                continue;
+            }
+            text = r.text;
+        } else if (kind === 'chat') {
+            const t = saneChat(a.chat);
+            if (!t) {
+                say('the site handed over an ask this app could not read — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            who = t.first ? t.first + '\u2019s chat' : 'a chat';
+            const r = await c.engine.write(guard.buildChatPrompt(t, got.host), model);
+            if (!r.ok) {
+                say(who + ' \u00b7 ' + r.say, 'fail');
+                failed++;
+                continue;
+            }
+            // A chat may greet (no template adds one) but may state NO money
+            // and NO code-shaped number — the two things a chat reply can do
+            // real damage with.
+            const v = guard.checkGeneral(r.text, { money: [], allowGreeting: true, noCodes: true });
+            if (!v.ok) {
+                say('refused own chat reply: ' + v.problems.join('; '), 'fail');
                 failed++;
                 continue;
             }

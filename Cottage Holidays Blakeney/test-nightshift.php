@@ -524,6 +524,47 @@ nsk('an answer over the queue\'s own body cap is refused',
     night_ask_answer_problem(str_repeat('a', NIGHT_BODY_MAX + 1)) !== '');
 nsk('the TTL is minutes, not days — an ask is about a moment', NIGHT_ASK_TTL_MIN <= 15);
 
+// ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
+echo "\n== §21 the voice examples ==\n";
+$tpls = [
+    ['id' => 'a', 'body' => 'Just a reminder that {{balance}} is still to pay for {{cottage}} ({{dates}}).', 'uses' => 2],
+    ['id' => 'b', 'body' => 'Good news — {{cottage}} is free and we would love to have you.', 'uses' => 9],
+    ['id' => 'c', 'body' => 'A third paragraph that the cap must exclude.', 'uses' => 1],
+];
+$v = night_voice_examples($tpls);
+nsk('capped at two, most-USED first', count($v) === 2 && strpos($v[0], 'Good news') === 0, json_encode($v));
+nsk('the {{tokens}} become neutral words, never braces',
+    strpos($v[1], 'the amount') !== false && strpos($v[1], 'the cottage') !== false
+    && strpos(json_encode($v), '{{') === false, json_encode($v));
+nsk('garbage rows are absent, not the word Array',
+    strpos(json_encode(night_voice_examples([['body' => ['not', 'a', 'string']], 'x', null])), 'Array') === false
+    && night_voice_examples('nonsense') === []);
+nsk('an over-long paragraph is capped, not shipped whole',
+    mb_strlen(night_voice_examples([['body' => str_repeat('word ', 200), 'uses' => 1]])[0]) <= NIGHT_VOICE_CHARS);
+
+// ── §22 THE CHAT VIEW — words and a first name, nothing else ─────────────
+echo "\n== §22 the chat view ==\n";
+$cv = night_chat_view(
+    ['name' => 'Sophie Grant', 'email' => 'sophie@gmail.com'],
+    [
+        ['sender_role' => 'guest', 'body' => 'What time can we get in on Saturday?'],
+        ['sender_role' => 'admin', 'body' => 'From 3pm — see you then!'],
+        ['sender_role' => 'guest', 'body' => ['an', 'array']],
+        ['sender_role' => 'guest', 'body' => 'And is the key safe code the same as last year?'],
+    ],
+);
+nsk('the first name is worked out and the roles translated', $cv['first'] === 'Sophie'
+    && $cv['msgs'][0]['who'] === 'guest' && $cv['msgs'][1]['who'] === 'you', json_encode($cv));
+nsk('a malformed message is absent, not the word Array',
+    count($cv['msgs']) === 3 && strpos(json_encode($cv), 'Array') === false, json_encode($cv));
+nsk('the email never enters the view', strpos(json_encode($cv), 'sophie@gmail.com') === false);
+nsk('the view is capped at ' . NIGHT_CHAT_MSGS_MAX . ' messages', count(night_chat_view(
+    ['name' => 'A'],
+    array_map(fn($i) => ['sender_role' => 'guest', 'body' => 'm' . $i], range(1, 10)),
+)['msgs']) === NIGHT_CHAT_MSGS_MAX);
+nsk("'chat' is an ask kind and needs its conversation",
+    night_ask_problem('chat', 5, '') === '' && night_ask_problem('chat', 0, '') !== '');
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

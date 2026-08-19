@@ -547,6 +547,9 @@ app.whenReady().then(function () {
         // outside a package (`npm start`), where resolveRunner falls through to
         // Homebrew — which is exactly the pre-bundling behaviour.
         resourcesDir: process.resourcesPath || '',
+        // Reported to the site with each poll, so Set up a Mac can say which
+        // build each Mac runs (integration step 4).
+        build: appVersion(),
     });
     wire();
     menu();

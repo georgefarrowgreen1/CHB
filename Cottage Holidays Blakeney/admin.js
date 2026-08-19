@@ -11801,6 +11801,53 @@ async function slAskMac(q, prop) {
     }
     return slAddFaq(q, prop, text);
 }
+// ✨ Draft on your Mac, in the guest CHAT (integration step 5). The thread id
+// is app.js's own __msgThreadId; the answer fills the chat input only while
+// the owner has not typed (the bank-details rule), and is offered otherwise.
+async function draftChatOnMac() {
+    const tid = parseInt(String(/** @type {any} */ (window).__msgThreadId || ''), 10) || 0;
+    if (!tid) return;
+    const input = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
+    if (!input) return;
+    const before = input.value;
+    try { toast('Asking your Mac — a few seconds…'); } catch (e) {}
+    let text = '';
+    try {
+        text = await chbAskMac('chat', { id: tid });
+    } catch (err) {
+        try { glassAlert(String((err && err.message) || err)); } catch (e2) {}
+        return;
+    }
+    const now = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
+    if (!now) return;
+    if (now.value === before) {
+        now.value = text;
+        now.focus();
+        return;
+    }
+    try {
+        toast('Your Mac finished a draft', '', { label: 'Use it', fn: () => {
+            const b = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
+            if (b) { b.value = text; b.focus(); }
+        } });
+    } catch (err) {}
+}
+// The button's presence watcher: the messages modal is SHARED markup (guests
+// use it too), so admin.js observes it opening rather than app.js reaching
+// for admin globals — the watchOwnerMode pattern. Shown only for the owner,
+// with the switch on and the Mac actually listening.
+function chbChatMacBtnSync() {
+    const btn = document.getElementById('msg-mac-draft');
+    if (!btn) return;
+    btn.hidden = !(document.body.classList.contains('owner-mode')
+        && chbMacDraftReady() && chbMacPresence().listening);
+}
+(function () {
+    const modal = document.getElementById('messages-modal');
+    if (!modal || typeof MutationObserver === 'undefined') return;
+    new MutationObserver(chbChatMacBtnSync).observe(modal, { attributes: true, attributeFilter: ['class', 'style'] });
+})();
+
 function slDismissGuestQ(q) {
     const list = slGuestQuestions().filter((r) => r.q !== q);
     slGuestQuestionsSave(list);
@@ -21945,19 +21992,31 @@ function nightAgoWords(ts) {
 async function refreshNightKeyRow() {
     const host = document.getElementById('night-key-row');
     if (!host) return;
+    let latest = '';
     try {
         const r = await apiPost('nightshift.php', { action: 'devices' });
         __nightDevs = (r && r.devices) || [];
+        latest = String((r && r.latest) || '');
     } catch (e) { /* the row still renders; it just cannot claim either way */ }
     __nightKeySet = __nightDevs.length > 0;
-    const rows = __nightDevs.map((d) =>
-        '<div class="acr-row"><div class="acr-lbl">' + escapeHtml(d.label)
+    const rows = __nightDevs.map((d) => {
+        // WHICH BUILD, against the newest the site knows of (integration
+        // step 4). Build tags sort lexically (hand-build-YYYYMMDD-HHMM), so
+        // "older" is a string compare. With no latest on file the card claims
+        // nothing — a comparison against nothing is not "up to date".
+        const build = String(d.build || '');
+        const verdict = !build ? ''
+            : latest && build < latest
+                ? ' · <em>update available</em>'
+                : latest ? ' · up to date' : '';
+        return '<div class="acr-row"><div class="acr-lbl">' + escapeHtml(d.label)
         + '<small>' + (d.quiet >= 3
             ? '<em>nothing for ' + d.quiet + ' nights</em>'
             : 'last heard from ' + escapeHtml(nightAgoWords(d.seen)))
+        + (build ? ' · ' + escapeHtml(build) + verdict : '')
         + '</small></div>'
-        + '<button class="btn-sm btn-edit" ' + chbAttrs('stopNightDevice', d.i, d.label) + '>Stop this Mac</button></div>'
-    ).join('');
+        + '<button class="btn-sm btn-edit" ' + chbAttrs('stopNightDevice', d.i, d.label) + '>Stop this Mac</button></div>';
+    }).join('');
     host.innerHTML =
         '<p style="margin:0 0 10px;">' + (__nightKeySet
             ? 'Each Mac has its own key, so you can stop one without stopping the other.'

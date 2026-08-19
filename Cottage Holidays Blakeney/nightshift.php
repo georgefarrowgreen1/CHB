@@ -141,7 +141,7 @@ function night_key_on_file()
 
 // THE ONE DOOR CHECK for both machine routes. Answers 401 and logs, or
 // returns the kind of key that opened it.
-function night_require_key($given, $what)
+function night_require_key($given, $what, $build = '')
 {
     $devices = night_devices_read();
     $onFile = night_key_on_file();
@@ -152,9 +152,16 @@ function night_require_key($given, $what)
         // "Cheap: the app calls twice a night" was true until the ask channel
         // gave the Mac a 20-second poll; stamping every poll would write the
         // devices row (encrypted content) four thousand times a day to keep a
-        // fact the quiet-Mac duty reads in NIGHTS.
-        if (time() - (int) ($devices[$i]['seen'] ?? 0) > 300) {
+        // fact the quiet-Mac duty reads in NIGHTS. The BUILD rides the same
+        // write (integration step 4) — and a CHANGED build writes through the
+        // throttle, so a just-updated Mac says its new name promptly.
+        $b = night_str($build);
+        $buildChanged = $b !== '' && $b !== (string) ($devices[$i]['build'] ?? '');
+        if ($buildChanged || time() - (int) ($devices[$i]['seen'] ?? 0) > 300) {
             $devices[$i]['seen'] = time();
+            if ($b !== '') {
+                $devices[$i]['build'] = mb_substr($b, 0, 60);
+            }
             try {
                 night_devices_write($devices);
             } catch (\Throwable $e) { /* a stamp we cannot write must not refuse a good request */ }
@@ -245,9 +252,14 @@ route_actions([
                 'seen' => $d['seen'] ? (int) $d['seen'] : 0,
                 'quiet' => night_quiet_days($d, time()),
                 'legacy' => !empty($d['legacy']),
+                'build' => night_str($d['build'] ?? ''),
             ];
         }
-        json_out(['ok' => true, 'devices' => $out, 'quietAfter' => NIGHT_QUIET_NIGHTS]);
+        // The newest published build, refreshed daily by self-repair from the
+        // releases feed — '' when never fetched, and the card then claims
+        // nothing about being up to date.
+        json_out(['ok' => true, 'devices' => $out, 'quietAfter' => NIGHT_QUIET_NIGHTS,
+            'latest' => night_str(content_value('nightshift-latest-build'))]);
     },
 
     // Stop one Mac. By INDEX from the list just read, and the label must match
@@ -441,6 +453,13 @@ route_actions([
                 json_out(['error' => 'That enquiry is no longer waiting.'], 404);
             }
         }
+        if ($kind === 'chat') {
+            $st = db()->prepare('SELECT id FROM chat_threads WHERE id = ?');
+            $st->execute([$entityId]);
+            if (!$st->fetch()) {
+                json_out(['error' => 'That conversation is no longer there.'], 404);
+            }
+        }
         night_asks_sweep();
         $open = 0; // before the try — json_out()'s exit is invisible to PHPStan
         try {
@@ -479,7 +498,7 @@ route_actions([
         // Throttled well above a real Mac's 20-second poll, and BEFORE the
         // key is looked at — the sign-in rule, same as ingest.
         rate_limit('night-asks', 30, 60);
-        night_require_key((string) ($in['secret'] ?? ''), 'asks');
+        night_require_key((string) ($in['secret'] ?? ''), 'asks', $in['build'] ?? '');
         if (!night_enabled()) {
             json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
         }
@@ -517,6 +536,23 @@ route_actions([
                     continue;
                 }
                 $one['enquiry'] = night_enquiry_view($e);
+            } elseif ($a['kind'] === 'chat') {
+                // The conversation, composed by the same withholding rules as
+                // the enquiry brief: words and a first name, never contact
+                // details. A vanished thread expires the ask, unanswered.
+                $st = db()->prepare('SELECT id, name FROM chat_threads WHERE id = ?');
+                $st->execute([(int) $a['entity_id']]);
+                $th = $st->fetch();
+                if (!$th) {
+                    try {
+                        db()->prepare("UPDATE night_asks SET status = 'expired' WHERE id = ?")->execute([(int) $a['id']]);
+                    } catch (\Throwable $x) {
+                    }
+                    continue;
+                }
+                $st = db()->prepare('SELECT sender_role, body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ' . (int) NIGHT_CHAT_MSGS_MAX);
+                $st->execute([(int) $a['entity_id']]);
+                $one['chat'] = night_chat_view($th, array_reverse($st->fetchAll()));
             } else {
                 // An FAQ answer: the question, that cottage's own published
                 // answers to ground it, nothing else.
@@ -542,7 +578,26 @@ route_actions([
             }
             $out[] = $one;
         }
-        json_out(['ok' => true, 'host' => $host, 'asks' => $out]);
+        // The voice examples ride the asks too — a reply drafted while the
+        // owner waits should sound like them just as much as a nightly one.
+        // Composed only when a reply ask exists: the ordinary poll answers
+        // an empty list and must stay a cheap read.
+        $vp = [];
+        foreach ($out as $o) {
+            if (($o['kind'] ?? '') === 'reply') {
+                try {
+                    $vp = night_voice_examples(content_json('email-templates', []));
+                } catch (\Throwable $e) {
+                    $vp = [];
+                }
+                break;
+            }
+        }
+        $ap = ['ok' => true, 'host' => $host, 'asks' => $out];
+        if ($vp) {
+            $ap['voice'] = $vp;
+        }
+        json_out($ap);
     },
 
     // ---- the machine posts an answer --------------------------------
@@ -584,7 +639,7 @@ route_actions([
 
     'brief' => function ($in) {
         rate_limit('night-brief', 40, 60);
-        night_require_key((string) ($in['secret'] ?? ''), 'brief');
+        night_require_key((string) ($in['secret'] ?? ''), 'brief', $in['build'] ?? '');
         // ONE SWITCH CLOSES BOTH DIRECTIONS. Off must not leave a readable
         // door open behind a queue nothing can be posted to.
         if (!night_enabled()) {
@@ -736,7 +791,17 @@ route_actions([
         } catch (\Throwable $e) {
             $stood = 0;
         }
+        // The owner's register, for the reply drafts (integration step 3).
+        $voice = [];
+        try {
+            $voice = night_voice_examples(content_json('email-templates', []));
+        } catch (\Throwable $e) {
+            $voice = [];
+        }
         $payload = ['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX];
+        if ($voice) {
+            $payload['voice'] = $voice;
+        }
         if ($stood > 0) {
             $payload['stood_down'] = $stood;
         }

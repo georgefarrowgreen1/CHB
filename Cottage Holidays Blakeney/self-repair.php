@@ -70,6 +70,27 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 0c. The Mac app's newest release ----------------------------------------
+// One public GitHub read a day, so Set up a Mac can say "Up to date / Update
+// available" against what each Mac reports (integration step 4) without any
+// page ever fetching it live. A failed read keeps the last good tag — the card
+// then compares against yesterday's newest, which is honest enough for a nudge.
+try {
+    $ctx = stream_context_create(['http' => ['timeout' => 8, 'header' => "User-Agent: CHB-self-repair\r\n"]]);
+    $raw = @file_get_contents('https://api.github.com/repos/georgefarrowgreen1/CHB/releases/latest', false, $ctx);
+    $tag = '';
+    if (is_string($raw) && $raw !== '') {
+        $j = json_decode($raw, true);
+        $tag = is_array($j) && is_string($j['tag_name'] ?? null) ? trim($j['tag_name']) : '';
+    }
+    // Only the shape the builds actually mint — a rename or a rogue tag must
+    // not become the yardstick every Mac is measured against.
+    if ($tag !== '' && preg_match('/^hand-build-\d{8}-\d{4}$/', $tag)) {
+        content_set_scalar('nightshift-latest-build', $tag);
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 1. Dead gallery references -------------------------------------------
 // 'images-<prop>' content keys hold JSON arrays of image URLs; locally-uploaded
 // ones are relative 'uploads/<file>'. If the file is gone (manual FTP cleanup,

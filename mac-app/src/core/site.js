@@ -102,6 +102,9 @@ function makeSite(opts) {
     const o = opts || {};
     const url = String(o.url || '');
     const secret = String(o.secret || '');
+    // The app's own build (integration step 4) — one field on requests the
+    // app already makes, so the site can say which Mac runs what.
+    const build = String(o.build || '');
     const send = o.post || post;
 
     // A refusal the app can act on, rather than an exception with a status in it.
@@ -136,7 +139,7 @@ function makeSite(opts) {
             if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
             let r;
             try {
-                r = await send(url, { action: 'brief', secret: secret });
+                r = await send(url, { action: 'brief', secret: secret, build: build });
             } catch (e) {
                 return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
             }
@@ -154,6 +157,9 @@ function makeSite(opts) {
                 // owner already used or binned their draft — said in the log,
                 // or a shorter brief reads as enquiries going missing.
                 stoodDown: parseInt(r.json.stood_down, 10) || 0,
+                // The owner's register — up to two paragraphs from their own
+                // reply library, for the reply prompts. Absent = older site.
+                voice: Array.isArray(r.json.voice) ? r.json.voice : [],
                 week: (r.json.week && typeof r.json.week === 'object') ? r.json.week : undefined,
                 gaps: Array.isArray(r.json.gaps) ? r.json.gaps : undefined,
                 questions: Array.isArray(r.json.questions) ? r.json.questions : undefined,
@@ -199,7 +205,7 @@ function makeSite(opts) {
             if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
             let r;
             try {
-                r = await send(url, { action: 'asks', secret: secret });
+                r = await send(url, { action: 'asks', secret: secret, build: build });
             } catch (e) {
                 return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
             }
@@ -210,6 +216,7 @@ function makeSite(opts) {
                 ok: true,
                 host: String(r.json.host || ''),
                 asks: Array.isArray(r.json.asks) ? r.json.asks : [],
+                voice: Array.isArray(r.json.voice) ? r.json.voice : [],
             };
         },
         // Post one ask's answer. `replayed` and `expired` are both fine

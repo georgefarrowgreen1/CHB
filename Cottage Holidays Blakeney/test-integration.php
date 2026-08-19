@@ -2761,12 +2761,20 @@ $rootDb->exec('DELETE FROM enquiries WHERE id = ' . $bnId);
 // $SECRET and read seen 0), so a device is minted and used first.
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
 $presKey = (string) ($r['json']['key'] ?? '');
-http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $presKey]);
+http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $presKey, 'build' => 'hand-build-20260819-0100']);
 $r = http($admin, 'GET', '/admin-bootstrap.php');
 $mac = $r['json']['night']['mac'] ?? null;
 it_check('the bootstrap carries the Mac presence, listening after a fresh call',
     is_array($mac) && ($mac['listening'] ?? false) === true && ($mac['seen'] ?? 0) > 0,
     json_encode($r['json']['night'] ?? null));
+// …and the BUILD the Mac reported rides the same stamp (integration step 4):
+// the devices list names it, beside the newest release self-repair fetched.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'nightshift-latest-build', 'value' => 'hand-build-20260819-0900']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
+it_check('the devices list carries each Mac\'s reported build and the newest release',
+    (($r['json']['devices'][0]['build'] ?? '') === 'hand-build-20260819-0100')
+    && (($r['json']['latest'] ?? '') === 'hand-build-20260819-0900'), $r['raw']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'nightshift-latest-build', 'value' => '']);
 // The row is DELETED to restore the master path for everything below — a
 // key on file (even an emptied list: the row itself) means only device keys
 // work, which is the posture §25 gates; the suite's own reset is the same
@@ -2774,6 +2782,20 @@ it_check('the bootstrap carries the Mac presence, listening after a fresh call',
 $rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute(['apikey-nightshift']);
 it_check('…and with the device row gone the master key speaks again',
     http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET])['code'] === 200);
+
+// HOW GEORGE WRITES rides the brief (integration step 3): the reply
+// library's most-used paragraphs, tokens neutralised — and ABSENT when the
+// library is empty, never an empty list posing as a voice.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'email-templates',
+    'value' => [['id' => 't1', 'name' => 'x', 'body' => 'Lovely to hear from you — {{cottage}} is a special spot and {{dates}} would suit it well.', 'uses' => 4, 'actions' => [], 'when' => '']]]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('the brief carries the voice, tokens neutralised',
+    count($r['json']['voice'] ?? []) === 1
+    && strpos($r['json']['voice'][0], 'the cottage is a special spot') !== false
+    && strpos($r['raw'], '{{') === false, json_encode($r['json']['voice'] ?? null));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'email-templates', 'value' => []]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('…and an empty library sends NO voice field at all', !isset($r['json']['voice']), mb_substr($r['raw'], 0, 200));
 
 // THE CAP. A producer reads a handful, never the history.
 for ($i = 0; $i < 12; $i++) {
@@ -2861,6 +2883,35 @@ it_check('declining the enquiry kills its waiting ask at the read', !$still
     && strpos($r['raw'], 'Asky') === false, $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $ask2]);
 it_check('…and the owner sees it expired, never answered', ($r['json']['status'] ?? '') === 'expired', $r['raw']);
+
+// THE CHAT KIND (integration step 5): a conversation composed by the same
+// withholding rules — words and a first name, never the email.
+$rootDb->exec("INSERT INTO chat_threads (name, email) VALUES ('Sophie Grant', 'sophie@gmail.com')");
+$chatTid = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest)
+               VALUES ($chatTid, 'guest', 'What time can we get in on Saturday?', 1, 1)");
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'chat', 'id' => $chatTid]);
+$chatAsk = (int) ($r['json']['id'] ?? 0);
+it_check('a chat ask files against a real conversation', $chatAsk > 0, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$cv = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $chatAsk) {
+        $cv = $a;
+    }
+}
+it_check('the machine reads the conversation, first name worked out',
+    $cv && (($cv['chat']['first'] ?? '') === 'Sophie')
+    && strpos(json_encode($cv), 'get in on Saturday') !== false, json_encode($cv));
+it_check('…and the guest\'s email never leaves the site here either',
+    strpos($r['raw'], 'sophie@gmail.com') === false, mb_substr($r['raw'], 0, 200));
+http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $chatAsk, 'text' => 'From 3pm on Saturday — and I will double-check the parking for you before you set off.']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $chatAsk]);
+it_check('the chat answer lands for the composer to collect',
+    ($r['json']['status'] ?? '') === 'answered' && strpos((string) $r['json']['answer'], 'From 3pm') !== false, $r['raw']);
+$rootDb->exec('DELETE FROM chat_threads WHERE id = ' . $chatTid);
+$rootDb->exec('DELETE FROM messages WHERE thread_id = ' . $chatTid);
 
 // AN EXPIRED ASK REFUSES A LATE ANSWER — ten minutes passed, the owner moved on.
 $rootDb->exec("INSERT INTO night_asks (kind, entity_id, question, created_at)
