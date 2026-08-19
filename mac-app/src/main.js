@@ -348,6 +348,18 @@ function startAskPoll() {
     }, 20000);
 }
 
+// OPEN AT LOGIN, applied through macOS's own login-items mechanism so it is
+// visible (and removable) in System Settings → General → Login Items like any
+// other app. Applied at boot and after every settings save; setting it to the
+// value it already holds is a no-op, so this is safe to call freely.
+function applyLoginItem() {
+    try {
+        if (process.platform === 'darwin' && api) {
+            app.setLoginItemSettings({ openAtLogin: !!api._cfg().openAtLogin });
+        }
+    } catch (e) { /* a login item we cannot set must not break the app */ }
+}
+
 function startClock() {
     clearInterval(tick);
     tick = setInterval(async function () {
@@ -397,7 +409,11 @@ function startClock() {
 // "call any method" channel would hand the renderer the whole module.
 function wire() {
     ipcMain.handle('hand:state', function () { return api.state(); });
-    ipcMain.handle('hand:saveConfig', function (e, patch) { return api.saveConfig(patch); });
+    ipcMain.handle('hand:saveConfig', async function (e, patch) {
+        const r = await api.saveConfig(patch);
+        applyLoginItem();
+        return r;
+    });
     ipcMain.handle('hand:setSecret', function (e, v) { return api.setSecret(v); });
     ipcMain.handle('hand:connect', function (e, code) { return api.connect(code); });
     ipcMain.handle('hand:testSite', function () { return api.testSite(); });
@@ -501,6 +517,7 @@ app.whenReady().then(function () {
     create();
     startClock();
     startAskPoll();
+    applyLoginItem();
     app.on('activate', function () {
         if (BrowserWindow.getAllWindows().length === 0) {
             create();

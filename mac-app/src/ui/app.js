@@ -195,6 +195,8 @@
         $('runnerFix').textContent = R.install || '';
         $('autoSw').className = 'sw' + (R.autoStart ? ' on' : '');
         $('autoSw').setAttribute('aria-pressed', R.autoStart ? 'true' : 'false');
+        $('loginSw').className = 'sw' + (R.openAtLogin ? ' on' : '');
+        $('loginSw').setAttribute('aria-pressed', R.openAtLogin ? 'true' : 'false');
 
         // CONNECTION
         $('siteSays').textContent = (S.siteIsDefault ? '' : 'Your own address: ')
@@ -296,6 +298,11 @@
         }
         if (t.id === 'autoSw') {
             await window.hand.saveConfig({ autoStart: !(S.runner || {}).autoStart });
+            await refresh();
+            return;
+        }
+        if (t.id === 'loginSw') {
+            await window.hand.saveConfig({ openAtLogin: !(S.runner || {}).openAtLogin });
             await refresh();
             return;
         }

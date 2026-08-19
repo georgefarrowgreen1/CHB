@@ -231,6 +231,21 @@ function fakeState(over) {
             m26.runBg + ' vs ' + m26.addBg);
         ok('the top edge is still draggable with the bar gone', m26.dragStrip);
 
+        // ── OPEN AT LOGIN: the switch that makes "answered while you wait"
+        // true without the owner remembering to open the app ──
+        await page.click('[data-v="3"]');
+        await page.waitForTimeout(150);
+        ok('the login switch starts off — an app must not add itself unasked',
+            (await page.getAttribute('#loginSw', 'aria-pressed')) === 'false');
+        await page.click('#loginSw');
+        await page.waitForTimeout(200);
+        const loginSave = await page.evaluate(function () {
+            return window.__calls.filter(function (x) { return x[0] === 'saveConfig' && typeof x[1].openAtLogin === 'boolean'; }).pop();
+        });
+        ok('toggling it saves openAtLogin', loginSave && loginSave[1].openAtLogin === true, JSON.stringify(loginSave));
+        await page.click('[data-v="2"]');
+        await page.waitForTimeout(120);
+
         // ── ESCAPING. A guest name that is markup must be TEXT. ──
         await page.click('[data-v="0"]');
         await page.waitForTimeout(120);

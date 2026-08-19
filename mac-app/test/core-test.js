@@ -1428,6 +1428,15 @@ function fakeSite(handler) {
         && require('../src/core/guard').spokenDay('2026-08-21') === 'Fri 21 Aug'
         && require('../src/core/guard').spokenDay('soon') === 'soon');
 
+    // Open-at-login: default OFF (an app must not add itself to login items
+    // unasked), saved through the same settings path as every other switch.
+    {
+        const cfgMod = require('../src/core/config');
+        ok('openAtLogin defaults off', cfgMod.DEFAULTS.openAtLogin === false);
+        const merged = cfgMod.merge(cfgMod.DEFAULTS, { openAtLogin: true });
+        ok('…and a stored true survives the merge', merged.openAtLogin === true);
+    }
+
     // ── §25 THE ASK SWEEP — the daytime half, same rules at a moment's tempo ──
     console.log('\n§25 the ask sweep');
     const posted25 = [];

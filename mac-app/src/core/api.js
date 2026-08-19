@@ -132,6 +132,7 @@ function makeApi(deps) {
             running: !!(live && live.running),
             startedByUs: !!(live && live.running),
             autoStart: !!cfg.autoStart,
+            openAtLogin: !!cfg.openAtLogin,
         };
     }
 
@@ -265,6 +266,9 @@ function makeApi(deps) {
             }
             if (typeof p.autoStart === 'boolean') {
                 cfg.autoStart = p.autoStart;
+            }
+            if (typeof p.openAtLogin === 'boolean') {
+                cfg.openAtLogin = p.openAtLogin;
             }
             if (p.job && typeof p.job.id === 'string') {
                 const j = jobsMod.jobById(p.job.id);

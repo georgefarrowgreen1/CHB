@@ -86,6 +86,12 @@ const DEFAULTS = {
     // '' = look in the app's own bundle, then Homebrew. A path here is an
     // explicit override and wins over both (see core/runner.js).
     runnerPath: '',
+    // OPEN AT LOGIN. Default OFF: an app that adds itself to login items
+    // unasked is doing something the owner did not choose — but the ask
+    // channel only answers while the app is RUNNING, so the switch is offered
+    // where the engine settings live. main.js applies it via macOS's own
+    // login-items mechanism, so it shows in System Settings like anything else.
+    openAtLogin: false,
 };
 
 function paths(dirOverride) {
