@@ -297,6 +297,50 @@ jobs:
           npx electron-builder --mac --universal $EXTRA -c.buildVersion="${{ steps.ver.outputs.build }}"
           ls -lh dist/*.dmg
 
+      # ── PROVE THE BUILT APP BOOTS, on both architectures. ─────────────────
+      # The suites test the JavaScript; nothing had ever LAUNCHED the artifact,
+      # which is how a build could pass every gate and die at ElectronMain on
+      # the owner's Mac. Two legs: native arm64 (this runner), and the x86_64
+      # slice under Rosetta — which is exactly what an Apple-silicon Mac runs
+      # when "Open using Rosetta" is set, i.e. the crash configuration that
+      # reached the owner. Alive after 15 seconds = booted; anything else
+      # fails the build before a release exists.
+      - name: Prove the built app boots (arm64 native, x86_64 under Rosetta)
+        working-directory: mac-app
+        run: |
+          set -uo pipefail
+          APP="$(ls -d dist/mac-universal/*.app | head -1)"
+          EXE="$(defaults read "$PWD/$APP/Contents/Info" CFBundleExecutable)"
+          BIN="$APP/Contents/MacOS/$EXE"
+          boot() {  # $1 = label, rest = command prefix (empty or `arch -x86_64`)
+            local label="$1"; shift
+            echo "── $label ──"
+            "$@" "$BIN" > /tmp/boot-log.txt 2>&1 &
+            local pid=$!
+            sleep 15
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "alive after 15s ✓"
+              kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
+              return 0
+            fi
+            wait "$pid"; local code=$?
+            echo "DIED (exit $code) — first lines of its own output:"
+            head -20 /tmp/boot-log.txt || true
+            return 1
+          }
+          boot "arm64, native"
+          # Rosetta: present on real owner Macs that hit this path; installed
+          # here if the runner image lacks it. If it cannot be installed the
+          # leg is SKIPPED AND SAID — never silently green.
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            softwareupdate --install-rosetta --agree-to-license || true
+          fi
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            boot "x86_64, under Rosetta" arch -x86_64
+          else
+            echo "Rosetta unavailable on this runner — x86_64 boot NOT proven."
+          fi
+
       - name: What was built
         id: out
         working-directory: mac-app
