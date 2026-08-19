@@ -59,6 +59,10 @@
     <section class="view" id="v0">
       <div class="vhead"><div class="grow"><h1>Tonight</h1><p class="sub" id="tonightSub"></p></div></div>
       <div class="box" id="tonightBox"></div>
+      <!-- The ask channel's day line: only ON SCREEN once the Mac has
+           actually answered something today — an empty "Today" heading would
+           claim activity that hasn't happened. -->
+      <div id="todayWrap" hidden><h2>Today</h2><div class="log" id="todayLog"></div></div>
       <div><h2>Last night</h2><div class="log" id="lastLog"></div>
         <p class="tiny" id="logNote"></p></div>
     </section>

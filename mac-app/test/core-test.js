@@ -1428,6 +1428,83 @@ function fakeSite(handler) {
         && require('../src/core/guard').spokenDay('2026-08-21') === 'Fri 21 Aug'
         && require('../src/core/guard').spokenDay('soon') === 'soon');
 
+    // ── §25 THE ASK SWEEP — the daytime half, same rules at a moment's tempo ──
+    console.log('\n§25 the ask sweep');
+    const posted25 = [];
+    const prompts25 = [];
+    const fakeAskSite = function (asks) {
+        return {
+            asks: async function () { return { ok: true, host: 'George', asks: asks }; },
+            answerAsk: async function (id, text, model) { posted25.push({ id: id, text: text, model: model }); return { ok: true }; },
+        };
+    };
+    const askEngine = function (text) {
+        return { write: async function (prompt) { prompts25.push(prompt); return { ok: true, text: text, ms: 700, tokens: 30, tokensPerSec: 40 }; } };
+    };
+    const CFG25 = { jobs: { reply: { on: true, model: 'small.gguf' }, answer: { on: true, model: 'big.gguf' } } };
+    const REPLY_ASK = { id: 7, kind: 'reply', enquiry: { id: 42, name: 'Pat Doe', first: 'Pat', cottage: 'Jollyboat',
+        prop: 'jollyboat', check_in: '2026-09-04', check_out: '2026-09-07', adults: 2, children: 0,
+        message: 'Do you take dogs?', dates_free: true, nights: 3, quote: '£440.00', deposit: '£75.00',
+        facts: [{ q: 'Do you take dogs?', a: 'We are afraid not.' }] } };
+    const ANSWER_ASK = { id: 8, kind: 'answer', question: { q: 'Is there an EV charger?', asked: 3,
+        prop: '21a', cottage: '21A Westgate', facts: [{ q: 'Parking?', a: 'One car outside.' }] } };
+
+    // A quiet poll is SILENT — this runs every twenty seconds.
+    posted25.length = 0;
+    let sw25 = await jobs.runAskSweep({ site: fakeAskSite([]), engine: askEngine('x'), cfg: CFG25, now: MON });
+    ok('an empty sweep answers nothing and logs nothing', sw25.answered === 0 && sw25.log.length === 0);
+
+    // A reply ask: the reply job's model, the reply prompt, the reply guard.
+    posted25.length = 0; prompts25.length = 0;
+    const swaps25 = [];
+    sw25 = await jobs.runAskSweep({ site: fakeAskSite([REPLY_ASK]),
+        engine: askEngine('Thank you for asking — those dates are free, and the total for your stay would be £440.00. We are afraid we cannot take dogs, but the beach walks more than make up for it. Do say if you would like the dates held.'),
+        cfg: CFG25, now: MON,
+        ensureEngineFor: async function (m) { swaps25.push(m); return { ok: true, started: false }; } });
+    ok('a reply ask is answered with the reply job\'s model', sw25.answered === 1
+        && posted25.length === 1 && posted25[0].id === 7 && posted25[0].model === 'small.gguf',
+        JSON.stringify(posted25));
+    ok('…through the reply prompt (the site\'s own quote in the facts)', /£440\.00/.test(prompts25[0]) && /Pat/.test(prompts25[0]));
+    ok('…and the engine was ensured for that model', swaps25.join(',') === 'small.gguf');
+
+    // An answer ask: the answer job's model, and NO money may survive.
+    posted25.length = 0;
+    sw25 = await jobs.runAskSweep({ site: fakeAskSite([ANSWER_ASK]),
+        engine: askEngine('There is a charger in the lane, £5.00 a session.'), cfg: CFG25, now: MON });
+    ok('an answer quoting money is refused, not posted', sw25.answered === 0 && posted25.length === 0
+        && sw25.log.some(function (l) { return /refused own answer/.test(l.say); }),
+        JSON.stringify(sw25.log.map(function (l) { return l.say; })));
+    posted25.length = 0;
+    sw25 = await jobs.runAskSweep({ site: fakeAskSite([ANSWER_ASK]),
+        engine: askEngine('There is a public charger in the lane behind the quay, a short walk from the cottage.'),
+        cfg: CFG25, now: MON });
+    ok('a clean answer posts with the answer job\'s model', sw25.answered === 1
+        && posted25[0].id === 8 && posted25[0].model === 'big.gguf', JSON.stringify(posted25));
+
+    // No model chosen anywhere → said, failed, nothing posted.
+    posted25.length = 0;
+    sw25 = await jobs.runAskSweep({ site: fakeAskSite([REPLY_ASK]), engine: askEngine('x'),
+        cfg: { jobs: { reply: { model: '' }, answer: { model: '' } } }, now: MON });
+    ok('no model anywhere is a named failure, nothing posted', sw25.failed === 1 && posted25.length === 0
+        && sw25.log.some(function (l) { return /pick one on the Jobs screen/.test(l.say); }));
+
+    // A hostile ask never renders as line noise and is said to be skipped.
+    posted25.length = 0;
+    sw25 = await jobs.runAskSweep({ site: fakeAskSite([{ id: 9, kind: 'reply', enquiry: { id: {}, name: ['x'] } }]),
+        engine: askEngine('x'), cfg: CFG25, now: MON });
+    ok('an unreadable ask is skipped and said', posted25.length === 0
+        && sw25.log.some(function (l) { return /could not read/.test(l.say); }),
+        JSON.stringify(sw25.log.map(function (l) { return l.say; })));
+
+    // The owner moved on while the model worked: a 410 is a skip, not a failure.
+    sw25 = await jobs.runAskSweep({
+        site: { asks: async function () { return { ok: true, host: 'G', asks: [ANSWER_ASK] }; },
+            answerAsk: async function () { return { ok: true, expired: true }; } },
+        engine: askEngine('There is a public charger in the lane behind the quay, a short walk from the cottage — though this perfectly good answer arrives too late.'), cfg: CFG25, now: MON });
+    ok('answering too late is a skip with its reason, never a failure', sw25.failed === 0
+        && sw25.log.some(function (l) { return /moved on/.test(l.say) && l.level === 'skip'; }),
+        JSON.stringify(sw25.log.map(function (l) { return l.say; })));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

@@ -506,6 +506,24 @@ nsk('…and the word Array appears nowhere in the questions brief',
 nsk('…while the well-formed question keeps its grounded facts',
     $hq[1]['cottage'] === '21A Westgate' && count($hq[1]['facts']) === 2, json_encode($hq[1]));
 
+// ── §19 THE ASK CHANNEL\'S JUDGEMENTS ─────────────────────────────────────
+echo "\n== §19 the ask channel\'s judgements ==\n";
+nsk('a reply ask with its enquiry is fine', night_ask_problem('reply', 42, '') === '');
+nsk('a reply ask with NO enquiry is refused', night_ask_problem('reply', 0, '') !== '');
+nsk('an answer ask with a question is fine', night_ask_problem('answer', 0, 'Is there an EV charger?') === '');
+nsk('an answer ask with no question is refused', night_ask_problem('answer', 0, '  ') !== '');
+nsk('an answer ask whose question is an ARRAY is refused, never the word Array',
+    night_ask_problem('answer', 0, ['not', 'a', 'string']) !== '');
+nsk('an unknown kind is refused and the refusal names the real ones',
+    strpos(night_ask_problem('invoice', 1, ''), 'reply') !== false);
+nsk('an over-long question is refused', night_ask_problem('answer', 0, str_repeat('q', NIGHT_ASK_Q_MAX + 1)) !== '');
+nsk('a real answer lands', night_ask_answer_problem('There is a charger in the lane.') === '');
+nsk('an empty answer is refused', night_ask_answer_problem("  \n ") !== '');
+nsk('a non-string answer is refused', night_ask_answer_problem(['x']) !== '');
+nsk('an answer over the queue\'s own body cap is refused',
+    night_ask_answer_problem(str_repeat('a', NIGHT_BODY_MAX + 1)) !== '');
+nsk('the TTL is minutes, not days — an ask is about a moment', NIGHT_ASK_TTL_MIN <= 15);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

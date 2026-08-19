@@ -329,6 +329,25 @@ function ranToday(now) {
     }
 }
 
+// THE ASK POLLER. Every twenty seconds while the app runs, ask the site
+// whether the owner is waiting on anything — the daytime half of the queue.
+// api.askSweep() carries every guard (skips mid-night-run, quiet on the
+// refusals a resident poller meets all day), so this stays a dumb timer. An
+// answered ask pokes the window so Tonight's day line updates itself.
+let askTick = null;
+function startAskPoll() {
+    clearInterval(askTick);
+    askTick = setInterval(async function () {
+        try {
+            if (!api) { return; }
+            const out = await api.askSweep();
+            if (out && out.answered && win && !win.isDestroyed()) {
+                win.webContents.send('hand:ran', true);
+            }
+        } catch (e) { /* a bad poll must never stop the poller */ }
+    }, 20000);
+}
+
 function startClock() {
     clearInterval(tick);
     tick = setInterval(async function () {
@@ -481,6 +500,7 @@ app.whenReady().then(function () {
     menu();
     create();
     startClock();
+    startAskPoll();
     app.on('activate', function () {
         if (BrowserWindow.getAllWindows().length === 0) {
             create();

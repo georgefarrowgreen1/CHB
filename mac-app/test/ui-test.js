@@ -241,6 +241,22 @@ function fakeState(over) {
             return { rows: rows.length, text: document.getElementById('lastLog').textContent, extraTags: tags };
         });
         ok('the night log renders its lines', logInfo.rows === 3);
+        // THE ASK CHANNEL'S DAY LINE: hidden until something happened — an
+        // empty "Today" heading would claim activity that hasn't happened —
+        // and painted from state once it has.
+        ok('with no asks today, the Today block is absent from the paint',
+            await page.isHidden('#todayWrap'));
+        await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
+            asks: { today: 1, log: [{ at: '14:02', say: 'Pat · answered while you waited', level: 'hit' }] },
+        })) + '; window.__nextState = null;');
+        await page.reload();
+        await page.waitForTimeout(400);
+        ok('an answered ask paints the Today block with its line',
+            await page.isVisible('#todayWrap')
+            && /answered while you waited/.test(await page.textContent('#todayLog')));
+        await page.addInitScript('window.__state = ' + JSON.stringify(fakeState()) + '; window.__nextState = null;');
+        await page.reload();
+        await page.waitForTimeout(400);
         ok("a guest called O'Brien & <b>Sons</b> arrives as TEXT", logInfo.text.indexOf("O'Brien & <b>Sons</b>") !== -1, logInfo.text);
         ok('…and its markup never became an element', logInfo.extraTags === 0);
 

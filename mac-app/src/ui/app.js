@@ -113,6 +113,14 @@
             row('Site', esc(String(S.siteUrl).replace(/^https:\/\//,'').replace(/\/nightshift\.php$/,'')) + (S.siteIsDefault ? '' : ' · your own'),
                 chip(S.secretSet ? 'ok' : 'warn', S.secretSet ? 'Connected' : 'Needs a code'), true);
 
+        // The ask channel's day line — hidden until something happened, so
+        // "Today" never claims activity it doesn't have.
+        var asks = S.asks || { today: 0, log: [] };
+        $('todayWrap').hidden = !(asks.today > 0 || (asks.log || []).length > 0);
+        $('todayLog').innerHTML = (asks.log || []).map(function (l) {
+            return '<div class="lrow ' + esc(l.level || 'info') + '"><b>' + esc(l.at || '') + '</b><span>' + esc(l.say) + '</span></div>';
+        }).join('') || '';
+
         var last = S.nights[0];
         $('lastLog').innerHTML = last
             ? (last.log || []).map(function (l) {

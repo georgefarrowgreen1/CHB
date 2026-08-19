@@ -865,3 +865,53 @@ function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUE
     }
     return $out;
 }
+
+// ── THE ASK CHANNEL'S JUDGEMENTS ─────────────────────────────────────────
+//
+// An ask is the owner, at a screen, wanting AI words NOW — so everything here
+// is tuned to a moment, not a night. The TTL is minutes: past it the owner
+// has moved on, and a machine must never spend a model run answering a
+// question nobody is still asking (the endpoint sweeps on every touch, so an
+// expired ask is REFUSED an answer rather than quietly accepting one late).
+// The open cap is small for the same reason the queue's is: a runaway
+// clicker, or a stuck Mac, must not turn the table into a pile.
+const NIGHT_ASK_KINDS = ['reply', 'answer'];
+const NIGHT_ASK_TTL_MIN = 10;
+const NIGHT_ASK_OPEN_MAX = 6;
+const NIGHT_ASK_Q_MAX = 300;
+
+// May this ask be filed at all? '' = yes, else the sentence for the owner.
+function night_ask_problem($kind, $entityId, $question)
+{
+    if (!in_array($kind, NIGHT_ASK_KINDS, true)) {
+        return "That is not something the Mac can be asked for (kinds: '"
+            . implode("', '", NIGHT_ASK_KINDS) . "').";
+    }
+    if ($kind === 'reply' && (int) $entityId <= 0) {
+        return 'A reply ask needs the enquiry it is about.';
+    }
+    if ($kind === 'answer') {
+        $q = night_str($question);
+        if ($q === '') {
+            return 'An answer ask needs the question to answer.';
+        }
+        if (mb_strlen($q) > NIGHT_ASK_Q_MAX) {
+            return 'That question is longer than ' . NIGHT_ASK_Q_MAX . ' characters.';
+        }
+    }
+    return '';
+}
+
+// May this text land as the answer? Same body cap as the queue — an answer is
+// read on the same screens.
+function night_ask_answer_problem($text)
+{
+    $t = trim((string) (is_string($text) ? $text : ''));
+    if ($t === '') {
+        return 'The answer is empty.';
+    }
+    if (mb_strlen($t) > NIGHT_BODY_MAX) {
+        return 'The answer is longer than ' . NIGHT_BODY_MAX . ' characters.';
+    }
+    return '';
+}
