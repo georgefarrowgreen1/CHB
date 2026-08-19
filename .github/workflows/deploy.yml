@@ -129,10 +129,22 @@ jobs:
           # lib itself never arrived, 500-ing the Payments screen until the next deploy
           # happened to complete. A partial upload of an app whose files reference each
           # other is a broken app, so it must fail the job.
-          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
+          #
+          # xfer:use-temp-file streams each upload to a temp name and lands it by
+          # RENAME, so a live request only ever compiles the old file or the new one.
+          # Without it lftp rewrites files IN PLACE, and — because a fresh checkout
+          # gives every file a new mtime, so mirror re-uploads the WHOLE site every
+          # deploy, changed or not — every deploy opened a sub-second truncation
+          # window per PHP file. One was hit live: a boot ran while pricing.php was
+          # mid-stream, compiled the parseable prefix, and admin-bootstrap reported
+          # "Call to undefined function square_deposit_pct()" (defined at line 362)
+          # beside a "Website update completed" entry — a deploy that changed no PHP
+          # at all. The .lftp temp suffix keeps a mid-deploy temp file from ever
+          # being addressable as a .php route.
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set xfer:use-temp-file yes; set xfer:temp-file-name '*.lftp'; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
           # Second pass: idempotent (mirror only sends what differs), so it is a no-op
           # when the first pass was complete and repairs it when it was not.
-          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set net:max-retries 3; mirror -R --no-perms ./deploy/ \"$REMOTE\"; bye"
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set cmd:fail-exit yes; set sftp:auto-confirm yes; set xfer:use-temp-file yes; set xfer:temp-file-name '*.lftp'; set net:max-retries 3; mirror -R --no-perms ./deploy/ \"$REMOTE\"; bye"
           echo "Deploy complete."
 
       # Best-effort post-deploy hooks: apply any new DB migrations and ping the
@@ -255,7 +267,8 @@ jobs:
           sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y lftp
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
-          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
+          # Temp-file + rename here too — staging serves real requests as well.
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set xfer:use-temp-file yes; set xfer:temp-file-name '*.lftp'; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
           echo "Staging deploy complete."
 
       # Staging post-deploy is migrate-ONLY: never run the owner-notify / digest /
