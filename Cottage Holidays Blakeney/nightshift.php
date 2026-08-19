@@ -611,12 +611,24 @@ route_actions([
             // sat in Ready-for-you the next morning — plus their name and
             // message had left the site for a machine that had no business
             // reading them any more.
+            // A BINNED DRAFT STAYS BINNED. Refs are per-night, so an enquiry
+            // whose draft the owner dismissed was re-drafted the next night
+            // under a fresh ref — the machine redoing work the owner rejected.
+            // USED is withheld for the same reason: the reply happened. The
+            // queue's own target ('enquiry-<id>') is the join, and the window
+            // is days because a still-waiting enquiry past it is fair to
+            // offer again — the guest is still waiting too.
             $st = db()->prepare(
-                'SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
-                   FROM enquiries
+                "SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
+                   FROM enquiries e
                   WHERE declined_at IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM night_items ni
+                                     WHERE ni.kind = 'reply'
+                                       AND ni.target = CONCAT('enquiry-', e.id)
+                                       AND ni.status IN ('used', 'dismissed')
+                                       AND ni.acted_at > DATE_SUB(NOW(), INTERVAL 4 DAY))
                   ORDER BY created_at DESC, id DESC
-                  LIMIT ' . (int) NIGHT_BRIEF_MAX,
+                  LIMIT " . (int) NIGHT_BRIEF_MAX,
             );
             $st->execute();
             $rows = $st->fetchAll();
@@ -710,7 +722,24 @@ route_actions([
             $questions = null;
         }
 
+        $stood = 0;
+        try {
+            $stood = (int) db()->query(
+                "SELECT COUNT(*) FROM enquiries e
+                  WHERE e.declined_at IS NULL
+                    AND EXISTS (SELECT 1 FROM night_items ni
+                                 WHERE ni.kind = 'reply'
+                                   AND ni.target = CONCAT('enquiry-', e.id)
+                                   AND ni.status IN ('used', 'dismissed')
+                                   AND ni.acted_at > DATE_SUB(NOW(), INTERVAL 4 DAY))",
+            )->fetchColumn();
+        } catch (\Throwable $e) {
+            $stood = 0;
+        }
         $payload = ['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX];
+        if ($stood > 0) {
+            $payload['stood_down'] = $stood;
+        }
         if ($week !== null) {
             $payload['week'] = $week;
         }

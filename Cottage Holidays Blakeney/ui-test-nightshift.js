@@ -272,6 +272,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(400);
   ok(posts.some((p) => p.action === 'act' && p.do === 'restore' && p.id === 72), 'Undo posts act:restore');
 
+  // ── 4b. A BINNED REPLY SAYS IT STAYS BINNED (integration step 2). The
+  // brief now withholds an enquiry whose draft was dismissed, and the toast
+  // is where the owner learns that — a plain "Binned." would leave them
+  // discovering it by wondering where tomorrow's draft went. Other kinds
+  // keep the plain word: only a reply has a nightly twin to stand down.
+  items.push({ id: 74, ref: 'mac-4', kind: 'reply', title: 'Reply to Tom Ashby', sub: '21A · 3 nights',
+    body: 'Hello Tom — those dates are free.', source: 'his enquiry', target: 'enquiry-11',
+    created: iso(0), expires: iso(3) });
+  await page.evaluate(() => loadNightItems(true));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    const st = document.getElementById('app-toasts');
+    if (st) st.innerHTML = '';
+    const bs = document.querySelectorAll('[data-grp="night-74"] .night-acts button');
+    /** @type {any} */ (bs[bs.length - 1]).click();
+  });
+  await page.waitForTimeout(400);
+  const binWords = await page.evaluate(() => {
+    const t = document.querySelector('#app-toasts .toast');
+    return t ? t.textContent : '';
+  });
+  ok(/won\u2019t be drafted again|won’t be drafted again/.test(binWords),
+    `binning a REPLY says it stays binned (${binWords.slice(0, 60)})`);
+  if (process.env.CHB_SHOT) {
+    const t = await page.$('#app-toasts');
+    if (t) await t.screenshot({ path: process.env.CHB_SHOT });
+  }
+  await page.evaluate(() => { const s = document.getElementById('app-toasts'); if (s) s.innerHTML = ''; });
+
   // ── 5. NOTHING HERE SENDS ────────────────────────────────────────────────
   console.log('5. nothing on this card sends, charges or publishes');
   const dangerous = posts.concat([]).filter((p) =>

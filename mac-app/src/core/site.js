@@ -150,6 +150,10 @@ function makeSite(opts) {
                 // The other jobs' facts. ABSENT (undefined) when the site is
                 // older and does not hand them over — which each job reports
                 // honestly, rather than reading an old site as a quiet week.
+                // How many waiting enquiries the site WITHHELD because the
+                // owner already used or binned their draft — said in the log,
+                // or a shorter brief reads as enquiries going missing.
+                stoodDown: parseInt(r.json.stood_down, 10) || 0,
                 week: (r.json.week && typeof r.json.week === 'object') ? r.json.week : undefined,
                 gaps: Array.isArray(r.json.gaps) ? r.json.gaps : undefined,
                 questions: Array.isArray(r.json.questions) ? r.json.questions : undefined,

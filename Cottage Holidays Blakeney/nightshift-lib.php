@@ -565,6 +565,24 @@ function night_quiet_days($device, $nowTs)
 
 // The one decision about whether to raise the duty, so the badge, the strip
 // and the brief cannot disagree about it.
+// IS A MAC LISTENING RIGHT NOW? The ask channel polls every 20 seconds and
+// the seen-stamp writes at five-minute granularity — so a Mac that is awake
+// and running the app is never more than ~6 minutes stale, and one asleep
+// drifts immediately. 'listening' is what the Draft-on-your-Mac button reads:
+// offering a 90-second wait against a Mac known to be asleep is the dead ask
+// this exists to pre-empt.
+function night_mac_presence($devices, $nowTs)
+{
+    $seen = 0;
+    foreach ((array) $devices as $d) {
+        $s = (int) (is_array($d) ? ($d['seen'] ?? 0) : 0);
+        if ($s > $seen) {
+            $seen = $s;
+        }
+    }
+    return ['seen' => $seen, 'listening' => $seen > 0 && ($nowTs - $seen) <= 360];
+}
+
 function night_quiet_problem($devices, $nowTs)
 {
     $list = (array) $devices;

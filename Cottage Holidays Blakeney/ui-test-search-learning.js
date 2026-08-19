@@ -139,6 +139,26 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(added.faqAdded, 'Add instant answer appends the Q&A to the cottage FAQ');
   ok(added.qCleared, 'adding an answer clears the guest question');
 
+  // ── THE DRAFT-ON-YOUR-MAC BUTTON READS LIVE PRESENCE (integration step 1).
+  // Listening → a real button; asleep → an honest capsule with the last-seen
+  // words — never a 90-second wait against a Mac known to be off.
+  const pres = await page.evaluate(() => {
+    siteContent['night-shift'] = '1';
+    siteContent['guest-faq-misses'] = [{ q: 'is there an ev charger?', n: 2, at: '2026-08-18', prop: 'jollyboat' }];
+    /** @type {any} */ (window).__nightPre = { on: 1, mac: { seen: Math.floor(Date.now() / 1000) - 60, listening: true } };
+    renderSearchLearning();
+    const body1 = document.getElementById('search-learning-body').innerHTML;
+    /** @type {any} */ (window).__nightPre = { on: 1, mac: { seen: Math.floor(Date.now() / 1000) - 7200, listening: false } };
+    renderSearchLearning();
+    const body2 = document.getElementById('search-learning-body').innerHTML;
+    return {
+      btnWhenListening: /Draft on your Mac/.test(body1) && /data-act="slAskMac"/.test(body1),
+      capsuleWhenAsleep: /Your Mac is asleep/.test(body2) && /last seen/.test(body2) && !/data-act="slAskMac"/.test(body2),
+    };
+  });
+  ok(pres.btnWhenListening, 'a listening Mac gets the real Draft button');
+  ok(pres.capsuleWhenAsleep, 'an asleep Mac gets the honest capsule, not a dead button');
+
   console.log(fails ? `\n  ${fails} SEARCH-LEARNING CHECK(S) FAILED ❌` : '\n  SEARCH-LEARNING SUITE PASSED ✅');
   await done(fails);
 })();

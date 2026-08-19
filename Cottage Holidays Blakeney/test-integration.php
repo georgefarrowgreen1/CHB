@@ -2720,6 +2720,61 @@ foreach (($r['json']['enquiries'] ?? []) as $e) {
 }
 it_check('once the dates are taken, the brief says so', $mine2 && $mine2['dates_free'] === false, json_encode($mine2));
 
+// A BINNED DRAFT STAYS BINNED (integration step 2). Refs are per-night, so
+// an enquiry whose draft the owner dismissed was re-drafted the next night —
+// the queue's own target is the join, and the brief now withholds it and
+// SAYS how many it withheld (stood_down), or a shorter brief reads as
+// enquiries going missing.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message)
+               VALUES ('$propKey','Binny Binnington','binny@gmail.com','$bfIn','$bfOut',2,0,'Any space left?')");
+$bnId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO night_items (ref, kind, title, sub, body, source, target, status, created_at, expires_at, acted_at)
+               VALUES ('it-binned-1','reply','Reply to Binny','', 'A draft the owner rejected.', '', 'enquiry-$bnId', 'dismissed', NOW(), DATE_ADD(NOW(), INTERVAL 3 DAY), NOW())");
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$bnSeen = false;
+foreach (($r['json']['enquiries'] ?? []) as $e) {
+    if ((int) ($e['id'] ?? 0) === $bnId) {
+        $bnSeen = true;
+    }
+}
+it_check('an enquiry whose draft was binned is withheld from the brief', !$bnSeen, $r['raw']);
+it_check('…and the brief says how many it stood down', ($r['json']['stood_down'] ?? 0) === 1, $r['raw']);
+// The window is DAYS, not for ever: a still-waiting enquiry past it is fair
+// to offer again — the guest is still waiting too.
+$rootDb->exec("UPDATE night_items SET acted_at = DATE_SUB(NOW(), INTERVAL 5 DAY) WHERE ref = 'it-binned-1'");
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$bnSeen = false;
+foreach (($r['json']['enquiries'] ?? []) as $e) {
+    if ((int) ($e['id'] ?? 0) === $bnId) {
+        $bnSeen = true;
+    }
+}
+it_check('…but a bin five days old stands the enquiry back up', $bnSeen && !isset($r['json']['stood_down']), $r['raw']);
+$rootDb->exec("DELETE FROM night_items WHERE ref = 'it-binned-1'");
+$rootDb->exec('DELETE FROM enquiries WHERE id = ' . $bnId);
+
+// LIVE PRESENCE (integration step 1): the bootstrap carries the Macs' last
+// seen — the same devices read the quiet duty already makes — so the
+// Draft-on-your-Mac buttons can say listening/asleep instead of offering a
+// 90-second wait against a Mac known to be off. Only a DEVICE key stamps
+// seen (the master path never does — the first draft of this check used
+// $SECRET and read seen 0), so a device is minted and used first.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'new_key']);
+$presKey = (string) ($r['json']['key'] ?? '');
+http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $presKey]);
+$r = http($admin, 'GET', '/admin-bootstrap.php');
+$mac = $r['json']['night']['mac'] ?? null;
+it_check('the bootstrap carries the Mac presence, listening after a fresh call',
+    is_array($mac) && ($mac['listening'] ?? false) === true && ($mac['seen'] ?? 0) > 0,
+    json_encode($r['json']['night'] ?? null));
+// The row is DELETED to restore the master path for everything below — a
+// key on file (even an emptied list: the row itself) means only device keys
+// work, which is the posture §25 gates; the suite's own reset is the same
+// row delete §25 opens with.
+$rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute(['apikey-nightshift']);
+it_check('…and with the device row gone the master key speaks again',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET])['code'] === 200);
+
 // THE CAP. A producer reads a handful, never the history.
 for ($i = 0; $i < 12; $i++) {
     $rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message)

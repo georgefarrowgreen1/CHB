@@ -122,11 +122,18 @@ async function runReplyJob(ctx) {
         log.push({ at: stamp(), say: line, level: level || 'info' });
     };
 
+    // The site names what it WITHHELD — enquiries whose draft the owner
+    // already used or binned. Without this line a shorter brief reads as
+    // enquiries going missing, and a binned draft's silence looks like a bug.
+    const stood = saneNum(c.stoodDown, 0);
     if (!enquiries.length) {
-        say('nothing waiting — nothing to do');
+        say(stood > 0
+            ? 'nothing to draft — ' + stood + ' stood down (you already dealt with their drafts)'
+            : 'nothing waiting — nothing to do');
         return { items: items, log: log };
     }
-    say(enquiries.length + ' enquir' + (enquiries.length === 1 ? 'y' : 'ies') + ' waiting');
+    say(enquiries.length + ' enquir' + (enquiries.length === 1 ? 'y' : 'ies') + ' waiting'
+        + (stood > 0 ? ' · ' + stood + ' stood down — you already dealt with their drafts' : ''));
 
     const cleaned = saneRows(enquiries, saneEnquiry);
     droppedLine(say, cleaned.dropped);
