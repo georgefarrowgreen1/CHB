@@ -342,26 +342,18 @@ jobs:
             return 1
           }
           boot "arm64, native"
-          # Rosetta: present on real owner Macs that hit this path; installed
-          # here if the runner image lacks it — BOUNDED, because softwareupdate
-          # on these runners can hang indefinitely (measured: 29 minutes on a
-          # step whose real work is 30 seconds, the whole build stalled behind
-          # it). macOS has no GNU timeout, so the bound is a watched child.
-          # If Rosetta cannot be had in 3 minutes the leg is SKIPPED AND SAID —
-          # never silently green, and never the thing that starves the build.
-          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
-            softwareupdate --install-rosetta --agree-to-license & SU=$!
-            for i in $(seq 1 36); do
-              kill -0 "$SU" 2>/dev/null || break
-              sleep 5
-            done
-            kill "$SU" 2>/dev/null || true
-            wait "$SU" 2>/dev/null || true
-          fi
-          if arch -x86_64 /usr/bin/true 2>/dev/null; then
-            boot "x86_64, under Rosetta" arch -x86_64
-          else
-            echo "Rosetta unavailable on this runner — x86_64 boot NOT proven (the arm64 leg above is the load-bearing one)."
+          # NO ROSETTA LEG. It was tried twice and hung the job twice —
+          # `softwareupdate --install-rosetta` on these hosted runners can sit
+          # in uninterruptible sleep for ever (29 min the first time; the
+          # second time it also shrugged off SIGTERM, so even a bounded watch
+          # blocked at `wait`). The arm64 boot above is the load-bearing
+          # proof — the crash it exists for (the CFBundleName/helper mismatch)
+          # is architecture-independent bundle logic, and the earlier lipo
+          # step already proves both slices are genuinely in the binary.
+          echo "x86_64 slice presence is proven by the lipo step above; a runtime x86_64 boot is not attempted (Rosetta on hosted runners hangs — see this step's history)."
+          if [ -f /tmp/boot-log.txt ]; then
+            echo "── first lines of the arm64 boot's own output ──"
+            head -8 /tmp/boot-log.txt || true
           fi
 
       - name: What was built
