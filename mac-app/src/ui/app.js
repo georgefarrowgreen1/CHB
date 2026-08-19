@@ -409,7 +409,9 @@
         if (!html && !chatWaiting) {
             html = '<div class="chatempty"><b>Ask your Mac anything</b>'
                 + 'The same model that drafts your replies, talking just to you. '
-                + 'It starts the engine itself on your first message.</div>';
+                + 'It starts the engine itself on your first message, and it can '
+                + 'look up today’s bookings, availability and waiting enquiries '
+                + 'from your own website as you talk.</div>';
         }
         if (chatWaiting) {
             html += '<div class="bub bot think" aria-hidden="true"><i></i><i></i><i></i></div>';
@@ -463,8 +465,14 @@
         }
         await chatLoad();
         $('chatLive').textContent = 'Replied: ' + r.reply.slice(0, 120);
+        // WHAT IT LOOKED UP, said plainly — an answer grounded in the website
+        // and an answer the model made up look identical without this line.
+        var looked = (r.used && r.used.length) ? 'checked the website: ' + r.used.map(esc0).join(', ') : '';
         if (r.tokensPerSec) {
-            $('chatNote').textContent = esc0(r.model) + ' · ' + r.tokensPerSec + ' tokens a second, on this Mac';
+            $('chatNote').textContent = (looked ? looked + ' · ' : '')
+                + esc0(r.model) + ' · ' + r.tokensPerSec + ' tokens a second, on this Mac';
+        } else if (looked) {
+            $('chatNote').textContent = looked;
         }
         box.focus();
     }

@@ -950,6 +950,147 @@ route_actions([
         json_out($payload);
     },
 
+    // ---- the chat's read-only tools --------------------------------
+    //
+    // The Mac's Chat screen looking things up mid-conversation. Same door as
+    // the brief (device key + the night-shift switch — one switch closes both
+    // directions), and the same grounding rule: every figure leaves here
+    // formatted by the site's own derivations, so the model quotes money and
+    // never calculates it. READ-ONLY by construction — nothing in this action
+    // writes a row, sends an email or touches a content key. Unlike the
+    // brief's answer-nothing-on-error posture, a failed read here REFUSES
+    // with a sentence: the brief's producer treats silence as "do nothing
+    // tonight", but a chat that answers "no bookings" off a failed read has
+    // told the owner a lie about their own week.
+    'chat_tool' => function ($in) {
+        rate_limit('night-chat-tool', 30, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'chat_tool', $in['build'] ?? '');
+        if (!night_enabled()) {
+            json_out([
+                'error' => 'Overnight work is switched off in Manage → System check.',
+                'code' => 'night_off',
+            ], 409);
+        }
+        $tool = night_str($in['tool'] ?? '');
+        $args = (isset($in['args']) && is_array($in['args'])) ? $in['args'] : [];
+        $today = date('Y-m-d');
+        $bad = night_tool_problem($tool, $args, $today);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        require_once __DIR__ . '/pricing.php';
+        $nameOf = [];
+        try {
+            foreach (db()->query('SELECT prop_key, name FROM properties')->fetchAll() as $pr) {
+                $nameOf[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+            }
+        } catch (\Throwable $e) {
+            $nameOf = [];
+        }
+        try {
+            if ($tool === 'today') {
+                $st = db()->prepare('SELECT * FROM bookings WHERE check_in <= ? AND check_out >= ? ORDER BY check_in');
+                $st->execute([$today, $today]);
+                $rows = [];
+                foreach ($st->fetchAll() as $b) {
+                    try {
+                        $b['due'] = (float) booking_amount_due($b, 'balance')['due'];
+                    } catch (\Throwable $e) {
+                        $b['due'] = 0.0; // an unpriceable row states no figure at all
+                    }
+                    $rows[] = $b;
+                }
+                $waiting = 0;
+                try {
+                    $waiting = (int) db()->query('SELECT COUNT(*) FROM enquiries WHERE declined_at IS NULL')->fetchColumn();
+                } catch (\Throwable $e) {
+                    $waiting = 0;
+                }
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_today($rows, $nameOf, $today, $waiting)]);
+            }
+            if ($tool === 'bookings') {
+                $from = night_tool_iso($args['from'] ?? '') ?: $today;
+                $to = night_tool_iso($args['to'] ?? '') ?: date('Y-m-d', strtotime($from . ' +14 days'));
+                $name = mb_substr(trim((string) ($args['name'] ?? '')), 0, NIGHT_TOOL_ARG_MAX);
+                $sql = 'SELECT * FROM bookings WHERE check_out > ? AND check_in < ?';
+                $params = [$from, $to];
+                if ($name !== '') {
+                    $sql .= ' AND name LIKE ?';
+                    $params[] = '%' . $name . '%';
+                }
+                $st = db()->prepare($sql . ' ORDER BY check_in LIMIT ' . (int) (NIGHT_TOOL_ROWS_MAX + 20));
+                $st->execute($params);
+                $rows = [];
+                foreach ($st->fetchAll() as $b) {
+                    try {
+                        $b['due'] = (float) booking_amount_due($b, 'balance')['due'];
+                    } catch (\Throwable $e) {
+                        $b['due'] = 0.0;
+                    }
+                    $rows[] = $b;
+                }
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_bookings($rows, $nameOf, $from, $to)]);
+            }
+            if ($tool === 'availability') {
+                // WHICH COTTAGE — matched against the live list, never guessed.
+                // Ambiguous or unknown names are refused NAMING the choices, so
+                // the model's next try can be right.
+                $want = mb_strtolower(trim((string) $args['cottage']));
+                $hits = [];
+                foreach ($nameOf as $pk => $nm) {
+                    if (mb_strtolower($nm) === $want || mb_strtolower((string) $pk) === $want
+                        || mb_stripos($nm, $want) !== false) {
+                        $hits[$pk] = $nm;
+                    }
+                }
+                if (count($hits) !== 1) {
+                    json_out(['error' => (count($hits) === 0 ? 'No cottage called that. ' : 'More than one cottage matches. ')
+                        . 'The cottages are: ' . implode(', ', array_values($nameOf)) . '.'], 400);
+                }
+                $pk = (string) array_key_first($hits);
+                $from = night_tool_iso($args['from'] ?? '');
+                $to = night_tool_iso($args['to'] ?? '');
+                $takenBy = [];
+                $st = db()->prepare('SELECT name FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?');
+                $st->execute([$pk, $to, $from]);
+                foreach ($st->fetchAll() as $b) {
+                    $takenBy[] = (string) $b['name'];
+                }
+                $st = db()->prepare('SELECT COUNT(*) FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?');
+                $st->execute([$pk, $to, $from]);
+                if ((int) $st->fetchColumn() > 0) {
+                    $takenBy[] = 'an external or blocked booking';
+                }
+                $price = null;
+                if (count($takenBy) === 0) {
+                    try {
+                        $rate = get_rate($pk);
+                        $price = $rate ? price_breakdown($rate, 2, 0, $from, $to) : null;
+                    } catch (\Throwable $e) {
+                        $price = null; // free with no figure — never a guessed quote
+                    }
+                }
+                json_out(['ok' => true, 'tool' => $tool,
+                    'data' => night_tool_availability($hits[$pk], $from, $to, $takenBy, $price)]);
+            }
+            // enquiries — the brief's own view, WITHOUT its draft stand-down
+            // filter: that filter is about not re-drafting, and the chat is
+            // asking what is waiting, which includes an enquiry whose draft
+            // was already made.
+            $st = db()->prepare('SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
+                                   FROM enquiries WHERE declined_at IS NULL
+                                  ORDER BY created_at DESC, id DESC LIMIT 6');
+            $st->execute();
+            $list = [];
+            foreach ($st->fetchAll() as $row) {
+                $list[] = night_enquiry_view($row);
+            }
+            json_out(['ok' => true, 'tool' => $tool, 'data' => ['enquiries' => $list]]);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The website could not read that just now — try again in a moment.'], 500);
+        }
+    },
+
     // ---- a machine reports a night's work --------------------------
     'ingest' => function ($in) {
         // Throttled BEFORE the secret is looked at, on the same table sign-in

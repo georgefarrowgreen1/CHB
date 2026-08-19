@@ -284,6 +284,15 @@ Settings, models and the night log live in
 - **Keep a secret in a file.** If the Keychain refuses, nothing is stored
   anywhere and the app says so.
 
+The Chat screen can **look things up** on the website mid-conversation — four
+read-only questions (today, bookings, availability with the site's own price,
+waiting enquiries), behind the same paired key and the same on/off switch as
+the night work. Reading does not move the boundary above: every figure arrives
+already formatted by the site, the model quotes it rather than calculating,
+and there is still nothing here that can send, charge or publish. The note
+under a reply says what was checked, so a grounded answer and a made-up one
+never look the same.
+
 ## The jobs
 
 Four of the five are real now, each switched on per job with its own model:

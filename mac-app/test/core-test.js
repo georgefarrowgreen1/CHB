@@ -1798,6 +1798,158 @@ function fakeSite(handler) {
         await eng.write('hello', 'm.gguf');
         ok('write() is one message through the same door',
             posts30[1].messages.length === 1 && posts30[1].messages[0].role === 'user' && posts30[1].messages[0].content === 'hello');
+        // The grammar rides the REAL request body when asked for, and an empty
+        // one never travels — §31's loop uses a fake engine, so this is the
+        // only check on the wiring itself.
+        await eng.chat([{ role: 'user', content: 'q' }], 'm', { grammar: 'root ::= "x"' });
+        await eng.chat([{ role: 'user', content: 'q' }], 'm', { grammar: '' });
+        ok('a GBNF grammar reaches the wire only when non-empty',
+            posts30[2].grammar === 'root ::= "x"' && !('grammar' in posts30[3]),
+            JSON.stringify([posts30[2].grammar, posts30[3].grammar]));
+    }
+
+    // ── §31 THE CHAT'S TOOLS — it looks things up, and only looks ───────────
+    console.log('\n§31 the chat’s tools');
+    const tMod = require('../src/core/chattools.js');
+    ok('the intro names every tool and — load-bearing — today’s date',
+        tMod.CHAT_TOOL_NAMES.every(function (n) { return tMod.chatToolsIntro('2026-08-19').indexOf(n) >= 0; })
+        && /Today is 2026-08-19/.test(tMod.chatToolsIntro('2026-08-19')));
+    ok('a plain answer is not a tool call', tMod.chatToolCall('You have one arrival today.') === null
+        && tMod.chatToolCall('Use the TOOL when you like.') === null
+        && tMod.chatToolCall('') === null);
+    ok('a call survives narration around it and prose after the JSON',
+        (function () {
+            const c = tMod.chatToolCall('Let me check.\nTOOL {"tool":"today","args":{}} — one moment.');
+            return c && c.tool === 'today' && JSON.stringify(c.args) === '{}';
+        })());
+    ok('args are filtered to the declared keys and capped',
+        (function () {
+            const c = tMod.chatToolCall('TOOL {"tool":"bookings","args":{"name":"Sar","evil":"drop me","from":"' + 'x'.repeat(200) + '"}}');
+            return c && c.tool === 'bookings' && c.args.name === 'Sar' && !('evil' in c.args)
+                && c.args.from.length === tMod.CHAT_TOOL_ARG_MAX;
+        })());
+    ok('an unknown tool is a FUMBLE naming the real ones, never a silent answer',
+        (tMod.chatToolCall('TOOL {"tool":"refund_everyone","args":{}}') || {}).bad !== undefined
+        && /today, bookings, availability, enquiries/.test(tMod.chatToolCall('TOOL {"tool":"x","args":{}}').bad));
+    ok('a required argument missing is a fumble; JSON that never closes is a fumble',
+        /cottage|from|to/.test((tMod.chatToolCall('TOOL {"tool":"availability","args":{}}') || {}).bad || '')
+        && (tMod.chatToolCall('TOOL {"tool":"today","args":{') || {}).bad !== undefined);
+    ok('a result outgrowing its cap is CUT and says so',
+        (function () {
+            const m = tMod.chatToolResultMsg('bookings', { big: 'x'.repeat(9000) });
+            return m.length < 9000 && /cut/.test(m) && /^TOOL RESULT bookings:/.test(m);
+        })());
+    ok('the retry grammar names every tool',
+        tMod.CHAT_TOOL_NAMES.every(function (n) { return tMod.chatToolGrammar().indexOf('"' + n + '"') >= 0; })
+        && /^root ::= /m.test(tMod.chatToolGrammar()));
+
+    // The LOOP, through the real api with a scripted engine and a fake site.
+    const mkChatApi = function (script, siteImpl, secretVal) {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct31-'));
+        const calls = [];
+        const toolCalls = [];
+        const api31 = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return secretVal; }, set: function () { return { ok: true }; }, state: function () { return { set: !!secretVal, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    chat: async function (msgs, model, opts) {
+                        calls.push({ msgs: msgs, grammar: (opts && opts.grammar) || '' });
+                        return { ok: true, text: script.shift() || 'ran out', ms: 5, tokens: 3, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    chatTool: async function (tool, args) {
+                        toolCalls.push({ tool: tool, args: args });
+                        return siteImpl ? siteImpl(tool, args) : { ok: true, data: { fact: 'one arrival: Sarah' } };
+                    },
+                };
+            },
+        });
+        return { api: api31, calls: calls, toolCalls: toolCalls, tmp: tmp };
+    };
+
+    {
+        // The happy loop: lookup → grounded answer; machinery never stored.
+        const h = mkChatApi(['TOOL {"tool":"today","args":{}}', 'One arrival today: Sarah.'], null, 'k');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('who arrives today?');
+        ok('a lookup happens and the answer is the model’s SECOND turn',
+            r.ok && r.reply === 'One arrival today: Sarah.'
+            && h.toolCalls.length === 1 && h.toolCalls[0].tool === 'today', JSON.stringify(r));
+        ok('…and the reply says what it looked up', JSON.stringify(r.used) === '["today"]');
+        ok('the second turn READ the tool result',
+            h.calls.length === 2 && h.calls[1].msgs.some(function (m) { return /TOOL RESULT today/.test(m.content) && /Sarah/.test(m.content); }));
+        ok('the system content teaches the protocol and the date',
+            /TOOL \{"tool"/.test(h.calls[0].msgs[0].content) && /Today is \d{4}-\d{2}-\d{2}/.test(h.calls[0].msgs[0].content));
+        const hist = h.api.chatHistory();
+        ok('the stored thread keeps the words, never the machinery',
+            hist.thread.length === 2 && hist.thread[0].text === 'who arrives today?'
+            && hist.thread[1].text === 'One arrival today: Sarah.'
+            && !JSON.stringify(hist.thread).includes('TOOL'), JSON.stringify(hist.thread));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // A fumbled call gets ONE grammar-constrained retry — and only that one.
+        const h = mkChatApi([
+            'TOOL {"tool":"nope","args":{}}',
+            'TOOL {"tool":"availability","args":{"cottage":"Jollyboat","from":"2026-09-01","to":"2026-09-04"}}',
+            'Free at £440.00.',
+        ], function () { return { ok: true, data: { free: true, price: '£440.00' } }; }, 'k');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('is jollyboat free 1-4 sept?');
+        ok('the retry after a fumble is grammar-constrained, the others are free',
+            r.ok && h.calls.length === 3
+            && h.calls[0].grammar === '' && /root ::=/.test(h.calls[1].grammar) && h.calls[2].grammar === '',
+            JSON.stringify(h.calls.map(function (c) { return !!c.grammar; })));
+        ok('…and the constrained call reached the site with its args',
+            h.toolCalls.length === 1 && h.toolCalls[0].tool === 'availability' && h.toolCalls[0].args.cottage === 'Jollyboat');
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // The lookup cap: a model that loops is walked to a sentence.
+        const h = mkChatApi([
+            'TOOL {"tool":"today","args":{}}', 'TOOL {"tool":"today","args":{}}',
+            'TOOL {"tool":"today","args":{}}', 'TOOL {"tool":"today","args":{}}',
+            'Right — one arrival, nothing else.',
+        ], null, 'k');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('busy day?');
+        ok('lookups stop at ' + tMod.CHAT_TOOL_ROUNDS + ' and the loop ends at a sentence',
+            r.ok && r.reply === 'Right — one arrival, nothing else.'
+            && h.toolCalls.length === tMod.CHAT_TOOL_ROUNDS
+            && h.calls.some(function (c) { return c.msgs.some(function (m) { return /No more lookups/.test(m.content); }); }),
+            JSON.stringify({ tools: h.toolCalls.length, calls: h.calls.length }));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // A refused lookup travels back as a RESULT — the send never dies on it.
+        const h = mkChatApi([
+            'TOOL {"tool":"enquiries","args":{}}',
+            'I could not check — the website says overnight work is switched off.',
+        ], function () { return { ok: false, refusal: { kind: 'off', say: 'Overnight work is switched off on the site.' } }; }, 'k');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('anything waiting?');
+        ok('a site refusal reaches the model in words and the answer still lands',
+            r.ok && h.calls[1].msgs.some(function (m) { return /switched off/.test(m.content); }), JSON.stringify(r));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // UNPAIRED = NO TOOLS. No protocol taught, no site call, and a
+        // TOOL-shaped reply is just words.
+        const h = mkChatApi(['TOOL {"tool":"today","args":{}}'], null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('hello');
+        ok('an unpaired app teaches no protocol and calls no site',
+            r.ok && h.toolCalls.length === 0 && h.calls.length === 1
+            && !/TOOL \{"tool"/.test(h.calls[0].msgs[0].content)
+            && r.reply === 'TOOL {"tool":"today","args":{}}'
+            && JSON.stringify(r.used) === '[]', JSON.stringify(r));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 
     console.log('\n== Summary ==');

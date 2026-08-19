@@ -561,6 +561,23 @@ signing and what is real; what matters HERE is the site half and the rules.
   includes `mac-app/` or a change there would skip both browser jobs).
 - NB the ui-test resolves playwright **relative to this file**, from the website's
   node_modules — an absolute path worked here and would have silently skipped in CI.
+- **THE CHAT (mac-app) IS NOT THE BUSINESS CHANNEL, AND ITS TOOLS ARE READS.** The
+  Chat screen (`chat.js` pure module, `chatSend` in api.js) is the owner talking to
+  their own model — deliberately NO guard (the only reader is the owner) and no route
+  to the site for its WORDS. It can LOOK THINGS UP: four read-only tools
+  (`chattools.js` — today / bookings / availability+price / enquiries) against
+  `nightshift.php`'s `chat_tool` action, same device key, same `night-shift` switch,
+  figures formatted server-side (`night_tool_*` in nightshift-lib.php — the brief's
+  grounding rule; names travel, contact details never). The protocol is a `TOOL {json}`
+  line, parsed forgivingly, whitelisted strictly; a fumbled call gets ONE
+  GBNF-grammar-constrained retry (`chatToolGrammar` → engine.js's `grammar`
+  passthrough), lookups cap at 3, every latch is one-way so the loop always ends at a
+  sentence. Tool turns are EPHEMERAL — chats.json stores the owner's words and the
+  final answer only — and the reply carries `used` so the window says what was
+  checked. Unpaired = no tools taught, no site call. Gated by core-test §30/§31
+  (loop, retry, cap, ephemerality, unpaired — grammar wiring break-tested),
+  test-nightshift §24 (composers, PII absence, no guessed quote) and
+  test-integration §26c (the real door both ways, taken/free, no contact details).
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is

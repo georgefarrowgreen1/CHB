@@ -33,6 +33,7 @@ const nightMod = require('./night');
 const jobsMod = require('./jobs');
 const runnerMod = require('./runner');
 const chatMod = require('./chat');
+const chatToolsMod = require('./chattools');
 
 function makeApi(deps) {
     const d = deps || {};
@@ -605,18 +606,81 @@ function makeApi(deps) {
                 // whatever the model does about it.
                 chatThread = chatMod.chatPush(chatThread, { role: 'user', text: t, at: nightMod.hhmm() });
                 writeChat();
-                const r = await eng.chat(chatMod.chatForModel(chatThread), model, {
-                    temperature: 0.7, maxTokens: 900, timeoutMs: 180000,
-                });
-                if (!r.ok) {
-                    return { ok: false, say: r.say };
+                // ── THE TOOL LOOP — the model may LOOK THINGS UP (chattools.js
+                // owns the protocol; the site's chat_tool action owns the door).
+                // Every path is bounded: lookups cap at CHAT_TOOL_ROUNDS, a
+                // fumbled call gets ONE grammar-constrained retry, and both
+                // latches are one-way — the loop always ends at a sentence.
+                // The tool turns are EPHEMERAL: the stored thread keeps the
+                // owner's words and the final answer, never the machinery,
+                // so chats.json cannot fill with JSON nobody asked to keep.
+                let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
+                const site = toolsOn ? siteFor() : null;
+                const intro = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
+                let msgs = chatMod.chatForModel(chatThread, '', intro);
+                const used = [];
+                let lookups = 0;
+                let grammarNext = false;
+                let fumbled = false;
+                let r = null;
+                for (;;) {
+                    r = await eng.chat(msgs, model, {
+                        // The retry runs cool: a constrained decode at chat
+                        // temperature wanders inside the grammar's freedoms.
+                        temperature: grammarNext ? 0.2 : 0.7,
+                        maxTokens: 900, timeoutMs: 180000,
+                        grammar: grammarNext ? chatToolsMod.chatToolGrammar() : '',
+                    });
+                    if (!r.ok) {
+                        return { ok: false, say: r.say };
+                    }
+                    const call = toolsOn ? chatToolsMod.chatToolCall(r.text) : null;
+                    if (!call) { break; }
+                    if (call.bad) {
+                        if (!fumbled) {
+                            // It TRIED — re-run the same turn with the decode
+                            // constrained so the call is valid by construction.
+                            fumbled = true;
+                            grammarNext = true;
+                            continue;
+                        }
+                        msgs = msgs.concat([
+                            { role: 'assistant', content: r.text },
+                            { role: 'user', content: 'That tool call was not valid (' + call.bad + '). Answer in plain words instead.' },
+                        ]);
+                        toolsOn = false;
+                        grammarNext = false;
+                        continue;
+                    }
+                    grammarNext = false;
+                    if (lookups >= chatToolsMod.CHAT_TOOL_ROUNDS) {
+                        msgs = msgs.concat([
+                            { role: 'assistant', content: r.text },
+                            { role: 'user', content: 'No more lookups this message — answer now, in plain words, from what you already have.' },
+                        ]);
+                        toolsOn = false;
+                        continue;
+                    }
+                    lookups++;
+                    const res = await site.chatTool(call.tool, call.args);
+                    if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
+                    // A refused lookup travels back as a RESULT saying so — the
+                    // model then answers honestly rather than the send dying on
+                    // a switch the owner can flip.
+                    const resultBody = res.ok
+                        ? chatToolsMod.chatToolResultMsg(call.tool, res.data)
+                        : chatToolsMod.chatToolResultMsg(call.tool, { error: (res.refusal && res.refusal.say) || 'the website did not answer' });
+                    msgs = msgs.concat([
+                        { role: 'assistant', content: r.text },
+                        { role: 'user', content: resultBody },
+                    ]);
                 }
                 chatThread = chatMod.chatPush(chatThread, { role: 'assistant', text: r.text, at: nightMod.hhmm() });
                 writeChat();
                 if (startedModel && runner) {
                     armIdleStop();
                 }
-                return { ok: true, reply: r.text, ms: r.ms, tokensPerSec: r.tokensPerSec, model: model };
+                return { ok: true, reply: r.text, ms: r.ms, tokensPerSec: r.tokensPerSec, model: model, used: used };
             } finally {
                 chatBusy = false;
             }

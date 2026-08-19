@@ -1155,3 +1155,179 @@ function night_ask_answer_problem($text)
     }
     return '';
 }
+
+// ============================================================
+//  THE CHAT'S TOOLS — the owner's own model looking things up.
+//
+//  The Mac's Chat screen may ask the site four READ-ONLY questions. Same door
+//  as everything else here (the device key, the night-shift switch), same
+//  posture as the brief: every figure formatted HERE by the site's own
+//  derivations — the model quotes money, it never calculates it — and
+//  contact details are withheld, because the tools widen what a stolen
+//  device key can read and a chat answer needs none of them. Names DO
+//  travel (unlike the brief's first-name rule): the reader is the owner,
+//  and "which Sarah" is exactly the question a chat has to answer.
+//
+//  Pure: validation and shaping only. The endpoint owns the SQL.
+// ============================================================
+
+const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries'];
+const NIGHT_TOOL_ROWS_MAX = 12;    // a chat answer, not an export
+const NIGHT_TOOL_RANGE_MAX = 62;   // nights a range may span — two months is a chat, more is a report
+const NIGHT_TOOL_ARG_MAX = 60;     // any string argument's cap
+
+// '' unless a real YYYY-MM-DD that round-trips (rejects 2026-02-31).
+function night_tool_iso($v)
+{
+    $s = trim((string) (is_string($v) ? $v : ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $s)) {
+        return '';
+    }
+    $t = strtotime($s . ' 12:00:00');
+    return ($t !== false && date('Y-m-d', $t) === $s) ? $s : '';
+}
+
+// May this call run? '' or a sentence. The Mac validates too; the door
+// re-checks because the door must never rely on the caller.
+function night_tool_problem($tool, $args, $todayIso)
+{
+    if (!in_array($tool, NIGHT_TOOLS, true)) {
+        return 'No such tool — the tools are today, bookings, availability and enquiries.';
+    }
+    $a = is_array($args) ? $args : [];
+    if ($tool === 'availability') {
+        if (trim((string) ($a['cottage'] ?? '')) === '') {
+            return 'Availability needs a cottage name.';
+        }
+        $from = night_tool_iso($a['from'] ?? '');
+        $to = night_tool_iso($a['to'] ?? '');
+        if ($from === '' || $to === '') {
+            return 'Availability needs from and to as YYYY-MM-DD dates.';
+        }
+        if ($to <= $from) {
+            return 'The to date must be after the from date.';
+        }
+        if ($from < (string) $todayIso) {
+            return 'Availability is about the future — that range starts in the past.';
+        }
+        if (night_nights($from, $to) > NIGHT_TOOL_RANGE_MAX) {
+            return 'That range is too long — ' . NIGHT_TOOL_RANGE_MAX . ' nights is the most one check can span.';
+        }
+        return '';
+    }
+    if ($tool === 'bookings') {
+        $from = (string) ($a['from'] ?? '');
+        $to = (string) ($a['to'] ?? '');
+        if ($from !== '' && night_tool_iso($from) === '') {
+            return 'The from date must be YYYY-MM-DD.';
+        }
+        if ($to !== '' && night_tool_iso($to) === '') {
+            return 'The to date must be YYYY-MM-DD.';
+        }
+        if ($from !== '' && $to !== '' && $to <= $from) {
+            return 'The to date must be after the from date.';
+        }
+        if (is_string($a['name'] ?? '') === false) {
+            return 'The name filter must be text.';
+        }
+        return '';
+    }
+    return ''; // today / enquiries take no arguments; extras are ignored
+}
+
+// One stay, shaped for a chat answer. `due` arrives as the SITE's own
+// outstanding figure (a float, already derived) and leaves formatted or
+// ABSENT — "£0.00 outstanding" is noise, the week brief's rule.
+function night_tool_stay(array $r, array $names)
+{
+    $pk = (string) ($r['prop_key'] ?? '');
+    $in = (string) ($r['check_in'] ?? '');
+    $out = (string) ($r['check_out'] ?? '');
+    $due = (float) ($r['due'] ?? 0);
+    return [
+        'guest' => night_str($r['name'] ?? ''),
+        'cottage' => night_str($names[$pk] ?? $pk),
+        'check_in' => $in,
+        'check_out' => $out,
+        'nights' => night_nights($in, $out),
+        'adults' => (int) ($r['adults'] ?? 0),
+        'children' => (int) ($r['children'] ?? 0),
+        'still_to_pay' => $due > 0 ? night_money($due) : '',
+    ];
+}
+
+// TODAY: who arrives, who leaves, who is in residence, what waits. Rows are
+// stays overlapping today; the split is end-exclusive like every calendar
+// here (a checkout today is a departure, never "staying").
+function night_tool_today(array $rows, array $names, $todayIso, $enquiriesWaiting)
+{
+    $today = (string) $todayIso;
+    $arrivals = [];
+    $departures = [];
+    $staying = [];
+    foreach ($rows as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $in = (string) ($r['check_in'] ?? '');
+        $out = (string) ($r['check_out'] ?? '');
+        $stay = night_tool_stay($r, $names);
+        if ($in === $today && count($arrivals) < NIGHT_TOOL_ROWS_MAX) {
+            $arrivals[] = $stay;
+        } elseif ($out === $today && count($departures) < NIGHT_TOOL_ROWS_MAX) {
+            $departures[] = $stay;
+        } elseif ($in < $today && $out > $today && count($staying) < NIGHT_TOOL_ROWS_MAX) {
+            $staying[] = $stay;
+        }
+    }
+    return [
+        'date' => $today,
+        'arrivals' => $arrivals,
+        'departures' => $departures,
+        'staying' => $staying,
+        'enquiries_waiting' => (int) $enquiriesWaiting,
+    ];
+}
+
+// BOOKINGS in a range, capped WITH the cut said — a list that stops at 12
+// silently reads as "that is all of them", the no-silent-caps rule.
+function night_tool_bookings(array $rows, array $names, $fromIso, $toIso)
+{
+    $out = [];
+    $more = 0;
+    foreach ($rows as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        if (count($out) < NIGHT_TOOL_ROWS_MAX) {
+            $out[] = night_tool_stay($r, $names);
+        } else {
+            $more++;
+        }
+    }
+    return ['from' => (string) $fromIso, 'to' => (string) $toIso, 'bookings' => $out, 'more' => $more];
+}
+
+// AVAILABILITY: the calendar's answer plus, when free, the site's own quote.
+// $takenBy: guest names / "an external booking" strings the endpoint found —
+// non-empty means taken. $price: a price_breakdown result or null; null on a
+// free range means SAY NOTHING about money, never guess (the brief's
+// dates_free rule, applied to a quote).
+function night_tool_availability($cottage, $fromIso, $toIso, array $takenBy, $price)
+{
+    $free = count($takenBy) === 0;
+    $out = [
+        'cottage' => night_str($cottage),
+        'from' => (string) $fromIso,
+        'to' => (string) $toIso,
+        'nights' => night_nights($fromIso, $toIso),
+        'free' => $free,
+    ];
+    if (!$free) {
+        $out['taken_by'] = array_slice(array_map('night_str', $takenBy), 0, 4);
+    } elseif (is_array($price) && isset($price['total'])) {
+        $out['price'] = night_money((float) $price['total']);
+        $out['price_note'] = 'rental total for 2 adults — the deposit and any party changes move it';
+    }
+    return $out;
+}

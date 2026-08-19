@@ -166,6 +166,31 @@ function makeSite(opts) {
                 teach: (r.json.teach && typeof r.json.teach === 'object') ? r.json.teach : undefined,
             };
         },
+        // THE CHAT'S LOOKUPS — one read-only question by name. Returns
+        // { ok, data } or { ok:false, refusal }; the site validates the tool
+        // and the args itself (the door never relies on the caller), this
+        // just carries them.
+        async chatTool(tool, args) {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            let r;
+            try {
+                r = await send(url, {
+                    action: 'chat_tool', secret: secret, build: build,
+                    tool: String(tool || ''),
+                    args: (args && typeof args === 'object' && !Array.isArray(args)) ? args : {},
+                });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return { ok: true, data: (r.json.data && typeof r.json.data === 'object') ? r.json.data : {} };
+        },
         // Post a night's work. Returns { ok, stored, skipped[] } or a refusal.
         async ingest(items) {
             if (!url || !secret) {

@@ -165,15 +165,23 @@ function makeEngine(opts) {
                 return { ok: false, say: 'Nothing to ask the model.' };
             }
             const started = Date.now();
+            const body = {
+                model: model || 'local',
+                messages: msgs,
+                temperature: typeof p.temperature === 'number' ? p.temperature : 0.35,
+                max_tokens: p.maxTokens || 700,
+                stream: false,
+            };
+            // A GBNF grammar constrains the decode so the reply is valid by
+            // construction — the chat's tool-call RETRY uses it. Only ever
+            // attached when asked for: llama.cpp honours it, other engines
+            // ignore the unknown field, and an empty string must not travel.
+            if (typeof p.grammar === 'string' && p.grammar !== '') {
+                body.grammar = p.grammar;
+            }
             let r;
             try {
-                r = await post(base + CHAT_PATH, {
-                    model: model || 'local',
-                    messages: msgs,
-                    temperature: typeof p.temperature === 'number' ? p.temperature : 0.35,
-                    max_tokens: p.maxTokens || 700,
-                    stream: false,
-                }, p.timeoutMs);
+                r = await post(base + CHAT_PATH, body, p.timeoutMs);
             } catch (e) {
                 return { ok: false, say: 'The model did not answer: ' + (e && e.message ? e.message : 'timed out') };
             }
