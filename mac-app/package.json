@@ -55,7 +55,7 @@
       "gatekeeperAssess": false,
       "extendInfo": {
         "LSUIElement": false,
-        "CFBundleName": "Cottage Holidays Blakeney",
+        "CFBundleName": "Cottage Holidays Blakeney AI",
         "NSHumanReadableCopyright": "© 2026 Cottage Holidays Blakeney",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true

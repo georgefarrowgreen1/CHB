@@ -1893,6 +1893,19 @@ console.log('\n§14 The Mac app download link names the built file');
             const y = fs.readFileSync(wf, 'utf8');
             check('the workflow checks the architectures of the REAL binary name',
                 y.includes('MacOS/' + pkg.build.productName));
+            // CFBUNDLENAME MUST TRACK PRODUCTNAME. Electron finds its helper
+            // apps by CFBundleName + " Helper.app" while electron-builder
+            // names the helpers from productName — so an extendInfo pin left
+            // behind by a rename is an app that dies at ElectronMain with
+            // "Unable to find helper app" (SIGTRAP, "quit unexpectedly").
+            // Shipped exactly once: hand-build-20260819-1839, found by the
+            // owner. The pin itself is legitimate (it is what names the app
+            // in the macOS menu bar); it just may never disagree.
+            const bn = pkg.build.mac && pkg.build.mac.extendInfo && pkg.build.mac.extendInfo.CFBundleName;
+            if (bn !== undefined) {
+                check('mac extendInfo.CFBundleName equals productName (a mismatch cannot launch)',
+                    bn === pkg.build.productName);
+            }
         }
     }
 }
