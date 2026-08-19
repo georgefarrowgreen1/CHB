@@ -315,7 +315,8 @@ jobs:
           boot() {  # $1 = label, rest = command prefix (empty or `arch -x86_64`)
             local label="$1"; shift
             echo "── $label ──"
-            "$@" "$BIN" > /tmp/boot-log.txt 2>&1 &
+            date > /tmp/boot-marker
+            ELECTRON_ENABLE_LOGGING=1 "$@" "$BIN" --enable-logging > /tmp/boot-log.txt 2>&1 &
             local pid=$!
             sleep 15
             if kill -0 "$pid" 2>/dev/null; then
@@ -323,9 +324,21 @@ jobs:
               kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
               return 0
             fi
-            wait "$pid"; local code=$?
-            echo "DIED (exit $code) — first lines of its own output:"
-            head -20 /tmp/boot-log.txt || true
+            # NB the job shell runs with -e, so `wait` must not be allowed to
+            # abort the script before the diagnosis prints — the first version
+            # died at this line and the evidence below never appeared.
+            local code=0
+            wait "$pid" || code=$?
+            echo "DIED (exit $code) — the app's own output:"
+            cat /tmp/boot-log.txt || true
+            echo "── the runner's crash report, if macOS wrote one ──"
+            sleep 8
+            REP="$(find "$HOME/Library/Logs/DiagnosticReports" -name '*.ips' -newer /tmp/boot-marker 2>/dev/null | head -1)"
+            if [ -n "$REP" ]; then
+              head -c 6000 "$REP"; echo
+            else
+              echo "(none found)"
+            fi
             return 1
           }
           boot "arm64, native"
