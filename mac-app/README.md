@@ -247,7 +247,8 @@ the failure mode this avoids.
 ```
 src/main.js          Electron: window, menu, the minute clock, power assertion
 src/preload.js       the bridge — named channels only, and no way to read the secret
-src/ui/              the window: five screens, no Node, its own CSP
+src/ui/              the window: Home, Chat, Activity, Work, Library (+ the
+                      Settings window) — no Node, its own CSP
 src/core/
   machine.js         what Mac is this, and what will run on it
   engine.js          llama.cpp / Ollama / MLX behind one HTTP adapter

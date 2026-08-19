@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('hand', {
     modelFiles: function (id) { return ipcRenderer.invoke('hand:modelFiles', id); },
     downloadModel: function (row) { return ipcRenderer.invoke('hand:downloadModel', row); },
     runNow: function () { return ipcRenderer.invoke('hand:runNow'); },
+    // The Chat screen: the text crosses, the reply comes back, and the model /
+    // engine decisions stay on the main side where the settings live.
+    chatHistory: function () { return ipcRenderer.invoke('hand:chatHistory'); },
+    chatSend: function (text) { return ipcRenderer.invoke('hand:chatSend', text); },
+    chatClear: function () { return ipcRenderer.invoke('hand:chatClear'); },
     // Start and stop the local model server. Note what these DON'T take: no
     // binary path, no arguments, no model. The window says "start it" and the
     // main process decides what that means from settings it already holds —

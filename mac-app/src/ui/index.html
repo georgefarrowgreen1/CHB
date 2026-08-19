@@ -33,6 +33,7 @@
       <span class="nm">Cottage Holidays<br>Blakeney<small>The Hand</small></span>
     </div>
     <button class="snav" type="button" data-v="0" aria-current="true">Home<span class="live" id="homeLive" hidden></span></button>
+    <button class="snav" type="button" data-v="4">Chat</button>
     <button class="snav" type="button" data-v="1">Activity<span class="badge" id="actBadge">0</span></button>
     <button class="snav" type="button" data-v="2">Work<span class="badge" id="jobsBadge">0</span></button>
     <button class="snav" type="button" data-v="3">Library<span class="badge" id="modelsBadge">0</span></button>
@@ -97,6 +98,27 @@
         <button class="tbtn prime" type="button" id="addBtn">Add model…</button></div>
       <div class="box" id="modelsBox"></div>
       <p class="tiny" id="modelsNote"></p>
+    </section>
+    <!-- CHAT — the owner talking to their own model. NOT the business
+         channel: nothing typed or answered here has any route to the website
+         or a guest, which is why there is no guard on it — the only reader is
+         the owner. The engine handling is the ask channel's: it starts itself
+         on the first message and stands down after ten quiet minutes. -->
+    <section class="view" id="v4" hidden>
+      <div class="vhead"><div class="grow"><h1>Chat</h1>
+        <p class="sub">Just you and the model, on this Mac. Nothing here reaches the website or a guest.</p></div>
+        <div class="rail"><select class="pop" id="chatModel" aria-label="Model for the chat"></select>
+        <button class="tbtn" type="button" id="chatNew">New chat</button></div></div>
+      <div class="box chatbox">
+        <div class="chatlog" id="chatLog"></div>
+        <div class="chatbar">
+          <textarea class="chatin" id="chatIn" rows="1" placeholder="Ask anything&hellip;" aria-label="Your message"></textarea>
+          <button class="tbtn prime" type="button" id="chatSendBtn">Send</button>
+        </div>
+      </div>
+      <p class="tiny" id="chatNote"></p>
+      <!-- Replies are announced without re-reading the whole thread. -->
+      <span class="vh" id="chatLive" role="status" aria-live="polite"></span>
     </section>
   </main>
 

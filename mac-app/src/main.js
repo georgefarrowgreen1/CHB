@@ -513,6 +513,12 @@ function wire() {
         });
     });
     ipcMain.handle('hand:runNow', function () { return runNow(); });
+    // The Chat screen. Three named channels, the same posture as everything
+    // else on this bridge: the window says WHAT ("send this text"), the main
+    // process decides HOW (which engine, which model, whether to start it).
+    ipcMain.handle('hand:chatHistory', function () { return api.chatHistory(); });
+    ipcMain.handle('hand:chatSend', function (e, text) { return api.chatSend(text); });
+    ipcMain.handle('hand:chatClear', function () { return api.chatClear(); });
     ipcMain.handle('hand:startEngine', function () { return api.startEngine(); });
     ipcMain.handle('hand:stopEngine', function () { return api.stopEngine(); });
 

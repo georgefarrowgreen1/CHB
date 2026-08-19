@@ -145,13 +145,31 @@ function makeEngine(opts) {
         // `temperature` is low on purpose: this is a business letter, not a poem,
         // and a deterministic-ish answer is one the guard can reason about.
         async write(prompt, model, opts2) {
+            return this.chat([{ role: 'user', content: String(prompt || '') }], model, opts2);
+        },
+
+        // A CONVERSATION — the same call with the history passed through. The
+        // one place the request is shaped and the reply parsed, so `write` (one
+        // message) and the Chat screen (many) cannot drift apart. Messages are
+        // re-checked at this boundary even though chat.js already cleaned them:
+        // the engine must never rely on its caller.
+        async chat(messages, model, opts2) {
             const p = opts2 || {};
+            const msgs = (Array.isArray(messages) ? messages : [])
+                .filter(function (m) {
+                    return m && (m.role === 'user' || m.role === 'assistant' || m.role === 'system')
+                        && typeof m.content === 'string' && m.content.trim() !== '';
+                })
+                .map(function (m) { return { role: m.role, content: m.content }; });
+            if (!msgs.some(function (m) { return m.role === 'user'; })) {
+                return { ok: false, say: 'Nothing to ask the model.' };
+            }
             const started = Date.now();
             let r;
             try {
                 r = await post(base + CHAT_PATH, {
                     model: model || 'local',
-                    messages: [{ role: 'user', content: String(prompt || '') }],
+                    messages: msgs,
                     temperature: typeof p.temperature === 'number' ? p.temperature : 0.35,
                     max_tokens: p.maxTokens || 700,
                     stream: false,

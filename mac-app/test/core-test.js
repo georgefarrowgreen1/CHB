@@ -1724,6 +1724,82 @@ function fakeSite(handler) {
     ok('a digest ask with no records is unreadable — skipped and said',
         posted25.length === 0 && dg.log.some(function (l) { return /could not read/.test(l.say); }));
 
+    // ── §30 THE CHAT — the owner's own channel, and its boundaries ──────────
+    console.log('\n§30 the chat');
+    const chatMod = require('../src/core/chat.js');
+    ok('the system line states the boundary to the MODEL — private, no sends',
+        /cannot send/.test(chatMod.chatSystemLine('George')) && /nothing you write here reaches the website or a guest/i.test(chatMod.chatSystemLine('George')));
+    ok('…and names the owner when the brief has said who that is',
+        /George/.test(chatMod.chatSystemLine('George')) && /the owner/.test(chatMod.chatSystemLine('')));
+    ok('a message is a role and a string — garbage is absent, never the word Array',
+        chatMod.chatMsg({ role: 'user', text: ['an', 'array'] }) === null
+        && chatMod.chatMsg({ role: 'system', text: 'sneaky' }) === null
+        && chatMod.chatMsg('nonsense') === null
+        && chatMod.chatMsg({ role: 'assistant', text: '  hi  ', at: '14:22:59' }).at === '14:22');
+    ok('a thread read off disk is cleaned and capped',
+        chatMod.chatThread([{ role: 'user', text: 'a' }, null, 'x', { role: 'junk', text: 'b' }]).length === 1
+        && chatMod.chatThread(Array.from({ length: 300 }, function (x, i) { return { role: 'user', text: 'm' + i }; })).length === chatMod.CHAT_KEEP);
+    ok('push keeps the cap and never mutates the thread it was handed',
+        (function () {
+            const base = [{ role: 'user', text: 'a' }];
+            const out = chatMod.chatPush(base, { role: 'assistant', text: 'b' });
+            return base.length === 1 && out.length === 2;
+        })());
+    // What travels to the model: the system line first, then the NEWEST turns
+    // that fit — cutting the start loses old context, cutting the end would
+    // lose the question just asked.
+    const long = Array.from({ length: 40 }, function (x, i) { return { role: i % 2 ? 'assistant' : 'user', text: 'turn ' + i }; });
+    const forModel = chatMod.chatForModel(long, 'George');
+    ok('the model gets the system line first, then the newest turns',
+        forModel[0].role === 'system'
+        && forModel.length === chatMod.CHAT_SEND_MAX + 1
+        && forModel[forModel.length - 1].content === 'turn 39'
+        && forModel[1].content === 'turn ' + (40 - chatMod.CHAT_SEND_MAX),
+        forModel.length + ' msgs, last: ' + forModel[forModel.length - 1].content);
+    ok('…and the character budget trims from the OLD end too',
+        (function () {
+            // NB each message is already capped at CHAT_MSG_CHARS on the way
+            // in, so exceeding the SEND budget takes several fat messages —
+            // the first fixture used one 11,000-char message, which the
+            // per-message cap shrank until it fit, proving nothing.
+            const fat = [
+                { role: 'user', text: 'old '.repeat(1750) + 'FIRST' },
+                { role: 'user', text: 'mid '.repeat(1750) + 'SECOND' },
+                { role: 'user', text: 'the question' },
+            ];
+            const m = chatMod.chatForModel(fat, '');
+            return m.length === 3
+                && m[m.length - 1].content === 'the question'
+                && /SECOND/.test(m[1].content)
+                && !m.some(function (x) { return /FIRST/.test(x.content); });
+        })());
+
+    // engine.chat: the request is shaped and checked at the engine boundary,
+    // whatever the caller sent — and write() is one message through the same
+    // door, so the two cannot drift.
+    {
+        const engMod = require('../src/core/engine.js');
+        const posts30 = [];
+        const eng = engMod.makeEngine({ id: 'llamacpp', post: async function (u, b) {
+            posts30.push(b);
+            return { ok: true, status: 200, json: { choices: [{ message: { content: 'a reply' } }], usage: { completion_tokens: 5 } } };
+        } });
+        const r1 = await eng.chat([
+            { role: 'system', content: 's' },
+            { role: 'user', content: 'q' },
+            { role: 'tool', content: 'never' },
+            { role: 'assistant', content: '   ' },
+        ], 'm.gguf');
+        ok('chat passes system+user+assistant through and drops the rest',
+            r1.ok && posts30[0].messages.map(function (m) { return m.role; }).join(',') === 'system,user',
+            JSON.stringify(posts30[0].messages));
+        const r2 = await eng.chat([{ role: 'assistant', content: 'only me' }], 'm');
+        ok('a thread with no user message is refused before any network', !r2.ok && posts30.length === 1, r2.say);
+        await eng.write('hello', 'm.gguf');
+        ok('write() is one message through the same door',
+            posts30[1].messages.length === 1 && posts30[1].messages[0].role === 'user' && posts30[1].messages[0].content === 'hello');
+    }
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

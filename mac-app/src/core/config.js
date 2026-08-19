@@ -96,6 +96,9 @@ const DEFAULTS = {
     // "Not now" to the move-to-Applications offer is remembered here, so the
     // offer is made exactly once (see core/update.js shouldOfferMove).
     moveDeclined: false,
+    // The Chat screen's model. '' = follow the reply job's choice, which is
+    // the model the owner already trusts with prose.
+    chatModel: '',
 };
 
 function paths(dirOverride) {
@@ -105,6 +108,10 @@ function paths(dirOverride) {
         config: path.join(dir, 'config.json'),
         models: path.join(dir, 'Models'),
         log: path.join(dir, 'nights.json'),
+        // The Chat screen's one conversation. Its own file, not a key in
+        // config.json: a thread grows and is rewritten per message, and the
+        // settings file should never carry two hundred messages of ballast.
+        chat: path.join(dir, 'chats.json'),
     };
 }
 

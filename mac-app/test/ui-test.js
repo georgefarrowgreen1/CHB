@@ -130,6 +130,23 @@ function fakeState(over) {
                 },
                 downloadModel: async function (r) { window.__calls.push(['downloadModel', r]); return { ok: true, file: '/x/a.gguf' }; },
                 runNow: async function () { window.__calls.push(['runNow']); return { ok: true, night: { posted: 2 } }; },
+                // The chat. The fake keeps a thread the way the main process
+                // does, so the reload-after-answer path is the real one.
+                chatHistory: async function () {
+                    window.__calls.push(['chatHistory']);
+                    return { ok: true, thread: window.__chatThread || [], model: 'q.gguf' };
+                },
+                chatSend: async function (t) {
+                    window.__calls.push(['chatSend', t]);
+                    if (window.__chatAnswer && !window.__chatAnswer.ok) { return window.__chatAnswer; }
+                    var reply = (window.__chatAnswer && window.__chatAnswer.reply) || 'A plain answer.';
+                    window.__chatThread = (window.__chatThread || []).concat([
+                        { role: 'user', text: t, at: '14:22' },
+                        { role: 'assistant', text: reply, at: '14:22' },
+                    ]);
+                    return window.__chatAnswer || { ok: true, reply: reply, ms: 900, tokensPerSec: 34.5, model: 'q.gguf' };
+                },
+                chatClear: async function () { window.__calls.push(['chatClear']); window.__chatThread = []; return { ok: true }; },
                 // The updater. Absent entirely before this, which is why the
                 // version line was hidden in every test run and the menu check
                 // could not have passed: upCheck() returns early when the
@@ -196,14 +213,14 @@ function fakeState(over) {
         // ── ONE SCREEN AT A TIME, measured as PAINT not attribute ──
         const painted = function () {
             return page.evaluate(function () {
-                return [0, 1, 2, 3].map(function (i) { return document.getElementById('v' + i).getClientRects().length > 0; });
+                return [0, 1, 2, 3, 4].map(function (i) { return document.getElementById('v' + i).getClientRects().length > 0; });
             });
         };
-        ok('only Home is painted on open', JSON.stringify(await painted()) === '[true,false,false,false]',
+        ok('only Home is painted on open', JSON.stringify(await painted()) === '[true,false,false,false,false]',
             JSON.stringify(await painted()));
         await page.click('[data-v="3"]');
         await page.waitForTimeout(120);
-        ok('Library paints alone', JSON.stringify(await painted()) === '[false,false,false,true]');
+        ok('Library paints alone', JSON.stringify(await painted()) === '[false,false,false,true,false]');
         ok('…and the title bar follows', (await page.textContent('#tbTitle')).trim() === 'Library');
 
         // ── MACOS 26 STRUCTURE: the facts that could regress silently ──
@@ -456,7 +473,71 @@ function fakeState(over) {
         await page.click('#runBtn');
         await page.waitForTimeout(400);
         ok('Run now asks the core to run', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'runNow'; }); }));
-        ok('…and lands back on Home', JSON.stringify(await painted()) === '[true,false,false,false]');
+        ok('…and lands back on Home', JSON.stringify(await painted()) === '[true,false,false,false,false]');
+
+        // ── THE CHAT: the owner and their model, and nothing else ──────────
+        // The rules that matter: the reply is TEXT whatever the model writes,
+        // a refusal is the MAIN PROCESS'S sentence with the owner's words
+        // handed back, and New chat clears through the bridge — the window
+        // never edits a thread it does not own.
+        await page.click('[data-v="4"]');
+        await page.waitForTimeout(250);
+        ok('Chat paints alone', JSON.stringify(await painted()) === '[false,false,false,false,true]');
+        ok('…and asked the bridge for its thread',
+            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatHistory'; }); }));
+        ok('the privacy line is the screen\'s own subtitle',
+            /reaches the website or a guest/.test(await page.textContent('#v4')));
+        ok('an empty thread is an invitation, not a blank',
+            /Ask your Mac anything/.test(await page.textContent('#chatLog')));
+        // A reply whose text is markup must land as TEXT.
+        await page.evaluate(function () {
+            window.__chatAnswer = { ok: true, reply: "O'Brien & <b>Sons</b> — <script>window.__pwned=1</script> noted.", ms: 800, tokensPerSec: 21.4, model: 'q.gguf' };
+        });
+        await page.fill('#chatIn', 'who are the builders?');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(300);
+        ok('the send crossed the bridge with the words, once',
+            (await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'chatSend'; }).map(function (c) { return c[1]; }); })).join('|') === 'who are the builders?');
+        const chatSt = await page.evaluate(function () {
+            var log = document.getElementById('chatLog');
+            return {
+                text: log.textContent,
+                users: log.querySelectorAll('.bub.user').length,
+                bots: log.querySelectorAll('.bub.bot:not(.think)').length,
+                extraTags: log.querySelectorAll('b, script').length,
+                pwned: !!window.__pwned,
+                note: document.getElementById('chatNote').textContent,
+            };
+        });
+        ok('the reply arrived as TEXT — markup shown, never run',
+            chatSt.text.indexOf("O'Brien & <b>Sons</b>") !== -1 && chatSt.extraTags === 0 && !chatSt.pwned,
+            chatSt.text.slice(0, 120));
+        ok('one bubble each side', chatSt.users === 1 && chatSt.bots === 1, JSON.stringify([chatSt.users, chatSt.bots]));
+        ok('the whisper is the MEASURED rate, not a boast', /21\.4 tokens a second/.test(chatSt.note), chatSt.note);
+        // Enter sends; the thread grows.
+        await page.evaluate(function () { window.__chatAnswer = null; });
+        await page.fill('#chatIn', 'thanks');
+        await page.press('#chatIn', 'Enter');
+        await page.waitForTimeout(300);
+        ok('Enter sends', (await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'chatSend'; }).length; })) === 2);
+        // A refusal: the main process's own sentence, and the words come back.
+        await page.evaluate(function () {
+            window.__chatAnswer = { ok: false, say: 'Tonight\u2019s work is using the engine \u2014 a minute or two and it\u2019s yours.' };
+        });
+        await page.fill('#chatIn', 'and the roof?');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(300);
+        ok('a refusal prints the main process\'s sentence',
+            /using the engine/.test(await page.textContent('#toastSays')), await page.textContent('#toastSays'));
+        ok('…and the owner\'s words come back rather than vanishing',
+            (await page.inputValue('#chatIn')) === 'and the roof?');
+        // New chat clears through the bridge, never locally.
+        await page.evaluate(function () { window.__chatAnswer = null; });
+        await page.click('#chatNew');
+        await page.waitForTimeout(200);
+        ok('New chat clears through the bridge',
+            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatClear'; }); }));
+        ok('…and the invitation returns', /Ask your Mac anything/.test(await page.textContent('#chatLog')));
 
         // ── FIRST RUN: nothing set up at all, and the window says what to do
         // rather than showing empty boxes. Driven by reloading with a bare state
