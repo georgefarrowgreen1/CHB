@@ -518,7 +518,7 @@ produces anything — with no producer the feature is invisible, which is the po
   489600 → 496000, admin.css 58700 → 59400, admin-views.html 22000 → 22600. app.js
   stayed within its budget, which is the one that had to.
 
-## The producer — `mac-app/` (Blakeney Hand), and the READ half of the queue
+## The producer — `mac-app/` (Cottage Holidays Blakeney AI), and the READ half of the queue
 
 **Asked for as "build it as shown"**, after the replica. The overnight queue's
 receiving half shipped first (above); this is the machine that fills it. It lives in

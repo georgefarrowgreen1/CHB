@@ -1,6 +1,6 @@
 {
   "name": "cottage-holidays-blakeney",
-  "productName": "Cottage Holidays Blakeney",
+  "productName": "Cottage Holidays Blakeney AI",
   "version": "1.0.0",
   "private": true,
   "description": "The Cottage Holidays Blakeney companion for Mac. It drafts work overnight on your own machine and leaves it on the website for you to read in the morning — every job posts a draft, and nothing it writes is ever sent.",
@@ -24,7 +24,7 @@
   },
   "build": {
     "appId": "uk.co.cottageholidaysblakeney.mac",
-    "productName": "Cottage Holidays Blakeney",
+    "productName": "Cottage Holidays Blakeney AI",
     "copyright": "© 2026 Cottage Holidays Blakeney",
     "files": [
       "src/**/*",

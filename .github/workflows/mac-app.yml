@@ -359,7 +359,7 @@ jobs:
             echo "queue switched on. mac-app/README.md covers both."
           } > notes.md
           gh release create "$TAG" "${{ steps.out.outputs.dmg }}" $TARGET \
-            --title "Cottage Holidays Blakeney ${TAG}" --notes-file notes.md
+            --title "Cottage Holidays Blakeney AI ${TAG}" --notes-file notes.md
           echo "This build:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${{ steps.out.outputs.name }}"
           echo "The link the site uses, which always points at the newest release:"

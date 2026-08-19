@@ -155,7 +155,7 @@ function trayMenu() {
         { label: 'Open the window',
             click: function () { if (win) { win.show(); win.focus(); } else { create(); } } },
         { type: 'separator' },
-        { label: 'Quit Blakeney Hand', role: 'quit' },
+        { label: 'Quit Cottage Holidays Blakeney AI', role: 'quit' },
     ]);
 }
 function startTray() {
@@ -163,7 +163,7 @@ function startTray() {
         const img = nativeImage.createFromBuffer(Buffer.from(TRAY_PNG_2X, 'base64'), { scaleFactor: 2 });
         img.setTemplateImage(true);
         tray = new Tray(img);
-        tray.setToolTip('Blakeney Hand');
+        tray.setToolTip('Cottage Holidays Blakeney AI');
         tray.setContextMenu(trayMenu());
         // The state line has to be fresh WHEN THE MENU OPENS. Electron's
         // context menu is a snapshot, so it is rebuilt on a slow clock — and
@@ -242,7 +242,9 @@ function menu() {
         {
             label: 'Run',
             submenu: [
-                { label: 'Run tonight’s work now', accelerator: 'Cmd+R', click: function () { runNow(); } },
+                // CmdOrCtrl so Control+R works too (asked for) — and note this menu is
+                // custom, so there is no reload role for the accelerator to fight.
+                { label: 'Run tonight’s work now', accelerator: 'CmdOrCtrl+R', click: function () { runNow(); } },
                 { type: 'separator' },
                 {
                     label: 'Open the website',
