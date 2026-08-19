@@ -2838,6 +2838,63 @@ it_check('…and says what its own cap is', ($r['json']['cap'] ?? 0) === 8, $r['
 
 $rootDb->exec('DELETE FROM enquiries');
 
+// THE CHAT'S TOOLS (§26c) — the Mac's Chat screen looking things up. Same
+// door as the brief, and the same two directions gated: what it hands over
+// (the calendar's own answer, the site's own quote) and what it withholds
+// (contact details — a chat answer needs none of them, and the tools widen
+// what a stolen device key can read).
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$ctIn = date('Y-m-d', time() + 40 * 86400);
+$ctOut = date('Y-m-d', time() + 44 * 86400);
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, phone, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights)
+               VALUES ('$propKey','Chat Tool Guest','ctg@gmail.com','07700 900456','$ctIn','$ctOut',2,0,'deposit',100,400,380,20,4)");
+$ctBid = (int) $rootDb->lastInsertId();
+
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => 'wrong', 'tool' => 'today']);
+it_check('chat_tool: a wrong secret cannot read it', $r['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'refund_everyone']);
+it_check('chat_tool: an unknown tool is refused with the real ones named',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'availability') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'availability',
+    'args' => ['cottage' => 'nowhere at all', 'from' => $ctIn, 'to' => $ctOut]]);
+it_check('chat_tool: an unknown cottage is refused NAMING the choices',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'The cottages are') !== false, $r['raw']);
+
+// Availability, both directions — a taken range names who has it, a free one
+// carries the site's own quote and no invention either way.
+$expectName26c = (string) $rootDb->query('SELECT name FROM properties WHERE prop_key = ' . $rootDb->quote($propKey))->fetchColumn();
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'availability',
+    'args' => ['cottage' => $expectName26c ?: $propKey, 'from' => $ctIn, 'to' => $ctOut]]);
+it_check('chat_tool: a taken range reads taken and names the guest',
+    ($r['json']['data']['free'] ?? null) === false
+    && in_array('Chat Tool Guest', $r['json']['data']['taken_by'] ?? [], true)
+    && !isset($r['json']['data']['price']), $r['raw']);
+$freeIn = date('Y-m-d', time() + 50 * 86400);
+$freeOut = date('Y-m-d', time() + 53 * 86400);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'availability',
+    'args' => ['cottage' => $expectName26c ?: $propKey, 'from' => $freeIn, 'to' => $freeOut]]);
+it_check('chat_tool: a free range reads free with the site\'s own formatted quote',
+    ($r['json']['data']['free'] ?? null) === true
+    && preg_match('/^£[0-9,]+\.[0-9]{2}$/', (string) ($r['json']['data']['price'] ?? '')) === 1, $r['raw']);
+
+// The bookings tool finds the stay by name — and nothing of the guest's
+// contact details leaves the site.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'bookings',
+    'args' => ['from' => $ctIn, 'to' => $ctOut, 'name' => 'Chat Tool']]);
+$ctRows = $r['json']['data']['bookings'] ?? [];
+it_check('chat_tool: bookings finds the stay by name, cottage NAMED not keyed',
+    count($ctRows) === 1 && $ctRows[0]['guest'] === 'Chat Tool Guest'
+    && ($expectName26c === '' || $ctRows[0]['cottage'] === $expectName26c), $r['raw']);
+it_check('chat_tool: no email, phone, address or postcode in the payload',
+    strpos($r['raw'], 'ctg@gmail.com') === false && strpos($r['raw'], '900456') === false, mb_substr($r['raw'], 0, 200));
+
+// One switch closes this direction too.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'today']);
+it_check('chat_tool: with the queue off, the tools are refused too',
+    $r['code'] === 409 && ($r['json']['code'] ?? '') === 'night_off', $r['raw']);
+$rootDb->exec('DELETE FROM bookings WHERE id = ' . $ctBid);
+
 // ══════════════════════════════════════════════════════════════════════════
 // §27 THE ASK CHANNEL — the daytime half, through the real endpoints. The
 // owner files an ask; the machine (the Mac's 20-second poll) reads it with

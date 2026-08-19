@@ -636,6 +636,77 @@ nsk('the misses cap at ' . NIGHT_TEACH_MAX, count(night_teach_brief(
 nsk("'teach' is a queue kind with the fourteen-day window",
     in_array('teach', NIGHT_KINDS, true) && night_ttl_days('teach') === 14);
 
+// ── §24 THE CHAT'S TOOLS — read-only, grounded, refused in sentences ──────
+echo "\n== §24 the chat's tools ==\n";
+
+// The whitelist and the refusals — each a sentence, never a code.
+nsk('an unknown tool is refused naming the real ones',
+    strpos(night_tool_problem('delete_booking', [], '2026-08-19'), 'today, bookings, availability and enquiries') !== false);
+nsk('today and enquiries take no arguments and pass',
+    night_tool_problem('today', ['junk' => 1], '2026-08-19') === ''
+    && night_tool_problem('enquiries', [], '2026-08-19') === '');
+nsk('availability without a cottage is refused',
+    night_tool_problem('availability', ['from' => '2026-09-01', 'to' => '2026-09-04'], '2026-08-19') !== '');
+nsk('availability with a malformed date is refused',
+    night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => '2026-02-31', 'to' => '2026-03-04'], '2026-08-19') !== ''
+    && night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => 'next friday', 'to' => '2026-03-04'], '2026-08-19') !== '');
+nsk('availability with to before from is refused',
+    night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => '2026-09-04', 'to' => '2026-09-01'], '2026-08-19') !== '');
+nsk('availability about the past is refused — history is not availability',
+    night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => '2026-08-01', 'to' => '2026-08-05'], '2026-08-19') !== '');
+nsk('a range over ' . NIGHT_TOOL_RANGE_MAX . ' nights is refused',
+    night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => '2026-09-01', 'to' => '2026-12-01'], '2026-08-19') !== '');
+nsk('a valid availability ask passes',
+    night_tool_problem('availability', ['cottage' => 'Jollyboat', 'from' => '2026-09-01', 'to' => '2026-09-04'], '2026-08-19') === '');
+nsk('bookings with no arguments passes; a bad optional date is still refused',
+    night_tool_problem('bookings', [], '2026-08-19') === ''
+    && night_tool_problem('bookings', ['from' => 'garbage'], '2026-08-19') !== '');
+
+// The shapes: names travel, contact details never, money formatted or absent.
+$names24 = ['jollyboat' => 'Jollyboat Cottage', '21a' => '21A Westgate Street'];
+$rows24 = [
+    ['prop_key' => 'jollyboat', 'name' => 'Sarah Pemberton', 'email' => 'sarah@example.com', 'phone' => '07700 900123',
+     'address' => '1 Quay Lane', 'postcode' => 'NR25 7NE',
+     'check_in' => '2026-08-19', 'check_out' => '2026-08-23', 'adults' => 2, 'children' => 1, 'due' => 340.5],
+    ['prop_key' => '21a', 'name' => 'Dan Rowe', 'check_in' => '2026-08-16', 'check_out' => '2026-08-19',
+     'adults' => 2, 'children' => 0, 'due' => 0],
+    ['prop_key' => '21a', 'name' => 'Priya Patel', 'check_in' => '2026-08-17', 'check_out' => '2026-08-21',
+     'adults' => 3, 'children' => 0, 'due' => 0],
+    'not even a row',
+];
+$td = night_tool_today($rows24, $names24, '2026-08-19', 2);
+nsk('today splits arrival / departure / staying end-exclusively',
+    count($td['arrivals']) === 1 && $td['arrivals'][0]['guest'] === 'Sarah Pemberton'
+    && count($td['departures']) === 1 && $td['departures'][0]['guest'] === 'Dan Rowe'
+    && count($td['staying']) === 1 && $td['staying'][0]['guest'] === 'Priya Patel'
+    && $td['enquiries_waiting'] === 2, json_encode($td));
+nsk('money leaves formatted, and a settled stay states no figure at all',
+    $td['arrivals'][0]['still_to_pay'] === '£340.50' && $td['departures'][0]['still_to_pay'] === '');
+$flat24 = json_encode($td);
+nsk('no email, phone, address or postcode in the payload — names are the line',
+    strpos($flat24, 'example.com') === false && strpos($flat24, '900123') === false
+    && strpos($flat24, 'Quay Lane') === false && strpos($flat24, 'NR25') === false);
+nsk('garbage rows are absent, never the word Array', strpos($flat24, 'Array') === false);
+nsk('the cottage name is the display name, not the key',
+    $td['arrivals'][0]['cottage'] === 'Jollyboat Cottage');
+
+$many24 = array_map(fn ($i) => ['prop_key' => '21a', 'name' => 'Guest ' . $i,
+    'check_in' => '2026-09-0' . (($i % 9) + 1), 'check_out' => '2026-09-2' . (($i % 9) + 1),
+    'adults' => 2, 'children' => 0, 'due' => 0], range(1, 15));
+$bk = night_tool_bookings($many24, $names24, '2026-09-01', '2026-09-30');
+nsk('bookings cap at ' . NIGHT_TOOL_ROWS_MAX . ' WITH the cut said — no silent caps',
+    count($bk['bookings']) === NIGHT_TOOL_ROWS_MAX && $bk['more'] === 3, json_encode(['n' => count($bk['bookings']), 'more' => $bk['more']]));
+
+$av = night_tool_availability('Jollyboat Cottage', '2026-09-01', '2026-09-04', [], ['total' => 440.0]);
+nsk('a free range carries the site\'s own quote, formatted, with its framing named',
+    $av['free'] === true && $av['price'] === '£440.00' && $av['nights'] === 3
+    && strpos($av['price_note'], '2 adults') !== false, json_encode($av));
+nsk('a free range with NO price says nothing about money — never a guessed quote',
+    !isset(night_tool_availability('Jollyboat Cottage', '2026-09-01', '2026-09-04', [], null)['price']));
+$avT = night_tool_availability('Jollyboat Cottage', '2026-09-01', '2026-09-04', ['Bob Carter'], ['total' => 440.0]);
+nsk('a taken range names who has it and states NO price — pricing the unsellable is a lie',
+    $avT['free'] === false && $avT['taken_by'] === ['Bob Carter'] && !isset($avT['price']));
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

@@ -86,7 +86,13 @@ function chatPush(thread, msg) {
 // turns that fit both budgets, oldest of the kept ones first. Deliberately
 // counted from the NEW end — cutting the start of a conversation loses old
 // context, cutting the end would lose the question just asked.
-function chatForModel(thread, host) {
+//
+// `extra` joins the SYSTEM content (the tool protocol, when the site is
+// paired) rather than being a second system message — small local models
+// reliably read one system message and unreliably read two. Reading does not
+// move the boundary the line above states: looking things up was always
+// allowed, sending remains impossible.
+function chatForModel(thread, host, extra) {
     const clean = chatThread(thread);
     const kept = [];
     let chars = 0;
@@ -96,7 +102,9 @@ function chatForModel(thread, host) {
         kept.unshift({ role: m.role, content: m.text });
         chars += m.text.length;
     }
-    return [{ role: 'system', content: chatSystemLine(host) }].concat(kept);
+    const sys = chatSystemLine(host)
+        + (typeof extra === 'string' && extra.trim() !== '' ? '\n\n' + extra : '');
+    return [{ role: 'system', content: sys }].concat(kept);
 }
 
 module.exports = {
