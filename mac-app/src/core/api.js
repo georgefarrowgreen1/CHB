@@ -54,6 +54,18 @@ function makeApi(deps) {
     let cfg = configMod.load(dir);
     let nights = readNights();
     let running = false;
+    // THE ASK CHANNEL's day ledger — in memory on purpose: what the owner
+    // needs durable is the ANSWER, and that lives on the site's ask row. This
+    // is only the window's "answered N while you were here" line.
+    let askDay = '';
+    let askAnswered = 0;
+    let askLog = [];
+    let sweeping = false;
+    // The engine an ASK started idles out after ten minutes rather than being
+    // stopped per answer: a model load costs tens of seconds, and the owner
+    // who asked once usually asks again — but a nine-gigabyte server must not
+    // sit on the Mac's memory all afternoon for a question asked at nine.
+    let askIdleStop = null;
 
     function readNights() {
         const p = configMod.paths(dir);
@@ -120,6 +132,7 @@ function makeApi(deps) {
             running: !!(live && live.running),
             startedByUs: !!(live && live.running),
             autoStart: !!cfg.autoStart,
+            openAtLogin: !!cfg.openAtLogin,
         };
     }
 
@@ -222,6 +235,10 @@ function makeApi(deps) {
                 nextRun: next.toISOString(),
                 nextRunAt: (cfg.jobs.reply || {}).at || '02:00',
                 nextRunSays: nightMod.untilWords(next, now()),
+                // The ask channel's day line, for Tonight: how many the Mac
+                // answered while the owner was at the site today, and the
+                // last few log lines so an answered ask is visible HERE too.
+                asks: { today: askAnswered, log: askLog.slice(-6) },
                 nights: nights.slice(0, 30),
                 running: running,
             };
@@ -249,6 +266,12 @@ function makeApi(deps) {
             }
             if (typeof p.autoStart === 'boolean') {
                 cfg.autoStart = p.autoStart;
+            }
+            if (typeof p.openAtLogin === 'boolean') {
+                cfg.openAtLogin = p.openAtLogin;
+            }
+            if (typeof p.moveDeclined === 'boolean') {
+                cfg.moveDeclined = p.moveDeclined;
             }
             if (p.job && typeof p.job.id === 'string') {
                 const j = jobsMod.jobById(p.job.id);
@@ -407,6 +430,65 @@ function makeApi(deps) {
                 return { ok: false, say: 'The run stopped unexpectedly.', night: rec };
             } finally {
                 running = false;
+            }
+        },
+
+        // ── THE ASK CHANNEL ─────────────────────────────────────────
+        // One poll of the site's open asks, answered with the same guard the
+        // night uses. Called every ~20s by main.js while the app runs; every
+        // guard here exists so that cadence stays harmless: it skips while a
+        // night run or another sweep is mid-flight, and it goes quiet (rather
+        // than logging) on the refusals a resident poller meets all day.
+        async askSweep() {
+            if (running || sweeping) {
+                return { ok: true, answered: 0 };
+            }
+            if (!secrets.get() && !cfg.siteUrl) {
+                return { ok: true, answered: 0 };
+            }
+            sweeping = true;
+            try {
+                const reach = {};
+                const id = engineId(reach);
+                const out = await jobsMod.runAskSweep({
+                    site: siteFor(),
+                    engine: engineFor(id),
+                    cfg: cfg,
+                    now: now(),
+                    ensureEngineFor: cfg.autoStart && runner
+                        ? function (model) { return ensureEngine(id, model); }
+                        : null,
+                });
+                const day = siteMod.today(now());
+                if (day !== askDay) {
+                    askDay = day;
+                    askAnswered = 0;
+                    askLog = [];
+                }
+                askAnswered += out.answered;
+                out.log.forEach(function (l) { askLog.push(l); });
+                askLog = askLog.slice(-20);
+                // Idle-stop: only re-armed when a sweep actually touched the
+                // engine (an ask existed). A stop while a NIGHT run holds the
+                // engine is impossible — runNight and this never overlap.
+                if ((out.answered || out.failed) && startedModel && runner) {
+                    clearTimeout(askIdleStop);
+                    askIdleStop = setTimeout(async function () {
+                        try {
+                            if (!running && !sweeping && startedModel) {
+                                await runner.stop();
+                                startedModel = '';
+                                askLog.push({ at: nightMod.hhmm(), say: 'stopped the model server — ten quiet minutes', level: 'info' });
+                            }
+                        } catch (e) { /* leaving it running is the safe failure */ }
+                    }, 10 * 60 * 1000);
+                    if (askIdleStop.unref) { askIdleStop.unref(); }
+                }
+                return { ok: true, answered: out.answered };
+            } catch (e) {
+                return { ok: false, say: 'The ask sweep stopped unexpectedly.' };
+            } finally {
+                sweeping = false;
             }
         },
 

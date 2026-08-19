@@ -37,6 +37,73 @@ function night_enabled()
     return content_value('night-shift') === '1';
 }
 
+// One enquiry row → the producer's view of it: the site's own price, its own
+// clash answer, that cottage's published Q&A, the display name. ONE
+// derivation, read by the nightly brief AND the ask channel, so the two can
+// never hand over different facts about the same enquiry. Callers must have
+// required pricing.php first (get_rate / price_breakdown live there).
+function night_enquiry_view(array $row)
+{
+    $pk = (string) $row['prop_key'];
+    // The site's own price, and the site's own clash answer. Both are
+    // wrapped: a cottage with no rate row, or a failed check, yields an
+    // ABSENT fact rather than a guessed one — and the producer's rule is
+    // that an absent fact is not mentioned.
+    $price = null;
+    try {
+        $rate = get_rate($pk);
+        if ($rate) {
+            $price = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+        }
+    } catch (\Throwable $e) {
+        $price = null;
+    }
+    $free = null;
+    try {
+        $free = !dates_clash($pk, $row['check_in'], $row['check_out']);
+    } catch (\Throwable $e) {
+        $free = null;
+    }
+    $facts = [];
+    try {
+        $faqs = content_json('faqs-' . $pk, []);
+        if (is_array($faqs)) {
+            $facts = $faqs;
+        }
+    } catch (\Throwable $e) {
+        $facts = [];
+    }
+    // ['name'], NOT the row. prop_display() returns an ARRAY — name, accent,
+    // slug — and `(string)` on an array is the literal word "Array" in PHP.
+    // So every draft ever written opened "Array is a lovely cottage", and the
+    // cast is what hid it: it silenced the conversion into a plausible-looking
+    // string instead of letting it be a type error. Reported from a phone, on
+    // the first night this ever ran.
+    $name = prop_display($pk);
+    return night_brief_enquiry(
+        $row,
+        is_array($name) ? (string) ($name['name'] ?? $pk) : (string) $name,
+        $price,
+        $free,
+        $facts,
+    );
+}
+
+// The ask channel's housekeeping, run on every touch of the table: an open
+// ask past its ten minutes flips to expired (the owner stopped waiting), and
+// anything a day old is deleted — these rows only matter while somebody is
+// looking. Never throws: an un-migrated table is each action's own 503.
+function night_asks_sweep()
+{
+    try {
+        db()->exec("UPDATE night_asks SET status = 'expired'
+                     WHERE status = 'open' AND created_at < DATE_SUB(NOW(), INTERVAL " . NIGHT_ASK_TTL_MIN . ' MINUTE)');
+        db()->exec("DELETE FROM night_asks WHERE created_at < DATE_SUB(NOW(), INTERVAL 1 DAY)");
+    } catch (\Throwable $e) {
+        // the caller's own table check answers
+    }
+}
+
 // THE PAIRED MACS. Stored under the same private key as before, which now
 // holds a LIST of hashes rather than one key — night_devices() reads the old
 // single-string shape as a one-entry list, so an existing Mac keeps working
@@ -81,11 +148,17 @@ function night_require_key($given, $what)
     $i = night_device_index($devices, $given);
     if ($i >= 0) {
         // LAST SEEN, stamped here because this is the only place that knows a
-        // request was genuine. Cheap: the app calls twice a night.
-        $devices[$i]['seen'] = time();
-        try {
-            night_devices_write($devices);
-        } catch (\Throwable $e) { /* a stamp we cannot write must not refuse a good request */ }
+        // request was genuine — at FIVE-MINUTE granularity, not per call.
+        // "Cheap: the app calls twice a night" was true until the ask channel
+        // gave the Mac a 20-second poll; stamping every poll would write the
+        // devices row (encrypted content) four thousand times a day to keep a
+        // fact the quiet-Mac duty reads in NIGHTS.
+        if (time() - (int) ($devices[$i]['seen'] ?? 0) > 300) {
+            $devices[$i]['seen'] = time();
+            try {
+                night_devices_write($devices);
+            } catch (\Throwable $e) { /* a stamp we cannot write must not refuse a good request */ }
+        }
         return 'scoped';
     }
     // Nothing on file → the master secret still works, so an install that has
@@ -340,6 +413,175 @@ route_actions([
     // figures travel with the brief rather than being left to the far end.
     //
     // There is no verb in this handler. It reads, it caps, it answers.
+    // ══ THE ASK CHANNEL — the daytime half. The owner files an ask from a
+    // screen; the Mac (polling `asks` while it runs) answers with its local
+    // model and posts it back; the screen collects it from `ask_status`.
+    // Same key, same switch, same withholding as the nightly brief.
+
+    // ---- the owner files an ask ------------------------------------
+    'ask' => function ($in) {
+        require_admin();
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $kind = (string) ($in['kind'] ?? '');
+        $entityId = (int) ($in['id'] ?? 0);
+        $question = $in['question'] ?? '';
+        $bad = night_ask_problem($kind, $entityId, $question);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        if ($kind === 'reply') {
+            // LIVE ENQUIRIES ONLY — the declined lesson, held at the door as
+            // well as at the machine's read: an ask about a declined enquiry
+            // must not exist at all.
+            $st = db()->prepare('SELECT id FROM enquiries WHERE id = ? AND declined_at IS NULL');
+            $st->execute([$entityId]);
+            if (!$st->fetch()) {
+                json_out(['error' => 'That enquiry is no longer waiting.'], 404);
+            }
+        }
+        night_asks_sweep();
+        $open = 0; // before the try — json_out()'s exit is invisible to PHPStan
+        try {
+            $open = (int) db()->query("SELECT COUNT(*) FROM night_asks WHERE status = 'open'")->fetchColumn();
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
+        }
+        if ($open >= NIGHT_ASK_OPEN_MAX) {
+            json_out(['error' => 'Your Mac already has ' . NIGHT_ASK_OPEN_MAX . ' asks waiting — give it a moment.'], 429);
+        }
+        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, created_at) VALUES (?,?,?,?, NOW())');
+        $st->execute([$kind, $entityId, night_str($in['prop'] ?? ''), night_str($question)]);
+        json_out(['ok' => true, 'id' => (int) db()->lastInsertId()]);
+    },
+
+    // ---- the owner collects the answer ------------------------------
+    'ask_status' => function ($in) {
+        require_admin();
+        night_asks_sweep();
+        $st = db()->prepare('SELECT status, answer, model FROM night_asks WHERE id = ?');
+        $st->execute([(int) ($in['id'] ?? 0)]);
+        $row = $st->fetch();
+        if (!$row) {
+            json_out(['error' => 'No such ask.'], 404);
+        }
+        json_out([
+            'ok' => true,
+            'status' => (string) $row['status'],
+            'answer' => (string) ($row['answer'] ?? ''),
+            'model' => (string) ($row['model'] ?? ''),
+        ]);
+    },
+
+    // ---- the machine reads the open asks ----------------------------
+    'asks' => function ($in) {
+        // Throttled well above a real Mac's 20-second poll, and BEFORE the
+        // key is looked at — the sign-in rule, same as ingest.
+        rate_limit('night-asks', 30, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'asks');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        require_once __DIR__ . '/pricing.php';
+        night_asks_sweep();
+        $host = '';
+        try {
+            require_once __DIR__ . '/mailer.php';
+            $host = (string) email_host_name();
+        } catch (\Throwable $e) {
+            $host = '';
+        }
+        $out = [];
+        $rows = []; // before the try — the json_out-in-catch rule again
+        try {
+            $rows = db()->query("SELECT * FROM night_asks WHERE status = 'open' ORDER BY created_at, id")->fetchAll();
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
+        }
+        foreach ($rows as $a) {
+            $one = ['id' => (int) $a['id'], 'kind' => (string) $a['kind']];
+            if ($a['kind'] === 'reply') {
+                // Re-checked at the READ too: declined since the ask was filed
+                // means the ask dies here, unanswered — the same rule as the
+                // brief, so the machine never sees a declined guest's words.
+                $st = db()->prepare('SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
+                                       FROM enquiries WHERE id = ? AND declined_at IS NULL');
+                $st->execute([(int) $a['entity_id']]);
+                $e = $st->fetch();
+                if (!$e) {
+                    try {
+                        db()->prepare("UPDATE night_asks SET status = 'expired' WHERE id = ?")->execute([(int) $a['id']]);
+                    } catch (\Throwable $x) {
+                    }
+                    continue;
+                }
+                $one['enquiry'] = night_enquiry_view($e);
+            } else {
+                // An FAQ answer: the question, that cottage's own published
+                // answers to ground it, nothing else.
+                $pk = night_str($a['prop_key']);
+                $names = [];
+                try {
+                    foreach (db()->query('SELECT prop_key, name FROM properties')->fetchAll() as $pr) {
+                        $names[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+                    }
+                } catch (\Throwable $x) {
+                    $names = [];
+                }
+                $qs = night_questions_brief(
+                    [['q' => night_str($a['question']), 'n' => 1, 'prop' => $pk]],
+                    $names,
+                    function ($k) { return $k !== '' ? content_json('faqs-' . $k, []) : []; },
+                    1,
+                );
+                if (!$qs) {
+                    continue;
+                }
+                $one['question'] = $qs[0];
+            }
+            $out[] = $one;
+        }
+        json_out(['ok' => true, 'host' => $host, 'asks' => $out]);
+    },
+
+    // ---- the machine posts an answer --------------------------------
+    'answer' => function ($in) {
+        rate_limit('night-answer', 20, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'answer');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        night_asks_sweep();
+        $id = (int) ($in['id'] ?? 0);
+        $bad = night_ask_answer_problem($in['text'] ?? '');
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        $st = db()->prepare('SELECT status FROM night_asks WHERE id = ?');
+        $st->execute([$id]);
+        $row = $st->fetch();
+        if (!$row) {
+            json_out(['error' => 'No such ask.'], 404);
+        }
+        if ($row['status'] === 'answered') {
+            // A retried POST whose reply was lost — the answer is already
+            // there, which is what the machine wanted.
+            json_out(['ok' => true, 'replayed' => true]);
+        }
+        if ($row['status'] !== 'open') {
+            // Ten minutes have passed and the owner moved on. Refused, so a
+            // late model run never lands words nobody is waiting for.
+            json_out(['error' => 'Too late — the owner stopped waiting for this one.', 'code' => 'ask_expired'], 410);
+        }
+        // Guarded write: the WHERE re-checks open, so two racing answers
+        // cannot both land (the first wins, the second reads back as replayed).
+        $up = db()->prepare("UPDATE night_asks SET status = 'answered', answer = ?, model = ?, answered_at = NOW()
+                              WHERE id = ? AND status = 'open'");
+        $up->execute([trim((string) $in['text']), night_str($in['model'] ?? ''), $id]);
+        json_out(['ok' => true, 'replayed' => $up->rowCount() === 0]);
+    },
+
     'brief' => function ($in) {
         rate_limit('night-brief', 40, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'brief');
@@ -379,50 +621,9 @@ route_actions([
             $st->execute();
             $rows = $st->fetchAll();
             foreach ($rows as $row) {
-                $pk = (string) $row['prop_key'];
-                // The site's own price, and the site's own clash answer. Both
-                // are wrapped: a cottage with no rate row, or a failed check,
-                // yields an ABSENT fact rather than a guessed one — and the
-                // producer's rule is that an absent fact is not mentioned.
-                $price = null;
-                try {
-                    $rate = get_rate($pk);
-                    if ($rate) {
-                        $price = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
-                    }
-                } catch (\Throwable $e) {
-                    $price = null;
-                }
-                $free = null;
-                try {
-                    $free = !dates_clash($pk, $row['check_in'], $row['check_out']);
-                } catch (\Throwable $e) {
-                    $free = null;
-                }
-                $facts = [];
-                try {
-                    $faqs = content_json('faqs-' . $pk, []);
-                    if (is_array($faqs)) {
-                        $facts = $faqs;
-                    }
-                } catch (\Throwable $e) {
-                    $facts = [];
-                }
-                // ['name'], NOT the row. prop_display() returns an ARRAY —
-                // name, accent, slug — and `(string)` on an array is the literal
-                // word "Array" in PHP. So every draft ever written opened
-                // "Array is a lovely cottage", and the cast is what hid it: it
-                // silenced the conversion into a plausible-looking string
-                // instead of letting it be a type error. Reported from a phone,
-                // on the first night this ever ran.
-                $name = prop_display($pk);
-                $out[] = night_brief_enquiry(
-                    $row,
-                    is_array($name) ? (string) ($name['name'] ?? $pk) : (string) $name,
-                    $price,
-                    $free,
-                    $facts,
-                );
+                // The shared view — see night_enquiry_view above, which also
+                // carries the "Array is not a cottage name" history.
+                $out[] = night_enquiry_view($row);
             }
         } catch (\Throwable $e) {
             // A read that fails answers "nothing waiting" rather than an error:

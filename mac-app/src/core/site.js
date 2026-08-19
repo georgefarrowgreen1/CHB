@@ -2,10 +2,11 @@
 //  site.js — the only thing in this app that talks to the outside world,
 //  and it talks to exactly one place.
 //
-//  Two calls, both to nightshift.php: `brief` reads what is waiting, `ingest`
-//  posts what was written. There is no third call, and that is worth keeping
-//  true — an app that can only reach one endpoint cannot accidentally reach a
-//  payment route.
+//  Every call goes to nightshift.php and nowhere else — an app that can only
+//  reach one endpoint cannot accidentally reach a payment route. The calls:
+//  `brief` reads the night's work, `ingest` posts it, `connect` trades a code
+//  for a key, and the ask channel's pair — `asks` reads what the owner is
+//  waiting on RIGHT NOW, `answerAsk` posts the words back.
 //
 //  The REF is generated here and it is the exactly-once mechanism: the site
 //  stores a ref once and answers a retry with "already had it". So a ref must
@@ -183,6 +184,52 @@ function makeSite(opts) {
                 skipped: Array.isArray(r.json.skipped) ? r.json.skipped : [],
             };
         },
+        // THE ASK CHANNEL: what is the owner waiting on right now?
+        // Returns { ok, host, asks[] } or { ok:false, refusal }. An empty
+        // list is the ordinary answer — this is polled every few seconds.
+        async asks() {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            let r;
+            try {
+                r = await send(url, { action: 'asks', secret: secret });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return {
+                ok: true,
+                host: String(r.json.host || ''),
+                asks: Array.isArray(r.json.asks) ? r.json.asks : [],
+            };
+        },
+        // Post one ask's answer. `replayed` and `expired` are both fine
+        // outcomes for the machine: the first means a retry met its own
+        // earlier success, the second that the owner stopped waiting.
+        async answerAsk(id, text, model) {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            let r;
+            try {
+                r = await send(url, { action: 'answer', secret: secret, id: id, text: String(text || ''), model: String(model || '') });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site to answer.' } };
+            }
+            if (r.status === 410) {
+                return { ok: true, expired: true };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return { ok: true, replayed: !!r.json.replayed };
+        },
+
         // CONNECT WITH A CODE. The one call made BEFORE this app holds anything:
         // it hands over eight characters the owner read off the website and gets
         // back a key of its own. The code is single-use and short-lived at the

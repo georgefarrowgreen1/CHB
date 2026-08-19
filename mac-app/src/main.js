@@ -329,6 +329,73 @@ function ranToday(now) {
     }
 }
 
+// THE ASK POLLER. Every twenty seconds while the app runs, ask the site
+// whether the owner is waiting on anything — the daytime half of the queue.
+// api.askSweep() carries every guard (skips mid-night-run, quiet on the
+// refusals a resident poller meets all day), so this stays a dumb timer. An
+// answered ask pokes the window so Tonight's day line updates itself.
+let askTick = null;
+function startAskPoll() {
+    clearInterval(askTick);
+    askTick = setInterval(async function () {
+        try {
+            if (!api) { return; }
+            const out = await api.askSweep();
+            if (out && out.answered && win && !win.isDestroyed()) {
+                win.webContents.send('hand:ran', true);
+            }
+        } catch (e) { /* a bad poll must never stop the poller */ }
+    }, 20000);
+}
+
+// OPEN AT LOGIN, applied through macOS's own login-items mechanism so it is
+// visible (and removable) in System Settings → General → Login Items like any
+// other app. Applied at boot and after every settings save; setting it to the
+// value it already holds is a no-op, so this is safe to call freely.
+// THE APP MOVES ITSELF, so nobody has to drag it out of Downloads or —
+// worse — run it off the read-only disk image for ever. Electron's
+// moveToApplicationsFolder() copies/moves and relaunches from the new home;
+// the JUDGEMENT of whether to offer lives in core/update.js where it is
+// gated, and "Not now" is remembered so the question is asked exactly once.
+function maybeOfferMove() {
+    try {
+        const updateMod = require('./core/update');
+        const cfg = api._cfg();
+        if (!updateMod.shouldOfferMove({
+            isMac: process.platform === 'darwin',
+            packaged: app.isPackaged,
+            inApplications: app.isInApplicationsFolder(),
+            declined: !!cfg.moveDeclined,
+        })) {
+            return;
+        }
+        const { dialog } = require('electron');
+        const pick = dialog.showMessageBoxSync({
+            type: 'question',
+            message: 'Move to your Applications folder?',
+            detail: 'Cottage Holidays Blakeney can move itself there now — nothing to drag. Your settings, models and key are kept either way.',
+            buttons: ['Move to Applications', 'Not now'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        if (pick === 0) {
+            // Relaunches from the new location by itself; a failure (no
+            // permission, disk full) leaves the app running where it is.
+            app.moveToApplicationsFolder();
+            return;
+        }
+        api.saveConfig({ moveDeclined: true });
+    } catch (e) { /* an offer that cannot be made is simply not made */ }
+}
+
+function applyLoginItem() {
+    try {
+        if (process.platform === 'darwin' && api) {
+            app.setLoginItemSettings({ openAtLogin: !!api._cfg().openAtLogin });
+        }
+    } catch (e) { /* a login item we cannot set must not break the app */ }
+}
+
 function startClock() {
     clearInterval(tick);
     tick = setInterval(async function () {
@@ -378,7 +445,11 @@ function startClock() {
 // "call any method" channel would hand the renderer the whole module.
 function wire() {
     ipcMain.handle('hand:state', function () { return api.state(); });
-    ipcMain.handle('hand:saveConfig', function (e, patch) { return api.saveConfig(patch); });
+    ipcMain.handle('hand:saveConfig', async function (e, patch) {
+        const r = await api.saveConfig(patch);
+        applyLoginItem();
+        return r;
+    });
     ipcMain.handle('hand:setSecret', function (e, v) { return api.setSecret(v); });
     ipcMain.handle('hand:connect', function (e, code) { return api.connect(code); });
     ipcMain.handle('hand:testSite', function () { return api.testSite(); });
@@ -479,8 +550,11 @@ app.whenReady().then(function () {
     });
     wire();
     menu();
+    maybeOfferMove();
     create();
     startClock();
+    startAskPoll();
+    applyLoginItem();
     app.on('activate', function () {
         if (BrowserWindow.getAllWindows().length === 0) {
             create();

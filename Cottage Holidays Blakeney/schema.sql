@@ -247,6 +247,23 @@ CREATE TABLE IF NOT EXISTS night_items (
     KEY idx_night_open (status, expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The ask channel — the daytime half of the overnight queue (migration-116).
+-- The owner files an ask from a screen; the Mac polls, answers with its local
+-- model, and the answer lands back on the row for that screen to collect.
+CREATE TABLE IF NOT EXISTS night_asks (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    kind        VARCHAR(24)  NOT NULL,
+    entity_id   INT          NOT NULL DEFAULT 0,
+    prop_key    VARCHAR(64)  NOT NULL DEFAULT '',
+    question    TEXT         NULL,
+    status      VARCHAR(16)  NOT NULL DEFAULT 'open',
+    answer      MEDIUMTEXT   NULL,
+    model       VARCHAR(160) NOT NULL DEFAULT '',
+    created_at  DATETIME     NOT NULL,
+    answered_at DATETIME     NULL,
+    KEY idx_ask_open (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- One-shot transactional emails whose transport send failed, retried with
 -- backoff (email_outbox_drain in mailer.php; migration-113). Only queued when
 -- the payload provably never went out. Stamp-on-success cron flows never queue.

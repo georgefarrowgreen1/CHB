@@ -2730,7 +2730,98 @@ it_check('the brief is capped at a handful', count($r['json']['enquiries'] ?? []
 it_check('…and says what its own cap is', ($r['json']['cap'] ?? 0) === 8, $r['raw']);
 
 $rootDb->exec('DELETE FROM enquiries');
+
+// ══════════════════════════════════════════════════════════════════════════
+// §27 THE ASK CHANNEL — the daytime half, through the real endpoints. The
+// owner files an ask; the machine (the Mac's 20-second poll) reads it with
+// the SAME composed facts and the SAME withholding as the brief; the answer
+// lands back on the row and the owner collects it. One switch, both halves.
+// ══════════════════════════════════════════════════════════════════════════
+echo "\n\xC2\xA727 the ask channel\n";
+// night-shift is still ON from §26's tail... it was just switched off above —
+// switch it back for the channel, then off at the end.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+
+// The owner's door: admin only, switch honoured, junk refused.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'answer', 'question' => 'x']);
+it_check('a guest cannot file an ask', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'invoice', 'id' => 1]);
+it_check('an unknown kind is refused in words', $r['code'] === 400 && strpos($r['raw'], 'reply') !== false, $r['raw']);
+
+// A reply ask needs a LIVE enquiry — filing one about a declined enquiry is
+// refused at the door, the fresh lesson held here too.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message)
+               VALUES ('$propKey','Asky Askerton','asky@gmail.com','$bfIn','$bfOut',2,0,'Do you allow dogs?')");
+$askEnqId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, declined_at)
+               VALUES ('$propKey','Deno Declined','deno@gmail.com','$bfIn','$bfOut',2,0,'Space?', NOW())");
+$askDecId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'reply', 'id' => $askDecId]);
+it_check('an ask about a declined enquiry is refused at the door', $r['code'] === 404, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'reply', 'id' => $askEnqId]);
+$askId = (int) ($r['json']['id'] ?? 0);
+it_check('a real ask files and returns its id', ($r['json']['ok'] ?? false) === true && $askId > 0, $r['raw']);
+
+// The machine's read: key gated, switch gated, and the facts are the brief's
+// own — quote formatted, contact details withheld.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => 'wrong']);
+it_check('a wrong key cannot read the asks', $r['code'] === 401, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$found = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $askId) {
+        $found = $a;
+    }
+}
+it_check('the machine sees the open ask', $found !== null, $r['raw']);
+it_check('…carrying the enquiry as the brief composes it (first name worked out)',
+    $found && (($found['enquiry']['first'] ?? '') === 'Asky'), json_encode($found));
+it_check('…with the contact details withheld', strpos($r['raw'], 'asky@gmail.com') === false, mb_substr($r['raw'], 0, 200));
+
+// The machine answers; the owner collects it.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $askId, 'text' => 'Thank you for asking — we are afraid we cannot take dogs.', 'model' => 'q.gguf']);
+it_check('the answer lands', ($r['json']['ok'] ?? false) === true && empty($r['json']['replayed']), $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $askId, 'text' => 'A second answer must not clobber the first.']);
+it_check('a retried answer reads back as replayed, and the first stands', ($r['json']['replayed'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $askId]);
+it_check('the owner collects the FIRST answer, with the model named',
+    ($r['json']['status'] ?? '') === 'answered'
+    && strpos((string) ($r['json']['answer'] ?? ''), 'cannot take dogs') !== false
+    && ($r['json']['model'] ?? '') === 'q.gguf', $r['raw']);
+
+// DECLINED AFTER FILING: the ask dies at the machine's read, unanswered.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'reply', 'id' => $askEnqId]);
+$ask2 = (int) ($r['json']['id'] ?? 0);
+http($admin, 'POST', '/enquiries.php', ['action' => 'decline', 'id' => $askEnqId]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$still = false;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $ask2) {
+        $still = true;
+    }
+}
+it_check('declining the enquiry kills its waiting ask at the read', !$still
+    && strpos($r['raw'], 'Asky') === false, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $ask2]);
+it_check('…and the owner sees it expired, never answered', ($r['json']['status'] ?? '') === 'expired', $r['raw']);
+
+// AN EXPIRED ASK REFUSES A LATE ANSWER — ten minutes passed, the owner moved on.
+$rootDb->exec("INSERT INTO night_asks (kind, entity_id, question, created_at)
+               VALUES ('answer', 0, 'Is there a cot?', DATE_SUB(NOW(), INTERVAL 11 MINUTE))");
+$staleId = (int) $rootDb->lastInsertId();
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $staleId, 'text' => 'Too late.']);
+it_check('a late answer is refused with its reason', $r['code'] === 410 && strpos($r['raw'], 'stopped waiting') !== false, $r['raw']);
+
+// The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+it_check('the one switch refuses the machine\'s read', $r['code'] === 409, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'answer', 'question' => 'x?']);
+it_check('…and the owner\'s ask', $r['code'] === 409, $r['raw']);
+$rootDb->exec('DELETE FROM night_asks');
+$rootDb->exec('DELETE FROM enquiries');
 
 echo "\n== Summary ==\n";
 if ($fail) {

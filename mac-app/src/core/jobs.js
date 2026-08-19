@@ -483,8 +483,125 @@ function jobsDueTonight(jobs, cfg, now) {
     return { due: due, waiting: waiting };
 }
 
+
+// ── THE ASK SWEEP — the daytime half. ────────────────────────────────────
+// The owner is AT A SCREEN waiting, so everything here is the night's rules
+// at a moment's tempo: fetch the open asks, draft each with the SAME prompt
+// builders and the SAME guard the nightly jobs use, post the answers back.
+// An empty sweep is the ordinary case and returns silently — this runs every
+// twenty seconds, and a log line per quiet poll would bury the log.
+//
+// ctx: { site, engine, cfg, host? , now, ensureEngineFor }
+// Returns { answered, failed, log[] } — log lines only for asks that existed.
+async function runAskSweep(ctx) {
+    const c = ctx || {};
+    const log = [];
+    const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
+    const got = await c.site.asks();
+    if (!got.ok) {
+        // A refusal is only worth a line when it is NOT the quiet cases a
+        // resident poller meets all day (site off, network blip) — those are
+        // the caller's to summarise, not to log 4,000 times.
+        return { answered: 0, failed: 0, log: log, refusal: got.refusal };
+    }
+    if (!got.asks.length) {
+        return { answered: 0, failed: 0, log: log };
+    }
+    const jobs = (c.cfg && c.cfg.jobs) || {};
+    let answered = 0;
+    let failed = 0;
+    let engineModel = '';
+    for (let i = 0; i < got.asks.length; i++) {
+        const a = got.asks[i] || {};
+        const id = saneNum(a.id, 0);
+        if (id <= 0) { continue; }
+        // THE MODEL FOLLOWS THE KIND: a reply ask uses the reply job's model,
+        // an answer ask the answer job's — the owner already chose which
+        // model suits which work. Either falls back to the other, because an
+        // ask with SOME model beats one refused for configuration.
+        const kind = a.kind === 'answer' ? 'answer' : 'reply';
+        const model = (jobs[kind] || {}).model
+            || (jobs[kind === 'reply' ? 'answer' : 'reply'] || {}).model || '';
+        if (!model) {
+            say('an ask is waiting but no job has a model chosen — pick one on the Jobs screen', 'fail');
+            failed++;
+            continue;
+        }
+        if (engineModel !== model && c.ensureEngineFor) {
+            const started = await c.ensureEngineFor(model);
+            if (!started || !started.ok) {
+                say((started && started.say) || 'the model server did not start', 'fail');
+                failed++;
+                continue;
+            }
+            engineModel = model;
+        }
+        let text = null;
+        let who = '';
+        if (kind === 'reply') {
+            const f = saneEnquiry(a.enquiry);
+            if (!f) {
+                say('the site handed over an ask this app could not read — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            f.party = guard.partyWords(f.adults, f.children);
+            who = f.first || f.name || 'an enquiry';
+            const r = await c.engine.write(guard.buildPrompt(f, got.host), model);
+            if (!r.ok) {
+                say(who + ' · ' + r.say, 'fail');
+                failed++;
+                continue;
+            }
+            const v = guard.checkDraft(r.text, f);
+            if (!v.ok) {
+                say('refused own draft for ' + who + ': ' + v.problems.join('; '), 'fail');
+                failed++;
+                continue;
+            }
+            text = r.text;
+        } else {
+            const q = saneQuestion(a.question);
+            if (!q) {
+                say('the site handed over an ask this app could not read — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            who = '\u201c' + shortQ(q.q) + '\u201d';
+            const r = await c.engine.write(guard.buildAnswerPrompt(q, got.host), model);
+            if (!r.ok) {
+                say(who + ' · ' + r.say, 'fail');
+                failed++;
+                continue;
+            }
+            // No money whitelist AT ALL — an FAQ answer quoting a figure is an
+            // invention by definition, the answer job's own rule.
+            const v = guard.checkGeneral(r.text, { money: [] });
+            if (!v.ok) {
+                say('refused own answer: ' + v.problems.join('; '), 'fail');
+                failed++;
+                continue;
+            }
+            text = r.text;
+        }
+        const sent = await c.site.answerAsk(id, text, model);
+        if (sent.ok && sent.expired) {
+            say(who + ' · answered too late — the owner had moved on', 'skip');
+            continue;
+        }
+        if (!sent.ok) {
+            say(who + ' · ' + sent.refusal.say, 'fail');
+            failed++;
+            continue;
+        }
+        say(who + ' · answered while you waited', 'hit');
+        answered++;
+    }
+    return { answered: answered, failed: failed, log: log };
+}
+
 module.exports = {
     JOBS, jobById, jobsDueTonight,
-    runReplyJob, runWeekJob, runPriceJob, runAnswerJob,
+    runReplyJob, runWeekJob, runPriceJob, runAnswerJob, runAskSweep,
     replyTitle, replySub, spokenRange, sourceLine,
 };

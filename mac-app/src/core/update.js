@@ -121,4 +121,15 @@ function sizeWords(bytes) {
     return (n / (1024 * 1024)).toFixed(0) + ' MB';
 }
 
-module.exports = { parseVersion, compareVersions, assetSha256, pickAsset, updateVerdict, sizeWords };
+// SHOULD THE APP OFFER TO MOVE ITSELF TO APPLICATIONS? Electron's
+// app.moveToApplicationsFolder() does the work (and relaunches); this is the
+// judgement, kept pure so it is gated. Offered ONCE: a declined offer is a
+// decision, and an app that re-asks every launch is nagging its owner into
+// compliance. Never in development (an unpackaged app has no business moving
+// itself), never off macOS, never when it is already home.
+function shouldOfferMove(o) {
+    const s = o || {};
+    return !!(s.isMac && s.packaged && !s.inApplications && !s.declined);
+}
+
+module.exports = { parseVersion, compareVersions, assetSha256, pickAsset, updateVerdict, sizeWords, shouldOfferMove };

@@ -11787,6 +11787,20 @@ function slGuestQuestionsSave(list) {
     try { siteContent['guest-faq-misses'] = list; } catch (e) {}
     try { apiPost('content.php', { action: 'set', key: 'guest-faq-misses', value: list }).catch(() => {}); } catch (e) {}
 }
+// "Draft it on my Mac": the ask channel writes the first version of the
+// instant answer, and the owner still reads and edits it in the SAME
+// glassPrompt slAddFaq always used — the Mac never publishes a word itself.
+async function slAskMac(q, prop) {
+    try { toast('Asking your Mac — a few seconds…'); } catch (e) {}
+    let text = '';
+    try {
+        text = await chbAskMac('answer', { question: String(q), prop: String(prop || '') });
+    } catch (err) {
+        try { glassAlert(String((err && err.message) || err)); } catch (e2) {}
+        return;
+    }
+    return slAddFaq(q, prop, text);
+}
 function slDismissGuestQ(q) {
     const list = slGuestQuestions().filter((r) => r.q !== q);
     slGuestQuestionsSave(list);
@@ -11795,12 +11809,12 @@ function slDismissGuestQ(q) {
 // One-tap "add an instant answer": ask the owner for the answer, append it to the
 // named cottage's FAQ (faqs-<prop>), and clear the question. Next time a guest
 // types it the on-device matcher answers on the spot — no owner ping.
-async function slAddFaq(q, prop) {
+async function slAddFaq(q, prop, prefill) {
     const pk = prop || Object.keys(propertyMeta || {})[0] || '';
     if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
     const name = (propertyMeta[pk] || {}).name || pk;
     let a = '';
-    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, ''); } catch (e) { return; }
+    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, String(prefill || '')); } catch (e) { return; }
     a = (a || '').trim();
     if (!a) return; // cancelled or empty — leave the question in the list
     try {
@@ -11930,6 +11944,7 @@ function renderSearchLearning() {
                 <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
                 <div class="sl-row-acts">
                     <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
+                    ${chbMacDraftReady() ? `<button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAskMac', r.q, String(r.prop || ''))}>✨ Draft on your Mac</button>` : ''}
                     <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
                 </div>
             </div>`;
@@ -25152,6 +25167,69 @@ function enqReplyDraft(enquiryId) {
     openEnquiryEmail(enquiryId); // id from a data-act, or the row itself (see above)
     setTimeout(() => { try { draftEnquiryReply(); } catch (err) {} }, 250);
 }
+// ============================================================
+// THE ASK CHANNEL — "draft it on your Mac". The site cannot call the Mac (a
+// home network has no inbound door), so an ask is a ROW the Mac's 20-second
+// poll picks up: file it, wait, collect the answer. Honest at every exit —
+// no Mac awake means "didn't answer, is it awake?", never a spinner for
+// ever — and an answer landing after the owner has TYPED never clobbers
+// their words (the bank-details rule): it is offered on a toast, not applied.
+// ============================================================
+const CHB_ASK_WAIT_MS = 90000;
+const CHB_ASK_POLL_MS = 2500;
+function chbMacDraftReady() {
+    // The switch is INTERNAL, so an admin-session siteContent carries it; a
+    // guest's never does, and neither does a pre-auth boot — both read as off,
+    // which only ever hides an offer.
+    return String(siteContent['night-shift'] || '') === '1';
+}
+async function chbAskMac(kind, payload) {
+    const filed = await apiPost('nightshift.php', Object.assign({ action: 'ask', kind }, payload));
+    const id = filed && filed.id;
+    if (!id) throw new Error('The ask was not filed.');
+    const t0 = Date.now();
+    while (Date.now() - t0 < CHB_ASK_WAIT_MS) {
+        await new Promise((res) => setTimeout(res, CHB_ASK_POLL_MS));
+        let s = null;
+        try {
+            s = await apiPost('nightshift.php', { action: 'ask_status', id });
+        } catch (e) { continue; } // a blip mid-wait is not a verdict
+        if (s && s.status === 'answered' && s.answer) return String(s.answer);
+        if (s && s.status === 'expired') break;
+    }
+    throw new Error("Your Mac didn't answer — is it awake, with the app running?");
+}
+async function draftEnquiryOnMac(enquiryId) {
+    const e = enquiries.find((x) => String(x.id) === String(enquiryId));
+    if (!e || !e.dbId) return;
+    openEnquiryEmail(e.id);
+    const body = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (!body) return;
+    const before = body.value;
+    try { toast('Asking your Mac — a few seconds…'); } catch (err) {}
+    let text = '';
+    try {
+        text = await chbAskMac('reply', { id: e.dbId });
+    } catch (err) {
+        try { glassAlert(String((err && err.message) || err)); } catch (e2) {}
+        return;
+    }
+    const now = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+    if (!now) return; // the composer was closed while the Mac worked
+    if (now.value === before) {
+        now.value = text;
+        now.focus();
+        try { now.setSelectionRange(0, 0); now.scrollTop = 0; } catch (err) {}
+        return;
+    }
+    // The owner typed while the Mac worked: offer, never overwrite.
+    try {
+        toast('Your Mac finished a draft', '', { label: 'Use it', fn: () => {
+            const b = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
+            if (b) { b.value = text; b.focus(); }
+        } });
+    } catch (err) {}
+}
 function renderEnquiryHub() {
     const el = document.getElementById('enquiry-hub-content');
     if (!el) return;
@@ -25229,6 +25307,7 @@ function renderEnquiryHub() {
             <span class="bhub-msg-cap">Their message</span>
             ${e.message ? `<p class="bhub-msg-text">“${escapeHtml(e.message)}”</p>` : '<p class="bhub-msg-text bhub-mut" style="margin:0;">No message — they just asked for the dates.</p>'}
             ${e.email && e.message ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('enqReplyDraft', String(e.id))}>✨ Draft a reply</button>` : ''}
+            ${e.email && e.message && chbMacDraftReady() ? `<button type="button" class="bhub-actlink bhub-msg-draft" ${chbAttrs('draftEnquiryOnMac', String(e.id))}>✨ Draft on your Mac</button>` : ''}
         </div>`;
     // ---- The QUOTE — money is a quote here, not a ledger: one row, the
     // schedule approval implies in the sub, breakdown + price/plan controls

@@ -113,6 +113,14 @@
             row('Site', esc(String(S.siteUrl).replace(/^https:\/\//,'').replace(/\/nightshift\.php$/,'')) + (S.siteIsDefault ? '' : ' · your own'),
                 chip(S.secretSet ? 'ok' : 'warn', S.secretSet ? 'Connected' : 'Needs a code'), true);
 
+        // The ask channel's day line — hidden until something happened, so
+        // "Today" never claims activity it doesn't have.
+        var asks = S.asks || { today: 0, log: [] };
+        $('todayWrap').hidden = !(asks.today > 0 || (asks.log || []).length > 0);
+        $('todayLog').innerHTML = (asks.log || []).map(function (l) {
+            return '<div class="lrow ' + esc(l.level || 'info') + '"><b>' + esc(l.at || '') + '</b><span>' + esc(l.say) + '</span></div>';
+        }).join('') || '';
+
         var last = S.nights[0];
         $('lastLog').innerHTML = last
             ? (last.log || []).map(function (l) {
@@ -187,6 +195,8 @@
         $('runnerFix').textContent = R.install || '';
         $('autoSw').className = 'sw' + (R.autoStart ? ' on' : '');
         $('autoSw').setAttribute('aria-pressed', R.autoStart ? 'true' : 'false');
+        $('loginSw').className = 'sw' + (R.openAtLogin ? ' on' : '');
+        $('loginSw').setAttribute('aria-pressed', R.openAtLogin ? 'true' : 'false');
 
         // CONNECTION
         $('siteSays').textContent = (S.siteIsDefault ? '' : 'Your own address: ')
@@ -288,6 +298,11 @@
         }
         if (t.id === 'autoSw') {
             await window.hand.saveConfig({ autoStart: !(S.runner || {}).autoStart });
+            await refresh();
+            return;
+        }
+        if (t.id === 'loginSw') {
+            await window.hand.saveConfig({ openAtLogin: !(S.runner || {}).openAtLogin });
             await refresh();
             return;
         }
