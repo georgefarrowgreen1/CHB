@@ -395,6 +395,9 @@
     var C = null;      // the last chat state handed over {cur, threads, thread, model}
     var live = null;   // a send in flight {userText, round, think, tools[]}
     var lastTools = null;  // this session's payloads for the newest reply's chip
+    var pendingAttach = null;  // a picked file waiting to ride the next send
+    var railQ = '';            // the conversations search, renderer-only
+    var dropSeen = {};         // per-thread: the trim count already announced
 
     // The markdown subset: bold, bullet lists, inline code, paragraphs, and
     // money set in the accent. Escape-first, always.
@@ -439,8 +442,11 @@
     }
     function chatTurn(m, i, isLastBot) {
         if (m.role === 'user') {
+            var chip = m.file
+                ? '<span class="filechip"><span class="fico" aria-hidden="true">▤</span>' + esc(m.file) + '</span><br>'
+                : '';
             return '<div class="bub user"><button class="bedit" data-i="' + i + '" title="Edit and resend" aria-label="Edit and resend">✎</button>'
-                + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>';
+                + chip + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>';
         }
         var h = '';
         if (m.think) { h += thinkFold(m.think, false, false); }
@@ -458,10 +464,13 @@
     function chatRailPaint() {
         var rail = $('chatThreads');
         if (!rail || !C) { return; }
+        var needle = railQ.toLowerCase();
         rail.innerHTML = (C.threads || []).map(function (t) {
-            return '<button class="crow' + (t.id === C.cur ? ' cur' : '') + '" data-id="' + esc(t.id) + '">'
+            var hide = needle && t.title.toLowerCase().indexOf(needle) < 0;
+            return '<button class="crow' + (t.id === C.cur ? ' cur' : '') + (hide ? ' hide' : '') + '" data-id="' + esc(t.id) + '">'
                 + '<span class="ct">' + esc(t.title) + '</span>'
                 + '<span class="cn">' + (t.n ? t.n + ' messages' : 'empty') + '</span>'
+                + '<span class="cexp" data-exp="' + esc(t.id) + '" role="button" tabindex="0" title="Save as Markdown" aria-label="Save this conversation as Markdown">⇩</span>'
                 + '<span class="cx" data-id="' + esc(t.id) + '" role="button" tabindex="0" title="Delete this conversation" aria-label="Delete this conversation">✕</span>'
                 + '</button>';
         }).join('');
@@ -486,6 +495,14 @@
                 + '<button class="schip" data-q="What enquiries are waiting?">What’s waiting?</button>'
                 + '</div></div>';
         }
+        // The trim's line PERSISTS: chatEv appends it live, but the reload
+        // after the send repaints the log — a warning that vanishes on the
+        // very next frame warned nobody.
+        if (dropSeen[C.cur] > 0 && html) {
+            html += '<div class="trimnote">The window is filling — your oldest '
+                + (dropSeen[C.cur] === 1 ? 'message no longer travels' : dropSeen[C.cur] + ' messages no longer travel')
+                + ' to the model.</div>';
+        }
         log.innerHTML = html;
         if (live) { liveMount(log); }
         log.scrollTop = log.scrollHeight;
@@ -502,6 +519,10 @@
             : !S.models.length ? 'Add a model under Library first — the chat uses whichever one you pick here.'
             : !S.engineServing ? 'The engine is cold — it starts itself on your first message, which adds a few seconds once.'
             : '';
+        var ib = $('chatInstrBox');
+        if (ib && ib !== document.activeElement) { ib.value = C.instr || ''; }
+        var ipill = $('chatInstrBtn');
+        if (ipill) { ipill.classList.toggle('on', !!(C.instr || '').trim()); }
         if (view === 4) { paintTitle(); }
     }
 
@@ -510,7 +531,9 @@
     function liveMount(log) {
         var wrap = document.createElement('div');
         wrap.id = 'liveTurn';
-        wrap.innerHTML = '<div class="bub user">' + esc(live.userText) + '</div>'
+        wrap.innerHTML = '<div class="bub user">'
+            + (live.file ? '<span class="filechip"><span class="fico" aria-hidden="true">▤</span>' + esc(live.file) + '</span><br>' : '')
+            + esc(live.userText) + '</div>'
             + '<details class="thinkfold" id="liveThink" open hidden><summary>'
             + '<span class="tdot" aria-hidden="true"></span>Thinking…</summary>'
             + '<div class="tbody" id="liveThinkBody"></div></details>'
@@ -577,6 +600,36 @@
             liveToolsPaint();
             return;
         }
+        if (ev.t === 'done') {
+            chatMeter(ev.ctx, ev.ctxUsed);
+            // TRIM HONESTY, said once per new loss: the moment older messages
+            // stop travelling, the chat says so instead of quietly forgetting.
+            var key = (C && C.cur) || '';
+            if (ev.dropped > (dropSeen[key] || 0)) {
+                dropSeen[key] = ev.dropped;
+                var n = document.createElement('div');
+                n.className = 'trimnote';
+                n.textContent = 'The window is filling — your oldest '
+                    + (ev.dropped === 1 ? 'message no longer travels' : ev.dropped + ' messages no longer travel')
+                    + ' to the model.';
+                log.appendChild(n);
+                log.scrollTop = log.scrollHeight;
+            }
+            return;
+        }
+    }
+    // THE METER — the model's own numbers or nothing at all: ctx 0 (an engine
+    // that does not report) hides it, because a guessed meter is worse than none.
+    function chatMeter(ctx, used) {
+        var m = $('chatMeter');
+        if (!m) { return; }
+        if (!(ctx > 0) || !(used > 0)) { m.hidden = true; return; }
+        m.hidden = false;
+        var pct = Math.min(100, Math.round(used / ctx * 100));
+        $('chatMFill').style.width = pct + '%';
+        $('chatMFill').className = 'mfill' + (pct >= 75 ? ' warm' : '');
+        $('chatMLbl').innerHTML = '<b>' + Number(used).toLocaleString() + '</b> / '
+            + Number(ctx).toLocaleString() + ' tokens' + (pct >= 75 ? ' · getting full' : '');
     }
     if (window.hand.onChatEv) { window.hand.onChatEv(chatEv); }
 
@@ -589,15 +642,19 @@
             if (window.hand.chatStop) { window.hand.chatStop(); }
             return;
         }
-        if (!text) { return; }
-        live = { userText: text, round: '', think: '', tools: [] };
+        if (!text && !pendingAttach) { return; }
+        var attach = pendingAttach;
+        pendingAttach = null;
+        $('chatAttachRow').hidden = true;
+        live = { userText: text || 'What should I know from this file?', round: '', think: '', tools: [],
+            file: attach ? attach.name : '' };
         lastTools = null;
         box.value = '';
         btn.textContent = 'Stop';
         renderChat();
         var r = null;
         try {
-            r = await window.hand.chatSend(text);
+            r = await window.hand.chatSend(live.userText, attach ? { attach: attach } : undefined);
         } catch (e) {
             r = { ok: false, say: 'The app could not reach its own engine.' };
         }
@@ -612,6 +669,11 @@
             toast((r && r.say) || 'The model did not answer.');
             await chatLoad();
             box.value = text; // their words come back rather than vanishing
+            if (attach) {
+                pendingAttach = attach;
+                $('chatAttachName').textContent = attach.name + ' · ' + Math.round(attach.text.length / 100) / 10 + ' K';
+                $('chatAttachRow').hidden = false;
+            }
             box.focus();
             return;
         }
@@ -690,6 +752,18 @@
         }
         // The conversations rail, the starter chips and the reply's actions —
         // all delegated here so a repaint never orphans a handler.
+        // NB the export and delete marks live INSIDE the row button, so both
+        // must be asked before the row itself — the row check would swallow
+        // their clicks (measured: export opened the conversation instead).
+        var cexp = t.closest ? t.closest('.cexp') : null;
+        if (cexp) {
+            if (window.hand.chatExport) {
+                var xr = await window.hand.chatExport(cexp.getAttribute('data-exp'));
+                if (xr && xr.ok) { toast('Saved to ' + xr.path); }
+                else if (xr && xr.say) { toast(xr.say); }
+            }
+            return;
+        }
         var cx = t.closest ? t.closest('.cx') : null;
         if (cx) {
             if (!live && window.hand.chatDelete) {
@@ -708,6 +782,32 @@
         }
         var schip = t.closest ? t.closest('.schip') : null;
         if (schip) { chatSend(schip.getAttribute('data-q') || ''); return; }
+        if (t.id === 'chatClip') {
+            if (live || !window.hand.chatAttach) { return; }
+            var af = await window.hand.chatAttach();
+            if (!af || !af.ok) {
+                if (af && af.say) { toast(af.say); } // '' = they backed out
+                return;
+            }
+            pendingAttach = { name: af.name, text: af.text };
+            $('chatAttachName').textContent = af.name + ' · ' + Math.round(af.text.length / 100) / 10 + ' K';
+            $('chatAttachRow').hidden = false;
+            $('chatIn').focus();
+            return;
+        }
+        if (t.id === 'chatAttachX') {
+            pendingAttach = null;
+            $('chatAttachRow').hidden = true;
+            return;
+        }
+        if (t.id === 'chatInstrBtn') {
+            var bar = $('chatInstrBar');
+            bar.hidden = !bar.hidden;
+            t.setAttribute('aria-expanded', String(!bar.hidden));
+            if (!bar.hidden) { $('chatInstrBox').focus(); }
+            return;
+        }
+
         var bedit = t.closest ? t.closest('.bedit') : null;
         if (bedit) {
             if (!live && window.hand.chatTruncate) {
@@ -913,6 +1013,18 @@
         }
     }
 
+    // The conversations search — renderer-only, over what is already in hand.
+    $('chatSearch').addEventListener('input', function () {
+        railQ = String(this.value || '').trim();
+        chatRailPaint();
+    });
+    // The standing instruction saves when the owner leaves the box — a
+    // keystroke-save would race the send reading it mid-edit.
+    $('chatInstrBox').addEventListener('blur', async function () {
+        if (!window.hand.chatInstr) { return; }
+        C = await window.hand.chatInstr(this.value);
+        renderChat();
+    });
     // Enter sends; Shift+Enter is a new line — the habit every chat teaches.
     $('chatIn').addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && !e.shiftKey) {

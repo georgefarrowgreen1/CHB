@@ -37,6 +37,13 @@ const CHAT_MSG_CHARS = 8000;     // one message's cap, both directions
 // sends `text` and never `think`, because reasoning models degrade when old
 // thinking rides back in as history — their own model cards say so.
 const CHAT_THINK_CHARS = 6000;
+// A conversation's standing instruction ("two sentences, no lists") — typed
+// by the owner or it does not exist; the app never writes one itself.
+const CHAT_INSTR_CHARS = 500;
+// An attached text file's cap. Refused over it, never silently cut — a
+// half-read file answered confidently is worse than a sentence saying no.
+const CHAT_ATTACH_CHARS = 6000;
+const CHAT_ATTACH_NAME_MAX = 60;
 
 // The system line. It names the owner when the site's brief has told us who
 // that is, and it states the boundary — because a model that believes it can
@@ -70,6 +77,11 @@ function chatMsg(raw) {
     // absent field renders no fold at all.
     if (typeof raw.think === 'string' && raw.think.trim() !== '') {
         m.think = raw.think.trim().slice(0, CHAT_THINK_CHARS);
+    }
+    // An attachment's NAME, for the bubble's file chip — the content lives in
+    // the text itself (chatAttachMsg), so the two can never separate.
+    if (typeof raw.file === 'string' && raw.file.trim() !== '') {
+        m.file = raw.file.trim().slice(0, CHAT_ATTACH_NAME_MAX);
     }
     // Which lookups grounded this reply — names only, so the chip can render
     // after a restart. The payloads are session memory, deliberately not disk.
@@ -131,12 +143,16 @@ function chatStore(raw, nowMs) {
             if (!t || typeof t !== 'object') { continue; }
             const id = typeof t.id === 'string' && t.id !== '' ? t.id.slice(0, 40) : '';
             if (!id) { continue; }
-            threads.push({
+            const th = {
                 id: id,
                 title: chatTitle(typeof t.title === 'string' ? t.title : ''),
                 at: typeof t.at === 'number' && t.at > 0 ? t.at : 0,
                 msgs: chatThread(t.msgs),
-            });
+            };
+            if (typeof t.instr === 'string' && t.instr.trim() !== '') {
+                th.instr = t.instr.trim().slice(0, CHAT_INSTR_CHARS);
+            }
+            threads.push(th);
         }
     }
     threads = threads.slice(0, CHAT_THREADS_MAX);
@@ -259,9 +275,67 @@ function chatForModel(thread, host, extra) {
     return [{ role: 'system', content: sys }].concat(kept);
 }
 
+// ── AN ATTACHED TEXT FILE. ──────────────────────────────────────────────────
+// '' or a sentence. Refusal over the cap is the whole design: the meter shows
+// what an attachment costs BEFORE the send, and a file that will not fit is
+// said so, never trimmed into a confident answer about half a document.
+function chatAttachProblem(content) {
+    const c = String(content == null ? '' : content);
+    if (c.trim() === '') {
+        return 'That file is empty.';
+    }
+    if (c.length > CHAT_ATTACH_CHARS) {
+        return 'That file is too big for the chat — ' + c.length.toLocaleString()
+            + ' characters against a limit of ' + CHAT_ATTACH_CHARS.toLocaleString()
+            + '. Trim it down, or ask about a part of it.';
+    }
+    if (c.indexOf('\u0000') >= 0) {
+        return 'That does not look like a text file.';
+    }
+    return '';
+}
+// The attachment joins the USER turn as a fenced block — one message, so the
+// trim can never separate a question from its file.
+function chatAttachMsg(text, name, content) {
+    const t = String(text == null ? '' : text).trim();
+    const n = String(name == null ? '' : name).slice(0, CHAT_ATTACH_NAME_MAX);
+    return (t !== '' ? t + '\n\n' : '')
+        + '--- attached file: ' + n + ' ---\n'
+        + String(content == null ? '' : content).slice(0, CHAT_ATTACH_CHARS)
+        + '\n--- end of ' + n + ' ---';
+}
+
+// ── A CONVERSATION AS A DOCUMENT. ───────────────────────────────────────────
+// Markdown, pure: the words as said, thinking folded into quotes, lookups
+// noted. What the export deliberately is NOT: a record of tool payloads —
+// those were never stored, and an export cannot contain what the file
+// does not hold.
+function chatExportMd(thread, title, host) {
+    const clean = chatThread(thread);
+    const lines = ['# ' + chatTitle(title), ''];
+    clean.forEach(function (m) {
+        lines.push('## ' + (m.role === 'user' ? (String(host || '').trim() || 'You') : 'The model')
+            + (m.at ? ' · ' + m.at : ''));
+        if (m.think) {
+            lines.push('');
+            m.think.split('\n').forEach(function (t) { lines.push('> ' + t); });
+        }
+        if (m.used && m.used.length) {
+            lines.push('');
+            lines.push('*Checked the website: ' + m.used.join(', ') + '*');
+        }
+        lines.push('');
+        lines.push(m.text);
+        lines.push('');
+    });
+    return lines.join('\n');
+}
+
 module.exports = {
     CHAT_KEEP, CHAT_SEND_MAX, CHAT_SEND_CHARS, CHAT_MSG_CHARS,
     CHAT_THREADS_MAX, CHAT_TITLE_MAX, CHAT_THINK_CHARS,
+    CHAT_INSTR_CHARS, CHAT_ATTACH_CHARS, CHAT_ATTACH_NAME_MAX,
     chatSystemLine, chatMsg, chatThread, chatPush, chatForModel,
     chatTitle, chatStore, chatThreadNew, chatThinkSplit, chatThinkStream,
+    chatAttachProblem, chatAttachMsg, chatExportMd,
 };

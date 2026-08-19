@@ -641,7 +641,8 @@ echo "\n== §24 the chat's tools ==\n";
 
 // The whitelist and the refusals — each a sentence, never a code.
 nsk('an unknown tool is refused naming the real ones',
-    strpos(night_tool_problem('delete_booking', [], '2026-08-19'), 'today, bookings, availability and enquiries') !== false);
+    strpos(night_tool_problem('delete_booking', [], '2026-08-19'), 'today, bookings, availability, enquiries and cottages') !== false);
+nsk('cottages takes no arguments and passes', night_tool_problem('cottages', [], '2026-08-19') === '');
 nsk('today and enquiries take no arguments and pass',
     night_tool_problem('today', ['junk' => 1], '2026-08-19') === ''
     && night_tool_problem('enquiries', [], '2026-08-19') === '');
@@ -706,6 +707,26 @@ nsk('a free range with NO price says nothing about money — never a guessed quo
 $avT = night_tool_availability('Jollyboat Cottage', '2026-09-01', '2026-09-04', ['Bob Carter'], ['total' => 440.0]);
 nsk('a taken range names who has it and states NO price — pricing the unsellable is a lie',
     $avT['free'] === false && $avT['taken_by'] === ['Bob Carter'] && !isset($avT['price']));
+
+// The cottages tool — the fleet itself, capped and never invented.
+$ct = night_tool_cottages([
+    ['name' => 'Jollyboat Cottage', 'couple_rate' => 130, 'max_adults' => 2, 'max_children' => 2, 'max_total' => 4,
+     'facts' => array_merge([['q' => 'Parking?', 'a' => 'One car outside.'], ['q' => 'Dogs?', 'a' => 'We are afraid not.']],
+         array_map(fn ($i) => ['q' => 'Q' . $i, 'a' => 'A' . $i], range(1, 8)))],
+    ['name' => '21A Westgate Street', 'couple_rate' => 0, 'max_adults' => 0, 'max_children' => 0, 'max_total' => 0, 'facts' => 'junk'],
+    'not a row',
+]);
+nsk('a cottage carries its name, sleeps, base rate FRAMED, and its own Q&A',
+    $ct['cottages'][0]['cottage'] === 'Jollyboat Cottage'
+    && $ct['cottages'][0]['sleeps'] === '2 adults + 2 children (4 at most)'
+    && strpos($ct['cottages'][0]['nightly'], '£130.00') === 0
+    && strpos($ct['cottages'][0]['nightly'], 'seasons and weekends move it') !== false
+    && $ct['cottages'][0]['facts'][0]['q'] === 'Parking?', json_encode($ct['cottages'][0] ?? null));
+nsk('the Q&A caps at ' . NIGHT_TOOL_FACTS_MAX . ' facts', count($ct['cottages'][0]['facts']) === NIGHT_TOOL_FACTS_MAX);
+nsk('no rate → no figure, no occupancy → no sleeps claim, garbage absent',
+    !isset($ct['cottages'][1]['nightly']) && !isset($ct['cottages'][1]['sleeps'])
+    && !isset($ct['cottages'][1]['facts']) && count($ct['cottages']) === 2
+    && strpos(json_encode($ct), 'Array') === false, json_encode($ct));
 
 echo "\n== Summary ==\n";
 if ($fails) {

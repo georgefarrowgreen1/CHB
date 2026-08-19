@@ -2888,6 +2888,22 @@ it_check('chat_tool: bookings finds the stay by name, cottage NAMED not keyed',
 it_check('chat_tool: no email, phone, address or postcode in the payload',
     strpos($r['raw'], 'ctg@gmail.com') === false && strpos($r['raw'], '900456') === false, mb_substr($r['raw'], 0, 200));
 
+// The cottages tool — the fleet through the real endpoint. This is the tool
+// behind "the AI can't see cottage data": the first four all assumed the
+// model knew what the cottages WERE.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'faqs-' . $propKey,
+    'value' => [['q' => 'Parking?', 'a' => 'One car outside.']]]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'cottages']);
+$ctList = $r['json']['data']['cottages'] ?? [];
+$ctMine = null;
+foreach ($ctList as $c) {
+    if (($c['cottage'] ?? '') === ($expectName26c ?: $propKey)) {
+        $ctMine = $c;
+    }
+}
+it_check('chat_tool: cottages hands over the fleet with THIS cottage named and its own Q&A',
+    $ctMine !== null && ($ctMine['facts'][0]['q'] ?? '') === 'Parking?', $r['raw']);
+
 // One switch closes this direction too.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'today']);

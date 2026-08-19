@@ -130,16 +130,21 @@ function makeApi(deps) {
         return chatCur();
     }
     function chatHistoryOut() {
+        const cur = chatCur();
         return {
             ok: true,
             cur: chatDb.cur,
             threads: chatDb.threads.map(function (t) {
                 return { id: t.id, title: t.title, at: t.at, n: t.msgs.length };
             }),
-            thread: (chatCur() || { msgs: [] }).msgs.slice(),
+            thread: (cur || { msgs: [] }).msgs.slice(),
+            instr: (cur && cur.instr) || '',
             model: chatModelId(),
         };
     }
+    // The loaded context window, measured once per session — /props is cheap
+    // but the number only changes when the server restarts with new flags.
+    let chatCtx = 0;
     // The chat's model: the owner's explicit pick, else the reply job's — the
     // model already trusted with prose. '' means neither exists yet.
     function chatModelId() {
@@ -670,8 +675,21 @@ function makeApi(deps) {
             return this.chatSend(last.text, { regen: true });
         },
         async chatSend(text, opts) {
-            const t = String(typeof text === 'string' ? text : '').trim().slice(0, chatMod.CHAT_MSG_CHARS);
+            let t = String(typeof text === 'string' ? text : '').trim().slice(0, chatMod.CHAT_MSG_CHARS);
             const regen = !!(opts && opts.regen);
+            // AN ATTACHED TEXT FILE joins the user turn as a fenced block —
+            // one message, so the trim can never separate a question from
+            // its file. Refused over the cap, never silently cut.
+            const attach = (opts && opts.attach && typeof opts.attach === 'object') ? opts.attach : null;
+            let fileName = '';
+            if (attach) {
+                const bad = chatMod.chatAttachProblem(attach.text);
+                if (bad !== '') {
+                    return { ok: false, say: bad };
+                }
+                fileName = String(attach.name || 'attached.txt');
+                t = chatMod.chatAttachMsg(t, fileName, attach.text);
+            }
             if (!t) {
                 return { ok: false, say: 'Type a message first.' };
             }
@@ -702,12 +720,20 @@ function makeApi(deps) {
                 } else if (!(await eng.reachable())) {
                     return { ok: false, say: eng.name + ' is not answering on ' + eng.base + ' — start it under Settings → Engine.' };
                 }
+                // THE METER'S DENOMINATOR — measured once (llama.cpp /props),
+                // 0 when the engine does not report, and 0 shows NO meter:
+                // a guessed meter is worse than none.
+                if (!chatCtx && eng.props) {
+                    try { chatCtx = (await eng.props()).ctx || 0; } catch (e) { chatCtx = 0; }
+                }
                 const th = chatEnsureThread();
                 // The question joins the thread BEFORE the call: it was said,
                 // whatever the model does about it. A REGENERATE re-asks the
                 // question already there instead of saying it twice.
                 if (!regen) {
-                    th.msgs = chatMod.chatPush(th.msgs, { role: 'user', text: t, at: nightMod.hhmm() });
+                    const um = { role: 'user', text: t, at: nightMod.hhmm() };
+                    if (fileName) { um.file = fileName; }
+                    th.msgs = chatMod.chatPush(th.msgs, um);
                 }
                 if (th.title === 'New chat') { th.title = chatMod.chatTitle(t); }
                 th.at = now().getTime();
@@ -733,8 +759,19 @@ function makeApi(deps) {
                 // never the record.
                 let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
                 const site = toolsOn ? siteFor() : null;
-                const intro = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
-                let msgs = chatMod.chatForModel(th.msgs, '', intro);
+                let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
+                // The conversation's STANDING INSTRUCTION joins the system
+                // content — typed by the owner or absent, never written by
+                // the app, and it rides every turn of this thread.
+                if (th.instr) {
+                    extra += (extra ? '\n\n' : '')
+                        + 'The owner’s standing instruction for this conversation: ' + th.instr;
+                }
+                let msgs = chatMod.chatForModel(th.msgs, '', extra);
+                // TRIM HONESTY: how many stored turns no longer travel. Said
+                // to the window so "why did it forget?" is answered before
+                // it is asked.
+                const dropped = Math.max(0, th.msgs.length - (msgs.length - 1));
                 const used = [];
                 let lookups = 0;
                 let grammarNext = false;
@@ -839,13 +876,19 @@ function makeApi(deps) {
                 if (startedModel && runner) {
                     armIdleStop();
                 }
+                // The meter's numbers: what the FINAL turn occupied, by the
+                // model's own count. 0 when the engine did not report — the
+                // window shows nothing then rather than a guess.
+                const ctxUsed = (r.promptTokens || 0) + (r.tokens || 0);
                 chatPushEv({
                     t: 'done', ok: true, stopped: stopped, used: used,
                     model: model, ms: r.ms, tokensPerSec: r.tokensPerSec,
+                    ctx: chatCtx, ctxUsed: ctxUsed, dropped: dropped,
                 });
                 return {
                     ok: true, reply: answer, stopped: stopped, think: thinkAll.trim(),
                     ms: r.ms, tokensPerSec: r.tokensPerSec, model: model, used: used,
+                    ctx: chatCtx, ctxUsed: ctxUsed, dropped: dropped,
                 };
             } finally {
                 chatBusy = false;
@@ -860,6 +903,24 @@ function makeApi(deps) {
                 writeChat();
             }
             return chatHistoryOut();
+        },
+        // The conversation's standing instruction. Empty CLEARS it — the way
+        // out is the same box the way in was.
+        chatInstr(text) {
+            const t = chatEnsureThread();
+            const v = String(typeof text === 'string' ? text : '').trim().slice(0, chatMod.CHAT_INSTR_CHARS);
+            if (v === '') { delete t.instr; } else { t.instr = v; }
+            writeChat();
+            return chatHistoryOut();
+        },
+        // A conversation as a Markdown document — the pure formatter's work;
+        // main.js owns the save dialog and the file.
+        chatExport(id) {
+            const t = chatDb.threads.filter(function (x) { return x.id === id; })[0];
+            if (!t || !t.msgs.length) {
+                return { ok: false, say: 'Nothing in that conversation to save yet.' };
+            }
+            return { ok: true, title: t.title, md: chatMod.chatExportMd(t.msgs, t.title, '') };
         },
 
         // Where the queue lives, so the window can offer to open it.

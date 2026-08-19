@@ -110,13 +110,33 @@
       <div class="vhead"><div class="grow"><h1>Chat</h1>
         <p class="sub">Just you and the model, on this Mac. Nothing here reaches the website or a guest.</p></div>
         <div class="rail"><select class="pop" id="chatModel" aria-label="Model for the chat"></select>
+        <button class="tbtn" type="button" id="chatInstrBtn" aria-expanded="false">Instructions</button>
         <button class="tbtn" type="button" id="chatNew">New chat</button></div></div>
       <div class="chatwrap">
         <!-- CONVERSATIONS — titled, on this Mac, oldest out at the cap. -->
-        <nav class="chatrail" id="chatThreads" aria-label="Conversations"></nav>
+        <div class="chatside">
+          <input class="csearch" id="chatSearch" type="text" placeholder="Search chats&hellip;" aria-label="Search conversations">
+          <nav class="chatrail" id="chatThreads" aria-label="Conversations"></nav>
+        </div>
         <div class="box chatbox">
+          <!-- The conversation's standing instruction — typed or absent. -->
+          <div class="instrbar" id="chatInstrBar" hidden>
+            <textarea id="chatInstrBox" rows="2" placeholder="e.g. Keep answers to two sentences. British spelling." aria-label="This conversation's standing instruction"></textarea>
+            <p class="tiny">Travels with every message in this conversation. It joins what the model reads each turn, so the meter counts it.</p>
+          </div>
           <div class="chatlog" id="chatLog"></div>
+          <!-- THE METER — the model's own token numbers, or nothing. -->
+          <div class="meter" id="chatMeter" hidden>
+            <div class="mbar"><div class="mfill" id="chatMFill"></div></div>
+            <span class="mlbl" id="chatMLbl"></span>
+          </div>
+          <div class="attachrow" id="chatAttachRow" hidden>
+            <span class="filechip"><span class="fico" aria-hidden="true">&#9636;</span>
+              <span id="chatAttachName"></span>
+              <button class="fx" type="button" id="chatAttachX" aria-label="Remove the attachment">&#10005;</button></span>
+          </div>
           <div class="chatbar">
+            <button class="clip" type="button" id="chatClip" title="Attach a text file" aria-label="Attach a text file">&#128206;</button>
             <textarea class="chatin" id="chatIn" rows="1" placeholder="Ask anything&hellip;" aria-label="Your message"></textarea>
             <button class="tbtn prime" type="button" id="chatSendBtn">Send</button>
           </div>

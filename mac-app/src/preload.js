@@ -27,7 +27,10 @@ contextBridge.exposeInMainWorld('hand', {
     // The Chat screen: the text crosses, the reply comes back, and the model /
     // engine decisions stay on the main side where the settings live.
     chatHistory: function () { return ipcRenderer.invoke('hand:chatHistory'); },
-    chatSend: function (text) { return ipcRenderer.invoke('hand:chatSend', text); },
+    chatSend: function (text, opts) { return ipcRenderer.invoke('hand:chatSend', text, opts); },
+    chatInstr: function (text) { return ipcRenderer.invoke('hand:chatInstr', text); },
+    chatExport: function (id) { return ipcRenderer.invoke('hand:chatExport', id); },
+    chatAttach: function () { return ipcRenderer.invoke('hand:chatAttach'); },
     chatClear: function () { return ipcRenderer.invoke('hand:chatClear'); },
     chatNew: function () { return ipcRenderer.invoke('hand:chatNew'); },
     chatPick: function (id) { return ipcRenderer.invoke('hand:chatPick', id); },

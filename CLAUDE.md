@@ -597,6 +597,26 @@ signing and what is real; what matters HERE is the site half and the rules.
   (store/split/splitter/stream/abort/events/stop-both-ways/regen/truncate/
   threads) and the mac ui-test's grown-up block (held-open send driving real
   events; the holdback and escape-first each break-tested).
+  **v3 — ROOM TO THINK, and the FIFTH TOOL.** Reported live: "the AI can't see
+  cottage data" — the plumbing was fine (verified against production), the gap was
+  that all four tools assumed the model knew what the cottages WERE. `cottages`
+  (night_tool_cottages) hands over the fleet: names, occupancy, base rate FRAMED
+  ("seasons and weekends move it"), published Q&A capped at NIGHT_TOOL_FACTS_MAX.
+  The chat also knows its limits out loud: a CONTEXT METER measured from llama.cpp's
+  `/props` n_ctx + each reply's own usage (engine `props()`; ctx 0 = no meter, never
+  a guess), and TRIM HONESTY — `dropped` rides the done event and the window says
+  "your oldest N messages no longer travel" the first time it grows (persisted by
+  renderChat, or the reload wiped the warning — measured). Per-thread standing
+  INSTRUCTION (`instr`, owner-typed or absent, joins the system content, empty
+  clears), EXPORT as Markdown (`chatExportMd` pure; main.js owns the save dialog),
+  rail SEARCH (renderer-only), and ATTACH a text file (main's open dialog; pure
+  `chatAttachProblem` refuses empty/NUL/over-CHAT_ATTACH_CHARS in a sentence —
+  never silently cut; `chatAttachMsg` fences it into the USER turn so the trim
+  can never separate a question from its file; the msg keeps `file` for the chip).
+  NB the rail's export/delete marks live INSIDE the row button — their handlers
+  must run before the row's or the row swallows the click (measured). Gated by
+  core-test §33, test-nightshift §24's cottage checks, test-integration §26c, and
+  the ui-test's room-to-think block.
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is

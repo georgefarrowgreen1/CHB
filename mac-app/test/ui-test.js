@@ -109,7 +109,7 @@ function fakeState(over) {
                     ok: true, cur: 't1',
                     threads: [{ id: 't1', title: th.length ? th[0].text.slice(0, 40) : 'New chat', at: 1, n: th.length },
                               { id: 't2', title: 'the welcome book', at: 0, n: 4 }],
-                    thread: th, model: 'q.gguf',
+                    thread: th, model: 'q.gguf', instr: window.__chatInstr || '',
                 };
             };
             window.hand = {
@@ -145,8 +145,8 @@ function fakeState(over) {
                     window.__calls.push(['chatHistory']);
                     return window.__chatHist();
                 },
-                chatSend: async function (t) {
-                    window.__calls.push(['chatSend', t]);
+                chatSend: async function (t, opts) {
+                    window.__calls.push(['chatSend', t, opts || null]);
                     // A HELD send lets the suite drive streaming events and the
                     // Stop button while the promise is genuinely in flight.
                     if (window.__chatHold) {
@@ -194,6 +194,19 @@ function fakeState(over) {
                     return { ok: true };
                 },
                 onChatEv: function (cb) { window.__chatEvCb = cb; },
+                chatInstr: async function (v) {
+                    window.__calls.push(['chatInstr', v]);
+                    window.__chatInstr = String(v || '').trim();
+                    return window.__chatHist();
+                },
+                chatExport: async function (id) {
+                    window.__calls.push(['chatExport', id]);
+                    return { ok: true, path: '/Users/g/Desktop/chat.md' };
+                },
+                chatAttach: async function () {
+                    window.__calls.push(['chatAttach']);
+                    return window.__attachAnswer || { ok: true, name: 'changeover-notes.txt', text: 'fix the tap\nrestock the basket' };
+                },
                 // The updater. Absent entirely before this, which is why the
                 // version line was hidden in every test run and the menu check
                 // could not have passed: upCheck() returns early when the
@@ -694,6 +707,89 @@ function fakeState(over) {
         ok('Regenerate re-asks through the bridge',
             (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatRegen'; }); }))
             && /A second opinion/.test(await page.textContent('#chatLog')));
+
+        // ── ROOM TO THINK: the meter, the trim's honest line, instructions,
+        // search, export, attach — each driven through the real window.
+        // The meter and the trim note ride the done event of a held send.
+        await page.evaluate(function () {
+            window.__chatHold = new Promise(function (r) { window.__chatRelease = r; });
+            window.__chatAnswer = { ok: true, reply: 'Short.', ms: 500, tokensPerSec: 20, model: 'q.gguf', used: [] };
+        });
+        await page.fill('#chatIn', 'a long conversation by now');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(120);
+        await page.evaluate(function () {
+            window.__chatEvCb({ t: 'done', ok: true, stopped: false, used: [], model: 'q.gguf', ctx: 8192, ctxUsed: 6800, dropped: 3 });
+            window.__chatRelease();
+        });
+        await page.waitForTimeout(250);
+        const meterSt = await page.evaluate(function () {
+            return {
+                hidden: document.getElementById('chatMeter').hidden,
+                lbl: document.getElementById('chatMLbl').textContent,
+                warm: document.getElementById('chatMFill').className.indexOf('warm') >= 0,
+                trim: (document.querySelector('#chatLog .trimnote') || {}).textContent || '',
+            };
+        });
+        ok('the meter shows the MEASURED numbers and warms past 75%',
+            !meterSt.hidden && /6,800 \/ 8,192 tokens/.test(meterSt.lbl) && meterSt.warm, JSON.stringify(meterSt));
+        ok('…and the trim says its honest line, counting the lost turns',
+            /oldest 3 messages no longer travel/.test(meterSt.trim), meterSt.trim);
+        await page.evaluate(function () {
+            window.__chatEvCb && window.__chatEvCb({ t: 'done', ok: true, ctx: 0, ctxUsed: 0, dropped: 0 });
+        });
+        // A ctx of 0 means the engine did not report — no meter, never a guess.
+        // (Fired outside a live send it is ignored, which is also correct; the
+        // hidden-on-zero branch is proven by the function under §33's rules.)
+
+        // Instructions: the pill opens the bar, blur saves through the bridge,
+        // the pill lights while one is set.
+        await page.click('#chatInstrBtn');
+        await page.fill('#chatInstrBox', 'Answer in one short sentence.');
+        await page.click('#chatIn');
+        await page.waitForTimeout(200);
+        ok('the standing instruction saves on blur, through the bridge, and lights the pill',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatInstr' && /one short sentence/.test(c[1]); }); }))
+            && (await page.evaluate(function () { return document.getElementById('chatInstrBtn').className.indexOf('on') >= 0; })));
+
+        // Search filters the rail without touching the bridge.
+        await page.fill('#chatSearch', 'welcome');
+        await page.waitForTimeout(120);
+        ok('searching the rail hides what does not match',
+            (await page.locator('#chatThreads .crow:not(.hide)').count()) === 1
+            && /welcome/.test(await page.evaluate(function () {
+                return document.querySelector('#chatThreads .crow:not(.hide) .ct').textContent;
+            })));
+        await page.fill('#chatSearch', '');
+        await page.waitForTimeout(120);
+
+        // Export rides the ⇩ on a conversation row.
+        await page.evaluate(function () {
+            var b = document.querySelector('#chatThreads .cexp');
+            b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await page.waitForTimeout(200);
+        ok('export goes through the bridge and says where it saved',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatExport'; }); }))
+            && /Saved to/.test(await page.textContent('#toastSays')));
+
+        // Attach: the clip picks a file, the chip shows, the send carries it.
+        await page.evaluate(function () { window.__chatAnswer = null; });
+        await page.click('#chatClip');
+        await page.waitForTimeout(150);
+        ok('a picked file shows as a pending chip with its size',
+            !(await page.evaluate(function () { return document.getElementById('chatAttachRow').hidden; }))
+            && /changeover-notes\.txt/.test(await page.textContent('#chatAttachName')));
+        await page.fill('#chatIn', 'what needs doing?');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(250);
+        ok('the send carries the attachment and the chip clears',
+            (await page.evaluate(function () {
+                return window.__calls.some(function (c) {
+                    return c[0] === 'chatSend' && c[2] && c[2].attach && c[2].attach.name === 'changeover-notes.txt';
+                });
+            }))
+            && (await page.evaluate(function () { return document.getElementById('chatAttachRow').hidden; })));
 
         // ── FIRST RUN: nothing set up at all, and the window says what to do
         // rather than showing empty boxes. Driven by reloading with a bare state
