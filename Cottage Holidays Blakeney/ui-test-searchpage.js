@@ -18,9 +18,25 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const { page, browser, base, done } = await boot({ viewport: { width: 900, height: 900 } });
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const bookings = [{ id: 1, prop_key: 'jollyboat', name: 'Bob Carter', email: 'b@x.co', phone: '', check_in: d(10), check_out: d(13), adults: 2, children: 0, payment: 'deposit', deposit_paid: 100, agreed_total: 500, hold_status: 'none' }];
+  // Search × Mac (§23): captured nightshift traffic + a settable verdict, so
+  // the recovery flow is driven against a stubbed ask channel.
+  const macAsks = [];
+  let macAnswer = null; // null = the ask is still open; a string = the Mac's pick
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    if (url.includes('nightshift.php')) {
+      let body = {};
+      try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+      macAsks.push(body);
+      if (body.action === 'ask') return json({ ok: true, id: 77 });
+      if (body.action === 'ask_status') {
+        return json(macAnswer
+          ? { ok: true, status: 'answered', answer: macAnswer, model: 't.gguf' }
+          : { ok: true, status: 'open', answer: '', model: '' });
+      }
+      return json({ ok: true });
+    }
     if (url.includes('bookings.php') && route.request().method() !== 'POST') return json({ bookings });
     if (url.includes('rates.php') && route.request().method() !== 'POST') return json({ properties: [
       { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 20, child_rate: 10, transaction_pct: 0, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
@@ -2159,6 +2175,120 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/chbFetchBuf\(DARKSTAR\.url\)/.test(src), 'darkstar’s boot load stays SILENT (no progress callback)');
   ok(/chbFetchBuf\(CHB_ENC\.url,\s*\(f\)/.test(src), '…while the encoder’s query-blocked fetch reports real bytes');
   await page.evaluate(() => closeCmdK());
+
+  // ── §23 SEARCH × MAC — the recovery tier against a stubbed ask channel ──
+  // Every on-device tier abstains → the Mac's model PLACES the phrasing on the
+  // site's own menu; the deterministic engine computes the answer. The stub is
+  // the route handler above; nothing here touches a real Mac.
+  console.log('\n§23 search × Mac: the recovery tier');
+  // Presence + switch on. siteContent is mutated (never rebound — the
+  // currentGuest trap), __nightPre is a window global by design.
+  await page.evaluate(() => {
+    siteContent['night-shift'] = '1';
+    window.__nightPre = { mac: { seen: Math.floor(Date.now() / 1000), listening: true } };
+  });
+  macAsks.length = 0;
+  await page.evaluate(() => openCmdK());
+  await page.waitForTimeout(400);
+  ok(macAsks.some((b) => b.action === 'warm'), 'opening search warms the Mac (fire-and-forget)');
+  // An abstain query: question-shaped, matching nothing — the fallback fires,
+  // and only after the SETTLE does the ask file (per-keystroke flood control).
+  const oddQ = 'do the seagulls prefer the blue bucket?';
+  macAsks.length = 0; macAnswer = null;
+  await page.evaluate((q) => { const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false); }, oddQ);
+  await page.waitForTimeout(350);
+  st = await page.evaluate(() => ({
+    fb: __cmdkResults.some((r) => r && r.id === 'nlg-fallback'),
+    shim: __cmdkResults.some((r) => r && r.id === 'mac-recover'),
+  }));
+  ok(st.fb, 'the abstain renders the honest fallback first');
+  ok(!st.shim && !macAsks.some((b) => b.action === 'ask'), 'no ask files before the settle delay');
+  await page.waitForFunction(() => __cmdkResults.some((r) => r && r.id === 'mac-recover'), null, { timeout: 6000 });
+  const askBody = macAsks.find((b) => b.action === 'ask');
+  ok(!!askBody && askBody.kind === 'intent' && askBody.question === oddQ.toLowerCase()
+    && Array.isArray(askBody.options) && askBody.options.includes('who owes me money'),
+    'after the settle the ask files: kind intent, the query, the canonical menu');
+  st = await page.evaluate(() => {
+    const shim = __cmdkResults.find((r) => r && r.id === 'mac-recover');
+    const el = document.querySelector('#cmdk-results');
+    return { sub: shim ? shim.sub : '', painted: /Asking your Mac/.test((el && el.textContent) || '') };
+  });
+  ok(st.painted, 'the shimmer row is on screen while the Mac works');
+  // The Mac answers ON the menu → the site's own rows land, attributed.
+  macAnswer = 'who owes me money';
+  await page.waitForFunction(() => __cmdkResults.some((r) => r && r._mac), null, { timeout: 15000 });
+  st = await page.evaluate(() => {
+    const head = __cmdkResults.find((r) => r && r._mac) || {};
+    return {
+      sub: head.sub || '', nlu: head._nlu, nluQ: head._nluQ,
+      chips: (head.chips || []).map((c) => c.label),
+      fb: __cmdkResults.some((r) => r && r.id === 'nlg-fallback'),
+      shim: __cmdkResults.some((r) => r && r.id === 'mac-recover'),
+      painted: /Understood via your Mac/.test(document.querySelector('#cmdk-results').textContent || ''),
+    };
+  });
+  ok(/Understood via your Mac/.test(st.sub) && st.painted, `the mapped answer lands attributed (${st.sub.slice(0, 60)})`);
+  ok(st.nlu === 'who owes me money' && st.nluQ === oddQ.toLowerCase(), 'the rows carry the teach tags (running one learns the phrasing)');
+  ok(st.chips.some((l) => /Remember this phrasing/.test(l)) && st.chips.some((l) => /Not what I meant/.test(l)),
+    `both chips ride the head row (${st.chips.join(' | ')})`);
+  ok(!st.fb && !st.shim, 'the dead end and the shimmer both left with the answer');
+  // ✓ Remember teaches through the REAL chbNluLearn.
+  await page.evaluate(() => {
+    const head = __cmdkResults.find((r) => r && r._mac);
+    head.chips.find((c) => /Remember/.test(c.label)).run();
+  });
+  const learned = await page.evaluate(() => JSON.parse(localStorage.getItem('chb-nlu-learned') || '[]'));
+  ok(learned.some((x) => x.t === oddQ.toLowerCase() && x.c === 'who owes me money'), 'Remember teaches the phrasing to the on-device model');
+  // "Not what I meant" walks it back: rows leave, an honest dead end returns,
+  // and nothing was taught. A fresh query (the session map never re-files one).
+  const oddQ2 = 'why is the gate humming a tune?';
+  // macAsks lives NODE-side (the route handler's capture) — waitForFunction
+  // runs in the browser, so these waits poll here instead.
+  const waitNode = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; await new Promise((r) => setTimeout(r, 150)); } return fn(); };
+  macAsks.length = 0; macAnswer = null;
+  await page.evaluate((q) => { const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false); }, oddQ2);
+  await waitNode(() => macAsks.some((b) => b.action === 'ask'), 6000);
+  macAnswer = 'leaving today';
+  await page.waitForFunction(() => __cmdkResults.some((r) => r && r._mac), null, { timeout: 15000 });
+  await page.evaluate(() => {
+    const head = __cmdkResults.find((r) => r && r._mac);
+    head.chips.find((c) => /Not what I meant/.test(c.label)).run();
+  });
+  st = await page.evaluate(() => ({
+    mac: __cmdkResults.some((r) => r && r._mac),
+    fb: __cmdkResults.some((r) => r && r.id === 'nlg-fallback'),
+    taught: JSON.parse(localStorage.getItem('chb-nlu-learned') || '[]').some((x) => x.c === 'leaving today'),
+  }));
+  ok(!st.mac && st.fb && !st.taught, 'Not-what-I-meant removes the rows, restores the dead end, teaches nothing');
+  // SUPERSEDED: an answer landing after the owner typed on must never render.
+  const oddQ3 = 'are the fence posts feeling shy?';
+  macAsks.length = 0; macAnswer = null;
+  await page.evaluate((q) => { const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false); }, oddQ3);
+  await waitNode(() => macAsks.some((b) => b.action === 'ask'), 6000);
+  await page.evaluate(() => { const el = document.getElementById('cmdk-input'); el.value = 'bob carter'; cmdkSearchCore('bob carter', false); });
+  macAnswer = 'arriving today';
+  await page.waitForTimeout(1200);
+  st = await page.evaluate(() => ({
+    mac: __cmdkResults.some((r) => r && r._mac),
+    painted: /Understood via your Mac|Asking your Mac/.test(document.querySelector('#cmdk-results').textContent || ''),
+    top: (__cmdkResults[0] || {}).label || '',
+  }));
+  ok(!st.mac && !st.painted && /Bob Carter/i.test(st.top), `a superseded answer never lands over the newer query (${st.top.slice(0, 40)})`);
+  // THE LIVE-WINDOW GUARD: with search closed (the Manage probe's shape),
+  // the recovery must file nothing — a probe box never spends a Mac ask.
+  await page.evaluate(() => closeCmdK());
+  macAsks.length = 0;
+  await page.evaluate(() => chbMacIntentRecover('is the weathervane on strike again?'));
+  await page.waitForTimeout(1800);
+  ok(!macAsks.some((b) => b.action === 'ask'), 'a closed window files no ask (the probe-box guard)');
+  // NOT LISTENING: a sleeping Mac is never asked at all.
+  await page.evaluate(() => { window.__nightPre = { mac: { seen: 0, listening: false } }; openCmdK(); });
+  macAsks.length = 0;
+  const oddQ4 = 'has the postbox learned to whistle yet?';
+  await page.evaluate((q) => { const el = document.getElementById('cmdk-input'); el.value = q; cmdkSearchCore(q, false); }, oddQ4);
+  await page.waitForTimeout(1800);
+  ok(!macAsks.some((b) => b.action === 'ask'), 'a Mac known asleep is never asked');
+  await page.evaluate(() => { closeCmdK(); delete window.__nightPre; siteContent['night-shift'] = ''; });
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);

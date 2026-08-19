@@ -197,15 +197,20 @@ function makeSite(opts) {
         // THE ASK CHANNEL: what is the owner waiting on right now?
         // Returns { ok, host, asks[] } or { ok:false, refusal }. An empty
         // list is the ordinary answer — this is polled every few seconds.
-        async asks() {
+        async asks(waitS) {
             if (!url || !secret) {
                 return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
             }
             const bad = urlProblem(url);
             if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            // LONG-POLL: the site holds the request open up to `waitS` seconds
+            // and answers the moment an ask appears — so work starts within a
+            // second of the owner's tap. The transport timeout must outlive
+            // the hold, or every quiet poll reads as a network failure.
+            const w = Math.min(25, Math.max(0, parseInt(waitS, 10) || 0));
             let r;
             try {
-                r = await send(url, { action: 'asks', secret: secret, build: build });
+                r = await send(url, { action: 'asks', secret: secret, build: build, wait: w }, (w * 1000) + 12000);
             } catch (e) {
                 return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
             }
@@ -217,6 +222,9 @@ function makeSite(opts) {
                 host: String(r.json.host || ''),
                 asks: Array.isArray(r.json.asks) ? r.json.asks : [],
                 voice: Array.isArray(r.json.voice) ? r.json.voice : [],
+                // The warm hint: the owner has search open, so bringing the
+                // engine up NOW means a dead end meets a warm model.
+                warm: r.json.warm === true,
             };
         },
         // Post one ask's answer. `replayed` and `expired` are both fine

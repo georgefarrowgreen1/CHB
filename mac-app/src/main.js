@@ -345,7 +345,11 @@ function startAskPoll() {
                 win.webContents.send('hand:ran', true);
             }
         } catch (e) { /* a bad poll must never stop the poller */ }
-    }, 20000);
+    // Two seconds, not twenty: the sweep long-polls the site for up to 20s
+    // and guards itself against overlap (api.askSweep's sweeping flag), so
+    // this tick is just "re-arm the listen immediately" — the Mac is
+    // effectively always listening while the app runs.
+    }, 2000);
 }
 
 // OPEN AT LOGIN, applied through macOS's own login-items mechanism so it is

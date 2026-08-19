@@ -2913,6 +2913,66 @@ it_check('the chat answer lands for the composer to collect',
 $rootDb->exec('DELETE FROM chat_threads WHERE id = ' . $chatTid);
 $rootDb->exec('DELETE FROM messages WHERE thread_id = ' . $chatTid);
 
+// THE INTENT ASK (search × Mac): the model may only CHOOSE from the menu the
+// site sent, byte-exact, or say none — the site validates membership on the
+// way back, so an invented canonical can never reach the answer engine.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'intent', 'question' => 'anyone still owing?']);
+it_check('an intent ask with no menu is refused in words',
+    $r['code'] === 400 && strpos($r['raw'], 'list of questions') !== false, $r['raw']);
+$menu = ['who owes me money', 'leaving today', 'arriving today'];
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'intent',
+    'question' => 'anyone still owing?', 'options' => $menu]);
+$intId = (int) ($r['json']['id'] ?? 0);
+it_check('an intent ask files with its menu', $intId > 0, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 0]);
+$iv = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $intId) {
+        $iv = $a;
+    }
+}
+it_check('the machine reads the query AND the menu together',
+    $iv && (($iv['intent']['q'] ?? '') === 'anyone still owing?')
+    && ($iv['intent']['options'] ?? []) === $menu, json_encode($iv));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $intId, 'text' => 'who owes me some money']);
+it_check('an answer OFF the menu is refused — member or none, nothing else',
+    $r['code'] === 400 && strpos($r['raw'], 'offered questions') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET,
+    'id' => $intId, 'text' => 'who owes me money', 'model' => 's.gguf']);
+it_check('a byte-exact member lands', ($r['json']['ok'] ?? false) === true && empty($r['json']['replayed']), $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $intId, 'wait' => 2]);
+it_check('the owner collects the mapping — and a settled row never spends the wait',
+    ($r['json']['status'] ?? '') === 'answered' && ($r['json']['answer'] ?? '') === 'who owes me money', $r['raw']);
+// 'none' is the other legitimate verdict — a model with nothing to choose says so.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'intent',
+    'question' => 'what colour are the curtains?', 'options' => $menu]);
+$intNone = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $intNone, 'text' => 'none']);
+it_check("'none' is accepted as an answer in its own right", ($r['json']['ok'] ?? false) === true, $r['raw']);
+
+// LONG-POLL DEGENERATE TIMING: a held ask_status on an already-settled row and
+// a held asks read with rows waiting must both answer at once — the wait is
+// for the EMPTY case only, so these calls prove the hold never taxes a result.
+$t0 = microtime(true);
+http($admin, 'POST', '/nightshift.php', ['action' => 'ask_status', 'id' => $intId, 'wait' => 8]);
+$heldA = microtime(true) - $t0;
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'answer', 'question' => 'Is there a cot?']);
+$cotId = (int) ($r['json']['id'] ?? 0);
+$t0 = microtime(true);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 10]);
+$heldB = microtime(true) - $t0;
+$sawCot = false;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $cotId) {
+        $sawCot = true;
+    }
+}
+it_check('a held ask_status answers a settled row at once, not after the wait',
+    $heldA < 3.0, sprintf('%.2fs', $heldA));
+it_check('a held asks read answers the moment rows are waiting',
+    $sawCot && $heldB < 4.0, sprintf('%.2fs, saw=%d', $heldB, (int) $sawCot));
+
 // AN EXPIRED ASK REFUSES A LATE ANSWER — ten minutes passed, the owner moved on.
 $rootDb->exec("INSERT INTO night_asks (kind, entity_id, question, created_at)
                VALUES ('answer', 0, 'Is there a cot?', DATE_SUB(NOW(), INTERVAL 11 MINUTE))");

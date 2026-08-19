@@ -885,6 +885,9 @@ function is_internal_content_key($key)
                      // send it (pre-arrival.php). An operating decision about
                      // their own workflow — a guest has no business reading it
     }
+    if ($key === 'night-warm-until') {
+        return true; // the search-open warm hint the Mac's poll reads
+    }
     if ($key === 'nightshift-latest-build') {
         return true; // the newest Mac-app release tag, fetched daily by self-repair
     }

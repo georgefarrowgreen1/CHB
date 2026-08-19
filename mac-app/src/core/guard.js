@@ -357,6 +357,37 @@ function buildPricePrompt(gaps, host) {
 }
 
 // ── THE ANSWER'S PROMPT ──
+// THE INTENT PROMPT — the recovery tier's whole contract. The model is a
+// CHOOSER, not a writer: it picks the one line from OPTIONS that means the
+// same as the query, or says none. checkIntent is the matching rule — a
+// byte-exact member or the literal 'none', and anything else is junk the
+// caller downgrades to 'none' rather than posting.
+function buildIntentPrompt(q, options) {
+    const lines = [];
+    lines.push('A holiday-cottage owner typed this into their business dashboard search:');
+    lines.push('QUERY: ' + String(q || ''));
+    lines.push('');
+    lines.push('Below are the ONLY questions the dashboard can answer. Reply with EXACTLY ONE line copied verbatim from the list — the one that means the same as the query. If none of them means the same, reply with exactly: none');
+    lines.push('Reply with nothing else: no quotes, no explanation, no punctuation of your own.');
+    lines.push('');
+    lines.push('OPTIONS:');
+    (Array.isArray(options) ? options : []).forEach(function (o) { lines.push(String(o)); });
+    return lines.join('\n');
+}
+// The model's reply → a member, or 'none'. Tolerates the trimmings small
+// models add (quotes, a trailing full stop) but never fuzzy-matches: a
+// near-miss is 'none', because near is where invented answers live.
+function checkIntent(reply, options) {
+    let t = String(reply || '').trim();
+    t = t.replace(/^["'\u201c\u2018]+|["'\u201d\u2019.]+$/g, '').trim();
+    if (/^none$/i.test(t)) { return 'none'; }
+    const opts = Array.isArray(options) ? options : [];
+    for (let i = 0; i < opts.length; i++) {
+        if (opts[i] === t) { return opts[i]; }
+    }
+    return '';
+}
+
 // THE CHAT PROMPT. A chat reply is CONVERSATION, not a letter: a greeting is
 // fine (there is no template adding one), but the never-list is stricter —
 // nothing done-claimed, no codes, no money at all, and nothing the thread's
@@ -399,7 +430,7 @@ function buildAnswerPrompt(q, host) {
 }
 
 module.exports = {
-    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildChatPrompt, buildPricePrompt, buildAnswerPrompt,
+    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildChatPrompt, buildIntentPrompt, checkIntent, buildPricePrompt, buildAnswerPrompt,
     moneyIn, moneyInFacts, normaliseMoney, partyWords, spokenDay,
     MONEY_RE, FREE_CLAIM_RE, TAKEN_CLAIM_RE,
 };

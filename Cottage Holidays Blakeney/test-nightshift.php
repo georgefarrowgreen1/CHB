@@ -524,6 +524,23 @@ nsk('an answer over the queue\'s own body cap is refused',
     night_ask_answer_problem(str_repeat('a', NIGHT_BODY_MAX + 1)) !== '');
 nsk('the TTL is minutes, not days — an ask is about a moment', NIGHT_ASK_TTL_MIN <= 15);
 
+// ── §20 THE INTENT ASK — the model places a phrasing on the site's menu ──
+echo "\n== §20 the intent ask ==\n";
+nsk("'intent' is an ask kind, needing its query", night_ask_problem('intent', 0, 'who is due money right now?') === ''
+    && night_ask_problem('intent', 0, '   ') !== '');
+nsk('an intent query that is an ARRAY is refused, never the word Array',
+    night_ask_problem('intent', 0, ['who', 'owes']) !== '');
+$opts = night_ask_options(['who owes me money', '  leaving today  ', '', ['not', 'a', 'string'], 42, str_repeat('x', NIGHT_ASK_OPT_CHARS + 1)]);
+nsk('the menu is cleaned at the boundary — strings kept, garbage absent',
+    count($opts) === 3 && $opts[0] === 'who owes me money' && $opts[1] === 'leaving today', json_encode($opts));
+nsk('…the number 42 survives as its words (a string is a string)', $opts[2] === '42', json_encode($opts));
+nsk('an over-long entry is dropped, not truncated to a near-miss the byte-exact check would then refuse',
+    !in_array(str_repeat('x', NIGHT_ASK_OPT_CHARS), $opts, true), json_encode($opts));
+nsk('a non-array menu is [], never the word Array',
+    night_ask_options('who owes me money') === [] && night_ask_options(null) === []);
+nsk('the menu caps at ' . NIGHT_ASK_OPTS_MAX,
+    count(night_ask_options(array_map(fn ($i) => 'q' . $i, range(1, NIGHT_ASK_OPTS_MAX + 10)))) === NIGHT_ASK_OPTS_MAX);
+
 // ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
 echo "\n== §21 the voice examples ==\n";
 $tpls = [

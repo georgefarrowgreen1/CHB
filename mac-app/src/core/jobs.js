@@ -514,7 +514,7 @@ async function runAskSweep(ctx) {
     const c = ctx || {};
     const log = [];
     const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
-    const got = await c.site.asks();
+    const got = await c.site.asks(c.waitS || 0);
     if (!got.ok) {
         // A refusal is only worth a line when it is NOT the quiet cases a
         // resident poller meets all day (site off, network blip) — those are
@@ -522,7 +522,7 @@ async function runAskSweep(ctx) {
         return { answered: 0, failed: 0, log: log, refusal: got.refusal };
     }
     if (!got.asks.length) {
-        return { answered: 0, failed: 0, log: log };
+        return { answered: 0, failed: 0, log: log, warm: !!got.warm };
     }
     const jobs = (c.cfg && c.cfg.jobs) || {};
     let answered = 0;
@@ -536,11 +536,18 @@ async function runAskSweep(ctx) {
         // an answer ask the answer job's — the owner already chose which
         // model suits which work. Either falls back to the other, because an
         // ask with SOME model beats one refused for configuration.
-        const kind = a.kind === 'answer' ? 'answer' : a.kind === 'chat' ? 'chat' : 'reply';
+        const kind = a.kind === 'answer' ? 'answer'
+            : a.kind === 'chat' ? 'chat'
+            : a.kind === 'intent' ? 'intent' : 'reply';
         // A chat reply is reply-shaped work, so it uses the reply job's model.
-        const modelKind = kind === 'chat' ? 'reply' : kind;
-        const model = (jobs[modelKind] || {}).model
-            || (jobs[modelKind === 'reply' ? 'answer' : 'reply'] || {}).model || '';
+        // An INTENT mapping is a menu pick — a small-model job at under a
+        // second — so it prefers the smallest installed model and leaves the
+        // big one for prose.
+        const modelKind = kind === 'chat' ? 'reply' : kind === 'intent' ? 'reply' : kind;
+        const model = (kind === 'intent' && c.smallModel)
+            ? c.smallModel
+            : (jobs[modelKind] || {}).model
+                || (jobs[modelKind === 'reply' ? 'answer' : 'reply'] || {}).model || '';
         if (!model) {
             say('an ask is waiting but no job has a model chosen — pick one on the Jobs screen', 'fail');
             failed++;
@@ -579,6 +586,31 @@ async function runAskSweep(ctx) {
                 continue;
             }
             text = r.text;
+        } else if (kind === 'intent') {
+            // THE RECOVERY TIER'S MAC HALF. The model CHOOSES from the menu or
+            // says none; junk downgrades to 'none' (named in the log) rather
+            // than being posted — the site re-checks membership at the door
+            // anyway, and a fast honest 'none' beats a timed-out wait.
+            const iq = sane(a.intent && a.intent.q);
+            const iopts = (a.intent && Array.isArray(a.intent.options) ? a.intent.options : [])
+                .map(sane).filter(Boolean);
+            if (!iq || !iopts.length) {
+                say('the site handed over an ask this app could not read — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            who = '\u201c' + shortQ(iq) + '\u201d';
+            const r = await c.engine.write(guard.buildIntentPrompt(iq, iopts), model);
+            if (!r.ok) {
+                say(who + ' \u00b7 ' + r.say, 'fail');
+                failed++;
+                continue;
+            }
+            const picked = guard.checkIntent(r.text, iopts);
+            if (!picked) {
+                say(who + ' \u00b7 the model answered off the menu — sent none instead', 'skip');
+            }
+            text = picked || 'none';
         } else if (kind === 'chat') {
             const t = saneChat(a.chat);
             if (!t) {
