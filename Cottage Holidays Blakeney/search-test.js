@@ -3020,6 +3020,46 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         }
     }
 
+    // ---- 45. Search × Mac: every menu entry really answers ------------------
+    //  The recovery tier sends chbCanonList() to the Mac as the MENU its model
+    //  may choose from; a correct pick is then computed by cmdkIntent. So a
+    //  menu entry cmdkIntent cannot answer turns a right choice into a silent
+    //  dead end — the exact rot this section exists to stop. Seeded modestly
+    //  (one booking, expenses tried) because the recovery runs against live
+    //  stores; a family whose ZERO state is a real sentence still counts as
+    //  answering, which is the honest bar (the engine spoke).
+    if (typeof ctx.chbCanonList === 'function' && typeof ctx.cmdkIntent === 'function') {
+        console.log('\n== 45. search × Mac: the recovery menu answers ==');
+        const menu45 = ctx.chbCanonList();
+        check('the menu exists and fits the ask channel\'s cap', Array.isArray(menu45) && menu45.length > 10 && menu45.length <= 40, String(menu45.length));
+        check('every entry fits the server\'s per-option cap (an over-long one is DROPPED there, silently shrinking the menu)',
+            menu45.every((c) => typeof c === 'string' && c.length > 3 && c.length <= 120),
+            menu45.filter((c) => typeof c !== 'string' || c.length > 120).join(' ; '));
+        check('the corpus canonicals all ride the menu',
+            vm.runInContext('CHB_NLU.corpus.every((c) => chbCanonList().includes(c.canonical))', ctx) === true);
+        vm.runInContext(`
+            Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
+            dbBookings['21a'] = [{ id: 'c45', dbId: 945, propKey: '21a', name: 'Menu Probe', email: 'menu@x.co',
+                checkIn: '${ctx.todayDashed()}', checkOut: '${(() => { const d = ctx.dpParse(ctx.todayDashed()); d.setDate(d.getDate() + 3); return d.toISOString().slice(0, 10); })()}',
+                adults: 2, children: 0, guests: '2 adults', payment: 'deposit', depositPaid: 100,
+                agreedPrice: { total: 400 }, holdStatus: 'none' }];
+            allExpenses = []; __expTried = true; __cmdkCustomers = null;
+        `, ctx);
+        const dud45 = [];
+        menu45.forEach((q) => {
+            let rows = null;
+            try { rows = ctx.cmdkIntent(q); } catch (e) { rows = null; }
+            if (!rows || !rows.length) dud45.push(q);
+        });
+        check('EVERY menu entry produces an answer through cmdkIntent (zero-state sentences count)',
+            dud45.length === 0, 'dead: ' + dud45.join(' ; '));
+        vm.runInContext('Object.keys(dbBookings).forEach((k)=>{dbBookings[k]=[];}); __expTried = false; __cmdkCustomers = null;', ctx);
+        // The WIRING: the abstain branch must actually fire the recovery — the
+        // helper alone proves nothing (the helper-tested-alone trap).
+        const fbBlock = (adminScript.match(/nlg-fallback[\s\S]{0,900}/) || [''])[0];
+        check('the fallback branch kicks chbMacIntentRecover', /chbMacIntentRecover\(ql\)/.test(fbBlock), fbBlock.slice(0, 200));
+    } else fail('chbCanonList / cmdkIntent missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

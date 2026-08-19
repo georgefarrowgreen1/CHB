@@ -6626,6 +6626,13 @@ function cmdkBuildResults(ql) {
                     run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
                 }];
                 ask = []; // folded into the fallback row's chips
+                // THE RECOVERY TIER — every on-device tier abstained, so ask the
+                // Mac's model to PLACE the phrasing on the site's own menu of
+                // canonical questions (never to answer: the deterministic engine
+                // computes whatever comes back, so the zero-wrong guarantee
+                // holds). Fires only when the Mac is known listening; merges
+                // stamp-guarded like every other async tier.
+                try { chbMacIntentRecover(ql); } catch (e) {}
             }
         } catch (e) {}
     }
@@ -9461,6 +9468,10 @@ function openCmdK() {
     crownSetExpanded(true);
     inp.value = '';
     try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)
+    // Search × Mac: warm the Mac's engine now (fire-and-forget, throttled), and
+    // let questions the LAST session settled be asked afresh in this one.
+    try { chbMacWarmPing(); } catch (e) {}
+    __chbMacAsked = {};
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
     setTimeout(() => inp.focus(), 30);
@@ -25269,21 +25280,149 @@ function chbMacDraftBtnHtml(act, arg1, arg2, cls) {
     }
     return `<span class="bhub-mut" style="font-size:12px;">Your Mac is asleep · ${escapeHtml(p.words)}</span>`;
 }
-async function chbAskMac(kind, payload) {
+async function chbAskMac(kind, payload, waitMs, holdS) {
     const filed = await apiPost('nightshift.php', Object.assign({ action: 'ask', kind }, payload));
     const id = filed && filed.id;
     if (!id) throw new Error('The ask was not filed.');
+    // `holdS` rides ask_status's `wait`: the server holds the request open (≤10s,
+    // its session lock released first) and answers the moment the row settles —
+    // one held request instead of a 2.5-second poll ladder, so an answer reaches
+    // the screen seconds sooner and a 30s wait costs ~4 requests, not 12.
+    const budget = waitMs || CHB_ASK_WAIT_MS;
+    const hold = Math.min(10, Math.max(0, Math.floor(holdS || 0)));
     const t0 = Date.now();
-    while (Date.now() - t0 < CHB_ASK_WAIT_MS) {
-        await new Promise((res) => setTimeout(res, CHB_ASK_POLL_MS));
+    while (Date.now() - t0 < budget) {
+        await new Promise((res) => setTimeout(res, hold ? 250 : CHB_ASK_POLL_MS));
         let s = null;
         try {
-            s = await apiPost('nightshift.php', { action: 'ask_status', id });
+            s = await apiPost('nightshift.php', hold ? { action: 'ask_status', id, wait: hold } : { action: 'ask_status', id });
         } catch (e) { continue; } // a blip mid-wait is not a verdict
         if (s && s.status === 'answered' && s.answer) return String(s.answer);
         if (s && s.status === 'expired') break;
     }
     throw new Error("Your Mac didn't answer — is it awake, with the app running?");
+}
+// ============================================================
+// SEARCH × MAC — the RECOVERY tier. On a full abstain the Mac's model PLACES
+// the phrasing on the site's own menu of canonical questions — one byte-exact
+// choice or none, validated at both ends — and the deterministic engine
+// computes whatever comes back, so the zero-wrong guarantee is untouched.
+// ============================================================
+// The MENU: the corpus canonicals plus a few families the corpus doesn't
+// carry — every entry gated by search-test §45 to really answer through
+// cmdkIntent. Deliberately absent: the waitlist and "move money out", whose
+// answers load/merge async, so a sync re-ask lands empty.
+const CHB_CANON_EXTRA = [
+    'how long do guests stay',
+    'expenses this year',
+    'who is on a payment plan',
+    'lapsed guests',
+    'how are my reviews',
+    'repeat guest rate',
+];
+function chbCanonList() {
+    const out = [];
+    try { CHB_NLU.corpus.forEach((c) => { if (c && c.canonical) out.push(c.canonical); }); } catch (e) {}
+    CHB_CANON_EXTRA.forEach((c) => { if (!out.includes(c)) out.push(c); });
+    return out.slice(0, 40); // NIGHT_ASK_OPTS_MAX — the server caps the menu there too
+}
+// WARM HINT — opening search tells the Mac to load its smallest model now,
+// so a recovery ask meets a warm engine. Fire-and-forget; throttled because
+// the server-side window is 15 minutes.
+let __chbWarmAt = 0;
+function chbMacWarmPing() {
+    if (!chbMacDraftReady() || !chbMacPresence().listening) return;
+    if (typeof chbNetIsOff === 'function' && chbNetIsOff()) return;
+    if (Date.now() - __chbWarmAt < 6e5) return;
+    __chbWarmAt = Date.now();
+    apiPost('nightshift.php', { action: 'warm' }).catch(() => {});
+}
+const CHB_MAC_RECOVER_MS = 35000; // the owner is AT the keyboard — not the 90s draft budget
+const CHB_MAC_SETTLE_MS = 1200; // a keystroke's abstain is not a committed question
+let __cmdkMacStamp = 0;
+let __chbMacAsked = {}; // q → verdict, per session — never re-file a settled question
+function chbMacRecoverStrip(keepFallback) {
+    __cmdkResults = __cmdkResults.filter((r) => !(r && (r.id === 'mac-recover' || r._mac)));
+    if (!keepFallback) __cmdkResults = __cmdkResults.filter((r) => !(r && r.id === 'nlg-fallback'));
+    cmdkRender(true);
+}
+async function chbMacIntentRecover(ql) {
+    if (!chbMacDraftReady() || !chbMacPresence().listening) return;
+    if (typeof chbNetIsOff === 'function' && chbNetIsOff()) return;
+    if (Object.prototype.hasOwnProperty.call(__chbMacAsked, ql)) return; // asked and settled this session
+    const gen = __cmdkQueryGen;
+    const stamp = ++__cmdkMacStamp;
+    // THE SETTLE DELAY IS THE FLOOD CONTROL: cmdkBuildResults runs per settled
+    // keystroke and the channel caps at six open asks, so the file waits for
+    // the query to rest — a newer keystroke dissolves this attempt first.
+    await new Promise((res) => setTimeout(res, CHB_MAC_SETTLE_MS));
+    if (gen !== __cmdkQueryGen || stamp !== __cmdkMacStamp) return;
+    // Only the LIVE search window may file — slProbe and other composer reruns
+    // call cmdkBuildResults too, and a probe box must never spend a Mac ask.
+    const o = document.getElementById('cmdk');
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input'));
+    if (!o || !o.classList.contains('open') || !inp) return;
+    if (String(inp.value || '').trim().toLowerCase() !== ql) return;
+    if (!__cmdkResults.some((r) => r && r.id === 'nlg-fallback')) return; // something answered meanwhile
+    __cmdkResults = __cmdkResults.concat([{
+        type: 'answer', id: 'mac-recover', wrap: true,
+        label: 'Asking your Mac…',
+        sub: 'Its model is reading your phrasing against the questions the site can answer',
+        run: () => {},
+    }]);
+    cmdkRender(true);
+    let picked = '';
+    try {
+        picked = await chbAskMac('intent', { question: ql, options: chbCanonList() }, CHB_MAC_RECOVER_MS, 8);
+    } catch (e) { picked = ''; }
+    if (gen !== __cmdkQueryGen || stamp !== __cmdkMacStamp) return; // superseded — its rows must not land
+    picked = String(picked || '').trim();
+    const menu = chbCanonList();
+    if (!picked || /^none$/i.test(picked) || !menu.includes(picked)) {
+        // No mapping: the honest fallback was there all along — take the
+        // shimmer away, and remember the verdict for the session.
+        __chbMacAsked[ql] = 'none';
+        chbMacRecoverStrip(true);
+        return;
+    }
+    let rows = [];
+    try { rows = cmdkIntent(picked) || []; } catch (e) {}
+    if (!rows.length) { __chbMacAsked[ql] = 'none'; chbMacRecoverStrip(true); return; }
+    __chbMacAsked[ql] = picked;
+    // The SITE's own rows, tagged like an NLU match — running one teaches the
+    // phrasing (cmdkExec's existing _nlu hook), so acceptance and learning are
+    // one gesture here exactly as they are on tier 3.
+    rows = rows.slice(0, 8).map((r) => Object.assign({}, r, { _mac: true, _nlu: picked, _nluQ: ql }));
+    const head = rows[0];
+    head.sub = (head.sub ? head.sub + ' · ' : '') + 'Understood via your Mac';
+    head.chips = (Array.isArray(head.chips) ? head.chips.slice() : []).concat([
+        {
+            label: '✓ Remember this phrasing',
+            run: () => {
+                try { chbNluLearn(ql, picked); } catch (e) {}
+                try { toast(`Learned — “${ql}” now means “${picked}”`); } catch (e) {}
+            },
+        },
+        {
+            label: 'Not what I meant',
+            run: () => {
+                // The pick was wrong: the rows leave, the honest dead end
+                // returns, and the phrasing stays a MISS for the teach loop.
+                chbMacRecoverStrip(false);
+                __cmdkResults = __cmdkResults.concat([{
+                    type: 'answer', id: 'nlg-fallback', wrap: true,
+                    label: 'Noted — I’ll leave that one',
+                    sub: 'Try different words, or teach it on Manage → Search learning',
+                    run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
+                }]);
+                cmdkRender(true);
+            },
+        },
+    ]);
+    // The answer replaces the dead end and the shimmer together.
+    __cmdkResults = rows.concat(__cmdkResults.filter((r) => !(r && (r.id === 'mac-recover' || r.id === 'nlg-fallback'))));
+    cmdkRender(true);
+    try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
 }
 async function draftEnquiryOnMac(enquiryId) {
     const e = enquiries.find((x) => String(x.id) === String(enquiryId));

@@ -1583,6 +1583,67 @@ function fakeSite(handler) {
     ok('a conversation with no words drafts nothing, and says so',
         posted25.length === 0 && cs.log.some(function (l) { return /could not read/.test(l.say); }));
 
+    // ── §27 THE INTENT ASK (search × Mac): the model may only CHOOSE ─────────
+    console.log('\n§27 the intent ask');
+    const MENU27 = ['who owes me money', 'leaving today', 'arriving today'];
+    const INTENT_ASK = { id: 21, kind: 'intent', intent: { q: 'anyone still owing?', options: MENU27 } };
+
+    // The chooser contract at the guard: byte-exact member or 'none', wrapping
+    // quotes and trailing punctuation forgiven, a near-miss refused outright.
+    ok('checkIntent accepts a byte-exact member', guard.checkIntent('who owes me money', MENU27) === 'who owes me money');
+    ok('…strips the quotes a chat model loves to add', guard.checkIntent('“leaving today”.', MENU27) === 'leaving today');
+    ok("…reads any casing of none as 'none'", guard.checkIntent('None.', MENU27) === 'none');
+    ok('…and a NEAR-miss is refused, never repaired', guard.checkIntent('who owes me some money', MENU27) === '');
+    ok('the prompt states the contract: copy one line verbatim, or the word none',
+        /EXACTLY ONE line/.test(guard.buildIntentPrompt('anyone owing?', MENU27))
+        && /reply with exactly: none/.test(guard.buildIntentPrompt('anyone owing?', MENU27)));
+
+    // A clean pick posts byte-exact — on the SMALLEST installed model, because
+    // a menu pick is a sub-second job and the big model should keep its slot.
+    posted25.length = 0; prompts25.length = 0;
+    const swaps27 = [];
+    let isw = await jobs.runAskSweep({ site: fakeAskSite([INTENT_ASK]),
+        engine: askEngine('who owes me money'), cfg: CFG25, now: MON, smallModel: 'tiny.gguf',
+        ensureEngineFor: async function (m) { swaps27.push(m); return { ok: true, started: false }; } });
+    ok('an on-menu pick posts byte-exact, on the smallest model',
+        isw.answered === 1 && posted25[0] && posted25[0].id === 21
+        && posted25[0].text === 'who owes me money' && posted25[0].model === 'tiny.gguf'
+        && swaps27.join(',') === 'tiny.gguf', JSON.stringify(posted25));
+    ok('…and the prompt carried the query AND the menu',
+        /anyone still owing\?/.test(prompts25[0]) && /leaving today/.test(prompts25[0]));
+
+    // No smallest model known → the reply job's model serves (an ask with SOME
+    // model beats one refused for configuration).
+    posted25.length = 0;
+    isw = await jobs.runAskSweep({ site: fakeAskSite([INTENT_ASK]),
+        engine: askEngine('leaving today'), cfg: CFG25, now: MON });
+    ok('without a smallest model the reply job\'s model serves',
+        isw.answered === 1 && posted25[0].model === 'small.gguf', JSON.stringify(posted25));
+
+    // Junk from the model downgrades to an honest 'none', NAMED in the log —
+    // a fast none beats a timed-out wait, and the site re-checks membership.
+    posted25.length = 0;
+    isw = await jobs.runAskSweep({ site: fakeAskSite([INTENT_ASK]),
+        engine: askEngine('I think they probably mean the money question!'), cfg: CFG25, now: MON, smallModel: 'tiny.gguf' });
+    ok("an off-menu answer posts 'none' and says so",
+        posted25.length === 1 && posted25[0].text === 'none'
+        && isw.log.some(function (l) { return /off the menu/.test(l.say) && l.level === 'skip'; }),
+        JSON.stringify(isw.log.map(function (l) { return l.say; })));
+
+    // An intent ask with no menu is unreadable — nothing to choose from.
+    posted25.length = 0;
+    isw = await jobs.runAskSweep({ site: fakeAskSite([{ id: 22, kind: 'intent', intent: { q: 'x?', options: [] } }]),
+        engine: askEngine('x'), cfg: CFG25, now: MON });
+    ok('a menu-less intent ask is skipped and said', posted25.length === 0
+        && isw.log.some(function (l) { return /could not read/.test(l.say); }));
+
+    // THE WARM HINT rides the empty sweep — the caller (api.js) warms the
+    // engine off it, so the flag must survive the quiet path.
+    isw = await jobs.runAskSweep({
+        site: { asks: async function () { return { ok: true, host: 'G', asks: [], warm: true }; } },
+        engine: askEngine('x'), cfg: CFG25, now: MON });
+    ok('an empty sweep carries the warm hint through', isw.warm === true && isw.log.length === 0);
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

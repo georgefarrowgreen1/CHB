@@ -66,6 +66,9 @@ function makeApi(deps) {
     // who asked once usually asks again — but a nine-gigabyte server must not
     // sit on the Mac's memory all afternoon for a question asked at nine.
     let askIdleStop = null;
+    // One warm-up per warm window — a hint that re-fired every 20s would
+    // start-stop the server in a loop against the idle timer.
+    let warmTried = false;
 
     function readNights() {
         const p = configMod.paths(dir);
@@ -450,15 +453,42 @@ function makeApi(deps) {
             try {
                 const reach = {};
                 const id = engineId(reach);
+                // The smallest installed chat model, for INTENT picks — a
+                // menu choice is a small-model job, and the big one stays
+                // free for prose.
+                let small = '';
+                try {
+                    const inst = modelsMod.installed(cfg.modelsDir)
+                        .filter(function (m) { return m.format === 'gguf'; })
+                        .sort(function (x, y) { return (x.sizeGB || 99) - (y.sizeGB || 99); });
+                    small = inst.length ? inst[0].id : '';
+                } catch (e) { small = ''; }
                 const out = await jobsMod.runAskSweep({
                     site: siteFor(),
                     engine: engineFor(id),
                     cfg: cfg,
                     now: now(),
+                    smallModel: small,
+                    // LONG-POLL: the site holds the request until an ask
+                    // appears (or 20s), so work starts within a second.
+                    waitS: 20,
                     ensureEngineFor: cfg.autoStart && runner
                         ? function (model) { return ensureEngine(id, model); }
                         : null,
                 });
+                // THE WARM HINT (seamlessness rung 2): search is open at the
+                // site, so bring the engine up NOW — a dead end then meets a
+                // warm model. Only when auto-start is on, only when nothing
+                // of ours is already up, and never twice in a row.
+                if (out.warm && !out.answered && cfg.autoStart && runner && !startedModel && !warmTried) {
+                    warmTried = true;
+                    try {
+                        await ensureEngine(id, small || undefined);
+                        askLog.push({ at: nightMod.hhmm(), say: 'warmed the model server — search is open at the site', level: 'info' });
+                    } catch (e) { /* a warm-up that fails is just a cold start later */ }
+                } else if (!out.warm) {
+                    warmTried = false;
+                }
                 const day = siteMod.today(now());
                 if (day !== askDay) {
                     askDay = day;

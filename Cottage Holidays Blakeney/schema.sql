@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS night_asks (
     status      VARCHAR(16)  NOT NULL DEFAULT 'open',
     answer      MEDIUMTEXT   NULL,
     model       VARCHAR(160) NOT NULL DEFAULT '',
+    options     TEXT         NULL,
     created_at  DATETIME     NOT NULL,
     answered_at DATETIME     NULL,
     KEY idx_ask_open (status, created_at)

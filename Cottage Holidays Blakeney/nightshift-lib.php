@@ -937,7 +937,32 @@ function night_voice_examples($templates)
 // expired ask is REFUSED an answer rather than quietly accepting one late).
 // The open cap is small for the same reason the queue's is: a runaway
 // clicker, or a stuck Mac, must not turn the table into a pile.
-const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat'];
+const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat', 'intent'];
+// The INTENT ask's list: the site's canonical questions. Small and bounded —
+// this is a menu the model picks from, not a corpus.
+const NIGHT_ASK_OPTS_MAX = 40;
+const NIGHT_ASK_OPT_CHARS = 120;
+
+// Whatever arrived as the options list → a clean list of strings, or [].
+// The same boundary posture as everything JSON-shaped: garbage is absent.
+function night_ask_options($raw)
+{
+    if (!is_array($raw)) {
+        return [];
+    }
+    $out = [];
+    foreach ($raw as $o) {
+        $s = night_str($o);
+        if ($s === '' || mb_strlen($s) > NIGHT_ASK_OPT_CHARS) {
+            continue;
+        }
+        $out[] = $s;
+        if (count($out) >= NIGHT_ASK_OPTS_MAX) {
+            break;
+        }
+    }
+    return $out;
+}
 const NIGHT_ASK_TTL_MIN = 10;
 const NIGHT_ASK_OPEN_MAX = 6;
 const NIGHT_ASK_Q_MAX = 300;
@@ -954,6 +979,9 @@ function night_ask_problem($kind, $entityId, $question)
     }
     if ($kind === 'chat' && (int) $entityId <= 0) {
         return 'A chat ask needs the conversation it is about.';
+    }
+    if ($kind === 'intent' && night_str($question) === '') {
+        return 'An intent ask needs the query to place.';
     }
     if ($kind === 'answer') {
         $q = night_str($question);

@@ -470,27 +470,65 @@ route_actions([
         if ($open >= NIGHT_ASK_OPEN_MAX) {
             json_out(['error' => 'Your Mac already has ' . NIGHT_ASK_OPEN_MAX . ' asks waiting — give it a moment.'], 429);
         }
-        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, created_at) VALUES (?,?,?,?, NOW())');
-        $st->execute([$kind, $entityId, night_str($in['prop'] ?? ''), night_str($question)]);
+        // The INTENT ask's menu — the canonical questions the client's own
+        // answer engine can compute. Cleaned at the boundary; an intent ask
+        // with no usable options is refused, because a model with nothing to
+        // choose from can only invent.
+        $opts = $kind === 'intent' ? night_ask_options($in['options'] ?? null) : [];
+        if ($kind === 'intent' && !$opts) {
+            json_out(['error' => 'An intent ask needs the list of questions the site can answer.'], 400);
+        }
+        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
+        $st->execute([$kind, $entityId, night_str($in['prop'] ?? ''), night_str($question),
+            $opts ? json_encode($opts) : null]);
         json_out(['ok' => true, 'id' => (int) db()->lastInsertId()]);
     },
 
     // ---- the owner collects the answer ------------------------------
     'ask_status' => function ($in) {
         require_admin();
-        night_asks_sweep();
-        $st = db()->prepare('SELECT status, answer, model FROM night_asks WHERE id = ?');
-        $st->execute([(int) ($in['id'] ?? 0)]);
-        $row = $st->fetch();
-        if (!$row) {
-            json_out(['error' => 'No such ask.'], 404);
+        // `wait` holds this open up to 10 seconds and answers the moment the
+        // row settles — one request instead of a 2.5-second poll ladder. The
+        // SESSION WRITE LOCK IS RELEASED FIRST: PHP serialises requests that
+        // share a session, so a held lock here would freeze every other admin
+        // tab for the whole wait.
+        $wait = min(10, max(0, (int) ($in['wait'] ?? 0)));
+        if ($wait > 0) {
+            @session_write_close();
         }
+        $until = time() + $wait;
+        $row = null;
+        do {
+            night_asks_sweep();
+            $st = db()->prepare('SELECT status, answer, model FROM night_asks WHERE id = ?');
+            $st->execute([(int) ($in['id'] ?? 0)]);
+            $row = $st->fetch();
+            if (!$row) {
+                json_out(['error' => 'No such ask.'], 404);
+            }
+            if ($row['status'] !== 'open' || time() >= $until) {
+                break;
+            }
+            sleep(1);
+        } while (true);
         json_out([
             'ok' => true,
             'status' => (string) $row['status'],
             'answer' => (string) ($row['answer'] ?? ''),
             'model' => (string) ($row['model'] ?? ''),
         ]);
+    },
+
+    // ---- the owner opened search: warm the Mac's engine ------------
+    'warm' => function ($in) {
+        require_admin();
+        if (night_enabled()) {
+            try {
+                content_set_scalar('night-warm-until', time() + 900);
+            } catch (\Throwable $e) {
+            }
+        }
+        json_out(['ok' => true]);
     },
 
     // ---- the machine reads the open asks ----------------------------
@@ -511,13 +549,27 @@ route_actions([
         } catch (\Throwable $e) {
             $host = '';
         }
+        // LONG-POLL (the seamlessness plumbing): `wait` holds this request
+        // open up to 25 seconds and returns the MOMENT an ask appears, so the
+        // Mac starts working within a second of the owner's tap instead of a
+        // 20-second poll later. No session is held (machine routes have
+        // none), and the loop re-sweeps so an expiry mid-wait is honoured.
+        $wait = min(25, max(0, (int) ($in['wait'] ?? 0)));
+        $until = time() + $wait;
         $out = [];
         $rows = []; // before the try — the json_out-in-catch rule again
-        try {
-            $rows = db()->query("SELECT * FROM night_asks WHERE status = 'open' ORDER BY created_at, id")->fetchAll();
-        } catch (\Throwable $e) {
-            json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
-        }
+        do {
+            try {
+                $rows = db()->query("SELECT * FROM night_asks WHERE status = 'open' ORDER BY created_at, id")->fetchAll();
+            } catch (\Throwable $e) {
+                json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
+            }
+            if ($rows || time() >= $until) {
+                break;
+            }
+            sleep(1);
+            night_asks_sweep();
+        } while (true);
         foreach ($rows as $a) {
             $one = ['id' => (int) $a['id'], 'kind' => (string) $a['kind']];
             if ($a['kind'] === 'reply') {
@@ -536,6 +588,14 @@ route_actions([
                     continue;
                 }
                 $one['enquiry'] = night_enquiry_view($e);
+            } elseif ($a['kind'] === 'intent') {
+                // The query and the MENU — the model may only choose from it
+                // (or say none), and the answer route re-checks that.
+                $opts = night_ask_options(json_decode((string) ($a['options'] ?? ''), true));
+                if (!$opts) {
+                    continue; // a menu that decodes to nothing offers nothing
+                }
+                $one['intent'] = ['q' => night_str($a['question']), 'options' => $opts];
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as
                 // the enquiry brief: words and a first name, never contact
@@ -594,6 +654,16 @@ route_actions([
             }
         }
         $ap = ['ok' => true, 'host' => $host, 'asks' => $out];
+        // The warm hint (seamlessness rung 2): the owner opened search in the
+        // last few minutes, so bringing the model up NOW means a dead end
+        // meets a warm engine. A hint, never an instruction — the Mac ignores
+        // it unless auto-start is on.
+        try {
+            if ((int) content_value('night-warm-until') > time()) {
+                $ap['warm'] = true;
+            }
+        } catch (\Throwable $e) {
+        }
         if ($vp) {
             $ap['voice'] = $vp;
         }
@@ -628,6 +698,22 @@ route_actions([
             // Ten minutes have passed and the owner moved on. Refused, so a
             // late model run never lands words nobody is waiting for.
             json_out(['error' => 'Too late — the owner stopped waiting for this one.', 'code' => 'ask_expired'], 410);
+        }
+        // AN INTENT ANSWER IS CHECKED AGAINST ITS OWN MENU — byte-exact
+        // member or the literal 'none'. The Mac's guard enforces this too;
+        // the door re-checks because the door must never rely on the caller.
+        try {
+            $st2 = db()->prepare('SELECT kind, options FROM night_asks WHERE id = ?');
+            $st2->execute([$id]);
+            $meta = $st2->fetch();
+            if ($meta && $meta['kind'] === 'intent') {
+                $opts = night_ask_options(json_decode((string) ($meta['options'] ?? ''), true));
+                $t = trim((string) $in['text']);
+                if ($t !== 'none' && !in_array($t, $opts, true)) {
+                    json_out(['error' => 'An intent answer must be one of the offered questions, or the word none.'], 400);
+                }
+            }
+        } catch (\Throwable $e) {
         }
         // Guarded write: the WHERE re-checks open, so two racing answers
         // cannot both land (the first wins, the second reads back as replayed).
