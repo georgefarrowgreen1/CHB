@@ -186,12 +186,14 @@ async function runNight(deps) {
             week: brief.week,
             gaps: brief.gaps,
             questions: brief.questions,
+            teach: brief.teach,
             onProgress: d.onProgress,
         };
         const runner = job.id === 'reply' ? jobsMod.runReplyJob
             : job.id === 'week' ? jobsMod.runWeekJob
             : job.id === 'price' ? jobsMod.runPriceJob
             : job.id === 'answer' ? jobsMod.runAnswerJob
+            : job.id === 'teach' ? jobsMod.runTeachJob
             : null;
         if (!runner) {
             say(job.name + ' is missing from this build', 'fail');

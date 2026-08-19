@@ -57,6 +57,14 @@ const JOBS = [
         built: true,
     },
     {
+        id: 'teach',
+        name: 'Teach the search box',
+        what: 'Reads the week’s dead-end searches and works out which of the site’s own questions each one meant — suggestions for you to confirm, never taught by itself.',
+        kind: 'teach',
+        schedule: 'weekly-sun',
+        built: true,
+    },
+    {
         id: 'voice',
         name: 'Transcribe a walk-round',
         what: 'Turns a voice memo into maintenance items and a shopping list. Needs a speech model, not a chat one — not built.',
@@ -460,6 +468,74 @@ async function runAnswerJob(ctx) {
     return { items: items, log: log };
 }
 
+// ── THE TEACH JOB (search × Mac, rung 4). The week's dead-end searches, ──
+// each PLACED on the site's own canonical menu — the intent chooser again,
+// at the night's tempo. The item is a SUGGESTION for the owner to confirm on
+// Today; nothing here teaches the model, and a phrasing that maps to nothing
+// is left alone (a wrong lesson is worse than a missing one). The ref is
+// deliberately DAYLESS: one suggestion per phrasing EVER — a used or binned
+// row keeps its ref, so the site's exactly-once rule stops the same
+// suggestion reappearing night after night.
+async function runTeachJob(ctx) {
+    const log = [];
+    const items = [];
+    const c = ctx || {};
+    const say = function (line, level) { log.push({ at: stamp(), say: line, level: level || 'info' }); };
+    const t = c.teach;
+    if (!t || !Array.isArray(t.misses)) {
+        say('the site did not hand over the dead-end searches — update the website to use this job', 'fail');
+        return { items: items, log: log };
+    }
+    const opts = (Array.isArray(t.options) ? t.options : []).map(sane).filter(Boolean);
+    if (!opts.length) {
+        say('the site sent no menu of questions it can answer — nothing to map', 'fail');
+        return { items: items, log: log };
+    }
+    const rows = t.misses
+        .map(function (m) { return m && typeof m === 'object' ? { q: sane(m.q), n: saneNum(m.n, 1) } : null; })
+        .filter(function (m) { return m && m.q; })
+        .slice(0, 10);
+    if (!rows.length) {
+        say('no dead-end searches this week — nothing to do');
+        return { items: items, log: log };
+    }
+    let none = 0;
+    for (let i = 0; i < rows.length; i++) {
+        const m = rows[i];
+        const r = await c.engine.write(guard.buildIntentPrompt(m.q, opts), c.model);
+        if (!r.ok) {
+            say('\u201c' + shortQ(m.q) + '\u201d \u00b7 ' + r.say, 'fail');
+            continue;
+        }
+        const picked = guard.checkIntent(r.text, opts);
+        if (!picked || picked === 'none') {
+            none++;
+            continue;
+        }
+        items.push({
+            ref: makeRef('teach', qHash(m.q), ''),
+            kind: 'teach',
+            // The pair rides title + sub in a FIXED shape the site's Teach-it
+            // tap parses and re-validates against its own live menu — a row
+            // that drifts from this shape simply loses the one-tap and keeps
+            // the ordinary Open path. The title carries the FULL query (the
+            // brief caps it at 120): shortQ's ellipsis here would teach a
+            // truncated phrasing that never matches what anyone types.
+            title: '\u201c' + m.q + '\u201d',
+            sub: 'reads as \u201c' + picked + '\u201d',
+            body: 'Searched ' + m.n + ' time' + (m.n === 1 ? '' : 's') + ' and nothing answered. Your Mac read it as \u201c' + picked
+                + '\u201d \u2014 teach that phrasing and the search box answers it instantly from now on.',
+            source: 'the week\u2019s dead-end searches',
+            target: 'settings:search-learning',
+        });
+        say('\u201c' + shortQ(m.q) + '\u201d \u2192 \u201c' + picked + '\u201d', 'hit');
+    }
+    if (none) {
+        say(none + ' didn\u2019t map to anything the site can answer \u2014 left alone', 'skip');
+    }
+    return { items: items, log: log };
+}
+
 // djb2 over the normalised question — deterministic per night per question,
 // which is what the exactly-once ref needs, and nothing more.
 function qHash(q) {
@@ -677,6 +753,6 @@ async function runAskSweep(ctx) {
 
 module.exports = {
     JOBS, jobById, jobsDueTonight,
-    runReplyJob, runWeekJob, runPriceJob, runAnswerJob, runAskSweep,
+    runReplyJob, runWeekJob, runPriceJob, runAnswerJob, runTeachJob, runAskSweep,
     replyTitle, replySub, spokenRange, sourceLine,
 };

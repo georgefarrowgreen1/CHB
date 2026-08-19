@@ -582,6 +582,40 @@ nsk('the view is capped at ' . NIGHT_CHAT_MSGS_MAX . ' messages', count(night_ch
 nsk("'chat' is an ask kind and needs its conversation",
     night_ask_problem('chat', 5, '') === '' && night_ask_problem('chat', 0, '') !== '');
 
+// ── §23 THE TEACH BRIEF — dead ends onto the site's own menu ─────────────
+echo "\n== §23 the teach brief ==\n";
+$canon23 = ['who owes me money', 'leaving today'];
+$mi23 = [
+    ['t' => 'anyone owing us?', 'n' => 3, 'at' => '2026-08-18'],
+    ['t' => 'who is leaving', 'n' => 5, 'at' => '2026-08-15'],
+    ['t' => 'stale one', 'n' => 9, 'at' => '2026-08-01'],          // outside the window
+    ['t' => 'already taught', 'n' => 4, 'at' => '2026-08-18'],     // learned
+    ['t' => 'made literal', 'n' => 4, 'at' => '2026-08-18'],       // suppressed
+    ['t' => ['an', 'array'], 'n' => 2, 'at' => '2026-08-18'],      // garbage
+    'not even a row',
+];
+$tb = night_teach_brief($mi23, $canon23, [['t' => 'already taught', 'c' => 'x']], ['made literal'], '2026-08-19');
+nsk('the brief carries the live misses, most-searched first, with the menu',
+    $tb !== null && count($tb['misses']) === 2 && $tb['misses'][0]['q'] === 'who is leaving'
+    && $tb['misses'][1]['q'] === 'anyone owing us?' && $tb['options'] === $canon23, json_encode($tb));
+nsk('a miss outside the seven-day window is withheld',
+    !in_array('stale one', array_column($tb['misses'], 'q'), true));
+nsk('a phrasing already taught or made literal is withheld — a suggestion about a solved problem',
+    !in_array('already taught', array_column($tb['misses'], 'q'), true)
+    && !in_array('made literal', array_column($tb['misses'], 'q'), true));
+nsk('garbage rows are absent, never the word Array', strpos(json_encode($tb), 'Array') === false);
+nsk('no menu → null (a mapping could only be invented)',
+    night_teach_brief($mi23, [], [], [], '2026-08-19') === null
+    && night_teach_brief($mi23, 'junk', [], [], '2026-08-19') === null);
+nsk('no live misses → null, never an empty section',
+    night_teach_brief([['t' => 'old', 'n' => 1, 'at' => '2026-01-01']], $canon23, [], [], '2026-08-19') === null);
+nsk('the misses cap at ' . NIGHT_TEACH_MAX, count(night_teach_brief(
+    array_map(fn ($i) => ['t' => 'miss number ' . $i, 'n' => $i, 'at' => '2026-08-19'], range(1, 15)),
+    $canon23, [], [], '2026-08-19',
+)['misses']) === NIGHT_TEACH_MAX);
+nsk("'teach' is a queue kind with the fourteen-day window",
+    in_array('teach', NIGHT_KINDS, true) && night_ttl_days('teach') === 14);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

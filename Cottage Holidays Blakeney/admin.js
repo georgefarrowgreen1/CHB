@@ -3235,7 +3235,10 @@ function chbAssistSyncPush() {
     clearTimeout(__assistPushT);
     __assistPushT = setTimeout(() => {
         try {
-            [['nlu-learned', chbNluLearned()], ['nlu-suppressed', chbNluSuppressed()], ['search-misses', chbMissList()]]
+            // search-canon rides along so the OVERNIGHT teach job maps dead
+            // ends onto the same menu the live intent ask uses — one list,
+            // owned by the client that can actually answer it (chbCanonList).
+            [['nlu-learned', chbNluLearned()], ['nlu-suppressed', chbNluSuppressed()], ['search-misses', chbMissList()], ['search-canon', chbCanonList()]]
                 .forEach(([key, value]) => { apiPost('content.php', { action: 'set', key, value }).catch(() => {}); });
         } catch (e) {}
     }, 1500);
@@ -18321,7 +18324,38 @@ const NIGHT_KIND_WORD = {
     answer: 'Answer to publish',
     note: 'Something it read',
     price: 'A price to weigh',
+    teach: 'A phrasing to teach',
 };
+// A TEACH item's structured halves ride its own title/sub — the miss in the
+// title's quotes, the canonical in the sub's — and BOTH must hold, plus the
+// canonical must be on the live menu (chbCanonList), before a one-tap Teach
+// is offered. Anything else degrades to the plain Open-it path: the worst a
+// broken producer can do is put words on a screen, never teach the model.
+function nightTeachParse(it) {
+    if (!it || it.kind !== 'teach') return null;
+    const m = /[“"](.+)[”"]/.exec(String(it.title || ''));
+    const c = /reads as [“"](.+)[”"]/.exec(String(it.sub || ''));
+    if (!m || !c) return null;
+    const miss = m[1].trim();
+    const canonical = c[1].trim();
+    if (!miss || !chbCanonList().includes(canonical)) return null;
+    return { miss, canonical };
+}
+async function nightTeach(id) {
+    const n = parseInt(id, 10) || 0;
+    const it = __nightItems.find((x) => (parseInt(x.id, 10) || 0) === n);
+    const t = nightTeachParse(it);
+    if (!t) return;
+    // The OWNER's tap is the writer — the machine only ever suggested. Teach
+    // first, then mark the item used through the ordinary act, so a refused
+    // act still leaves the lesson taught (the lesson is the point).
+    try { chbNluLearn(t.miss, t.canonical); } catch (e) {}
+    toast(`Taught — “${t.miss}” now answers as “${t.canonical}”.`);
+    const r = await nightAct(n, 'use');
+    if (!r || !r.ok) return;
+    __nightItems = __nightItems.filter((x) => (parseInt(x.id, 10) || 0) !== n);
+    renderNightReady();
+}
 // The boot payload carries only on/off and a count (see loadData). Fetch the
 // rows ONLY when it says there are rows: an owner with the setting off, or a
 // quiet night, costs one integer and no request.
@@ -18407,11 +18441,17 @@ function renderNightReady() {
                 const word = NIGHT_KIND_WORD[it.kind] || 'Overnight';
                 const left = nightLeft(it.expires);
                 const sub = [it.sub, left].filter(Boolean).map(escapeHtml).join(' · ');
+                // A TEACH suggestion whose pair parses AND whose canonical is
+                // on the live menu earns a one-tap Teach; otherwise it keeps
+                // the ordinary Open path (nightTeachParse's own rule).
+                const teachable = nightTeachParse(it);
                 const fold =
                     (it.source ? `<p class="night-src">Written from ${escapeHtml(it.source)}</p>` : '') +
                     `<div class="night-body">${escapeHtml(it.body)}</div>` +
                     '<div class="night-acts">' +
-                    `<button type="button" class="btn-sm btn-accent" ${chbAttrs('nightUse', id)}>${it.target ? 'Open it' : 'Done'}</button>` +
+                    (teachable
+                        ? `<button type="button" class="btn-sm btn-accent" ${chbAttrs('nightTeach', id)}>Teach it</button>`
+                        : `<button type="button" class="btn-sm btn-accent" ${chbAttrs('nightUse', id)}>${it.target ? 'Open it' : 'Done'}</button>`) +
                     `<button type="button" class="btn-sm btn-edit" ${chbAttrs('nightDismiss', id)}>Bin it</button>` +
                     '</div>';
                 return bhubFoldGrp(

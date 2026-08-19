@@ -112,6 +112,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
   await page.waitForTimeout(700);
+  // §8a stubs window.apiPost for the device rows and (deliberately) never
+  // restores it — keep the real one so later sections can put it back.
+  await page.evaluate(() => { window.__realApiPost = window.apiPost; });
   await page.evaluate(() => nav('view-backoffice'));
 
   const drive = async () => {
@@ -635,6 +638,60 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/4 nights/.test(d3[0].label), '…the row says how long', d3[0].label);
   ok(/off, asleep, or no longer connected/.test(d3[0].sub), '…and what it might be');
   ok(d3[0].sev === 'warn', '…amber, not red: nothing is broken, something has stopped');
+
+  // ── §8 THE TEACH SUGGESTION (search × Mac, rung 4) — a one-tap lesson ──
+  // the OWNER confirms; the machine only ever suggested. The pair rides
+  // title/sub in the fixed shape; the canonical is re-validated against the
+  // client's own live menu (chbCanonList) before any one-tap is offered.
+  nightOn = true;
+  items = [
+    { id: 81, ref: 'mac--teach-q1', kind: 'teach', title: '“anyone owing us?”',
+      sub: 'reads as “who owes me money”', body: 'Searched 3 times and nothing answered.',
+      source: 'the week’s dead-end searches', target: 'settings:search-learning',
+      created: iso(0), expires: iso(14) },
+    // The OFF-MENU case: a canonical the client's engine cannot answer must
+    // never earn the one-tap — it degrades to the ordinary Open path.
+    { id: 82, ref: 'mac--teach-q2', kind: 'teach', title: '“what about the wumbus?”',
+      sub: 'reads as “flarp the wumbus”', body: 'x', source: '',
+      target: 'settings:search-learning', created: iso(0), expires: iso(14) },
+  ];
+  // §6's toggle path set the client's OWN __nightOn — drive the loader with a
+  // fresh boot pre directly, the way the app's boot does: §8's question is the
+  // teach affordance, not the boot plumbing the earlier sections own.
+  // §8a left window.apiPost stubbed to the device payload — restore the real
+  // transport, then drive the loader with a fresh boot pre (the §6 toggle set
+  // the client's own __nightOn; §8's question is the affordance, not the boot).
+  await page.evaluate(async () => {
+    window.apiPost = window.__realApiPost;
+    window.__nightPre = { on: 1, n: 2 };
+    await loadNightItems(true);
+  });
+  await page.waitForTimeout(250);
+  const teachSt = await page.evaluate(() => {
+    const open = (id) => { const g = document.querySelector(`[data-args*="night-${id}"]`); if (g) g.click(); };
+    open(81); open(82);
+    const acts = (id) => Array.from(document.querySelectorAll(`#bhub-fold-night-${id} .night-acts button`)).map((b) => b.textContent.trim());
+    return { a81: acts(81), a82: acts(82), word: (document.querySelector('#night-ready').textContent.match(/A phrasing to teach/) || [])[0] || '' };
+  });
+  ok(teachSt.a81[0] === 'Teach it', `a mapped phrasing earns the one-tap Teach (${teachSt.a81.join('|')})`);
+  ok(teachSt.a82[0] === 'Open it', `an off-menu canonical degrades to Open — never taught (${teachSt.a82.join('|')})`);
+  ok(/A phrasing to teach/.test(teachSt.word), 'the capsule names what the thing IS');
+  posts.length = 0;
+  await page.evaluate(() => nightTeach(81));
+  await page.waitForTimeout(300);
+  const taught = await page.evaluate(() => ({
+    learned: JSON.parse(localStorage.getItem('chb-nlu-learned') || '[]'),
+    rows: __nightItems.length,
+  }));
+  ok(taught.learned.some((x) => x.t === 'anyone owing us?' && x.c === 'who owes me money'),
+    'Teach it teaches through the REAL chbNluLearn');
+  ok(posts.some((p) => p.__url === 'nightshift.php' && p.action === 'act' && p.do === 'use' && p.id === 81)
+    && taught.rows === 1, 'and the item is marked used and leaves the card');
+  // The off-menu one must teach NOTHING even if driven directly.
+  await page.evaluate(() => nightTeach(82));
+  await page.waitForTimeout(200);
+  const notTaught = await page.evaluate(() => JSON.parse(localStorage.getItem('chb-nlu-learned') || '[]'));
+  ok(!notTaught.some((x) => x.c === 'flarp the wumbus'), 'a direct call on the off-menu row still refuses to teach');
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 

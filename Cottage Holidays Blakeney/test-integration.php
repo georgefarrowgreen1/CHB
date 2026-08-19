@@ -2797,6 +2797,36 @@ http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'email-templat
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
 it_check('…and an empty library sends NO voice field at all', !isset($r['json']['voice']), mb_substr($r['raw'], 0, 200));
 
+// THE TEACH BRIEF (search × Mac, rung 4): the week's dead ends beside the
+// canonical menu the client synced — through the REAL keys and endpoint. A
+// taught phrasing is withheld, and with no menu the block is ABSENT.
+$teachToday = date('Y-m-d');
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'search-misses',
+    'value' => [['t' => 'anyone owing us?', 'n' => 3, 'at' => $teachToday], ['t' => 'already taught', 'n' => 9, 'at' => $teachToday]]]);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'nlu-learned',
+    'value' => [['t' => 'already taught', 'c' => 'who owes me money']]]);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'search-canon',
+    'value' => ['who owes me money', 'leaving today']]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('the brief carries the teach block — the live miss and the menu',
+    (($r['json']['teach']['misses'] ?? null) === [['q' => 'anyone owing us?', 'n' => 3]])
+    && (($r['json']['teach']['options'] ?? null) === ['who owes me money', 'leaving today']),
+    json_encode($r['json']['teach'] ?? null));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'search-canon', 'value' => []]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('…and with no synced menu the block is absent, never an invented mapping surface',
+    !isset($r['json']['teach']), mb_substr($r['raw'], 0, 200));
+// A teach ITEM is storable — the queue's vocabulary grew with the job.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ingest', 'secret' => $SECRET, 'items' => [[
+    'ref' => 'mac--teach-qabc123', 'kind' => 'teach', 'title' => '“anyone owing us?”',
+    'sub' => 'reads as “who owes me money”', 'body' => 'Teach it and the search box answers instantly.',
+    'target' => 'settings:search-learning',
+]]]);
+it_check("the queue takes a kind 'teach' item", ($r['json']['stored'] ?? 0) === 1, $r['raw']);
+$rootDb->exec("DELETE FROM night_items WHERE ref = 'mac--teach-qabc123'");
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'search-misses', 'value' => []]);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'nlu-learned', 'value' => []]);
+
 // THE CAP. A producer reads a handful, never the history.
 for ($i = 0; $i < 12; $i++) {
     $rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message)
