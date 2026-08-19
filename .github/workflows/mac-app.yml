@@ -297,64 +297,67 @@ jobs:
           npx electron-builder --mac --universal $EXTRA -c.buildVersion="${{ steps.ver.outputs.build }}"
           ls -lh dist/*.dmg
 
-      # ── PROVE THE BUILT APP BOOTS, on both architectures. ─────────────────
+      # ── PROVE THE BUILT APP BOOTS. ─────────────────────────────────────────
       # The suites test the JavaScript; nothing had ever LAUNCHED the artifact,
       # which is how a build could pass every gate and die at ElectronMain on
-      # the owner's Mac. Two legs: native arm64 (this runner), and the x86_64
-      # slice under Rosetta — which is exactly what an Apple-silicon Mac runs
-      # when "Open using Rosetta" is set, i.e. the crash configuration that
-      # reached the owner. Alive after 15 seconds = booted; anything else
-      # fails the build before a release exists.
-      - name: Prove the built app boots (arm64 native, x86_64 under Rosetta)
+      # the owner's Mac. One leg: native arm64 (this runner). Alive after 15
+      # seconds = booted; anything else fails the build before a release
+      # exists, printing the app's own output and the .ips crash report.
+      #
+      # EVERYTHING IN HERE IS BOUNDED, learned three hangs deep:
+      #  1. `softwareupdate --install-rosetta` sat in uninterruptible sleep
+      #     (29 min unbounded; then shrugged off SIGTERM, so even a bounded
+      #     watch blocked at `wait`) — the x86_64 leg is REMOVED. The lipo
+      #     step proves the slice exists, and the crash this gate exists for
+      #     (the CFBundleName/helper mismatch) is architecture-independent.
+      #  2. A bare `wait` after `kill` blocked 23 min when the booted app
+      #     survived SIGTERM — ending the app is now TERM → grace → KILL,
+      #     never a wait, plus a pkill sweep of any orphaned helper (an
+      #     orphan holding a runner pipe keeps the step alive after bash
+      #     exits, which is also why the launch takes stdin from /dev/null).
+      #  3. timeout-minutes is the outer wall GitHub enforces from outside
+      #     the shell, so no future variant of this can eat the job either.
+      - name: Prove the built app boots (arm64, native)
+        timeout-minutes: 4
         working-directory: mac-app
         run: |
           set -uo pipefail
           APP="$(ls -d dist/mac-universal/*.app | head -1)"
           EXE="$(defaults read "$PWD/$APP/Contents/Info" CFBundleExecutable)"
           BIN="$APP/Contents/MacOS/$EXE"
-          boot() {  # $1 = label, rest = command prefix (empty or `arch -x86_64`)
-            local label="$1"; shift
-            echo "── $label ──"
-            date > /tmp/boot-marker
-            ELECTRON_ENABLE_LOGGING=1 "$@" "$BIN" --enable-logging > /tmp/boot-log.txt 2>&1 &
-            local pid=$!
-            sleep 15
-            if kill -0 "$pid" 2>/dev/null; then
-              echo "alive after 15s ✓"
-              kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
-              return 0
-            fi
-            # NB the job shell runs with -e, so `wait` must not be allowed to
-            # abort the script before the diagnosis prints — the first version
-            # died at this line and the evidence below never appeared.
-            local code=0
-            wait "$pid" || code=$?
-            echo "DIED (exit $code) — the app's own output:"
-            cat /tmp/boot-log.txt || true
-            echo "── the runner's crash report, if macOS wrote one ──"
-            sleep 8
-            REP="$(find "$HOME/Library/Logs/DiagnosticReports" -name '*.ips' -newer /tmp/boot-marker 2>/dev/null | head -1)"
-            if [ -n "$REP" ]; then
-              head -c 6000 "$REP"; echo
-            else
-              echo "(none found)"
-            fi
-            return 1
-          }
-          boot "arm64, native"
-          # NO ROSETTA LEG. It was tried twice and hung the job twice —
-          # `softwareupdate --install-rosetta` on these hosted runners can sit
-          # in uninterruptible sleep for ever (29 min the first time; the
-          # second time it also shrugged off SIGTERM, so even a bounded watch
-          # blocked at `wait`). The arm64 boot above is the load-bearing
-          # proof — the crash it exists for (the CFBundleName/helper mismatch)
-          # is architecture-independent bundle logic, and the earlier lipo
-          # step already proves both slices are genuinely in the binary.
-          echo "x86_64 slice presence is proven by the lipo step above; a runtime x86_64 boot is not attempted (Rosetta on hosted runners hangs — see this step's history)."
-          if [ -f /tmp/boot-log.txt ]; then
-            echo "── first lines of the arm64 boot's own output ──"
+          echo "── arm64, native ──"
+          date > /tmp/boot-marker
+          ELECTRON_ENABLE_LOGGING=1 "$BIN" --enable-logging < /dev/null > /tmp/boot-log.txt 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "alive after 15s ✓"
+            kill "$pid" 2>/dev/null || true
+            for i in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+            kill -9 "$pid" 2>/dev/null || true
+            pkill -9 -f "$EXE" 2>/dev/null || true
+            echo "── first lines of the boot log ──"
             head -8 /tmp/boot-log.txt || true
+            echo "x86_64 slice presence is proven by the lipo step above; a runtime x86_64 boot is not attempted (Rosetta on hosted runners hangs — see this step's history)."
+            exit 0
           fi
+          # NB the job shell runs with -e, so `wait` must not be allowed to
+          # abort the script before the diagnosis prints — the first version
+          # died at this line and the evidence below never appeared. (This
+          # wait is on a child already seen dead, so it only reaps.)
+          code=0
+          wait "$pid" || code=$?
+          echo "DIED (exit $code) — the app's own output:"
+          cat /tmp/boot-log.txt || true
+          echo "── the runner's crash report, if macOS wrote one ──"
+          sleep 8
+          REP="$(find "$HOME/Library/Logs/DiagnosticReports" -name '*.ips' -newer /tmp/boot-marker 2>/dev/null | head -1)"
+          if [ -n "$REP" ]; then
+            head -c 6000 "$REP"; echo
+          else
+            echo "(none found)"
+          fi
+          exit 1
 
       - name: What was built
         id: out
