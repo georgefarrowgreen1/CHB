@@ -56,6 +56,12 @@ const TAKEN_CLAIM_RE = /\b(?:not\s+available|unavailable|already\s+(?:been\s+)?(
 // machine writing prose: a link (it cannot know a valid one), an attachment
 // promise, or any of the words that mean an action has already happened.
 const LINK_RE = /https?:\/\/|\bwww\./i;
+// A STANDALONE 4-6 DIGIT RUN in a chat draft is almost always a door or key
+// safe code — the one thing a chat reply must never volunteer, released
+// codes being the keeper's job (my-bookings.php, inside its own window).
+// Years and money are excluded; times never form a 4-digit run (the colon
+// splits them).
+const CODE_RE = /(?<![£\d.])(?!19\d\d\b|20\d\d\b)\d{4,6}\b/;
 const GREETING_RE = /^\s*(?:hi|hey|hello|dear|good\s+(?:morning|afternoon|evening))\b/i;
 const DONE_RE = /\b(?:I(?:'ve| have)\s+(?:now\s+)?(?:booked|charged|refunded|cancelled|taken\s+payment)|your\s+card\s+has\s+been\s+charged|payment\s+(?:has\s+been\s+)?taken)\b/i;
 
@@ -156,7 +162,7 @@ function checkDraft(draft, facts) {
 // The prompt. Here rather than in the job so the CONTRACT and the CHECK sit in
 // one file and cannot drift: every rule stated to the model below has a
 // matching test in checkDraft above, and that pairing is the whole point.
-function buildPrompt(f, host) {
+function buildPrompt(f, host, voice) {
     const lines = [];
     lines.push('You are writing on behalf of ' + (host || 'the owner') + ', who lets three holiday cottages in Blakeney, Norfolk.');
     lines.push('Write the BODY of a reply to the enquiry below. Four to six sentences. Warm, plain, unfussy British English. No markdown.');
@@ -195,6 +201,18 @@ function buildPrompt(f, host) {
     (f.facts || []).forEach(function (qa) {
         lines.push('- ' + qa.q + ' → ' + qa.a);
     });
+    // HOW GEORGE WRITES (integration step 3): up to two paragraphs from the
+    // owner's own reply library, ranked by real use and neutralised of their
+    // tokens SERVER-SIDE. Register only — the facts above stay the only
+    // things the draft may assert, and checkDraft still governs every word.
+    const vv = (Array.isArray(voice) ? voice : [])
+        .filter(function (v) { return typeof v === 'string' && v.trim(); })
+        .slice(0, 2);
+    if (vv.length) {
+        lines.push('');
+        lines.push('HOW ' + (host || 'the owner').toUpperCase() + ' WRITES — real paragraphs from their own replies. MATCH the register and warmth. NEVER copy a sentence and NEVER reuse their specifics:');
+        vv.forEach(function (v) { lines.push('- ' + v.trim().slice(0, 400)); });
+    }
     lines.push('');
     lines.push('THEIR ENQUIRY:');
     lines.push(String(f.message || '(no message)'));
@@ -246,8 +264,11 @@ function checkGeneral(draft, opts) {
     if (DONE_RE.test(text)) {
         problems.push('claims something has already been done');
     }
-    if (GREETING_RE.test(text)) {
+    if (!o.allowGreeting && GREETING_RE.test(text)) {
         problems.push('opens with a greeting — a note does not greet');
+    }
+    if (o.noCodes && CODE_RE.test(text)) {
+        problems.push('contains a code-shaped number — a chat reply never states a code');
     }
     return { ok: problems.length === 0, problems: problems };
 }
@@ -336,6 +357,28 @@ function buildPricePrompt(gaps, host) {
 }
 
 // ── THE ANSWER'S PROMPT ──
+// THE CHAT PROMPT. A chat reply is CONVERSATION, not a letter: a greeting is
+// fine (there is no template adding one), but the never-list is stricter —
+// nothing done-claimed, no codes, no money at all, and nothing the thread's
+// own words don't support.
+function buildChatPrompt(chat, host) {
+    const c2 = chat || {};
+    const lines = [];
+    lines.push('You are ' + (host || 'the owner') + ' of holiday cottages in Blakeney, replying in the site\'s guest CHAT. Write ONE short chat reply — two to four sentences, warm and plain. No markdown.');
+    lines.push('');
+    lines.push('RULES YOU MUST NOT BREAK:');
+    lines.push('1. Answer ONLY from the conversation below. If you do not know, say you will check and come back — never guess.');
+    lines.push('2. NEVER write a door code, key safe code, or any 4-6 digit number.');
+    lines.push('3. NEVER quote money, and NEVER say anything has been booked, charged, changed or arranged.');
+    lines.push('4. No links.');
+    lines.push('');
+    lines.push('THE CONVERSATION (newest last):');
+    (Array.isArray(c2.msgs) ? c2.msgs : []).forEach(function (m) {
+        lines.push('- ' + (m.who === 'you' ? 'You' : (c2.first || 'The guest')) + ': ' + m.text);
+    });
+    return lines.join('\n');
+}
+
 function buildAnswerPrompt(q, host) {
     const lines = [];
     lines.push('Guests of ' + (host || 'the owner') + '\'s holiday cottages in Blakeney keep asking a question the website could not answer. Draft the ANSWER that will be added to ' + (q.cottage || 'the cottage') + '\'s page — a guest will read it.');
@@ -356,7 +399,7 @@ function buildAnswerPrompt(q, host) {
 }
 
 module.exports = {
-    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildPricePrompt, buildAnswerPrompt,
+    checkDraft, checkGeneral, buildPrompt, buildWeekPrompt, buildChatPrompt, buildPricePrompt, buildAnswerPrompt,
     moneyIn, moneyInFacts, normaliseMoney, partyWords, spokenDay,
     MONEY_RE, FREE_CLAIM_RE, TAKEN_CLAIM_RE,
 };

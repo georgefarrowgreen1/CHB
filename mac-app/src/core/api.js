@@ -100,7 +100,7 @@ function makeApi(deps) {
         return makeEngine({ id: id || engineId() });
     }
     function siteFor() {
-        return makeSite({ url: configMod.siteUrl(cfg), secret: secrets.get() });
+        return makeSite({ url: configMod.siteUrl(cfg), secret: secrets.get(), build: d.build || '' });
     }
 
     // Everything the window needs to decide whether to offer a Start button,

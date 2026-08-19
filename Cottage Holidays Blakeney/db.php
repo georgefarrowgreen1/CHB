@@ -885,6 +885,9 @@ function is_internal_content_key($key)
                      // send it (pre-arrival.php). An operating decision about
                      // their own workflow — a guest has no business reading it
     }
+    if ($key === 'nightshift-latest-build') {
+        return true; // the newest Mac-app release tag, fetched daily by self-repair
+    }
     if ($key === 'nightshift-app-url') {
         return true; // where the owner's own Mac app downloads from (Manage →
                      // System check). Their infrastructure, not site content —

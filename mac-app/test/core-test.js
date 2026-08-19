@@ -1460,6 +1460,21 @@ function fakeSite(handler) {
             return /nothing waiting/.test(l.say); }));
     }
 
+    // ── HOW GEORGE WRITES (integration step 3): the register block appears
+    // exactly when the site handed examples over, and never otherwise.
+    {
+        const F = { first: 'Pat', cottage: 'Jollyboat', message: 'Free?', dates_free: true, quote: '£440.00' };
+        const withV = guard.buildPrompt(F, 'George', ['Lovely to hear from you — those dates are free at the cottage.']);
+        ok('the voice block names the owner and carries the example',
+            /HOW GEORGE WRITES/.test(withV) && /Lovely to hear from you/.test(withV)
+            && /NEVER copy/.test(withV), withV.slice(-300));
+        const noV = guard.buildPrompt(F, 'George');
+        ok('…and is absent when the site handed nothing over', !/HOW GEORGE WRITES/.test(noV));
+        const hostileV = guard.buildPrompt(F, 'George', [{ bad: 1 }, '  ', 'One real example, warm and short.']);
+        ok('…and non-string examples never reach the prompt',
+            !/object Object/.test(hostileV) && /One real example/.test(hostileV));
+    }
+
     // ── §25 THE ASK SWEEP — the daytime half, same rules at a moment's tempo ──
     console.log('\n§25 the ask sweep');
     const posted25 = [];
@@ -1536,6 +1551,37 @@ function fakeSite(handler) {
     ok('answering too late is a skip with its reason, never a failure', sw25.failed === 0
         && sw25.log.some(function (l) { return /moved on/.test(l.say) && l.level === 'skip'; }),
         JSON.stringify(sw25.log.map(function (l) { return l.say; })));
+
+    // ── THE CHAT ASK (integration step 5): reply-shaped work with a stricter
+    // never-list — no money at all, no code-shaped number, greeting allowed.
+    console.log('\n§26 the chat ask');
+    const CHAT_ASK = { id: 11, kind: 'chat', chat: { first: 'Sophie', msgs: [
+        { who: 'guest', text: 'What time can we get in on Saturday?' },
+        { who: 'you', text: 'Checking now!' },
+        { who: 'guest', text: 'And is the key safe code the same as last year?' },
+    ] } };
+    posted25.length = 0; prompts25.length = 0;
+    let cs = await jobs.runAskSweep({ site: fakeAskSite([CHAT_ASK]),
+        engine: recorder24('Hi Sophie — check-in is from 3pm on Saturday. I would rather not put the key safe details in chat, but everything you need will be on your booking page before you travel.'),
+        cfg: CFG25, now: MON });
+    ok('a chat ask is answered with the reply job\'s model, greeting allowed',
+        cs.answered === 1 && posted25[0] && posted25[0].id === 11 && posted25[0].model === 'small.gguf',
+        JSON.stringify(cs.log.map(function (l) { return l.say; })));
+    ok('…and the prompt carries the conversation with the roles translated',
+        /Sophie: What time can we get in/.test(seen24.join('')) && /You: Checking now/.test(seen24.join('')));
+    posted25.length = 0;
+    cs = await jobs.runAskSweep({ site: fakeAskSite([CHAT_ASK]),
+        engine: recorder24('Hi Sophie — yes, the key safe code is 7302, same as last year, see you Saturday!'),
+        cfg: CFG25, now: MON });
+    ok('a chat reply that states a code is refused, never posted',
+        cs.answered === 0 && posted25.length === 0
+        && cs.log.some(function (l) { return /code-shaped number/.test(l.say); }),
+        JSON.stringify(cs.log.map(function (l) { return l.say; })));
+    posted25.length = 0;
+    cs = await jobs.runAskSweep({ site: fakeAskSite([{ id: 12, kind: 'chat', chat: { first: 'X', msgs: [] } }]),
+        engine: recorder24('x'), cfg: CFG25, now: MON });
+    ok('a conversation with no words drafts nothing, and says so',
+        posted25.length === 0 && cs.log.some(function (l) { return /could not read/.test(l.say); }));
 
     console.log('\n== Summary ==');
     if (fails) {

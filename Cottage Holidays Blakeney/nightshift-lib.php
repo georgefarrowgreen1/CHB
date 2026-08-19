@@ -501,6 +501,10 @@ function night_devices($stored)
             'label' => night_dev_label($row['label'] ?? ''),
             'added' => max(0, (int) ($row['added'] ?? 0)),
             'seen' => max(0, (int) ($row['seen'] ?? 0)),
+            // The build the Mac last reported (integration step 4) — a
+            // string or nothing, through the same boundary guard as
+            // everything else JSON-shaped.
+            'build' => mb_substr(night_str($row['build'] ?? ''), 0, 60),
             'legacy' => false,
         ];
         if (count($out) >= NIGHT_DEV_MAX) {
@@ -884,6 +888,46 @@ function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUE
     return $out;
 }
 
+// HOW GEORGE WRITES — up to two paragraphs from the owner's own reply
+// library (the email-templates content key), handed to the producer as
+// REGISTER examples: match the warmth, never copy the sentences. Ranked by
+// `uses`, because the templates the owner actually sends are the voice the
+// guests actually hear. The {{tokens}} are replaced with neutral words —
+// a literal {{balance}} in an example reads as noise, and a figure-shaped
+// word would tempt the model toward the one thing it may never do.
+const NIGHT_VOICE_MAX = 2;
+const NIGHT_VOICE_CHARS = 400;
+function night_voice_examples($templates)
+{
+    if (!is_array($templates)) {
+        return [];
+    }
+    $rows = array_values(array_filter($templates, function ($t) {
+        return is_array($t) && night_str($t['body'] ?? '') !== '';
+    }));
+    usort($rows, function ($a, $b) {
+        return (int) ($b['uses'] ?? 0) <=> (int) ($a['uses'] ?? 0);
+    });
+    $out = [];
+    foreach ($rows as $t) {
+        if (count($out) >= NIGHT_VOICE_MAX) {
+            break;
+        }
+        $body = night_str($t['body']);
+        $body = (string) preg_replace_callback('/\{\{([a-z]+)\}\}/i', function ($m) {
+            $map = ['cottage' => 'the cottage', 'dates' => 'those dates',
+                'balance' => 'the amount', 'total' => 'the amount', 'first' => 'there'];
+            return $map[strtolower($m[1])] ?? '';
+        }, $body);
+        $body = trim((string) preg_replace('/\s+/', ' ', $body));
+        if ($body === '') {
+            continue;
+        }
+        $out[] = mb_substr($body, 0, NIGHT_VOICE_CHARS);
+    }
+    return $out;
+}
+
 // ── THE ASK CHANNEL'S JUDGEMENTS ─────────────────────────────────────────
 //
 // An ask is the owner, at a screen, wanting AI words NOW — so everything here
@@ -893,7 +937,7 @@ function night_questions_brief($misses, array $names, $faqsFor, $max = NIGHT_QUE
 // expired ask is REFUSED an answer rather than quietly accepting one late).
 // The open cap is small for the same reason the queue's is: a runaway
 // clicker, or a stuck Mac, must not turn the table into a pile.
-const NIGHT_ASK_KINDS = ['reply', 'answer'];
+const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat'];
 const NIGHT_ASK_TTL_MIN = 10;
 const NIGHT_ASK_OPEN_MAX = 6;
 const NIGHT_ASK_Q_MAX = 300;
@@ -908,6 +952,9 @@ function night_ask_problem($kind, $entityId, $question)
     if ($kind === 'reply' && (int) $entityId <= 0) {
         return 'A reply ask needs the enquiry it is about.';
     }
+    if ($kind === 'chat' && (int) $entityId <= 0) {
+        return 'A chat ask needs the conversation it is about.';
+    }
     if ($kind === 'answer') {
         $q = night_str($question);
         if ($q === '') {
@@ -918,6 +965,30 @@ function night_ask_problem($kind, $entityId, $question)
         }
     }
     return '';
+}
+
+// A CHAT CONVERSATION as the producer sees it: who said what, newest last,
+// capped — and NOTHING else. No email, no phone, no token: a drafted chat
+// reply needs the words and the first name, and the withholding rule is the
+// same one the enquiry brief holds.
+const NIGHT_CHAT_MSGS_MAX = 6;
+const NIGHT_CHAT_MSG_CHARS = 300;
+function night_chat_view($thread, $messages)
+{
+    $t = is_array($thread) ? $thread : [];
+    $out = ['first' => night_first_name($t['name'] ?? ''), 'msgs' => []];
+    $rows = array_values(array_filter(is_array($messages) ? $messages : [], 'is_array'));
+    foreach (array_slice($rows, -NIGHT_CHAT_MSGS_MAX) as $m) {
+        $text = night_str($m['body'] ?? '');
+        if ($text === '') {
+            continue;
+        }
+        $out['msgs'][] = [
+            'who' => ($m['sender_role'] ?? '') === 'admin' ? 'you' : 'guest',
+            'text' => mb_substr($text, 0, NIGHT_CHAT_MSG_CHARS),
+        ];
+    }
+    return $out;
 }
 
 // May this text land as the answer? Same body cap as the queue — an answer is
