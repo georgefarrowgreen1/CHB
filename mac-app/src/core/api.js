@@ -88,24 +88,58 @@ function makeApi(deps) {
             require('fs').writeFileSync(p.log, JSON.stringify(nights), 'utf8');
         } catch (e) { /* a log we cannot write is not worth stopping a run for */ }
     }
-    // THE CHAT — one thread, on this Mac only, the nights.json posture.
+    // THE CHAT — a titled list of conversations, on this Mac only (the
+    // nights.json posture). chatStore adopts a v1 single-thread file, so an
+    // update never loses what was already said.
     function readChat() {
         const p = configMod.paths(dir);
         try {
-            return chatMod.chatThread(JSON.parse(require('fs').readFileSync(p.chat, 'utf8')));
+            return chatMod.chatStore(JSON.parse(require('fs').readFileSync(p.chat, 'utf8')), now().getTime());
         } catch (e) {
-            return [];
+            return chatMod.chatStore(null, 0);
         }
     }
     function writeChat() {
         const p = configMod.paths(dir);
         try {
             require('fs').mkdirSync(p.dir, { recursive: true });
-            require('fs').writeFileSync(p.chat, JSON.stringify(chatThread), 'utf8');
+            require('fs').writeFileSync(p.chat, JSON.stringify(chatDb), 'utf8');
         } catch (e) { /* a thread we cannot write still works for this session */ }
     }
-    let chatThread = readChat();
+    let chatDb = readChat();
     let chatBusy = false;
+    // Thread ids carry a counter beside the clock: two conversations minted
+    // in the same millisecond (a test, a fast hand) must never share an id —
+    // a shared id makes pick ambiguous and delete a double delete.
+    let chatSeq = 0;
+    // The Stop button's handle: aborting is a DECISION about the reply in
+    // flight, so the controller lives per send and dies with it.
+    let chatAbort = null;
+    // What the window hears while a reply streams. Injected by main.js as a
+    // webContents.send; absent (tests, bare node) events go nowhere and the
+    // return value still carries the whole answer.
+    const chatPushEv = typeof d.push === 'function' ? d.push : function () {};
+    function chatCur() {
+        const t = chatDb.threads.filter(function (x) { return x.id === chatDb.cur; })[0];
+        return t || null;
+    }
+    function chatEnsureThread() {
+        if (!chatCur()) {
+            chatDb = chatMod.chatThreadNew(chatDb, 'c' + now().getTime() + '-' + (++chatSeq), now().getTime());
+        }
+        return chatCur();
+    }
+    function chatHistoryOut() {
+        return {
+            ok: true,
+            cur: chatDb.cur,
+            threads: chatDb.threads.map(function (t) {
+                return { id: t.id, title: t.title, at: t.at, n: t.msgs.length };
+            }),
+            thread: (chatCur() || { msgs: [] }).msgs.slice(),
+            model: chatModelId(),
+        };
+    }
     // The chat's model: the owner's explicit pick, else the reply job's — the
     // model already trusted with prose. '' means neither exists yet.
     function chatModelId() {
@@ -570,10 +604,74 @@ function makeApi(deps) {
         // to the site, and chat.js's header says why. The engine handling is
         // the ask sweep's own — ensure, then ten-quiet-minutes idle-stop.
         chatHistory() {
-            return { ok: true, thread: chatThread.slice(), model: chatModelId() };
+            return chatHistoryOut();
         },
-        async chatSend(text) {
+        // ── CONVERSATIONS. New/pick/delete all answer with the fresh history,
+        // so the window never has to guess what a write did.
+        chatNew() {
+            chatDb = chatMod.chatThreadNew(chatDb, 'c' + now().getTime() + '-' + (++chatSeq), now().getTime());
+            writeChat();
+            return chatHistoryOut();
+        },
+        chatPick(id) {
+            if (chatDb.threads.some(function (x) { return x.id === id; })) {
+                chatDb = { v: 2, cur: String(id), threads: chatDb.threads };
+                writeChat();
+            }
+            return chatHistoryOut();
+        },
+        chatDelete(id) {
+            chatDb = chatMod.chatStore({
+                v: 2, cur: chatDb.cur,
+                threads: chatDb.threads.filter(function (x) { return x.id !== id; }),
+            }, now().getTime());
+            writeChat();
+            return chatHistoryOut();
+        },
+        // EDIT = truncate from a user turn and hand its words back — the
+        // window refills the box, and the resend is an ordinary chatSend.
+        chatTruncate(index) {
+            const t = chatCur();
+            const i = parseInt(index, 10);
+            if (!t || !(i >= 0) || i >= t.msgs.length || t.msgs[i].role !== 'user') {
+                return { ok: false, say: 'That message is not editable any more.' };
+            }
+            const text = t.msgs[i].text;
+            t.msgs = t.msgs.slice(0, i);
+            if (!t.msgs.length) { t.title = 'New chat'; }
+            writeChat();
+            const out = chatHistoryOut();
+            out.text = text;
+            return out;
+        },
+        // STOP is a decision about the reply in flight — the partial answer is
+        // kept (chatSend's own stopped branch owns what that means).
+        chatStop() {
+            if (chatAbort) { chatAbort.abort(); }
+            return { ok: true };
+        },
+        // REGENERATE: drop the last reply and ask the last question again.
+        async chatRegen() {
+            if (chatBusy) {
+                return { ok: false, say: 'One at a time — the model is still answering.' };
+            }
+            const t = chatCur();
+            if (!t || !t.msgs.length) {
+                return { ok: false, say: 'Nothing to regenerate yet.' };
+            }
+            if (t.msgs[t.msgs.length - 1].role === 'assistant') {
+                t.msgs = t.msgs.slice(0, -1);
+                writeChat();
+            }
+            const last = t.msgs.filter(function (m) { return m.role === 'user'; }).pop();
+            if (!last) {
+                return { ok: false, say: 'Nothing to regenerate yet.' };
+            }
+            return this.chatSend(last.text, { regen: true });
+        },
+        async chatSend(text, opts) {
             const t = String(typeof text === 'string' ? text : '').trim().slice(0, chatMod.CHAT_MSG_CHARS);
+            const regen = !!(opts && opts.regen);
             if (!t) {
                 return { ok: false, say: 'Type a message first.' };
             }
@@ -589,6 +687,8 @@ function makeApi(deps) {
                 return { ok: false, say: 'No model yet — add one under Library, or pick one for the reply job.' };
             }
             chatBusy = true;
+            chatAbort = new AbortController();
+            const signal = chatAbort.signal;
             try {
                 const id = engineId();
                 const eng = engineFor(id);
@@ -602,10 +702,17 @@ function makeApi(deps) {
                 } else if (!(await eng.reachable())) {
                     return { ok: false, say: eng.name + ' is not answering on ' + eng.base + ' — start it under Settings → Engine.' };
                 }
+                const th = chatEnsureThread();
                 // The question joins the thread BEFORE the call: it was said,
-                // whatever the model does about it.
-                chatThread = chatMod.chatPush(chatThread, { role: 'user', text: t, at: nightMod.hhmm() });
+                // whatever the model does about it. A REGENERATE re-asks the
+                // question already there instead of saying it twice.
+                if (!regen) {
+                    th.msgs = chatMod.chatPush(th.msgs, { role: 'user', text: t, at: nightMod.hhmm() });
+                }
+                if (th.title === 'New chat') { th.title = chatMod.chatTitle(t); }
+                th.at = now().getTime();
                 writeChat();
+                chatPushEv({ t: 'start', thread: chatDb.cur });
                 // ── THE TOOL LOOP — the model may LOOK THINGS UP (chattools.js
                 // owns the protocol; the site's chat_tool action owns the door).
                 // Every path is bounded: lookups cap at CHAT_TOOL_ROUNDS, a
@@ -614,28 +721,63 @@ function makeApi(deps) {
                 // The tool turns are EPHEMERAL: the stored thread keeps the
                 // owner's words and the final answer, never the machinery,
                 // so chats.json cannot fill with JSON nobody asked to keep.
+                //
+                // STREAMED now: every round streams over `push` as it decodes —
+                // { think } for a reasoning model's own thinking (either the
+                // reasoning_content field or an in-content <think> block, split
+                // live by chat.js's state machine), { tok } for answer text,
+                // { round } opening each round so the window can discard a
+                // round that turns out to be a tool call, { tool }/{ tool_done }
+                // around each lookup, { done } at the end. The RETURN VALUE
+                // still carries the whole answer — events are a window's luxury,
+                // never the record.
                 let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
                 const site = toolsOn ? siteFor() : null;
                 const intro = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
-                let msgs = chatMod.chatForModel(chatThread, '', intro);
+                let msgs = chatMod.chatForModel(th.msgs, '', intro);
                 const used = [];
                 let lookups = 0;
                 let grammarNext = false;
                 let fumbled = false;
+                let thinkAll = '';
+                let answer = '';
+                let stopped = false;
                 let r = null;
                 for (;;) {
-                    r = await eng.chat(msgs, model, {
+                    const split = chatMod.chatThinkStream();
+                    chatPushEv({ t: 'round' });
+                    r = await eng.chatStream(msgs, model, {
                         // The retry runs cool: a constrained decode at chat
                         // temperature wanders inside the grammar's freedoms.
                         temperature: grammarNext ? 0.2 : 0.7,
-                        maxTokens: 900, timeoutMs: 180000,
+                        maxTokens: 900, timeoutMs: 180000, signal: signal,
                         grammar: grammarNext ? chatToolsMod.chatToolGrammar() : '',
+                    }, function (ev) {
+                        if (ev.think) { chatPushEv({ t: 'think', s: ev.think }); }
+                        if (ev.token) {
+                            const bits = split(ev.token);
+                            if (bits.think) { chatPushEv({ t: 'think', s: bits.think }); }
+                            if (bits.answer) { chatPushEv({ t: 'tok', s: bits.answer }); }
+                        }
                     });
                     if (!r.ok) {
+                        chatPushEv({ t: 'done', ok: false, say: r.say });
                         return { ok: false, say: r.say };
                     }
-                    const call = toolsOn ? chatToolsMod.chatToolCall(r.text) : null;
-                    if (!call) { break; }
+                    // The authoritative split runs on the WHOLE text — the live
+                    // one above only routed the paint.
+                    const parts = chatMod.chatThinkSplit(r.text);
+                    thinkAll += (r.think ? r.think + '\n' : '') + (parts.think ? parts.think + '\n' : '');
+                    if (r.stopped) {
+                        stopped = true;
+                        answer = parts.answer;
+                        break;
+                    }
+                    const call = toolsOn ? chatToolsMod.chatToolCall(parts.answer) : null;
+                    if (!call) {
+                        answer = parts.answer;
+                        break;
+                    }
                     if (call.bad) {
                         if (!fumbled) {
                             // It TRIED — re-run the same turn with the decode
@@ -645,7 +787,7 @@ function makeApi(deps) {
                             continue;
                         }
                         msgs = msgs.concat([
-                            { role: 'assistant', content: r.text },
+                            { role: 'assistant', content: parts.answer },
                             { role: 'user', content: 'That tool call was not valid (' + call.bad + '). Answer in plain words instead.' },
                         ]);
                         toolsOn = false;
@@ -655,15 +797,23 @@ function makeApi(deps) {
                     grammarNext = false;
                     if (lookups >= chatToolsMod.CHAT_TOOL_ROUNDS) {
                         msgs = msgs.concat([
-                            { role: 'assistant', content: r.text },
+                            { role: 'assistant', content: parts.answer },
                             { role: 'user', content: 'No more lookups this message — answer now, in plain words, from what you already have.' },
                         ]);
                         toolsOn = false;
                         continue;
                     }
                     lookups++;
+                    chatPushEv({ t: 'tool', name: call.tool });
                     const res = await site.chatTool(call.tool, call.args);
                     if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
+                    // The payload rides the event so THIS SESSION can show
+                    // "what did it see" — it is deliberately not stored, so
+                    // chats.json keeps words, not records.
+                    chatPushEv({
+                        t: 'tool_done', name: call.tool, ok: !!res.ok,
+                        data: res.ok ? res.data : { error: (res.refusal && res.refusal.say) || 'the website did not answer' },
+                    });
                     // A refused lookup travels back as a RESULT saying so — the
                     // model then answers honestly rather than the send dying on
                     // a switch the owner can flip.
@@ -671,24 +821,45 @@ function makeApi(deps) {
                         ? chatToolsMod.chatToolResultMsg(call.tool, res.data)
                         : chatToolsMod.chatToolResultMsg(call.tool, { error: (res.refusal && res.refusal.say) || 'the website did not answer' });
                     msgs = msgs.concat([
-                        { role: 'assistant', content: r.text },
+                        { role: 'assistant', content: parts.answer },
                         { role: 'user', content: resultBody },
                     ]);
                 }
-                chatThread = chatMod.chatPush(chatThread, { role: 'assistant', text: r.text, at: nightMod.hhmm() });
-                writeChat();
+                // A STOP that landed before any answer stores NOTHING: the
+                // question stays, nothing was answered, and regenerate can
+                // re-ask. Anything already said is kept — the owner pressed
+                // Stop having read it, not to erase it.
+                if (answer !== '') {
+                    th.msgs = chatMod.chatPush(th.msgs, {
+                        role: 'assistant', text: answer, at: nightMod.hhmm(),
+                        think: thinkAll.trim(), used: used,
+                    });
+                    writeChat();
+                }
                 if (startedModel && runner) {
                     armIdleStop();
                 }
-                return { ok: true, reply: r.text, ms: r.ms, tokensPerSec: r.tokensPerSec, model: model, used: used };
+                chatPushEv({
+                    t: 'done', ok: true, stopped: stopped, used: used,
+                    model: model, ms: r.ms, tokensPerSec: r.tokensPerSec,
+                });
+                return {
+                    ok: true, reply: answer, stopped: stopped, think: thinkAll.trim(),
+                    ms: r.ms, tokensPerSec: r.tokensPerSec, model: model, used: used,
+                };
             } finally {
                 chatBusy = false;
+                chatAbort = null;
             }
         },
         chatClear() {
-            chatThread = [];
-            writeChat();
-            return { ok: true };
+            const t = chatCur();
+            if (t) {
+                t.msgs = [];
+                t.title = 'New chat';
+                writeChat();
+            }
+            return chatHistoryOut();
         },
 
         // Where the queue lives, so the window can offer to open it.

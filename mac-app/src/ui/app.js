@@ -388,35 +388,106 @@
     }
 
     // ── THE CHAT ─────────────────────────────────────────────────────────
-    // One thread, held by the main process (chats.json). The window renders
-    // whatever it is handed and escapes it here — a model's reply is TEXT
-    // whatever markup it writes, the same rule the feed follows.
-    var C = null;              // { thread, model } — the last chat state handed over
-    var chatWaiting = false;   // a send in flight → the thinking bubble
+    // Conversations held by the main process (chats.json v2). The window
+    // renders whatever it is handed and ESCAPES FIRST — a model's reply is
+    // text before it is anything, and the markdown below only ever transforms
+    // already-escaped text (the ui-test drives a hostile reply through it).
+    var C = null;      // the last chat state handed over {cur, threads, thread, model}
+    var live = null;   // a send in flight {userText, round, think, tools[]}
+    var lastTools = null;  // this session's payloads for the newest reply's chip
+
+    // The markdown subset: bold, bullet lists, inline code, paragraphs, and
+    // money set in the accent. Escape-first, always.
+    function md(t) {
+        var e = esc(String(t == null ? '' : t));
+        e = e.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        e = e.replace(/`([^`]+)`/g, '<code>$1</code>');
+        e = e.replace(/£([\d,]+\.\d{2})/g, '<span class="money">£$1</span>');
+        var lines = e.split('\n');
+        var out = [];
+        var list = null;
+        lines.forEach(function (ln) {
+            if (/^\s*[-•] /.test(ln)) {
+                (list = list || []).push('<li>' + ln.replace(/^\s*[-•] /, '') + '</li>');
+                return;
+            }
+            if (list) { out.push('<ul>' + list.join('') + '</ul>'); list = null; }
+            if (ln.trim()) { out.push('<p>' + ln + '</p>'); }
+        });
+        if (list) { out.push('<ul>' + list.join('') + '</ul>'); }
+        return out.join('');
+    }
+
     async function chatLoad() {
         if (!window.hand.chatHistory) { return; }
-        try { C = await window.hand.chatHistory(); } catch (e) { C = { thread: [], model: '' }; }
+        try { C = await window.hand.chatHistory(); } catch (e) { C = { cur: '', threads: [], thread: [], model: '' }; }
         renderChat();
     }
-    function chatBubble(m) {
-        return '<div class="bub ' + (m.role === 'user' ? 'user' : 'bot') + '">' + esc(m.text)
+    function thinkFold(think, open, liveDot) {
+        return '<details class="thinkfold"' + (open ? ' open' : '') + '><summary>'
+            + (liveDot ? '<span class="tdot" aria-hidden="true"></span>Thinking…' : 'Thought about it')
+            + '</summary><div class="tbody">' + esc(think) + '</div></details>';
+    }
+    function toolChip(names, done, payloads) {
+        var label = (done ? '<span class="ttick">✓</span>Checked the website · ' : '<span class="tspin" aria-hidden="true"></span>Checking the website · ')
+            + esc(names.join(', '));
+        if (payloads) {
+            return '<details class="toolchip"><summary>' + label + '</summary>'
+                + '<div class="tpay">' + esc(payloads) + '</div></details>';
+        }
+        return '<div class="toolchip"><span class="tsum">' + label + '</span></div>';
+    }
+    function chatTurn(m, i, isLastBot) {
+        if (m.role === 'user') {
+            return '<div class="bub user"><button class="bedit" data-i="' + i + '" title="Edit and resend" aria-label="Edit and resend">✎</button>'
+                + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>';
+        }
+        var h = '';
+        if (m.think) { h += thinkFold(m.think, false, false); }
+        if (m.used && m.used.length) {
+            var pay = (lastTools && lastTools.index === i) ? lastTools.text : '';
+            h += toolChip(m.used, true, pay);
+        }
+        h += '<div class="bub bot md">' + md(m.text)
             + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>';
+        h += '<div class="bacts"><button class="bact" data-copy="' + i + '">Copy</button>'
+            + (isLastBot ? '<button class="bact" data-regen="1">Regenerate</button>' : '')
+            + '</div>';
+        return h;
+    }
+    function chatRailPaint() {
+        var rail = $('chatThreads');
+        if (!rail || !C) { return; }
+        rail.innerHTML = (C.threads || []).map(function (t) {
+            return '<button class="crow' + (t.id === C.cur ? ' cur' : '') + '" data-id="' + esc(t.id) + '">'
+                + '<span class="ct">' + esc(t.title) + '</span>'
+                + '<span class="cn">' + (t.n ? t.n + ' messages' : 'empty') + '</span>'
+                + '<span class="cx" data-id="' + esc(t.id) + '" role="button" tabindex="0" title="Delete this conversation" aria-label="Delete this conversation">✕</span>'
+                + '</button>';
+        }).join('');
     }
     function renderChat() {
         if (!C) { return; }
+        chatRailPaint();
         var log = $('chatLog');
-        var html = (C.thread || []).map(chatBubble).join('');
-        if (!html && !chatWaiting) {
+        var thread = C.thread || [];
+        var lastBot = -1;
+        thread.forEach(function (m, i) { if (m.role === 'assistant') { lastBot = i; } });
+        var html = thread.map(function (m, i) { return chatTurn(m, i, i === lastBot); }).join('');
+        if (!html && !live) {
             html = '<div class="chatempty"><b>Ask your Mac anything</b>'
                 + 'The same model that drafts your replies, talking just to you. '
                 + 'It starts the engine itself on your first message, and it can '
                 + 'look up today’s bookings, availability and waiting enquiries '
-                + 'from your own website as you talk.</div>';
-        }
-        if (chatWaiting) {
-            html += '<div class="bub bot think" aria-hidden="true"><i></i><i></i><i></i></div>';
+                + 'from your own website as you talk.'
+                + '<div class="chatstart">'
+                + '<button class="schip" data-q="Who arrives today?">Who arrives today?</button>'
+                + '<button class="schip" data-q="Is anything free this weekend?">Anything free this weekend?</button>'
+                + '<button class="schip" data-q="What enquiries are waiting?">What’s waiting?</button>'
+                + '</div></div>';
         }
         log.innerHTML = html;
+        if (live) { liveMount(log); }
         log.scrollTop = log.scrollHeight;
         // The model picker — the owner's pick, else the reply job's, said so.
         var sel = $('chatModel');
@@ -433,18 +504,96 @@
             : '';
         if (view === 4) { paintTitle(); }
     }
-    async function chatSend() {
+
+    // ── the live turn: real nodes updated per event, never a full repaint
+    // per token (a long reply over innerHTML rebuilds is a janky reply).
+    function liveMount(log) {
+        var wrap = document.createElement('div');
+        wrap.id = 'liveTurn';
+        wrap.innerHTML = '<div class="bub user">' + esc(live.userText) + '</div>'
+            + '<details class="thinkfold" id="liveThink" open hidden><summary>'
+            + '<span class="tdot" aria-hidden="true"></span>Thinking…</summary>'
+            + '<div class="tbody" id="liveThinkBody"></div></details>'
+            + '<div id="liveTools"></div>'
+            + '<div class="bub bot md" id="liveBub" hidden></div>'
+            + '<div class="bub bot think" id="liveDots" aria-hidden="true"><i></i><i></i><i></i></div>';
+        log.appendChild(wrap);
+    }
+    function liveToolsPaint() {
+        var host = $('liveTools');
+        if (!host) { return; }
+        host.innerHTML = live.tools.map(function (t) {
+            return toolChip([t.name], t.done, t.done && t.data ? t.data : '');
+        }).join('');
+    }
+    function chatEv(ev) {
+        if (!live || !ev) { return; }
+        var log = $('chatLog');
+        if (ev.t === 'round') { live.round = ''; return; }
+        if (ev.t === 'think') {
+            live.think += ev.s || '';
+            var f = $('liveThink');
+            if (f) {
+                f.hidden = false;
+                $('liveThinkBody').textContent = live.think;
+                var d = $('liveDots');
+                if (d) { d.hidden = true; }
+                log.scrollTop = log.scrollHeight;
+            }
+            return;
+        }
+        if (ev.t === 'tok') {
+            live.round += ev.s || '';
+            // THE HOLDBACK: a round that opens TOOL is a lookup being typed,
+            // not an answer — the chip will replace it, so nothing paints.
+            if (/^\s*TOOL/.test(live.round)) { return; }
+            var b = $('liveBub');
+            if (b) {
+                b.hidden = false;
+                b.innerHTML = md(live.round) + '<span class="caret" aria-hidden="true"></span>';
+                var d2 = $('liveDots');
+                if (d2) { d2.hidden = true; }
+                log.scrollTop = log.scrollHeight;
+            }
+            return;
+        }
+        if (ev.t === 'tool') {
+            live.tools.push({ name: ev.name || '', done: false, data: '' });
+            live.round = '';
+            var b2 = $('liveBub');
+            if (b2) { b2.hidden = true; b2.innerHTML = ''; }
+            liveToolsPaint();
+            log.scrollTop = log.scrollHeight;
+            return;
+        }
+        if (ev.t === 'tool_done') {
+            for (var i = live.tools.length - 1; i >= 0; i--) {
+                if (live.tools[i].name === ev.name && !live.tools[i].done) {
+                    live.tools[i].done = true;
+                    try { live.tools[i].data = JSON.stringify(ev.data || {}, null, 1); } catch (e) { live.tools[i].data = ''; }
+                    break;
+                }
+            }
+            liveToolsPaint();
+            return;
+        }
+    }
+    if (window.hand.onChatEv) { window.hand.onChatEv(chatEv); }
+
+    async function chatSend(preset) {
         var box = $('chatIn');
-        var text = String(box.value || '').trim();
-        if (!text || chatWaiting) { return; }
-        // Optimistic: the question is on screen at once; the main process is
-        // appending the same message to the thread, and the reload after the
-        // answer reconciles the two.
-        C = C || { thread: [], model: '' };
-        C.thread = C.thread.concat([{ role: 'user', text: text, at: '' }]);
-        chatWaiting = true;
+        var text = String(preset || box.value || '').trim();
+        var btn = $('chatSendBtn');
+        if (live) {
+            // The button IS Stop while a reply streams.
+            if (window.hand.chatStop) { window.hand.chatStop(); }
+            return;
+        }
+        if (!text) { return; }
+        live = { userText: text, round: '', think: '', tools: [] };
+        lastTools = null;
         box.value = '';
-        $('chatSendBtn').disabled = true;
+        btn.textContent = 'Stop';
         renderChat();
         var r = null;
         try {
@@ -452,8 +601,11 @@
         } catch (e) {
             r = { ok: false, say: 'The app could not reach its own engine.' };
         }
-        chatWaiting = false;
-        $('chatSendBtn').disabled = false;
+        // This session keeps the lookups' payloads for the finished chip.
+        var payText = live.tools.filter(function (t) { return t.data; })
+            .map(function (t) { return t.name + '\n' + t.data; }).join('\n\n');
+        live = null;
+        btn.textContent = 'Send';
         if (!r || !r.ok) {
             // The refusal is the main process's own sentence — engine cold and
             // unstartable, no model, tonight's run holding the engine.
@@ -464,7 +616,11 @@
             return;
         }
         await chatLoad();
-        $('chatLive').textContent = 'Replied: ' + r.reply.slice(0, 120);
+        if (payText && (C.thread || []).length) {
+            lastTools = { index: C.thread.length - 1, text: payText };
+            renderChat();
+        }
+        $('chatLive').textContent = r.stopped ? 'Stopped.' : ('Replied: ' + String(r.reply || '').slice(0, 120));
         // WHAT IT LOOKED UP, said plainly — an answer grounded in the website
         // and an answer the model made up look identical without this line.
         var looked = (r.used && r.used.length) ? 'checked the website: ' + r.used.map(esc0).join(', ') : '';
@@ -475,6 +631,23 @@
             $('chatNote').textContent = looked;
         }
         box.focus();
+    }
+    async function chatRegen() {
+        if (live) { return; }
+        var last = (C && C.thread || []).filter(function (m) { return m.role === 'user'; }).pop();
+        if (!last) { return; }
+        live = { userText: last.text, round: '', think: '', tools: [] };
+        lastTools = null;
+        $('chatSendBtn').textContent = 'Stop';
+        // Drop the old reply from the local copy so the live turn reads clean.
+        C.thread = C.thread.slice(0, -1);
+        renderChat();
+        var r = null;
+        try { r = await window.hand.chatRegen(); } catch (e) { r = { ok: false, say: 'The app could not reach its own engine.' }; }
+        live = null;
+        $('chatSendBtn').textContent = 'Send';
+        if (!r || !r.ok) { toast((r && r.say) || 'The model did not answer.'); }
+        await chatLoad();
     }
     // textContent needs no escaping — this exists so the linter-visible intent
     // ("this is a display string") survives refactors that move it to HTML.
@@ -510,9 +683,56 @@
         }
         if (t.id === 'chatSendBtn') { chatSend(); return; }
         if (t.id === 'chatNew') {
-            if (window.hand.chatClear) { await window.hand.chatClear(); }
-            await chatLoad();
+            if (live) { return; }
+            if (window.hand.chatNew) { C = await window.hand.chatNew(); renderChat(); }
             $('chatIn').focus();
+            return;
+        }
+        // The conversations rail, the starter chips and the reply's actions —
+        // all delegated here so a repaint never orphans a handler.
+        var cx = t.closest ? t.closest('.cx') : null;
+        if (cx) {
+            if (!live && window.hand.chatDelete) {
+                C = await window.hand.chatDelete(cx.getAttribute('data-id'));
+                renderChat();
+            }
+            return;
+        }
+        var crow = t.closest ? t.closest('.crow') : null;
+        if (crow) {
+            if (!live && window.hand.chatPick) {
+                C = await window.hand.chatPick(crow.getAttribute('data-id'));
+                renderChat();
+            }
+            return;
+        }
+        var schip = t.closest ? t.closest('.schip') : null;
+        if (schip) { chatSend(schip.getAttribute('data-q') || ''); return; }
+        var bedit = t.closest ? t.closest('.bedit') : null;
+        if (bedit) {
+            if (!live && window.hand.chatTruncate) {
+                var tr = await window.hand.chatTruncate(parseInt(bedit.getAttribute('data-i'), 10));
+                if (tr && tr.ok) {
+                    C = tr;
+                    $('chatIn').value = tr.text;
+                    renderChat();
+                    $('chatIn').focus();
+                } else if (tr) { toast(tr.say); }
+            }
+            return;
+        }
+        var bact = t.closest ? t.closest('.bact') : null;
+        if (bact) {
+            if (bact.hasAttribute('data-copy')) {
+                var mi = (C && C.thread || [])[parseInt(bact.getAttribute('data-copy'), 10)];
+                if (mi) {
+                    try { await navigator.clipboard.writeText(mi.text); } catch (e2) { /* headless */ }
+                    bact.textContent = 'Copied ✓';
+                    setTimeout(function () { bact.textContent = 'Copy'; }, 1400);
+                }
+                return;
+            }
+            chatRegen();
             return;
         }
         // The checklist's own controls.

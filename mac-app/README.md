@@ -289,9 +289,18 @@ read-only questions (today, bookings, availability with the site's own price,
 waiting enquiries), behind the same paired key and the same on/off switch as
 the night work. Reading does not move the boundary above: every figure arrives
 already formatted by the site, the model quotes it rather than calculating,
-and there is still nothing here that can send, charge or publish. The note
-under a reply says what was checked, so a grounded answer and a made-up one
-never look the same.
+and there is still nothing here that can send, charge or publish. The lookup
+chip in the conversation says what was checked, so a grounded answer and a
+made-up one never look the same.
+
+And the chat is a proper chat now: replies **stream** as the model writes
+them, with a **Stop** that keeps what was already said; **conversations** are
+titled and kept side by side on this Mac; a reasoning model's own
+**thinking** streams into a fold that closes when the answer starts (never
+fabricated — a model that doesn't think shows no fold, and old thinking is
+never sent back); replies render a small **markdown** subset (escaped before
+any transform); and every reply carries **Copy** and **Regenerate**, with an
+edit pencil on your own messages.
 
 ## The jobs
 

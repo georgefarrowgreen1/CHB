@@ -103,6 +103,15 @@ function fakeState(over) {
         // would, and it records every call so the checks can read them back.
         await page.addInitScript(function () {
             window.__calls = [];
+            window.__chatHist = function () {
+                var th = window.__chatThread || [];
+                return {
+                    ok: true, cur: 't1',
+                    threads: [{ id: 't1', title: th.length ? th[0].text.slice(0, 40) : 'New chat', at: 1, n: th.length },
+                              { id: 't2', title: 'the welcome book', at: 0, n: 4 }],
+                    thread: th, model: 'q.gguf',
+                };
+            };
             window.hand = {
                 // Read LAZILY: an init script that captured __state up front would
                 // capture it before the state script had run.
@@ -134,19 +143,57 @@ function fakeState(over) {
                 // does, so the reload-after-answer path is the real one.
                 chatHistory: async function () {
                     window.__calls.push(['chatHistory']);
-                    return { ok: true, thread: window.__chatThread || [], model: 'q.gguf' };
+                    return window.__chatHist();
                 },
                 chatSend: async function (t) {
                     window.__calls.push(['chatSend', t]);
+                    // A HELD send lets the suite drive streaming events and the
+                    // Stop button while the promise is genuinely in flight.
+                    if (window.__chatHold) {
+                        var h = window.__chatHold;
+                        window.__chatHold = null;
+                        await h;
+                    }
                     if (window.__chatAnswer && !window.__chatAnswer.ok) { return window.__chatAnswer; }
-                    var reply = (window.__chatAnswer && window.__chatAnswer.reply) || 'A plain answer.';
+                    var a = window.__chatAnswer || {};
+                    var reply = a.reply || 'A plain answer.';
+                    var botMsg = { role: 'assistant', text: reply, at: '14:22' };
+                    if (a.think) { botMsg.think = a.think; }
+                    if (a.used) { botMsg.used = a.used; }
                     window.__chatThread = (window.__chatThread || []).concat([
                         { role: 'user', text: t, at: '14:22' },
-                        { role: 'assistant', text: reply, at: '14:22' },
+                        botMsg,
                     ]);
-                    return window.__chatAnswer || { ok: true, reply: reply, ms: 900, tokensPerSec: 34.5, model: 'q.gguf' };
+                    return window.__chatAnswer || { ok: true, reply: reply, ms: 900, tokensPerSec: 34.5, model: 'q.gguf', used: [] };
                 },
-                chatClear: async function () { window.__calls.push(['chatClear']); window.__chatThread = []; return { ok: true }; },
+                chatClear: async function () { window.__calls.push(['chatClear']); window.__chatThread = []; return window.__chatHist(); },
+                chatNew: async function () { window.__calls.push(['chatNew']); window.__chatThread = []; return window.__chatHist(); },
+                chatPick: async function (id) { window.__calls.push(['chatPick', id]); return window.__chatHist(); },
+                chatDelete: async function (id) { window.__calls.push(['chatDelete', id]); return window.__chatHist(); },
+                chatTruncate: async function (i) {
+                    window.__calls.push(['chatTruncate', i]);
+                    var th = window.__chatThread || [];
+                    if (!th[i] || th[i].role !== 'user') { return { ok: false, say: 'That message is not editable any more.' }; }
+                    var text = th[i].text;
+                    window.__chatThread = th.slice(0, i);
+                    var out = window.__chatHist();
+                    out.text = text;
+                    return out;
+                },
+                chatRegen: async function () {
+                    window.__calls.push(['chatRegen']);
+                    var th = window.__chatThread || [];
+                    if (th.length && th[th.length - 1].role === 'assistant') { window.__chatThread = th.slice(0, -1); }
+                    var last = (window.__chatThread || []).filter(function (m) { return m.role === 'user'; }).pop();
+                    window.__chatThread = (window.__chatThread || []).concat([{ role: 'assistant', text: 'A second opinion.', at: '14:23' }]);
+                    return { ok: true, reply: 'A second opinion.', ms: 700, tokensPerSec: 30, model: 'q.gguf', used: [] };
+                },
+                chatStop: async function () {
+                    window.__calls.push(['chatStop']);
+                    if (window.__chatRelease) { window.__chatRelease(); }
+                    return { ok: true };
+                },
+                onChatEv: function (cb) { window.__chatEvCb = cb; },
                 // The updater. Absent entirely before this, which is why the
                 // version line was hidden in every test run and the menu check
                 // could not have passed: upCheck() returns early when the
@@ -542,13 +589,111 @@ function fakeState(over) {
             /using the engine/.test(await page.textContent('#toastSays')), await page.textContent('#toastSays'));
         ok('…and the owner\'s words come back rather than vanishing',
             (await page.inputValue('#chatIn')) === 'and the roof?');
-        // New chat clears through the bridge, never locally.
+        // New chat makes a conversation through the bridge, never locally.
         await page.evaluate(function () { window.__chatAnswer = null; });
         await page.click('#chatNew');
         await page.waitForTimeout(200);
-        ok('New chat clears through the bridge',
-            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatClear'; }); }));
-        ok('…and the invitation returns', /Ask your Mac anything/.test(await page.textContent('#chatLog')));
+        ok('New chat goes through the bridge',
+            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatNew'; }); }));
+        ok('…and the invitation returns, carrying the starter chips',
+            /Ask your Mac anything/.test(await page.textContent('#chatLog'))
+            && (await page.locator('#chatLog .schip').count()) === 3);
+
+        // ── THE CHAT, GROWN UP: conversations, streaming, thinking, lookups,
+        // markdown, Stop, edit, regenerate — the bridge fake holds the send
+        // open so the events drive a genuinely in-flight reply.
+        ok('the conversations rail lists the threads with the current one marked',
+            (await page.locator('#chatThreads .crow').count()) === 2
+            && /the welcome book/.test(await page.textContent('#chatThreads')));
+        await page.click('#chatThreads .crow[data-id="t2"]');
+        await page.waitForTimeout(150);
+        ok('picking a conversation goes through the bridge',
+            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatPick' && c[1] === 't2'; }); }));
+        // A starter chip sends its own question.
+        await page.click('#chatLog .schip');
+        await page.waitForTimeout(200);
+        ok('a starter chip sends its question',
+            await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatSend' && /arrives today/.test(c[1]); }); }));
+        // The streamed exchange, held open.
+        await page.evaluate(function () {
+            window.__chatThread = [];
+            window.__chatHold = new Promise(function (r) { window.__chatRelease = r; });
+            window.__chatAnswer = { ok: true, reply: 'One arrival: Sarah.', think: 'the calendar knows, not me', used: ['today'], ms: 900, tokensPerSec: 28.1, model: 'q.gguf' };
+        });
+        await page.fill('#chatIn', 'who arrives today?');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(120);
+        ok('the button IS Stop while the reply streams',
+            (await page.textContent('#chatSendBtn')).trim() === 'Stop');
+        await page.evaluate(function () { window.__chatEvCb({ t: 'think', s: 'the calendar knows, not me' }); });
+        ok('the thinking streams into an OPEN fold, live',
+            await page.evaluate(function () {
+                var f = document.getElementById('liveThink');
+                return f && !f.hidden && f.open && /calendar knows/.test(f.textContent);
+            }));
+        await page.evaluate(function () {
+            window.__chatEvCb({ t: 'round' });
+            window.__chatEvCb({ t: 'tok', s: 'TOOL {\"tool\":\"today\",\"args\":{}}' });
+        });
+        ok('a round that opens TOOL is HELD BACK, never painted',
+            await page.evaluate(function () { return document.getElementById('liveBub').hidden; }));
+        await page.evaluate(function () { window.__chatEvCb({ t: 'tool', name: 'today' }); });
+        ok('the lookup chip appears where it happened, working',
+            /Checking the website · today/.test(await page.textContent('#liveTools')));
+        await page.evaluate(function () { window.__chatEvCb({ t: 'tool_done', name: 'today', ok: true, data: { arrivals: 1 } }); });
+        ok('…and settles to a tick whose payload this session can open',
+            /Checked the website · today/.test(await page.textContent('#liveTools'))
+            && /arrivals/.test(await page.evaluate(function () { return document.querySelector('#liveTools .tpay').textContent; })));
+        await page.evaluate(function () {
+            window.__chatEvCb({ t: 'round' });
+            window.__chatEvCb({ t: 'tok', s: '**One** arrival — <script>window.__pwned2 = 1</script> Sarah, ' });
+        });
+        const liveSt = await page.evaluate(function () {
+            var b = document.getElementById('liveBub');
+            return { hidden: b.hidden, strong: b.querySelectorAll('strong').length,
+                scripts: b.querySelectorAll('script').length, pwned: !!window.__pwned2,
+                caret: b.querySelectorAll('.caret').length, text: b.textContent };
+        });
+        ok('the answer streams as MARKDOWN with the caret — bold real, markup inert',
+            !liveSt.hidden && liveSt.strong === 1 && liveSt.scripts === 0 && !liveSt.pwned && liveSt.caret === 1,
+            JSON.stringify(liveSt));
+        // Stop ends it: the bridge records the stop and releases the send.
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(250);
+        ok('Stop crosses the bridge and the button returns to Send',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatStop'; }); }))
+            && (await page.textContent('#chatSendBtn')).trim() === 'Send');
+        // The settled reply: thinking folded closed, the chip a fact, actions on.
+        const doneSt = await page.evaluate(function () {
+            var log = document.getElementById('chatLog');
+            var f = log.querySelector('.thinkfold');
+            return {
+                foldOpen: f ? f.open : null, foldText: f ? f.textContent : '',
+                chip: /Checked the website · today/.test(log.textContent),
+                acts: log.querySelectorAll('.bact').length,
+                note: document.getElementById('chatNote').textContent,
+            };
+        });
+        ok('the settled reply folds its thinking CLOSED and keeps the lookup chip',
+            doneSt.foldOpen === false && /calendar knows/.test(doneSt.foldText) && doneSt.chip, JSON.stringify(doneSt));
+        ok('Copy and Regenerate stand on the reply; the note says what was checked',
+            doneSt.acts === 2 && /checked the website: today/.test(doneSt.note), JSON.stringify(doneSt));
+        // Edit: the pencil hands the words back and truncates through the bridge.
+        await page.click('#chatLog .bedit');
+        await page.waitForTimeout(150);
+        ok('edit truncates through the bridge and refills the box',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatTruncate'; }); }))
+            && (await page.inputValue('#chatIn')) === 'who arrives today?');
+        // Regenerate goes through the bridge.
+        await page.evaluate(function () { window.__chatAnswer = null; });
+        await page.fill('#chatIn', 'sum up the week');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(200);
+        await page.click('#chatLog .bact[data-regen]');
+        await page.waitForTimeout(200);
+        ok('Regenerate re-asks through the bridge',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatRegen'; }); }))
+            && /A second opinion/.test(await page.textContent('#chatLog')));
 
         // ── FIRST RUN: nothing set up at all, and the window says what to do
         // rather than showing empty boxes. Driven by reloading with a bare state

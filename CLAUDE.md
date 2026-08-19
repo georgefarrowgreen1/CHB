@@ -578,6 +578,25 @@ signing and what is real; what matters HERE is the site half and the rules.
   (loop, retry, cap, ephemerality, unpaired — grammar wiring break-tested),
   test-nightshift §24 (composers, PII absence, no guessed quote) and
   test-integration §26c (the real door both ways, taken/free, no contact details).
+  **THE CHAT IS GROWN UP (v2).** Streaming (engine.js `chatStream` — SSE via the
+  injectable `ssePost`, abort = a DECISION returning ok+stopped+the partial; the
+  night jobs stay non-streaming on purpose), a per-send AbortController behind
+  `chatStop`, and live events to the window over `deps.push` → `chat-ev` (start /
+  round / think / tok / tool / tool_done / done — the payload rides tool_done for
+  THIS session's chip, never the disk). chats.json is a **v2 store** (`chatStore`
+  — titled thread list, cap 24, v1 array ADOPTED; ids carry a counter beside the
+  clock or same-ms mints collide — measured). **Thinking is real or absent**:
+  reasoning models' `<think>` blocks split by `chatThinkSplit` + the stateful
+  `chatThinkStream` (tags cut across chunks are held back), stored on the msg
+  (`think`, capped) for the fold, and NEVER sent back in history (reasoning
+  models degrade on their own old thinking). A stop BEFORE any answer stores no
+  assistant msg — the question stays askable. The renderer got markdown
+  (escape-FIRST, small subset), the conversations rail, the TOOL-round holdback
+  (a streaming tool call never paints), think folds (open live, closed at rest),
+  lookup chips, Copy/Regenerate/edit, starter chips. Gated by core-test §32
+  (store/split/splitter/stream/abort/events/stop-both-ways/regen/truncate/
+  threads) and the mac ui-test's grown-up block (held-open send driving real
+  events; the holdback and escape-first each break-tested).
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is

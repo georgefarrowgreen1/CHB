@@ -521,6 +521,13 @@ function wire() {
     ipcMain.handle('hand:chatHistory', function () { return api.chatHistory(); });
     ipcMain.handle('hand:chatSend', function (e, text) { return api.chatSend(text); });
     ipcMain.handle('hand:chatClear', function () { return api.chatClear(); });
+    ipcMain.handle('hand:chatNew', function () { return api.chatNew(); });
+    ipcMain.handle('hand:chatPick', function (e, id) { return api.chatPick(id); });
+    ipcMain.handle('hand:chatDelete', function (e, id) { return api.chatDelete(id); });
+    ipcMain.handle('hand:chatTruncate', function (e, i) { return api.chatTruncate(i); });
+    ipcMain.handle('hand:chatRegen', function () { return api.chatRegen(); });
+    // Stop rides its own invocation — chatSend is mid-await when it arrives.
+    ipcMain.handle('hand:chatStop', function () { return api.chatStop(); });
     ipcMain.handle('hand:startEngine', function () { return api.startEngine(); });
     ipcMain.handle('hand:stopEngine', function () { return api.stopEngine(); });
 
@@ -608,6 +615,15 @@ app.whenReady().then(function () {
         // Reported to the site with each poll, so Set up a Mac can say which
         // build each Mac runs (integration step 4).
         build: appVersion(),
+        // The chat's live events (streamed tokens, thinking, lookups). Looked
+        // up per event rather than captured — the window is created AFTER the
+        // api, and can be closed and reopened while a reply streams.
+        push: function (ev) {
+            try {
+                const w = BrowserWindow.getAllWindows()[0];
+                if (w && !w.isDestroyed()) { w.webContents.send('chat-ev', ev); }
+            } catch (e) { /* a window that has gone hears nothing, correctly */ }
+        },
     });
     wire();
     menu();

@@ -111,11 +111,15 @@
         <p class="sub">Just you and the model, on this Mac. Nothing here reaches the website or a guest.</p></div>
         <div class="rail"><select class="pop" id="chatModel" aria-label="Model for the chat"></select>
         <button class="tbtn" type="button" id="chatNew">New chat</button></div></div>
-      <div class="box chatbox">
-        <div class="chatlog" id="chatLog"></div>
-        <div class="chatbar">
-          <textarea class="chatin" id="chatIn" rows="1" placeholder="Ask anything&hellip;" aria-label="Your message"></textarea>
-          <button class="tbtn prime" type="button" id="chatSendBtn">Send</button>
+      <div class="chatwrap">
+        <!-- CONVERSATIONS — titled, on this Mac, oldest out at the cap. -->
+        <nav class="chatrail" id="chatThreads" aria-label="Conversations"></nav>
+        <div class="box chatbox">
+          <div class="chatlog" id="chatLog"></div>
+          <div class="chatbar">
+            <textarea class="chatin" id="chatIn" rows="1" placeholder="Ask anything&hellip;" aria-label="Your message"></textarea>
+            <button class="tbtn prime" type="button" id="chatSendBtn">Send</button>
+          </div>
         </div>
       </div>
       <p class="tiny" id="chatNote"></p>

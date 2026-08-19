@@ -1848,16 +1848,26 @@ function fakeSite(handler) {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct31-'));
         const calls = [];
         const toolCalls = [];
+        const evs = [];
         const api31 = require('../src/core/api').makeApi({
             dir: tmp, machine: M16,
+            push: function (ev) { evs.push(ev); },
             secrets: { available: true, get: function () { return secretVal; }, set: function () { return { ok: true }; }, state: function () { return { set: !!secretVal, hint: '' }; } },
             makeEngine: function () {
                 return {
                     id: 'llamacpp', name: 'fake', base: 'http://x',
                     reachable: async function () { return true; },
-                    chat: async function (msgs, model, opts) {
+                    // The loop streams now — the fake answers whole, which is a
+                    // legal stream (one chunk); §32 drives the chunked form. A
+                    // script item that is a FUNCTION owns its whole round
+                    // (the stop case needs the abort signal in its hands).
+                    chatStream: async function (msgs, model, opts, onEv) {
                         calls.push({ msgs: msgs, grammar: (opts && opts.grammar) || '' });
-                        return { ok: true, text: script.shift() || 'ran out', ms: 5, tokens: 3, tokensPerSec: 1 };
+                        const item = script.shift();
+                        if (typeof item === 'function') { return item(opts, onEv); }
+                        const text = item || 'ran out';
+                        if (onEv) { onEv({ token: text }); }
+                        return { ok: true, stopped: false, text: text, think: '', ms: 5, tokens: 3, tokensPerSec: 1 };
                     },
                 };
             },
@@ -1870,7 +1880,7 @@ function fakeSite(handler) {
                 };
             },
         });
-        return { api: api31, calls: calls, toolCalls: toolCalls, tmp: tmp };
+        return { api: api31, calls: calls, toolCalls: toolCalls, evs: evs, tmp: tmp };
     };
 
     {
@@ -1949,6 +1959,213 @@ function fakeSite(handler) {
             && !/TOOL \{"tool"/.test(h.calls[0].msgs[0].content)
             && r.reply === 'TOOL {"tool":"today","args":{}}'
             && JSON.stringify(r.used) === '[]', JSON.stringify(r));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+
+    // ── §32 THE CHAT, GROWN UP — streaming, thinking, conversations ─────────
+    console.log('\n§32 the chat, grown up');
+
+    // The store: v1's bare array is ADOPTED, garbage is absent, cur repairs.
+    {
+        const s = chatMod.chatStore([{ role: 'user', text: 'who owes me money' }, { role: 'assistant', text: 'Sarah.' }], 1000);
+        ok('a v1 single-thread file adopts as one titled conversation',
+            s.v === 2 && s.threads.length === 1 && s.threads[0].title === 'who owes me money'
+            && s.threads[0].msgs.length === 2 && s.cur === s.threads[0].id, JSON.stringify(s));
+        const g = chatMod.chatStore({ v: 2, cur: 'ghost', threads: [{ id: 'a', title: 'x', at: 1, msgs: [] }, 'junk', { noId: 1 }] }, 0);
+        ok('garbage threads are absent and a dangling cur repairs to a real one',
+            g.threads.length === 1 && g.cur === 'a');
+        const many = chatMod.chatStore({ v: 2, cur: '', threads: Array.from({ length: 40 }, function (x, i) {
+            return { id: 't' + i, title: 'chat ' + i, at: i, msgs: [] };
+        }) }, 0);
+        ok('the store caps at ' + chatMod.CHAT_THREADS_MAX + ' conversations',
+            many.threads.length === chatMod.CHAT_THREADS_MAX);
+        const n1 = chatMod.chatThreadNew(g, 'fresh', 5);
+        ok('New chat reuses an existing EMPTY conversation rather than stacking blanks',
+            n1.threads.length === 1 && n1.cur === 'a');
+        ok('a title is the first line, capped with an ellipsis',
+            chatMod.chatTitle('is jollyboat free\nsecond line') === 'is jollyboat free'
+            && chatMod.chatTitle('x'.repeat(80)).length === chatMod.CHAT_TITLE_MAX
+            && chatMod.chatTitle('   ') === 'New chat');
+    }
+
+    // Thinking vs answer — the whole-text split and the live splitter.
+    ok('no tags → all answer; a closed block → both halves; unclosed → all thinking, NO answer',
+        (function () {
+            const a = chatMod.chatThinkSplit('Just an answer.');
+            const b = chatMod.chatThinkSplit('<think>weighing the dates</think>Free that week.');
+            const c = chatMod.chatThinkSplit('<think>half a thought');
+            return a.think === '' && a.answer === 'Just an answer.'
+                && b.think === 'weighing the dates' && b.answer === 'Free that week.'
+                && c.think === 'half a thought' && c.answer === '';
+        })());
+    ok('a mid-answer <think> is text, not a block — only a LEADING tag opens one',
+        (function () {
+            const d = chatMod.chatThinkSplit('The <think> tag is how R1 marks it.');
+            return d.think === '' && d.answer === 'The <think> tag is how R1 marks it.';
+        })());
+    ok('the live splitter routes across chunk-cut tags and holds back a possible prefix',
+        (function () {
+            const f = chatMod.chatThinkStream();
+            let th = '';
+            let an = '';
+            ['<thi', 'nk>reaso', 'ning here', '</th', 'ink>The an', 'swer.'].forEach(function (c) {
+                const o = f(c);
+                th += o.think; an += o.answer;
+            });
+            return th === 'reasoning here' && an === 'The answer.';
+        })());
+    ok('…and plain text streams straight through as answer',
+        (function () {
+            const f = chatMod.chatThinkStream();
+            let an = '';
+            ['Hello', ' there', ', George.'].forEach(function (c) { an += f(c).answer; });
+            return an === 'Hello there, George.';
+        })());
+    ok('a stored think never rides back to the model',
+        (function () {
+            const msgs = chatMod.chatForModel([{ role: 'assistant', text: 'Free.', think: 'SECRET REASONING' }, { role: 'user', text: 'sure?' }], '');
+            return !JSON.stringify(msgs).includes('SECRET REASONING');
+        })());
+
+    // engine.chatStream against a scripted transport: delta routing, usage,
+    // the grammar on the wire, and an abort that KEEPS the partial.
+    {
+        const engMod = require('../src/core/engine.js');
+        let sent = null;
+        const eng = engMod.makeEngine({ id: 'llamacpp', stream: async function (url, body, tms, signal, onDelta) {
+            sent = body;
+            onDelta({ content: 'One ', reasoning: '' });
+            onDelta({ content: '', reasoning: 'hmm' });
+            onDelta({ content: 'arrival.', reasoning: '' });
+            return { ok: true, status: 200, usage: { completion_tokens: 4 } };
+        } });
+        const got = [];
+        const r = await eng.chatStream([{ role: 'user', content: 'q' }], 'm', { grammar: 'root ::= "x"' }, function (ev) { got.push(ev); });
+        ok('chatStream routes content→token and reasoning_content→think, and returns the whole',
+            r.ok && r.text === 'One arrival.' && r.think === 'hmm' && r.tokens === 4
+            && got.some(function (e) { return e.token === 'One '; }) && got.some(function (e) { return e.think === 'hmm'; }),
+            JSON.stringify({ r: r, got: got }));
+        ok('…streaming and asks for a stream on the wire, grammar riding along',
+            sent.stream === true && sent.grammar === 'root ::= "x"');
+        const ctl = new AbortController();
+        const eng2 = engMod.makeEngine({ id: 'llamacpp', stream: async function (u, b, t2, signal, onDelta) {
+            onDelta({ content: 'Half an ans', reasoning: '' });
+            ctl.abort();
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            throw err;
+        } });
+        const r2 = await eng2.chatStream([{ role: 'user', content: 'q' }], 'm', { signal: ctl.signal });
+        ok('an abort is a DECISION: ok:true, stopped:true, the partial kept',
+            r2.ok && r2.stopped === true && r2.text === 'Half an ans', JSON.stringify(r2));
+    }
+
+    // The api end to end: events, thinking stored but never resent, stop,
+    // regenerate, edit, and conversations.
+    {
+        // A reasoning model that thinks, then looks something up, then answers.
+        const h = mkChatApi([
+            '<think>the calendar knows, not me</think>TOOL {"tool":"today","args":{}}',
+            '<think>one arrival then</think>Sarah arrives today.',
+        ], null, 'k');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const r = await h.api.chatSend('who arrives today?');
+        ok('the window hears the whole story in order — and the ANSWER outlives the lookup',
+            (function () {
+                // NB a tool round's own text streams as tok BEFORE the round is
+                // recognised as a call — by design, the window holds back a
+                // TOOL-prefixed round — so the ordering asserted here is the
+                // meaningful one: thinking heard, the lookup bracketed, a fresh
+                // round opened after it, the LAST answer token after the
+                // lookup, done last.
+                const kinds = h.evs.map(function (e) { return e.t; });
+                const idx = function (k) { return kinds.indexOf(k); };
+                return idx('start') === 0 && idx('think') > idx('start')
+                    && idx('tool') > idx('start') && idx('tool_done') > idx('tool')
+                    && kinds.lastIndexOf('round') > idx('tool_done')
+                    && kinds.lastIndexOf('tok') > idx('tool_done')
+                    && kinds[kinds.length - 1] === 'done';
+            })(), JSON.stringify(h.evs.map(function (e) { return e.t; })));
+        ok('the reply is the answer half; the thinking is carried beside it, never inside it',
+            r.ok && r.reply === 'Sarah arrives today.' && /calendar knows/.test(r.think) && /one arrival/.test(r.think));
+        const hist = h.api.chatHistory();
+        ok('the stored reply keeps its thinking and its lookups for the fold and the chip',
+            hist.thread.length === 2 && /one arrival/.test(hist.thread[1].think || '')
+            && JSON.stringify(hist.thread[1].used) === '["today"]', JSON.stringify(hist.thread[1]));
+        ok('…and the conversation titled itself from the question',
+            hist.threads[0].title === 'who arrives today?', JSON.stringify(hist.threads));
+        // REGENERATE: the last reply goes, the question is asked again ONCE.
+        h.evs.length = 0;
+        // (script is empty — refill through the closure by pushing more turns)
+        const r2 = await h.api.chatRegen();
+        ok('regenerate re-asks without duplicating the question',
+            r2.ok && h.api.chatHistory().thread.length === 2
+            && h.api.chatHistory().thread.filter(function (m) { return m.role === 'user'; }).length === 1,
+            JSON.stringify(h.api.chatHistory().thread));
+        // EDIT: truncate hands the words back and the thread forgets from there.
+        const tr = h.api.chatTruncate(0);
+        ok('edit returns the words and truncates; an assistant turn is refused',
+            tr.ok && tr.text === 'who arrives today?' && h.api.chatHistory().thread.length === 0
+            && h.api.chatTruncate(0).ok === false);
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // STOP, both ways: mid-answer keeps what was said; before any answer
+        // stores nothing — the question stays askable.
+        const h = mkChatApi([
+            function (opts, onEv) {
+                onEv({ token: 'Half an answer' });
+                return new Promise(function (resolve) {
+                    setTimeout(function () {
+                        resolve({ ok: true, stopped: opts.signal.aborted, text: 'Half an answer', think: '', ms: 9, tokens: 0, tokensPerSec: null });
+                    }, 30);
+                });
+            },
+            function (opts, onEv) {
+                return new Promise(function (resolve) {
+                    setTimeout(function () {
+                        resolve({ ok: true, stopped: opts.signal.aborted, text: '', think: 'only got as far as thinking', ms: 9, tokens: 0, tokensPerSec: null });
+                    }, 30);
+                });
+            },
+        ], null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const p1 = h.api.chatSend('long question');
+        await new Promise(function (res) { setTimeout(res, 10); });
+        h.api.chatStop();
+        const r1 = await p1;
+        ok('Stop mid-answer keeps the partial as the reply',
+            r1.ok && r1.stopped === true && r1.reply === 'Half an answer'
+            && h.api.chatHistory().thread[1].text === 'Half an answer', JSON.stringify(r1));
+        const p2 = h.api.chatSend('another question');
+        await new Promise(function (res) { setTimeout(res, 10); });
+        h.api.chatStop();
+        const r2 = await p2;
+        ok('Stop before any answer stores NO reply — the question stays askable',
+            r2.ok && r2.stopped === true && r2.reply === ''
+            && h.api.chatHistory().thread[h.api.chatHistory().thread.length - 1].role === 'user',
+            JSON.stringify(h.api.chatHistory().thread));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // CONVERSATIONS through the api: new, auto-title, pick, delete.
+        const h = mkChatApi(['First answer.', 'Second answer.'], null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await h.api.chatSend('plan the changeover');
+        const before = h.api.chatHistory();
+        h.api.chatNew();
+        await h.api.chatSend('a different question');
+        const two = h.api.chatHistory();
+        ok('a second conversation lives beside the first, each with its own title',
+            two.threads.length === 2 && two.threads.map(function (t) { return t.title; }).sort().join('|')
+                === 'a different question|plan the changeover', JSON.stringify(two.threads));
+        const picked = h.api.chatPick(before.cur);
+        ok('picking a conversation brings ITS messages back',
+            picked.cur === before.cur && picked.thread[0].text === 'plan the changeover');
+        const del = h.api.chatDelete(before.cur);
+        ok('deleting one repairs the pointer to a real survivor',
+            del.threads.length === 1 && del.cur === del.threads[0].id
+            && del.thread[0].text === 'a different question');
         try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 

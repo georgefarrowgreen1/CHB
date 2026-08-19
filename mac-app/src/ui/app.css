@@ -488,8 +488,21 @@ select.pop{padding-right:6px}
    Bubbles, because a conversation reads as turns — but the house's bubbles:
    glass and tint, never a blue slab. The owner's take a soft accent tint with
    ordinary ink (an accent FILL would put long prose on the brand colour,
-   which is for buttons); the model's sit on the panel tint. Replies render as
-   TEXT with the whitespace kept — no markup, whatever the model writes. */
+   which is for buttons); the model's sit on the panel tint. Replies render a
+   SMALL MARKDOWN SUBSET, escaped before any transform — a hostile reply is
+   text, whatever the model writes (the ui-test drives one). */
+.chatwrap{display:grid;grid-template-columns:190px 1fr;gap:12px}
+.chatrail{display:flex;flex-direction:column;gap:2px;overflow-y:auto;
+  height:calc(100vh - 218px);min-height:280px;padding-right:2px}
+.crow{position:relative;text-align:left;border:0;background:none;color:var(--text-light);
+  border-radius:10px;padding:7px 24px 7px 10px;cursor:pointer;font-family:var(--font-sans)}
+.crow:hover{background:var(--btn-hover)}
+.crow.cur{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.crow .ct{display:block;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .cn{display:block;font-size:9.5px;color:var(--text-muted)}
+.crow .cx{position:absolute;right:3px;top:50%;transform:translateY(-50%);border:0;background:none;
+  color:var(--text-muted);font-size:10px;cursor:pointer;padding:4px;border-radius:6px;opacity:0}
+.crow:hover .cx,.crow .cx:focus-visible{opacity:1}
 .chatbox{display:flex;flex-direction:column;height:calc(100vh - 218px);min-height:280px}
 .chatlog{flex:1 1 auto;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:10px}
 .bub{max-width:76%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.55;
@@ -518,5 +531,70 @@ select.pop{padding-right:6px}
   background:var(--field);padding:8px 14px;font-family:var(--font-sans);font-size:13px;
   line-height:1.5;color:var(--text-light)}
 .chatin::placeholder{color:var(--text-muted)}
+/* Markdown bubbles lift the pre-wrap — the formatter owns the blocks now,
+   and pre-wrap over markup doubles every gap. */
+.bub.bot.md{white-space:normal}
+.bub.bot.md p{margin:.4em 0}
+.bub.bot.md p:first-child{margin-top:0}
+.bub.bot.md p:last-child{margin-bottom:0}
+.bub.bot.md ul{margin:.4em 0;padding-left:1.2em}
+.bub.bot.md li{margin:.15em 0}
+.bub.bot.md .money{font-weight:700;color:var(--accent-text);font-variant-numeric:tabular-nums}
+.bub.bot.md code{font-family:var(--mono);font-size:12px;
+  background:color-mix(in srgb,var(--text-light) 8%,transparent);
+  border-radius:5px;padding:1px 5px}
+/* The streaming caret — alive while words arrive, gone at rest. */
+.caret{display:inline-block;width:6px;height:13px;border-radius:2px;background:var(--accent);
+  vertical-align:-2px;animation:chatCaret .9s steps(1) infinite}
+@keyframes chatCaret{50%{opacity:0}}
+.bub .stopnote{display:block;font-size:10px;color:var(--text-muted);font-style:italic;margin-top:4px}
+/* THINKING — a reasoning model's own passage, folded. Never fabricated: the
+   fold only exists when the model produced one. */
+.thinkfold{align-self:flex-start;max-width:76%}
+.thinkfold summary{list-style:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:10.5px;font-weight:600;color:var(--text-muted);
+  border:1px solid color-mix(in srgb,var(--text-light) 10%,transparent);
+  border-radius:999px;padding:4px 11px}
+.thinkfold summary::-webkit-details-marker{display:none}
+.thinkfold .tbody{margin-top:6px;font-size:11.5px;line-height:1.55;color:var(--text-muted);
+  border-left:2px solid color-mix(in srgb,var(--text-light) 12%,transparent);
+  padding:2px 0 2px 11px;white-space:pre-wrap;overflow-wrap:break-word}
+.thinkfold .tdot{width:6px;height:6px;border-radius:50%;background:var(--accent);
+  animation:chatThink 1.2s ease-in-out infinite}
+/* THE LOOKUP CHIP — the tool call, shown where it happened. Expandable only
+   while this session still holds the payload; after a restart it is a fact
+   ("checked today"), not a record. */
+.toolchip{align-self:flex-start;max-width:76%}
+.toolchip summary,.toolchip .tsum{list-style:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  font-size:10.5px;font-weight:600;color:var(--text-muted);
+  border:1px solid color-mix(in srgb,var(--text-light) 10%,transparent);
+  background:color-mix(in srgb,var(--text-light) 4%,transparent);
+  border-radius:999px;padding:4px 12px}
+.toolchip summary::-webkit-details-marker{display:none}
+.toolchip .tspin{width:9px;height:9px;border-radius:50%;border:2px solid var(--accent);
+  border-right-color:transparent;animation:chatSpin .7s linear infinite}
+@keyframes chatSpin{to{transform:rotate(360deg)}}
+.toolchip .ttick{color:var(--ok-text);font-weight:800}
+.toolchip .tpay{margin-top:6px;font-family:var(--mono);font-size:10.5px;line-height:1.5;
+  color:var(--text-muted);background:var(--field);
+  border:1px solid color-mix(in srgb,var(--text-light) 9%,transparent);
+  border-radius:10px;padding:8px 11px;white-space:pre-wrap;overflow-wrap:break-word;
+  max-height:180px;overflow-y:auto}
+/* The reply's quiet action row. */
+.bacts{display:flex;gap:2px;align-items:center;margin:-3px 0 0 2px;align-self:flex-start}
+.bact{border:0;background:none;color:var(--text-muted);font-size:10px;font-weight:700;
+  font-family:var(--font-sans);cursor:pointer;padding:3px 8px;border-radius:999px}
+.bact:hover{background:var(--btn-hover);color:var(--text-light)}
+.bub.user{position:relative}
+.bub.user .bedit{position:absolute;left:-26px;top:5px;border:0;background:none;color:var(--text-muted);
+  cursor:pointer;font-size:11px;padding:4px;border-radius:6px;opacity:0}
+.bub.user:hover .bedit,.bub.user .bedit:focus-visible{opacity:1}
+/* Starter chips on the empty state — the day's real questions. */
+.chatstart{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px}
+.schip{border:1px solid color-mix(in srgb,var(--text-light) 12%,transparent);
+  background:var(--field);color:var(--text-light);border-radius:999px;
+  padding:6px 13px;font-size:11.5px;font-weight:500;cursor:pointer;font-family:var(--font-sans)}
+.schip:hover{background:var(--btn-hover)}
+@media (max-width:760px){.chatwrap{grid-template-columns:1fr}.chatrail{display:none}}
 
 @media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important}}
