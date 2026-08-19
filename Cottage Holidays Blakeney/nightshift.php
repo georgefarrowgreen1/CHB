@@ -361,9 +361,18 @@ route_actions([
         }
         $out = [];
         try {
+            // LIVE ENQUIRIES ONLY — declining is a soft delete (declined_at
+            // set; enquiries.php's own list filters exactly this way) and an
+            // APPROVED enquiry's row is deleted outright. Without the filter
+            // the producer drafted replies to enquiries the owner had already
+            // DECLINED: decline someone in the afternoon, and a reply to them
+            // sat in Ready-for-you the next morning — plus their name and
+            // message had left the site for a machine that had no business
+            // reading them any more.
             $st = db()->prepare(
                 'SELECT id, prop_key, name, check_in, check_out, adults, children, message, created_at
                    FROM enquiries
+                  WHERE declined_at IS NULL
                   ORDER BY created_at DESC, id DESC
                   LIMIT ' . (int) NIGHT_BRIEF_MAX,
             );

@@ -2582,6 +2582,30 @@ it_check('the waiting enquiry is in the brief', $mine !== null, $r['raw']);
 it_check('…with the guest named and a first name worked out',
     $mine && $mine['name'] === 'Rachel Pemberton' && $mine['first'] === 'Rachel', json_encode($mine));
 it_check('…and their message', $mine && strpos($mine['message'], 'take dogs') !== false, json_encode($mine));
+
+// A DECLINED ENQUIRY NEVER REACHES THE PRODUCER. Declining is a soft delete
+// (declined_at set) and the brief read the table RAW — so the owner declined
+// someone in the afternoon and the machine drafted them a reply that night,
+// with the declined guest's name and message leaving the site to do it.
+// Driven through the REAL decline action, so the brief and the inbox can
+// never disagree about which column means declined.
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, phone, check_in, check_out, adults, children, message)
+               VALUES ('$propKey','Denny Declined','denny@gmail.com','07700 900321','$bfIn','$bfOut',2,0,'Any space that week for us?')");
+$dcId = (int) $rootDb->lastInsertId();
+http($admin, 'POST', '/enquiries.php', ['action' => 'decline', 'id' => $dcId]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+$dcSeen = false;
+foreach (($r['json']['enquiries'] ?? []) as $e) {
+    if ((int) ($e['id'] ?? 0) === $dcId) {
+        $dcSeen = true;
+    }
+}
+it_check('a declined enquiry is not in the brief', !$dcSeen, $r['raw']);
+it_check('…and nothing of theirs leaves the site at all',
+    strpos($r['raw'], 'Denny') === false && strpos($r['raw'], 'Any space that week') === false,
+    mb_substr($r['raw'], 0, 200));
+$rootDb->exec('DELETE FROM enquiries WHERE id = ' . $dcId);
+
 // THE COTTAGE IS NAMED, AND "Array" IS NOT A NAME.
 //
 // Every other field here was checked and this one was not — so every draft
