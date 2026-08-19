@@ -3058,6 +3058,10 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // helper alone proves nothing (the helper-tested-alone trap).
         const fbBlock = (adminScript.match(/nlg-fallback[\s\S]{0,900}/) || [''])[0];
         check('the fallback branch kicks chbMacIntentRecover', /chbMacIntentRecover\(ql\)/.test(fbBlock), fbBlock.slice(0, 200));
+        // …and the semantic merge kicks the ANALYST with the rows that landed
+        // (ui-test-searchpage §24 owns the behaviour; this owns the wiring).
+        const semBlock = (adminScript.match(/async function cmdkSemanticHistory[\s\S]{0,2600}/) || [''])[0];
+        check('the semantic merge kicks chbMacDigest with its fresh rows', /chbMacDigest\(ql, fresh\)/.test(semBlock), semBlock.slice(-200));
     } else fail('chbCanonList / cmdkIntent missing from the bundle');
 
     // ---- Summary ----

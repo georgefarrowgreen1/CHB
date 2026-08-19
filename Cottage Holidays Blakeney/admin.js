@@ -7203,6 +7203,10 @@ function chbHistoryRow(d) {
     else return null;
     const it = cmdkServerItem(x);
     if (it) it._sem = true; // recalled by MEANING → the model-status pill reads "By meaning"
+    // The raw record text rides the row for the ANALYST (chbMacDigest): a
+    // summary must be built from what the record SAYS, and the row's own
+    // label is a clipped display string. Display code never reads it.
+    if (it) it._txt = String(d.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
     return it;
 }
 // Shared ranker: cosine over the embedded index with a floor matched to
@@ -7254,6 +7258,10 @@ async function cmdkSemanticHistory(ql) {
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(fresh).slice(0, 34), 34);
     cmdkRender(true); // late semantic merge — keep the reader's scroll position
     try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
+    // THE ANALYST rides the rows that just landed: a summarise-shaped question
+    // with real records earns a Mac-written summary above them (all the guards
+    // live in chbMacDigest — this is a kick, never a decision).
+    try { chbMacDigest(ql, fresh); } catch (e) {}
 }
 // Fire the federated search.php query and merge its typed results in below the
 // local answers, deduped and mapped to the right destination per type.
@@ -25461,6 +25469,63 @@ async function chbMacIntentRecover(ql) {
     ]);
     // The answer replaces the dead end and the shimmer together.
     __cmdkResults = rows.concat(__cmdkResults.filter((r) => !(r && (r.id === 'mac-recover' || r.id === 'nlg-fallback'))));
+    cmdkRender(true);
+    try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
+}
+// ── THE ANALYST (search × Mac, way 2). A summarise-shaped history question ──
+// already gets the matched RECORDS (the semantic tier's rows); the Mac's
+// model may ARRANGE them into a short summary — grounded at both ends
+// (checkDigest on the Mac, the £-figure re-check at the site's door) — and
+// the summary lands ABOVE the rows it was built from, which stay on screen
+// as the receipts. No records, no summary: the analyst never goes looking.
+const CHB_DIGEST_Q = /\b(summari[sz]e|sum (?:it |this |them )?up|round.?up|rundown|overview of)\b|what (?:have|did) (?:guests|people)\b|any (?:themes|patterns|complaints about)\b/;
+let __cmdkDigStamp = 0;
+async function chbMacDigest(ql, rows) {
+    if (!CHB_DIGEST_Q.test(ql)) return;
+    if (!chbMacDraftReady() || !chbMacPresence().listening) return;
+    if (typeof chbNetIsOff === 'function' && chbNetIsOff()) return;
+    const texts = (rows || []).map((r) => r && r._txt).filter(Boolean).slice(0, 8);
+    if (texts.length < 2) return; // one record needs no analyst — it is on screen
+    const key = 'digest:' + ql;
+    if (Object.prototype.hasOwnProperty.call(__chbMacAsked, key)) return;
+    const gen = __cmdkQueryGen;
+    const stamp = ++__cmdkDigStamp;
+    // The same settle + live-window discipline as the recovery tier — the
+    // semantic merge runs per settled keystroke, and a prefix of the real
+    // question must not spend an ask.
+    await new Promise((res) => setTimeout(res, CHB_MAC_SETTLE_MS));
+    if (gen !== __cmdkQueryGen || stamp !== __cmdkDigStamp) return;
+    const o = document.getElementById('cmdk');
+    const inp = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input'));
+    if (!o || !o.classList.contains('open') || !inp) return;
+    if (String(inp.value || '').trim().toLowerCase() !== ql) return;
+    __chbMacAsked[key] = 'asked';
+    __cmdkResults = [{
+        type: 'answer', id: 'mac-digest', wrap: true,
+        label: 'Reading ' + texts.length + ' records on your Mac…',
+        sub: 'A short summary is on its way — the records themselves are below',
+        run: () => {},
+    }].concat(__cmdkResults.filter((r) => !(r && r.id === 'mac-digest')));
+    cmdkRender(true);
+    let summary = '';
+    try {
+        summary = await chbAskMac('digest', { question: ql, rows: texts }, CHB_MAC_RECOVER_MS, 8);
+    } catch (e) { summary = ''; }
+    if (gen !== __cmdkQueryGen || stamp !== __cmdkDigStamp) return;
+    const rest = __cmdkResults.filter((r) => !(r && r.id === 'mac-digest'));
+    if (!summary) {
+        // No summary is not a failure of the SEARCH — the records are still
+        // on screen, which was the answer before the analyst existed.
+        __cmdkResults = rest;
+        cmdkRender(true);
+        return;
+    }
+    __cmdkResults = [{
+        type: 'answer', id: 'mac-digest', wrap: true,
+        label: String(summary),
+        sub: 'Summed up on your Mac · built only from the ' + texts.length + ' records below',
+        run: () => {},
+    }].concat(rest);
     cmdkRender(true);
     try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
 }

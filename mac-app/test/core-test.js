@@ -1686,6 +1686,44 @@ function fakeSite(handler) {
     ok('garbage misses are absent, the readable one still maps',
         tj.items.length === 1 && tj.items[0].title === '\u201cok one?\u201d', JSON.stringify(tj.items));
 
+    // ── §29 THE DIGEST ASK (the analyst) — grounded, or refused ─────────────
+    console.log('\n§29 the digest ask');
+    const DROWS = ['Review from Sarah: the boiler took £120 to fix and rattled all week.',
+        'Message: Tom said the boiler pressure kept dropping.'];
+    ok('a grounded summary passes the guard',
+        guard.checkDigest('Guests raised the boiler twice \u2014 Sarah paid £120 for a fix and Tom saw the pressure dropping.', DROWS).ok);
+    ok('a figure the records never state is refused, named',
+        guard.checkDigest('Repairs ran to about £450 overall.', DROWS).problems.some(function (p) { return /£450/.test(p); }));
+    ok('a proper noun the records never mention is refused',
+        guard.checkDigest('Complaints came mostly from Bartholomew.', DROWS).problems.some(function (p) { return /Bartholomew/.test(p); }));
+    ok('sentence-initial capitals are grammar, not identity',
+        guard.checkDigest('Boiler trouble came up twice. Pressure was the main theme.', DROWS).ok);
+    ok('£120.00 is grounded by a record\u2019s £120', guard.checkDigest('It cost £120.00 in the end.', DROWS).ok);
+    ok('the prompt hands over the records and the records-only rule',
+        /FROM THESE RECORDS ALONE/.test(guard.buildDigestPrompt('q', DROWS)) && /rattled all week/.test(guard.buildDigestPrompt('q', DROWS)));
+
+    const DIGEST_ASK = { id: 31, kind: 'digest', digest: { q: 'what did guests say about the boiler?', rows: DROWS } };
+    posted25.length = 0; prompts25.length = 0;
+    let dg = await jobs.runAskSweep({ site: fakeAskSite([DIGEST_ASK]),
+        engine: askEngine('Two boiler mentions \u2014 Sarah\u2019s £120 fix, and the pressure drop Tom reported.'),
+        cfg: CFG25, now: MON });
+    ok('a digest ask is answered with the ANSWER job\u2019s model (prose over records)',
+        dg.answered === 1 && posted25[0] && posted25[0].id === 31 && posted25[0].model === 'big.gguf',
+        JSON.stringify(posted25));
+    ok('\u2026through the digest prompt (the records travel)', /rattled all week/.test(prompts25[0]));
+    posted25.length = 0;
+    dg = await jobs.runAskSweep({ site: fakeAskSite([DIGEST_ASK]),
+        engine: askEngine('Roughly £450 of repairs came up.'), cfg: CFG25, now: MON });
+    ok('an ungrounded summary is refused, never posted',
+        dg.answered === 0 && posted25.length === 0
+        && dg.log.some(function (l) { return /refused own summary/.test(l.say); }),
+        JSON.stringify(dg.log.map(function (l) { return l.say; })));
+    posted25.length = 0;
+    dg = await jobs.runAskSweep({ site: fakeAskSite([{ id: 32, kind: 'digest', digest: { q: 'x?', rows: [] } }]),
+        engine: askEngine('x'), cfg: CFG25, now: MON });
+    ok('a digest ask with no records is unreadable — skipped and said',
+        posted25.length === 0 && dg.log.some(function (l) { return /could not read/.test(l.say); }));
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

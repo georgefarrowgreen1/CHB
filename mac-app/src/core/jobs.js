@@ -614,12 +614,14 @@ async function runAskSweep(ctx) {
         // ask with SOME model beats one refused for configuration.
         const kind = a.kind === 'answer' ? 'answer'
             : a.kind === 'chat' ? 'chat'
-            : a.kind === 'intent' ? 'intent' : 'reply';
+            : a.kind === 'intent' ? 'intent'
+            : a.kind === 'digest' ? 'digest' : 'reply';
         // A chat reply is reply-shaped work, so it uses the reply job's model.
         // An INTENT mapping is a menu pick — a small-model job at under a
         // second — so it prefers the smallest installed model and leaves the
-        // big one for prose.
-        const modelKind = kind === 'chat' ? 'reply' : kind === 'intent' ? 'reply' : kind;
+        // big one for prose. A DIGEST is prose over records, the answer
+        // job's shape, so it takes that job's model.
+        const modelKind = kind === 'chat' ? 'reply' : kind === 'intent' ? 'reply' : kind === 'digest' ? 'answer' : kind;
         const model = (kind === 'intent' && c.smallModel)
             ? c.smallModel
             : (jobs[modelKind] || {}).model
@@ -687,6 +689,32 @@ async function runAskSweep(ctx) {
                 say(who + ' \u00b7 the model answered off the menu — sent none instead', 'skip');
             }
             text = picked || 'none';
+        } else if (kind === 'digest') {
+            // THE ANALYST'S MAC HALF: a summary built ONLY from the records
+            // the site's own semantic index matched — checkDigest refuses a
+            // figure or a proper noun the records never state, and the site's
+            // door re-checks the money against what it stored.
+            const dq = sane(a.digest && a.digest.q);
+            const drows = (a.digest && Array.isArray(a.digest.rows) ? a.digest.rows : []).map(sane).filter(Boolean);
+            if (!dq || !drows.length) {
+                say('the site handed over an ask this app could not read — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            who = '\u201c' + shortQ(dq) + '\u201d';
+            const r = await c.engine.write(guard.buildDigestPrompt(dq, drows), model);
+            if (!r.ok) {
+                say(who + ' \u00b7 ' + r.say, 'fail');
+                failed++;
+                continue;
+            }
+            const v = guard.checkDigest(r.text, drows);
+            if (!v.ok) {
+                say('refused own summary: ' + v.problems.join('; '), 'fail');
+                failed++;
+                continue;
+            }
+            text = r.text;
         } else if (kind === 'chat') {
             const t = saneChat(a.chat);
             if (!t) {
