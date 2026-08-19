@@ -302,6 +302,18 @@ never sent back); replies render a small **markdown** subset (escaped before
 any transform); and every reply carries **Copy** and **Regenerate**, with an
 edit pencil on your own messages.
 
+It also knows its limits, out loud: a **context meter** under the chat reads
+the model's own token numbers (llama.cpp's `/props` and each reply's usage —
+measured or absent, never estimated), and the moment older messages stop
+travelling to the model the chat **says so** instead of quietly forgetting.
+Each conversation can carry a **standing instruction** ("two sentences, no
+lists") the model reads every turn; any conversation **exports as Markdown**;
+the rail is **searchable**; and a 📎 **attaches a text file** (.txt/.md/.csv/
+.json) to a message — capped, and refused in a sentence when it won't fit,
+never silently cut. A fifth lookup, **cottages**, hands the model the fleet
+itself — names, occupancy, base rate, published Q&A — which the first four
+tools all assumed it somehow knew.
+
 ## The jobs
 
 Four of the five are real now, each switched on per job with its own model:

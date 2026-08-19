@@ -519,7 +519,54 @@ function wire() {
     // else on this bridge: the window says WHAT ("send this text"), the main
     // process decides HOW (which engine, which model, whether to start it).
     ipcMain.handle('hand:chatHistory', function () { return api.chatHistory(); });
-    ipcMain.handle('hand:chatSend', function (e, text) { return api.chatSend(text); });
+    ipcMain.handle('hand:chatSend', function (e, text, opts) { return api.chatSend(text, opts); });
+    ipcMain.handle('hand:chatInstr', function (e, text) { return api.chatInstr(text); });
+    // EXPORT: the api formats (pure), this owns the dialog and the file —
+    // the one place in the chat that touches the disk outside its own folder,
+    // and only ever at a path the owner just chose.
+    ipcMain.handle('hand:chatExport', async function (e, id) {
+        const r = api.chatExport(id);
+        if (!r.ok) { return r; }
+        const w = BrowserWindow.getAllWindows()[0];
+        const safe = String(r.title).replace(/[^\w\s£&'-]/g, '').trim().slice(0, 60) || 'chat';
+        const res = await dialog.showSaveDialog(w, {
+            defaultPath: path.join(app.getPath('desktop'), safe + '.md'),
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+        });
+        if (res.canceled || !res.filePath) {
+            return { ok: false, say: '' }; // backing out is not an error
+        }
+        try {
+            require('fs').writeFileSync(res.filePath, r.md, 'utf8');
+            return { ok: true, path: res.filePath };
+        } catch (err) {
+            return { ok: false, say: 'Could not write the file: ' + (err && err.message ? err.message : 'refused') };
+        }
+    });
+    // ATTACH: the open dialog + the read live here; the CAP is the pure
+    // module's judgement (api re-checks it at the door too). The size guard
+    // on the raw read stops a 2GB pick ever reaching memory.
+    ipcMain.handle('hand:chatAttach', async function () {
+        const w = BrowserWindow.getAllWindows()[0];
+        const res = await dialog.showOpenDialog(w, {
+            properties: ['openFile'],
+            filters: [{ name: 'Text files', extensions: ['txt', 'md', 'csv', 'json'] }],
+        });
+        if (res.canceled || !res.filePaths || !res.filePaths[0]) {
+            return { ok: false, say: '' };
+        }
+        const fp = res.filePaths[0];
+        try {
+            const st = require('fs').statSync(fp);
+            if (st.size > 512 * 1024) {
+                return { ok: false, say: 'That file is far too big for the chat — half a megabyte is the most it will read.' };
+            }
+            const text = require('fs').readFileSync(fp, 'utf8');
+            return { ok: true, name: path.basename(fp), text: text, chars: text.length };
+        } catch (err) {
+            return { ok: false, say: 'Could not read that file: ' + (err && err.message ? err.message : 'refused') };
+        }
+    });
     ipcMain.handle('hand:chatClear', function () { return api.chatClear(); });
     ipcMain.handle('hand:chatNew', function () { return api.chatNew(); });
     ipcMain.handle('hand:chatPick', function (e, id) { return api.chatPick(id); });

@@ -1171,7 +1171,7 @@ function night_ask_answer_problem($text)
 //  Pure: validation and shaping only. The endpoint owns the SQL.
 // ============================================================
 
-const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries'];
+const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries', 'cottages'];
 const NIGHT_TOOL_ROWS_MAX = 12;    // a chat answer, not an export
 const NIGHT_TOOL_RANGE_MAX = 62;   // nights a range may span — two months is a chat, more is a report
 const NIGHT_TOOL_ARG_MAX = 60;     // any string argument's cap
@@ -1192,7 +1192,7 @@ function night_tool_iso($v)
 function night_tool_problem($tool, $args, $todayIso)
 {
     if (!in_array($tool, NIGHT_TOOLS, true)) {
-        return 'No such tool — the tools are today, bookings, availability and enquiries.';
+        return 'No such tool — the tools are today, bookings, availability, enquiries and cottages.';
     }
     $a = is_array($args) ? $args : [];
     if ($tool === 'availability') {
@@ -1330,4 +1330,58 @@ function night_tool_availability($cottage, $fromIso, $toIso, array $takenBy, $pr
         $out['price_note'] = 'rental total for 2 adults — the deposit and any party changes move it';
     }
     return $out;
+}
+
+// THE COTTAGES THEMSELVES — the tool the first four forgot, found live: the
+// owner asked the chat about a cottage and the model had nothing to see, not
+// even the names. Each row: the display name, what it sleeps, the nightly
+// rate formatted (or ABSENT — a cottage with no rate states no figure), and
+// its own published Q&A, capped. Nothing here is guest data, so there is
+// nothing to withhold beyond the caps.
+const NIGHT_TOOL_FACTS_MAX = 6;
+function night_tool_cottages(array $rows)
+{
+    $out = [];
+    foreach ($rows as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $name = night_str($r['name'] ?? '');
+        if ($name === '') {
+            continue;
+        }
+        $one = ['cottage' => $name];
+        $ad = (int) ($r['max_adults'] ?? 0);
+        $ch = (int) ($r['max_children'] ?? 0);
+        $tot = (int) ($r['max_total'] ?? 0);
+        if ($ad > 0) {
+            $one['sleeps'] = $ad . ' adults'
+                . ($ch > 0 ? ' + ' . $ch . ' children' : '')
+                . ($tot > 0 ? ' (' . $tot . ' at most)' : '');
+        }
+        $rate = (float) ($r['couple_rate'] ?? 0);
+        if ($rate > 0) {
+            $one['nightly'] = night_money($rate) . ' a night (base rate — seasons and weekends move it)';
+        }
+        $facts = [];
+        foreach (array_slice(array_values(array_filter(
+            is_array($r['facts'] ?? null) ? $r['facts'] : [],
+            'is_array',
+        )), 0, NIGHT_TOOL_FACTS_MAX) as $f) {
+            $q = night_str($f['q'] ?? '');
+            $a = night_str($f['a'] ?? '');
+            if ($q === '' || $a === '') {
+                continue;
+            }
+            $facts[] = [
+                'q' => mb_substr($q, 0, NIGHT_BRIEF_FACT_Q_MAX),
+                'a' => mb_substr($a, 0, NIGHT_BRIEF_FACT_A_MAX),
+            ];
+        }
+        if ($facts) {
+            $one['facts'] = $facts;
+        }
+        $out[] = $one;
+    }
+    return ['cottages' => array_slice($out, 0, NIGHT_TOOL_ROWS_MAX)];
 }

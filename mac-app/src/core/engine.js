@@ -214,6 +214,22 @@ function makeEngine(opts) {
             }
         },
 
+        // The loaded context window, MEASURED — llama.cpp's /props reports
+        // n_ctx for what is actually serving. An engine that does not report
+        // returns 0, and the meter that reads this shows NOTHING then: a
+        // guessed meter is worse than none.
+        async props() {
+            try {
+                const r = await get(base + '/props', 2500);
+                if (!r || !r.ok || !r.json) { return { ctx: 0 }; }
+                const g = r.json.default_generation_settings || {};
+                const n = parseInt(g.n_ctx, 10) || parseInt(r.json.n_ctx, 10) || 0;
+                return { ctx: n > 0 ? n : 0 };
+            } catch (e) {
+                return { ctx: 0 };
+            }
+        },
+
         // Ask for prose. Returns { ok, text, ms, tokens } or { ok:false, say }.
         // `temperature` is low on purpose: this is a business letter, not a poem,
         // and a deterministic-ish answer is one the guard can reason about.
@@ -338,6 +354,7 @@ function makeEngine(opts) {
             }
             const ms = Math.max(1, Date.now() - started);
             const out = parseInt((r.usage || {}).completion_tokens, 10) || 0;
+            const inTok = parseInt((r.usage || {}).prompt_tokens, 10) || 0;
             return {
                 ok: true,
                 stopped: false,
@@ -345,6 +362,9 @@ function makeEngine(opts) {
                 think: think.trim(),
                 ms: ms,
                 tokens: out,
+                // What the whole turn OCCUPIED — the context meter's number,
+                // the model's own count, 0 when the engine did not report.
+                promptTokens: inTok,
                 tokensPerSec: out && ms ? Math.round((out / (ms / 1000)) * 10) / 10 : null,
             };
         },

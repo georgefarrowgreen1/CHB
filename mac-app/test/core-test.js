@@ -1861,13 +1861,14 @@ function fakeSite(handler) {
                     // legal stream (one chunk); §32 drives the chunked form. A
                     // script item that is a FUNCTION owns its whole round
                     // (the stop case needs the abort signal in its hands).
+                    props: async function () { return { ctx: 8192 }; },
                     chatStream: async function (msgs, model, opts, onEv) {
                         calls.push({ msgs: msgs, grammar: (opts && opts.grammar) || '' });
                         const item = script.shift();
                         if (typeof item === 'function') { return item(opts, onEv); }
                         const text = item || 'ran out';
                         if (onEv) { onEv({ token: text }); }
-                        return { ok: true, stopped: false, text: text, think: '', ms: 5, tokens: 3, tokensPerSec: 1 };
+                        return { ok: true, stopped: false, text: text, think: '', ms: 5, tokens: 3, promptTokens: 100, tokensPerSec: 1 };
                     },
                 };
             },
@@ -2166,6 +2167,126 @@ function fakeSite(handler) {
         ok('deleting one repairs the pointer to a real survivor',
             del.threads.length === 1 && del.cur === del.threads[0].id
             && del.thread[0].text === 'a different question');
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+
+    // ── §33 ROOM TO THINK — the meter, instructions, attach, export ─────────
+    console.log('\n§33 room to think');
+
+    // Attachments: refused over the cap in a sentence, fenced when they fit.
+    ok('an empty file, a binary file and an oversize file are each refused in words',
+        /empty/.test(chatMod.chatAttachProblem(''))
+        && /text file/.test(chatMod.chatAttachProblem('bin' + String.fromCharCode(0) + 'ary'))
+        && /too big/.test(chatMod.chatAttachProblem('x'.repeat(chatMod.CHAT_ATTACH_CHARS + 1)))
+        && chatMod.chatAttachProblem('cleaner notes: key safe stiff') === '');
+    ok('the attachment joins the USER turn fenced, name and all',
+        (function () {
+            const m = chatMod.chatAttachMsg('what needs doing?', 'notes.txt', 'fix the tap');
+            return /^what needs doing\?/.test(m) && /--- attached file: notes\.txt ---/.test(m)
+                && /fix the tap/.test(m) && /--- end of notes\.txt ---/.test(m);
+        })());
+    ok('a message keeps its file NAME for the chip; garbage names are absent',
+        chatMod.chatMsg({ role: 'user', text: 'q', file: 'notes.txt' }).file === 'notes.txt'
+        && !('file' in chatMod.chatMsg({ role: 'user', text: 'q', file: '   ' })));
+
+    // The export: a document, with thinking quoted and lookups noted.
+    ok('the export is a Markdown document — title, roles, thinking as quotes, lookups noted',
+        (function () {
+            const md = chatMod.chatExportMd([
+                { role: 'user', text: 'who arrives?', at: '14:22' },
+                { role: 'assistant', text: 'Sarah does.', think: 'checking the day', used: ['today'] },
+            ], 'who arrives?', 'George');
+            return /^# who arrives\?/.test(md) && /## George · 14:22/.test(md)
+                && /## The model/.test(md) && /> checking the day/.test(md)
+                && /\*Checked the website: today\*/.test(md) && /Sarah does\./.test(md);
+        })());
+
+    // Instructions live on the thread, capped, cleared by emptiness.
+    ok('the store keeps a thread’s instruction, capped; junk is absent',
+        (function () {
+            const st = chatMod.chatStore({ v: 2, cur: 'a', threads: [
+                { id: 'a', title: 'x', at: 1, msgs: [], instr: '  two sentences  ' },
+                { id: 'b', title: 'y', at: 1, msgs: [], instr: 'z'.repeat(900) },
+                { id: 'c', title: 'w', at: 1, msgs: [], instr: 42 },
+            ] }, 0);
+            return st.threads[0].instr === 'two sentences'
+                && st.threads[1].instr.length === chatMod.CHAT_INSTR_CHARS
+                && !('instr' in st.threads[2]);
+        })());
+
+    // The engine's props: measured or zero, never a guess.
+    {
+        const engMod = require('../src/core/engine.js');
+        const e1 = engMod.makeEngine({ id: 'llamacpp', get: async function () {
+            return { ok: true, status: 200, json: { default_generation_settings: { n_ctx: 8192 } } };
+        } });
+        const e2 = engMod.makeEngine({ id: 'llamacpp', get: async function () {
+            return { ok: true, status: 200, json: { some: 'other shape' } };
+        } });
+        ok('props reads n_ctx from llama.cpp and answers 0 for an engine that does not report',
+            (await e1.props()).ctx === 8192 && (await e2.props()).ctx === 0);
+    }
+
+    // Through the api: the instruction rides the system content, the meter's
+    // numbers ride done, the trim is counted, the attachment travels fenced.
+    {
+        const h = mkChatApi(['Noted.', 'Second.'], null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        h.api.chatInstr('Answer in one short sentence.');
+        const r = await h.api.chatSend('hello');
+        ok('the standing instruction joins the system content on every send',
+            r.ok && /standing instruction for this conversation: Answer in one short sentence\./.test(h.calls[0].msgs[0].content),
+            h.calls[0].msgs[0].content.slice(-120));
+        ok('done carries the MEASURED meter numbers: the loaded window and what the turn occupied',
+            (function () {
+                const done = h.evs.filter(function (e) { return e.t === 'done'; })[0];
+                return done && done.ctx === 8192 && done.ctxUsed === 103 && done.dropped === 0;
+            })(), JSON.stringify(h.evs.filter(function (e) { return e.t === 'done'; })));
+        ok('…and the history hands the instruction back for the box',
+            h.api.chatHistory().instr === 'Answer in one short sentence.');
+        h.api.chatInstr('   ');
+        ok('an empty instruction CLEARS it — the way out is the way in',
+            h.api.chatHistory().instr === '');
+        // The attachment: refused over the cap at the door, fenced when it fits.
+        const rBig = await h.api.chatSend('read this', { attach: { name: 'big.txt', text: 'x'.repeat(9000) } });
+        ok('an oversize attachment is refused at the door in a sentence — nothing stored',
+            rBig.ok === false && /too big/.test(rBig.say)
+            && h.api.chatHistory().thread.filter(function (m) { return /read this/.test(m.text); }).length === 0);
+        const rOk = await h.api.chatSend('what needs doing?', { attach: { name: 'notes.txt', text: 'fix the tap' } });
+        const um = h.api.chatHistory().thread.filter(function (m) { return m.role === 'user'; }).pop();
+        ok('a fitting attachment rides the user turn fenced, with the name kept for the chip',
+            rOk.ok && um.file === 'notes.txt' && /--- attached file: notes\.txt ---/.test(um.text)
+            && /fix the tap/.test(um.text), JSON.stringify(um).slice(0, 200));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // The trim COUNT: a thread longer than the send budget reports how
+        // many turns no longer travel — the number behind the honest line.
+        const h = mkChatApi(Array.from({ length: 20 }, function (x, i) { return 'reply ' + i; }), null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        for (let i = 0; i < 16; i++) {
+            await h.api.chatSend('turn number ' + i);
+        }
+        const dones = h.evs.filter(function (e) { return e.t === 'done'; });
+        const lastDone = dones[dones.length - 1];
+        const nMsgs = h.api.chatHistory().thread.length;
+        ok('a long thread reports how many stored turns no longer travel',
+            nMsgs === 32 && lastDone.dropped === nMsgs - 1 - chatMod.CHAT_SEND_MAX
+            && dones[0].dropped === 0,
+            JSON.stringify({ msgs: nMsgs, dropped: lastDone.dropped }));
+        try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+
+    // Export through the api: a real document, an empty thread refused.
+    {
+        const h = mkChatApi(['An answer.'], null, '');
+        await h.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await h.api.chatSend('plan the week');
+        const cur = h.api.chatHistory().cur;
+        const ex = h.api.chatExport(cur);
+        ok('export hands back the document; an unknown or empty thread is refused',
+            ex.ok && /plan the week/.test(ex.md) && /An answer\./.test(ex.md)
+            && h.api.chatExport('ghost').ok === false);
         try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 

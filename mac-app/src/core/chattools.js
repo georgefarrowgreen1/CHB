@@ -32,6 +32,10 @@ const CHAT_TOOLS = {
     bookings: { args: ['from', 'to', 'name'], req: [] },
     availability: { args: ['cottage', 'from', 'to'], req: ['cottage', 'from', 'to'] },
     enquiries: { args: [], req: [] },
+    // The fleet itself — the tool the first four forgot. Found live: the
+    // owner asked about a cottage and the model had nothing to see, not
+    // even the names to put into an availability call.
+    cottages: { args: [], req: [] },
 };
 const CHAT_TOOL_NAMES = Object.keys(CHAT_TOOLS);
 // Lookups per message. Three answers most questions twice over; a model that
@@ -54,6 +58,9 @@ function chatToolsIntro(todayIso) {
         + '\u2022 availability \u2014 args {"cottage":"...","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} (all required): '
         + 'whether a cottage is free for those dates, and the website\u2019s own price when it is.\n'
         + '\u2022 enquiries \u2014 args {}: the enquiries waiting for a reply, each with its dates and the website\u2019s own quote.\n'
+        + '\u2022 cottages \u2014 args {}: the cottages themselves \u2014 their names, what each sleeps, the base '
+        + 'nightly rate, and their published questions and answers. Use it whenever the owner asks about '
+        + 'a cottage, its price, or what it offers, and to learn the exact names availability needs.\n'
         + 'Quote figures exactly as the results state them \u2014 never calculate or invent money. '
         + 'If a lookup fails, say so plainly.';
 }

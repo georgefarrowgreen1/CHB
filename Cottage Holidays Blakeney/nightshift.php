@@ -1073,6 +1073,28 @@ route_actions([
                 json_out(['ok' => true, 'tool' => $tool,
                     'data' => night_tool_availability($hits[$pk], $from, $to, $takenBy, $price)]);
             }
+            if ($tool === 'cottages') {
+                // The fleet itself — names, occupancy, base rate, published
+                // Q&A. Found live: the first four tools all assumed the model
+                // already knew what the cottages WERE, and it did not.
+                $rows = [];
+                $st = db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
+                                     FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name');
+                foreach ($st->fetchAll() as $pr) {
+                    $facts = [];
+                    try {
+                        $f = content_json('faqs-' . $pr['prop_key'], []);
+                        if (is_array($f)) {
+                            $facts = $f;
+                        }
+                    } catch (\Throwable $e) {
+                        $facts = [];
+                    }
+                    $pr['facts'] = $facts;
+                    $rows[] = $pr;
+                }
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_cottages($rows)]);
+            }
             // enquiries — the brief's own view, WITHOUT its draft stand-down
             // filter: that filter is about not re-drafting, and the chat is
             // asking what is waiting, which includes an enquiry whose draft
