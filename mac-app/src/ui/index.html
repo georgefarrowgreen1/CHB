@@ -13,138 +13,149 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<!-- THE WINDOW. No inline script and no inline style: the CSP above is as tight
-     as a local page can be, and `connect-src 'none'` means this document cannot
-     itself reach the network — every request goes through the preload bridge to
-     the main process, which is the only thing holding the secret. -->
+<!-- THE WINDOW, second anatomy (the approved redesign). The app stopped being
+     a night tool when the ask channel shipped — it answers the site in seconds
+     all day — so the window is organised around the owner's three questions:
+     is it working (Home), what did it do (Activity), what runs when (Work).
+     The touch-once plumbing lives in a Settings window (the gear, or ⌘,), the
+     macOS idiom. No inline script and no inline style: the CSP above is as
+     tight as a local page can be. -->
 
 <div class="win">
-  <!-- macOS 26: NO TITLE-BAR BAND. The window is hiddenInset, so macOS puts
-       the traffic lights over the floating sidebar; a transparent strip keeps
-       the top edge draggable, and the one global action floats as a glass
-       capsule top-right. The screen's own large title replaces the bar's —
-       #tbTitle/#tbSub stay as visually-hidden live text so the screen name
-       and run progress are still announced (app.js writes them). -->
   <div class="topdrag" aria-hidden="true"></div>
-  <div class="float-acts">
-    <button class="tbtn prime" type="button" id="runBtn">Run now</button>
-  </div>
+  <div class="float-acts"><span class="runsub" id="runSub"></span>
+    <button class="tbtn prime" type="button" id="runBtn">Run now</button></div>
   <span class="vh" id="tbTitle" aria-live="polite"></span><span class="vh" id="tbSub" aria-live="polite"></span>
 
   <nav class="side" aria-label="Sections">
-    <!-- THE IDENTITY. The site's own crown, and the business's name in
-         Playfair — the same mark and the same face the website leads with. It
-         was a letter "B" in a gold square, which named nothing. -->
     <div class="brand">
       <img class="mark" src="crown.svg" alt="" aria-hidden="true" width="26" height="26">
-      <span class="nm">Cottage Holidays<br>Blakeney<small>Overnight work</small></span>
+      <span class="nm">Cottage Holidays<br>Blakeney<small>The Hand</small></span>
     </div>
-    <button class="snav" type="button" data-v="0" aria-current="true">Tonight</button>
-    <button class="snav" type="button" data-v="1">Jobs<span class="badge" id="jobsBadge">0</span></button>
-    <button class="snav" type="button" data-v="2">Models<span class="badge" id="modelsBadge">0</span></button>
-    <button class="snav" type="button" data-v="3">Runner</button>
-    <button class="snav" type="button" data-v="4">Connection</button>
+    <button class="snav" type="button" data-v="0" aria-current="true">Home<span class="live" id="homeLive" hidden></span></button>
+    <button class="snav" type="button" data-v="1">Activity<span class="badge" id="actBadge">0</span></button>
+    <button class="snav" type="button" data-v="2">Work<span class="badge" id="jobsBadge">0</span></button>
+    <button class="snav" type="button" data-v="3">Library<span class="badge" id="modelsBadge">0</span></button>
+    <button class="snav gear" type="button" id="gearBtn" aria-haspopup="dialog">Settings<span class="kbd">⌘,</span></button>
     <div class="side-foot"><span class="dot" id="stateDot"></span><span id="stateSays">Starting…</span></div>
-    <!-- THE APP'S OWN VERSION lives where app-level state already lives, rather
-         than on Tonight (which is about tonight's run) or Runner (the engines).
-         It is a button because it opens the update sheet; it says "up to date"
-         or "vX is available" and never nothing. -->
+    <!-- The version line stays where app-level state lives; it opens the
+         update sheet and says "up to date" or "vX is available", never nothing. -->
     <button class="side-ver" type="button" id="verBtn" aria-live="polite">
       <span id="verText">Checking for updates…</span>
     </button>
   </nav>
 
   <main class="body">
-    <!-- TONIGHT -->
+    <!-- HOME — the heartbeat. A live verdict, three facts, the latest work.
+         On a fresh install the SETUP CHECKLIST is the home screen instead,
+         until its three steps are done. -->
     <section class="view" id="v0">
-      <div class="vhead"><div class="grow"><h1>Tonight</h1><p class="sub" id="tonightSub"></p></div></div>
-      <div class="box" id="tonightBox"></div>
-      <!-- The ask channel's day line: only ON SCREEN once the Mac has
-           actually answered something today — an empty "Today" heading would
-           claim activity that hasn't happened. -->
-      <div id="todayWrap" hidden><h2>Today</h2><div class="log" id="todayLog"></div></div>
-      <div><h2>Last night</h2><div class="log" id="lastLog"></div>
-        <p class="tiny" id="logNote"></p></div>
+      <div class="box hero" id="heroBox">
+        <div class="verdict">
+          <img class="crownbig" id="heroCrown" src="crown.svg" alt="" aria-hidden="true" width="38" height="38">
+          <div><h1 id="heroSay">Starting…</h1><p class="hsub" id="heroSub"></p></div>
+        </div>
+        <div class="facts" id="factsBox" hidden>
+          <div class="fact"><div class="fv" id="factAsks">0</div><div class="fk">asks answered today — usually within seconds</div></div>
+          <div class="fact"><div class="fv" id="factNight">—</div><div class="fk" id="factNightSub">tonight's work</div></div>
+          <div class="fact"><div class="fv" id="factEng">—</div><div class="fk" id="factEngSub">the engine</div></div>
+        </div>
+      </div>
+      <div class="box" id="checkBox" hidden></div>
+      <h2 id="latestCap" hidden>The latest</h2>
+      <div class="box feed" id="latestBox" hidden></div>
+      <p class="tiny" id="homeNote"></p>
     </section>
 
-    <!-- JOBS -->
+    <!-- ACTIVITY — one timeline: the daytime asks and the night runs together. -->
     <section class="view" id="v1" hidden>
-      <div class="vhead"><div class="grow"><h1>Jobs</h1></div></div>
-      <div class="box" id="jobsBox"></div>
-      <p class="tiny" id="jobsComing"></p>
-      <p class="tiny">Every job posts a draft for you to read. Nothing here can email a guest, take a payment or change a price &mdash; the site refuses one that tries.</p>
+      <div class="vhead"><div class="grow"><h1>Activity</h1>
+        <p class="sub">The daytime asks and the night runs, together. A refusal is the guard doing its job, so it is listed like everything else.</p></div></div>
+      <div class="filters">
+        <button class="fchip" type="button" data-f="all" aria-pressed="true">All</button>
+        <button class="fchip" type="button" data-f="ask" aria-pressed="false">Asks</button>
+        <button class="fchip" type="button" data-f="night" aria-pressed="false">Nights</button>
+        <button class="fchip" type="button" data-f="ref" aria-pressed="false">Refused</button>
+      </div>
+      <div class="box feed" id="feed"></div>
+      <p class="tiny" id="logNote"></p>
     </section>
 
-    <!-- MODELS -->
+    <!-- WORK — what runs when, grouped by its own clock. -->
     <section class="view" id="v2" hidden>
-      <div class="vhead"><div class="grow"><h1>Models</h1>
-        <p class="sub">Each verdict is measured against this Mac.</p></div>
+      <div class="vhead"><div class="grow"><h1>Work</h1>
+        <p class="sub">Every job posts a draft for you to read. Nothing here can email a guest, take a payment or change a price &mdash; the site refuses one that tries.</p></div></div>
+      <div class="box" id="weekBox"></div>
+      <div id="jobsBox"></div>
+      <p class="tiny" id="jobsComing"></p>
+    </section>
+
+    <!-- LIBRARY — the models, each saying what it is FOR. -->
+    <section class="view" id="v3" hidden>
+      <div class="vhead"><div class="grow"><h1>Library</h1>
+        <p class="sub" id="librarySub">Each verdict is measured against this Mac.</p></div>
         <button class="tbtn prime" type="button" id="addBtn">Add model…</button></div>
       <div class="box" id="modelsBox"></div>
       <p class="tiny" id="modelsNote"></p>
     </section>
-
-    <!-- RUNNER -->
-    <section class="view" id="v3" hidden>
-      <div class="vhead"><div class="grow"><h1>Runner</h1></div></div>
-      <div class="box" id="machineBox"></div>
-      <div><h2>Engine</h2><div class="box" id="engineBox"></div>
-        <p class="tiny" id="runnerNote" hidden></p>
-        <!-- The one command, selectable, when llama.cpp is nowhere. Not a
-             button that runs it: installing Homebrew packages is the owner's
-             decision and their Terminal, and an app that shells out to `brew`
-             on their behalf is doing something they did not ask for. -->
-        <pre class="fix" id="runnerFix" hidden></pre>
-        <div class="box"><div class="row"><div class="main"><b>Start the engine for a run</b>
-          <span>Started when work is due, stopped after.</span></div>
-          <div class="rail"><button class="sw" type="button" id="autoSw" aria-label="Start the model server for a run" aria-pressed="false"></button></div></div>
-        <div class="row"><div class="main"><b>Open this app at login</b>
-          <span>Asks from the website are only answered while the app is running.</span></div>
-          <div class="rail"><button class="sw" type="button" id="loginSw" aria-label="Open this app at login" aria-pressed="false"></button></div></div></div>
-      </div>
-    </section>
-
-    <!-- CONNECTION -->
-    <section class="view" id="v4" hidden>
-      <div class="vhead"><div class="grow"><h1>Connection</h1>
-        <p class="sub">Reads what is waiting and posts what it wrote &mdash; nothing else.</p></div></div>
-      <div class="box">
-        <!-- THE ADDRESS IS NOT A QUESTION. This app carries one business's crown
-             and can only ever talk to one site, so it ships knowing where that
-             is; asking for it was asking the owner to supply a fact the app
-             already had. The field is still HERE — a staging copy needs it — but
-             folded behind Change… so a fresh install has exactly one thing to
-             fill in, which is the code. -->
-        <div class="row"><div class="main"><b>Site</b>
-          <span id="siteSays">&mdash;</span></div>
-          <div class="rail"><button class="tbtn" type="button" id="siteEdit">Change&hellip;</button></div></div>
-        <div class="row" id="siteEditRow" hidden><div class="main"><b>Address</b>
-          <span>For a staging copy. Leave it empty for the standard one.</span></div>
-          <div class="rail"><input class="field wide" id="siteUrl" type="url" spellcheck="false" placeholder="https://…/nightshift.php" aria-label="Site address"></div></div>
-        <!-- THE ORDINARY WAY IN. Eight characters read off the website beats
-             sixty-four pasted, and the code is single-use and short-lived, so
-             one seen over a shoulder is worthless within the hour. -->
-        <div class="row alt"><div class="main"><b>Connect</b>
-          <span id="connectSays">Manage &rarr; System check &rarr; Connect a Mac, on the website.</span></div>
-          <div class="rail"><input class="field" id="codeIn" type="text" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345" aria-label="Connect code"><button class="tbtn prime" type="button" id="doConnect">Connect</button></div></div>
-        <!-- KEPT, because the code needs the website and this Mac reachable at
-             the same moment and this does not. -->
-        <div class="row" id="keyReveal"><div class="main"><b>No code to hand?</b>
-          <span>A key pasted from the website works when the two are not together.</span></div>
-          <div class="rail"><button class="tbtn" type="button" id="keyShow">Paste a key&hellip;</button></div></div>
-        <div class="row" id="keyRow" hidden><div class="main"><b>Key</b>
-          <span id="secretSays">Stored in the macOS Keychain, never in a file.</span></div>
-          <div class="rail"><input class="field" id="secretIn" type="password" placeholder="paste to change" aria-label="Site key"><button class="tbtn" type="button" id="saveSecret">Save</button></div></div>
-        <div class="row"><div class="main"><b>State</b><span id="connSays">Not tested yet.</span></div>
-          <div class="rail"><span class="chip n" id="connChip">Unknown</span><button class="tbtn" type="button" id="testBtn">Test now</button></div></div>
-      </div>
-      <div><h2>Recent nights</h2><div class="box" id="nightsBox"></div></div>
-    </section>
   </main>
 
-  <!-- the update sheet. NO inline style attributes: this page's CSP is
-       style-src 'self', which blocks a style="" attribute the same way it
-       blocks an inline <style> — the classes live in app.css. -->
+  <!-- SETTINGS — its own small window over the app, the macOS idiom (⌘,).
+       All the touch-once plumbing: the website, the engine, this Mac. Work
+       keeps the decisions about work (which jobs run, on which model). -->
+  <div class="scrim setscrim" id="setScrim" hidden>
+    <div class="setwin" role="dialog" aria-modal="true" aria-label="Settings">
+      <div class="set-titlebar">
+        <button class="set-close" type="button" id="setClose" aria-label="Close Settings"></button>
+        <b>Settings</b>
+      </div>
+      <div class="set-tabs">
+        <button class="stab" type="button" data-st="0" aria-pressed="true">Website</button>
+        <button class="stab" type="button" data-st="1" aria-pressed="false">Engine</button>
+        <button class="stab" type="button" data-st="2" aria-pressed="false">General</button>
+      </div>
+      <div class="set-body">
+        <div class="spane" id="st0">
+          <div class="box">
+            <div class="row"><div class="main"><b>Site</b>
+              <span id="siteSays">&mdash;</span></div>
+              <div class="rail"><button class="tbtn" type="button" id="siteEdit">Change&hellip;</button></div></div>
+            <div class="row" id="siteEditRow" hidden><div class="main"><b>Address</b>
+              <span>For a staging copy. Leave it empty for the standard one.</span></div>
+              <div class="rail"><input class="field wide" id="siteUrl" type="url" spellcheck="false" placeholder="https://…/nightshift.php" aria-label="Site address"></div></div>
+            <div class="row alt"><div class="main"><b>Connect</b>
+              <span id="connectSays">Manage &rarr; System check &rarr; Connect a Mac, on the website.</span></div>
+              <div class="rail"><input class="field" id="codeIn" type="text" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345" aria-label="Connect code"><button class="tbtn prime" type="button" id="doConnect">Connect</button></div></div>
+            <div class="row" id="keyReveal"><div class="main"><b>No code to hand?</b>
+              <span>A key pasted from the website works when the two are not together.</span></div>
+              <div class="rail"><button class="tbtn" type="button" id="keyShow">Paste a key&hellip;</button></div></div>
+            <div class="row" id="keyRow" hidden><div class="main"><b>Key</b>
+              <span id="secretSays">Stored in the macOS Keychain, never in a file.</span></div>
+              <div class="rail"><input class="field" id="secretIn" type="password" placeholder="paste to change" aria-label="Site key"><button class="tbtn" type="button" id="saveSecret">Save</button></div></div>
+            <div class="row"><div class="main"><b>State</b><span id="connSays">Not tested yet.</span></div>
+              <div class="rail"><span class="chip n" id="connChip">Unknown</span><button class="tbtn" type="button" id="testBtn">Test now</button></div></div>
+          </div>
+          <p class="tiny">Reads what is waiting and posts what it wrote &mdash; nothing else.</p>
+        </div>
+        <div class="spane" id="st1" hidden>
+          <div class="box" id="engineBox"></div>
+          <p class="tiny" id="runnerNote" hidden></p>
+          <!-- The one command, selectable, when llama.cpp is nowhere. Not a
+               button that runs it: installing Homebrew packages is the owner's
+               decision and their Terminal. -->
+          <pre class="fix" id="runnerFix" hidden></pre>
+          <div class="box"><div class="row"><div class="main"><b>Start the engine for a run</b>
+            <span>Started when work is due, stopped after &mdash; no Terminal needed.</span></div>
+            <div class="rail"><button class="sw" type="button" id="autoSw" aria-label="Start the model server for a run" aria-pressed="false"></button></div></div></div>
+        </div>
+        <div class="spane" id="st2" hidden>
+          <div class="box" id="machineBox"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the update sheet -->
   <div class="scrim" id="upScrim" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="upTitle">
       <div class="sheet-h">

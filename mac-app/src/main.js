@@ -17,7 +17,7 @@
 //  and "is one stored", never "what is it".
 // ============================================================
 'use strict';
-const { app, BrowserWindow, Menu, shell, ipcMain, powerSaveBlocker, dialog } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain, powerSaveBlocker, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const { makeApi } = require('./core/api');
@@ -126,6 +126,51 @@ function killChild() {
     if (child) {
         try { child.kill('SIGKILL'); } catch (e) { /* gone */ }
         child = null;
+    }
+}
+
+// ── THE MENU BAR (the redesign's sixth point). The asks only answer while
+// the app runs, so the app must be comfortable to LEAVE running: the crown
+// lives in the menu bar with the state and the two actions that matter, and
+// closing the window keeps everything listening (window-all-closed already
+// stays running — the tray is what makes that legible). The icon is a real
+// TEMPLATE image (rendered from the site's own crown), so macOS inks it for
+// whichever menu-bar appearance is in force.
+const TRAY_PNG_2X = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACIUlEQVR4nOyXu0scURTGP5MlIalCCAQhCUGDIYFAIEkVAiFImqRIE0UtLPwLLEQ7bRVbWwtFRVSwsRCfjRbi+4GFD7AQRETFQgUf+B3nXPfudWYdd0e32Q9+cObO3HO+OffuzGwMGVYMGVbWQMYNPER6qiOvyDxSVDodqCC1Gj8izUhBOUhNBfDu+rEeH5LPZAW31APcXnK3PVZx0VPSiRQ66u6Bf+QrWUgyp16vEzWRKfKN5JInZCBgnnS7hnwnY/agkbRwRuM2Uk7OnCS/Sb/GS2o2R0180PFCMuTMkxttIaV6LIYnJbCX4MiKy0g7Ejv0QpOITkgxOdZ5RTomatVrjWRZOqziogMT2AZWkShJ2oX4ukqSlxpXwuuA0SKp0jhXrzXFe8l/J/eaCdxfwQZ544z1kRHSaB3/hb9k/QstkxL/8anxNsiAFPqJYG2Rj2Qv4Ly0fhmJSwCfGr/MgfszNK3ZJXla0FZZkuKiHVLijG3Cu+N9p0ZSA8/VxA+yrWMNZBg3axDx5drSHLLpnjk1LuU+ONatOJ9Mk0/kPRlHeFXD2ysT8J6SX6xzoQ28UwPbiHchrM7JqJPLr8Y1A7a7fEQnO1fC+8LdA7LuBz6TojKwZ+X3NSAyDvMQnUyuNfeEnwGzRnfRgXWEMGBcyhMx3S8maI7XTu4rxZIYEJ0iWoUyMIe706w7EPRJJq/OAkQreWN2I6SBe1P2j0nWwAUAAAD//+fqWSoAAAAGSURBVAMAAOZlDuQ/dZkAAAAASUVORK5CYII=';
+let tray = null;
+function traySays() {
+    // Cheap facts only — api.quick() never probes an engine, because this
+    // line is rebuilt every half-minute for as long as the app lives.
+    const q = api && api.quick ? api.quick() : { secretSet: false, running: false, asksToday: 0 };
+    if (q.running) { return 'Working…'; }
+    if (!q.secretSet) { return 'Not connected yet — open the window'; }
+    return 'Listening — ' + q.asksToday + ' ask' + (q.asksToday === 1 ? '' : 's') + ' answered today';
+}
+function trayMenu() {
+    return Menu.buildFromTemplate([
+        { label: traySays(), enabled: false },
+        { type: 'separator' },
+        { label: 'Run tonight’s work now',
+            click: function () { if (api && api.runNow) { api.runNow().catch(function () { /* said in the log */ }); } } },
+        { label: 'Open the window',
+            click: function () { if (win) { win.show(); win.focus(); } else { create(); } } },
+        { type: 'separator' },
+        { label: 'Quit Blakeney Hand', role: 'quit' },
+    ]);
+}
+function startTray() {
+    try {
+        const img = nativeImage.createFromBuffer(Buffer.from(TRAY_PNG_2X, 'base64'), { scaleFactor: 2 });
+        img.setTemplateImage(true);
+        tray = new Tray(img);
+        tray.setToolTip('Blakeney Hand');
+        tray.setContextMenu(trayMenu());
+        // The state line has to be fresh WHEN THE MENU OPENS. Electron's
+        // context menu is a snapshot, so it is rebuilt on a slow clock — and
+        // askTick's own completions refresh it too (see startAskPoll).
+        setInterval(function () { if (tray) { tray.setContextMenu(trayMenu()); } }, 30000);
+    } catch (e) {
+        tray = null; // no tray is a smaller failure than no app
     }
 }
 
@@ -341,6 +386,7 @@ function startAskPoll() {
         try {
             if (!api) { return; }
             const out = await api.askSweep();
+            if (tray && out && (out.answered || out.failed)) { tray.setContextMenu(trayMenu()); }
             if (out && out.answered && win && !win.isDestroyed()) {
                 win.webContents.send('hand:ran', true);
             }
@@ -559,6 +605,7 @@ app.whenReady().then(function () {
     menu();
     maybeOfferMove();
     create();
+    startTray();
     startClock();
     startAskPoll();
     applyLoginItem();

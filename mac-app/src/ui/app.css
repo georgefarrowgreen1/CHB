@@ -212,6 +212,13 @@ input{-webkit-user-select:text;user-select:text}
 .snav .badge{margin-left:auto;font-size:10.5px;font-weight:600;
   background:color-mix(in srgb,var(--text-light) 12%,transparent);color:var(--text-light);
   border-radius:var(--r-pill);padding:1px 7px;min-width:20px;text-align:center}
+.snav.gear{margin-top:2px;color:var(--text-muted)}
+.snav.gear:hover{color:var(--text-light)}
+.kbd{margin-left:auto;font-size:10px;color:var(--text-muted);letter-spacing:.06em}
+.snav .live{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--ok);
+  animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.runsub{font-size:11px;color:var(--text-muted);max-width:280px;text-align:right}
 .side-foot{margin-top:auto;padding:11px 10px 2px;font-size:11.5px;color:var(--text-muted);
   border-top:1px solid var(--glass-border);display:flex;align-items:center;gap:8px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:0 0 auto}
@@ -314,25 +321,109 @@ select.pop{padding-right:6px}
 .field.wide{width:290px;max-width:40vw}
 .field::placeholder{color:var(--text-muted)}
 
-/* THE NIGHT LOG stays monospaced — it is a machine's account of its own night,
-   and the columns have to line up. The brand shows in what it ACHIEVED. */
-.log{background:var(--glass-bg);backdrop-filter:var(--glass-filter);
-  -webkit-backdrop-filter:var(--glass-filter);
-  border:1px solid var(--glass-border);border-radius:var(--r-lg);
-  box-shadow:var(--shadow-panel),var(--glass-rim);padding:16px 18px;min-height:64px}
-.lrow{display:grid;grid-template-columns:48px 1fr;gap:13px;font-family:var(--mono);
-  font-size:11.5px;line-height:1.75;color:var(--text-muted)}
-.lrow b{font-weight:400;color:var(--text-muted);opacity:.75}
-.lrow.hit,.lrow.hit b{color:var(--accent-text)}
-.lrow.fail,.lrow.fail b{color:var(--danger-text)}
-.lrow.warn,.lrow.warn b{color:var(--warn-text)}
-.lrow.skip{color:var(--text-muted);opacity:.72}
-.lrow.done,.lrow.done b{color:var(--text-light);font-weight:600}
+/* ── THE FEED — Activity's rows, and Home's latest. One timeline for the
+   daytime asks and the night runs, each line wearing its LEVEL: an answered
+   ask is the brand, a refusal is the guard's own colour, a skip is quiet.
+   The time column keeps the machine's monospace — it is a clock reading. ── */
+.feed{padding:2px 0}
+.arow{display:flex;align-items:flex-start;gap:12px;padding:10px 17px;
+  border-top:1px solid color-mix(in srgb,var(--text-light) 8%,transparent)}
+.arow:first-child{border-top:none}
+.aico{width:28px;height:28px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+  font-size:13px;margin-top:1px;
+  background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent-text)}
+.aico.night{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info-text)}
+.aico.ref{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger-text)}
+.aico.quiet{background:color-mix(in srgb,var(--text-muted) 10%,transparent);color:var(--text-muted)}
+.amain{min-width:0;flex:1 1 auto;font-size:12px;line-height:1.55;padding-top:4px}
+.amain.hit{color:var(--text-light)}
+.amain.fail{color:var(--danger-text)}
+.amain.warn{color:var(--warn-text)}
+.amain.skip,.amain.info{color:var(--text-muted)}
+.amain.done{color:var(--text-light);font-weight:600}
+.awhen{font-family:var(--mono);font-size:10.5px;color:var(--text-muted);flex:0 0 auto;
+  padding-top:6px;font-variant-numeric:tabular-nums}
+.dayhead{display:flex;align-items:center;gap:10px;font-size:10px;font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);padding:13px 17px 3px}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.fchip{font-size:11.5px;font-weight:600;color:var(--text-muted);
+  background:color-mix(in srgb,var(--text-light) 7%,transparent);border-radius:var(--r-pill);
+  padding:6px 13px;transition:background .15s var(--fluid)}
+.fchip:hover{background:var(--btn-hover)}
+.fchip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+
+/* ── HOME — the heartbeat. The verdict, three serif facts, the checklist. ── */
+.hero{padding:20px 20px 16px;display:flex;flex-direction:column;gap:13px}
+.hero .verdict{display:flex;align-items:center;gap:14px}
+.crownbig{width:38px;height:38px;flex:0 0 auto;position:relative;display:block}
+.hero .verdict .cwrap{position:relative;flex:0 0 auto;width:38px;height:38px}
+.hero .verdict .cwrap.live::after{content:"";position:absolute;inset:-7px;border-radius:50%;
+  border:1.5px solid color-mix(in srgb,var(--ok) 55%,transparent);animation:halo 3.2s ease-out infinite}
+@keyframes halo{0%{transform:scale(.72);opacity:0}30%{opacity:.9}100%{transform:scale(1.28);opacity:0}}
+.hero h1{font-family:var(--font-serif);font-size:21px;font-weight:600;letter-spacing:-.015em;
+  margin:0;line-height:1.25}
+.hero .hsub{font-size:12px;color:var(--text-muted);margin:3px 0 0;max-width:62ch}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.fact{border:1px solid var(--glass-border);border-radius:var(--r-md);padding:11px 13px;
+  background:color-mix(in srgb,var(--text-light) 3.5%,transparent)}
+.fact .fv{font-family:var(--font-serif);font-size:19px;font-weight:600;letter-spacing:-.01em;
+  line-height:1.2;font-variant-numeric:tabular-nums}
+.fact .fv small{font-family:var(--font-sans);font-size:10.5px;font-weight:500;color:var(--text-muted)}
+.fact .fk{font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.45}
+.stepn{width:22px;height:22px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  font-size:11px;font-weight:700;
+  border:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent);color:var(--accent-text)}
+.stepn.done{background:var(--ok);border-color:transparent;color:#fff}
+
+/* ── WORK — the week strip. Accent dots are the nightly drafts, info dots the
+   weekly notes; today wears a quiet accent ring. ── */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:14px 16px 5px}
+.wday{text-align:center;border-radius:var(--r-sm);padding:7px 4px 8px;border:1px solid transparent}
+.wday.today{border-color:color-mix(in srgb,var(--accent) 34%,transparent);
+  background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.wday .dl{font-size:9.5px;font-weight:600;letter-spacing:.06em;color:var(--text-muted)}
+.wday .dots{display:flex;gap:3px;justify-content:center;margin-top:5px;min-height:6px}
+.wday .dots i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.wday .dots i.n{background:var(--info)}
+.weekkey{display:flex;gap:16px;padding:0 16px 12px;font-size:10.5px;color:var(--text-muted)}
+.weekkey i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:5px}
+.weekkey .k2 i{background:var(--info)}
+.grouphead{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+  margin:14px 0 8px;color:var(--text-muted)}
+#jobsBox .grouphead:first-child{margin-top:0}
+
+/* ── LIBRARY — a model's ROLE, in words, derived from Work's own choices. ── */
+.role{font-size:9.5px;font-weight:600;letter-spacing:.02em;color:var(--accent-text);
+  background:color-mix(in srgb,var(--accent) 13%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+  border-radius:var(--r-pill);padding:2px 8px;vertical-align:2px;white-space:nowrap}
+.role.dim{opacity:.55}
 
 .prog{height:6px;border-radius:var(--r-pill);width:130px;overflow:hidden;
   background:color-mix(in srgb,var(--text-light) 12%,transparent)}
 .prog i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);
   transition:width .2s var(--fluid)}
+
+/* ── THE SETTINGS WINDOW — macOS's own idiom (⌘,): a small titled window
+   with toolbar tabs, over a dimmed app. All the touch-once plumbing lives
+   here; the main window keeps the daily work. ── */
+.setscrim{place-items:start center;padding-top:52px}
+.setwin{width:min(560px,94vw);border-radius:14px;overflow:hidden;background:var(--ground);
+  border:1px solid var(--glass-border);box-shadow:var(--shadow-float)}
+.set-titlebar{position:relative;display:grid;place-items:center;height:40px;
+  background:var(--glass-bg);border-bottom:1px solid var(--glass-border)}
+.set-titlebar b{font-size:13px;font-weight:700}
+.set-close{position:absolute;top:14px;left:14px;width:12.5px;height:12.5px;border-radius:50%;
+  background:#ff5f57;padding:0;border:none;cursor:pointer}
+.set-tabs{display:flex;justify-content:center;gap:6px;padding:8px 0;
+  background:var(--glass-bg);border-bottom:1px solid var(--glass-border)}
+.stab{min-width:78px;padding:6px 12px;border-radius:9px;font-size:11.5px;font-weight:600;
+  color:var(--text-muted);transition:background .15s var(--fluid)}
+.stab:hover{background:var(--btn-hover)}
+.stab[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 22%,transparent);
+  color:var(--accent-text)}
+.set-body{padding:16px;max-height:60vh;overflow-y:auto}
+.spane{display:flex;flex-direction:column;gap:10px}
 
 /* ── THE SHEET ──────────────────────────────────────────────── */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.42);backdrop-filter:blur(3px);

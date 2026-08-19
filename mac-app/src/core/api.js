@@ -190,6 +190,12 @@ function makeApi(deps) {
     return {
         // Everything the window paints on open. One call, so the UI never has to
         // orchestrate four.
+        // The tray's state line, rebuilt every half-minute for the life of the
+        // app — so it reads only what is already in hand and never probes.
+        quick() {
+            return { secretSet: secrets.state().set, running: running, asksToday: askAnswered };
+        },
+
         async state() {
             const reach = {};
             const engines = engineMod.available(mach);
@@ -241,7 +247,7 @@ function makeApi(deps) {
                 // The ask channel's day line, for Tonight: how many the Mac
                 // answered while the owner was at the site today, and the
                 // last few log lines so an answered ask is visible HERE too.
-                asks: { today: askAnswered, log: askLog.slice(-6) },
+                asks: { today: askAnswered, log: askLog.slice(-40) },
                 nights: nights.slice(0, 30),
                 running: running,
             };
@@ -497,6 +503,7 @@ function makeApi(deps) {
                 }
                 askAnswered += out.answered;
                 out.log.forEach(function (l) { askLog.push(l); });
+                if (askLog.length > 80) { askLog = askLog.slice(-80); }
                 askLog = askLog.slice(-20);
                 // Idle-stop: only re-armed when a sweep actually touched the
                 // engine (an ask existed). A stop while a NIGHT run holds the

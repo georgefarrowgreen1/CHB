@@ -395,6 +395,29 @@ jobs:
           # kills the whole browser-test. We don't need those repos, so drop them
           # before the install.
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          # ── THE APT MIRROR IS THE FLAKE, AND THIS IS THE MEASURED FIX ──
+          # The `rm -f *azure*.list` below removes Azure's PACKAGE FEED and
+          # reads as if it dealt with Azure — it does not. The hosted runner
+          # resolves the Ubuntu ARCHIVE through `mirror+file:/etc/apt/apt-
+          # mirrors.txt`, whose priority:1 entry is azure.archive.ubuntu.com,
+          # and THAT is what stalls. Measured in the log of a timed-out webkit
+          # leg: 181 packages / 114 MB requested, of which FIVE arrived in 18
+          # minutes — fonts-freefont-ttf (5.6 MB) took 6m10s and
+          # fonts-tlwg-loma-otf, all 107 KB of it, took 8m51s. A 107 KB file
+          # taking nine minutes is a dead connection, not a slow one.
+          #
+          # Three lines, each doing a different job:
+          #  1. drop to archive.ubuntu.com, which is the mirrorlist's own
+          #     priority:2 fallback — apt never reaches it by itself, because
+          #     a stalled transfer is not an error it fails over from;
+          #  2. give apt a timeout at all. Its default covers CONNECTING, so a
+          #     socket that trickles a few bytes a minute is never abandoned;
+          #  3. retry, since one bad connection should not be terminal.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt || true
+          fi
+          printf 'Acquire::http::Timeout "25";\nAcquire::https::Timeout "25";\nAcquire::Retries "3";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-chb-apt-timeouts > /dev/null
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
           # SPLIT, not `--with-deps`: the apt half runs every time (system
@@ -503,13 +526,46 @@ jobs:
         run: |
           # (Same Microsoft-apt-repo cleanup as browser-core.)
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          # ── THE APT MIRROR IS THE FLAKE, AND THIS IS THE MEASURED FIX ──
+          # The `rm -f *azure*.list` below removes Azure's PACKAGE FEED and
+          # reads as if it dealt with Azure — it does not. The hosted runner
+          # resolves the Ubuntu ARCHIVE through `mirror+file:/etc/apt/apt-
+          # mirrors.txt`, whose priority:1 entry is azure.archive.ubuntu.com,
+          # and THAT is what stalls. Measured in the log of a timed-out webkit
+          # leg: 181 packages / 114 MB requested, of which FIVE arrived in 18
+          # minutes — fonts-freefont-ttf (5.6 MB) took 6m10s and
+          # fonts-tlwg-loma-otf, all 107 KB of it, took 8m51s. A 107 KB file
+          # taking nine minutes is a dead connection, not a slow one.
+          #
+          # Three lines, each doing a different job:
+          #  1. drop to archive.ubuntu.com, which is the mirrorlist's own
+          #     priority:2 fallback — apt never reaches it by itself, because
+          #     a stalled transfer is not an error it fails over from;
+          #  2. give apt a timeout at all. Its default covers CONNECTING, so a
+          #     socket that trickles a few bytes a minute is never abandoned;
+          #  3. retry, since one bad connection should not be terminal.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt || true
+          fi
+          printf 'Acquire::http::Timeout "25";\nAcquire::https::Timeout "25";\nAcquire::Retries "3";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-chb-apt-timeouts > /dev/null
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
           # Split so the two halves are TIMED SEPARATELY. Working out that
           # "cancelled" meant "the apt half of --with-deps ran past the job
           # ceiling" took reading a duration against a timeout; with these
           # apart, the log says which one is slow.
-          npx playwright install-deps ${{ matrix.engine }}
+          #
+          # BOUNDED AND RETRIED. WebKit's set is 181 packages against
+          # Chromium's handful, so it is the leg that meets a bad mirror
+          # first — and the retry is worth having even with the mirror
+          # swapped, because the second attempt re-resolves the host rather
+          # than inheriting the stalled socket. Bounded at 6 minutes, which
+          # is comfortably past every healthy run measured (30-401s).
+          timeout 360 npx playwright install-deps ${{ matrix.engine }} \
+            || { echo "apt was slow — one more go on a fresh connection"; \
+                 sudo apt-get update -q || true; \
+                 timeout 420 npx playwright install-deps ${{ matrix.engine }}; }
           npx playwright install ${{ matrix.engine }}
 
       - name: Layout regression gate (${{ matrix.engine }})

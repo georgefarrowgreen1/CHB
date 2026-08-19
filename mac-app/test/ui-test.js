@@ -54,9 +54,10 @@ function fakeState(over) {
         ],
         engine: 'llamacpp', engineName: 'llama.cpp', engineServing: true, engineBase: 'http://127.0.0.1:8080',
         jobs: [
-            { id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: true, model: 'q.gguf', at: '02:00' },
-            { id: 'week', name: 'Read the week', what: 'Reads the week.', built: false, on: false, model: '', at: '04:00' },
+            { id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: true, model: 'q.gguf', at: '02:00', schedule: 'nightly' },
+            { id: 'week', name: 'Read the week', what: 'Reads the week.', built: false, on: false, model: '', at: '04:00', schedule: 'weekly-mon' },
         ],
+        asks: { today: 0, log: [] },
         models: [
             { id: 'q.gguf', name: 'Qwen 2.5 14B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 9, fit: 'ok', why: 'Runs well here' },
             { id: 'big.gguf', name: 'Qwen 2.5 72B Instruct', quant: 'Q4_K_M', format: 'gguf', sizeGB: 47, fit: 'no', why: 'Will not fit' },
@@ -195,15 +196,15 @@ function fakeState(over) {
         // ── ONE SCREEN AT A TIME, measured as PAINT not attribute ──
         const painted = function () {
             return page.evaluate(function () {
-                return [0, 1, 2, 3, 4].map(function (i) { return document.getElementById('v' + i).getClientRects().length > 0; });
+                return [0, 1, 2, 3].map(function (i) { return document.getElementById('v' + i).getClientRects().length > 0; });
             });
         };
-        ok('only Tonight is painted on open', JSON.stringify(await painted()) === '[true,false,false,false,false]',
+        ok('only Home is painted on open', JSON.stringify(await painted()) === '[true,false,false,false]',
             JSON.stringify(await painted()));
-        await page.click('[data-v="2"]');
+        await page.click('[data-v="3"]');
         await page.waitForTimeout(120);
-        ok('Models paints alone', JSON.stringify(await painted()) === '[false,false,true,false,false]');
-        ok('…and the title bar follows', (await page.textContent('#tbTitle')).trim() === 'Models');
+        ok('Library paints alone', JSON.stringify(await painted()) === '[false,false,false,true]');
+        ok('…and the title bar follows', (await page.textContent('#tbTitle')).trim() === 'Library');
 
         // ── MACOS 26 STRUCTURE: the facts that could regress silently ──
         // Measured as PAINT (computed style + boxes), not class names.
@@ -231,10 +232,13 @@ function fakeState(over) {
             m26.runBg + ' vs ' + m26.addBg);
         ok('the top edge is still draggable with the bar gone', m26.dragStrip);
 
-        // ── OPEN AT LOGIN: the switch that makes "answered while you wait"
-        // true without the owner remembering to open the app ──
-        await page.click('[data-v="3"]');
+        // ── THE SETTINGS WINDOW: the gear opens it, Escape closes it, and
+        // Open-at-login lives on its General tab (the macOS idiom, ⌘,) ──
+        await page.click('#gearBtn');
         await page.waitForTimeout(150);
+        ok('the gear opens the Settings window', await page.isVisible('.setwin'));
+        await page.click('[data-st="2"]');
+        await page.waitForTimeout(120);
         ok('the login switch starts off — an app must not add itself unasked',
             (await page.getAttribute('#loginSw', 'aria-pressed')) === 'false');
         await page.click('#loginSw');
@@ -243,68 +247,99 @@ function fakeState(over) {
             return window.__calls.filter(function (x) { return x[0] === 'saveConfig' && typeof x[1].openAtLogin === 'boolean'; }).pop();
         });
         ok('toggling it saves openAtLogin', loginSave && loginSave[1].openAtLogin === true, JSON.stringify(loginSave));
-        await page.click('[data-v="2"]');
+        await page.keyboard.press('Escape');
         await page.waitForTimeout(120);
+        ok('Escape closes Settings', !(await page.isVisible('.setwin')));
 
-        // ── ESCAPING. A guest name that is markup must be TEXT. ──
-        await page.click('[data-v="0"]');
+        // ── ACTIVITY: one timeline, and a guest name that is markup must be
+        // TEXT — escaped exactly once, at the render boundary ──
+        await page.click('[data-v="1"]');
         await page.waitForTimeout(120);
         const logInfo = await page.evaluate(function () {
-            const rows = document.querySelectorAll('#lastLog .lrow');
+            const rows = document.querySelectorAll('#feed .arow');
             let tags = 0;
-            rows.forEach(function (r) { tags += r.querySelectorAll('b').length > 1 ? 1 : 0; });
-            return { rows: rows.length, text: document.getElementById('lastLog').textContent, extraTags: tags };
+            rows.forEach(function (r) { tags += r.querySelector('.amain').children.length; });
+            return {
+                rows: rows.length,
+                text: document.getElementById('feed').textContent,
+                extraTags: tags,
+                todayHead: /Today/.test(Array.prototype.map.call(document.querySelectorAll('#feed .dayhead'), function (d) { return d.textContent; }).join('|')),
+            };
         });
-        ok('the night log renders its lines', logInfo.rows === 3);
-        // THE ASK CHANNEL'S DAY LINE: hidden until something happened — an
-        // empty "Today" heading would claim activity that hasn't happened —
-        // and painted from state once it has.
-        ok('with no asks today, the Today block is absent from the paint',
-            await page.isHidden('#todayWrap'));
+        ok('the night run renders its lines in the feed', logInfo.rows === 3, String(logInfo.rows));
+        // With no asks today there is no Today section — a heading with
+        // nothing under it would claim activity that hasn't happened.
+        ok('with no asks today, the feed has no Today section', !logInfo.todayHead);
+        ok("a guest called O'Brien & <b>Sons</b> arrives as TEXT", logInfo.text.indexOf("O'Brien & <b>Sons</b>") !== -1, logInfo.text.slice(0, 200));
+        ok('…and its markup never became an element', logInfo.extraTags === 0, String(logInfo.extraTags));
         await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
             asks: { today: 1, log: [{ at: '14:02', say: 'Pat · answered while you waited', level: 'hit' }] },
         })) + '; window.__nextState = null;');
         await page.reload();
         await page.waitForTimeout(400);
-        ok('an answered ask paints the Today block with its line',
-            await page.isVisible('#todayWrap')
-            && /answered while you waited/.test(await page.textContent('#todayLog')));
+        await page.click('[data-v="1"]');
+        await page.waitForTimeout(120);
+        ok('an answered ask paints the Today section with its line',
+            /Today/.test(await page.textContent('#feed'))
+            && /answered while you waited/.test(await page.textContent('#feed')));
+        // …and the same ask leads Home's "The latest".
+        await page.click('[data-v="0"]');
+        await page.waitForTimeout(120);
+        ok("…and leads Home's latest", /answered while you waited/.test(await page.textContent('#latestBox')));
+        // THE FILTER: Asks keeps the ask, hides the night.
+        await page.click('[data-v="1"]');
+        await page.click('[data-f="ask"]');
+        await page.waitForTimeout(120);
+        const filtered = await page.evaluate(function () {
+            const vis = Array.prototype.filter.call(document.querySelectorAll('#feed .arow'), function (r) { return r.getClientRects().length > 0; });
+            return { n: vis.length, text: vis.map(function (r) { return r.textContent; }).join('|') };
+        });
+        ok('the Asks filter keeps the ask and hides the night', filtered.n === 1 && /answered while you waited/.test(filtered.text),
+            JSON.stringify(filtered));
         await page.addInitScript('window.__state = ' + JSON.stringify(fakeState()) + '; window.__nextState = null;');
         await page.reload();
         await page.waitForTimeout(400);
-        ok("a guest called O'Brien & <b>Sons</b> arrives as TEXT", logInfo.text.indexOf("O'Brien & <b>Sons</b>") !== -1, logInfo.text);
-        ok('…and its markup never became an element', logInfo.extraTags === 0);
 
-        // ── JOBS: what is not built gets no controls at all ──
-        // Re-aimed with the copy cleanup: an unbuilt job used to render a full
-        // row wearing a dead dropdown and a disabled switch; now it renders NO
-        // row and is named in the one "Coming next" line instead. A control
-        // you can't use yet isn't a control.
-        await page.click('[data-v="1"]');
+        // ── WORK: grouped by its own clock, the ask channel first, and what
+        // is not built gets no controls at all ──
+        await page.click('[data-v="2"]');
         await page.waitForTimeout(120);
-        const jobRows = await page.evaluate(function () {
-            return Array.prototype.map.call(document.querySelectorAll('#jobsBox .row'), function (r) {
-                const sw = r.querySelector('[data-job-on]');
-                return { disabled: !!(sw && sw.disabled), on: !!(sw && sw.classList.contains('on')) };
+        const work = await page.evaluate(function () {
+            const heads = Array.prototype.map.call(document.querySelectorAll('#jobsBox .grouphead'), function (h) { return h.textContent; });
+            const jobRows = Array.prototype.map.call(document.querySelectorAll('#jobsBox [data-job-on]'), function (sw) {
+                return { disabled: !!sw.disabled, on: sw.classList.contains('on') };
             });
+            const ask = document.getElementById('askChip');
+            return { heads: heads, jobRows: jobRows, ask: ask ? ask.textContent : '', week: !!document.querySelector('#weekBox .wday.today') };
         });
-        ok('the built job has a live switch, on', jobRows[0] && !jobRows[0].disabled && jobRows[0].on);
-        ok('an unbuilt job renders no row', jobRows.length === 1, String(jobRows.length));
+        ok('the ask channel leads Work — always-on, no switch, Listening',
+            /While the app is open/.test(work.heads[0]) && work.ask === 'Listening', JSON.stringify(work));
+        ok('the nightly group names its own clock', work.heads.some(function (h) { return /Every night · 02:00/.test(h); }), JSON.stringify(work.heads));
+        ok('the built job has a live switch, on', work.jobRows[0] && !work.jobRows[0].disabled && work.jobRows[0].on);
+        ok('an unbuilt job renders no row', work.jobRows.length === 1, String(work.jobRows.length));
         ok('…and is named in the Coming-next line', /Coming next: read the week/.test(await page.textContent('#jobsComing')),
             await page.textContent('#jobsComing'));
+        ok('the week strip rings today', work.week);
         await page.click('[data-job-on="reply"]');
         await page.waitForTimeout(200);
         const saved = await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'saveConfig'; }).pop(); });
         ok('switching a job off saves it as off', saved && saved[1].job.id === 'reply' && saved[1].job.on === false, JSON.stringify(saved));
 
-        // ── MODELS: a fit verdict per row, and the sheet ──
-        await page.click('[data-v="2"]');
+        // ── LIBRARY: a fit verdict per row, a ROLE in words, and the sheet ──
+        await page.click('[data-v="3"]');
         await page.waitForTimeout(120);
         const chips = await page.evaluate(function () {
             return Array.prototype.map.call(document.querySelectorAll('#modelsBox .chip'), function (c) { return c.className + '|' + c.textContent; });
         });
         ok('each installed model carries a verdict about this Mac', chips.length === 2 && /ok\|Runs well/.test(chips[0]) && /no\|Will not fit/.test(chips[1]),
             JSON.stringify(chips));
+        // THE ROLE comes from Work's own choices, so the two screens cannot
+        // disagree: the reply job points at q.gguf, so q.gguf says what for.
+        const roles = await page.evaluate(function () {
+            return Array.prototype.map.call(document.querySelectorAll('#modelsBox .role'), function (r) { return r.textContent + (r.classList.contains('dim') ? ' (dim)' : ''); });
+        });
+        ok('a model a job points at wears its role in words', /prose|second/.test(roles[0] || ''), JSON.stringify(roles));
+        ok('a model nothing points at says unused, quietly', /unused \(dim\)/.test(roles[1] || ''), JSON.stringify(roles));
         ok('the sheet is closed', !(await page.isVisible('#scrim')));
         await page.click('#addBtn');
         await page.waitForTimeout(150);
@@ -336,8 +371,10 @@ function fakeState(over) {
         await page.waitForTimeout(120);
         ok('Escape closes the sheet', !(await page.isVisible('#scrim')));
 
-        // ── RUNNER: MLX withdrawn with a reason, never silently absent ──
-        await page.click('[data-v="3"]');
+        // ── THE ENGINE (Settings → Engine): MLX withdrawn with a reason ──
+        await page.click('#gearBtn');
+        await page.waitForTimeout(120);
+        await page.click('[data-st="1"]');
         await page.waitForTimeout(150);
         const eng = await page.evaluate(function () {
             return Array.prototype.map.call(document.querySelectorAll('#engineBox .row'), function (r) {
@@ -356,8 +393,9 @@ function fakeState(over) {
         ok('MLX is listed even when it cannot run', !!mlx);
         ok('…dimmed, disabled, and giving the reason', mlx.dim && mlx.btnDisabled && /Apple silicon only/.test(mlx.sub), JSON.stringify(mlx));
 
-        // ── CONNECTION: the secret is never shown, and Test says what it found ──
-        await page.click('[data-v="4"]');
+        // ── THE WEBSITE (Settings → Website): the secret is never shown,
+        // and Test says what it found ──
+        await page.click('[data-st="0"]');
         await page.waitForTimeout(150);
         // THE ADDRESS IS NOT A QUESTION. This checked that a text field had been
         // pre-filled with an address the owner had to supply in the first place;
@@ -389,7 +427,7 @@ function fakeState(over) {
         await page.waitForTimeout(120);
         ok('…and Paste a key… opens it', await page.isVisible('#keyRow'));
         ok('the secret field is a password field', (await page.getAttribute('#secretIn', 'type')) === 'password');
-        ok('the secret is never printed on the page', (await page.textContent('#v4')).indexOf('••••') === -1);
+        ok('the secret is never printed on the page', (await page.textContent('#setScrim')).indexOf('••••') === -1);
         ok('…and it says one is stored', /Keychain/.test(await page.textContent('#secretSays')));
         await page.click('#testBtn');
         await page.waitForTimeout(250);
@@ -413,51 +451,69 @@ function fakeState(over) {
             && (await page.inputValue('#secretIn')) === '');
 
         // ── RUN NOW ──
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(120);
         await page.click('#runBtn');
         await page.waitForTimeout(400);
         ok('Run now asks the core to run', await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'runNow'; }); }));
-        ok('…and lands back on Tonight', JSON.stringify(await painted()) === '[true,false,false,false,false]');
+        ok('…and lands back on Home', JSON.stringify(await painted()) === '[true,false,false,false]');
 
         // ── FIRST RUN: nothing set up at all, and the window says what to do
         // rather than showing empty boxes. Driven by reloading with a bare state
         // (a later addInitScript wins, so this genuinely re-boots the window).
         await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
             secretSet: false, models: [], nights: [],
-            jobs: [{ id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: false, model: '', at: '02:00' }],
+            jobs: [{ id: 'reply', name: 'Draft enquiry replies', what: 'Reads the enquiries waiting.', built: true, on: false, model: '', at: '02:00', schedule: 'nightly' }],
         })) + '; window.__nextState = null;');
         await page.reload();
         await page.waitForTimeout(350);
         ok('a first run has no page errors either', errs.length === 0, errs.join(' | '));
-        // "No site yet" is gone with the question it described: the only thing a
-        // fresh install is missing now is the code.
         ok('the foot says what is missing — the code, not an address',
             /Not connected/.test(await page.textContent('#stateSays')),
             await page.textContent('#stateSays'));
-        // ONE THING TO DO, AND THE CURSOR IS IN IT.
-        await page.click('[data-v="4"]');
-        await page.waitForTimeout(200);
-        ok('a fresh install lands with the cursor in the code box',
-            await page.evaluate(function () { return document.activeElement.id === 'codeIn'; }),
-            await page.evaluate(function () { return document.activeElement.id; }));
-        await page.click('[data-v="0"]');
-        await page.waitForTimeout(120);
-        ok('…and never claims it lacks an address it ships with',
-            !/No site/.test(await page.textContent('#v4')) && !/not set yet/.test(await page.textContent('#v0')),
-            await page.textContent('#stateSays'));
-        ok('…and the dot is not green', (await page.getAttribute('#stateDot', 'class')).indexOf('off') !== -1);
-        const empties = await page.evaluate(function () {
+        // THE CHECKLIST IS THE HOME SCREEN until its three steps are done —
+        // no wizard to find, no order to guess, each step actionable in place.
+        const check = await page.evaluate(function () {
+            const steps = Array.prototype.map.call(document.querySelectorAll('#checkBox .stepn'), function (n) { return n.textContent + (n.classList.contains('done') ? '✓' : ''); });
             return {
-                tonight: document.getElementById('tonightBox').textContent,
-                log: document.getElementById('lastLog').textContent,
+                shown: document.getElementById('checkBox').getClientRects().length > 0,
+                factsHidden: document.getElementById('factsBox').getClientRects().length === 0,
+                steps: steps,
+                text: document.getElementById('checkBox').textContent,
             };
         });
-        ok('Tonight tells you to choose a model rather than showing a blank', /Choose one/.test(empties.tonight), empties.tonight.slice(0, 120));
-        ok('…and the empty log offers Run now instead of nothing', /Run now/.test(empties.log), empties.log);
-        await page.click('[data-v="2"]');
+        ok('a fresh install shows the setup checklist instead of the heartbeat',
+            check.shown && check.factsHidden, JSON.stringify(check.steps));
+        ok('…three steps, none claiming to be done', check.steps.join(',') === '1,2,3', check.steps.join(','));
+        ok('…step 3 waits for step 2 rather than offering a dead switch', /Waiting on step 2/.test(check.text));
+        // STEP 1's button opens Settings with the cursor already in the code
+        // box — the one thing a fresh install has to fill in.
+        await page.click('#stepConnect');
+        await page.waitForTimeout(200);
+        ok('the connect step opens Settings with the cursor in the code box',
+            await page.isVisible('.setwin')
+            && await page.evaluate(function () { return document.activeElement.id === 'codeIn'; }),
+            await page.evaluate(function () { return document.activeElement.id; }));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(120);
+        ok('…and never claims it lacks an address it ships with',
+            !/No site/.test(await page.textContent('#setScrim')) && !/not set yet/.test(await page.textContent('#v0')),
+            await page.textContent('#stateSays'));
+        ok('…and the dot is not green', (await page.getAttribute('#stateDot', 'class')).indexOf('off') !== -1);
+        // STEP 2's button opens the real Add-model sheet.
+        await page.click('#stepAdd');
+        await page.waitForTimeout(150);
+        ok('the model step opens the real Add-model sheet', await page.isVisible('#scrim'));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(120);
+        await page.click('[data-v="1"]');
+        await page.waitForTimeout(120);
+        ok('…and the empty feed offers Run now instead of nothing', /Run now/.test(await page.textContent('#feed')),
+            await page.textContent('#feed'));
+        await page.click('[data-v="3"]');
         await page.waitForTimeout(150);
         ok('an empty model library says where to start', /No models yet/.test(await page.textContent('#modelsBox')));
-        await page.click('[data-job-on="reply"]').catch(function () {});
-        await page.click('[data-v="1"]');
+        await page.click('[data-v="2"]');
         await page.waitForTimeout(150);
         await page.click('[data-job-on="reply"]');
         await page.waitForTimeout(220);
@@ -505,7 +561,9 @@ function fakeState(over) {
             await page.addInitScript('window.__state = ' + JSON.stringify(fakeState(over)) + '; window.__nextState = null;');
             await page.reload();
             await page.waitForTimeout(350);
-            await page.click('[data-v="3"]');
+            await page.click('#gearBtn');
+            await page.waitForTimeout(120);
+            await page.click('[data-st="1"]');
             await page.waitForTimeout(150);
         }
         const DOWN = {
@@ -526,14 +584,19 @@ function fakeState(over) {
             /Resources\/runner\/llama-server/.test(await page.textContent('#runnerNote')),
             await page.textContent('#runnerNote'));
 
-        // THE TONIGHT VERDICT FOLLOWS. "Not answering" in red would report a
+        // THE HOME FACT FOLLOWS. "Not answering" in red would report a
         // problem the app is about to solve for itself.
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(120);
         await page.click('[data-v="0"]');
         await page.waitForTimeout(150);
-        ok('Tonight says the engine STARTS for the run, not that it is broken',
-            /Starts for the run/.test(await page.textContent('#tonightBox')),
-            await page.textContent('#tonightBox'));
-        await page.click('[data-v="3"]');
+        ok('Home says the engine STARTS itself, not that it is broken',
+            (await page.textContent('#factEng')).trim() === 'Starts'
+            && /starts itself/.test(await page.textContent('#factEngSub')),
+            await page.textContent('#factEng'));
+        await page.click('#gearBtn');
+        await page.waitForTimeout(120);
+        await page.click('[data-st="1"]');
         await page.waitForTimeout(150);
 
         // Pressing it calls the bridge and reports the sentence the main
