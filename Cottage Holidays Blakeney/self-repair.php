@@ -331,6 +331,17 @@ try {
         $fixed[] = "pruned $chatPruned chat photo(s) older than a week";
     }
 
+    // The AI chat's conversation rows: the cap is a RETENTION POLICY now,
+    // not a memory limit — ninety days is longer than any thread stays live,
+    // and the guarded try keeps a pre-migration install untouched.
+    try {
+        $n = db()->exec('DELETE FROM ownerchat_msgs WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)');
+        if ($n > 0) {
+            $fixed[] = "pruned $n AI-chat message(s) older than ninety days";
+        }
+    } catch (\Throwable $e) {
+    }
+
     if (is_dir($upDir)) {
         // Everything that can legitimately reference an upload, in one haystack.
         $hay = '';

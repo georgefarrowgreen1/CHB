@@ -11857,8 +11857,10 @@ function mcMsgHtml(m, ix) {
         // reload on any device still says these words were cut short.
         h += `<div class="mc-meta">stopped by you — kept what it had said</div>`;
     }
-    if (m.act && MC_ACTS[m.act.kind]) {
-        h += mcActHtml(m.act, ix);
+    if (m.act && MC_ACTS[m.act.kind] && m.id != null) {
+        // BY ID, never by position (the row era): a card is its message's id,
+        // so a thread that grows or prunes underneath cannot re-aim a tap.
+        h += mcActHtml(m.act, m.id);
     }
     return h;
 }
@@ -12018,28 +12020,28 @@ function mcActHtml(act, ix) {
         <div class="mc-act-note">Nothing happens until you confirm — this runs from your phone with the site’s own checks.</div>
     </div>`;
 }
-function mcActAt(ix) {
-    const m = __mcState && Array.isArray(__mcState.msgs) ? __mcState.msgs[Number(ix)] : null;
+function mcActAt(id) {
+    const list = __mcState && Array.isArray(__mcState.msgs) ? __mcState.msgs : [];
+    const m = list.find((x) => x && Number(x.id) === Number(id));
     return m && m.who === 'mac' && m.act && MC_ACTS[m.act.kind] && !m.act.done ? m.act : null;
 }
-async function mcActVerdict(ix, verdict) {
-    const act = __mcState.msgs[Number(ix)].act;
+async function mcActVerdict(id, verdict) {
+    const act = mcActAt(id) || (((__mcState || {}).msgs || []).find((x) => Number(x.id) === Number(id)) || {}).act;
+    if (!act) return;
     let r = null;
-    try { r = await apiPost('nightshift.php', { action: 'chat_act_done', idx: Number(ix), kind: act.kind, verdict }); } catch (e) { r = { error: e && e.message }; }
+    try { r = await apiPost('nightshift.php', { action: 'chat_act_done', id: Number(id), kind: act.kind, verdict }); } catch (e) { r = { error: e && e.message }; }
     if (r && r.ok) {
         act.done = r.verdict || verdict;
         act.doneAt = act.doneAt || '';
-        const node = document.getElementById('mc-act-' + ix);
-        if (node) node.outerHTML = mcActHtml(act, Number(ix));
+        const node = document.getElementById('mc-act-' + id);
+        if (node) node.outerHTML = mcActHtml(act, Number(id));
         return;
     }
-    // The thread moved (another device, the cap rotated) — refresh rather
-    // than guess which card the index means now.
     toast((r && r.error) || 'The conversation has moved on — refreshing.');
     renderMacChat();
 }
-async function mcActRun(ix) {
-    const act = mcActAt(ix);
+async function mcActRun(id) {
+    const act = mcActAt(id);
     if (!act) return;
     let did = false;
     try {
@@ -12050,11 +12052,11 @@ async function mcActRun(ix) {
         glassAlert((e && e.message) || 'That could not be done just now.');
         return;
     }
-    if (did) await mcActVerdict(ix, 'done');
+    if (did) await mcActVerdict(id, 'done');
 }
-async function mcActDismiss(ix) {
-    if (!mcActAt(ix)) return;
-    await mcActVerdict(ix, 'dismissed');
+async function mcActDismiss(id) {
+    if (!mcActAt(id)) return;
+    await mcActVerdict(id, 'dismissed');
 }
 // THE WELCOME CARRIES THE DAY — composed on the phone from chbDuties(), the
 // ONE decision about what needs the owner, so this card and Today's strip can

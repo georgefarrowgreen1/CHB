@@ -288,3 +288,22 @@ CREATE TABLE IF NOT EXISTS email_outbox (
     gave_up_at DATETIME NULL,
     KEY idx_due (sent_at, gave_up_at, next_try_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------- The web AI chat's conversation (see migration-118) ----------
+CREATE TABLE IF NOT EXISTS ownerchat_msgs (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    who         VARCHAR(8)   NOT NULL,            -- 'you' | 'mac'
+    text        MEDIUMTEXT   NOT NULL,
+    think       MEDIUMTEXT   NULL,
+    used        VARCHAR(120) NULL,                -- JSON list of tool names
+    model       VARCHAR(80)  NULL,
+    stopped     TINYINT      NOT NULL DEFAULT 0,
+    act         TEXT         NULL,                -- JSON, validated both ways
+    act_done    VARCHAR(12)  NULL,                -- 'done' | 'dismissed'
+    act_done_at VARCHAR(8)   NULL,
+    img         VARCHAR(80)  NULL,                -- chat photo ref (minted shape)
+    file        VARCHAR(80)  NULL,                -- an attached document's name
+    at          VARCHAR(16)  NOT NULL DEFAULT '',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

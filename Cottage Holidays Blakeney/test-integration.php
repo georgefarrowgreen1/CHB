@@ -3317,10 +3317,12 @@ it_check('acts: the phone receives it NORMALISED — prop key resolved, note kep
     is_array($wcAct) && ($wcAct['kind'] ?? '') === 'block_dates'
     && ($wcAct['prop'] ?? '') === $wcProp['prop_key'] && ($wcAct['note'] ?? '') === 'boiler'
     && !isset($wcAct['done']), $r['raw']);
-$wcIdx = count(http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread'])['json']['msgs'] ?? []) - 1;
-$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'idx' => $wcIdx, 'kind' => 'block_dates', 'verdict' => 'done']);
+$wcMsgs = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread'])['json']['msgs'] ?? [];
+$wcAidRow = (int) ($wcMsgs[count($wcMsgs) - 1]['id'] ?? 0);
+it_check('acts: every message now carries its ID — the card\'s address', $wcAidRow > 0, json_encode($wcMsgs));
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'id' => $wcAidRow, 'kind' => 'block_dates', 'verdict' => 'done']);
 it_check('acts: the verdict is thread state', ($r['json']['verdict'] ?? '') === 'done', $r['raw']);
-$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'idx' => $wcIdx, 'kind' => 'block_dates', 'verdict' => 'dismissed']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'id' => $wcAidRow, 'kind' => 'block_dates', 'verdict' => 'dismissed']);
 it_check('acts: a decided card cannot be re-decided — the stored verdict stands',
     ($r['json']['already'] ?? false) === true && ($r['json']['verdict'] ?? '') === 'done', $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
@@ -3370,6 +3372,25 @@ $r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => 
 it_check('acts: a guessed enquiry id is refused at the door',
     $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'no waiting enquiry') !== false, $r['raw']);
 $rootDb->exec('DELETE FROM enquiries WHERE id = ' . $wcEnqId);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+
+// ── THE ROW ERA (migration-118): the blob is ADOPTED, ids appear ────────
+$rootDb->exec('DELETE FROM ownerchat_msgs');
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'mac-chat',
+    'value' => json_encode(['instr' => 'short answers', 'msgs' => [
+        ['who' => 'you', 'text' => 'an old question', 'at' => '09:00'],
+        ['who' => 'mac', 'text' => 'An old answer.', 'at' => '09:01'],
+    ]])]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+it_check('rows: the blob\'s conversation is adopted into rows — ids on every message, nothing lost',
+    count($r['json']['msgs'] ?? []) === 2 && ($r['json']['msgs'][0]['id'] ?? 0) > 0
+    && ($r['json']['msgs'][1]['text'] ?? '') === 'An old answer.'
+    && ($r['json']['instr'] ?? '') === 'short answers', $r['raw']);
+// content_set_scalar json_encodes its value, so the column holds JSON of a
+// JSON string — decode twice, the same round trip content_json makes.
+$wcBlob = json_decode((string) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mac-chat'")->fetchColumn(), true), true);
+it_check('rows: …and the blob keeps only the instruction afterwards',
+    ($wcBlob['msgs'] ?? ['x']) === [] && ($wcBlob['instr'] ?? '') === 'short answers');
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 
 // ── THE GROUNDING PACK + MEMORY — every ask arrives already knowing ─────

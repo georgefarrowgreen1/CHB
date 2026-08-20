@@ -949,11 +949,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       if (body.action === 'chat_thread') {
         return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
           { who: 'you', text: 'block jollyboat for the boiler', at: '12:00' },
-          { who: 'mac', text: 'I can hold those dates.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04', note: 'boiler' } },
-          { who: 'mac', text: 'And this one you should never see.', at: '12:02', act: { kind: 'delete_everything', prop: 'jollyboat' } },
+          { who: 'mac', id: 501, text: 'I can hold those dates.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04', note: 'boiler' } },
+          { who: 'mac', id: 502, text: 'And this one you should never see.', at: '12:02', act: { kind: 'delete_everything', prop: 'jollyboat' } },
         ] };
       }
-      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      if (body.action === 'chat_act_done') { window.__mcVerdictIds = (window.__mcVerdictIds || []).concat([body.id]); return { ok: true, verdict: body.verdict }; }
       return { ok: true };
     };
     return renderMacChat();
@@ -979,6 +979,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(acDis.reqs.length === 1 && /nightshift\.php:chat_act_done/.test(acDis.reqs[0]) && acDis.off && acDis.buttons === 0,
     `Dismiss records the verdict and ONLY the verdict — the card goes inert (${JSON.stringify(acDis)})`);
+  ok(await page.evaluate(() => (window.__mcVerdictIds || [])[0] === 501),
+    'the verdict is addressed by the MESSAGE ID, never by position');
   // Confirm: the real endpoint runs (the block's checkout is EXCLUSIVE —
   // to + 1 day), then the verdict lands and the card flips done.
   await page.evaluate(() => {
@@ -987,7 +989,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       window.__mcReqs.push({ f: file, a: body.action, prop: body.prop, ci: body.check_in, co: body.check_out, v: body.verdict });
       if (body.action === 'chat_thread') {
         return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
-          { who: 'mac', text: 'Holding them.', at: '12:03', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } },
+          { who: 'mac', id: 503, text: 'Holding them.', at: '12:03', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } },
         ] };
       }
       if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
@@ -1024,7 +1026,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       window.__mcReqs.push({ f: file, a: body.action, b: body });
       if (body.action === 'chat_thread') {
         return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
-          { who: 'mac', text: 'Booking her in.', at: '12:05', act: { kind: 'add_booking', prop: 'jollyboat', cottage: 'Jollyboat',
+          { who: 'mac', id: 504, text: 'Booking her in.', at: '12:05', act: { kind: 'add_booking', prop: 'jollyboat', cottage: 'Jollyboat',
             check_in: '2027-09-12', check_out: '2027-09-15', name: 'Sarah Pemberton', adults: 2, children: 1, price: 400 } },
         ] };
       }
@@ -1067,7 +1069,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     window.apiPost = async (file, body) => {
       if (body.action === 'chat_thread') {
         return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
-          { who: 'mac', text: 'Opening the reply.', at: '12:06', act: { kind: 'send_enquiry_reply', enquiry: 4242 } },
+          { who: 'mac', id: 505, text: 'Opening the reply.', at: '12:06', act: { kind: 'send_enquiry_reply', enquiry: 4242 } },
         ] };
       }
       return { ok: true };

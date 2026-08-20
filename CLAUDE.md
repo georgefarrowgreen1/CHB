@@ -761,6 +761,53 @@ signing and what is real; what matters HERE is the site half and the rules.
   not the card. Still bad after that, or the send was stopped → dropped and
   NAMED, never repaired; the words always stand. Gated through the REAL loop
   (constrained + cool + card saved; the double-fumble dropping).
+  **THE GROUNDING PACK — the model arrives already knowing.** Every ownerchat
+  ask carries a WORLD SHEET (fleet / today / money), composed fresh at
+  chat_send from `night_gather_today`/`_money` — the SAME gatherers the
+  today/money tools read, extracted so a lookup and the pack can never
+  disagree about one day. `night_world` slims hard (lists cut to
+  NIGHT_WORLD_LIST_MAX, names + formatted figures only — no contact detail
+  and no `ref` survives into the pack, gated by absence): the pack rides
+  every ask and pays context for it; the tools stay the way to go deep.
+  BEST-EFFORT: a failed gather never blocks the send — the model just looks
+  things up, yesterday's behaviour. Mac-side, `chatGroundText` is the ONE
+  place facts become prompt text (labelled live-and-trusted, joined before
+  the instruction), so the first generation starts grounded and a tool round
+  is depth, not a prerequisite. **MEMORY is the owner's, only ever**:
+  `mac-chat-memory` (INTERNAL, classified in db.php), capped 12×200, edited
+  under the ⋯ sheet (glassForm gained a `textarea` type — collected via
+  el.value like any input), labelled "the owner asked you to remember" — the
+  app never adds a line, because memory the model invented is the failure
+  this shape prevents.
+  **THE ROW ERA (migration-118).** The conversation lives in
+  `ownerchat_msgs` now, not the mac-chat blob: every message has an ID, so a
+  card is addressed EXACTLY (`chat_act_done` takes `id`, kind still
+  verified, and the decide is a GUARDED `WHERE act_done IS NULL` update —
+  two devices deciding at once store one verdict); appends are rows, so two
+  devices cannot lose-update each other; and the 40-message cap became a
+  DISPLAY window over history self-repair prunes at 90 days. The `mac-chat`
+  key SURVIVES carrying the instruction; its old msgs are ADOPTED into rows
+  on the first read (`ownerchat_adopt`, best-effort, blob then keeps instr
+  only). Every row still passes `night_ownerchat_thread`'s sanitiser both
+  ways (`ownerchat_row_to_msg` / `ownerchat_append`) — the table changed
+  WHERE messages live, never what may live in one. Pre-migration: reads fall
+  back to the blob; chat_send REFUSES with the run-the-migrations sentence
+  (storing into a blob the reads no longer consult would vanish the
+  message). NB **`content_set_scalar` json_encodes its value**, so a column
+  holds JSON of a JSON string — a test reading `content.item_value` decodes
+  TWICE (the adoption gate hit this; content_json does the same round trip).
+  **THE CHAT BENCH** (`mac-app/test/chat-bench.js`) — model swaps become
+  measurements: ~24 committed business questions run against the REAL engine
+  (`node test/chat-bench.js <model>`), framed byte-for-byte as the ownerchat
+  handler frames (tools + acts intros + chatGroundText over a fixed world),
+  scored on GROUNDING (answered from the sheet / right lookup / right
+  proposal), PROTOCOL (every TOOL/ACT line parsed) and HONESTY (refuse-cases
+  refused, and a PROPOSED act on a refuse-case fails hardest). Verdict
+  thresholds: protocol ≥90%, honesty ≥95%, grounding ≥75% → safe; failures
+  NAMED ("it bluffs", "it fumbles the protocol"). Deliberately a HAND TOOL,
+  never CI (CI has no model — the exact gap it closes for a human);
+  core-test gates the SCORER with fixtures and the case shapes, and the
+  runner exits 0 with a sentence when no engine answers.
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is
