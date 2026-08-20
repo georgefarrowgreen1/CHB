@@ -925,6 +925,18 @@ if (typeof ctx.chbNlgFallback === 'function') {
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
         const fb = ctx.cmdkBuildResults('what is the meaning of life');
         check('dead-end question → nlg-fallback answer row', !!(fb && fb.results && fb.results[0] && fb.results[0].id === 'nlg-fallback'));
+        // THE HANDOFF ROW: the dead end offers "Ask your Mac" ONLY while the
+        // night-shift switch is on — a closed door is never offered — and it
+        // rides BELOW the fallback (index 0 stays the answer, pinned above).
+        check('…with no Ask-your-Mac row while the switch is off',
+            !(fb.results || []).some((r) => r.id === 'ask-mac'));
+        vm.runInContext("siteContent['night-shift']='1';", ctx);
+        const fbOn = ctx.cmdkBuildResults('what is the meaning of life');
+        const askRow = (fbOn.results || []).find((r) => r.id === 'ask-mac');
+        check('switch on → the dead end carries the question to the AI chat',
+            !!askRow && typeof askRow.run === 'function'
+            && fbOn.results[0].id === 'nlg-fallback');
+        vm.runInContext("delete siteContent['night-shift'];", ctx);
         const rq = ctx.cmdkBuildResults('who owes me money');
         check('a real question does NOT get the fallback', !(rq && rq.results && rq.results[0] && rq.results[0].id === 'nlg-fallback'));
         // A procedural "how do I…" leads with the GENERATED how-to answer (Top Hit),
@@ -3056,7 +3068,8 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('Object.keys(dbBookings).forEach((k)=>{dbBookings[k]=[];}); __expTried = false; __cmdkCustomers = null;', ctx);
         // The WIRING: the abstain branch must actually fire the recovery — the
         // helper alone proves nothing (the helper-tested-alone trap).
-        const fbBlock = (adminScript.match(/nlg-fallback[\s\S]{0,900}/) || [''])[0];
+        // (window widened past the Ask-your-Mac handoff block that now sits between)
+        const fbBlock = (adminScript.match(/nlg-fallback[\s\S]{0,3000}/) || [''])[0];
         check('the fallback branch kicks chbMacIntentRecover', /chbMacIntentRecover\(ql\)/.test(fbBlock), fbBlock.slice(0, 200));
         // …and the semantic merge kicks the ANALYST with the rows that landed
         // (ui-test-searchpage §24 owns the behaviour; this owns the wiring).

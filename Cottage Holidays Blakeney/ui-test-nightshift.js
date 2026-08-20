@@ -1078,6 +1078,99 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => /no longer waiting/.test((document.querySelector('.mc-act.is-off') || {}).textContent || '')
     && !document.querySelector('.mc-act-go')),
     'a reply card whose enquiry has gone says so instead of offering a dead button');
+  // THE HANDOFF (stage 2): search's dead-end row carries the question to the
+  // AI chat WHOLE — it waits for the render's own ready stamp, then sends.
+  await page.evaluate(() => {
+    window.__hoSends = [];
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      if (body.action === 'chat_send') { window.__hoSends.push(body.text); return { ok: true, id: 95, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') { return new Promise(() => {}); }
+      return { ok: true };
+    };
+    siteContent['night-shift'] = '1';
+    nav('view-backoffice');
+    const b = cmdkBuildResults('what is the meaning of life');
+    const row = (b.results || []).find((r) => r.id === 'ask-mac');
+    if (row) row.run();
+  });
+  await page.waitForTimeout(900);
+  const hoDone = await page.evaluate(() => ({
+    view: (document.querySelector('.page-view.active') || {}).id,
+    sends: window.__hoSends,
+    bub: /what is the meaning of life/.test(document.getElementById('mc-log').textContent),
+  }));
+  ok(hoDone.view === 'view-aichat' && hoDone.sends.length === 1
+    && hoDone.sends[0] === 'what is the meaning of life' && hoDone.bub,
+    `the handoff lands on AI chat with the question SENT, not retyped (${JSON.stringify(hoDone.sends)})`);
+  await page.evaluate(() => { __mcStamp++; __mcBusy = false; mcSendMode(false); });
+  // THE WELCOME CARRIES THE DAY (stage 3): duties render as the greeting card
+  // with each duty's OWN route as its chip; a quiet day renders NOTHING; and
+  // painting the card fires nothing.
+  await page.evaluate(() => {
+    window.__mcReqs2 = [];
+    window.apiPost = async (file, body) => {
+      window.__mcReqs2.push(body.action);
+      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      return { ok: true };
+    };
+    window.__realDuties = window.chbDuties;
+    window.chbDuties = () => [
+      { label: 'Sarah Pemberton still owes £340.50', act: 'Chase', run: () => { window.__dayGo = (window.__dayGo || 0) + 1; } },
+      { label: 'An enquiry is waiting on a reply', act: 'Open', run: () => {} },
+    ];
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const dayOn = await page.evaluate(() => ({
+    card: !!document.querySelector('.mc-day'),
+    label: /Sarah Pemberton still owes £340.50/.test((document.querySelector('.mc-day') || {}).textContent || ''),
+    chips: document.querySelectorAll('.mc-day-go').length,
+    fired: window.__mcReqs2.filter((a) => a !== 'chat_thread'),
+  }));
+  ok(dayOn.card && dayOn.label && dayOn.chips === 2 && dayOn.fired.length === 0,
+    `duties greet as the day card, chips ready, NOTHING fired on render (${JSON.stringify(dayOn)})`);
+  await page.click('.mc-day-go');
+  ok(await page.evaluate(() => window.__dayGo === 1), "a day chip runs the duty's own route");
+  await page.evaluate(() => { window.chbDuties = () => []; return renderMacChat(); });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !document.querySelector('.mc-day') && !!document.querySelector('.mc-hello')),
+    'a QUIET day renders no card at all — the restraint is the design');
+  await page.evaluate(() => { window.chbDuties = window.__realDuties; });
+  // THE LIVE DRAFT OFFER (stage 1): opening a guest thread lays a fresh Mac
+  // draft into an EMPTY reply box; a box the owner typed in is NEVER
+  // clobbered — the draft is offered instead.
+  await page.evaluate(() => {
+    window.__draftAsks = [];
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_draft') { window.__draftAsks.push(body.thread); return { ok: true, draft: 'Hello Rachel — yes, Jollyboat is completely dog-free.' }; }
+      return { ok: true };
+    };
+    siteContent['night-shift'] = '1';
+    window.__msgThreadId = 41;
+    const inp = document.getElementById('messages-modal-input');
+    if (inp) inp.value = '';
+    document.getElementById('messages-modal').classList.add('open');
+  });
+  await page.waitForTimeout(400);
+  const drA = await page.evaluate(() => ({
+    asks: window.__draftAsks,
+    box: (document.getElementById('messages-modal-input') || {}).value || '',
+  }));
+  ok(drA.asks.length === 1 && drA.asks[0] === 41 && /dog-free/.test(drA.box),
+    `opening a guest thread lays the live draft into the empty box (${JSON.stringify(drA.asks)})`);
+  // Typed text is never clobbered: a NEW thread with words already in the box.
+  await page.evaluate(() => {
+    const m = document.getElementById('messages-modal');
+    m.classList.remove('open');
+    document.getElementById('messages-modal-input').value = 'my own words';
+    window.__msgThreadId = 42;
+    m.classList.add('open');
+  });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => (document.getElementById('messages-modal-input') || {}).value === 'my own words'),
+    'a box the owner typed in is NEVER clobbered — the draft is offered instead');
+  await page.evaluate(() => { document.getElementById('messages-modal').classList.remove('open'); });
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

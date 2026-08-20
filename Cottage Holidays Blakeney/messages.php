@@ -142,6 +142,29 @@ function chat_maybe_autoreply($tid)
 // Is the OTHER party typing right now? $col is a fixed literal — 'admin_typing_at'
 // (the guest is reading) or 'guest_typing_at' (the owner is reading). Isolated so a
 // pre-migration DB (no typing columns yet) just reports false rather than erroring.
+// A guest message files a LIVE draft ask — the ask kind ('chat') the Mac's
+// sweep has answered since the ask channel existed; what was missing was
+// anything filing one the moment a guest speaks, so drafts only ever arrived
+// overnight. With the Mac's ~2s poll the draft is usually waiting before the
+// owner opens the thread. One conversation, one ask (the ownerchat supersede
+// rule — the Mac must never draft against a thread that has moved on), and
+// BEST-EFFORT BY CONTRACT: storing the guest's message must survive a
+// missing table, a closed switch, or any other refusal here.
+function chat_file_draft_ask($tid)
+{
+    try {
+        if ((int) $tid <= 0 || content_value('night-shift') !== '1') {
+            return;
+        }
+        $st = db()->prepare("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'chat' AND entity_id = ?");
+        $st->execute([(int) $tid]);
+        $st = db()->prepare("INSERT INTO night_asks (kind, entity_id, prop_key, question, created_at) VALUES ('chat', ?, '', 'draft a reply', NOW())");
+        $st->execute([(int) $tid]);
+    } catch (\Throwable $e) {
+        // The message is the point; the draft is a bonus.
+    }
+}
+
 function chat_peer_typing($tid, $col)
 {
     try {
@@ -582,6 +605,7 @@ if ($guestId) {
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
             chat_notify_owner_deferred($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
+            chat_file_draft_ask($tid);
             json_out(op_finish($opTok, ['ok' => true]));
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
@@ -666,6 +690,7 @@ try {
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
         chat_notify_owner_deferred($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
+        chat_file_draft_ask($tid);
         json_out(op_finish($opTok, ['ok' => true, 'token' => $token]));
     }
     if ($action === 'typing') {
