@@ -654,6 +654,113 @@ signing and what is real; what matters HERE is the site half and the rules.
   instant fake proved nothing, the send must be held — and the partial holdback,
   break-tested) and ui-test-nightshift §9 (the screen: presence, partial paint,
   markdown-inert settle, asleep/expired honesty; escape break-tested).
+  **THE BAR IS A PILL** (owner-shown photos): the strip lost its own spark logo —
+  the dock's mark and the condensed header carry the page's identity — and slimmed
+  to a 999px pill of presence + the ⋯; an sr-only `<h1>` keeps the outline.
+  **ATTACHMENTS (📎 on the composer).** A DOCUMENT (.txt/.md/.csv/.json, 6000
+  chars) is read on the phone and FENCED into the message — `mcAttachMsg`, byte-
+  for-byte the Mac chat's own `chatAttachMsg` shape — so it rides the existing ask
+  payload with no new endpoint; the bubble collapses the fence to a `.mc-fchip`
+  named chip (`file` on the msg; the STORED text keeps the whole fence — the honest
+  record of what the model saw), and PDFs/Word are refused BY NAME, never
+  half-read. **The payload's NEWEST turn travels WHOLE** (`NIGHT_OWNERCHAT_LAST_
+  TURN_CHARS` = TEXT_MAX) — the 1500-char history cap would hand the model half a
+  file and let it answer confidently about the half it saw; history keeps 1500.
+  A PHOTO rides `chat_send` as a ≤1280px JPEG data URI (the odsPhotoData
+  re-encode): stored by `chat_photo_store` (db.php — the deposit-evidence contract:
+  magic bytes, 2MB, random name), the thread carries only the MINTED ref
+  (`night_chat_ref_ok`, the ONE shape `chat_file` will serve back — a device key
+  must never become a way to read arbitrary uploads/), self-repair prunes chat
+  photos at 7 days, and a photo that will not store REFUSES the whole send in a
+  sentence (quietly dropping it would let the Mac answer about a picture it never
+  saw). `img`/`file` SURVIVE the thread sanitiser — chat_poll re-writes the thread
+  through it, so a dropped field would erase the photo the moment the Mac replied —
+  and the payload carries `img` ONLY on the final turn (an old photo must never
+  resurface under a new question). VISION: `models.projectorFor` pairs a model with
+  ITS OWN `mmproj-*.gguf` by name tokens (quant stripped — a gemma projector on a
+  qwen model is garbage in), downloading a vision model fetches its projector
+  alongside, the runner launches `--mmproj`, and whether the engine can SEE is
+  MEASURED (`props().modalities.vision === true`, never guessed). Three honest
+  outcomes, no fourth: vision → the image joins the newest turn as OpenAI content
+  parts (engine cleanMsgs accepts a valid parts array; half a multimodal message is
+  not a smaller message); text-only → the model NEVER meets the photo and the
+  answer says so (a bluffed description is the failure this exists to prevent);
+  fetch failed → said plainly. Gated: test-nightshift §25 (ref shape, sanitiser
+  round trip, whole-last-turn, ref-on-final-turn-only), test-integration §27b (a
+  pinned real JPEG stored and served back byte-for-byte; the switch closes the
+  photo door), core-test (pairing, --mmproj, parts, the three outcomes),
+  ui-test §9 (chip arm/disarm via real setInputFiles, fenced send, collapsed
+  bubble, junk refs never reaching src). NB `' '` must be the ESCAPE in the
+  attach validator's source — a literal NUL byte turns admin.js into "binary file
+  matches" for every grep.
+  **SEND BECOMES STOP (■).** `mcSend` is a SYNC wrapper (send, or `mcStop` when
+  busy) over `mcSendRun` — load-bearing, not style: the data-act dispatcher
+  DISABLES a button for the life of a returned promise, so the old async mcSend
+  had the one control a Stop needs dead for the whole round trip. mcSendRun's
+  finally is STAMP-GUARDED (`stamp === __mcStamp`) — a stopped flight's cleanup
+  must never clear a NEWER send's busy flag. Three layers, one decision: the
+  stamp kills the poll at once; `chat_stop` claims the open ask (guarded UPDATE,
+  and the partial is read AFTER the claim so ask_partial cannot grow it
+  underneath) — words already streamed are KEPT in the thread marked `stopped`
+  (the sign-off rides the MESSAGE, so every device's reload says the same; a stop
+  before any words stores NOTHING and the question stays askable), and an answer
+  that BEAT the stop is reported `raced` and collected honestly, never hidden;
+  the Mac learns through `ask_partial`'s own reply — `held: false` (a fact the
+  site always computed and the Mac used to discard) aborts the generation through
+  the local Stop's signal path within ~1.5s, freeing the engine, and the aborted
+  remainder is never posted (`{skip:true}`). A NETWORK BLIP on a partial must
+  never read as a stop — held defaults true on any non-ok. Gated at every layer,
+  incl. core-test's abort-mid-stream and ui-test's live-■-mid-partial.
+  **TIER 1 — THE WHOLE-BUSINESS READS** (`money` / `performance` / `expenses`
+  join the five tools). money's due-now split uses `booking_within_balance_window`
+  — the payask's OWN derivation, so the chat and the hub cannot disagree — plus
+  the deposits ready to return; every stay row carries **`ref`** (the booking id;
+  an id is not a contact detail) so an action can point EXACTLY at a booking;
+  performance is direct-bookings-only and its `frame` SAYS so; expenses is the
+  tax year with the Income & tax screen's own caveat. No email or phone ever
+  travels (gated by absence in the raw payload).
+  **TIER 2 — THE MODEL PROPOSES, THE PHONE DISPOSES** (`ACT {json}` beside TOOL;
+  `CHAT_ACTS` mac-side, `NIGHT_ACT_KINDS` site-side: block_dates, price_override,
+  request_payment, add_booking, send_enquiry_reply). The ACT protocol is taught
+  to the WEB chat only — the local screen never learns it (gated), so a local
+  reply can never carry a card nothing will render. The ACT line is STRIPPED
+  from the words (and held back from streamed partials) and rides the envelope
+  as DATA. **Three independent doors**, and all three are load-bearing: the
+  ANSWER door (`night_act_resolve` — closed whitelist with refunds/cancel refused
+  BY NAME so their absence is a tested decision; cottage resolved against the
+  live list exactly as the availability tool resolves one; the past not
+  proposable; rate £20–£2000; request_payment/send_enquiry_reply refs must EXIST),
+  the thread SANITISER (`night_act_problem` re-validates on every pass — a
+  hand-edited content row can never mint a card), and the phone's CLOSED registry
+  (`MC_ACTS` — an unknown kind renders no card at all). The card fires NOTHING on
+  render (gated by collecting every request); Confirm executes from the ADMIN
+  SESSION through the endpoints the back office already trusts — and **a card may
+  NEVER send an override flag**: a clash or occupancy warning comes back in the
+  server's sentence and the card stays live, because a deliberate overlap needs
+  the form's own informed confirm, never a model's proposal riding through one.
+  The VERDICT is thread state (`chat_act_done` — decided ONCE, index verified
+  against the act's own kind so a rotated thread 409s to a refresh rather than
+  marking the wrong card; a card confirmed on one phone is inert on every device
+  and reload). A DEAD proposal (booking gone, enquiry answered, already settled)
+  says why instead of offering a dead button. `__mcState.msgs` is kept in step
+  with every append (send, poll, stop) because a card is ADDRESSED BY INDEX.
+  **DATE SEMANTICS DIFFER PER ACTION ON PURPOSE**: block/price speak first-night/
+  last-night INCLUSIVE (what "block the 24th to the 27th" means; the client
+  converts to the exclusive checkout at exec — `ukShiftDays(to, 1)`), while
+  add_booking speaks the house's own `check_in`/`check_out` (guest-speak "the
+  12th to the 15th" IS arrive/leave — inclusive from/to there would be the
+  off-by-one trap). request_payment goes THROUGH the kept email preview
+  (`requestPayment` returns sent; backing out keeps the card live);
+  price_override rides `cmdkApplyPriceOverride` (undo recorded);
+  send_enquiry_reply opens `enqReplyDraft` (open-then-draft, the load-bearing
+  order) and its done state claims only "Reply opened" — sending stays in the
+  composer.
+  **THE RETRY NET**: a fumbled ACT line gets ONE re-ask constrained by
+  `chatActGrammar` (cool 0.2 decode, the corrected line only) — the TOOL
+  protocol's own net, because a 4B model fumbling a bracket should cost a beat,
+  not the card. Still bad after that, or the send was stopped → dropped and
+  NAMED, never repaired; the words always stand. Gated through the REAL loop
+  (constrained + cool + card saved; the double-fumble dropping).
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is
