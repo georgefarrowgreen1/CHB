@@ -928,6 +928,30 @@ signing and what is real; what matters HERE is the site half and the rules.
   photo-only guest message — the pipeline can't see the image, so the Mac
   drafted confidently against an empty message. All gated (ui-test-nightshift
   round-2 block, integration §27b add-one + photo-only).
+  **CHAT CONTINUITY — the two chats stay two, and meet on purpose.** The
+  local Mac chat is offline-first and private (its words never reach the
+  site on their own); the web chat is the shared record. Two bridges, both
+  owner-initiated, neither granting the device key any new power:
+  "SEND TO MY PHONE" (the ⇗ on a local rail row → api.chatSendToPhone →
+  site.importChat → nightshift `chat_import`): the thread becomes a NEW web
+  conversation — roles mapped you/mac, THINK NEVER TRAVELS, last 40 msgs,
+  every message through the ownerchat sanitiser at the append, exactly-once
+  by ref (`imp-<thread id>`; the ledger is the internal key
+  `mac-chat-imports`, capped newest-60 — an ancient re-send importing twice
+  is the safe direction). Refusals are `night_chat_import_problem` (pure,
+  gated): ref shape, 1–40 msgs, who ∈ you|mac, no wordless message.
+  "ON YOUR PHONE" (the rail's opener row → api.webChat → `chat_mirror`):
+  the web rail READ-ONLY in the Mac window — no new data class (the Mac
+  reads these turns whenever it answers an ask) and deliberately NO write:
+  replying stays on the phone, where the admin session and the action
+  cards live; the composer disables with a read-only placeholder. Both
+  doors: device key + the one night-shift switch; pre-migration → the
+  run-the-migrations sentence. Gated: test-nightshift §20b (validator),
+  test-integration §27b continuity block (round trip, exactly-once, bad
+  who, mirror, 401 both, switch closes both), core-test (thread mapping +
+  think-absence + ref + already + mirror pass-through), mac ui-test (the ⇗
+  through the bridge, the read-only view, back re-arms the composer — NB
+  the phview row joins `.crow`, so rail-count checks exclude `.phview`).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

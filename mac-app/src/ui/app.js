@@ -473,13 +473,58 @@
             return '<button class="crow' + (t.id === C.cur ? ' cur' : '') + (hide ? ' hide' : '') + '" data-id="' + esc(t.id) + '">'
                 + '<span class="ct">' + esc(t.title) + '</span>'
                 + '<span class="cn">' + (t.n ? t.n + ' messages' : 'empty') + '</span>'
+                + '<span class="cph" data-ph="' + esc(t.id) + '" role="button" tabindex="0" title="Send to my phone" aria-label="Send this conversation to the AI chat on your phone">⇗</span>'
                 + '<span class="cexp" data-exp="' + esc(t.id) + '" role="button" tabindex="0" title="Save as Markdown" aria-label="Save this conversation as Markdown">⇩</span>'
                 + '<span class="cx" data-id="' + esc(t.id) + '" role="button" tabindex="0" title="Delete this conversation" aria-label="Delete this conversation">✕</span>'
                 + '</button>';
-        }).join('');
+        }).join('')
+        // CONTINUITY, the read half: the web chat's rail, viewable here —
+        // read-only, because replying belongs to the phone's admin session.
+        + '<button class="crow phview" id="phoneView"><span class="ct">On your phone</span>'
+        + '<span class="cn">the AI chat’s conversations · read-only</span></button>';
+    }
+    // ── "ON YOUR PHONE" — the web chat mirrored, read-only ──────────────
+    var mirror = null; // {convo, convos, msgs} while viewing; renderChat exits
+    async function openPhoneView(convo) {
+        if (live) { return; }
+        var r;
+        try { r = await window.hand.webChat(convo || 0); } catch (e) { r = { ok: false, say: 'The app could not ask the site.' }; }
+        if (!r || !r.ok) { toast((r && r.say) || 'Could not read the phone chat.'); return; }
+        mirror = r;
+        renderMirror();
+    }
+    function renderMirror() {
+        if (!mirror) { return; }
+        var rail = $('chatThreads');
+        var log = $('chatLog');
+        if (!rail || !log) { return; }
+        rail.innerHTML = '<button class="crow phback" id="phoneBack"><span class="ct">‹ Back to this Mac</span>'
+            + '<span class="cn">your local conversations</span></button>'
+            + (mirror.convos || []).map(function (c) {
+                return '<button class="crow phrow' + (c.convo === mirror.convo ? ' cur' : '') + '" data-pc="' + c.convo + '">'
+                    + '<span class="ct">' + esc(c.title) + '</span>'
+                    + '<span class="cn">' + c.n + ' message' + (c.n === 1 ? '' : 's') + '</span></button>';
+            }).join('');
+        log.innerHTML = '<div class="trimnote">From the AI chat on your phone — read-only here. '
+            + 'Reply from the phone, where the action cards live.</div>'
+            + (mirror.msgs || []).map(function (m) {
+                return m.who === 'you'
+                    ? '<div class="bub user">' + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>'
+                    : '<div class="bub bot">' + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + (m.model ? ' · ' + esc(m.model) : '') + '</span>' : '') + '</div>';
+            }).join('');
+        log.scrollTop = log.scrollHeight;
+        var box = $('chatIn');
+        if (box) { box.disabled = true; box.placeholder = 'Read-only — reply from your phone'; }
+    }
+    function mirrorExit() {
+        mirror = null;
+        var box = $('chatIn');
+        if (box) { box.disabled = false; box.placeholder = 'Ask anything\u2026'; }
+        renderChat();
     }
     function renderChat() {
         if (!C) { return; }
+        if (mirror) { mirror = null; var bx = $('chatIn'); if (bx) { bx.disabled = false; bx.placeholder = 'Ask anything\u2026'; } }
         chatRailPaint();
         var log = $('chatLog');
         var thread = C.thread || [];
@@ -779,6 +824,21 @@
         // NB the export and delete marks live INSIDE the row button, so both
         // must be asked before the row itself — the row check would swallow
         // their clicks (measured: export opened the conversation instead).
+        var cph = t.closest ? t.closest('.cph') : null;
+        if (cph) {
+            if (window.hand.chatSendToPhone) {
+                cph.textContent = '…';
+                var pr2;
+                try { pr2 = await window.hand.chatSendToPhone(cph.getAttribute('data-ph')); } catch (e2) { pr2 = { ok: false, say: 'The app could not ask the site.' }; }
+                cph.textContent = '⇗';
+                toast((pr2 && pr2.say) || 'The site did not answer.');
+            }
+            return;
+        }
+        if (t.closest && t.closest('#phoneView')) { openPhoneView(0); return; }
+        if (t.closest && t.closest('#phoneBack')) { mirrorExit(); return; }
+        var phrow = t.closest ? t.closest('.phrow') : null;
+        if (phrow) { openPhoneView(parseInt(phrow.getAttribute('data-pc'), 10) || 0); return; }
         var cexp = t.closest ? t.closest('.cexp') : null;
         if (cexp) {
             if (window.hand.chatExport) {

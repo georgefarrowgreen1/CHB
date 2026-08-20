@@ -1197,6 +1197,43 @@ function makeApi(deps) {
             return { ok: true, title: t.title, md: chatMod.chatExportMd(t.msgs, t.title, '') };
         },
 
+        // ── CHAT CONTINUITY ─────────────────────────────────────────────
+        // "Send to my phone": this LOCAL conversation becomes a new web-chat
+        // conversation in the rail, importable exactly once (the ref is the
+        // thread's own id, so a retry after a lost reply lands nowhere new).
+        // Nothing ever syncs on its own — the tap is the consent.
+        async chatSendToPhone(id) {
+            const t = chatDb.threads.filter(function (x) { return x.id === id; })[0];
+            if (!t || !t.msgs.length) {
+                return { ok: false, say: 'Nothing in that conversation to send yet.' };
+            }
+            const msgs = t.msgs.slice(-40).map(function (m) {
+                return { who: m.role === 'user' ? 'you' : 'mac', text: String(m.text || '') };
+            }).filter(function (m) { return m.text.trim() !== ''; });
+            if (!msgs.length) {
+                return { ok: false, say: 'Nothing in that conversation to send yet.' };
+            }
+            const ref = ('imp-' + String(id).toLowerCase().replace(/[^a-z0-9-]/g, '')).slice(0, 40);
+            const r = await siteFor().importChat(ref, msgs);
+            if (!r.ok) {
+                return { ok: false, say: (r.refusal && r.refusal.say) || 'The site did not answer.' };
+            }
+            askLog.push({ say: 'sent a conversation to the phone (conversation ' + r.convo + ')', kind: 'ok' });
+            return { ok: true, convo: r.convo, say: r.already
+                ? 'Already on your phone — conversation ' + r.convo + ' in the AI chat rail.'
+                : 'Sent — it is conversation ' + r.convo + ' in the AI chat rail on your phone.' };
+        },
+        // The web chat's rail, READ-ONLY, for the window's "On your phone"
+        // view. Replying stays on the phone — the admin session and the
+        // action cards live there, and this Mac can execute nothing.
+        async webChat(convo) {
+            const r = await siteFor().mirror(convo);
+            if (!r.ok) {
+                return { ok: false, say: (r.refusal && r.refusal.say) || 'The site did not answer.' };
+            }
+            return { ok: true, convo: r.convo, convos: r.convos, msgs: r.msgs };
+        },
+
         // Where the queue lives, so the window can offer to open it.
         siteHomeUrl() {
             const u = configMod.siteUrl(cfg);

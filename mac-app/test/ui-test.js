@@ -208,6 +208,20 @@ function fakeState(over) {
                     window.__calls.push(['chatExport', id]);
                     return { ok: true, path: '/Users/g/Desktop/chat.md' };
                 },
+                chatSendToPhone: async function (id) {
+                    window.__calls.push(['chatSendToPhone', id]);
+                    return { ok: true, convo: 7, say: 'Sent — it is conversation 7 in the AI chat rail on your phone.' };
+                },
+                webChat: async function (convo) {
+                    window.__calls.push(['webChat', convo]);
+                    return { ok: true, convo: convo || 3, convos: [
+                        { convo: 3, n: 2, title: 'Who owes me money?' },
+                        { convo: 2, n: 4, title: 'The gate code' },
+                    ], msgs: [
+                        { who: 'you', text: 'who owes me money?', at: '09:00' },
+                        { who: 'mac', text: 'Two balances are open.', at: '09:01', model: 'gemma-4b' },
+                    ] };
+                },
                 chatAttach: async function () {
                     window.__calls.push(['chatAttach']);
                     return window.__attachAnswer || { ok: true, name: 'changeover-notes.txt', text: 'fix the tap\nrestock the basket' };
@@ -636,7 +650,7 @@ function fakeState(over) {
         // markdown, Stop, edit, regenerate — the bridge fake holds the send
         // open so the events drive a genuinely in-flight reply.
         ok('the conversations rail lists the threads with the current one marked',
-            (await page.locator('#chatThreads .crow').count()) === 2
+            (await page.locator('#chatThreads .crow:not(.phview)').count()) === 2
             && /the welcome book/.test(await page.textContent('#chatThreads')));
         await page.click('#chatThreads .crow[data-id="t2"]');
         await page.waitForTimeout(150);
@@ -776,7 +790,7 @@ function fakeState(over) {
         await page.fill('#chatSearch', 'welcome');
         await page.waitForTimeout(120);
         ok('searching the rail hides what does not match',
-            (await page.locator('#chatThreads .crow:not(.hide)').count()) === 1
+            (await page.locator('#chatThreads .crow:not(.hide):not(.phview)').count()) === 1
             && /welcome/.test(await page.evaluate(function () {
                 return document.querySelector('#chatThreads .crow:not(.hide) .ct').textContent;
             })));
@@ -792,6 +806,31 @@ function fakeState(over) {
         ok('export goes through the bridge and says where it saved',
             (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatExport'; }); }))
             && /Saved to/.test(await page.textContent('#toastSays')));
+
+        // ── CONTINUITY: send-to-phone on a row, and the read-only mirror.
+        await page.evaluate(function () {
+            var b = document.querySelector('#chatThreads .cph');
+            b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await page.waitForTimeout(200);
+        ok('send-to-phone rides the ⇗ through the bridge and answers in a sentence',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatSendToPhone'; }); }))
+            && /conversation 7/.test(await page.textContent('#toastSays')));
+        await page.click('#phoneView');
+        await page.waitForTimeout(250);
+        ok('the phone view lists the web conversations with a way back',
+            (await page.locator('#chatThreads .phrow').count()) === 2
+            && (await page.locator('#phoneBack').count()) === 1
+            && /Who owes me money/.test(await page.textContent('#chatThreads')));
+        ok('…renders the thread READ-ONLY — banner up, composer disabled',
+            /read-only/i.test(await page.textContent('#chatLog'))
+            && /Two balances are open/.test(await page.textContent('#chatLog'))
+            && (await page.evaluate(function () { return document.getElementById('chatIn').disabled; })));
+        await page.click('#phoneBack');
+        await page.waitForTimeout(200);
+        ok('back restores the local rail and re-arms the composer',
+            (await page.locator('#chatThreads .crow:not(.phview)').count()) >= 1
+            && !(await page.evaluate(function () { return document.getElementById('chatIn').disabled; })));
 
         // Attach: the clip picks a file, the chip shows, the send carries it.
         await page.evaluate(function () { window.__chatAnswer = null; });

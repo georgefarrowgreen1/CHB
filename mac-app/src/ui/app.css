@@ -512,6 +512,13 @@ select.pop{padding-right:6px}
   color:var(--text-muted);font-size:11px;cursor:pointer;padding:4px;border-radius:6px;opacity:0}
 .crow:hover .cexp,.crow .cexp:focus-visible{opacity:1}
 .crow.hide{display:none}
+/* Continuity: the send-to-phone mark (third glyph on a row) and the
+   phone-view rows. */
+.crow .cph{position:absolute;right:38px;top:50%;transform:translateY(-50%);border:0;background:none;
+  color:var(--text-muted);font-size:11px;cursor:pointer;padding:4px;border-radius:6px;opacity:0}
+.crow:hover .cph,.crow .cph:focus-visible{opacity:1}
+.crow.phview,.crow.phback{border-top:1px solid color-mix(in srgb,var(--text-light) 10%,transparent)}
+.crow.phview .ct,.crow.phback .ct{color:var(--accent-text,var(--accent))}
 /* The standing instruction — a bar the pill opens, never a dialog. */
 .instrbar{padding:10px 14px 8px;border-bottom:1px solid color-mix(in srgb,var(--text-light) 8%,transparent)}
 .instrbar textarea{width:100%;border:1px solid color-mix(in srgb,var(--text-light) 14%,transparent);

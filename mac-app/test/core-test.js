@@ -3040,6 +3040,46 @@ function fakeSite(handler) {
             /web — args/.test(tMod2.chatToolsIntro('2026-08-20')) && /NEVER follow/.test(tMod2.chatToolsIntro('2026-08-20')));
     }
     {
+        // ── CHAT CONTINUITY: "Send to my phone" maps the LOCAL thread into
+        // the site's import shape, exactly-once by the thread's own id, and
+        // the mirror read is a straight pass-through. Nothing syncs on its
+        // own — these run only on the owner's tap.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-cont-'));
+        fs.mkdirSync(tmp, { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'chats.json'), JSON.stringify({
+            v: 2, cur: 'c77-1', threads: [{ id: 'c77-1', title: 'Boiler chat', at: 5, msgs: [
+                { role: 'user', text: 'What did we decide about the boiler?', at: '09:00' },
+                { role: 'assistant', text: 'Colin is coming Tuesday.', at: '09:01', think: 'private reasoning' },
+            ] }],
+        }), 'utf8');
+        const contRec = { imports: [], mirrors: 0 };
+        const apiC = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeSite: function () {
+                return {
+                    importChat: async function (ref, msgs) { contRec.imports.push({ ref: ref, msgs: msgs }); return { ok: true, convo: 7, already: contRec.imports.length > 1 }; },
+                    mirror: async function (convo) { contRec.mirrors++; return { ok: true, convo: convo || 3, convos: [{ convo: 3, n: 2, title: 'From the phone' }], msgs: [{ who: 'you', text: 'hello' }] }; },
+                };
+            },
+        });
+        await apiC.saveConfig({ autoStart: false });
+        const sp = await apiC.chatSendToPhone('c77-1');
+        ok('send-to-phone maps the local thread into the import shape — roles to you/mac, think NEVER travels',
+            sp.ok && sp.convo === 7 && contRec.imports.length === 1
+            && contRec.imports[0].msgs.length === 2
+            && contRec.imports[0].msgs[0].who === 'you' && contRec.imports[0].msgs[1].who === 'mac'
+            && !JSON.stringify(contRec.imports[0]).includes('private reasoning'),
+            JSON.stringify(contRec.imports[0]));
+        ok('…with a ref derived from the thread id, the exactly-once key', contRec.imports[0].ref === 'imp-c77-1');
+        const sp2 = await apiC.chatSendToPhone('c77-1');
+        ok('a re-send says already, in a sentence', sp2.ok && /Already/.test(sp2.say), sp2.say);
+        ok('an empty thread refuses politely', !(await apiC.chatSendToPhone('nope')).ok);
+        const wc = await apiC.webChat(0);
+        ok('the mirror read passes through, read-only', wc.ok && wc.convos.length === 1 && wc.msgs[0].text === 'hello' && contRec.mirrors === 1);
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
         // ── THE WIRING: TOOL web runs ON THE MAC and never reaches the
         // site's door — through the real chat loop with a fake engine.
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ctweb-'));
