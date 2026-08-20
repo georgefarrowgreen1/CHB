@@ -930,6 +930,10 @@ function is_internal_content_key($key)
         return true; // the chat's owner-curated memories — facts the OWNER wrote
                      // ("never dogs"), riding every ownerchat ask; admin-only
     }
+    if ($key === 'mac-chat-sum') {
+        return true; // per-conversation rolling summaries — the model's condensed
+                     // memory of turns the payload cap has cut; admin-only
+    }
     if ($key === 'nightshift-latest-build') {
         return true; // the newest Mac-app release tag, fetched daily by self-repair
     }

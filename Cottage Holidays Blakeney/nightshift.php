@@ -839,6 +839,25 @@ route_actions([
         $t = night_ownerchat_thread(content_json('mac-chat', []));
         $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $cv);
         $payload = night_ownerchat_payload($t);
+        // THE ROLLING SUMMARY. Once the payload cap is really cutting history
+        // (`dropped` > 0) the ask says so — the Mac then teaches the SUM
+        // protocol — and the conversation's stored summary rides along, so a
+        // long conversation keeps its head. A fully-visible thread sends
+        // neither: a summary of what is already in the payload is paid-for
+        // context saying nothing new.
+        try {
+            $cnt = db()->prepare('SELECT COUNT(*) FROM ownerchat_msgs WHERE convo = ?');
+            $cnt->execute([$cv]);
+            $droppedN = max(0, (int) $cnt->fetchColumn() - NIGHT_OWNERCHAT_TURNS_MAX);
+            if ($droppedN > 0) {
+                $payload['dropped'] = $droppedN;
+                $sums = night_ownerchat_sums(content_json('mac-chat-sum', []));
+                if (isset($sums[$cv])) {
+                    $payload['summary'] = $sums[$cv];
+                }
+            }
+        } catch (\Throwable $e) {
+        }
         // THE GROUNDING PACK: the fleet, today, and the money picture ride
         // every ask, composed fresh from the SAME gatherers the tools read —
         // the model's first generation starts grounded instead of spending a
@@ -1121,6 +1140,15 @@ route_actions([
             $dl->execute([$cv]);
         } catch (\Throwable $e) {
         }
+        // A cleared conversation's summary is a memory of nothing — gone too.
+        try {
+            $sums = night_ownerchat_sums(content_json('mac-chat-sum', []));
+            if (isset($sums[$cv])) {
+                unset($sums[$cv]);
+                content_set_scalar('mac-chat-sum', json_encode($sums));
+            }
+        } catch (\Throwable $e) {
+        }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
         content_set_scalar('mac-chat', json_encode(['instr' => $t['instr'], 'msgs' => []]));
         json_out(['ok' => true, 'convo' => $cv]);
@@ -1363,7 +1391,7 @@ route_actions([
         }
         night_asks_sweep();
         $id = (int) ($in['id'] ?? 0);
-        $st = db()->prepare('SELECT status, kind, options FROM night_asks WHERE id = ?');
+        $st = db()->prepare('SELECT status, kind, options, entity_id FROM night_asks WHERE id = ?');
         $st->execute([$id]);
         $row = $st->fetch();
         if (!$row) {
@@ -1452,6 +1480,21 @@ route_actions([
                 }
                 $env['act'] = $res['act'];
                 $storeText = json_encode($env);
+            }
+            // THE ROLLING SUMMARY LANDS keyed by the ask's own conversation
+            // (entity_id) — validated above (answer_problem), stored beside
+            // the others, capped by the sanitiser. Best-effort: a summary
+            // that will not store must never refuse the answer it rode on.
+            if (is_array($env) && night_str($env['sum'] ?? '') !== '') {
+                try {
+                    $cvS = max(1, (int) ($row['entity_id'] ?? 1));
+                    $sums = night_ownerchat_sums(content_json('mac-chat-sum', []));
+                    unset($sums[$cvS]);
+                    // Freshest FIRST, because the sanitiser's cap keeps the head.
+                    $sums = [$cvS => mb_substr(night_str($env['sum']), 0, NIGHT_OWNERCHAT_SUM_MAX)] + $sums;
+                    content_set_scalar('mac-chat-sum', json_encode(night_ownerchat_sums($sums)));
+                } catch (\Throwable $e) {
+                }
             }
         }
         // Guarded write: the WHERE re-checks open, so two racing answers

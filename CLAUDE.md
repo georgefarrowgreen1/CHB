@@ -838,6 +838,26 @@ signing and what is real; what matters HERE is the site half and the rules.
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
   drives the same cases in-app — chatBusy taken, verdict in words into the
   row's `.benchout` slot. Gated by the mac ui-test's Library block.
+  **THE ROLLING SUMMARY (webchat only, and only once the trim is REAL).**
+  When chat_send finds the convo past the 16-turn payload cap it adds
+  `dropped` to the ask, and the Mac then teaches the SUM protocol — one
+  `SUM {"text":"..."}` line ending each reply, a condensed memory of the
+  whole conversation. Protocol like ACT: stripped from the words, held back
+  from partials (the same split regex), carried in the envelope as data
+  (`sum`, validated in night_ownerchat_answer_problem, cap 600); the site
+  stores it per conversation (`mac-chat-sum` internal key, map convo→text,
+  sanitised by `night_ownerchat_sums` — freshest FIRST because the cap
+  keeps the head) keyed by the ask's entity_id, and the NEXT ask hands it
+  back as `summary`, which chatGroundText grounds as the model's OWN
+  earlier notes. A fully-visible thread sends and is asked for NEITHER — a
+  summary of what is already in the payload is paid-for context saying
+  nothing new (env.sum is also gated on dropped>0 Mac-side, so a stray SUM
+  line never travels). chat_clear forgets the convo's summary with its
+  rows. A reply that was ONLY its SUM line keeps the raw words — the site
+  refuses a wordless answer. Gated: test-nightshift (sums sanitiser +
+  envelope), test-integration §27b (the full round trip on 20 seeded
+  filler rows: dropped count, store, hand-back, overlong refusal,
+  clear-forgets), core-test §34s (through the REAL handler both ways).
   **THE CHAT BENCH** (`mac-app/test/chat-bench.js`) — model swaps become
   measurements: ~24 committed business questions run against the REAL engine
   (`node test/chat-bench.js <model>`), framed byte-for-byte as the ownerchat

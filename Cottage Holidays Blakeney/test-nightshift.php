@@ -969,6 +969,23 @@ nsk('coast: no tide key and a passed horizon are honest ABSENCES with a sentence
     !isset($cst2['tide']) && strpos((string) ($cst2['tide_note'] ?? ''), 'No tide key') !== false
     && !isset($cst2['weather']) && ($cst2['weather_note'] ?? '') !== '');
 
+// ── THE ROLLING SUMMARY — owner-side JSON sanitised on every read ────────
+$smx = night_ownerchat_sums(['2' => ' decisions so far ', 'x' => 'junk key', '0' => 'zero key',
+    '4' => str_repeat('a', 700), '5' => '', '6' => ['not' => 'text']]);
+nsk('sums sanitise: real convo keys only, trimmed, overlong cut to the cap, blanks and objects dropped',
+    ($smx[2] ?? '') === 'decisions so far' && !isset($smx[0]) && !isset($smx[5]) && !isset($smx[6])
+    && mb_strlen($smx[4] ?? '') === 600, json_encode(array_map(fn ($v) => mb_substr($v, 0, 20), $smx)));
+$smBig = [];
+for ($i = 1; $i <= 30; $i++) {
+    $smBig[$i] = 'summary ' . $i;
+}
+nsk('sums cap at ' . NIGHT_OWNERCHAT_SUM_CAP . ' — the head is kept',
+    count(night_ownerchat_sums($smBig)) === NIGHT_OWNERCHAT_SUM_CAP);
+nsk('the envelope validates a summary: text under the cap passes, junk and overlong are refused in sentences',
+    night_ownerchat_answer_problem(json_encode(['text' => 'ok', 'sum' => 'the week so far'])) === ''
+    && night_ownerchat_answer_problem(json_encode(['text' => 'ok', 'sum' => ['x']])) !== ''
+    && night_ownerchat_answer_problem(json_encode(['text' => 'ok', 'sum' => str_repeat('a', 700)])) !== '');
+
 // ── THE GROUNDING PACK + MEMORY ──────────────────────────────────────────
 $wldToday = ['date' => '2026-08-20',
     'arrivals' => array_map(fn ($i) => ['guest' => 'Guest ' . $i, 'cottage' => 'Jollyboat', 'still_to_pay' => '£100.00', 'email' => 'x@y.z', 'ref' => $i], range(1, 9)),

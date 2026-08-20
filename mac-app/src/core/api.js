@@ -887,10 +887,10 @@ function makeApi(deps) {
                                 if (e2.t === 'round' || e2.t === 'tool') { round = ''; }
                                 if (e2.t === 'think') { think += e2.s || ''; }
                                 if (e2.t === 'tok') { round += e2.s || ''; }
-                                // TOOL rounds never paint; an ACT line being
-                                // typed is a protocol line too — the words
-                                // before it stream, the line itself never does.
-                                const show = /^\s*TOOL/.test(round) ? '' : round.split(/\n[ \t]*ACT\b/)[0];
+                                // TOOL rounds never paint; ACT and SUM lines
+                                // being typed are protocol lines too — the
+                                // words before them stream, the lines never do.
+                                const show = /^\s*TOOL/.test(round) ? '' : round.split(/\n[ \t]*(?:ACT|SUM)\b/)[0];
                                 const tms = now().getTime();
                                 if (postPartial && (show || think) && tms - lastPost >= 1500) {
                                     lastPost = tms;
@@ -905,7 +905,11 @@ function makeApi(deps) {
                                     }
                                 }
                             }, oah.signal, imgUri, true,
-                            chatToolsMod.chatGroundText(oc.world, oc.memories));
+                            // The grounding pack, plus — once the site says
+                            // turns have been CUT — the rolling summary it
+                            // stored and the SUM protocol that maintains it.
+                            chatToolsMod.chatGroundText(oc.world, oc.memories, oc.summary)
+                                + (Number(oc.dropped) > 0 ? '\n\n' + chatToolsMod.chatSumIntro() : ''));
                             if (oah.signal.aborted) {
                                 // The row is expired at the site; posting the
                                 // remainder would only be refused as too late.
@@ -917,13 +921,20 @@ function makeApi(deps) {
                             if (res.actBad) {
                                 askLog.push({ at: nightMod.hhmm(), say: 'the web chat proposed an action it fumbled — dropped (' + res.actBad + ')', level: 'info' });
                             }
+                            // The SUM line is protocol: stripped from the
+                            // words, carried as data. A malformed one is
+                            // dropped — the words stand, next turn asks again.
+                            const sp = chatToolsMod.chatSumCall(res.answer);
                             const env = {
-                                text: res.answer,
+                                // A reply that was ONLY its SUM line keeps the
+                                // raw words — the site refuses a wordless answer.
+                                text: sp.text || res.answer,
                                 think: res.think.slice(0, chatMod.CHAT_THINK_CHARS),
                                 used: res.used,
                                 ms: res.ms,
                                 tps: res.tokensPerSec,
                             };
+                            if (sp.sum && Number(oc.dropped) > 0) { env.sum = sp.sum; }
                             // The PROPOSAL rides as data — the site validates
                             // it at its own door and the phone renders the
                             // confirm card. This Mac can execute nothing.
