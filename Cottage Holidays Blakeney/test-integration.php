@@ -3185,6 +3185,62 @@ http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
 it_check('webchat: clear empties the shared thread', count($r['json']['msgs'] ?? []) === 0, $r['raw']);
 
+// ── ATTACHMENTS — a photo rides the send, the Mac fetches the bytes ─────
+// A real (tiny) JPEG: FFD8 magic, 694 bytes — generated once with GD and
+// pinned here so CI needs no image extension.
+$wcJpegB64 = '/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JFQVRPUjogZ2QtanBlZyB2MS4wICh1c2luZyBJSkcgSlBFRyB2ODApLCBxdWFsaXR5ID0gODAK/9sAQwAGBAUGBQQGBgUGBwcGCAoQCgoJCQoUDg8MEBcUGBgXFBYWGh0lHxobIxwWFiAsICMmJykqKRkfLTAtKDAlKCko/9sAQwEHBwcKCAoTCgoTKBoWGigoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo/8AAEQgAAgACAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8AuUUUV8cfZn//2Q==';
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'what is this pipe doing?',
+    'photo' => 'data:image/jpeg;base64,' . $wcJpegB64, 'file' => 'boiler.jpg']);
+$wcPid = (int) ($r['json']['id'] ?? 0);
+it_check('webchat: a photo send is accepted', $wcPid > 0, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+$wcImg = (string) ($r['json']['msgs'][0]['img'] ?? '');
+it_check('webchat: the thread carries the stored photo ref in the minted shape',
+    preg_match('#^uploads/chat-photo-[0-9a-f]{12}\.jpg$#', $wcImg) === 1
+    && ($r['json']['msgs'][0]['file'] ?? '') === 'boiler.jpg', $r['raw']);
+it_check('webchat: the photo is really on disk, byte for byte',
+    base64_encode((string) @file_get_contents($work . '/' . $wcImg)) === $wcJpegB64);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$wcAskP = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $wcPid) {
+        $wcAskP = $a;
+    }
+}
+$wcTurnsP = $wcAskP['ownerchat']['turns'] ?? [];
+it_check('webchat: the ask payload carries the ref on the FINAL turn',
+    ($wcTurnsP[count($wcTurnsP) - 1]['img'] ?? '') === $wcImg, json_encode($wcTurnsP));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_file', 'secret' => $SECRET, 'ref' => $wcImg]);
+it_check('webchat: chat_file hands the Mac the SAME bytes back',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['data'] ?? '') === $wcJpegB64
+    && ($r['json']['mime'] ?? '') === 'image/jpeg', substr($r['raw'], 0, 200));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_file', 'secret' => $SECRET, 'ref' => 'uploads/../config.php']);
+it_check('webchat: chat_file refuses anything but the minted ref shape', $r['code'] === 400, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_file', 'secret' => 'wrong', 'ref' => $wcImg]);
+it_check('webchat: chat_file needs the device key', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'and this?', 'photo' => 'data:image/png;base64,AAAA']);
+it_check('webchat: a photo that is not a JPEG under 2MB refuses the whole send in a sentence',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'JPEG') !== false, $r['raw']);
+// A fenced DOCUMENT travels the payload WHOLE — the newest turn is exempt
+// from the history cap, or the model answers about half a file.
+$wcDoc = "summarise this\n\n--- attached file: notes.txt ---\n" . str_repeat('y', 5000) . "\n--- end of notes.txt ---";
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => $wcDoc, 'file' => 'notes.txt']);
+$wcDid = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$wcAskD = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $wcDid) {
+        $wcAskD = $a;
+    }
+}
+$wcTurnsD = $wcAskD['ownerchat']['turns'] ?? [];
+$wcLastD = (string) ($wcTurnsD[count($wcTurnsD) - 1]['text'] ?? '');
+it_check('webchat: an attached document reaches the Mac INTACT, fence and all',
+    strlen($wcLastD) === strlen($wcDoc) && strpos($wcLastD, '--- end of notes.txt ---') !== false,
+    'len=' . strlen($wcLastD));
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+@unlink($work . '/' . $wcImg);
+
 // The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
@@ -3193,6 +3249,8 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'answ
 it_check('…and the owner\'s ask', $r['code'] === 409, $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'hello?']);
 it_check('…and the web chat\'s send', $r['code'] === 409, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_file', 'secret' => $SECRET, 'ref' => 'uploads/chat-photo-0123456789ab.jpg']);
+it_check('…and the photo door', $r['code'] === 409, $r['raw']);
 $rootDb->exec('DELETE FROM night_asks');
 $rootDb->exec('DELETE FROM enquiries');
 

@@ -5794,23 +5794,22 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
    welcome is a card with starters; the round trip narrates as capsules IN
    the log; the composer FLOATS above the safe area; Clear lives behind the
    … sheet. Phone-first — this page exists for out-and-about. */
-.ac-page{max-width:720px;margin:0 auto;padding-bottom:calc(96px + var(--safe-b))}
-.ac-hd{position:sticky;top:calc(64px + var(--safe-t));z-index:5;display:flex;align-items:center;gap:11px;
-  border:1px solid var(--glass-border);border-radius:22px;padding:10px 14px;margin:6px 0 12px;
+/* The negative top margin pulls the bar up under the header — the page
+   container's own clearance was sized for a title, and with the name gone
+   the bar is a status strip, not a masthead (owner: "smaller and closer"). */
+.ac-page{max-width:720px;margin:-18px auto 0;padding-bottom:calc(96px + var(--safe-b))}
+.ac-hd{position:sticky;top:calc(64px + var(--safe-t));z-index:5;display:flex;align-items:center;gap:8px;
+  border:1px solid var(--glass-border);border-radius:999px;padding:3px 5px 3px 13px;margin:0 0 8px;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter)}
-.ac-spark{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;
-  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 32%,transparent),color-mix(in srgb,var(--accent) 10%,transparent));
-  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
-.ac-spark svg{width:20px;height:20px;stroke:var(--accent-text)}
-.ac-more{margin-left:auto;width:38px;height:38px;border-radius:50%;border:1px solid var(--glass-border);
-  background:none;color:var(--text-muted);font-size:17px;cursor:pointer;flex:0 0 auto}
+.ac-more{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--glass-border);
+  background:none;color:var(--text-muted);font-size:14px;cursor:pointer;flex:0 0 auto}
 .ac-more:hover{background:var(--btn-hover)}
 .mc-pres{display:inline-flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:600;color:var(--text-muted)}
 /* In the page's bar the presence is the ONE line of text, so it steps up —
    contextual, because renderMacChat rebuilds the node and a class would be
    lost in the swap. */
-.ac-hd .mc-pres{font-size:0.78rem;gap:8px}
-.ac-hd .mc-pres .mc-dot{width:8px;height:8px}
+.ac-hd .mc-pres{font-size:0.68rem;gap:6px}
+.ac-hd .mc-pres .mc-dot{width:6px;height:6px}
 .mc-pres .mc-dot{width:7px;height:7px;border-radius:50%;background:var(--ok-text)}
 .mc-pres.is-on{color:var(--ok-text)}
 .mc-pres.is-asleep{color:var(--warn-text)}
@@ -5874,6 +5873,31 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   transition:transform .35s var(--spring)}
 .ac-send:active{transform:scale(.9)}
 .ac-send svg{width:18px;height:18px}
+/* the 📎 — a quiet peer of the send, and the pending chip above the row */
+.ac-composer{flex-wrap:wrap}
+.ac-clip{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
+  margin-left:-12px;background:none;color:var(--text-muted);display:grid;place-items:center}
+.ac-clip:hover{color:var(--text-light);background:var(--btn-hover)}
+.ac-clip svg{width:17px;height:17px}
+.ac-pend{flex:1 1 100%;padding:2px 2px 6px}
+.ac-pend[hidden]{display:none}
+.mc-pchip{display:inline-flex;align-items:center;gap:8px;max-width:100%;
+  border:1px solid var(--glass-border);border-radius:14px;padding:5px 6px 5px 5px;
+  background:color-mix(in srgb,var(--text-light) 4%,transparent)}
+.mc-pthumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto}
+.mc-pdoc{font-size:1rem;flex:0 0 auto;padding-left:4px}
+.mc-pname{font-size:0.72rem;font-weight:600;color:var(--text-light);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mc-px{width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
+  background:color-mix(in srgb,var(--text-light) 8%,transparent);color:var(--text-muted);
+  font-size:0.7rem;display:grid;place-items:center}
+.mc-px:hover{color:var(--text-light)}
+/* attachments in the log — the photo bubble and the document chip */
+.mc-photo{align-self:flex-end;max-width:min(62%,260px);max-height:260px;border-radius:18px;
+  border:1px solid var(--glass-border);object-fit:cover}
+.mc-fchip{align-self:flex-end;font-size:0.68rem;font-weight:600;color:var(--text-light);
+  border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px;
+  background:color-mix(in srgb,var(--accent) 10%,transparent)}
 /* the … sheet — where Clear went */
 .ac-sheet{position:fixed;inset:0;z-index:2050;display:flex;align-items:flex-end;justify-content:center;
   background:rgba(0,0,0,.35)}

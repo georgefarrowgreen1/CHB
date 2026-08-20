@@ -575,9 +575,30 @@ route_actions([
         } catch (\Throwable $e) {
             json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
         }
+        $msg = ['who' => 'you', 'text' => $text, 'at' => date('H:i')];
+        // A PHOTO rides the send itself (a ~1MB data URI in one POST beats a
+        // second endpoint and a ref handshake). Stored as a FILE, never in
+        // the thread — the thread carries the ref, chat_file serves the bytes
+        // to the paired Mac, self-repair prunes after 7 days. A photo that
+        // will not store REFUSES the whole send: quietly dropping it would
+        // let the Mac answer a question about a picture it never saw.
+        $photo = (string) ($in['photo'] ?? '');
+        if ($photo !== '') {
+            $ref = chat_photo_store($photo);
+            if ($ref === '') {
+                json_out(['error' => 'That photo could not be read — it needs to be a JPEG under 2MB. Try attaching it again.'], 400);
+            }
+            $msg['img'] = $ref;
+        }
+        // An attached DOCUMENT already travelled fenced inside $text; `file`
+        // is only its shown name, so the phone can collapse the fence to a chip.
+        $fname = trim((string) ($in['file'] ?? ''));
+        if ($fname !== '') {
+            $msg['file'] = mb_substr($fname, 0, NIGHT_OWNERCHAT_FILE_MAX);
+        }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $t['msgs'][] = ['who' => 'you', 'text' => $text, 'at' => date('H:i')];
-        $t['msgs'] = array_slice($t['msgs'], -NIGHT_OWNERCHAT_THREAD_MAX);
+        $t['msgs'][] = $msg;
+        $t = night_ownerchat_thread($t); // one sanitiser owns the shape, img/file included
         content_set_scalar('mac-chat', json_encode($t));
         $payload = night_ownerchat_payload($t);
         $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
@@ -705,6 +726,30 @@ route_actions([
         $up = db()->prepare("UPDATE night_asks SET answer = ? WHERE id = ? AND status = 'open' AND kind = 'ownerchat'");
         $up->execute([$text, $id]);
         json_out(['ok' => true, 'held' => $up->rowCount() === 1]);
+    },
+
+    // ---- the machine fetches an attached chat photo ----------------
+    // The ask payload carries a REF (uploads/chat-photo-…jpg); the bytes come
+    // through this door — device key, the one night-shift switch, and the ref
+    // must be EXACTLY the shape chat_photo_store mints. Serving by pattern
+    // rather than by path is the whole point: a device key must never become
+    // a way to read arbitrary files out of uploads/.
+    'chat_file' => function ($in) {
+        rate_limit('night-file', 60, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'chat_file', $in['build'] ?? '');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $ref = $in['ref'] ?? '';
+        if (!night_chat_ref_ok($ref)) {
+            json_out(['error' => 'That is not a chat photo reference.'], 400);
+        }
+        $path = __DIR__ . '/' . $ref;
+        $raw = @file_get_contents($path, false, null, 0, 2 * 1024 * 1024 + 1);
+        if ($raw === false || $raw === '' || strlen($raw) > 2 * 1024 * 1024) {
+            json_out(['error' => 'No such photo — it may have been pruned (chat photos are kept a week).'], 404);
+        }
+        json_out(['ok' => true, 'data' => base64_encode($raw), 'mime' => 'image/jpeg']);
     },
 
     // ---- the owner opened search: warm the Mac's engine ------------

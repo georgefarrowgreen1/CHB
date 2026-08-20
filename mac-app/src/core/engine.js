@@ -189,11 +189,23 @@ function makeEngine(opts) {
     // The boundary check chat() and chatStream() share — the engine must
     // never rely on its caller, and the two must never drift apart about
     // what a message is.
+    // A content is a plain string, or — for a vision turn — the OpenAI parts
+    // shape: [{type:'text',text}, {type:'image_url',image_url:{url}}]. Only
+    // those two part shapes pass; anything else in the array kills the whole
+    // message, because half a multimodal message is not a smaller message.
+    function partsOk(c) {
+        return Array.isArray(c) && c.length > 0 && c.every(function (p) {
+            if (!p) { return false; }
+            if (p.type === 'text') { return typeof p.text === 'string'; }
+            if (p.type === 'image_url') { return !!(p.image_url && typeof p.image_url.url === 'string' && p.image_url.url !== ''); }
+            return false;
+        });
+    }
     function cleanMsgs(messages) {
         return (Array.isArray(messages) ? messages : [])
             .filter(function (m) {
                 return m && (m.role === 'user' || m.role === 'assistant' || m.role === 'system')
-                    && typeof m.content === 'string' && m.content.trim() !== '';
+                    && ((typeof m.content === 'string' && m.content.trim() !== '') || partsOk(m.content));
             })
             .map(function (m) { return { role: m.role, content: m.content }; });
     }
@@ -221,12 +233,17 @@ function makeEngine(opts) {
         async props() {
             try {
                 const r = await get(base + '/props', 2500);
-                if (!r || !r.ok || !r.json) { return { ctx: 0 }; }
+                if (!r || !r.ok || !r.json) { return { ctx: 0, vision: false }; }
                 const g = r.json.default_generation_settings || {};
                 const n = parseInt(g.n_ctx, 10) || parseInt(r.json.n_ctx, 10) || 0;
-                return { ctx: n > 0 ? n : 0 };
+                // MEASURED, never guessed — llama.cpp reports its loaded
+                // modalities, and only an explicit true means the server can
+                // look at an image (an older build reports nothing → false,
+                // and the chat answers the honest no-vision sentence).
+                const mod = r.json.modalities || {};
+                return { ctx: n > 0 ? n : 0, vision: mod.vision === true };
             } catch (e) {
-                return { ctx: 0 };
+                return { ctx: 0, vision: false };
             }
         },
 

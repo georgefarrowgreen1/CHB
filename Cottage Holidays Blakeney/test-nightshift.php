@@ -774,6 +774,50 @@ nsk('…and its caps are its own — over-long words or thinking refused',
     night_ownerchat_answer_problem(json_encode(['text' => str_repeat('x', NIGHT_OWNERCHAT_TEXT_MAX + 1)])) !== ''
     && night_ownerchat_answer_problem(json_encode(['text' => 'ok', 'think' => str_repeat('x', NIGHT_OWNERCHAT_THINK_MAX + 1)])) !== '');
 
+// ── ATTACHMENTS ──────────────────────────────────────────────────────────
+// The photo ref is ONE shape — the one chat_photo_store mints — and anything
+// else reads as no photo, because the ref crosses two trust boundaries.
+nsk('a chat photo ref is exactly the minted shape, and nothing else',
+    night_chat_ref_ok('uploads/chat-photo-0123456789ab.jpg')
+    && !night_chat_ref_ok('uploads/chat-photo-0123456789ab.png')
+    && !night_chat_ref_ok('uploads/../config.php')
+    && !night_chat_ref_ok('uploads/chat-photo-XYZ.jpg')
+    && !night_chat_ref_ok('uploads/deposit-evidence-3-0123456789ab.jpg')
+    && !night_chat_ref_ok(null));
+// Attachments SURVIVE the sanitiser (chat_poll re-writes the thread through
+// it when an answer lands — a dropped field would erase the photo the moment
+// the Mac replied), and a junk ref reads as no photo on every pass.
+$at = night_ownerchat_thread(['msgs' => [
+    ['who' => 'you', 'text' => 'what is this?', 'img' => 'uploads/chat-photo-0123456789ab.jpg', 'file' => 'boiler.jpg'],
+    ['who' => 'you', 'text' => 'and this?', 'img' => 'uploads/../secrets.jpg'],
+    ['who' => 'mac', 'text' => 'A boiler.', 'img' => 'uploads/chat-photo-0123456789ab.jpg'],
+]]);
+$at2 = night_ownerchat_thread($at); // the round trip chat_poll performs
+nsk('img and file survive the sanitiser — twice — and junk or mac-side refs are dropped',
+    ($at['msgs'][0]['img'] ?? '') === 'uploads/chat-photo-0123456789ab.jpg'
+    && ($at['msgs'][0]['file'] ?? '') === 'boiler.jpg'
+    && !isset($at['msgs'][1]['img'])
+    && !isset($at['msgs'][2]['img'])
+    && ($at2['msgs'][0]['img'] ?? '') === 'uploads/chat-photo-0123456789ab.jpg'
+    && ($at2['msgs'][0]['file'] ?? '') === 'boiler.jpg', json_encode($at2['msgs']));
+// The FINAL turn travels whole — a fenced document must reach the Mac intact,
+// never cut at the history cap and answered confidently about the half seen —
+// while history keeps the tight cap, and the photo ref rides ONLY the ask.
+$doc = "summarise this\n\n--- attached file: notes.txt ---\n" . str_repeat('y', 5000) . "\n--- end of notes.txt ---";
+$pl2 = night_ownerchat_payload(['msgs' => [
+    ['who' => 'you', 'text' => str_repeat('a', 3000), 'img' => 'uploads/chat-photo-0123456789ab.jpg'],
+    ['who' => 'mac', 'text' => 'Noted.'],
+    ['who' => 'you', 'text' => $doc, 'img' => 'uploads/chat-photo-ba9876543210.jpg'],
+]]);
+nsk('the newest turn travels WHOLE (the fenced document intact); history keeps the tight cap',
+    mb_strlen($pl2['turns'][2]['text']) === mb_strlen($doc)
+    && strpos($pl2['turns'][2]['text'], '--- end of notes.txt ---') !== false
+    && mb_strlen($pl2['turns'][0]['text']) === NIGHT_OWNERCHAT_TURN_CHARS,
+    'last=' . mb_strlen($pl2['turns'][2]['text']) . ' first=' . mb_strlen($pl2['turns'][0]['text']));
+nsk('a photo ref rides ONLY the final turn — an older photo never resurfaces on a new question',
+    ($pl2['turns'][2]['img'] ?? '') === 'uploads/chat-photo-ba9876543210.jpg'
+    && !isset($pl2['turns'][0]['img']), json_encode($pl2['turns'][0]));
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

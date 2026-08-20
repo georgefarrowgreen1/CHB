@@ -488,6 +488,16 @@ function fakeSite(handler) {
     // and over-matching would silently hide a real model from the list.
     ok('…and it never matches mmproj mid-name', !models.isProjector('gemma-mmproj-notes.gguf'));
     ok('a missing folder is an empty library, not an error', models.installed(path.join(tmp, 'nope')).length === 0);
+
+    // PROJECTOR PAIRING — vision needs the model's OWN mmproj, matched by
+    // name with the quant tokens stripped, and NO pair means NO vision.
+    fs.writeFileSync(path.join(tmp, 'mmproj-gemma-3-4b-it-F16.gguf'), 'p');
+    ok('a projector pairs with ITS model, quant tokens stripped both sides',
+        models.projectorFor('gemma-3-4b-it-Q4_K_M.gguf', tmp) === path.join(tmp, 'mmproj-gemma-3-4b-it-F16.gguf'));
+    ok('…and never with a DIFFERENT model — a gemma projector on a qwen model is garbage in',
+        models.projectorFor('Qwen2.5-14B-Instruct-Q4_K_M.gguf', tmp) === '');
+    ok('no projector in the folder means no vision, said as an empty string',
+        models.projectorFor('gemma-3-4b-it-Q4_K_M.gguf', path.join(tmp, 'nope')) === '');
     fs.rmSync(tmp, { recursive: true, force: true });
 
     // ── §9 SETTINGS AND THE SECRET ───────────────────────────────────────
@@ -927,6 +937,11 @@ function fakeSite(handler) {
     ok('Apple silicon offloads to Metal (-ngl), or a 14B crawls', argsAS.indexOf('-ngl') !== -1);
     const argsIntel = runner.runnerArgs({ modelPath: '/M/q.gguf', base: 'http://127.0.0.1:8080', appleSilicon: false });
     ok('...and an Intel Mac is not given a flag it has no device for', argsIntel.indexOf('-ngl') === -1);
+    // VISION: the paired projector rides as --mmproj; without one the launch
+    // is byte-for-byte the text-only launch it always was.
+    const argsVis = runner.runnerArgs({ modelPath: '/M/g.gguf', base: 'http://127.0.0.1:8080', mmproj: '/M/mmproj-g.gguf' });
+    ok('a paired projector launches with --mmproj', argsVis[argsVis.indexOf('--mmproj') + 1] === '/M/mmproj-g.gguf');
+    ok('…and no projector means no flag at all', argsIntel.indexOf('--mmproj') === -1);
 
     // THE SAFETY LINE. The model path comes from settings the window can
     // write, so it is checked rather than trusted.
@@ -2225,6 +2240,32 @@ function fakeSite(handler) {
         } });
         ok('props reads n_ctx from llama.cpp and answers 0 for an engine that does not report',
             (await e1.props()).ctx === 8192 && (await e2.props()).ctx === 0);
+        // VISION IS MEASURED, NEVER GUESSED: only llama.cpp's own explicit
+        // modalities.vision === true counts — an older build that reports
+        // nothing is a text engine, and the chat says so instead of bluffing.
+        const e3 = engMod.makeEngine({ id: 'llamacpp', get: async function () {
+            return { ok: true, status: 200, json: { n_ctx: 4096, modalities: { vision: true } } };
+        } });
+        ok('props reports vision only when the server SAYS so',
+            (await e3.props()).vision === true && (await e1.props()).vision === false
+            && (await e2.props()).vision === false);
+        // A multimodal message (OpenAI content parts) passes the boundary
+        // check whole; a malformed parts array kills the message outright —
+        // half a multimodal message is not a smaller message.
+        let sentBody = null;
+        const e4 = engMod.makeEngine({ id: 'llamacpp', stream: async function (u, body) {
+            sentBody = body;
+            return { ok: true, status: 200, json: {}, usage: {} };
+        } });
+        await e4.chatStream([
+            { role: 'user', content: [{ type: 'text', text: 'what is this?' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,xx' } }] },
+            { role: 'user', content: [{ type: 'bogus' }] },
+        ], 'm', {}, function () {});
+        ok('image parts travel to the engine whole, and a malformed parts message is dropped',
+            sentBody && sentBody.messages.length === 1
+            && Array.isArray(sentBody.messages[0].content)
+            && sentBody.messages[0].content[1].image_url.url === 'data:image/jpeg;base64,xx',
+            JSON.stringify(sentBody && sentBody.messages));
     }
 
     // Through the api: the instruction rides the system content, the meter's
@@ -2415,6 +2456,80 @@ function fakeSite(handler) {
             && partials.some(function (t) { return /One arrival/.test(JSON.parse(t).text) || /One /.test(JSON.parse(t).text); }),
             JSON.stringify(partials));
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // A PHOTO ON THE ASK — three honest outcomes, no fourth. The ref
+        // rides the newest turn; whether the model ever MEETS the image is
+        // decided by what the engine measures about itself, never assumed.
+        const mk34c = function (vision, fileOk) {
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34c-'));
+            const rec = { answers: [], fetched: [], lastMsgs: null };
+            const api = require('../src/core/api').makeApi({
+                dir: tmp, machine: M16,
+                secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+                makeEngine: function () {
+                    return {
+                        id: 'llamacpp', name: 'fake', base: 'http://x',
+                        reachable: async function () { return true; },
+                        props: async function () { return { ctx: 4096, vision: vision }; },
+                        chatStream: async function (msgs) {
+                            rec.lastMsgs = msgs;
+                            return { ok: true, stopped: false, text: 'A weeping compression joint.', think: '', ms: 5, tokens: 2, promptTokens: 40, tokensPerSec: 1 };
+                        },
+                    };
+                },
+                makeSite: function () {
+                    return {
+                        asks: async function () {
+                            return { ok: true, host: '', warm: false, asks: [{ id: 21, kind: 'ownerchat', ownerchat: {
+                                turns: [{ who: 'you', text: 'what is wrong here?', img: 'uploads/chat-photo-0123456789ab.jpg' }],
+                                instr: '',
+                            } }] };
+                        },
+                        answerAsk: async function (id, text, model) { rec.answers.push({ id: id, text: text, model: model }); return { ok: true }; },
+                        askPartial: async function () { return { ok: true }; },
+                        chatTool: async function () { return { ok: true, data: {} }; },
+                        chatFile: async function (ref) {
+                            rec.fetched.push(ref);
+                            return fileOk ? { ok: true, dataUri: 'data:image/jpeg;base64,QQ==' } : { ok: false };
+                        },
+                    };
+                },
+            });
+            return { api: api, rec: rec, tmp: tmp };
+        };
+        // Vision available: the bytes are fetched and the image joins the
+        // newest turn as content parts — the model actually SEES the photo.
+        const hV = mk34c(true, true);
+        await hV.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await hV.api.askSweep();
+        const seenMsg = hV.rec.lastMsgs && hV.rec.lastMsgs[hV.rec.lastMsgs.length - 1];
+        ok('with a vision engine the photo is fetched by ref and joins the turn as image parts',
+            hV.rec.fetched[0] === 'uploads/chat-photo-0123456789ab.jpg'
+            && seenMsg && Array.isArray(seenMsg.content)
+            && seenMsg.content.some(function (p) { return p.type === 'image_url' && p.image_url.url === 'data:image/jpeg;base64,QQ=='; })
+            && JSON.parse(hV.rec.answers[0].text).text === 'A weeping compression joint.',
+            JSON.stringify(seenMsg && seenMsg.content));
+        try { fs.rmSync(hV.tmp, { recursive: true, force: true }); } catch (e) {}
+        // Text-only engine: the model NEVER meets the photo (no fetch, no
+        // parts) and the thread carries the honest refusal, not a bluff.
+        const hT = mk34c(false, true);
+        await hT.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await hT.api.askSweep();
+        ok('a text-only engine answers the honest no-vision sentence and the model never meets the photo',
+            hT.rec.fetched.length === 0 && hT.rec.lastMsgs === null
+            && /can’t see pictures/.test(JSON.parse(hT.rec.answers[0].text).text),
+            JSON.stringify(hT.rec.answers));
+        try { fs.rmSync(hT.tmp, { recursive: true, force: true }); } catch (e) {}
+        // A fetch that fails is said plainly — never answered around.
+        const hF = mk34c(true, false);
+        await hF.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await hF.api.askSweep();
+        ok('a photo that will not fetch is answered honestly, and the model is never run without it',
+            hF.rec.lastMsgs === null
+            && /couldn’t fetch that photo/.test(JSON.parse(hF.rec.answers[0].text).text),
+            JSON.stringify(hF.rec.answers));
+        try { fs.rmSync(hF.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 
     console.log('\n== Summary ==');

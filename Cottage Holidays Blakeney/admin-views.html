@@ -244,16 +244,20 @@
 <template data-view="view-aichat">
         <div class="ac-page">
             <div class="ac-hd">
-                <span class="ac-spark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg></span>
-                <!-- The NAME is the spark's job (and the dock's, and the
-                     condensed header's) — the presence is the bar's one line.
-                     The heading survives for the screen-reader outline. -->
+                <!-- The dock's spark and the condensed header carry the page's
+                     identity — this strip is presence and the … only. The
+                     heading survives for the screen-reader outline. -->
                 <h1 class="sr-only">AI chat</h1>
                 <span class="mc-pres" id="ac-pres"></span>
                 <button class="ac-more" type="button" data-act="acSheetOpen" aria-label="More" aria-haspopup="true">⋯</button>
             </div>
             <div class="mc-log" id="mc-log" aria-live="polite"></div>
             <div class="ac-composer">
+                <!-- A pending attachment (one at a time) sits ABOVE the input
+                     row until the send carries it — never silently attached. -->
+                <div class="ac-pend" id="mc-pend" hidden></div>
+                <button class="ac-clip" type="button" data-act="mcAttachPick" aria-label="Attach a photo or document"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                <input type="file" id="mc-file" accept="image/*,.txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" hidden aria-hidden="true" tabindex="-1">
                 <input type="text" id="mc-in" placeholder="Ask anything…" aria-label="Message" autocomplete="off">
                 <button class="ac-send" type="button" id="mc-send" data-act="mcSend" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 12l6-6 6 6"/></svg></button>
             </div>

@@ -311,6 +311,26 @@ try {
         ]);
     }
 
+    // AI-chat photos are EPHEMERAL: the model looked at them, the words are
+    // the record, and a week is longer than any conversation stays live. The
+    // pattern is chat_photo_store's own, so nothing else in uploads/ is ever
+    // touched by this sweep.
+    $chatPruned = 0;
+    if (is_dir($upDir)) {
+        foreach (scandir($upDir) ?: [] as $cp) {
+            if (!preg_match('/^chat-photo-[0-9a-f]{12}\.jpg$/', $cp)) {
+                continue;
+            }
+            $mt = @filemtime($upDir . '/' . $cp);
+            if ($mt !== false && $mt < time() - 7 * 86400 && @unlink($upDir . '/' . $cp)) {
+                $chatPruned++;
+            }
+        }
+    }
+    if ($chatPruned > 0) {
+        $fixed[] = "pruned $chatPruned chat photo(s) older than a week";
+    }
+
     if (is_dir($upDir)) {
         // Everything that can legitimately reference an upload, in one haystack.
         $hay = '';

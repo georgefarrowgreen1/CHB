@@ -184,7 +184,7 @@ function makeApi(deps) {
     // a watcher can discard one that turns out to be a tool call,
     // { tool }/{ tool_done } around each lookup. The RETURN VALUE carries
     // the whole answer — events are a watcher's luxury, never the record.
-    async function chatLoop(eng, turns, instr, model, ev, signal) {
+    async function chatLoop(eng, turns, instr, model, ev, signal, img) {
         let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
         const site = toolsOn ? siteFor() : null;
         let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
@@ -195,6 +195,20 @@ function makeApi(deps) {
                 + 'The owner’s standing instruction for this conversation: ' + instr;
         }
         let msgs = chatMod.chatForModel(turns, '', extra);
+        // A PHOTO joins the NEWEST turn as OpenAI content parts — the question
+        // and its image are one message, exactly as the fenced document rule
+        // keeps a question with its file. Only offered when the caller already
+        // established the engine can see (props().vision), so a text-only
+        // server never receives parts it would refuse.
+        if (img) {
+            const lastM = msgs[msgs.length - 1];
+            if (lastM && lastM.role === 'user' && typeof lastM.content === 'string') {
+                lastM.content = [
+                    { type: 'text', text: lastM.content },
+                    { type: 'image_url', image_url: { url: String(img) } },
+                ];
+            }
+        }
         // TRIM HONESTY: how many stored turns no longer travel.
         const dropped = Math.max(0, turns.length - (msgs.length - 1));
         const used = [];
@@ -388,6 +402,9 @@ function makeApi(deps) {
                 modelPath: path.join(cfg.modelsDir, model),
                 base: eng.base,
                 appleSilicon: !!mach.appleSilicon,
+                // Paired by name from the same Models folder; '' means a
+                // text-only launch, exactly as before this existed.
+                mmproj: modelsMod.projectorFor(model, cfg.modelsDir),
             }),
             base: eng.base,
             reachable: function () { return eng.reachable(); },
@@ -613,6 +630,21 @@ function makeApi(deps) {
                 return { ok: false, say: 'Only .gguf model files can be downloaded here.' };
             }
             const r = await modelsMod.download(String(row.url), cfg.modelsDir, safe, onProgress, { fetch: fetchImpl });
+            // A vision repo's projector downloads BESIDE its model — the
+            // companion llama-server takes via --mmproj, without which the
+            // model reads text only. Best-effort: a failed companion never
+            // fails the model, it just means no vision until re-fetched.
+            if (r && r.ok && row.mmproj && row.mmproj.url && row.mmproj.filename) {
+                const pSafe = String(row.mmproj.filename).replace(/[^A-Za-z0-9._-]/g, '_');
+                if (/\.gguf$/i.test(pSafe) && modelsMod.isProjector(pSafe)) {
+                    try {
+                        const pr = await modelsMod.download(String(row.mmproj.url), cfg.modelsDir, pSafe, null, { fetch: fetchImpl });
+                        if (pr && pr.ok) {
+                            r.say = (r.say ? r.say + ' ' : '') + 'Its vision file came with it — this model can look at photos.';
+                        }
+                    } catch (e) { /* the model itself is in hand */ }
+                }
+            }
             return r;
         },
 
@@ -734,9 +766,35 @@ function makeApi(deps) {
                             if (!up.ok) {
                                 return { ok: false, say: up.say };
                             }
-                            const turns = (Array.isArray(oc.turns) ? oc.turns : []).map(function (m) {
+                            const rawTurns = Array.isArray(oc.turns) ? oc.turns : [];
+                            const turns = rawTurns.map(function (m) {
                                 return { role: (m && m.who) === 'mac' ? 'assistant' : 'user', text: String((m && m.text) || '') };
                             });
+                            // A PHOTO rides the newest turn as a REF; the bytes
+                            // come through chat_file. Three honest outcomes and
+                            // no fourth: the engine can see → the image joins
+                            // the turn; it cannot → the model NEVER meets the
+                            // photo and the answer says so (a text model must
+                            // not bluff a description); the fetch fails → said
+                            // plainly, never answered around.
+                            let imgUri = '';
+                            const lastT = rawTurns[rawTurns.length - 1] || {};
+                            const imgRef = typeof lastT.img === 'string' ? lastT.img : '';
+                            if (imgRef) {
+                                const seen = await up.eng.props();
+                                if (!seen.vision) {
+                                    return { ok: true, model: model, text: JSON.stringify({
+                                        text: 'I can’t see pictures with this model — it reads text only. In the Mac app, download a vision model (its photo file comes along automatically) under Library, pick it for the chat, and send the photo again.',
+                                    }) };
+                                }
+                                const pf = await siteFor().chatFile(imgRef);
+                                if (!pf.ok) {
+                                    return { ok: true, model: model, text: JSON.stringify({
+                                        text: 'I couldn’t fetch that photo from the website just now — send it again in a moment.',
+                                    }) };
+                                }
+                                imgUri = pf.dataUri;
+                            }
                             // Rebuild the streaming view from the loop's own
                             // events — the TOOL holdback the window applies,
                             // applied here so a lookup being typed never
@@ -759,7 +817,7 @@ function makeApi(deps) {
                                         think: think.slice(0, chatMod.CHAT_THINK_CHARS),
                                     }));
                                 }
-                            }, null);
+                            }, null, imgUri);
                             if (!res.ok) {
                                 return { ok: false, say: res.say };
                             }
