@@ -620,12 +620,15 @@ async function runAskSweep(ctx) {
                 continue;
             }
             const r = await c.ownerChat(oc, function (partialJson) {
-                // Fire-and-forget: a lost partial costs a beat of streaming,
-                // never the answer.
+                // Fire-and-forget for the STREAM (a lost partial costs a beat,
+                // never the answer) — but the promise is RETURNED, because its
+                // result carries `held`: the site saying nobody holds this row
+                // is how the owner's ■ reaches the model mid-generation.
                 try {
                     const p = c.site.askPartial(id, partialJson);
                     if (p && p.catch) { p.catch(function () {}); }
-                } catch (e) { /* the answer still lands */ }
+                    return p;
+                } catch (e) { return null; /* the answer still lands */ }
             });
             if (r && r.skip) { continue; }
             if (!r || !r.ok) {

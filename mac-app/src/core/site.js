@@ -285,9 +285,16 @@ function makeSite(opts) {
             }
             try {
                 const r = await send(url, { action: 'ask_partial', secret: secret, id: id, text: String(text || '') });
-                return { ok: !!(r.ok && r.json && r.json.ok) };
+                // `held` is the STOP SIGNAL, free of charge: the site answers
+                // whether the row is still open, and a row nobody is holding
+                // means the owner tapped ■ (or a new send superseded this
+                // one) — the caller aborts and the engine is freed. Only an
+                // ok answer carries it; a network blip must never read as a
+                // stop, so held stays true there.
+                const ok = !!(r.ok && r.json && r.json.ok);
+                return { ok: ok, held: ok ? r.json.held === true : true };
             } catch (e) {
-                return { ok: false };
+                return { ok: false, held: true };
             }
         },
 

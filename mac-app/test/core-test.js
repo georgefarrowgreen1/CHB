@@ -2531,6 +2531,59 @@ function fakeSite(handler) {
             JSON.stringify(hF.rec.answers));
         try { fs.rmSync(hF.tmp, { recursive: true, force: true }); } catch (e) {}
     }
+    {
+        // THE OWNER'S ■ REACHES THE MODEL: ask_partial answering held:false
+        // aborts the generation mid-stream through the local Stop's own
+        // signal path, and the remainder is never posted — the row is
+        // already expired at the site, so an answer would only be refused.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34d-'));
+        const rec = { answers: [], partials: 0, sawAbort: false };
+        let clockMs = 5000000;
+        const api34d = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            now: function () { return new Date(clockMs); },
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs, model, opts, onEv) {
+                        // Stream a few words with the clock advancing so the
+                        // partial throttle opens, then WAIT so the abort (a
+                        // microtask behind the partial's promise) can land.
+                        onEv({ token: 'The weekend ' }); clockMs += 2000;
+                        onEv({ token: 'looks ' }); clockMs += 2000;
+                        await new Promise(function (r3) { setTimeout(r3, 30); });
+                        if (opts.signal && opts.signal.aborted) {
+                            rec.sawAbort = true;
+                            return { ok: true, stopped: true, text: 'The weekend looks', think: '', ms: 5, tokens: 2, tokensPerSec: null };
+                        }
+                        return { ok: true, stopped: false, text: 'The weekend looks quiet.', think: '', ms: 5, tokens: 3, promptTokens: 20, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () {
+                        return { ok: true, host: '', warm: false, asks: [{ id: 31, kind: 'ownerchat', ownerchat: {
+                            turns: [{ who: 'you', text: 'busy weekend?' }], instr: '',
+                        } }] };
+                    },
+                    answerAsk: async function (id, text, model) { rec.answers.push(text); return { ok: true }; },
+                    askPartial: async function () { rec.partials++; return { ok: true, held: false }; },
+                    chatTool: async function () { return { ok: true, data: {} }; },
+                };
+            },
+        });
+        await api34d.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const swS = await api34d.askSweep();
+        ok('held:false on a partial ABORTS the generation and nothing more is posted',
+            rec.partials >= 1 && rec.sawAbort && rec.answers.length === 0
+            && swS.ok && swS.answered === 0 && (swS.failed || 0) === 0,
+            JSON.stringify({ partials: rec.partials, abort: rec.sawAbort, answers: rec.answers.length, sw: swS }));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
 
     console.log('\n== Summary ==');
     if (fails) {

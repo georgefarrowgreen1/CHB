@@ -696,6 +696,52 @@ route_actions([
         } while (true);
         json_out(['ok' => true, 'status' => 'open']);
     },
+    // ---- the owner taps ■ — the round trip ends on their terms ------
+    // Three layers, one decision: the phone's poll dies on its stamp, THIS
+    // settles whatever the Mac had already streamed into the thread (words
+    // said are kept — a stop is a decision, not a failure) and expires the
+    // row, and the Mac stands down within a beat with NO new channel: its
+    // next ask_partial finds the row no longer open (`held: false`) and
+    // aborts the generation. The claim is guarded exactly like chat_poll's:
+    // if the ANSWER beat the stop, this says so and the phone collects it
+    // honestly rather than hiding words that were already finished.
+    'chat_stop' => function ($in) {
+        require_admin();
+        $id = (int) ($in['id'] ?? 0);
+        $up = db()->prepare("UPDATE night_asks SET status = 'expired' WHERE id = ? AND status = 'open' AND kind = 'ownerchat'");
+        $up->execute([$id]);
+        if ($up->rowCount() !== 1) {
+            // Not ours to stop any more — answered, already expired, or junk.
+            $st = db()->prepare("SELECT status FROM night_asks WHERE id = ? AND kind = 'ownerchat'");
+            $st->execute([$id]);
+            $stt = $st->fetchColumn();
+            if ($stt === false) {
+                json_out(['error' => 'No such ask.'], 404);
+            }
+            json_out(['ok' => true, 'kept' => false, 'raced' => (string) $stt]);
+        }
+        // Claimed. The partial is read AFTER the claim, so nothing can grow
+        // it underneath us (ask_partial only writes to an OPEN row).
+        $st = db()->prepare('SELECT answer FROM night_asks WHERE id = ?');
+        $st->execute([$id]);
+        $pj = json_decode((string) ($st->fetchColumn() ?: ''), true);
+        $ptxt = is_array($pj) && is_string($pj['text'] ?? null) ? trim($pj['text']) : '';
+        if ($ptxt === '') {
+            // Nothing had come back yet — nothing is stored, so the question
+            // stays askable (the Mac chat's own stop-before-words rule).
+            json_out(['ok' => true, 'kept' => false]);
+        }
+        $msg = ['who' => 'mac', 'text' => $ptxt, 'at' => date('H:i'), 'stopped' => true];
+        if (is_array($pj) && is_string($pj['think'] ?? null) && trim($pj['think']) !== '') {
+            $msg['think'] = $pj['think'];
+        }
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        $t['msgs'][] = $msg;
+        $t = night_ownerchat_thread($t);
+        content_set_scalar('mac-chat', json_encode($t));
+        $last = $t['msgs'] ? $t['msgs'][count($t['msgs']) - 1] : null;
+        json_out(['ok' => true, 'kept' => true, 'msg' => $last]);
+    },
     'chat_instr' => function ($in) {
         require_admin();
         $t = night_ownerchat_thread(content_json('mac-chat', []));

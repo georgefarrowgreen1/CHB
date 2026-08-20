@@ -817,6 +817,18 @@ nsk('the newest turn travels WHOLE (the fenced document intact); history keeps t
 nsk('a photo ref rides ONLY the final turn — an older photo never resurfaces on a new question',
     ($pl2['turns'][2]['img'] ?? '') === 'uploads/chat-photo-ba9876543210.jpg'
     && !isset($pl2['turns'][0]['img']), json_encode($pl2['turns'][0]));
+// A STOP is part of the record: the flag survives the sanitiser (and so the
+// chat_poll round trip) on a mac message, and never invents itself on the
+// owner's side.
+$sp = night_ownerchat_thread(night_ownerchat_thread(['msgs' => [
+    ['who' => 'mac', 'text' => 'The weekend looks', 'stopped' => true],
+    ['who' => 'mac', 'text' => 'A full answer.'],
+    ['who' => 'you', 'text' => 'busy weekend?', 'stopped' => true],
+]]));
+nsk('a stopped answer STAYS stopped through the round trip, and only a mac message can be',
+    ($sp['msgs'][0]['stopped'] ?? false) === true
+    && !isset($sp['msgs'][1]['stopped'])
+    && !isset($sp['msgs'][2]['stopped']), json_encode($sp['msgs']));
 
 echo "\n== Summary ==\n";
 if ($fails) {
