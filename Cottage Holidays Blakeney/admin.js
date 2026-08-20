@@ -11917,9 +11917,12 @@ const MC_ACTS = {
         facts(act) {
             const b = findBookingById(act.booking);
             if (!b) return '';
-            // The LIVE figure, from the one owed derivation — never the
-            // model's memory of it.
-            const due = bookingDue(findBookingLocation(act.booking), b).balance;
+            // The LIVE figure, from the one owed derivation. The prop key
+            // comes from the booking we FOUND — findBookingLocation takes
+            // the client id; the act's numeric id returned null and a
+            // no-locked-price booking then read "settled" over money owed.
+            const loc = findBookingLocation(b.id);
+            const due = bookingDue(loc && loc.propKey, b).balance;
             if (due <= 0.5) return '';
             return `Email ${escapeHtml(b.name || 'the guest')} their payment link — ${gbp(due)} still to pay. The email preview opens first.`;
         },
@@ -11928,7 +11931,8 @@ const MC_ACTS = {
         dead(act) {
             const b = findBookingById(act.booking);
             if (!b) return 'That booking is no longer here.';
-            if (bookingDue(findBookingLocation(act.booking), b).balance <= 0.5) return `${escapeHtml(b.name || 'The guest')} is already settled — nothing to ask.`;
+            const loc = findBookingLocation(b.id);
+            if (bookingDue(loc && loc.propKey, b).balance <= 0.5) return `${escapeHtml(b.name || 'The guest')} is already settled — nothing to ask.`;
             return '';
         },
         async run(act) {
@@ -12057,14 +12061,13 @@ const MC_ACTS = {
             return '';
         },
         async run(act) {
-            // The confirm IS what makes it a line — the app still never
-            // writes one of its own accord. Replace-semantics like the
-            // editor: current texts plus this one; the server dates it today.
-            const cur = ((__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : []).map(mcMemText).filter(Boolean);
-            const r = await apiPost('nightshift.php', { action: 'chat_memory_save', items: cur.concat([String(act.text || '')]) });
+            // The confirm IS what makes it a line — and the SERVER merges
+            // (add-one): replace semantics from this phone's stale mirror
+            // silently deleted lines another device had added.
+            const r = await apiPost('nightshift.php', { action: 'chat_memory_save', add: String(act.text || '') });
             if (!r || !r.ok) return false;
             if (__mcState) __mcState.memory = r.memory || [];
-            toast('Remembered — it rides every conversation now.');
+            toast(r.already ? 'Already remembered — nothing changed.' : 'Remembered — it rides every conversation now.');
             return true;
         },
     },
@@ -12078,7 +12081,8 @@ const MC_ACTS = {
         facts(act) {
             const b = findBookingById(act.booking);
             if (!b) return '';
-            const due = bookingDue(findBookingLocation(act.booking), b).balance;
+            const loc = findBookingLocation(b.id);
+            const due = bookingDue(loc && loc.propKey, b).balance;
             return `Open the record-a-payment form for ${escapeHtml(b.name || 'the guest')}${due > 0.5 ? ` — ${gbp(due)} still to pay` : ''}. You enter the figure there.`;
         },
         dead(act) {
@@ -12337,11 +12341,14 @@ async function renderMacChat() {
     const log = document.getElementById('mc-log');
     const pres = document.getElementById('ac-pres');
     if (!log || !pres) return;
-    __mcStamp++;
+    // The stamp guards this fetch (a stale chat_thread must not overwrite a
+    // newer render) AND kills any collect loop — mcResume restarts it below.
+    const stamp = ++__mcStamp;
     delete log.dataset.ready;
     log.innerHTML = `<div class="settings-note">Fetching the conversation…</div>`;
     let r = null;
     try { r = await apiPost('nightshift.php', { action: 'chat_thread', convo: __mcConvo || 0 }); } catch (e) { r = null; }
+    if (stamp !== __mcStamp) return;
     if (!r || !r.ok) {
         log.innerHTML = `<div class="settings-note">Couldn't reach the conversation — check the connection and try again.</div>`;
         return;
@@ -12358,6 +12365,9 @@ async function renderMacChat() {
     log.innerHTML = (r.msgs || []).map(mcMsgHtml).join('') || mcHelloHtml();
     log.dataset.ready = '1'; // the handoff (chbAskMacHandoff) waits for this
     log.scrollTop = log.scrollHeight;
+    // AN ASK IN FLIGHT SURVIVES THE RE-RENDER — without this, nav away and
+    // back mid-answer stranded __mcBusy for ever, ■ stuck, answer uncollected.
+    if (__mcBusy && __mcAskId) { mcResume(stamp, log); }
     // Enter sends — bound ONCE on the persistent composer, not per render.
     const box = document.getElementById('mc-in');
     if (box && !box.dataset.bound) {
@@ -12419,7 +12429,10 @@ function acSheetClose() {
 function acNewChat() {
     acSheetClose();
     if (__mcBusy) return;
-    const convos = (__mcState && Array.isArray(__mcState.convos)) ? __mcState.convos : [];
+    // NO STATE, NO GUESS: a derived "new" number from a missing state lands
+    // INSIDE an existing conversation. Fetch first; tap New again after.
+    if (!__mcState || !Array.isArray(__mcState.convos)) { renderMacChat(); return; }
+    const convos = __mcState.convos;
     const top = convos.reduce((m, c) => Math.max(m, Number(c.convo) || 0), Number(__mcConvo) || 1);
     __mcConvo = top + 1;
     renderMacChat();
@@ -12611,17 +12624,25 @@ async function mcSendRun() {
     // Optimistic: the question is on screen at once; the site is storing the
     // same message, and the thread reload after the answer reconciles.
     log.insertAdjacentHTML('beforeend', mcMsgHtml(optimistic));
+    const optNode = log.lastElementChild; // removed again if the send fails
     const cap = mcCap(log, '<span class="mc-spin" aria-hidden="true"></span> Waiting for your Mac…');
     __mcCap = cap; // mcStop owns the cleanup once the stamp kills this loop
-    let live = null; // the streaming block, once a partial lands
-    let picked = false;
     try {
         let sendR = null;
-        try { sendR = await apiPost('nightshift.php', body); } catch (e) { sendR = { error: 'Could not reach the site.' }; }
+        try {
+            sendR = await apiPost('nightshift.php', body);
+        } catch (e) {
+            // The server's own sentence survives (409 switch-off, 503
+            // migrations, 400 bad photo); only a transport failure — no
+            // e.status — keeps the connectivity wording.
+            sendR = { error: (e && e.status && e.message) ? e.message : 'Could not reach the site.' };
+        }
         if (stamp !== __mcStamp) return;
         if (!sendR || sendR.error) {
+            // The unsent bubble comes DOWN, or re-sending paints it twice.
+            if (optNode && optNode.isConnected) optNode.remove();
             cap.className = 'mc-jcap is-warn';
-            cap.textContent = (sendR && sendR.error) || 'Could not reach the site — your words are back in the box.';
+            cap.textContent = ((sendR && sendR.error) || 'Could not reach the site.') + ' Your words are back in the box.';
             box.value = text;
             return;
         }
@@ -12638,57 +12659,89 @@ async function mcSendRun() {
             cap.className = 'mc-jcap is-warn';
             cap.textContent = 'Your Mac isn’t listening right now — it may be asleep. The question waits up to ten minutes.';
         }
-        // COLLECT: long-poll until the row settles. `seen` carries how much
-        // partial is already painted, so the site answers the moment there is
-        // more. The stamp kills a superseded loop silently.
-        let seen = 0;
-        for (let i = 0; i < 45; i++) {
-            if (stamp !== __mcStamp) return;
-            let pr = null;
-            try { pr = await apiPost('nightshift.php', { action: 'chat_poll', id, wait: 15, seen }); } catch (e) { pr = null; }
-            if (stamp !== __mcStamp) return;
-            if (!pr || pr.error) { continue; }
-            if (pr.status === 'answered' && pr.msg) {
-                if (live) { live.remove(); live = null; }
-                cap.remove();
-                let mIx;
-                if (__mcState) {
-                    __mcState.msgs = (__mcState.msgs || []).concat([pr.msg]);
-                    mIx = __mcState.msgs.length - 1;
-                }
-                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg, mIx));
-                log.insertAdjacentHTML('beforeend', `<div class="mc-meta" role="status">answered by your Mac at home${pr.msg.model ? ' · ' + escapeHtml(pr.msg.model) : ''}</div>`);
-                log.scrollTop = log.scrollHeight;
-                return;
-            }
-            if (pr.status === 'expired') {
-                cap.className = 'mc-jcap is-warn';
-                cap.textContent = pr.say || 'Your Mac didn’t answer in time — it may be asleep.';
-                return;
-            }
-            if (pr.status === 'open' && pr.partial) {
-                const ptxt = pr.partial.text || '';
-                const pthink = pr.partial.think || '';
-                seen = ptxt.length + pthink.length;
-                if (!picked) {
-                    picked = true;
-                    cap.innerHTML = '<span class="mc-tick">✓</span> Picked up at home';
-                }
-                if (!live) {
-                    log.insertAdjacentHTML('beforeend', '<div class="mc-live" id="mc-live"></div>');
-                    live = document.getElementById('mc-live');
-                }
-                live.innerHTML = (pthink ? `<details class="mc-think" open><summary><span class="mc-spin" aria-hidden="true"></span> Thinking…</summary><div class="mc-think-b">${escapeHtml(pthink)}</div></details>` : '')
-                    + (ptxt ? `<div class="mc-bub mc-mac">${mcMd(ptxt)}<span class="mc-caret" aria-hidden="true"></span></div>` : '');
-                log.scrollTop = log.scrollHeight;
-            }
+        // COLLECT — the shared loop; 'timeout' gets the honest sentence.
+        const out = await mcCollect(id, stamp, log, cap);
+        if (out === 'timeout') {
+            cap.className = 'mc-jcap is-warn';
+            cap.textContent = 'Still nothing back — the question may have expired. Send it again when the Mac shows as listening.';
         }
-        cap.className = 'mc-jcap is-warn';
-        cap.textContent = 'Still nothing back — the question may have expired. Send it again when the Mac shows as listening.';
     } finally {
         // Only the CURRENT flight may clean up: a stopped loop's stamp is
         // stale, and mcStop (or a newer send) already owns the state — an
         // unconditional reset here would clear a NEW send's busy flag.
+        if (stamp === __mcStamp) {
+            __mcBusy = false;
+            mcSendMode(false);
+        }
+    }
+}
+// The collect loop (mcSendRun + mcResume): long-poll until the row settles.
+// Returns 'done' | 'super' (a newer stamp owns the screen) | 'timeout'. The
+// BUDGET IS ELAPSED TIME, never a loop count — chat_poll returns whenever
+// the partial grows (~1.5s a chunk), so 45 iterations died in ~70s claiming
+// expiry over an answer still streaming. Ten minutes is the ask's own TTL.
+async function mcCollect(id, stamp, log, cap) {
+    let live = null; // the streaming block, once a partial lands
+    let picked = false;
+    let seen = 0;
+    const until = Date.now() + 10 * 60 * 1000;
+    let spins = 0;
+    while (Date.now() < until && ++spins < 900) {
+        if (stamp !== __mcStamp) return 'super';
+        let pr = null;
+        try { pr = await apiPost('nightshift.php', { action: 'chat_poll', id, wait: 15, seen }); } catch (e) { pr = null; }
+        if (stamp !== __mcStamp) return 'super';
+        if (!pr || pr.error) { continue; }
+        if (pr.status === 'answered' && pr.msg) {
+            if (live) { live.remove(); live = null; }
+            cap.remove();
+            let mIx;
+            if (__mcState) {
+                __mcState.msgs = (__mcState.msgs || []).concat([pr.msg]);
+                mIx = __mcState.msgs.length - 1;
+            }
+            log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg, mIx));
+            log.insertAdjacentHTML('beforeend', `<div class="mc-meta" role="status">answered by your Mac at home${pr.msg.model ? ' · ' + escapeHtml(pr.msg.model) : ''}</div>`);
+            log.scrollTop = log.scrollHeight;
+            return 'done';
+        }
+        if (pr.status === 'expired') {
+            cap.className = 'mc-jcap is-warn';
+            cap.textContent = pr.say || 'Your Mac didn’t answer in time — it may be asleep.';
+            return 'done';
+        }
+        if (pr.status === 'open' && pr.partial) {
+            const ptxt = pr.partial.text || '';
+            const pthink = pr.partial.think || '';
+            seen = ptxt.length + pthink.length;
+            if (!picked) {
+                picked = true;
+                cap.innerHTML = '<span class="mc-tick">✓</span> Picked up at home';
+            }
+            if (!live) {
+                log.insertAdjacentHTML('beforeend', '<div class="mc-live" id="mc-live"></div>');
+                live = document.getElementById('mc-live');
+            }
+            live.innerHTML = (pthink ? `<details class="mc-think" open><summary><span class="mc-spin" aria-hidden="true"></span> Thinking…</summary><div class="mc-think-b">${escapeHtml(pthink)}</div></details>` : '')
+                + (ptxt ? `<div class="mc-bub mc-mac">${mcMd(ptxt)}<span class="mc-caret" aria-hidden="true"></span></div>` : '');
+            log.scrollTop = log.scrollHeight;
+        }
+    }
+    return 'timeout';
+}
+// Re-attach to an ask still in flight after a re-render: the fresh stamp
+// killed the old loop, so this one takes over its ask.
+async function mcResume(stamp, log) {
+    mcSendMode(true);
+    const cap = mcCap(log, '<span class="mc-spin" aria-hidden="true"></span> Still waiting for your Mac…');
+    __mcCap = cap; // mcStop reads it
+    try {
+        const out = await mcCollect(__mcAskId, stamp, log, cap);
+        if (out === 'timeout') {
+            cap.className = 'mc-jcap is-warn';
+            cap.textContent = 'Still nothing back — the question may have expired. Send it again when the Mac shows as listening.';
+        }
+    } finally {
         if (stamp === __mcStamp) {
             __mcBusy = false;
             mcSendMode(false);
@@ -12774,7 +12827,10 @@ async function draftChatOnMac() {
     }
     const now = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
     if (!now) return;
-    if (now.value === before) {
+    // The thread may have CHANGED under the await — guest A's draft must
+    // never be laid silently into guest B's box (mtDraftOffer's own guard).
+    const sameThread = (parseInt(String(/** @type {any} */ (window).__msgThreadId || ''), 10) || 0) === tid;
+    if (sameThread && now.value === before) {
         now.value = text;
         now.focus();
         return;

@@ -3436,6 +3436,30 @@ $mm = $r['json']['memory'] ?? [];
 it_check('ground: a resave keeps standing dates, adopts legacy as unknown, dates only the NEW line today',
     ($mm[0]['at'] ?? 'x') === '2026-03-01' && ($mm[1]['at'] ?? 'x') === ''
     && ($mm[2]['at'] ?? '') === date('Y-m-d'), json_encode($mm));
+// ADD-ONE MODE (the remember card): the SERVER merges, because the phone's
+// mirror can be stale — replace semantics from a stale device silently
+// deleted lines another device had added. Appends dated today, keeps every
+// standing line and its date; a duplicate changes nothing and says so; the
+// cap refuses in a sentence rather than dropping a 13th line silently.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'add' => 'Gate code for the yard is on the keyring']);
+$mm = $r['json']['memory'] ?? [];
+it_check('memory add-one: appends dated today and keeps every standing line + date',
+    count($mm) === 4 && ($mm[3]['t'] ?? '') === 'Gate code for the yard is on the keyring'
+    && ($mm[3]['at'] ?? '') === date('Y-m-d') && ($mm[0]['at'] ?? 'x') === '2026-03-01', json_encode($mm));
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'add' => 'Gate code for the yard is on the keyring']);
+it_check('memory add-one: a duplicate changes nothing and says already',
+    count($r['json']['memory'] ?? []) === 4 && ($r['json']['already'] ?? false) === true, $r['raw']);
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mac-chat-memory'")
+    ->execute([json_encode(json_encode(array_map(function ($i) { return ['t' => 'Standing fact number ' . $i, 'at' => '2026-05-01']; }, range(1, 12))))]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'add' => 'A thirteenth line']);
+it_check('memory add-one: a full list refuses in a sentence, never a silent drop',
+    $r['code'] === 409 && strpos((string) ($r['json']['error'] ?? ''), 'full') !== false, $r['raw']);
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mac-chat-memory'")
+    ->execute([json_encode(json_encode([
+        ['t' => 'Never dogs — allergy promise to guests', 'at' => '2026-03-01'],
+        ['t' => 'Boiler man is Colin', 'at' => ''],
+        ['t' => 'Check-in is 3pm sharp', 'at' => date('Y-m-d')],
+    ]))]);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'morning — how are we looking?']);
 $wcGid = (int) ($r['json']['id'] ?? 0);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
@@ -3655,6 +3679,18 @@ http($guest, 'POST', '/messages.php', ['action' => 'send', 'token' => $wcTok, 'b
 $wcOpenN = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE kind = 'chat' AND status = 'open'")->fetchColumn();
 it_check('drafts: a second message SUPERSEDES — one conversation, one ask', $wcOpenN === 1);
 $wcDid2 = (int) $rootDb->query("SELECT id FROM night_asks WHERE kind = 'chat' AND status = 'open' ORDER BY id DESC LIMIT 1")->fetchColumn();
+// A PHOTO-ONLY message files NO draft ask: the guest-chat pipeline has no
+// route to the image, so the Mac would draft a confident reply to a message
+// it saw as empty — worse than no draft. The standing ask is left alone.
+@mkdir($work . '/uploads', 0777, true);
+file_put_contents($work . '/uploads/chat-t-att.jpg', base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=='));
+$r = http($guest, 'POST', '/messages.php', ['action' => 'send', 'token' => $wcTok,
+    'body' => '', 'attachment' => 'uploads/chat-t-att.jpg']);
+it_check('drafts: a photo-only message stores…', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$wcOpenN = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE kind = 'chat' AND status = 'open'")->fetchColumn();
+$wcTopId = (int) $rootDb->query("SELECT id FROM night_asks WHERE kind = 'chat' AND status = 'open' ORDER BY id DESC LIMIT 1")->fetchColumn();
+it_check('drafts: …but files NO draft ask, and the standing one is untouched',
+    $wcOpenN === 1 && $wcTopId === $wcDid2);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcDid2,
     'text' => 'Hello Rachel — yes, completely dog-free, and there is parking right outside.']);
 it_check('drafts: the Mac answers the filed ask', ($r['json']['ok'] ?? false) === true, $r['raw']);

@@ -972,6 +972,89 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(stEarly.macs === stEarly.before && stEarly.say && stEarly.label === 'Send',
     `a stop before any words stores nothing and says so (${JSON.stringify(stEarly)})`);
+
+  // ── ROUND-2 AUDIT FIXES, each driven through the real screen ─────────────
+  // (a) A REFUSED SEND SPEAKS THE SERVER'S SENTENCE and un-paints the
+  // optimistic bubble. It used to say "Could not reach the site" about a
+  // switch that was off — the owner checked their WiFi — over a bubble
+  // still claiming the message had gone.
+  await page.evaluate(() => {
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') { return { ok: true, on: true, convo: 1, convos: [], memory: [], msgs: [], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      if (body.action === 'chat_send') { throw Object.assign(new Error('Overnight work is switched off in Manage → System check — the switch that connects your Mac.'), { status: 409 }); }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  await page.fill('#mc-in', 'a question that will be refused');
+  await page.click('#mc-send');
+  await page.waitForTimeout(300);
+  const rf = await page.evaluate(() => ({
+    cap: (document.querySelector('#mc-log .mc-jcap.is-warn') || {}).textContent || '',
+    bubbles: document.querySelectorAll('#mc-log .mc-bub').length,
+    box: document.getElementById('mc-in').value,
+  }));
+  ok(/switched off in Manage/.test(rf.cap) && /back in the box/.test(rf.cap),
+    `a refusal speaks the server's own sentence, not "check the connection" (${rf.cap.slice(0, 90)})`);
+  ok(rf.bubbles === 0, `…and the unsent bubble comes down (${rf.bubbles} left)`);
+  ok(/refused/.test(rf.box), '…with the words back in the box');
+
+  // (b) AN ASK IN FLIGHT SURVIVES NAV-AWAY-AND-BACK. The re-render's stamp
+  // bump kills the old collect loop, whose stamp-guarded finally then does
+  // nothing — without the resume, __mcBusy stayed true for ever, ■ stuck,
+  // and the Mac's answer was stored on the site but never collected.
+  await page.evaluate(() => {
+    window.__mcPollGate = 'open';
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') { return { ok: true, on: true, convo: 1, convos: [], memory: [], msgs: [{ who: 'you', text: 'the pending question', at: '10:00' }], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      if (body.action === 'chat_send') { return { ok: true, id: 88, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') {
+        if (window.__mcPollGate === 'answered') { return { ok: true, status: 'answered', msg: { who: 'mac', text: 'Collected after the hop.', at: '10:01' } }; }
+        await new Promise((r) => setTimeout(r, 120));
+        return { ok: true, status: 'open' };
+      }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  await page.fill('#mc-in', 'the pending question');
+  await page.click('#mc-send');
+  await page.waitForTimeout(200);
+  await page.evaluate(() => nav('view-backoffice'));
+  await page.waitForTimeout(150);
+  await page.evaluate(() => openAiChat());
+  await page.waitForTimeout(450);
+  const rs = await page.evaluate(() => ({
+    busy: __mcBusy === true,
+    cap: [...document.querySelectorAll('#mc-log .mc-jcap')].map((c) => c.textContent).join('|'),
+  }));
+  ok(rs.busy && /Still waiting/.test(rs.cap),
+    `nav away and back mid-ask RESUMES the wait — busy kept, the capsule says so (${rs.cap.slice(0, 70)})`);
+  await page.evaluate(() => { window.__mcPollGate = 'answered'; });
+  await page.waitForTimeout(600);
+  const rs2 = await page.evaluate(() => ({
+    busy: __mcBusy,
+    ans: /Collected after the hop/.test(document.getElementById('mc-log').textContent),
+  }));
+  ok(rs2.ans && rs2.busy === false,
+    `…and the answer lands in the fresh log with busy cleared — nothing stranded (${JSON.stringify(rs2)})`);
+
+  // (c) NEW CONVERSATION NEVER GUESSES WITH NO STATE — a derived "new"
+  // number from a failed first render landed INSIDE an existing historical
+  // conversation, whose summary the model then grounded on.
+  const nc = await page.evaluate(() => {
+    const savedState = __mcState;
+    __mcState = null;
+    const before = __mcConvo;
+    acNewChat();
+    const after = __mcConvo;
+    __mcState = savedState;
+    return { before, after };
+  });
+  ok(nc.after === nc.before, `New conversation refuses to guess with no state loaded (${nc.before} → ${nc.after})`);
+  await page.waitForTimeout(300);
   // THE ACTION CARD — the model proposes, THIS PHONE disposes. Rendering a
   // card fires NOTHING; Confirm runs the real endpoint (captured) and marks
   // the verdict; Dismiss marks with no business POST; an unknown kind — the
@@ -1177,7 +1260,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
             { who: 'mac', id: 510, text: 'And this again?', at: '12:11', act: { kind: 'remember', text: 'Boiler man is Colin' } },
           ] };
       }
-      if (body.action === 'chat_memory_save') { return { ok: true, memory: (body.items || []).map((t) => ({ t, at: todayDashed() })) }; }
+      if (body.action === 'chat_memory_save') {
+        // The card posts ADD-ONE — the server merges, so a stale phone can
+        // never replace-away lines another device added.
+        return { ok: true, memory: [{ t: 'Boiler man is Colin', at: '2026-03-01' }, { t: String(body.add || ''), at: todayDashed() }] };
+      }
       if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
       return { ok: true };
     };
@@ -1195,13 +1282,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => document.getElementById('mc-act-509').querySelector('.mc-act-go').click());
   await page.waitForTimeout(300);
   const rmRun = await page.evaluate(() => ({
-    saves: window.__mcReqs.filter((r) => r.a === 'chat_memory_save').map((r) => r.b.items),
+    saves: window.__mcReqs.filter((r) => r.a === 'chat_memory_save').map((r) => ({ add: r.b.add, items: r.b.items })),
     done: /Remembered — it rides every conversation/.test((document.getElementById('mc-act-509') || {}).textContent || ''),
   }));
   ok(rmRun.saves.length === 1
-    && JSON.stringify(rmRun.saves[0]) === JSON.stringify(['Boiler man is Colin', 'Never dogs — allergy promise to guests'])
+    && rmRun.saves[0].add === 'Never dogs — allergy promise to guests'
+    && rmRun.saves[0].items === undefined
     && rmRun.done,
-    `Confirm appends to the standing list through the real save and flips done (${JSON.stringify(rmRun.saves)})`);
+    `Confirm posts ADD-ONE (the server merges — a stale mirror can't replace-away other devices' lines) and flips done (${JSON.stringify(rmRun.saves)})`);
   // A FULL list refuses with the way out named, never a dead button.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

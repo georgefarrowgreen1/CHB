@@ -605,7 +605,13 @@ if ($guestId) {
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
             chat_notify_owner_deferred($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-            chat_file_draft_ask($tid);
+            // A PHOTO-ONLY message files no draft ask: the guest-chat
+            // pipeline has no route to the image, so the Mac would draft a
+            // confident reply to a message it saw as empty — worse than no
+            // draft, because the owner can send it with one skim.
+            if ($bodyTxt !== '') {
+                chat_file_draft_ask($tid);
+            }
             json_out(op_finish($opTok, ['ok' => true]));
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
@@ -690,7 +696,10 @@ try {
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
         chat_notify_owner_deferred($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-        chat_file_draft_ask($tid);
+        // Photo-only → no draft ask (the pipeline cannot see the image).
+        if ($bodyTxt !== '') {
+            chat_file_draft_ask($tid);
+        }
         json_out(op_finish($opTok, ['ok' => true, 'token' => $token]));
     }
     if ($action === 'typing') {
