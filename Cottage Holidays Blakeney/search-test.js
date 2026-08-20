@@ -2240,6 +2240,11 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         ctx.apiPost = async (url, body) => { posts.push(body); return { ok: true }; };
         const outA = await act.inline();
         check('the confirm names the already-sent guest as a SKIP, not a recipient', /Cara Bell[^\n]*already sent, will be skipped/.test(dlg.msg), (dlg.msg || '').split('\n').filter((l) => /Cara/.test(l))[0]);
+        // ARRIVAL ROWS CARRY NO MONEY, so the confirm must not print any —
+        // it used to list every guest as "— £0.00" under "Total to chase:
+        // £0.00", nonsense figures in the dialog whose whole job is stating
+        // exactly what will happen.
+        check('a money-less bulk confirm prints NO £ figures at all', !/£/.test(dlg.msg), (dlg.msg || '').split('\n').filter((l) => /£/.test(l)).join(' | '));
         check('and its button counts only the real sends', dlg.okLabel === 'Send 2 requests', dlg.okLabel);
         check('it calls send_arrival, not request_payment', posts.length === 2 && posts.every((b) => b.action === 'send_arrival'), posts.map((b) => b.action).join(','));
         check('never re-sending to the guest who already had theirs', !posts.some((b) => b.id === 3), posts.map((b) => b.id).join(','));
@@ -2557,7 +2562,32 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // An unknown kind (an old entry from a future version) is ignored, not crashed on.
         vm.runInContext(`siteContent['search-undo'] = [{ id:'uX', kind:'not-a-thing', label:'Mystery', at: Date.now() }];`, ctx);
         check('an unrecognised kind is ignored rather than thrown on', ctx.chbUndoList().length === 0);
-        vm.runInContext("apiPost = __undoOldApi; siteContent['search-undo'] = null; __chbUndo.length = 0; enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);", ctx);
+        // D) SURGICAL UNDO — undoing change A keeps everything added SINCE.
+        // The old whole-list restore wiped override B (and any hand-added
+        // season) from live guest pricing while toasting "back as they were".
+        vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = null;
+            propertySeasons.jollyboat = [{label:'Summer',start_date:'${dFut(10)}',end_date:'${dFut(30)}',couple_rate:100}];
+            apiPost = async () => ({ ok: true });`, ctx);
+        await ctx.cmdkApplyPriceOverride('jollyboat', dFut(15), dFut(18), 150, 'Search override');
+        await ctx.cmdkApplyPriceOverride('jollyboat', dFut(40), dFut(42), 120, 'Search override');
+        const entA = ctx.chbUndoList().find((e) => /£150/.test(e.label));
+        await entA.run();
+        const surg = vm.runInContext('propertySeasons.jollyboat', ctx).map((x) => `${x.start_date}~${x.end_date}~${x.couple_rate}`);
+        check('undoing A restores the season its splice split — whole again',
+            surg.some((r) => r === `${dFut(10)}~${dFut(30)}~100`), surg.join(' | '));
+        check('…removes only its own rows', !surg.some((r) => /~150$/.test(r)), surg.join(' | '));
+        check('…and KEEPS override B, added since', surg.some((r) => r === `${dFut(40)}~${dFut(42)}~120`), surg.join(' | '));
+        // The re-check: a neighbourhood the owner has edited since refuses.
+        vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = null;
+            propertySeasons.jollyboat = [{label:'Summer',start_date:'${dFut(10)}',end_date:'${dFut(30)}',couple_rate:100}];`, ctx);
+        await ctx.cmdkApplyPriceOverride('jollyboat', dFut(15), dFut(18), 150, 'Search override');
+        vm.runInContext(`propertySeasons.jollyboat = propertySeasons.jollyboat.filter((x) => x.end_date !== '${dFut(14)}');`, ctx);
+        const beforeRows = vm.runInContext('propertySeasons.jollyboat.length', ctx);
+        await ctx.chbUndoList()[0].run();
+        check('an undo whose neighbourhood was edited since REFUSES — nothing moves',
+            vm.runInContext('propertySeasons.jollyboat.length', ctx) === beforeRows
+            && vm.runInContext('propertySeasons.jollyboat', ctx).some((x) => +x.couple_rate === 150));
+        vm.runInContext("apiPost = __undoOldApi; siteContent['search-undo'] = null; __chbUndo.length = 0; enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); propertySeasons.jollyboat = [];", ctx);
     } else fail('chbDuties / chbUndoList missing from the bundle');
 
     // ---- 41. PINNED ANSWERS — the landing you compose yourself. A pin stores the
@@ -3076,6 +3106,67 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const semBlock = (adminScript.match(/async function cmdkSemanticHistory[\s\S]{0,2600}/) || [''])[0];
         check('the semantic merge kicks chbMacDigest with its fresh rows', /chbMacDigest\(ql, fresh\)/.test(semBlock), semBlock.slice(-200));
     } else fail('chbCanonList / cmdkIntent missing from the bundle');
+
+    // ---- §44 The round-3 audit fixes ----
+    console.log('\n== §44 Round-3 audit fixes ==');
+    if (typeof ctx.cmdkIntent === 'function' && typeof ctx.cmdkParseDates === 'function') {
+        const dF = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+        // (a) OWNER MAINTENANCE BLOCKS ARE NOT GUEST MOVEMENTS. The arriving/
+        // leaving/upcoming/today branches filtered blocks without the
+        // isOtaBlock gate branch 5 and the brief already apply.
+        vm.runInContext(`Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); enquiries = [];
+            dbBlocks.jollyboat = [
+                { id: 9001, checkIn: '${dF(1)}', checkOut: '${dF(3)}', source: 'owner', reason: 'maintenance' },
+                { id: 9002, checkIn: '${dF(1)}', checkOut: '${dF(4)}', source: 'airbnb' },
+            ];`, ctx);
+        const arr = (ctx.cmdkIntent('who is arriving this week') || []).map((r) => String(r.label) + '·' + String(r.sub || ''));
+        check('an owner maintenance block is NOT an arrival; the Airbnb stay still is',
+            arr.some((l) => /Airbnb/i.test(l)) && !arr.join(' ').match(/maintenance|owner/i), arr.join(' | ').slice(0, 140));
+        const lv = (ctx.cmdkIntent('who is leaving this week') || []).map((r) => String(r.label));
+        check('…nor a departure', !lv.join(' ').match(/owner|maintenance/i), lv.join(' | ').slice(0, 120));
+        vm.runInContext('dbBlocks.jollyboat = [];', ctx);
+        // (b) AN EXPLICIT BARE YEAR IS A PERIOD, honoured and labelled.
+        vm.runInContext(`dbBookings.jollyboat = [
+            { id: 'b9101', dbId: 9101, name: 'Past Year Guest', checkIn: '2024-06-10', checkOut: '2024-06-13', adults: 2, children: 0, agreedPrice: { total: 300, perNight: 100 }, deposit_paid: 300 },
+            { id: 'b9102', dbId: 9102, name: 'This Year Guest', checkIn: '${dF(-30)}', checkOut: '${dF(-27)}', adults: 2, children: 0, agreedPrice: { total: 500, perNight: 167 }, deposit_paid: 500 },
+        ];`, ctx);
+        // NB bare "revenue …" is claimed by the golden-pinned Income & tax
+        // action; the earned family is the insights doorway.
+        const y24 = (ctx.cmdkIntent('how much did i earn in 2024') || [])[0] || {};
+        check('"how much did i earn in 2024" answers ABOUT 2024, labelled as asked',
+            /in 2024/.test(String(y24.label) + String(y24.sub || '')) && /£300/.test(String(y24.label)),
+            `${y24.label} · ${y24.sub}`);
+        const v24 = (ctx.cmdkIntent('how many bookings in 2024') || [])[0] || {};
+        check('"how many bookings in 2024" counts 2024, not the current year',
+            /1 booking/.test(String(v24.label)) && /2024/.test(String(v24.label)), String(v24.label));
+        vm.runInContext('dbBookings.jollyboat = [];', ctx);
+        // (c) DD/MM WITH NO YEAR ROLLS FORWARD like the named-month branches;
+        // an explicit year is the owner's own claim and never rolled.
+        const past = ctx.dpParse(ctx.todayDashed()); past.setDate(past.getDate() - 10);
+        const pd = `${String(past.getDate()).padStart(2, '0')}/${String(past.getMonth() + 1).padStart(2, '0')}`;
+        const rolled = ctx.cmdkParseDates('price for ' + pd, ctx.todayDashed());
+        check('a passed DD/MM rolls to NEXT year — same answer as the worded date',
+            rolled && rolled.from > ctx.todayDashed(), JSON.stringify(rolled));
+        const pinned = ctx.cmdkParseDates('price for ' + pd + '/' + (new Date().getFullYear() - 1), ctx.todayDashed());
+        check('…while a typed year stands as typed', pinned && pinned.from.slice(0, 4) === String(new Date().getFullYear() - 1), JSON.stringify(pinned));
+        // (d) The watcher glyph exists — `p[name] || p.hub` hid the miss.
+        check('the alert glyph is its own mark, not the hub fallback',
+            ctx.cmdkActIcon('alert') !== ctx.cmdkActIcon('hub'));
+        // (e) chbCustomers re-derives when the DATA GENERATION moves, even
+        // with every row count unchanged (a recorded payment, a fixed email).
+        vm.runInContext(`dbBookings.jollyboat = [{ id: 'b9103', dbId: 9103, name: 'Memo Guest', email: 'memo@x.test', checkIn: '${dF(5)}', checkOut: '${dF(8)}', adults: 2, children: 0 }];`, ctx);
+        const c1 = ctx.chbCustomers();
+        vm.runInContext('window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1;', ctx);
+        check('the customer directory re-derives on a new data generation, counts unchanged',
+            ctx.chbCustomers() !== c1);
+        // (g) A blank cottage display name matches NOTHING — ''.includes is
+        // true for every query, and one bad row scoped every answer to itself.
+        vm.runInContext(`propertyMeta.__ghost = { name: '' };`, ctx);
+        const ge = ctx.chbEntities ? ctx.chbEntities('is anything free next weekend') : null;
+        check('a blank-named property never becomes the query\'s cottage',
+            !ge || ge.prop !== '__ghost', ge && ge.prop);
+        vm.runInContext('delete propertyMeta.__ghost; dbBookings.jollyboat = [];', ctx);
+    } else fail('cmdkIntent / cmdkParseDates missing for §44');
 
     // ---- Summary ----
     console.log('\n== Summary ==');
