@@ -3726,6 +3726,20 @@ it_check('…and a guest message files NO draft ask while the switch is off — 
 $rootDb->exec('DELETE FROM night_asks');
 $rootDb->exec('DELETE FROM enquiries');
 
+// ── §28 The federated search never matches on nothing ────────────────────
+// The quick-mode booking-ref probe strips the query to [0-9a-z]; a query of
+// pure punctuation stripped to '' and '%%' LIKE-matched EVERY booking's
+// synthesized ref — six arbitrary bookings ranked as matches for "££".
+echo "\n== §28 search never matches on nothing ==\n";
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, deposit_paid) VALUES ('jollyboat', 'Ref Probe Guest', 'refprobe@x.test', '2027-03-01', '2027-03-04', 2, 0)");
+$r = http($admin, 'POST', '/search.php', ['q' => '££']);
+$s28 = array_filter(is_array($r['json']['results'] ?? null) ? $r['json']['results'] : [], function ($x) { return ($x['type'] ?? '') === 'booking'; });
+it_check('a pure-punctuation query returns NO booking rows', $r['code'] === 200 && count($s28) === 0, $r['raw']);
+$r = http($admin, 'POST', '/search.php', ['q' => 'Ref Probe']);
+$s28b = array_filter(is_array($r['json']['results'] ?? null) ? $r['json']['results'] : [], function ($x) { return ($x['type'] ?? '') === 'booking'; });
+it_check('…while a real name still finds its booking', count($s28b) >= 1, $r['raw']);
+$rootDb->exec("DELETE FROM bookings WHERE email = 'refprobe@x.test'");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

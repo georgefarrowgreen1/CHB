@@ -468,7 +468,14 @@ function cmdkParseDates(q, today) {
         // Bound the fields — "08/13" is not 8 January next year (month 13 rolling
         // over). An out-of-range DD/MM isn't a date; fall through, don't invent one.
         if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
-            const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
+            let yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
+            // NO YEAR TYPED → a passed date means NEXT year, exactly as the
+            // named-month branches roll via yearFor (a booking date always
+            // means the future). Without this, "12/08" died silently in the
+            // price command's future-only guard while "12 aug" offered the
+            // override — same date, two answers by notation. An EXPLICIT
+            // year is the owner's own claim and never rolled.
+            if (!m[3] && new Date(yr, mon - 1, day) < d0) { yr += 1; }
             return { from: iso(new Date(yr, mon - 1, day)), to: null };
         }
     }
@@ -656,6 +663,40 @@ function chbSeasonSplice(existing, ov) {
     out.push({ label: ov.label, start: ov.start, end: ov.end, rate: ov.rate });
     return out.sort((a, z) => String(a.start).localeCompare(String(z.start)));
 }
+// The REVERSE of one splice, surgically: remove exactly the rows the apply
+// added (the override + its split halves) and put back the rows the splice
+// removed — never a whole-list snapshot, which silently deleted every season
+// or override added SINCE (undo A after applying B wiped B from live guest
+// pricing while toasting "back as they were").
+function chbSeasonRowEq(a, b) {
+    return String(a.start) === String(b.start) && String(a.end) === String(b.end)
+        && Math.abs((parseFloat(a.rate) || 0) - (parseFloat(b.rate) || 0)) < 0.005;
+}
+function chbSeasonCur(pk) {
+    return (propertySeasons[pk] || []).map((x) => ({ label: x.label || '', start: x.start_date, end: x.end_date, rate: parseFloat(x.couple_rate) || 0 }));
+}
+// '' when the undo may proceed, else the sentence. The rule watchers taught:
+// reversing is RE-CHECKED — every row this apply added must still stand, or
+// the owner has edited the neighbourhood since and unknown beats wrong.
+function chbSeasonUndoStale(pl) {
+    const cur = chbSeasonCur(pl.pk);
+    if (Array.isArray(pl.added)) {
+        return pl.added.every((a) => cur.some((c) => chbSeasonRowEq(c, a))) ? '' : 'that has changed since';
+    }
+    // A LEGACY stored entry (whole-list snapshot, pre-surgical): only safe
+    // when nothing at all changed since the apply — the current list must
+    // equal the splice of its own snapshot. Anything else refuses.
+    const want = chbSeasonSplice((pl.prev || []).map((x) => ({ label: x.label || '', start: x.start, end: x.end, rate: x.rate })), { label: '', start: pl.mine.start, end: pl.mine.end, rate: pl.mine.rate });
+    if (cur.length !== want.length || !want.every((w) => cur.some((c) => chbSeasonRowEq(c, w)))) return 'that has changed since';
+    return '';
+}
+// The list the undo saves: current minus the added rows, plus the removed
+// originals (legacy shape: the checked-safe snapshot itself).
+function chbSeasonUndoList(pl) {
+    if (!Array.isArray(pl.added)) return pl.prev;
+    const cur = chbSeasonCur(pl.pk).filter((c) => !pl.added.some((a) => chbSeasonRowEq(c, a)));
+    return cur.concat(pl.removed || []).sort((a, z) => String(a.start).localeCompare(String(z.start)));
+}
 // ---- UNDO for search's write paths. Confidence to act fast comes from
 // knowing you can take it back: every change search itself saves (a dated
 // price override, a weekend-uplift apply) records how to restore the exact
@@ -700,13 +741,14 @@ const CHB_UNDO_REPLAY = {
     // and the one we added — so the re-check can ask "is my override still there?"
     // before putting the old list back.
     seasons: {
-        stale: (p) => {
-            const now = (propertySeasons[p.pk] || []).map((x) => ({ start: x.start_date, end: x.end_date, rate: parseFloat(x.couple_rate) || 0 }));
-            return !now.some((x) => x.start === p.mine.start && x.end === p.mine.end && Math.abs(x.rate - p.mine.rate) < 0.005);
-        },
+        // Stale unless every row the apply added still stands (legacy
+        // snapshot entries: unless NOTHING changed since) — see
+        // chbSeasonUndoStale for why a whole-list restore was the bug.
+        stale: (p) => chbSeasonUndoStale(p) !== '',
         run: async (p) => {
-            await apiPost('rates.php', { action: 'seasons_save', prop_key: p.pk, seasons: p.prev });
-            propertySeasons[p.pk] = p.prev.map((x) => ({ label: x.label, start_date: x.start, end_date: x.end, couple_rate: x.rate }));
+            const list = chbSeasonUndoList(p);
+            await apiPost('rates.php', { action: 'seasons_save', prop_key: p.pk, seasons: list });
+            propertySeasons[p.pk] = list.map((x) => ({ label: x.label, start_date: x.start, end_date: x.end, couple_rate: x.rate }));
             try { renderCardPrices(); updatePropPriceHeading(); } catch (e) { chbSwallow(e, 'undo-repaint'); }
         },
     },
@@ -835,6 +877,12 @@ function chbPinRemove(q) {
 // async coast merge, and a landing rebuild must do neither. The tiers here are
 // the sync ones in their pipeline order — breadth (never wrong, silent off-pack),
 // then the intent families, then the NLU model's canonical re-ask.
+// DELIBERATELY NOT MEMOISED. A TTL cache here was tried (the brief's own
+// 8s pattern) and the pin gate correctly refused it: a pinned figure must
+// move the moment the data does — "never a stale figure, which would be
+// worse than no tile at all" is this feature's founding rule, and an 8s
+// window is 8s of a wrong number wearing a live one's confidence. The cost
+// is bounded (sync families, landing renders only); liveness wins.
 function chbPinAnswer(q) {
     const ql = chbPinKey(q);
     if (ql.length < 3) return null;
@@ -908,14 +956,20 @@ async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label, via)
     };
     await put(next, via);
     const nm = (propertyMeta[propKey] || {}).name || propKey;
-    // DURABLE: the descriptor carries the list as it was AND the override we added,
-    // so a reversal tomorrow can check its own change is still there before putting
-    // the old prices back. The closure stays for this session — identical behaviour —
-    // and the descriptor is what survives it.
+    // DURABLE, AND SURGICAL: the descriptor carries the DIFF this apply made
+    // — the rows it added (override + split halves) and the rows its splice
+    // removed — never the whole prior list, whose restore silently deleted
+    // every season added since. Both the session closure and the replay
+    // reverse the same diff through the same helpers, re-checked first.
+    const added = next.filter((n) => !prev.some((pv) => chbSeasonRowEq(pv, n) && pv.label === n.label));
+    const removed = prev.filter((pv) => pv.start && pv.end && !(pv.end < start || pv.start > endIncl));
+    const payload = { pk: propKey, added, removed, mine: { start, end: endIncl, rate } };
     chbUndoRecord(`£${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}`, async () => {
-        await put(prev);
+        const why = chbSeasonUndoStale(payload);
+        if (why) { try { toast(`Not undone — ${why}. Check Rates.`); } catch (e) {} return; }
+        await put(chbSeasonUndoList(payload));
         try { toast(`Undone — ${nm}'s prices are back as they were.`); } catch (e) {}
-    }, { kind: 'seasons', payload: { pk: propKey, prev, mine: { start, end: endIncl, rate } } });
+    }, { kind: 'seasons', payload });
     try { toast(`Price set — £${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}. Type "undo" to reverse.`); } catch (e) {}
 }
 // The current season-aware couple rate for a night (what an override replaces).
@@ -1511,6 +1565,9 @@ function cmdkActIcon(name) {
         coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h3.2a1.8 1.8 0 0 1 0 3.6H10a1.8 1.8 0 0 0 0 3.4h3"/>',
         undo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
         hub: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+        // The watchers ask for this by name — with no key here they silently
+        // fell back to the hub hamburger via `p[name] || p.hub`.
+        alert: '<path d="M12 3.5L21 19H3z"/><path d="M12 10v4M12 16.6v.4"/>',
         ok: '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
         no: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
         plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
@@ -1651,9 +1708,14 @@ async function chbBulkConfirm(rows, opts) {
         );
         return false;
     }
+    // MONEY LINES ONLY WHEN THE ROWS CARRY MONEY. The arrival-info bulk has
+    // no `ps` on its rows, and the unconditional figure listed every guest
+    // as "— £0.00" under a "Total to chase: £0.00" — nonsense numbers in the
+    // one dialog whose whole job is stating exactly what will happen.
+    const money = send.concat(skip).some((x) => x.ps && typeof x.ps.balance === 'number');
     const total = send.reduce((s, x) => s + Math.max(0, (x.ps && x.ps.balance) || 0), 0);
     const line = (x, note) =>
-        `${x.b.name || '(no name)'} — ${gbp(Math.max(0, (x.ps && x.ps.balance) || 0))}` +
+        `${x.b.name || '(no name)'}${money ? ' — ' + gbp(Math.max(0, (x.ps && x.ps.balance) || 0)) : ''}` +
         `${x.pk ? ' · ' + ((propertyMeta[x.pk] || {}).name || x.pk) : ''}${note ? ' · ' + note : ''}`;
     const body = [
         `${o.title || 'Send balance requests'} to ${send.length} guest${send.length === 1 ? '' : 's'}?`,
@@ -1661,8 +1723,7 @@ async function chbBulkConfirm(rows, opts) {
         ...send.map((x) => line(x)),
         ...skip.map((x) => line(x, x.skipWhy + ', will be skipped')),
         '',
-        `Total to chase: ${gbp(total)}`,
-        '',
+        ...(money ? [`Total to chase: ${gbp(total)}`, ''] : []),
         // THE CONFIRM PROMISES WHAT WILL ACTUALLY BE SENT. This said "their own
         // secure pay link" unconditionally, and payment_cta sends BANK DETAILS to
         // a guest on the cash/bank rail — so the one sentence describing the
@@ -1890,7 +1951,14 @@ function chbEntities(raw) {
     // Cottage: any propertyMeta key or display name appearing in the query.
     try {
         const keys = Object.keys(propertyMeta || {});
-        out.prop = keys.find((k) => q.includes(k.toLowerCase()) || q.includes(((propertyMeta[k] && propertyMeta[k].name) || '').toLowerCase())) || null;
+        // A BLANK display name must not match: ''.includes is true for every
+        // query, so one bad property row silently scoped ALL availability,
+        // quote and insight answers to itself (the 0i branch already guards
+        // this exact case).
+        out.prop = keys.find((k) => {
+            const nm = ((propertyMeta[k] && propertyMeta[k].name) || '').toLowerCase();
+            return q.includes(k.toLowerCase()) || (nm !== '' && q.includes(nm));
+        }) || null;
     } catch (e) {}
 
     // Money bound: "over £500", "under 300", "around £450".
@@ -2041,7 +2109,15 @@ function chbCustomerKey(b) {
 let __cmdkCustomers = null, __cmdkCustStamp = '';
 function chbCustomers() {
     let stamp = '';
-    try { stamp = Object.keys(dbBookings || {}).map((k) => k + ':' + (dbBookings[k] || []).length).join('|'); } catch (e) {}
+    // COUNTS ALONE ARE NOT ENOUGH — the chbRankStamp lesson: a recorded
+    // payment or a corrected email changes no row count, and the directory
+    // then served stale identity and lifetime revenue until a row was added
+    // or removed. The data generation (bumped by every completed loadData)
+    // rides in front.
+    try {
+        stamp = (Number(/** @type {any} */ (window).__chbDataGen) || 0) + '§'
+            + Object.keys(dbBookings || {}).map((k) => k + ':' + (dbBookings[k] || []).length).join('|');
+    } catch (e) {}
     if (__cmdkCustomers && stamp === __cmdkCustStamp) return __cmdkCustomers;
     const map = new Map();
     const nightsOf = (b) => (b.checkIn && b.checkOut) ? Math.max(0, Math.round((new Date(b.checkOut + 'T00:00:00') - new Date(b.checkIn + 'T00:00:00')) / 864e5)) : 0;
@@ -4881,7 +4957,13 @@ function cmdkIntent(q) {
         // Period for the point-in-time metrics.
         let pStart, pEnd, plabel;
         const nm = q.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\b/);
-        if (/this year/.test(q)) { pStart = `${dd0.getFullYear()}-01-01`; pEnd = `${dd0.getFullYear()}-12-31`; plabel = `in ${dd0.getFullYear()}`; }
+        // AN EXPLICIT BARE YEAR IS A PERIOD. "revenue in 2024" used to fall
+        // through to the this-month default and confidently answer a
+        // different question than asked; a year is only honoured here when
+        // no month name accompanies it (the month branch owns that pair).
+        const bareYr = !nm ? q.match(/\b(20\d{2})\b/) : null;
+        if (bareYr) { pStart = `${bareYr[1]}-01-01`; pEnd = `${bareYr[1]}-12-31`; plabel = `in ${bareYr[1]}`; }
+        else if (/this year/.test(q)) { pStart = `${dd0.getFullYear()}-01-01`; pEnd = `${dd0.getFullYear()}-12-31`; plabel = `in ${dd0.getFullYear()}`; }
         else if (/last year/.test(q)) { const y = dd0.getFullYear() - 1; pStart = `${y}-01-01`; pEnd = `${y}-12-31`; plabel = `in ${y}`; }
         else if (/last month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() - 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth(), 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
         else if (/next month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 2, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
@@ -5028,7 +5110,11 @@ function cmdkIntent(q) {
     }
     // 0h) Volume — "how many guests / bookings this year".
     if (/(how many|number of) (guests|people|bookings|stays)|guests? (this|last) year|bookings? (this|last) year/.test(q) && /year|so far|to date|202\d/.test(q)) {
-        const yr = /last year/.test(q) ? +today.slice(0, 4) - 1 : +today.slice(0, 4);
+        // A TYPED YEAR WINS — "how many bookings in 2024" used to count the
+        // CURRENT year and label it as asked. last-year/this-year keep their
+        // relative meanings when no digits appear.
+        const vy = q.match(/\b(20\d{2})\b/);
+        const yr = vy ? +vy[1] : (/last year/.test(q) ? +today.slice(0, 4) - 1 : +today.slice(0, 4));
         const rows = flat.filter((x) => x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr);
         const heads = rows.reduce((s, x) => s + (Number(x.b.adults) || 0) + (Number(x.b.children) || 0), 0);
         const wantsBookings = /booking|stay/.test(q);
@@ -5348,7 +5434,9 @@ function cmdkIntent(q) {
     // 2) Leaving / checking out (today, or this week) — direct bookings AND OTA blocks.
     if (/\bleav|leaving|check.?out|checking out|departing|departure|checkout\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= rStart && x.b.checkOut <= rEnd).sort(byOut);
-        const eRows = blocks.filter((x) => x.bl.checkOut && x.bl.checkOut >= rStart && x.bl.checkOut <= rEnd).sort(byBlkOut);
+        // isOtaBlock: an OWNER maintenance block is not a guest leaving —
+        // branch 5 (staying), the brief and insights all apply this gate.
+        const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkOut && x.bl.checkOut >= rStart && x.bl.checkOut <= rEnd).sort(byBlkOut);
         const n = rows.length + eRows.length;
         const lead = n ? chbSayFirst((rows[0] && rows[0].b.name) || (eRows[0] && otaName(eRows[0].bl.source) + ' guest') || '') : '';
         const lHead = !n ? nlgPick('leave0' + q, [`Nobody heading off ${when}.`, `No check-outs ${when} — a calm one.`])
@@ -5364,7 +5452,7 @@ function cmdkIntent(q) {
     // "staying/stay/in next" is an upcoming cue and must beat the staying branch.
     if (/\bupcoming|next book|next arriv|next guest|next stay|staying next|stay(ing)? next|(who.?s |whos )?in next|coming up|who.?s next|future book|future guest|\bpipeline\b|round the corner\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn > today).sort(byIn);
-        const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkIn > today).sort(byBlkIn);
+        const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn && x.bl.checkIn > today).sort(byBlkIn);
         const nd = rows[0], ne = eRows[0];
         const dFirst = nd && (!ne || nd.b.checkIn <= ne.bl.checkIn);
         const nextIn = dFirst ? nd.b.checkIn : ne && ne.bl.checkIn;
@@ -5385,7 +5473,7 @@ function cmdkIntent(q) {
     // 4) Arriving / checking in (today, or this week) — direct bookings AND OTA blocks.
     if (/\barriv|arriving|check.?in|checking in|arrival|coming\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn >= rStart && x.b.checkIn <= rEnd).sort(byIn);
-        const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkIn >= rStart && x.bl.checkIn <= rEnd).sort(byBlkIn);
+        const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn && x.bl.checkIn >= rStart && x.bl.checkIn <= rEnd).sort(byBlkIn);
         const n = rows.length + eRows.length;
         // "how many people…" wants a headcount, not a party count — sum adults +
         // children on the direct bookings (OTA blocks don't share headcount).
@@ -5432,8 +5520,8 @@ function cmdkIntent(q) {
     if (/^\s*(what.?s\s*)?(on\s*)?today.?s?\s*$|today.?s? (activity|schedule|arrivals|movements)/.test(q)) {
         const ins = flat.filter((x) => x.b.checkIn === today).sort(byIn);
         const outs = flat.filter((x) => x.b.checkOut === today).sort(byOut);
-        const eIns = blocks.filter((x) => x.bl.checkIn === today).sort(byBlkIn);
-        const eOuts = blocks.filter((x) => x.bl.checkOut === today).sort(byBlkOut);
+        const eIns = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn === today).sort(byBlkIn);
+        const eOuts = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkOut === today).sort(byBlkOut);
         const head = ans(`Today: ${ins.length + eIns.length} in · ${outs.length + eOuts.length} out`, 'Arrivals & departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
         return [head]
             .concat(ins.map((x) => bk(x.pk, x.b, `Arrives${x.b.checkInTime ? ' ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))

@@ -3259,6 +3259,31 @@ Money outside the 21-day window is `chbOwedLater()` — a quiet "£515 more owed
 yet" line rather than being folded into a headline figure that then disagreed with Today.
 Gated by search-test §40.
 
+**ROUND 3 OF THE AUDIT (the search stack), for the record.** The undo's
+whole-list season restore silently deleted every season/override added SINCE
+— it is SURGICAL now (`chbSeasonUndoStale`/`chbSeasonUndoList`: remove
+exactly the rows the apply added, restore the rows its splice removed;
+legacy stored entries restore only when NOTHING changed since, else refuse).
+The pin-memo "fix" was tried and REVERTED — ui-test-searchpage §21's
+liveness gate refused it, and the gate is right: "never a stale figure" is
+the pin feature's founding rule; the recompute cost is bounded and stays.
+Owner maintenance blocks are out of the arriving/leaving/upcoming/today
+intent branches (the isOtaBlock gate branch 5 always had). An explicit bare
+year is a PERIOD ("how much did i earn in 2024" answered this-month before;
+"how many bookings in 2024" counted the current year and labelled it 2024).
+chbBulkConfirm prints money lines only when the rows CARRY money (the
+arrival bulk listed every guest as £0.00). A passed DD/MM with no year rolls
+to next year like the worded dates (an explicit year never rolls).
+cmdkActIcon gained the 'alert' glyph the watchers asked for by name
+(`p[name] || p.hub` hid the miss). chbCustomers' memo now rides
+__chbDataGen in front of the row counts (the chbRankStamp lesson — a
+recorded payment changed no count and served stale lifetime revenue).
+search.php refuses a pure-punctuation query's booking-ref probe (stripped
+to '', '%%' LIKE-matched every ref). And a blank cottage display name
+matches nothing in chbEntities (''.includes is true for every query).
+Gated: search-test §44 + the §40 surgical-undo block + §39's no-£ check +
+integration §28.
+
 **Durable undo** (admin.js `CHB_UNDO_KEY` `search-undo`, `CHB_UNDO_REPLAY`,
 `chbUndoStored`/`chbUndoRehydrate`/`chbUndoForget`) — the stack was session-only, so
 closing the pop-out forgot everything and Tuesday's price override could only be undone

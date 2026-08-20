@@ -243,7 +243,11 @@ $src(function () use (&$results, $like, $PER, $q) {
          ORDER BY (check_in >= CURDATE()) DESC, check_in ASC
          LIMIT $PER",
     );
-    $ref = '%' . strtolower(preg_replace('/[^0-9a-z]/i', '', $q)) . '%';
+    // A query with no alphanumerics strips to '', and '%%' LIKE-matches
+    // EVERY booking's synthesized ref — six arbitrary bookings ranked as
+    // matches for "££". An impossible ref keeps the arity and matches none.
+    $refCore = strtolower(preg_replace('/[^0-9a-z]/i', '', $q));
+    $ref = $refCore === '' ? chr(1) : ('%' . $refCore . '%');
     $st->execute([$like, $like, $like, $like, $like, $like, $ref]);
     foreach ($st->fetchAll() as $b) {
         $results[] = [
