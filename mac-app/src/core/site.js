@@ -291,6 +291,26 @@ function makeSite(opts) {
             }
         },
 
+        // Fetch a chat photo's bytes by REF (the ask payload carries only the
+        // reference; the site serves the file through its own pattern check).
+        // Returns { ok, dataUri } or { ok:false } — a photo that will not
+        // fetch is answered honestly by the caller, never worked around.
+        async chatFile(ref) {
+            if (!url || !secret) {
+                return { ok: false };
+            }
+            try {
+                const r = await send(url, { action: 'chat_file', secret: secret, build: build, ref: String(ref || '') });
+                if (r.ok && r.json && r.json.ok && typeof r.json.data === 'string' && r.json.data !== '') {
+                    const mime = typeof r.json.mime === 'string' && r.json.mime ? r.json.mime : 'image/jpeg';
+                    return { ok: true, dataUri: 'data:' + mime + ';base64,' + r.json.data };
+                }
+                return { ok: false };
+            } catch (e) {
+                return { ok: false };
+            }
+        },
+
         // CONNECT WITH A CODE. The one call made BEFORE this app holds anything:
         // it hands over eight characters the owner read off the website and gets
         // back a key of its own. The code is single-use and short-lived at the

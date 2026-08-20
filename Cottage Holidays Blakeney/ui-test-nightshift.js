@@ -783,6 +783,92 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'lookup chip on, thinking folded closed, the live block and capsules replaced');
   ok(/answered by your Mac at home · gemma-4b/.test(mcDone.journey),
     `the meta signs off naming the Mac (${mcDone.journey})`);
+  // ATTACHMENTS. The 📎 arms ONE pending file; a document is fenced into the
+  // send (the Mac's own shape) and the bubble collapses it to a chip; the
+  // refusals are sentences; a stored photo message paints its thumbnail.
+  const attTmp = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'chb-att-'));
+  const attDoc = require('path').join(attTmp, 'cleaning-rota.txt');
+  require('fs').writeFileSync(attDoc, 'Mon: 21A changeover\nTue: Jollyboat deep clean\n');
+  const attBig = require('path').join(attTmp, 'huge.txt');
+  require('fs').writeFileSync(attBig, 'z'.repeat(7000));
+  const attPdf = require('path').join(attTmp, 'contract.pdf');
+  require('fs').writeFileSync(attPdf, '%PDF-1.4 not really');
+  ok(await page.evaluate(() => !!document.querySelector('#view-aichat .ac-clip') && !!document.getElementById('mc-file')),
+    'the composer carries the 📎 and its file input');
+  await page.setInputFiles('#mc-file', attDoc);
+  await page.waitForTimeout(200);
+  const attChip = await page.evaluate(() => ({
+    shown: !document.getElementById('mc-pend').hidden,
+    name: (document.querySelector('.mc-pname') || {}).textContent || '',
+  }));
+  ok(attChip.shown && attChip.name === 'cleaning-rota.txt',
+    `picking a document arms the pending chip (${JSON.stringify(attChip)})`);
+  await page.click('.mc-px');
+  ok(await page.evaluate(() => document.getElementById('mc-pend').hidden && !window.__mcAttachLeak),
+    'the ✕ disarms it');
+  // Refusals are SENTENCES, and nothing is armed after one.
+  await page.setInputFiles('#mc-file', attBig);
+  await page.waitForTimeout(200);
+  const attBigSay = await page.evaluate(() => document.body.textContent.includes('too big for the chat')
+    && document.getElementById('mc-pend').hidden);
+  ok(attBigSay, 'an over-cap document is refused in a sentence, nothing armed');
+  await page.setInputFiles('#mc-file', attPdf);
+  await page.waitForTimeout(200);
+  ok(await page.evaluate(() => document.body.textContent.includes('PDFs can’t be read here yet')
+    && document.getElementById('mc-pend').hidden),
+    'a PDF is NAMED as unreadable, never half-read');
+  // The send: the fenced text + the file name travel; the bubble collapses.
+  await page.evaluate(() => {
+    window.__mcSendBody = null;
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_send') { window.__mcSendBody = body; return { ok: true, id: 79, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') { return { ok: true, status: 'expired', say: 'x' }; }
+      return { ok: true };
+    };
+  });
+  await page.setInputFiles('#mc-file', attDoc);
+  await page.waitForTimeout(200);
+  await page.fill('#mc-in', 'who does Tuesday?');
+  await page.click('#mc-send');
+  await page.waitForTimeout(300);
+  const attSent = await page.evaluate(() => {
+    const b = window.__mcSendBody;
+    const log = document.getElementById('mc-log');
+    const bubs = log.querySelectorAll('.mc-bub.mc-you');
+    return {
+      fenced: b && /--- attached file: cleaning-rota\.txt ---/.test(b.text) && /Jollyboat deep clean/.test(b.text),
+      file: b && b.file,
+      chip: !!log.querySelector('.mc-fchip'),
+      lastBub: bubs.length ? bubs[bubs.length - 1].textContent : '',
+      pendClear: document.getElementById('mc-pend').hidden,
+    };
+  });
+  ok(attSent.fenced && attSent.file === 'cleaning-rota.txt',
+    `the document travels fenced with its name (${JSON.stringify({ file: attSent.file })})`);
+  ok(attSent.chip && attSent.lastBub === 'who does Tuesday?' && attSent.pendClear,
+    `the bubble collapses the fence to a chip and the pending chip clears (${JSON.stringify({ bub: attSent.lastBub })})`);
+  // A stored photo message paints its thumbnail from the SERVER ref — and only
+  // the minted shape ever lands in src.
+  await page.evaluate(() => {
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, msgs: [
+          { who: 'you', text: 'what is this pipe doing?', img: 'uploads/chat-photo-0123456789ab.jpg', at: '10:00' },
+          { who: 'you', text: 'and this?', img: 'uploads/../secrets.jpg', at: '10:01' },
+        ], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } };
+      }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(200);
+  const attPhoto = await page.evaluate(() => {
+    const imgs = document.querySelectorAll('#mc-log .mc-photo');
+    return { count: imgs.length, src: imgs.length ? imgs[0].getAttribute('src') : '' };
+  });
+  ok(attPhoto.count === 1 && attPhoto.src === 'uploads/chat-photo-0123456789ab.jpg',
+    `a photo message paints its thumbnail, and a junk ref never reaches src (${JSON.stringify(attPhoto)})`);
+  try { require('fs').rmSync(attTmp, { recursive: true, force: true }); } catch (e) {}
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

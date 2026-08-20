@@ -1399,11 +1399,26 @@ function night_tool_cottages(array $rows)
 //  No tunnel, no open port, no new credential — the Mac only ever dials out.
 // ============================================================
 const NIGHT_OWNERCHAT_TURNS_MAX = 16;    // turns that travel with one ask
-const NIGHT_OWNERCHAT_TURN_CHARS = 1500; // one turn's cap, both directions
+const NIGHT_OWNERCHAT_TURN_CHARS = 1500; // an OLDER turn's cap in the payload
 const NIGHT_OWNERCHAT_THREAD_MAX = 40;   // the stored thread's cap (content row)
 const NIGHT_OWNERCHAT_TEXT_MAX = 8000;   // the answer's words
+// The NEWEST turn travels WHOLE (up to the thread's own text cap): it is the
+// question being asked, and an attached document rides inside it as a fenced
+// block — cutting it at the history cap would hand the model half a file and
+// let it answer confidently about the half it saw.
+const NIGHT_OWNERCHAT_LAST_TURN_CHARS = NIGHT_OWNERCHAT_TEXT_MAX;
 const NIGHT_OWNERCHAT_THINK_MAX = 6000;  // a reasoning model's passage
 const NIGHT_OWNERCHAT_INSTR_MAX = 500;   // the standing instruction
+const NIGHT_OWNERCHAT_FILE_MAX = 60;     // an attached document's shown name
+
+// A chat photo reference — the ONE shape chat_send mints (chat_photo_store in
+// db.php) and the only shape chat_file will serve back. Everything else reads
+// as no photo: the ref crosses two trust boundaries (owner-stored JSON, a
+// device-key fetch) and a path is exactly the thing neither may compose.
+function night_chat_ref_ok($ref)
+{
+    return is_string($ref) && preg_match('#^uploads/chat-photo-[0-9a-f]{12}\.jpg$#', $ref) === 1;
+}
 
 // Whatever the content row held → a clean thread. A message is who + words;
 // a Mac message may carry think/used/model for the fold and the chip.
@@ -1422,6 +1437,19 @@ function night_ownerchat_thread($raw)
         }
         $one = ['who' => $who, 'text' => mb_substr($text, 0, NIGHT_OWNERCHAT_TEXT_MAX),
             'at' => mb_substr(night_str($m['at'] ?? ''), 0, 16)];
+        if ($who === 'you') {
+            // Attachments SURVIVE the sanitiser — chat_poll re-writes the
+            // thread through this function when an answer lands, so a field
+            // dropped here would erase the photo the moment the Mac replied.
+            // The ref is re-validated on every pass (owner-stored JSON).
+            if (night_chat_ref_ok($m['img'] ?? null)) {
+                $one['img'] = $m['img'];
+            }
+            $file = night_str($m['file'] ?? '');
+            if ($file !== '') {
+                $one['file'] = mb_substr($file, 0, NIGHT_OWNERCHAT_FILE_MAX);
+            }
+        }
         if ($who === 'mac') {
             $think = night_str($m['think'] ?? '');
             if ($think !== '') {
@@ -1455,8 +1483,20 @@ function night_ownerchat_payload($thread)
 {
     $t = night_ownerchat_thread($thread);
     $turns = [];
-    foreach (array_slice($t['msgs'], -NIGHT_OWNERCHAT_TURNS_MAX) as $m) {
-        $turns[] = ['who' => $m['who'], 'text' => mb_substr($m['text'], 0, NIGHT_OWNERCHAT_TURN_CHARS)];
+    $slice = array_slice($t['msgs'], -NIGHT_OWNERCHAT_TURNS_MAX);
+    $lastIx = count($slice) - 1;
+    foreach ($slice as $ix => $m) {
+        // The FINAL turn is the ask itself and travels whole (an attached
+        // document rides fenced inside it); history keeps the tight cap.
+        $cap = $ix === $lastIx ? NIGHT_OWNERCHAT_LAST_TURN_CHARS : NIGHT_OWNERCHAT_TURN_CHARS;
+        $one = ['who' => $m['who'], 'text' => mb_substr($m['text'], 0, $cap)];
+        // A photo ref rides ONLY the final turn — the Mac feeds one image to
+        // the model, and it must be the one the question is about, never an
+        // older photo resurfacing because history happened to carry it.
+        if ($ix === $lastIx && night_chat_ref_ok($m['img'] ?? null)) {
+            $one['img'] = $m['img'];
+        }
+        $turns[] = $one;
     }
     $out = ['turns' => $turns];
     if ($t['instr'] !== '') {

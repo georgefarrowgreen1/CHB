@@ -11806,7 +11806,26 @@ function mcPresenceHtml(st) {
 }
 function mcMsgHtml(m) {
     if (m.who !== 'mac') {
-        return `<div class="mc-bub mc-you">${escapeHtml(m.text)}</div>`;
+        let yh = '';
+        // A photo bubble: `img` is the server's stored ref (pattern-checked —
+        // it is owner-stored JSON landing in a src attribute), `imgData` the
+        // optimistic local data URI while the send is still in flight.
+        const ref = typeof m.img === 'string' && /^uploads\/chat-photo-[0-9a-f]+\.jpg$/.test(m.img) ? m.img : '';
+        const src = ref || (typeof m.imgData === 'string' && /^data:image\/jpeg;base64,/.test(m.imgData) ? m.imgData : '');
+        if (src) {
+            yh += `<img class="mc-photo" src="${escapeHtml(src)}" alt="Attached photo">`;
+        }
+        // A document collapses to its chip — the fenced file travelled in the
+        // text (that is the honest record of what the model saw), but painting
+        // six thousand characters of CSV into a bubble helps nobody.
+        let shown = String(m.text == null ? '' : m.text);
+        if (m.file) {
+            const cut = shown.indexOf('--- attached file:');
+            if (cut >= 0) shown = shown.slice(0, cut).trim();
+            yh += `<div class="mc-fchip">📄 ${escapeHtml(m.file)}</div>`;
+        }
+        if (shown) yh += `<div class="mc-bub mc-you">${escapeHtml(shown)}</div>`;
+        return yh;
     }
     let h = '';
     if (m.think) {
@@ -11829,6 +11848,97 @@ function mcHelloHtml() {
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Is anything free this weekend?">Anything free this weekend? <span class="mc-go">›</span></button>
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="What enquiries are waiting?">What’s waiting for a reply? <span class="mc-go">›</span></button>
         </div></div>`;
+}
+// ── ATTACHMENTS: one pending file, chosen deliberately, carried by the send.
+// A DOCUMENT (.txt/.md/.csv/.json) is read here and fenced INTO the message —
+// the Mac's own chatAttachMsg pattern, mirrored — so it rides the existing ask
+// payload and no server ever parses a file. A PHOTO is re-encoded to a ≤1280px
+// JPEG (the deposit-evidence pipeline) and rides the send as a data URI; the
+// site stores it and hands the Mac the bytes through chat_file. Every refusal
+// is a sentence, and PDFs/Word are NAMED as unreadable rather than half-read.
+let __mcAttach = null; // { kind:'doc', name, content } | { kind:'photo', name, dataUri }
+const MC_ATTACH_CHARS = 6000; // one cap, the Mac chat's own (CHAT_ATTACH_CHARS)
+function mcAttachProblem(content) {
+    const c = String(content == null ? '' : content);
+    if (c.trim() === '') return 'That file is empty.';
+    if (c.length > MC_ATTACH_CHARS) {
+        return 'That file is too big for the chat — ' + c.length.toLocaleString()
+            + ' characters against a limit of ' + MC_ATTACH_CHARS.toLocaleString()
+            + '. Trim it down, or ask about a part of it.';
+    }
+    if (c.indexOf('\u0000') >= 0) return 'That doesn’t look like a text file.';
+    return '';
+}
+// The fence is the Mac chat's own shape, byte for byte — ONE message, so the
+// history trim can never separate a question from its file.
+function mcAttachMsg(text, name, content) {
+    const t = String(text == null ? '' : text).trim();
+    const n = String(name == null ? '' : name).slice(0, 60);
+    return (t !== '' ? t + '\n\n' : '')
+        + '--- attached file: ' + n + ' ---\n'
+        + String(content == null ? '' : content).slice(0, MC_ATTACH_CHARS)
+        + '\n--- end of ' + n + ' ---';
+}
+function mcAttachPick() {
+    const f = /** @type {HTMLInputElement} */ (document.getElementById('mc-file'));
+    if (f) f.click();
+}
+function mcAttachClear() {
+    __mcAttach = null;
+    const f = /** @type {HTMLInputElement} */ (document.getElementById('mc-file'));
+    if (f) f.value = '';
+    mcAttachChip();
+}
+function mcAttachChip() {
+    const p = document.getElementById('mc-pend');
+    if (!p) return;
+    if (!__mcAttach) {
+        p.hidden = true;
+        p.innerHTML = '';
+        return;
+    }
+    const a = __mcAttach;
+    p.hidden = false;
+    p.innerHTML = `<span class="mc-pchip">${a.kind === 'photo'
+        ? `<img class="mc-pthumb" src="${escapeHtml(a.dataUri)}" alt="">`
+        : '<span class="mc-pdoc" aria-hidden="true">📄</span>'}
+        <span class="mc-pname">${escapeHtml(a.name)}</span>
+        <button type="button" class="mc-px" data-act="mcAttachClear" aria-label="Remove the attachment">✕</button></span>`;
+}
+async function mcAttachRead(file) {
+    if (!file) return;
+    const name = String(file.name || 'file').slice(0, 60);
+    if (/^image\//.test(file.type || '')) {
+        // The deposit-evidence re-encode: ≤1280px JPEG, quality stepped down
+        // if the URI would still be heavy. '' means it would not decode.
+        const dataUri = await odsPhotoData(file);
+        if (!dataUri) {
+            toast('That photo could not be read — try a different one.');
+            return;
+        }
+        __mcAttach = { kind: 'photo', name, dataUri };
+        mcAttachChip();
+        return;
+    }
+    const texty = /\.(txt|md|csv|json)$/i.test(name) || /^text\/|json$/.test(file.type || '');
+    if (!texty) {
+        // Named, not mumbled: the two formats people will actually try.
+        toast(/\.pdf$/i.test(name)
+            ? 'PDFs can’t be read here yet — export or paste the text and attach that.'
+            : /\.docx?$/i.test(name)
+                ? 'Word documents can’t be read here yet — save as plain text (.txt) and attach that.'
+                : 'Only photos and plain-text files (.txt, .md, .csv, .json) can be attached.');
+        return;
+    }
+    let content = '';
+    try { content = await file.text(); } catch (e) { content = ''; }
+    const bad = mcAttachProblem(content);
+    if (bad) {
+        toast(bad);
+        return;
+    }
+    __mcAttach = { kind: 'doc', name, content };
+    mcAttachChip();
 }
 async function openAiChat() {
     // nav()'s own view-aichat hook calls renderMacChat — calling it here too
@@ -11864,6 +11974,15 @@ async function renderMacChat() {
         box.dataset.bound = '1';
         box.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); mcSend(); }
+        });
+    }
+    // The 📎's file input — same once-only binding as Enter.
+    const fin = /** @type {HTMLInputElement} */ (document.getElementById('mc-file'));
+    if (fin && !fin.dataset.bound) {
+        fin.dataset.bound = '1';
+        fin.addEventListener('change', () => {
+            const f = fin.files && fin.files[0];
+            if (f) mcAttachRead(f);
         });
     }
 }
@@ -11916,21 +12035,43 @@ async function mcSend() {
     const log = document.getElementById('mc-log');
     if (!box || !log) return;
     const text = box.value.trim();
-    if (!text) return;
+    if (!text) {
+        // An attachment with no question is not an ask yet — say so rather
+        // than silently doing nothing beside a visible pending chip.
+        if (__mcAttach) toast('Add a question to go with the file.');
+        return;
+    }
     __mcBusy = true;
     const stamp = ++__mcStamp;
     box.value = '';
     const hello = log.querySelector('.mc-hello');
     if (hello) hello.remove();
+    // THE ATTACHMENT RIDES THE SEND. A document is fenced into the message
+    // itself (the Mac chat's own shape) so it travels the existing payload;
+    // a photo rides as a data URI the site stores and the Mac fetches.
+    const att = __mcAttach;
+    const body = { action: 'chat_send', text };
+    const optimistic = { who: 'you', text };
+    if (att && att.kind === 'doc') {
+        body.text = mcAttachMsg(text, att.name, att.content);
+        body.file = att.name;
+        optimistic.text = body.text;
+        optimistic.file = att.name;
+    }
+    if (att && att.kind === 'photo') {
+        body.photo = att.dataUri;
+        body.file = att.name;
+        optimistic.imgData = att.dataUri;
+    }
     // Optimistic: the question is on screen at once; the site is storing the
     // same message, and the thread reload after the answer reconciles.
-    log.insertAdjacentHTML('beforeend', mcMsgHtml({ who: 'you', text }));
+    log.insertAdjacentHTML('beforeend', mcMsgHtml(optimistic));
     const cap = mcCap(log, '<span class="mc-spin" aria-hidden="true"></span> Waiting for your Mac…');
     let live = null; // the streaming block, once a partial lands
     let picked = false;
     try {
         let sendR = null;
-        try { sendR = await apiPost('nightshift.php', { action: 'chat_send', text }); } catch (e) { sendR = { error: 'Could not reach the site.' }; }
+        try { sendR = await apiPost('nightshift.php', body); } catch (e) { sendR = { error: 'Could not reach the site.' }; }
         if (stamp !== __mcStamp) return;
         if (!sendR || sendR.error) {
             cap.className = 'mc-jcap is-warn';
@@ -11938,6 +12079,9 @@ async function mcSend() {
             box.value = text;
             return;
         }
+        // The send carried it — only NOW does the pending chip clear, so a
+        // failed send keeps the attachment armed beside the restored words.
+        if (att) mcAttachClear();
         const id = sendR.id;
         if (sendR.presence && !sendR.presence.listening) {
             cap.className = 'mc-jcap is-warn';

@@ -146,6 +146,11 @@ function runnerArgs(opts) {
         '--port', String(o.port || hp.port),
         '-c', String(o.ctx || 4096),
     ];
+    // The model's OWN vision projector, when it has one (models.projectorFor
+    // pairs them by name) — this is what lets llama-server accept image parts.
+    if (o.mmproj) {
+        args.push('--mmproj', String(o.mmproj));
+    }
     if (o.appleSilicon) {
         // Clamped by llama.cpp to however many layers the model actually has.
         args.push('-ngl', '999');

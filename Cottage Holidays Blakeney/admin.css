@@ -5873,6 +5873,31 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   transition:transform .35s var(--spring)}
 .ac-send:active{transform:scale(.9)}
 .ac-send svg{width:18px;height:18px}
+/* the 📎 — a quiet peer of the send, and the pending chip above the row */
+.ac-composer{flex-wrap:wrap}
+.ac-clip{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
+  margin-left:-12px;background:none;color:var(--text-muted);display:grid;place-items:center}
+.ac-clip:hover{color:var(--text-light);background:var(--btn-hover)}
+.ac-clip svg{width:17px;height:17px}
+.ac-pend{flex:1 1 100%;padding:2px 2px 6px}
+.ac-pend[hidden]{display:none}
+.mc-pchip{display:inline-flex;align-items:center;gap:8px;max-width:100%;
+  border:1px solid var(--glass-border);border-radius:14px;padding:5px 6px 5px 5px;
+  background:color-mix(in srgb,var(--text-light) 4%,transparent)}
+.mc-pthumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto}
+.mc-pdoc{font-size:1rem;flex:0 0 auto;padding-left:4px}
+.mc-pname{font-size:0.72rem;font-weight:600;color:var(--text-light);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mc-px{width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
+  background:color-mix(in srgb,var(--text-light) 8%,transparent);color:var(--text-muted);
+  font-size:0.7rem;display:grid;place-items:center}
+.mc-px:hover{color:var(--text-light)}
+/* attachments in the log — the photo bubble and the document chip */
+.mc-photo{align-self:flex-end;max-width:min(62%,260px);max-height:260px;border-radius:18px;
+  border:1px solid var(--glass-border);object-fit:cover}
+.mc-fchip{align-self:flex-end;font-size:0.68rem;font-weight:600;color:var(--text-light);
+  border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px;
+  background:color-mix(in srgb,var(--accent) 10%,transparent)}
 /* the … sheet — where Clear went */
 .ac-sheet{position:fixed;inset:0;z-index:2050;display:flex;align-items:flex-end;justify-content:center;
   background:rgba(0,0,0,.35)}

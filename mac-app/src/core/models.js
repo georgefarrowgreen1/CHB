@@ -43,6 +43,61 @@ function isProjector(name) {
     return /^mmproj[-._]/i.test(String(name));
 }
 
+// ── WHICH PROJECTOR BELONGS TO THIS MODEL ────────────────────────────────
+// Vision needs the model's OWN projector — a gemma mmproj on a qwen model is
+// garbage in, confident garbage out — so the pairing is by NAME, the one fact
+// both files carry: strip the mmproj prefix and the quant tokens from the
+// projector's name, and every remaining token must appear in the model's.
+// `mmproj-gemma-3-4b-it-F16.gguf` ⊆ `gemma-3-4b-it-Q4_K_M.gguf` pairs;
+// nothing shared, nothing paired — and NO projector means no vision, said
+// honestly, never a bluffed description. Returns the full path or ''.
+function nameTokens(file) {
+    return String(file).toLowerCase().replace(/\.gguf$/, '')
+        .split(/[-_.]+/)
+        .filter(function (t) {
+            return t !== '' && t !== 'mmproj'
+                && !/^(?:i?q\d[a-z0-9]*|f16|f32|bf16|\d+bit|gguf)$/.test(t);
+        });
+}
+function projectorFor(modelId, dir) {
+    const mTok = nameTokens(modelId);
+    if (!mTok.length) {
+        return '';
+    }
+    let names = [];
+    try {
+        names = fs.readdirSync(String(dir || ''));
+    } catch (e) {
+        return '';
+    }
+    const hits = [];
+    names.forEach(function (n) {
+        if (!/\.gguf$/i.test(n) || !isProjector(n)) {
+            return;
+        }
+        const pTok = nameTokens(n);
+        if (!pTok.length) {
+            return;
+        }
+        if (pTok.every(function (t) { return mTok.indexOf(t) !== -1; })) {
+            hits.push(n);
+        }
+    });
+    if (!hits.length) {
+        return '';
+    }
+    // Two candidates for one model is somebody's duplicate download — the
+    // newest wins, being the one they most recently meant.
+    hits.sort(function (a, b) {
+        try {
+            return fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs;
+        } catch (e) {
+            return 0;
+        }
+    });
+    return path.join(dir, hits[0]);
+}
+
 // ── WHAT IS INSTALLED ────────────────────────────────────────────────────
 // A directory of .gguf files (and MLX model folders). Never throws: a missing
 // folder is an empty library, which is the correct first-run state.
@@ -300,7 +355,28 @@ async function files(repoId, machine, opts) {
         if (order[a.fit] !== order[b.fit]) { return order[a.fit] - order[b.fit]; }
         return b.sizeGB - a.sizeGB;
     });
-    return { ok: true, rows: rows, sharded: sibs.some(function (s) { return /-\d{5}-of-\d{5}\.gguf$/i.test(String(s.rfilename || '')); }) };
+    // A VISION repo's projector rides ALONG, never as a pickable row (picking
+    // one as the model is the exact defect isProjector exists to stop): the
+    // download step fetches it beside the model, and llama-server takes it via
+    // --mmproj. Smallest wins — a projector's quant barely moves its quality.
+    let mmproj = null;
+    sibs.forEach(function (s) {
+        if (!s || typeof s.rfilename !== 'string' || !/\.gguf$/i.test(s.rfilename) || !isProjector(s.rfilename)) {
+            return;
+        }
+        const gb = Math.round(((Number(s.size) || 0) / 1073741824) * 100) / 100;
+        if (!mmproj || (gb && (!mmproj.sizeGB || gb < mmproj.sizeGB))) {
+            mmproj = {
+                filename: s.rfilename,
+                sizeGB: gb,
+                url: 'https://huggingface.co/' + id + '/resolve/main/' + encodeURIComponent(s.rfilename) + '?download=true',
+            };
+        }
+    });
+    if (mmproj) {
+        rows.forEach(function (r2) { r2.mmproj = mmproj; });
+    }
+    return { ok: true, rows: rows, mmproj: mmproj, sharded: sibs.some(function (s) { return /-\d{5}-of-\d{5}\.gguf$/i.test(String(s.rfilename || '')); }) };
 }
 
-module.exports = { installed, search, mapRepo, download, files, prettyName, quantOf, paramsOf, isProjector, KNOWN_GOOD, HF_API };
+module.exports = { installed, search, mapRepo, download, files, prettyName, quantOf, paramsOf, isProjector, projectorFor, KNOWN_GOOD, HF_API };

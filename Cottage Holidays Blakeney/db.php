@@ -283,6 +283,40 @@ function deposit_evidence_store($bookingId, $dataUri)
     }
 }
 
+// A photo attached to an AI-chat message — the deposit-evidence contract
+// applied to the chat: JPEG data URIs only (the client re-encodes), magic
+// bytes checked, 2MB cap, random name so nothing in uploads/ is guessable.
+// Returns the stored relative path or '' and never throws; the shape it mints
+// is the ONE shape night_chat_ref_ok accepts, so the two must move together.
+// Ephemeral by design: self-repair prunes these after 7 days — the photo
+// exists to be looked at by the model, the WORDS are the record.
+function chat_photo_store($dataUri)
+{
+    try {
+        if (!is_string($dataUri) || strncmp($dataUri, 'data:image/jpeg;base64,', 23) !== 0) {
+            return '';
+        }
+        $raw = base64_decode(substr($dataUri, 23), true);
+        if ($raw === false || strlen($raw) < 100 || strlen($raw) > 2 * 1024 * 1024) {
+            return '';
+        }
+        if (substr($raw, 0, 2) !== "\xFF\xD8") {
+            return '';
+        }
+        $dir = __DIR__ . '/uploads';
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+            return '';
+        }
+        $name = 'chat-photo-' . bin2hex(random_bytes(6)) . '.jpg';
+        if (@file_put_contents($dir . '/' . $name, $raw) === false) {
+            return '';
+        }
+        return 'uploads/' . $name;
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
 // ---- JSON helpers ----
 // THE SERVER'S CLOCK RIDES EVERY REPLY. A browser's Date is whatever the device
 // says, and a device clock can be wrong by accident or on purpose — reported
