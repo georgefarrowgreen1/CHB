@@ -582,13 +582,18 @@ route_actions([
         $payload = night_ownerchat_payload($t);
         $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
         $st->execute(['ownerchat', 0, '', mb_substr($text, 0, 500), json_encode($payload)]);
+        // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
+        // on the same connection, so a lastInsertId read after it answers for
+        // the CONTENT row (0, under ON DUPLICATE) — measured in CI as every
+        // send returning id 0 and every poll finding "No such ask".
+        $askId = (int) db()->lastInsertId();
         try {
             content_set_scalar('night-warm-until', time() + 900);
         } catch (\Throwable $e) {
         }
         json_out([
             'ok' => true,
-            'id' => (int) db()->lastInsertId(),
+            'id' => $askId,
             'presence' => night_mac_presence(night_devices_read(), time()),
         ]);
     },

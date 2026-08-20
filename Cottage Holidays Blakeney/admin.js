@@ -11852,7 +11852,7 @@ async function renderMacChat() {
 }
 async function mcSend() {
     if (__mcBusy) return;
-    const box = document.getElementById('mc-in');
+    const box = /** @type {HTMLInputElement} */ (document.getElementById('mc-in'));
     const journey = document.getElementById('mc-journey');
     const log = document.getElementById('mc-log');
     if (!box || !journey || !log) return;
