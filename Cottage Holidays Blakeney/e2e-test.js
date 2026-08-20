@@ -282,18 +282,19 @@ async function waitForServer(url, tries = 40) {
     await page.waitForTimeout(700);
     (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id)) === 'view-backoffice' ? pass('bookings workspace lives on the dashboard') : fail('openBookings did not land on the dashboard');
     (await page.evaluate(() => !!document.querySelector('#view-backoffice #bookings-workspace') && !document.getElementById('view-bookings'))) ? pass('workspace merged; old Bookings page gone') : fail('view-bookings shell still present');
-    // FIVE: Today, Inbox, Payments, Key safes, Manage. The Search knot stays
-    // retired — it went when the crown became the assistant (crownSheetToggle;
-    // the crown had no unique job, since nav() rewrites view-main to
-    // view-backoffice for a signed-in owner) and must NOT come back as a dock
-    // button. The KEY is different: the keeper's page is a real task area the
-    // owner asked for by name ("a header logo as a key").
+    // SIX: Today, Inbox, AI chat, Payments, Key safes, Manage. The Search knot
+    // stays retired — it went when the crown became the assistant
+    // (crownSheetToggle; the crown had no unique job, since nav() rewrites
+    // view-main to view-backoffice for a signed-in owner) and must NOT come
+    // back as a dock button. KEY and the AI CHAT SPARK are different: both
+    // are real task areas the owner asked for by name.
     const dockN = await page.evaluate(() => document.querySelectorAll('.admin-dock-btn').length);
     const dockSearch = await page.evaluate(() => !!document.querySelector('.admin-dock-btn[data-act="openCmdK"]'));
     const dockKey = await page.evaluate(() => !!document.querySelector('.admin-dock-btn[data-view="view-keysafe"]'));
-    dockN === 5 && !dockSearch && dockKey
-        ? pass('dock has 5 admin buttons incl. Key safes — search still lives in the crown')
-        : fail(`dock button count wrong: ${dockN} button(s), searchKnot=${dockSearch}, key=${dockKey}`);
+    const dockAi = await page.evaluate(() => !!document.querySelector('.admin-dock-btn[data-view="view-aichat"]'));
+    dockN === 6 && !dockSearch && dockKey && dockAi
+        ? pass('dock has 6 admin buttons incl. Key safes + AI chat — search still lives in the crown')
+        : fail(`dock button count wrong: ${dockN} button(s), searchKnot=${dockSearch}, key=${dockKey}, ai=${dockAi}`);
     (await page.locator('#bookings-list .bk-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
     // At 1280px this is a master–detail dashboard: the first booking's hub
     // auto-docks in the right-hand pane and its row highlights.
