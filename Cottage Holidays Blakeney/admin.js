@@ -12209,7 +12209,7 @@ function mcHelloHtml() {
     return mcDayHtml() + `<div class="mc-hello">
         <div class="mc-hello-spark" aria-hidden="true">✦</div>
         <h2>Ask your Mac anything</h2>
-        <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries, the cottages, the money and the books as you talk — and prepare actions for you to confirm.</p>
+        <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries, the cottages, the money, the books, the coast and the wider web as you talk — and prepare actions for you to confirm.</p>
         <div class="mc-starters">
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Who arrives today?">Who arrives today? <span class="mc-go">›</span></button>
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Is anything free this weekend?">Anything free this weekend? <span class="mc-go">›</span></button>

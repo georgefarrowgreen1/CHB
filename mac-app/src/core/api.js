@@ -34,6 +34,7 @@ const jobsMod = require('./jobs');
 const runnerMod = require('./runner');
 const chatMod = require('./chat');
 const chatToolsMod = require('./chattools');
+const webfetchMod = require('./webfetch');
 const benchMod = require('./bench');
 
 function makeApi(deps) {
@@ -44,6 +45,9 @@ function makeApi(deps) {
     const makeEngine = d.makeEngine || engineMod.makeEngine;
     const makeSite = d.makeSite || siteMod.makeSite;
     const fetchImpl = d.fetch || (typeof fetch === 'function' ? fetch : null);
+    // The chat's window onto the wider web — injectable so the suite drives
+    // the wiring with no network (webfetch.js owns the safety rules).
+    const webFetch = d.webFetch || webfetchMod.webFetch;
     const now = function () { return d.now ? d.now() : new Date(); };
     // The one thing this file will not do for itself. Absent (a bare `npm test`
     // constructing the api with no deps) it reports as unavailable rather than
@@ -300,7 +304,12 @@ function makeApi(deps) {
             }
             lookups++;
             ev({ t: 'tool', name: call.tool });
-            const res = await site.chatTool(call.tool, call.args);
+            // `web` runs ON THE MAC and never reaches the site's door — it is
+            // not site data, and the site's one-endpoint key must not become
+            // a proxy. Everything else is the site's own read.
+            const res = call.tool === 'web'
+                ? await webFetch(call.args.url)
+                : await site.chatTool(call.tool, call.args);
             if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
             // The payload rides the event so THIS SESSION can show
             // "what did it see" — it is deliberately not stored, so

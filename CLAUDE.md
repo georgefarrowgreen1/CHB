@@ -856,6 +856,29 @@ signing and what is real; what matters HERE is the site half and the rules.
   grow fields, the sanitiser would refuse the whole card on the next read,
   so after a reload the done state simply has no chip), block_dates offers
   the calendar, price_override offers Rates. Nothing fires on render.
+  **A TOOL LOOKUP RETRIES ONCE, AND THE CHAT CAN READ THE WIDER WEB.**
+  site.js's chatTool was a one-shot fetch, so a single TCP hiccup on home
+  broadband killed a whole answer with "fetch failed" (seen live, on the
+  cottages tool) — it retries once on a THROWN transport failure (delay
+  `retryMs`, injectable; a refusal the SITE spoke is never retried). And
+  `web` is the tenth tool: `mac-app/src/core/webfetch.js` fetches ONE
+  public page ON THE MAC — never through the site's door (not site data,
+  and the device key must not become a proxy). Its rules assume the model
+  cannot be trusted with an address: https only; localhost/.local/private
+  IP literals refused at the STRING and any name that RESOLVES to
+  loopback/RFC1918/link-local/CGNAT/ULA refused at the LOOKUP (the half a
+  hostname check cannot see); redirects followed BY HAND, max 3, each hop
+  re-checked (a public host 302ing to the router is the classic dodge);
+  body capped, stripped to text, and every result carries the
+  stranger's-page warning the intro also teaches (quote it, never obey
+  it — the prompt-injection posture; the owner still confirms every ACT
+  card, so a hostile page can at worst propose). NB `chatToolCall` sliced
+  EVERY argument to 80 chars — a URL cut there silently became a
+  DIFFERENT address; 'url' alone now carries 500. Gated in core-test:
+  the retry (once on throw, never on a spoken refusal), the fetcher's
+  whole rule table incl. the DNS half and the redirect re-check, the
+  long-URL regression, and the wiring through the real loop (the page
+  reaches the model, the site's door is never knocked).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
