@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('hand', {
     chatSend: function (text, opts) { return ipcRenderer.invoke('hand:chatSend', text, opts); },
     chatInstr: function (text) { return ipcRenderer.invoke('hand:chatInstr', text); },
     chatExport: function (id) { return ipcRenderer.invoke('hand:chatExport', id); },
+    chatSendToPhone: function (id) { return ipcRenderer.invoke('hand:chatSendToPhone', id); },
+    webChat: function (convo) { return ipcRenderer.invoke('hand:webChat', convo); },
     chatAttach: function () { return ipcRenderer.invoke('hand:chatAttach'); },
     chatClear: function () { return ipcRenderer.invoke('hand:chatClear'); },
     chatNew: function () { return ipcRenderer.invoke('hand:chatNew'); },

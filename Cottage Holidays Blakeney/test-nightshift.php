@@ -572,6 +572,18 @@ nsk('…while £45.00 still legitimately grounds on £45, and the reverse',
     night_digest_answer_problem('Returned £45.00 to Hannah.', $drz) === ''
     && night_digest_answer_problem('Returned £45 today.', ['Deposit of £45.00 held.']) === '');
 
+// ── §20b CHAT CONTINUITY — may an imported conversation land? ────────────
+echo "\n== §20b the import door ==\n";
+$imOk = [['who' => 'you', 'text' => 'What did we decide about the boiler?'], ['who' => 'mac', 'text' => 'Colin quoted for it.']];
+nsk('a well-shaped import passes', night_chat_import_problem('imp-c1755-3', $imOk) === '');
+nsk('a junk ref is refused in a sentence',
+    night_chat_import_problem('IMP UPPER!', $imOk) !== '' && night_chat_import_problem('', $imOk) !== '');
+nsk('an empty import is refused', night_chat_import_problem('imp-1', []) !== '');
+nsk('the cap refuses the 41st message, named',
+    strpos(night_chat_import_problem('imp-1', array_fill(0, 41, $imOk[0])), (string) NIGHT_CHAT_IMPORT_MAX) !== false);
+nsk("a who outside you/mac is refused", night_chat_import_problem('imp-1', [['who' => 'guest', 'text' => 'x']]) !== '');
+nsk('a wordless message is refused', night_chat_import_problem('imp-1', [['who' => 'you', 'text' => '  ']]) !== '');
+
 // ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
 echo "\n== §21 the voice examples ==\n";
 $tpls = [

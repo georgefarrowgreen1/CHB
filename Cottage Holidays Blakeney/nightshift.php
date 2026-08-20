@@ -1248,6 +1248,85 @@ route_actions([
         json_out(['ok' => true, 'data' => base64_encode($raw), 'mime' => 'image/jpeg']);
     },
 
+    // ---- CHAT CONTINUITY: a local Mac conversation becomes a web one ----
+    // The Mac's own Chat screen is deliberately offline-first and private —
+    // nothing syncs unless the owner taps "Send to my phone" there. This is
+    // that tap's landing: the thread is imported as a NEW conversation in
+    // the rail, every message through the same sanitiser as a live send,
+    // exactly-once by ref (a lost reply retries the same ref and is told
+    // "already"), behind the same device key + night-shift switch as
+    // everything else the Mac says.
+    'chat_import' => function ($in) {
+        rate_limit('night-import', 20, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'chat_import', $in['build'] ?? '');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $ref = strtolower(trim((string) ($in['ref'] ?? '')));
+        $msgs = is_array($in['msgs'] ?? null) ? $in['msgs'] : [];
+        $bad = night_chat_import_problem($ref, $msgs);
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
+        }
+        $convo = 0;
+        try {
+            ownerchat_adopt();
+            $map = content_json('mac-chat-imports', []);
+            if (!is_array($map)) {
+                $map = [];
+            }
+            if (isset($map[$ref]) && (int) $map[$ref] > 0) {
+                json_out(['ok' => true, 'convo' => (int) $map[$ref], 'already' => true]);
+            }
+            $convo = 1 + (int) db()->query('SELECT COALESCE(MAX(convo), 0) FROM ownerchat_msgs')->fetchColumn();
+            $n = 0;
+            foreach ($msgs as $m) {
+                if (ownerchat_append(['who' => $m['who'], 'text' => (string) $m['text'], 'at' => date('H:i')], $convo) !== null) {
+                    $n++;
+                }
+            }
+            if ($n === 0) {
+                json_out(['error' => 'Nothing in that conversation survived the door.'], 400);
+            }
+            $map[$ref] = $convo;
+            // The ledger is capped NEWEST-KEPT — an old ref falling off means
+            // a very old re-send imports again, which is the safe direction.
+            if (count($map) > 60) {
+                $map = array_slice($map, -60, null, true);
+            }
+            content_set_scalar('mac-chat-imports', json_encode($map));
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+        }
+        json_out(['ok' => true, 'convo' => $convo]);
+    },
+
+    // The other direction, READ-ONLY: the Mac window may show the web chat's
+    // conversations. No new data class — the Mac already reads these turns
+    // whenever it answers an ask — and deliberately NO write: replying stays
+    // on the phone, where the admin session and the action cards live.
+    'chat_mirror' => function ($in) {
+        rate_limit('night-mirror', 60, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'chat_mirror', $in['build'] ?? '');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $convos = [];
+        $msgs = [];
+        $convo = (int) ($in['convo'] ?? 0);
+        try {
+            ownerchat_adopt();
+            $convos = ownerchat_convos();
+            if ($convo <= 0) {
+                $convo = $convos ? (int) $convos[0]['convo'] : 1;
+            }
+            $msgs = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $convo);
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+        }
+        json_out(['ok' => true, 'convo' => $convo, 'convos' => $convos, 'msgs' => $msgs]);
+    },
+
     // ---- the owner opened search: warm the Mac's engine ------------
     'warm' => function ($in) {
         require_admin();

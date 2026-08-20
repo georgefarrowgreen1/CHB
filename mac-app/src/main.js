@@ -529,6 +529,8 @@ function wire() {
     // EXPORT: the api formats (pure), this owns the dialog and the file —
     // the one place in the chat that touches the disk outside its own folder,
     // and only ever at a path the owner just chose.
+    ipcMain.handle('hand:chatSendToPhone', function (e, id) { return api.chatSendToPhone(id); });
+    ipcMain.handle('hand:webChat', function (e, convo) { return api.webChat(convo); });
     ipcMain.handle('hand:chatExport', async function (e, id) {
         const r = api.chatExport(id);
         if (!r.ok) { return r; }

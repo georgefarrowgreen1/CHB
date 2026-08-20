@@ -930,6 +930,10 @@ function is_internal_content_key($key)
         return true; // the chat's owner-curated memories — facts the OWNER wrote
                      // ("never dogs"), riding every ownerchat ask; admin-only
     }
+    if ($key === 'mac-chat-imports') {
+        return true; // chat continuity's exactly-once ledger — import ref →
+                     // the conversation it became, so a retried POST lands once
+    }
     if ($key === 'mac-chat-sum') {
         return true; // per-conversation rolling summaries — the model's condensed
                      // memory of turns the payload cap has cut; admin-only

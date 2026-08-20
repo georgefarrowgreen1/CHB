@@ -209,6 +209,49 @@ function makeSite(opts) {
             }
             return { ok: true, data: (r.json.data && typeof r.json.data === 'object') ? r.json.data : {} };
         },
+        // CHAT CONTINUITY. importChat sends a LOCAL conversation to become a
+        // web one (exactly-once by ref — the site answers `already` on a
+        // retry); mirror READS the web rail, and only reads — replying
+        // stays on the phone, where the admin session lives.
+        async importChat(ref, msgs) {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            let r;
+            try {
+                r = await send(url, { action: 'chat_import', secret: secret, build: build, ref: String(ref || ''), msgs: Array.isArray(msgs) ? msgs : [] });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return { ok: true, convo: parseInt(r.json.convo, 10) || 0, already: !!r.json.already };
+        },
+        async mirror(convo) {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            let r;
+            try {
+                r = await send(url, { action: 'chat_mirror', secret: secret, build: build, convo: parseInt(convo, 10) || 0 });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return {
+                ok: true,
+                convo: parseInt(r.json.convo, 10) || 0,
+                convos: Array.isArray(r.json.convos) ? r.json.convos : [],
+                msgs: Array.isArray(r.json.msgs) ? r.json.msgs : [],
+            };
+        },
         // Post a night's work. Returns { ok, stored, skipped[] } or a refusal.
         async ingest(items) {
             if (!url || !secret) {

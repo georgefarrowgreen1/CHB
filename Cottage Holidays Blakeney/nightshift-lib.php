@@ -1908,6 +1908,38 @@ function night_chat_ref_ok($ref)
 
 // Whatever the content row held → a clean thread. A message is who + words;
 // a Mac message may carry think/used/model for the fold and the chip.
+// ── THE IMPORTED CONVERSATION (chat continuity) — may this land? ─────────
+// A local Mac chat becomes a web conversation ONLY through this door: refs
+// are the exactly-once mechanism (a lost reply retries the same ref and the
+// site answers "already"), the cap keeps a runaway producer from dumping a
+// novel, and every message still passes the thread sanitiser at the append.
+const NIGHT_CHAT_IMPORT_MAX = 40;
+function night_chat_import_problem($ref, $msgs)
+{
+    if (!preg_match('/^[a-z0-9][a-z0-9-]{0,39}$/', (string) $ref)) {
+        return 'That import reference is not usable.';
+    }
+    if (!is_array($msgs) || count($msgs) === 0) {
+        return 'An import needs at least one message.';
+    }
+    if (count($msgs) > NIGHT_CHAT_IMPORT_MAX) {
+        return 'An import carries at most ' . NIGHT_CHAT_IMPORT_MAX . ' messages — send the recent part.';
+    }
+    foreach ($msgs as $m) {
+        if (!is_array($m)) {
+            return 'That is not a message.';
+        }
+        $who = $m['who'] ?? '';
+        if ($who !== 'you' && $who !== 'mac') {
+            return "A message's who must be 'you' or 'mac'.";
+        }
+        if (night_str($m['text'] ?? '') === '') {
+            return 'A message with no words cannot be imported.';
+        }
+    }
+    return '';
+}
+
 function night_ownerchat_thread($raw)
 {
     $msgs = [];

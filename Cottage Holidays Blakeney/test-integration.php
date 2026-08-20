@@ -3460,6 +3460,42 @@ $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mac-chat-m
         ['t' => 'Boiler man is Colin', 'at' => ''],
         ['t' => 'Check-in is 3pm sharp', 'at' => date('Y-m-d')],
     ]))]);
+
+// ── CHAT CONTINUITY — a local Mac conversation becomes a web one ─────────
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_import', 'secret' => $SECRET,
+    'ref' => 'imp-c9-test', 'msgs' => [
+        ['who' => 'you', 'text' => 'What did we decide about the boiler? <b>bold</b>'],
+        ['who' => 'mac', 'text' => 'Colin is coming Tuesday.'],
+    ]]);
+$wcImC = (int) ($r['json']['convo'] ?? 0);
+it_check('continuity: an import lands as a NEW conversation', ($r['json']['ok'] ?? false) === true && $wcImC > 0, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread', 'convo' => $wcImC]);
+it_check('continuity: the thread reads back through the sanitiser, titled in the rail',
+    count($r['json']['msgs'] ?? []) === 2
+    && ($r['json']['msgs'][0]['who'] ?? '') === 'you'
+    && strpos((string) $r['json']['msgs'][1]['text'], 'Colin') !== false
+    && in_array($wcImC, array_map(function ($c) { return (int) $c['convo']; }, $r['json']['convos'] ?? []), true), $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_import', 'secret' => $SECRET,
+    'ref' => 'imp-c9-test', 'msgs' => [['who' => 'you', 'text' => 'retry after a lost reply']]]);
+$wcImN = (int) $rootDb->query('SELECT COUNT(*) FROM ownerchat_msgs WHERE convo = ' . $wcImC)->fetchColumn();
+it_check('continuity: a retried ref lands NOWHERE NEW — exactly once',
+    ($r['json']['already'] ?? false) === true && (int) ($r['json']['convo'] ?? 0) === $wcImC && $wcImN === 2, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_import', 'secret' => $SECRET,
+    'ref' => 'imp-bad-who', 'msgs' => [['who' => 'guest', 'text' => 'x']]]);
+it_check('continuity: a bad who is refused at the door', $r['code'] === 400, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_mirror', 'secret' => $SECRET, 'convo' => $wcImC]);
+it_check('continuity: the mirror reads the rail and the conversation, read-only',
+    ($r['json']['ok'] ?? false) === true
+    && in_array($wcImC, array_map(function ($c) { return (int) $c['convo']; }, $r['json']['convos'] ?? []), true)
+    && count($r['json']['msgs'] ?? []) === 2, $r['raw']);
+it_check('continuity: no device key, no door',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'chat_import', 'ref' => 'imp-x', 'msgs' => [['who' => 'you', 'text' => 'x']]])['code'] === 401
+    && http($guest, 'POST', '/nightshift.php', ['action' => 'chat_mirror'])['code'] === 401);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+it_check('continuity: the one switch closes BOTH directions',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'chat_import', 'secret' => $SECRET, 'ref' => 'imp-off', 'msgs' => [['who' => 'you', 'text' => 'x']]])['code'] === 409
+    && http($guest, 'POST', '/nightshift.php', ['action' => 'chat_mirror', 'secret' => $SECRET])['code'] === 409);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'morning — how are we looking?']);
 $wcGid = (int) ($r['json']['id'] ?? 0);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
