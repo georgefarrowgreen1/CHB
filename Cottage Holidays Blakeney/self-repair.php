@@ -83,9 +83,10 @@ try {
         $j = json_decode($raw, true);
         $tag = is_array($j) && is_string($j['tag_name'] ?? null) ? trim($j['tag_name']) : '';
     }
-    // Only the shape the builds actually mint — a rename or a rogue tag must
+    // Only the shapes the builds actually mint — build-<N> (the current id
+    // convention) or the retired dated form — a rename or a rogue tag must
     // not become the yardstick every Mac is measured against.
-    if ($tag !== '' && preg_match('/^hand-build-\d{8}-\d{4}$/', $tag)) {
+    if ($tag !== '' && preg_match('/^(?:build-\d+|hand-build-\d{8}-\d{4})$/', $tag)) {
         content_set_scalar('nightshift-latest-build', $tag);
     }
 } catch (\Throwable $e) {

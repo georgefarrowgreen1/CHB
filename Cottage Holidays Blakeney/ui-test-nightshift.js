@@ -62,6 +62,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // Two Macs, one of them quiet — the case a single stored key could not
   // represent at all, and the one the duty is about.
   let devices = [];
+  let latestTag = '';
   const posts = [];
   const gets = [];
 
@@ -88,7 +89,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       }
       if (file === 'content.php' && b.action === 'get_all') return json({ ok: true, content: stored });
       if (file === 'nightshift.php' && b.action === 'key_state') { return json({ ok: true, set: devices.length > 0 }); }
-      if (file === 'nightshift.php' && b.action === 'devices') { return json({ ok: true, devices, quietAfter: 3 }); }
+      if (file === 'nightshift.php' && b.action === 'devices') { return json({ ok: true, devices, quietAfter: 3, latest: latestTag }); }
       if (file === 'nightshift.php' && b.action === 'connect_code') { return json({ ok: true, code: 'ABCD-2345', seconds: 600 }); }
       if (file === 'nightshift.php' && b.action === 'new_key') { devices.push({ i: devices.length, label: 'A Mac', seen: 0, quiet: -1 }); return json({ ok: true, key: 'k'.repeat(64) }); }
       if (file === 'nightshift.php' && b.action === 'stop_device') { devices = devices.filter((d) => d.i !== b.i); return json({ ok: true, stopped: b.label, left: devices.length }); }
@@ -436,6 +437,39 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(looks.dl.bg !== looks.quiet.bg && looks.dl.bg !== 'rgba(0, 0, 0, 0)',
     'the Download pill is FILLED, not the same outline as the quiet one beside it', JSON.stringify(looks));
   ok(looks.dl.fg !== looks.quiet.fg, '…and takes its own ink');
+
+  // ── THE BUILD VERDICT COMPARES BY SCHEME RANK, never lexically. The id
+  // convention (build-<N>) outranks the retired dated tags outright — the
+  // lexical compare read 'b' < 'h' and told every dated Mac it was up to
+  // date against a NEWER build-N release, the exact backwards verdict this
+  // fixture pins. Driven through the REAL render.
+  devices = [
+    { i: 0, label: 'The study Mac', seen: Math.floor(Date.now() / 1000), quiet: 0, build: 'hand-build-20260820-1726' },
+    { i: 1, label: 'The kitchen Mac', seen: Math.floor(Date.now() / 1000), quiet: 0, build: 'build-41' },
+  ];
+  latestTag = 'build-42';
+  const bv = await page.evaluate(async () => {
+    await refreshNightKeyRow();
+    return [...document.querySelectorAll('#night-key-row .acr-row')].map((r) => r.textContent);
+  });
+  ok(/update available/.test(bv[0] || '') && /update available/.test(bv[1] || ''),
+    `a dated Mac AND an older build-id Mac both read update-available against build-42 (${JSON.stringify(bv).slice(0, 160)})`);
+  latestTag = 'build-41';
+  const bv2 = await page.evaluate(async () => {
+    await refreshNightKeyRow();
+    return [...document.querySelectorAll('#night-key-row .acr-row')].map((r) => r.textContent);
+  });
+  ok(/update available/.test(bv2[0] || '') && /up to date/.test(bv2[1] || '') && !/update available/.test(bv2[1] || ''),
+    `the matching build-id Mac reads up to date while the dated one still updates (${JSON.stringify(bv2).slice(0, 160)})`);
+  latestTag = 'v3-final-final';
+  const bv3 = await page.evaluate(async () => {
+    await refreshNightKeyRow();
+    return [...document.querySelectorAll('#night-key-row .acr-row')].map((r) => r.textContent);
+  });
+  ok(!/update available|up to date/.test((bv3[0] || '') + (bv3[1] || '')),
+    'an unreadable latest claims NOTHING — a comparison against noise is not a verdict');
+  devices = [];
+  latestTag = '';
 
   // A NON-HTTPS ADDRESS IS REFUSED, and nothing is stored.
   posts.length = 0;

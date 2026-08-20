@@ -31,12 +31,25 @@
 function parseVersion(raw) {
     const s = String(raw || '').trim();
     if (!s) { return null; }
-    let m = s.match(/^\D*(\d{8})-(\d{4})$/);
+    // THE BUILD-ID SCHEME (current): `build-<N>`, N the workflow's own run
+    // number — short, monotonic, and a genuine build id. Checked before the
+    // dated shape (they cannot collide: this one has no hyphen inside the
+    // digits) and RANKED ABOVE it, so every installed hand-build-* app sees
+    // a build-N release as newer and the upgrade flows — while a build-N app
+    // can never be offered yesterday's dated tag as an "update".
+    let m = s.match(/^\D*(\d+)$/);
+    if (m) { return { kind: 'id', parts: [Number(m[1])], text: s }; }
+    m = s.match(/^\D*(\d{8})-(\d{4})$/);
     if (m) { return { kind: 'build', parts: [Number(m[1]), Number(m[2])], text: s }; }
     m = s.match(/^\D*(\d+)\.(\d+)(?:\.(\d+))?/);
     if (m) { return { kind: 'semver', parts: [Number(m[1]), Number(m[2]), Number(m[3] || 0)], text: s }; }
     return null;
 }
+
+// Newer SCHEME outranks older scheme (id > dated build > semver): each rung
+// is what CI published after the one below it, so cross-kind order is the
+// lineage's own history and never offers a downgrade.
+const VERSION_KIND_RANK = { id: 3, build: 2, semver: 1 };
 
 // -1 / 0 / 1, or null when either side cannot be read. NEVER guess an order
 // from strings that did not parse: an unknown version must produce "I don't
@@ -45,7 +58,7 @@ function compareVersions(a, b) {
     const A = parseVersion(a);
     const B = parseVersion(b);
     if (!A || !B) { return null; }
-    if (A.kind !== B.kind) { return A.kind === 'build' ? 1 : -1; }
+    if (A.kind !== B.kind) { return VERSION_KIND_RANK[A.kind] > VERSION_KIND_RANK[B.kind] ? 1 : -1; }
     for (let i = 0; i < Math.max(A.parts.length, B.parts.length); i++) {
         const x = A.parts[i] || 0;
         const y = B.parts[i] || 0;

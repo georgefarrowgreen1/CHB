@@ -2774,6 +2774,16 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'devices']);
 it_check('the devices list carries each Mac\'s reported build and the newest release',
     (($r['json']['devices'][0]['build'] ?? '') === 'hand-build-20260819-0100')
     && (($r['json']['latest'] ?? '') === 'hand-build-20260819-0900'), $r['raw']);
+// The yardstick's shape pin follows the BUILD-ID convention (build-<N>) and
+// still refuses a rogue tag — pinned at source, because the fetch that uses
+// it needs GitHub and a regex that silently stopped matching would freeze
+// nightshift-latest-build at the last dated tag for ever.
+$srPin = '(?:build-\d+|hand-build-\d{8}-\d{4})';
+it_check('self-repair accepts build-id and dated tags, refuses rogue ones — and uses exactly that pin',
+    preg_match('/^' . $srPin . '$/', 'build-42') === 1
+    && preg_match('/^' . $srPin . '$/', 'hand-build-20260819-0900') === 1
+    && preg_match('/^' . $srPin . '$/', 'v3-final-final') === 0
+    && strpos((string) file_get_contents(__DIR__ . '/self-repair.php'), $srPin) !== false);
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'nightshift-latest-build', 'value' => '']);
 // The row is DELETED to restore the master path for everything below — a
 // key on file (even an emptied list: the row itself) means only device keys

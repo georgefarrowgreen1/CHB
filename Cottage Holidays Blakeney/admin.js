@@ -23014,6 +23014,19 @@ function nightAgoWords(ts) {
     const d = Math.round(h / 24);
     return d === 1 ? 'yesterday' : d + ' days ago';
 }
+// A build tag → its comparable order, mirroring the Mac updater's own
+// ranking: {k} is the SCHEME (2 = build-<N>, the id convention; 1 = the
+// retired dated hand-build form), {n} orders within it — a newer scheme
+// outranks an older one outright, which is what makes the transition safe.
+// Null for anything unrecognised, and the caller then claims NOTHING.
+function nightBuildOrd(tag) {
+    const s = String(tag || '');
+    let m = /^build-(\d+)$/.exec(s);
+    if (m) return { k: 2, n: Number(m[1]) };
+    m = /(\d{8})-(\d{4})$/.exec(s);
+    if (m) return { k: 1, n: Number(m[1] + m[2]) };
+    return null;
+}
 async function refreshNightKeyRow() {
     const host = document.getElementById('night-key-row');
     if (!host) return;
@@ -23026,14 +23039,19 @@ async function refreshNightKeyRow() {
     __nightKeySet = __nightDevs.length > 0;
     const rows = __nightDevs.map((d) => {
         // WHICH BUILD, against the newest the site knows of (integration
-        // step 4). Build tags sort lexically (hand-build-YYYYMMDD-HHMM), so
-        // "older" is a string compare. With no latest on file the card claims
-        // nothing — a comparison against nothing is not "up to date".
+        // step 4). Compared by SCHEME RANK, not lexically: build-<N> (the id
+        // convention) outranks the retired hand-build-YYYYMMDD-HHMM outright
+        // — a lexical compare read 'b' < 'h' and told every dated Mac it was
+        // up to date against a NEWER build-N. With no latest on file, or a
+        // shape nightBuildOrd cannot read, the card claims nothing — a
+        // comparison against nothing is not "up to date".
         const build = String(d.build || '');
-        const verdict = !build ? ''
-            : latest && build < latest
+        const ordL = nightBuildOrd(latest);
+        const ordB = nightBuildOrd(build);
+        const verdict = !build || !ordB || !ordL ? ''
+            : (ordL.k > ordB.k || (ordL.k === ordB.k && ordL.n > ordB.n))
                 ? ' · <em>update available</em>'
-                : latest ? ' · up to date' : '';
+                : ' · up to date';
         return '<div class="acr-row"><div class="acr-lbl">' + escapeHtml(d.label)
         + '<small>' + (d.quiet >= 3
             ? '<em>nothing for ' + d.quiet + ' nights</em>'
