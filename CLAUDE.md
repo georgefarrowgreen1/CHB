@@ -901,6 +901,20 @@ signing and what is real; what matters HERE is the site half and the rules.
   RENDER (`nightAppUrl()`), because a value could arrive from an older write or a
   hand-edited content row; a `javascript:` address is refused at both ends and
   break-tested at both. Gated by ui-test-nightshift §7.
+- **RELEASES ARE NAMED `build-<N>`** (owner-asked), N the mac-app workflow's
+  own run number — short, monotonic, a genuine build id. The dated
+  hand-build-YYYYMMDD-HHMM tags are RETIRED but stay published as history
+  (renaming a released tag breaks its .dmg link and the update trail). The
+  transition is carried by RANK, in three places that must stay in step:
+  update.js's parseVersion (kind 'id' > 'build' > 'semver' — an installed
+  dated copy sees any build-N as newer, a build-N copy is never offered a
+  dated "update"), admin.js's `nightBuildOrd` (the devices card compared
+  LEXICALLY before — 'b' < 'h' told every dated Mac it was up to date
+  against a NEWER build-N; unreadable shapes claim NOTHING), and
+  self-repair's latest-build shape pin (both shapes accepted — a pin that
+  stopped matching would freeze the yardstick for ever; source-pinned in
+  test-integration because the fetch needs GitHub). CFBundleVersion takes
+  the run number on a dispatch; a pushed hand-v* tag still names itself.
 - **DISPATCHING THE RELEASE: the MCP tool's parameter is `inputs`, not
   `workflow_inputs`.** The wrong name is silently IGNORED (204, run queued,
   publish skipped) — measured twice in one afternoon, two full macOS builds

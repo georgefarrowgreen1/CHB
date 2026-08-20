@@ -587,6 +587,19 @@ function fakeSite(handler) {
     // 1.0.0 as newer would offer a downgrade for ever.
     ok('a CI build outranks a semver tag', update.compareVersions('hand-build-20260818-0842', 'hand-v1.0.0') === 1);
     ok('an unreadable version compares to nothing', update.compareVersions('latest', 'hand-v1.0.0') === null);
+    // THE BUILD-ID SCHEME (build-<N>, the current convention) parses, orders
+    // numerically within itself, and OUTRANKS the retired dated tags — so
+    // every installed hand-build copy sees a build-N release as newer and
+    // the transition upgrades, while a build-N copy is never offered
+    // yesterday's dated tag as an "update".
+    ok('a build-id tag parses', !!update.parseVersion('build-42'));
+    ok('build ids order numerically, not lexically — build-100 beats build-42',
+        update.compareVersions('build-100', 'build-42') === 1
+        && update.compareVersions('build-42', 'build-42') === 0);
+    ok('a build-id release outranks every dated tag — the transition upgrades',
+        update.compareVersions('build-42', 'hand-build-20260820-1726') === 1
+        && update.compareVersions('hand-build-20260820-1726', 'build-42') === -1);
+    ok('…and a semver tag too', update.compareVersions('build-42', 'hand-v1.0.0') === 1);
 
     ok('the same version reports current',
         update.updateVerdict('hand-build-20260818-0842', rel(), A).state === 'current');

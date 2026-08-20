@@ -67,23 +67,30 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
+          # THE BUILD-ID CONVENTION: build-<N>, N this workflow's own run
+          # number — short, monotonic, a genuine build id. The updater ranks
+          # the id scheme above the retired dated hand-build-* tags, so every
+          # installed copy still sees a build-N release as newer; old tags
+          # stay as history (renaming a published tag would break its .dmg
+          # link and the update trail). A pushed hand-v* tag still names
+          # itself, the manual escape hatch.
           if [ "${{ github.event_name }}" = "push" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="hand-build-$(date -u +%Y%m%d-%H%M)"
+            TAG="build-${GITHUB_RUN_NUMBER}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # AND A BUILD NUMBER FOR THE ABOUT PANEL. macOS reads its version from
           # Info.plist, which took package.json's semver — so About said
-          # "Version 1.0.0 (1.0.0)" on every build ever made, while the sidebar
-          # said hand-build-20260818-0842. The one place someone looks to answer
-          # "which build am I on" was the one place that could not say.
-          #
-          # Dotted digits, not the tag itself: CFBundleVersion is specified as
-          # numbers and periods, and a string with letters and hyphens in it is
-          # asking for trouble at notarisation. Same digits as the tag, so the
-          # two are recognisably the same build.
-          echo "build=$(date -u +%Y%m%d.%H%M)" >> "$GITHUB_OUTPUT"
+          # "Version 1.0.0 (1.0.0)" on every build ever made. CFBundleVersion is
+          # specified as numbers and periods, so it takes the run number itself
+          # on a dispatch (the SAME digits as the tag — recognisably one build)
+          # and dotted date digits on a tag push, where the tag names itself.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "build=$(date -u +%Y%m%d.%H%M)" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
           echo "This build is $TAG"
 
       - name: Install
