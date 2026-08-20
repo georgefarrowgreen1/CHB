@@ -898,6 +898,26 @@ nsk('a valid act survives the sanitiser twice with its verdict; junk and you-sid
     ($ta['msgs'][0]['act']['done'] ?? '') === 'done'
     && !isset($ta['msgs'][1]['act'])
     && !isset($ta['msgs'][2]['act']), json_encode($ta['msgs']));
+// THE TWO DAILY WORKERS. A booking speaks the house's own check_in/check_out
+// (leave-day exclusive — guest-speak "12th to the 15th" IS arrive/leave);
+// an enquiry reply points at a looked-up id.
+$ab = night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly',
+    'check_in' => '2026-09-12', 'check_out' => '2026-09-15', 'name' => 'Sarah Pemberton',
+    'adults' => 2, 'children' => 1, 'price' => 400]], $nm, '2026-08-20');
+nsk('an add_booking resolves whole — cottage to key, party and the agreed price along',
+    $ab['problem'] === '' && $ab['act']['prop'] === 'jollyboat'
+    && $ab['act']['name'] === 'Sarah Pemberton' && $ab['act']['adults'] === 2
+    && $ab['act']['children'] === 1 && $ab['act']['price'] === 400.0, json_encode($ab));
+nsk('…and its refusals: leave before arrive, no name, no adults, a past arrival, a silly price',
+    night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly', 'check_in' => '2026-09-15', 'check_out' => '2026-09-12', 'name' => 'S', 'adults' => 2]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly', 'check_in' => '2026-09-12', 'check_out' => '2026-09-15', 'name' => '  ', 'adults' => 2]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly', 'check_in' => '2026-09-12', 'check_out' => '2026-09-15', 'name' => 'S', 'adults' => 0]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly', 'check_in' => '2026-08-01', 'check_out' => '2026-08-05', 'name' => 'S', 'adults' => 2]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_booking', 'args' => ['cottage' => 'jolly', 'check_in' => '2026-09-12', 'check_out' => '2026-09-15', 'name' => 'S', 'adults' => 2, 'price' => 999999]], $nm, '2026-08-20')['problem'] !== '');
+$sr = night_act_resolve(['action' => 'send_enquiry_reply', 'args' => ['enquiry' => 31]], $nm, '2026-08-20');
+nsk('a send_enquiry_reply carries its id, and a guessed nothing is refused',
+    $sr['problem'] === '' && $sr['act']['enquiry'] === 31
+    && night_act_resolve(['action' => 'send_enquiry_reply', 'args' => []], $nm, '2026-08-20')['problem'] !== '');
 
 echo "\n== Summary ==\n";
 if ($fails) {

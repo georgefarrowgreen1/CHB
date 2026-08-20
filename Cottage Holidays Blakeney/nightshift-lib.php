@@ -1503,10 +1503,12 @@ function night_tool_expenses(array $rows, $yearLabel)
 //  validator refuses such kinds by name so their absence is a decision a
 //  gate can see, not an oversight.
 // ============================================================
-const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment'];
+const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment', 'add_booking', 'send_enquiry_reply'];
 const NIGHT_ACT_NOTE_MAX = 120;
 const NIGHT_ACT_RATE_MIN = 20;    // the price command's own sanity bounds
 const NIGHT_ACT_RATE_MAX = 2000;
+const NIGHT_ACT_NAME_MAX = 60;    // a proposed booking's guest name
+const NIGHT_ACT_PRICE_MAX = 20000; // an agreed total's sanity ceiling
 
 // Validate the STORED form (prop already a key). '' or a sentence. This is
 // the sanitiser's guard, so it must hold on every re-read of the thread.
@@ -1550,6 +1552,44 @@ function night_act_problem($act)
         $b = $act['booking'] ?? null;
         if (!is_numeric($b) || (int) $b <= 0) {
             return 'request_payment needs the booking ref from a lookup result.';
+        }
+    }
+    if ($kind === 'add_booking') {
+        // Booking dates are the house's own check_in/check_out (leave-day
+        // exclusive) — "12th to the 15th" in guest-speak IS arrive/leave, so
+        // the inclusive from/to the other date acts use would be the trap.
+        $allowed += ['prop' => 1, 'cottage' => 1, 'check_in' => 1, 'check_out' => 1,
+            'name' => 1, 'adults' => 1, 'children' => 1, 'price' => 1];
+        $ci = night_tool_iso($act['check_in'] ?? '');
+        $co = night_tool_iso($act['check_out'] ?? '');
+        if ($ci === '' || $co === '' || $co <= $ci) {
+            return 'A booking needs check_in and check_out (YYYY-MM-DD), arrival day then leaving day.';
+        }
+        if (night_nights($ci, $co) > NIGHT_TOOL_RANGE_MAX) {
+            return 'That stay is longer than ' . NIGHT_TOOL_RANGE_MAX . ' nights.';
+        }
+        if (!is_string($act['prop'] ?? null) || !preg_match('/^[a-z0-9-]{1,40}$/', $act['prop'])) {
+            return 'The action names no cottage.';
+        }
+        if (!is_string($act['name'] ?? null) || trim($act['name']) === '') {
+            return 'A booking needs the guest’s name.';
+        }
+        $ad = $act['adults'] ?? null;
+        if (!is_numeric($ad) || (int) $ad < 1 || (int) $ad > 12) {
+            return 'A booking needs adults, 1 to 12.';
+        }
+        if (isset($act['children']) && (!is_numeric($act['children']) || (int) $act['children'] < 0 || (int) $act['children'] > 12)) {
+            return 'Children must be 0 to 12.';
+        }
+        if (isset($act['price']) && (!is_numeric($act['price']) || $act['price'] <= 0 || $act['price'] > NIGHT_ACT_PRICE_MAX)) {
+            return 'An agreed price must be over £0 and under £' . NIGHT_ACT_PRICE_MAX . '.';
+        }
+    }
+    if ($kind === 'send_enquiry_reply') {
+        $allowed += ['enquiry' => 1];
+        $e = $act['enquiry'] ?? null;
+        if (!is_numeric($e) || (int) $e <= 0) {
+            return 'send_enquiry_reply needs the enquiry id from a lookup result.';
         }
     }
     foreach (array_keys($act) as $k) {
@@ -1609,6 +1649,38 @@ function night_act_resolve($raw, array $names, $todayIso)
     }
     if ($kind === 'request_payment') {
         $act['booking'] = (int) ($a['booking'] ?? 0);
+    }
+    if ($kind === 'add_booking') {
+        $want2 = mb_strtolower(trim(night_str($a['cottage'] ?? '')));
+        $hits2 = [];
+        foreach ($names as $pk => $nm) {
+            if (mb_strtolower((string) $nm) === $want2 || mb_strtolower((string) $pk) === $want2
+                || ($want2 !== '' && mb_stripos((string) $nm, $want2) !== false)) {
+                $hits2[(string) $pk] = (string) $nm;
+            }
+        }
+        if (count($hits2) !== 1) {
+            return ['act' => null, 'problem' => (count($hits2) === 0 ? 'No cottage called that. ' : 'More than one cottage matches. ')
+                . 'The cottages are: ' . implode(', ', array_values($names)) . '.'];
+        }
+        $act['prop'] = (string) array_key_first($hits2);
+        $act['cottage'] = $hits2[$act['prop']];
+        $act['check_in'] = night_tool_iso($a['check_in'] ?? '');
+        $act['check_out'] = night_tool_iso($a['check_out'] ?? '');
+        if ($act['check_in'] !== '' && $act['check_in'] < (string) $todayIso) {
+            return ['act' => null, 'problem' => 'That arrival is in the past — actions are for dates from today on.'];
+        }
+        $act['name'] = mb_substr(night_str($a['name'] ?? ''), 0, NIGHT_ACT_NAME_MAX);
+        $act['adults'] = (int) ($a['adults'] ?? 0);
+        if (isset($a['children']) && is_numeric($a['children'])) {
+            $act['children'] = (int) $a['children'];
+        }
+        if (isset($a['price']) && is_numeric($a['price'])) {
+            $act['price'] = round((float) $a['price'], 2);
+        }
+    }
+    if ($kind === 'send_enquiry_reply') {
+        $act['enquiry'] = (int) ($a['enquiry'] ?? 0);
     }
     $bad = night_act_problem($act);
     return $bad === '' ? ['act' => $act, 'problem' => ''] : ['act' => null, 'problem' => $bad];

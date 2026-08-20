@@ -3342,6 +3342,34 @@ $r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => 
     'text' => json_encode(['text' => 'Blocking yesterday.', 'act' => ['action' => 'block_dates',
         'args' => ['cottage' => $wcProp['name'], 'from' => date('Y-m-d', strtotime('-5 days')), 'to' => date('Y-m-d')]]])]);
 it_check('acts: the past is not proposable', $r['code'] === 400, $r['raw']);
+// The two daily workers through the door: a booking proposal normalised
+// whole, and an enquiry reply that must point at a REAL waiting enquiry.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid2,
+    'text' => json_encode(['text' => 'Booking her in.', 'act' => ['action' => 'add_booking',
+        'args' => ['cottage' => $wcProp['name'], 'check_in' => date('Y-m-d', strtotime('+40 days')),
+            'check_out' => date('Y-m-d', strtotime('+43 days')), 'name' => 'Sarah Pemberton', 'adults' => 2, 'price' => 400]]])]);
+it_check('acts: an add_booking proposal lands normalised', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcAid2, 'wait' => 0, 'seen' => 0]);
+$wcActB = $r['json']['msg']['act'] ?? null;
+it_check('acts: the phone reads the booking card whole — key, name, party, price',
+    is_array($wcActB) && ($wcActB['kind'] ?? '') === 'add_booking'
+    && ($wcActB['prop'] ?? '') === $wcProp['prop_key'] && ($wcActB['name'] ?? '') === 'Sarah Pemberton'
+    && ($wcActB['adults'] ?? 0) === 2 && ($wcActB['price'] ?? 0) == 400, $r['raw']);
+$rootDb->exec("INSERT INTO enquiries (prop_key, name, email, check_in, check_out, adults, children, message, created_at)
+    VALUES ('{$wcProp['prop_key']}', 'Rachel Verney', 'rv@example.com', '" . date('Y-m-d', strtotime('+50 days')) . "', '" . date('Y-m-d', strtotime('+53 days')) . "', 2, 0, 'is it free?', NOW())");
+$wcEnqId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'reply to rachel']);
+$wcAid3 = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid3,
+    'text' => json_encode(['text' => 'Opening the drafted reply.', 'act' => ['action' => 'send_enquiry_reply', 'args' => ['enquiry' => $wcEnqId]]])]);
+it_check('acts: a reply proposal pointing at a REAL waiting enquiry lands', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'and a guessed one']);
+$wcAid4 = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid4,
+    'text' => json_encode(['text' => 'Replying.', 'act' => ['action' => 'send_enquiry_reply', 'args' => ['enquiry' => 987654]]])]);
+it_check('acts: a guessed enquiry id is refused at the door',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'no waiting enquiry') !== false, $r['raw']);
+$rootDb->exec('DELETE FROM enquiries WHERE id = ' . $wcEnqId);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 
 // The switch closes BOTH new directions, like brief and ingest.

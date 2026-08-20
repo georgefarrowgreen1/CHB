@@ -1104,6 +1104,13 @@ route_actions([
                         json_out(['error' => 'The proposed action was refused: no booking has that ref.'], 400);
                     }
                 }
+                if ($res['act']['kind'] === 'send_enquiry_reply') {
+                    $st = db()->prepare('SELECT id FROM enquiries WHERE id = ? AND declined_at IS NULL');
+                    $st->execute([(int) $res['act']['enquiry']]);
+                    if (!$st->fetchColumn()) {
+                        json_out(['error' => 'The proposed action was refused: no waiting enquiry has that id.'], 400);
+                    }
+                }
                 $env['act'] = $res['act'];
                 $storeText = json_encode($env);
             }
