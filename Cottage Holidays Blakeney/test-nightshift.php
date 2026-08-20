@@ -1006,10 +1006,29 @@ nsk('the world sheet SLIMS: lists cut to ' . NIGHT_WORLD_LIST_MAX . ', a nameles
     && $wld['today']['enquiries_waiting'] === 2, json_encode($wld['money']));
 nsk('…and NO contact detail or ref survives into the pack — names and figures only',
     strpos(json_encode($wld), '@') === false && strpos(json_encode($wld), '"ref"') === false, json_encode($wld));
-nsk('memories sanitise: trimmed, junk dropped, capped both ways, the app adds nothing',
-    night_ownerchat_memories(['  never dogs  ', '', ['x'], str_repeat('m', 300)]) === ['never dogs', str_repeat('m', NIGHT_OWNERCHAT_MEM_CHARS)]
+// A memory is DATED now ({t, at}); legacy plain strings are ADOPTED with an
+// empty date — unknown is honest, an invented date would defeat the
+// staleness question — and the MODEL only ever sees the texts.
+nsk('memories sanitise: dated shape, legacy strings adopted, trimmed, junk dropped, capped both ways',
+    night_ownerchat_memories(['  never dogs  ', '', ['x'], str_repeat('m', 300)])
+        === [['t' => 'never dogs', 'at' => ''], ['t' => str_repeat('m', NIGHT_OWNERCHAT_MEM_CHARS), 'at' => '']]
+    && night_ownerchat_memories([['t' => 'boiler man is Colin', 'at' => '2026-03-01']])
+        === [['t' => 'boiler man is Colin', 'at' => '2026-03-01']]
     && count(night_ownerchat_memories(array_fill(0, 30, 'x'))) === NIGHT_OWNERCHAT_MEM_MAX
     && night_ownerchat_memories('junk') === []);
+nsk('…a junk date degrades to unknown, never garbage — and texts() strips to what the model reads',
+    night_ownerchat_memories([['t' => 'x', 'at' => 'last tuesday']]) === [['t' => 'x', 'at' => '']]
+    && night_ownerchat_memory_texts([['t' => 'never dogs', 'at' => '2026-03-01'], 'legacy line', ['t' => '', 'at' => '2026-01-01']])
+        === ['never dogs', 'legacy line']);
+// THE REMEMBER ACT — the proposal that becomes a line only on the owner's
+// confirm, so the app still never writes one of its own accord.
+$rm = night_act_resolve(['action' => 'remember', 'args' => ['text' => '  Never dogs — allergy promise  ']], $nm, '2026-08-20');
+nsk('a remember act carries its trimmed text; empty and overlong are refused in sentences',
+    $rm['problem'] === '' && $rm['act']['text'] === 'Never dogs — allergy promise'
+    && night_act_resolve(['action' => 'remember', 'args' => []], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'remember', 'args' => ['text' => str_repeat('m', 300)]], $nm, '2026-08-20')['problem'] === ''
+    && mb_strlen(night_act_resolve(['action' => 'remember', 'args' => ['text' => str_repeat('m', 300)]], $nm, '2026-08-20')['act']['text']) === NIGHT_OWNERCHAT_MEM_CHARS
+    && night_act_problem(['kind' => 'remember', 'text' => 'x', 'amount' => 5]) !== '');
 
 echo "\n== Summary ==\n";
 if ($fails) {

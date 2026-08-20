@@ -109,6 +109,11 @@ function makeApi(deps) {
     }
     let chatDb = readChat();
     let chatBusy = false;
+    // The owner's standing memories, as last heard from the site's poll —
+    // so the LOCAL chat grounds on the same facts as the web chat. [] until
+    // a poll delivers; an ok poll ALWAYS updates (a cleared list clears here
+    // too), a refused one never does (site off is not memories gone).
+    let chatSiteMemories = [];
     // Thread ids carry a counter beside the clock: two conversations minted
     // in the same millisecond (a test, a fast hand) must never share an id —
     // a shared id makes pick ambiguous and delete a double delete.
@@ -949,6 +954,11 @@ function makeApi(deps) {
                         }
                     },
                 });
+                // The memories, kept in step from every ok poll (see the
+                // declaration for the update rule).
+                if (out.memories !== undefined) {
+                    chatSiteMemories = Array.isArray(out.memories) ? out.memories : [];
+                }
                 // THE WARM HINT (seamlessness rung 2): search is open at the
                 // site, so bring the engine up NOW — a dead end then meets a
                 // warm model. Only when auto-start is on, only when nothing
@@ -1109,7 +1119,11 @@ function makeApi(deps) {
                 th.at = now().getTime();
                 writeChat();
                 chatPushEv({ t: 'start', thread: chatDb.cur });
-                const res = await chatLoop(up.eng, th.msgs, th.instr || '', model, chatPushEv, signal);
+                // The SAME standing memories the web chat grounds on — one
+                // brain, whichever keyboard. Best-effort: no poll yet (or
+                // site off) means an empty list and yesterday's behaviour.
+                const res = await chatLoop(up.eng, th.msgs, th.instr || '', model, chatPushEv, signal,
+                    '', false, chatToolsMod.chatGroundText(null, chatSiteMemories));
                 if (!res.ok) {
                     chatPushEv({ t: 'done', ok: false, say: res.say });
                     return { ok: false, say: res.say };

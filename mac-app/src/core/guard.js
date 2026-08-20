@@ -162,7 +162,7 @@ function checkDraft(draft, facts) {
 // The prompt. Here rather than in the job so the CONTRACT and the CHECK sit in
 // one file and cannot drift: every rule stated to the model below has a
 // matching test in checkDraft above, and that pairing is the whole point.
-function buildPrompt(f, host, voice) {
+function buildPrompt(f, host, voice, memories) {
     const lines = [];
     lines.push('You are writing on behalf of ' + (host || 'the owner') + ', who lets three holiday cottages in Blakeney, Norfolk.');
     lines.push('Write the BODY of a reply to the enquiry below. Four to six sentences. Warm, plain, unfussy British English. No markdown.');
@@ -212,6 +212,18 @@ function buildPrompt(f, host, voice) {
         lines.push('');
         lines.push('HOW ' + (host || 'the owner').toUpperCase() + ' WRITES — real paragraphs from their own replies. MATCH the register and warmth. NEVER copy a sentence and NEVER reuse their specifics:');
         vv.forEach(function (v) { lines.push('- ' + v.trim().slice(0, 400)); });
+    }
+    // STANDING PROMISES (the chat's owner-written memories). A promise
+    // taught to the chat ("never dogs") used to be invisible here, so a
+    // draft could cheerfully contradict it. These BIND the draft — they are
+    // rules to obey, never new facts to assert; checkDraft still governs.
+    const mm = (Array.isArray(memories) ? memories : [])
+        .filter(function (x) { return typeof x === 'string' && x.trim(); })
+        .slice(0, 12);
+    if (mm.length) {
+        lines.push('');
+        lines.push('STANDING PROMISES the owner asked to be remembered. Your reply must NEVER contradict these. Do not quote them unless they answer what was asked:');
+        mm.forEach(function (x) { lines.push('- ' + x.trim().slice(0, 200)); });
     }
     lines.push('');
     lines.push('THEIR ENQUIRY:');

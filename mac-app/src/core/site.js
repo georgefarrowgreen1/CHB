@@ -160,6 +160,11 @@ function makeSite(opts) {
                 // The owner's register — up to two paragraphs from their own
                 // reply library, for the reply prompts. Absent = older site.
                 voice: Array.isArray(r.json.voice) ? r.json.voice : [],
+                // The owner's standing memories (texts) — the drafts must
+                // obey a promise taught to the chat. Absent = older site.
+                memories: (Array.isArray(r.json.memories) ? r.json.memories : [])
+                    .filter(function (x) { return typeof x === 'string' && x.trim(); })
+                    .map(function (x) { return x.trim(); }).slice(0, 12),
                 week: (r.json.week && typeof r.json.week === 'object') ? r.json.week : undefined,
                 gaps: Array.isArray(r.json.gaps) ? r.json.gaps : undefined,
                 questions: Array.isArray(r.json.questions) ? r.json.questions : undefined,
@@ -248,6 +253,13 @@ function makeSite(opts) {
                 host: String(r.json.host || ''),
                 asks: Array.isArray(r.json.asks) ? r.json.asks : [],
                 voice: Array.isArray(r.json.voice) ? r.json.voice : [],
+                // The owner's standing memories (texts only) — so the LOCAL
+                // chat grounds on the same facts as the web chat. Always a
+                // list on an ok poll: an owner who cleared the list must be
+                // forgotten here too, not remembered stale.
+                memories: (Array.isArray(r.json.memories) ? r.json.memories : [])
+                    .filter(function (x) { return typeof x === 'string' && x.trim(); })
+                    .map(function (x) { return x.trim(); }).slice(0, 12),
                 // The warm hint: the owner has search open, so bringing the
                 // engine up NOW means a dead end meets a warm model.
                 warm: r.json.warm === true,

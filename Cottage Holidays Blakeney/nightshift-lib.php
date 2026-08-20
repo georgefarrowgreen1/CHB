@@ -1597,7 +1597,7 @@ function night_tool_expenses(array $rows, $yearLabel)
 //  gate can see, not an oversight.
 // ============================================================
 const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment', 'add_booking', 'send_enquiry_reply',
-    'add_expense', 'send_arrival_info', 'record_payment'];
+    'add_expense', 'send_arrival_info', 'record_payment', 'remember'];
 const NIGHT_ACT_NOTE_MAX = 120;
 const NIGHT_ACT_RATE_MIN = 20;    // the price command's own sanity bounds
 const NIGHT_ACT_RATE_MAX = 2000;
@@ -1712,6 +1712,16 @@ function night_act_problem($act)
             return $kind . ' needs the booking ref from a lookup result.';
         }
     }
+    if ($kind === 'remember') {
+        // A PROPOSED memory — the invariant holds because it becomes a line
+        // only when the owner confirms the card; the app still never writes
+        // one of its own accord.
+        $allowed += ['text' => 1];
+        if (!is_string($act['text'] ?? null) || trim($act['text']) === ''
+            || mb_strlen($act['text']) > NIGHT_OWNERCHAT_MEM_CHARS) {
+            return 'A memory needs its text, up to ' . NIGHT_OWNERCHAT_MEM_CHARS . ' characters.';
+        }
+    }
     foreach (array_keys($act) as $k) {
         if (!isset($allowed[$k])) {
             return 'The action carries a field it may not: ' . night_str((string) $k) . '.';
@@ -1820,6 +1830,9 @@ function night_act_resolve($raw, array $names, $todayIso)
     }
     if ($kind === 'send_arrival_info' || $kind === 'record_payment') {
         $act['booking'] = (int) ($a['booking'] ?? 0);
+    }
+    if ($kind === 'remember') {
+        $act['text'] = mb_substr(night_str($a['text'] ?? ''), 0, NIGHT_OWNERCHAT_MEM_CHARS);
     }
     $bad = night_act_problem($act);
     return $bad === '' ? ['act' => $act, 'problem' => ''] : ['act' => null, 'problem' => $bad];
@@ -2044,17 +2057,39 @@ function night_world(array $fleet, array $today, array $money)
 
 // The owner's memories, sanitised: strings only, trimmed, capped both ways.
 // Memory the OWNER wrote — the app never adds a line of its own.
+// A memory is DATED now — {t, at} — so the editor can whisper "remembered in
+// March, still true?" instead of carrying a dead fact forever. Legacy plain
+// strings are ADOPTED with an empty date (unknown is honest; inventing a
+// date would defeat the staleness question). The MODEL only ever sees the
+// texts (night_ownerchat_memory_texts) — a date per line is editor chrome,
+// not context worth paying for.
 function night_ownerchat_memories($raw)
 {
     $out = [];
     foreach ((is_array($raw) ? $raw : []) as $m) {
-        $t = night_str($m);
+        $t = night_str(is_array($m) ? ($m['t'] ?? '') : $m);
         if ($t === '') {
             continue;
         }
-        $out[] = mb_substr($t, 0, NIGHT_OWNERCHAT_MEM_CHARS);
+        $at = is_array($m) ? night_str($m['at'] ?? '') : '';
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $at)) {
+            $at = '';
+        }
+        $out[] = ['t' => mb_substr($t, 0, NIGHT_OWNERCHAT_MEM_CHARS), 'at' => $at];
         if (count($out) >= NIGHT_OWNERCHAT_MEM_MAX) {
             break;
+        }
+    }
+    return $out;
+}
+// The texts alone, for every payload and grounding line.
+function night_ownerchat_memory_texts($items)
+{
+    $out = [];
+    foreach ((is_array($items) ? $items : []) as $m) {
+        $t = night_str(is_array($m) ? ($m['t'] ?? '') : $m);
+        if ($t !== '') {
+            $out[] = $t;
         }
     }
     return $out;

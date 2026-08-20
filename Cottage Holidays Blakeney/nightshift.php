@@ -782,7 +782,22 @@ route_actions([
     // own — memory the model invented is the failure this shape prevents.
     'chat_memory_save' => function ($in) {
         require_admin();
-        $items = night_ownerchat_memories(is_array($in['items'] ?? null) ? $in['items'] : []);
+        // The editor sends TEXTS (one per line). Dates are the server's:
+        // a line whose text already exists keeps its date, a new line is
+        // dated today — so retyping the list never re-dates what stood.
+        $stored = [];
+        try {
+            foreach (night_ownerchat_memories(content_json('mac-chat-memory', [])) as $m) {
+                $stored[$m['t']] = $m['at'];
+            }
+        } catch (\Throwable $e) {
+        }
+        $today = date('Y-m-d');
+        $items = [];
+        foreach (night_ownerchat_memories(is_array($in['items'] ?? null) ? $in['items'] : []) as $m) {
+            $m['at'] = array_key_exists($m['t'], $stored) ? $stored[$m['t']] : $today;
+            $items[] = $m;
+        }
         content_set_scalar('mac-chat-memory', json_encode($items));
         json_out(['ok' => true, 'memory' => $items]);
     },
@@ -887,7 +902,9 @@ route_actions([
         } catch (\Throwable $e) {
         }
         try {
-            $mems = night_ownerchat_memories(content_json('mac-chat-memory', []));
+            // TEXTS only — the model reads the words; a memory's date is
+            // editor chrome, not context worth paying for on every ask.
+            $mems = night_ownerchat_memory_texts(night_ownerchat_memories(content_json('mac-chat-memory', [])));
             if ($mems) {
                 $payload['memories'] = $mems;
             }
@@ -1306,7 +1323,8 @@ route_actions([
                     $one['ownerchat']['world'] = $pl['world'];
                 }
                 if (is_array($pl['memories'] ?? null) && $pl['memories']) {
-                    $one['ownerchat']['memories'] = night_ownerchat_memories($pl['memories']);
+                    // Strings on the wire — the Mac's grounding line takes texts.
+                    $one['ownerchat']['memories'] = night_ownerchat_memory_texts(night_ownerchat_memories($pl['memories']));
                 }
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as
@@ -1366,6 +1384,17 @@ route_actions([
             }
         }
         $ap = ['ok' => true, 'host' => $host, 'asks' => $out];
+        // THE MEMORIES RIDE THE POLL (texts only), so the Mac's own local
+        // chat grounds on the same standing facts as the web chat — one
+        // brain, whichever keyboard. Best-effort: absent when unreadable,
+        // and the local chat then simply grounds on nothing, as before.
+        try {
+            $apm = night_ownerchat_memory_texts(night_ownerchat_memories(content_json('mac-chat-memory', [])));
+            if ($apm) {
+                $ap['memories'] = $apm;
+            }
+        } catch (\Throwable $e) {
+        }
         // The warm hint (seamlessness rung 2): the owner opened search in the
         // last few minutes, so bringing the model up NOW means a dead end
         // meets a warm engine. A hint, never an instruction — the Mac ignores
@@ -1684,6 +1713,17 @@ route_actions([
             $teach = null;
         }
         $payload = ['ok' => true, 'host' => $host, 'enquiries' => $out, 'cap' => NIGHT_BRIEF_MAX];
+        // THE MEMORIES GROUND THE NIGHT'S DRAFTS TOO. This closed a real
+        // gap: a standing promise taught to the chat ("never dogs") was
+        // invisible to the overnight reply drafter, so a draft could
+        // cheerfully contradict it. Texts only, best-effort.
+        try {
+            $bm = night_ownerchat_memory_texts(night_ownerchat_memories(content_json('mac-chat-memory', [])));
+            if ($bm) {
+                $payload['memories'] = $bm;
+            }
+        } catch (\Throwable $e) {
+        }
         if ($voice) {
             $payload['voice'] = $voice;
         }

@@ -183,6 +183,7 @@ async function runNight(deps) {
             enquiries: brief.enquiries,
             stoodDown: brief.stoodDown,
             voice: brief.voice,
+            memories: brief.memories,
             week: brief.week,
             gaps: brief.gaps,
             questions: brief.questions,

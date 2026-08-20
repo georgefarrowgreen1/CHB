@@ -1128,6 +1128,64 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => window.__payForms.length === 1 && Number(window.__payForms[0]) === 72
     && /Payment form opened/.test((document.getElementById('mc-act-508') || {}).textContent || '')),
     'record_payment opens the form for THAT booking and signs off as exactly that much');
+  // ── THE REMEMBER CARD: the model proposes, the OWNER's confirm is what
+  // makes it a line — the app still never writes one of its own accord.
+  // Already-remembered and a full list are SENTENCES, never dead buttons.
+  await page.evaluate(() => {
+    window.__mcReqs = [];
+    window.apiPost = async (file, body) => {
+      window.__mcReqs.push({ f: file, a: body.action, b: body });
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '',
+          memory: [{ t: 'Boiler man is Colin', at: '2026-03-01' }],
+          presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+            { who: 'mac', id: 509, text: 'Want me to keep that?', at: '12:10', act: { kind: 'remember', text: 'Never dogs — allergy promise to guests' } },
+            { who: 'mac', id: 510, text: 'And this again?', at: '12:11', act: { kind: 'remember', text: 'Boiler man is Colin' } },
+          ] };
+      }
+      if (body.action === 'chat_memory_save') { return { ok: true, memory: (body.items || []).map((t) => ({ t, at: todayDashed() })) }; }
+      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const rmCards = await page.evaluate(() => ({
+    live: (document.getElementById('mc-act-509') || {}).textContent || '',
+    dup: (document.getElementById('mc-act-510') || {}).textContent || '',
+    fired: window.__mcReqs.filter((r) => r.a !== 'chat_thread'),
+  }));
+  ok(/Never dogs — allergy promise/.test(rmCards.live) && /Joins the standing memory/.test(rmCards.live)
+    && /Already remembered/.test(rmCards.dup) && rmCards.fired.length === 0,
+    `the proposal quotes its line, a duplicate gets the sentence, nothing fires on render (${JSON.stringify(rmCards).slice(0, 200)})`);
+  await page.evaluate(() => document.getElementById('mc-act-509').querySelector('.mc-act-go').click());
+  await page.waitForTimeout(300);
+  const rmRun = await page.evaluate(() => ({
+    saves: window.__mcReqs.filter((r) => r.a === 'chat_memory_save').map((r) => r.b.items),
+    done: /Remembered — it rides every conversation/.test((document.getElementById('mc-act-509') || {}).textContent || ''),
+  }));
+  ok(rmRun.saves.length === 1
+    && JSON.stringify(rmRun.saves[0]) === JSON.stringify(['Boiler man is Colin', 'Never dogs — allergy promise to guests'])
+    && rmRun.done,
+    `Confirm appends to the standing list through the real save and flips done (${JSON.stringify(rmRun.saves)})`);
+  // A FULL list refuses with the way out named, never a dead button.
+  await page.evaluate(() => {
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '',
+          memory: Array.from({ length: 12 }, (x, i) => ({ t: 'fact ' + i, at: '2026-08-01' })),
+          presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+            { who: 'mac', id: 511, text: 'Keep it?', at: '12:12', act: { kind: 'remember', text: 'A thirteenth fact' } },
+          ] };
+      }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => /memory is full/.test((document.getElementById('mc-act-511') || {}).textContent || '')
+    && !document.querySelector('#mc-act-511 .mc-act-go')),
+    'a full memory says so and names the way out — never a dead button');
   // SEND_ENQUIRY_REPLY: an enquiry no longer waiting is a DEAD card — the
   // sentence, never a dead button.
   await page.evaluate(() => {
@@ -1323,12 +1381,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     'a box the owner typed in is NEVER clobbered — the draft is offered instead');
   await page.evaluate(() => { document.getElementById('messages-modal').classList.remove('open'); });
   // THE MEMORY EDITOR: the ⋯ sheet's Memory… opens a real textarea, one per
-  // line, and Save posts the trimmed list — memory the OWNER writes.
+  // line, and Save posts the trimmed list — memory the OWNER writes. Lines
+  // are DATED now ({t, at}); a line remembered over six months ago earns a
+  // whisper in the dialog, and a legacy plain string still prefill correctly.
   await page.evaluate(() => {
     window.__memSaves = [];
     window.apiPost = async (file, body) => {
       if (body.action === 'chat_memory_save') { window.__memSaves.push(body.items); return { ok: true, memory: body.items }; }
-      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '', memory: ['Never dogs'], presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '',
+        memory: [{ t: 'Never dogs', at: ukShiftDays(todayDashed(), -300) }, 'legacy line', { t: 'Fresh fact', at: todayDashed() }],
+        presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
       return { ok: true };
     };
     return renderMacChat();
@@ -1339,7 +1401,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.click('[data-act="acMemoryEdit"]');
   await page.waitForTimeout(300);
   const memBox = await page.evaluate(() => (document.getElementById('gdf-items') || {}).value || '');
-  ok(memBox === 'Never dogs', `the editor opens prefilled from the stored list (${JSON.stringify(memBox)})`);
+  ok(memBox === 'Never dogs\nlegacy line\nFresh fact',
+    `the editor opens prefilled from dated AND legacy lines alike (${JSON.stringify(memBox)})`);
+  const memMsg = await page.evaluate(() => (document.querySelector('#glass-dialog .glass-dialog-msg') || {}).textContent || '');
+  ok(/remembered over six months ago/.test(memMsg) && /Never dogs/.test(memMsg) && !/Fresh fact.*six months/.test(memMsg),
+    `the stale line earns the whisper — the fresh and undated ones do not (${memMsg.slice(-120)})`);
   await page.fill('#gdf-items', 'Never dogs — allergy promise\n  \nBoiler man is Colin');
   await page.evaluate(() => { const b = [...document.querySelectorAll('#glass-dialog button')].find((x) => /Save the memories/.test(x.textContent)); if (b) b.click(); });
   await page.waitForTimeout(300);
