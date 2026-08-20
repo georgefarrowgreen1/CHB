@@ -1878,6 +1878,20 @@ function fakeSite(handler) {
         ok('the acts intro teaches the confirm rule in so many words',
             /never claim/i.test(tMod.chatActsIntro()) && /owner confirms/i.test(tMod.chatActsIntro())
             && /refunds/i.test(tMod.chatActsIntro()));
+        // The registry's two daily workers: a booking speaks the house's own
+        // check_in/check_out, an enquiry reply points at a looked-up id.
+        const ab = tMod.chatActCall('Booking her in.\nACT {"action":"add_booking","args":{"cottage":"Jollyboat","check_in":"2027-09-12","check_out":"2027-09-15","name":"Sarah Pemberton","adults":2,"price":400}}');
+        ok('an add_booking proposal parses whole — name, party and the agreed price ride along',
+            ab.act && ab.act.args.name === 'Sarah Pemberton' && ab.act.args.adults === 2
+            && ab.act.args.price === 400, JSON.stringify(ab.act));
+        ok('a send_enquiry_reply proposal needs its looked-up id',
+            tMod.chatActCall('ACT {"action":"send_enquiry_reply","args":{"enquiry":31}}').act !== null
+            && tMod.chatActCall('ACT {"action":"send_enquiry_reply","args":{}}').bad !== null);
+        // THE RETRY NET: the grammar names every action, so a fumbled line's
+        // one constrained re-ask is valid by construction.
+        ok('the act retry grammar names every action',
+            tMod.CHAT_ACT_NAMES.every(function (n) { return tMod.chatActGrammar().indexOf('"' + n + '"') >= 0; })
+            && /^root ::= "ACT /.test(tMod.chatActGrammar()));
     })();
 
     // The LOOP, through the real api with a scripted engine and a fake site.
@@ -2656,6 +2670,66 @@ function fakeSite(handler) {
             rec.sys.length >= 2 && !/ACT \{"action"/.test(rec.sys[rec.sys.length - 1]),
             (rec.sys[rec.sys.length - 1] || '').slice(0, 120));
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // THE RETRY NET, through the real loop: a fumbled ACT line gets ONE
+        // re-ask constrained by the grammar (cool decode), and the card is
+        // saved; a retry that ALSO fumbles is dropped and the words stand.
+        const mk34f = function (secondText) {
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34f-'));
+            const rec = { answers: [], calls: [] };
+            const api = require('../src/core/api').makeApi({
+                dir: tmp, machine: M16,
+                secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+                makeEngine: function () {
+                    return {
+                        id: 'llamacpp', name: 'fake', base: 'http://x',
+                        reachable: async function () { return true; },
+                        props: async function () { return { ctx: 4096 }; },
+                        chatStream: async function (msgs, model, opts) {
+                            rec.calls.push({ grammar: opts.grammar || '', temp: opts.temperature });
+                            if (rec.calls.length === 1) {
+                                // The fumble: a real model's classic — the JSON never closes.
+                                return { ok: true, stopped: false, text: 'I can hold those dates.\nACT {"action":"block_dates","args":{"cottage":"Jollyboat"', think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                            }
+                            return { ok: true, stopped: false, text: secondText, think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                        },
+                    };
+                },
+                makeSite: function () {
+                    return {
+                        asks: async function () {
+                            return { ok: true, host: '', warm: false, asks: [{ id: 51, kind: 'ownerchat', ownerchat: {
+                                turns: [{ who: 'you', text: 'block jollyboat 1-4 sep' }], instr: '',
+                            } }] };
+                        },
+                        answerAsk: async function (id, text) { rec.answers.push(text); return { ok: true }; },
+                        askPartial: async function () { return { ok: true, held: true }; },
+                        chatTool: async function () { return { ok: true, data: {} }; },
+                    };
+                },
+            });
+            return { api: api, rec: rec, tmp: tmp };
+        };
+        const hR = mk34f('ACT {"action":"block_dates","args":{"cottage":"Jollyboat","from":"2027-09-01","to":"2027-09-04"}}');
+        await hR.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await hR.api.askSweep();
+        const envR = JSON.parse(hR.rec.answers[0]);
+        ok('a fumbled ACT gets ONE grammar-constrained cool retry, and the card is saved',
+            hR.rec.calls.length === 2
+            && /^root ::= "ACT /.test(hR.rec.calls[1].grammar) && hR.rec.calls[1].temp === 0.2
+            && envR.act && envR.act.action === 'block_dates' && envR.act.args.from === '2027-09-01'
+            && envR.text === 'I can hold those dates.',
+            JSON.stringify({ calls: hR.rec.calls.length, act: envR.act }));
+        try { fs.rmSync(hR.tmp, { recursive: true, force: true }); } catch (e) {}
+        const hB = mk34f('still not json');
+        await hB.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await hB.api.askSweep();
+        const envB = JSON.parse(hB.rec.answers[0]);
+        ok('a retry that also fumbles is dropped — the words stand, nothing is repaired',
+            hB.rec.calls.length === 2 && !envB.act && envB.text === 'I can hold those dates.',
+            JSON.stringify(envB));
+        try { fs.rmSync(hB.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 
     console.log('\n== Summary ==');

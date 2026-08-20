@@ -309,7 +309,12 @@ function makeApi(deps) {
         }
         // The PROPOSAL, parsed off the final answer: the ACT line is always
         // stripped from the words (a protocol line never paints), a bad one
-        // is dropped and NAMED — never repaired, the guard.js rule.
+        // gets ONE grammar-constrained retry — the TOOL protocol's own net,
+        // because a 4B model fumbling a bracket should cost a beat, not the
+        // card. The retry re-asks for ONLY the corrected line, decoded cool
+        // inside the grammar so the shape is valid by construction; the site
+        // still judges the args. Still bad after that (or the send was
+        // stopped) → dropped and NAMED, never repaired — the guard.js rule.
         let act = null;
         let actBad = null;
         if (actsOn) {
@@ -317,6 +322,22 @@ function makeApi(deps) {
             answer = ap.text;
             act = ap.act;
             actBad = ap.bad;
+            if (actBad && !stopped) {
+                const r2 = await eng.chatStream(msgs.concat([
+                    { role: 'assistant', content: r.text },
+                    { role: 'user', content: 'That action line was not valid (' + actBad + '). Reply with ONLY the corrected ACT line and nothing else.' },
+                ]), model, {
+                    temperature: 0.2, maxTokens: 200, timeoutMs: 60000, signal: signal,
+                    grammar: chatToolsMod.chatActGrammar(),
+                }, function () {});
+                if (r2 && r2.ok && !r2.stopped) {
+                    const ap2 = chatToolsMod.chatActCall(r2.text);
+                    if (ap2.act) {
+                        act = ap2.act;
+                        actBad = null;
+                    }
+                }
+            }
         }
         return {
             ok: true, answer: answer, think: thinkAll.trim(), used: used,

@@ -11917,6 +11917,66 @@ const MC_ACTS = {
             return sent === true;
         },
     },
+    add_booking: {
+        title: 'Add a booking',
+        verb: 'Add the booking',
+        pastVerb: 'Booking added',
+        facts(act) {
+            const n = nightsBetween(act.check_in, act.check_out);
+            return `${escapeHtml(act.name)} · ${escapeHtml(act.cottage || act.prop)} · ${fmtDate(act.check_in)} → ${fmtDate(act.check_out)} (${n} night${n === 1 ? '' : 's'}) · ${act.adults} adult${act.adults === 1 ? '' : 's'}${act.children ? ` + ${act.children} child${act.children === 1 ? '' : 'ren'}` : ''}`
+                + (act.price ? `<br>Agreed price: ${gbp(Number(act.price))} for the stay.` : '<br>Priced at the standard rate.');
+        },
+        async run(act) {
+            // The SAME endpoint as the Add Booking form, with every soft stop
+            // intact: a clash or an occupancy warning comes back and the card
+            // STAYS — no override flag is ever sent from here, because a
+            // deliberate overlap needs the form's own informed confirm, never
+            // a model's proposal riding through one.
+            const body = { action: 'add', prop_key: act.prop, name: act.name,
+                check_in: act.check_in, check_out: act.check_out,
+                adults: act.adults, children: act.children || 0 };
+            if (act.price) body.price_override = Number(act.price);
+            const res = await apiPost('bookings.php', body);
+            if (res && res.clash) {
+                glassAlert(res.message || 'Those dates clash with another booking.');
+                return false;
+            }
+            if (res && (res.occupancy_warn || res.email_warn)) {
+                glassAlert((res.message || 'The booking needs a closer look.') + ' Use Add Booking on Today to decide.');
+                return false;
+            }
+            if (!res || !res.ok) return false;
+            toast(`Booking added — ${act.name} is on the calendar.`);
+            initBackOffice().catch(() => {});
+            return true;
+        },
+    },
+    send_enquiry_reply: {
+        title: 'Reply to the enquiry',
+        verb: 'Open the drafted reply',
+        // "Done" here means TAKEN THERE: the composer is where reading and
+        // sending happen, with its own affordances — the card's whole job
+        // was the journey, and its sign-off says exactly that much.
+        pastVerb: 'Reply opened — send it from the composer',
+        facts(act) {
+            const e = (enquiries || []).find((q) => Number(q.dbId) === Number(act.enquiry));
+            if (!e) return '';
+            const pm = propertyMeta[e.propKey];
+            return `Open the drafted reply to ${escapeHtml(e.name || 'the guest')} — ${escapeHtml((pm && pm.name) || e.propKey || '')}. You read it before anything sends.`;
+        },
+        dead(act) {
+            return (enquiries || []).some((q) => Number(q.dbId) === Number(act.enquiry))
+                ? '' : 'That enquiry is no longer waiting — it may have been answered or declined.';
+        },
+        async run(act) {
+            const e = (enquiries || []).find((q) => Number(q.dbId) === Number(act.enquiry));
+            if (!e) return false;
+            // The ✨ row's own two-step, order load-bearing: open the
+            // composer, THEN run the drafter into it.
+            enqReplyDraft(e.id);
+            return true;
+        },
+    },
 };
 function mcActHtml(act, ix) {
     const spec = MC_ACTS[act.kind];

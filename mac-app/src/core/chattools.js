@@ -86,6 +86,8 @@ const CHAT_ACTS = {
     block_dates: { args: ['cottage', 'from', 'to', 'note'], req: ['cottage', 'from', 'to'] },
     price_override: { args: ['cottage', 'from', 'to', 'rate'], req: ['cottage', 'from', 'to', 'rate'] },
     request_payment: { args: ['booking'], req: ['booking'] },
+    add_booking: { args: ['cottage', 'check_in', 'check_out', 'name', 'adults', 'children', 'price'], req: ['cottage', 'check_in', 'check_out', 'name', 'adults'] },
+    send_enquiry_reply: { args: ['enquiry'], req: ['enquiry'] },
 };
 const CHAT_ACT_NAMES = Object.keys(CHAT_ACTS);
 
@@ -100,9 +102,30 @@ function chatActsIntro() {
         + 'set the nightly rate for those dates (\u00a320\u2013\u00a32000).\n'
         + '\u2022 request_payment \u2014 args {"booking":<ref>}: email a guest their payment link. The ref '
         + 'MUST be a `ref` you saw in a lookup result this conversation \u2014 never a guess.\n'
+        + '\u2022 add_booking \u2014 args {"cottage":"...","check_in":"...","check_out":"...","name":"...","adults":2,'
+        + '"children":0,"price":400} (children and price optional; check_in is the ARRIVAL day, check_out the '
+        + 'LEAVING day; price is the whole agreed total in \u00a3): prepare a new booking. Use it when the owner '
+        + 'says someone has booked or asks you to book someone in.\n'
+        + '\u2022 send_enquiry_reply \u2014 args {"enquiry":<id>}: open the drafted reply to a waiting enquiry, '
+        + 'ready for the owner to read and send. The id MUST be an `id` from the enquiries lookup \u2014 never a guess.\n'
         + 'Rules: at most ONE action per reply; say in plain words what the card will do; NEVER claim '
         + 'the action is done \u2014 the owner confirms it on their phone. Anything else (refunds, '
         + 'cancellations, deleting) you cannot prepare \u2014 say so and point at the back office.';
+}
+
+// The retry grammar: when a proposal fumbles its JSON, ONE re-ask constrained
+// to this shape makes the line valid by construction \u2014 the exact net the
+// TOOL protocol has had all along. Names only; the site still judges the args.
+function chatActGrammar() {
+    const names = CHAT_ACT_NAMES.map(function (n) { return '"' + n + '"'; }).join(' | ');
+    return 'root ::= "ACT {\\"action\\":\\"" name "\\",\\"args\\":" obj "}"\n'
+        + 'name ::= ' + names + '\n'
+        + 'obj ::= "{" ( pair ( "," pair )* )? "}"\n'
+        + 'pair ::= str ":" val\n'
+        + 'val ::= str | num | obj | "true" | "false" | "null"\n'
+        + 'str ::= "\\"" chr* "\\""\n'
+        + 'chr ::= [^"\\\\\\x00-\\x1f] | "\\\\" ["\\\\/bfnrt]\n'
+        + 'num ::= "-"? [0-9]+ ( "." [0-9]+ )?\n';
 }
 
 // The final answer \u2192 its proposal, if any. Returns { text, act|null, bad|null }:
@@ -226,5 +249,5 @@ module.exports = {
     CHAT_TOOLS, CHAT_TOOL_NAMES, CHAT_TOOL_ROUNDS, CHAT_TOOL_ARG_MAX, CHAT_TOOL_RESULT_MAX,
     CHAT_ACTS, CHAT_ACT_NAMES,
     chatToolsIntro, chatToolCall, chatToolResultMsg, chatToolGrammar,
-    chatActsIntro, chatActCall,
+    chatActsIntro, chatActCall, chatActGrammar,
 };

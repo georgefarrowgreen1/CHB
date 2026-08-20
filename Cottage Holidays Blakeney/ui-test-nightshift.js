@@ -1011,6 +1011,73 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `Confirm runs the REAL block endpoint, checkout exclusive (${JSON.stringify(acGo.blocks)})`);
   ok(acGo.verdicts.length === 1 && acGo.verdicts[0].v === 'done' && acGo.done,
     `…then the verdict lands and the card reads done (${JSON.stringify(acGo.verdicts)})`);
+  // ADD_BOOKING: Confirm posts the SAME add the form posts — and never an
+  // override flag; a clash keeps the card live with the server's sentence.
+  await page.evaluate(() => {
+    window.__mcReqs = [];
+    window.__mcClash = true;
+    window.__realAlert = window.glassAlert;
+    window.__mcAlerts = [];
+    window.glassAlert = async (m) => { window.__mcAlerts.push(m); };
+    window.initBackOffice = async () => {};
+    window.apiPost = async (file, body) => {
+      window.__mcReqs.push({ f: file, a: body.action, b: body });
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+          { who: 'mac', text: 'Booking her in.', at: '12:05', act: { kind: 'add_booking', prop: 'jollyboat', cottage: 'Jollyboat',
+            check_in: '2027-09-12', check_out: '2027-09-15', name: 'Sarah Pemberton', adults: 2, children: 1, price: 400 } },
+        ] };
+      }
+      if (body.action === 'add') {
+        return window.__mcClash ? { clash: true, message: 'Those dates clash with Dan Rowe (12/09/2027 – 14/09/2027).' } : { ok: true, id: 99 };
+      }
+      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const abFacts = await page.evaluate(() => (document.querySelector('.mc-act-f') || {}).textContent || '');
+  ok(/Sarah Pemberton/.test(abFacts) && /3 nights/.test(abFacts) && /2 adults \+ 1 child/.test(abFacts) && /£400\.00/.test(abFacts),
+    `the booking card states guest, stay, party and the agreed price (${abFacts})`);
+  await page.click('.mc-act-go');
+  await page.waitForTimeout(300);
+  const abClash = await page.evaluate(() => ({
+    adds: window.__mcReqs.filter((r) => r.a === 'add'),
+    verdicts: window.__mcReqs.filter((r) => r.a === 'chat_act_done').length,
+    alert: window.__mcAlerts[0] || '',
+    live: !!document.querySelector('.mc-act-go'),
+  }));
+  ok(abClash.adds.length === 1 && !('override_clash' in abClash.adds[0].b)
+    && abClash.adds[0].b.prop_key === 'jollyboat' && abClash.adds[0].b.price_override === 400,
+    `Confirm posts the form's own add — never an override flag (${JSON.stringify(abClash.adds[0] && abClash.adds[0].b)})`);
+  ok(/clash with Dan Rowe/.test(abClash.alert) && abClash.verdicts === 0 && abClash.live,
+    `a clash keeps the card LIVE with the server's sentence, no verdict claimed (${abClash.alert})`);
+  await page.evaluate(() => { window.__mcClash = false; });
+  await page.click('.mc-act-go');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => /Booking added/.test((document.querySelector('.mc-act.is-done') || {}).textContent || '')
+    && window.__mcReqs.filter((r) => r.a === 'chat_act_done' && r.b.verdict === 'done').length === 1),
+    'with the clash gone the same card adds the booking and flips done');
+  // SEND_ENQUIRY_REPLY: an enquiry no longer waiting is a DEAD card — the
+  // sentence, never a dead button.
+  await page.evaluate(() => {
+    window.glassAlert = window.__realAlert;
+    window.enquiries = [];
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+          { who: 'mac', text: 'Opening the reply.', at: '12:06', act: { kind: 'send_enquiry_reply', enquiry: 4242 } },
+        ] };
+      }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => /no longer waiting/.test((document.querySelector('.mc-act.is-off') || {}).textContent || '')
+    && !document.querySelector('.mc-act-go')),
+    'a reply card whose enquiry has gone says so instead of offering a dead button');
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {
