@@ -5815,6 +5815,17 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .mc-pres.is-asleep{color:var(--warn-text)}
 .mc-pres.is-asleep .mc-dot{background:var(--warn-text)}
 .mc-pres.is-off{color:var(--warn-text)}
+/* THE CONVERSATIONS RAIL — one line of chips, sideways-scrolling, hidden
+   while there is only one conversation to be in. The current one is filled
+   in the selection pair (--text-light ground, --dark-grey ink). */
+.mc-rail{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scrollbar-width:none}
+.mc-rail::-webkit-scrollbar{display:none}
+.mc-rail-chip{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  border:1px solid var(--glass-border);background:color-mix(in srgb,var(--text-light) 4%,transparent);
+  color:var(--text-muted);border-radius:999px;padding:8px 14px;font:600 0.7rem var(--font-sans);
+  cursor:pointer;min-height:34px}
+.mc-rail-chip:hover{background:var(--btn-hover)}
+.mc-rail-chip.is-cur{background:var(--text-light);color:var(--dark-grey);border-color:transparent}
 .mc-log{display:flex;flex-direction:column;gap:10px;min-height:46vh;padding:2px}
 /* the welcome — a CARD with starters, never a stranded paragraph */
 .mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:26px;

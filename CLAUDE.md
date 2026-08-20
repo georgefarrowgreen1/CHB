@@ -796,6 +796,27 @@ signing and what is real; what matters HERE is the site half and the rules.
   message). NB **`content_set_scalar` json_encodes its value**, so a column
   holds JSON of a JSON string — a test reading `content.item_value` decodes
   TWICE (the adoption gate hit this; content_json does the same round trip).
+  **THE RAIL (migration-118 → 119).** `ownerchat_msgs.convo` names each row's
+  CONVERSATION: "New conversation" opens beside the old ones (acNewChat is no
+  longer destructive — acClearChat is, one convo, behind the confirm), the
+  `.mc-rail` chips list them (titled by the FIRST question's first line;
+  hidden below two — nothing to switch between), and the ask carries the convo
+  as **entity_id** so poll/stop append the answer into the conversation the
+  question was asked in, never whichever one a device is looking at. A
+  brand-new convo has no rows, so the client synthesises its chip. Gated by
+  test-integration §27b's convo block + ui-test-nightshift §9's rail block.
+  **WHAT THE CARD DID IS ATTRIBUTED** (`via_label($in)` in db.php — CLOSED
+  whitelist, only `'ai-chat'` earns " · via AI chat"; junk earns nothing).
+  Wired where the cards execute: bookings add + request_payment, rates
+  seasons_save (cmdkApplyPriceOverride's optional `via` — the APPLY only, an
+  undo is the owner's own tap), and ical add_block, which now logs at all
+  (blocks left no record before). Gated in §27b both ways; the two send-path
+  wirings are pinned at source there.
+  **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
+  moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
+  test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
+  drives the same cases in-app — chatBusy taken, verdict in words into the
+  row's `.benchout` slot. Gated by the mac ui-test's Library block.
   **THE CHAT BENCH** (`mac-app/test/chat-bench.js`) — model swaps become
   measurements: ~24 committed business questions run against the REAL engine
   (`node test/chat-bench.js <model>`), framed byte-for-byte as the ownerchat

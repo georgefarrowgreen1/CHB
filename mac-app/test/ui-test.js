@@ -139,6 +139,11 @@ function fakeState(over) {
                 },
                 downloadModel: async function (r) { window.__calls.push(['downloadModel', r]); return { ok: true, file: '/x/a.gguf' }; },
                 runNow: async function () { window.__calls.push(['runNow']); return { ok: true, night: { posted: 2 } }; },
+                benchModel: async function (id) {
+                    window.__calls.push(['benchModel', id]);
+                    return window.__benchAnswer
+                        || { ok: true, model: id, lines: [], verdict: { safe: true, say: 'SAFE to run the business chat — protocol 100%, grounding 96%, honesty 100%.' } };
+                },
                 // The chat. The fake keeps a thread the way the main process
                 // does, so the reload-after-answer path is the real one.
                 chatHistory: async function () {
@@ -416,6 +421,21 @@ function fakeState(over) {
         });
         ok('a model a job points at wears its role in words', /prose|second/.test(roles[0] || ''), JSON.stringify(roles));
         ok('a model nothing points at says unused, quietly', /unused \(dim\)/.test(roles[1] || ''), JSON.stringify(roles));
+        // ── THE BENCH BUTTON: measurement from the Library, not the Terminal ──
+        // Every GGUF row offers it; clicking runs the committed cases through
+        // the bridge and the VERDICT lands in the row's own slot, named — the
+        // failing axis in words, never a bare number.
+        ok('every GGUF row offers a Bench button', (await page.$$('[data-bench]')).length === 2);
+        await page.click('[data-bench="q.gguf"]');
+        await page.waitForTimeout(200);
+        const benched = await page.evaluate(function () { return window.__calls.filter(function (c) { return c[0] === 'benchModel'; }).pop(); });
+        ok('Bench asks the bridge about THAT model', benched && benched[1] === 'q.gguf', JSON.stringify(benched));
+        const benchSlot = await page.textContent('#bench-q_gguf');
+        ok('…and the verdict renders in the row\'s slot, in words',
+            /SAFE to run the business chat/.test(benchSlot) && /honesty 100%/.test(benchSlot), benchSlot);
+        ok('…wearing the safe tone', await page.evaluate(function () {
+            return document.getElementById('bench-q_gguf').classList.contains('ok');
+        }));
         ok('the sheet is closed', !(await page.isVisible('#scrim')));
         await page.click('#addBtn');
         await page.waitForTimeout(150);

@@ -637,3 +637,15 @@ select.pop{padding-right:6px}
 @media (max-width:760px){.chatwrap{grid-template-columns:1fr}.chatrail{display:none}}
 
 @media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important}}
+
+/* ── THE BENCH (Library) — a button per model, a verdict beneath its row. */
+.mini{font-size:11.5px;font-weight:700;color:var(--accent-text);cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:999px;
+  padding:4px 12px;min-height:26px;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.mini:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.mini:disabled{opacity:.6;cursor:default}
+.benchout{font-size:12px;line-height:1.5;color:var(--text-muted);
+  border-left:2px solid color-mix(in srgb,var(--accent) 40%,transparent);
+  padding:4px 0 4px 12px;margin:2px 0 8px}
+.benchout.ok{color:var(--ok-text);border-left-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.benchout.warn{color:var(--warn-text);border-left-color:color-mix(in srgb,var(--warn) 50%,transparent)}

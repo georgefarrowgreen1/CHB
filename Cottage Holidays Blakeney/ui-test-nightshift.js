@@ -1139,6 +1139,88 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => !document.querySelector('.mc-day') && !!document.querySelector('.mc-hello')),
     'a QUIET day renders no card at all — the restraint is the design');
   await page.evaluate(() => { window.chbDuties = window.__realDuties; });
+  // ── THE CONVERSATIONS RAIL (migration-119). One chip per conversation,
+  // the current one marked; picking another refetches THAT one; "New
+  // conversation" opens beside the old ones and destroys NOTHING; and a
+  // single conversation renders no rail at all.
+  await page.evaluate(() => {
+    window.__railReqs = [];
+    window.apiPost = async (file, body) => {
+      window.__railReqs.push({ a: body.action, convo: body.convo });
+      if (body.action === 'chat_thread') {
+        const want = Number(body.convo) || 2;
+        return { ok: true, on: true, instr: '', convo: want,
+          convos: [
+            { convo: 2, n: 4, title: 'Who owes <b>me</b> money?' },
+            { convo: 1, n: 6, title: 'The welcome book' },
+          ],
+          msgs: want === 1 ? [{ who: 'you', id: 601, text: 'The welcome book', at: '09:00' }] : [],
+          presence: { seen: Math.floor(Date.now() / 1000), listening: true } };
+      }
+      return { ok: true };
+    };
+    window.__mcConvo = 0; __mcConvo = 0;
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const rail = await page.evaluate(() => ({
+    shown: !document.getElementById('mc-rail').hidden,
+    chips: document.querySelectorAll('.mc-rail-chip').length,
+    cur: (document.querySelector('.mc-rail-chip.is-cur') || {}).textContent || '',
+    // the title is owner/model text and must land as TEXT, never markup
+    inert: !document.querySelector('.mc-rail-chip b'),
+  }));
+  ok(rail.shown && rail.chips === 2 && /Who owes <b>me<\/b> money\?/.test(rail.cur) && rail.inert,
+    `two conversations render the rail, current marked, titles inert (${JSON.stringify(rail).slice(0, 140)})`);
+  await page.evaluate(() => { const c = document.querySelectorAll('.mc-rail-chip')[1]; if (c) c.click(); });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => window.__railReqs.some((r) => r.a === 'chat_thread' && Number(r.convo) === 1)
+    && /The welcome book/.test(document.getElementById('mc-log').textContent)),
+    'picking another chip fetches THAT conversation and paints it');
+  // NEW opens beside the old ones: nothing destructive fires, the synthetic
+  // chip marks where the owner now is, and the send carries the new convo.
+  await page.evaluate(() => { window.__railReqs = []; acNewChat(); });
+  await page.waitForTimeout(250);
+  const fresh = await page.evaluate(() => ({
+    convo: __mcConvo,
+    cleared: window.__railReqs.some((r) => r.a === 'chat_clear'),
+    curChip: (document.querySelector('.mc-rail-chip.is-cur') || {}).textContent || '',
+  }));
+  ok(fresh.convo === 3 && !fresh.cleared && /New conversation/.test(fresh.curChip),
+    `New conversation opens convo 3 beside the others, destroying nothing (${JSON.stringify(fresh)})`);
+  await page.evaluate(() => {
+    const box = document.getElementById('mc-in');
+    box.value = 'A question in the fresh conversation';
+    window.apiPost = async (file, body) => {
+      window.__railReqs.push({ a: body.action, convo: body.convo });
+      if (body.action === 'chat_send') { return { ok: true, id: 96, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') { return new Promise(() => {}); }
+      return { ok: true };
+    };
+    mcSend();
+  });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => window.__railReqs.some((r) => r.a === 'chat_send' && Number(r.convo) === 3)),
+    'the send carries the conversation it was typed in');
+  await page.evaluate(() => { __mcStamp++; __mcBusy = false; mcSendMode(false); });
+  // Clear is convo-scoped and lands on the newest survivor.
+  await page.evaluate(() => {
+    window.__railReqs = [];
+    window.glassConfirm = async () => true;
+    window.apiPost = async (file, body) => {
+      window.__railReqs.push({ a: body.action, convo: body.convo });
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', convo: 2, convos: [{ convo: 2, n: 4, title: 'Who owes me money?' }],
+          msgs: [], presence: { seen: Math.floor(Date.now() / 1000), listening: true } };
+      }
+      return { ok: true };
+    };
+    return acClearChat();
+  });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => window.__railReqs.some((r) => r.a === 'chat_clear' && Number(r.convo) === 3)
+    && __mcConvo === 2 && document.getElementById('mc-rail').hidden),
+    'Clear names ITS conversation, lands on the survivor — and one conversation shows no rail');
   // THE LIVE DRAFT OFFER (stage 1): opening a guest thread lays a fresh Mac
   // draft into an EMPTY reply box; a box the owner typed in is NEVER
   // clobbered — the draft is offered instead.

@@ -894,17 +894,19 @@ function chbPinToggle() {
 // Save a dated couple-rate override (a rate_seasons row) — the landing for the
 // price command and the gap offers. Splices, saves through the existing
 // validated endpoint, updates local state and repaints the public prices.
-async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label) {
+async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label, via) {
     const prev = (propertySeasons[propKey] || []).map((s) => ({ label: s.label || '', start: s.start_date, end: s.end_date, rate: parseFloat(s.couple_rate) || 0 }));
     const next = chbSeasonSplice(prev, { label: label || 'Search override', start, end: endIncl, rate });
-    const put = async (list) => {
-        await apiPost('rates.php', { action: 'seasons_save', prop_key: propKey, seasons: list });
+    const put = async (list, viaTag) => {
+        const body = { action: 'seasons_save', prop_key: propKey, seasons: list };
+        if (viaTag) body.via = viaTag; // the APPLY says who drove it; an undo is the owner's own tap
+        await apiPost('rates.php', body);
         propertySeasons[propKey] = list.map((s) => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
         // The rate IS saved by now; if the repaint throws, the prices on screen
         // silently disagree with what the owner just applied.
         try { renderCardPrices(); updatePropPriceHeading(); } catch (e) { chbSwallow(e, 'price-override-repaint'); }
     };
-    await put(next);
+    await put(next, via);
     const nm = (propertyMeta[propKey] || {}).name || propKey;
     // DURABLE: the descriptor carries the list as it was AND the override we added,
     // so a reversal tomorrow can check its own change is still there before putting
@@ -11795,6 +11797,7 @@ function settingsBack() {
 // This screen is a FORMATTER: the site stores the one thread (every device
 // reads the same conversation) and the Mac does all the thinking.
 let __mcState = null;   // the last chat_thread payload (instr rides it)
+let __mcConvo = 0;      // which conversation (0 = the server picks the newest)
 let __mcBusy = false;   // an ask in flight from THIS screen
 let __mcStamp = 0;      // supersede: navigating away or re-sending kills the poll
 
@@ -11886,7 +11889,7 @@ const MC_ACTS = {
             // The same endpoint the Block-out-dates dialog posts — its own
             // clash refusal included. `to` is the last blocked NIGHT, so the
             // free-again day is the one after.
-            await apiPost('ical-import.php', { action: 'add_block', prop: act.prop, check_in: act.from, check_out: ukShiftDays(act.to, 1) });
+            await apiPost('ical-import.php', { action: 'add_block', prop: act.prop, check_in: act.from, check_out: ukShiftDays(act.to, 1), via: 'ai-chat' });
             toast('Dates blocked.');
             initBackOffice().catch(() => {});
             return true;
@@ -11902,7 +11905,7 @@ const MC_ACTS = {
         async run(act) {
             // The search command's own applier: splices the seasons, saves
             // through the validated endpoint, records the undo.
-            await cmdkApplyPriceOverride(act.prop, act.from, act.to, Number(act.rate) || 0, 'AI chat');
+            await cmdkApplyPriceOverride(act.prop, act.from, act.to, Number(act.rate) || 0, 'AI chat', 'ai-chat');
             toast(`Price set — ${gbp(Number(act.rate) || 0)} a night. Undo lives in search.`);
             return true;
         },
@@ -11932,7 +11935,7 @@ const MC_ACTS = {
             // THROUGH THE PREVIEW — one-tap-send-blind on money would be a
             // downgrade (the act-in-place rule). Backing out returns false
             // and the card stays live.
-            const sent = await requestPayment(act.booking, undefined);
+            const sent = await requestPayment(act.booking, undefined, 'ai-chat');
             return sent === true;
         },
     },
@@ -11955,6 +11958,7 @@ const MC_ACTS = {
                 check_in: act.check_in, check_out: act.check_out,
                 adults: act.adults, children: act.children || 0 };
             if (act.price) body.price_override = Number(act.price);
+            body.via = 'ai-chat'; // the activity log says the card did it
             const res = await apiPost('bookings.php', body);
             if (res && res.clash) {
                 glassAlert(res.message || 'Those dates clash with another booking.');
@@ -12225,12 +12229,14 @@ async function renderMacChat() {
     delete log.dataset.ready;
     log.innerHTML = `<div class="settings-note">Fetching the conversation…</div>`;
     let r = null;
-    try { r = await apiPost('nightshift.php', { action: 'chat_thread' }); } catch (e) { r = null; }
+    try { r = await apiPost('nightshift.php', { action: 'chat_thread', convo: __mcConvo || 0 }); } catch (e) { r = null; }
     if (!r || !r.ok) {
         log.innerHTML = `<div class="settings-note">Couldn't reach the conversation — check the connection and try again.</div>`;
         return;
     }
     __mcState = r;
+    __mcConvo = Number(r.convo) || __mcConvo || 1;
+    mcRailPaint(r.convos || []);
     // Re-looked-up at the moment of the swap: an await sat between the first
     // lookup and here, and a concurrent render can have replaced the node.
     const presNow = document.getElementById('ac-pres') || pres;
@@ -12258,6 +12264,34 @@ async function renderMacChat() {
         });
     }
 }
+// ── THE CONVERSATIONS RAIL. One chip per conversation, newest activity
+// first, titled by its first question — every device sees the same rail
+// because the rows carry the convo (migration-119). It only appears once
+// there is something to switch BETWEEN: a single conversation renders no
+// rail at all, so the resting page is unchanged for the common case.
+function mcRailPaint(convos) {
+    const rail = document.getElementById('mc-rail');
+    if (!rail) return;
+    const list = (convos || []).slice();
+    // A brand-new conversation has no rows yet, so the server's list cannot
+    // know it — the chip is synthesised so the owner can see where they are
+    // (and tap back to an old one without sending first).
+    if (__mcConvo && !list.some((c) => Number(c.convo) === Number(__mcConvo))) {
+        list.unshift({ convo: __mcConvo, n: 0, title: 'New conversation' });
+    }
+    if (list.length < 2) { rail.hidden = true; rail.innerHTML = ''; return; }
+    rail.hidden = false;
+    rail.innerHTML = list.map((c) => {
+        const cur = Number(c.convo) === Number(__mcConvo);
+        return `<button type="button" class="mc-rail-chip${cur ? ' is-cur' : ''}" data-act="mcConvoPick" data-arg="${Number(c.convo)}"${cur ? ' aria-current="true"' : ''}>${escapeHtml(String(c.title || ''))}</button>`;
+    }).join('');
+}
+function mcConvoPick(n) {
+    const want = Number(n) || 0;
+    if (!want || want === __mcConvo || __mcBusy) return;
+    __mcConvo = want;
+    renderMacChat();
+}
 // ── the ... sheet: new / instruction / clear, and never the loudest thing.
 function acSheetOpen() {
     const sh = document.getElementById('ac-sheet');
@@ -12267,11 +12301,24 @@ function acSheetClose() {
     const sh = document.getElementById('ac-sheet');
     if (sh) sh.hidden = true;
 }
-async function acNewChat() {
+// NEW is not CLEAR any more (the rail): a fresh conversation opens beside
+// the old ones, which stay browsable. Nothing is stored until the first
+// send, so backing out costs nothing.
+function acNewChat() {
     acSheetClose();
-    const okGo = await glassConfirm('Start fresh? This clears the conversation on every device — the Mac keeps its own local chats.');
+    if (__mcBusy) return;
+    const convos = (__mcState && Array.isArray(__mcState.convos)) ? __mcState.convos : [];
+    const top = convos.reduce((m, c) => Math.max(m, Number(c.convo) || 0), Number(__mcConvo) || 1);
+    __mcConvo = top + 1;
+    renderMacChat();
+}
+// The destructive one — this conversation only, said so, behind a confirm.
+async function acClearChat() {
+    acSheetClose();
+    const okGo = await glassConfirm('Clear this conversation? It goes on every device — the others in the rail stay.');
     if (!okGo) return;
-    try { await apiPost('nightshift.php', { action: 'chat_clear' }); } catch (e) {}
+    try { await apiPost('nightshift.php', { action: 'chat_clear', convo: __mcConvo || 0 }); } catch (e) {}
+    __mcConvo = 0; // the server lands on the newest surviving conversation
     renderMacChat();
 }
 // THE CHAT'S MEMORY — a visible list the OWNER writes ("never dogs"),
@@ -12423,7 +12470,7 @@ async function mcSendRun() {
     // itself (the Mac chat's own shape) so it travels the existing payload;
     // a photo rides as a data URI the site stores and the Mac fetches.
     const att = __mcAttach;
-    const body = { action: 'chat_send', text };
+    const body = { action: 'chat_send', text, convo: __mcConvo || 0 };
     const optimistic = { who: 'you', text };
     if (att && att.kind === 'doc') {
         body.text = mcAttachMsg(text, att.name, att.content);
@@ -17613,7 +17660,7 @@ async function saveDepositPct() {
     }
 }
 // Email the guest a secure pay link (deposit or balance).
-async function requestPayment(bookingId, kind) {
+async function requestPayment(bookingId, kind, via) {
     const booking = findBookingById(bookingId);
     if (!booking) return false;
     return await previewAndSendEmail({
@@ -17624,11 +17671,9 @@ async function requestPayment(bookingId, kind) {
         fallbackConfirm: `Email ${booking.name || 'the guest'} a ${kind === 'balance' ? 'balance' : 'deposit'} payment request?`,
         doSend: async () => {
             try {
-                const res = await apiPost('bookings.php', {
-                    action: 'request_payment',
-                    id: booking.dbId,
-                    kind,
-                });
+                const body = { action: 'request_payment', id: booking.dbId, kind };
+                if (via) body.via = via; // the AI card's send is attributed in the log
+                const res = await apiPost('bookings.php', body);
                 toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
             } catch (e) {
                 // "It already went" is INFORMATION, not a failure — the guest has the

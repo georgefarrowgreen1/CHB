@@ -304,6 +304,8 @@ CREATE TABLE IF NOT EXISTS ownerchat_msgs (
     img         VARCHAR(80)  NULL,                -- chat photo ref (minted shape)
     file        VARCHAR(80)  NULL,                -- an attached document's name
     at          VARCHAR(16)  NOT NULL DEFAULT '',
+    convo       INT          NOT NULL DEFAULT 1,   -- which conversation (the rail)
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_created (created_at)
+    INDEX idx_created (created_at),
+    INDEX idx_convo (convo, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

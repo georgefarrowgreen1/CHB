@@ -762,7 +762,7 @@ if ($action === 'add') {
     log_activity(
         'booking',
         $priorStays > 0 ? 'booking.repeat_guest' : 'booking.add',
-        ($priorStays > 0 ? 'Repeat guest booked — ' . $name . ' (' . ($priorStays + 1) . ' stays)' : 'Booking created — ' . $name),
+        ($priorStays > 0 ? 'Repeat guest booked — ' . $name . ' (' . ($priorStays + 1) . ' stays)' : 'Booking created — ' . $name) . via_label($in),
         ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $newId, 'meta' => ['detail' => trim($checkIn . ' → ' . $checkOut)]],
     );
     json_out(op_finish($opTok, ['ok' => true, 'id' => $newId, 'email' => $emailResult]));
@@ -1371,7 +1371,7 @@ if ($action === 'request_payment') {
     require_once __DIR__ . '/mailer.php';
     $res = request_booking_payment($b, $kind, $isReminder);
     if (!empty($res['ok'])) {
-        log_activity('payment', 'payment.request', ($isReminder ? ucfirst($kind) . ' reminder emailed — ' : ucfirst($kind) . ' payment request emailed — ') . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        log_activity('payment', 'payment.request', ($isReminder ? ucfirst($kind) . ' reminder emailed — ' : ucfirst($kind) . ' payment request emailed — ') . ($b['name'] ?? '') . via_label($in), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         // Bookkeeping mirrors the nightly chaser's, so the manual and scheduled
         // paths tell one story: a balance ask stops payments-due.php asking
         // again, a deposit ask arms its abandoned-deposit recovery, and a
