@@ -878,6 +878,15 @@ signing and what is real; what matters HERE is the site half and the rules.
   RENDER (`nightAppUrl()`), because a value could arrive from an older write or a
   hand-edited content row; a `javascript:` address is refused at both ends and
   break-tested at both. Gated by ui-test-nightshift §7.
+- **DISPATCHING THE RELEASE: the MCP tool's parameter is `inputs`, not
+  `workflow_inputs`.** The wrong name is silently IGNORED (204, run queued,
+  publish skipped) — measured twice in one afternoon, two full macOS builds
+  that produced no release, and the only tell is the response echoing
+  `"inputs":null` instead of the map. Tag pushes are 403-blocked from the
+  session (branch pushes only), so the dispatch is the one route:
+  `actions_run_trigger {method: run_workflow, workflow_id: mac-app.yml,
+  ref: main, inputs: {"publish": "true"}}` — and check the echo carries the
+  map before walking away.
 - **A .dmg IS BUILT BY GITHUB, ON A MAC, BECAUSE IT CANNOT BE BUILT ANYWHERE ELSE.**
   `hdiutil` makes the disk image and `lipo` merges the universal binary; both are
   Apple's and both are macOS-only, so no Linux box and no session here can produce
