@@ -5802,13 +5802,15 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 32%,transparent),color-mix(in srgb,var(--accent) 10%,transparent));
   border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
 .ac-spark svg{width:20px;height:20px;stroke:var(--accent-text)}
-.ac-tt{display:flex;flex-direction:column;min-width:0}
-.ac-name{font:700 1rem var(--font-sans);margin:0;letter-spacing:.01em}
-.ac-thin{font-weight:500;color:var(--text-muted)}
 .ac-more{margin-left:auto;width:38px;height:38px;border-radius:50%;border:1px solid var(--glass-border);
   background:none;color:var(--text-muted);font-size:17px;cursor:pointer;flex:0 0 auto}
 .ac-more:hover{background:var(--btn-hover)}
 .mc-pres{display:inline-flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:600;color:var(--text-muted)}
+/* In the page's bar the presence is the ONE line of text, so it steps up —
+   contextual, because renderMacChat rebuilds the node and a class would be
+   lost in the swap. */
+.ac-hd .mc-pres{font-size:0.78rem;gap:8px}
+.ac-hd .mc-pres .mc-dot{width:8px;height:8px}
 .mc-pres .mc-dot{width:7px;height:7px;border-radius:50%;background:var(--ok-text)}
 .mc-pres.is-on{color:var(--ok-text)}
 .mc-pres.is-asleep{color:var(--warn-text)}
