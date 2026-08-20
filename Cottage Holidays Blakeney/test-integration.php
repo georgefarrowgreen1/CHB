@@ -3114,12 +3114,85 @@ $staleId = (int) $rootDb->lastInsertId();
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $staleId, 'text' => 'Too late.']);
 it_check('a late answer is refused with its reason', $r['code'] === 410 && strpos($r['raw'], 'stopped waiting') !== false, $r['raw']);
 
+// ── THE WEB CHAT (§27b) — the owner's Mac from their phone, end to end ──
+// through the REAL endpoints: send stores the thread and files the ask, the
+// device reads the turns, streams a partial, answers the JSON envelope; the
+// phone's poll paints the partial then collects ONCE however many devices ask.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'who arrives today?']);
+it_check('webchat: a guest cannot send', $r['code'] === 401 || $r['code'] === 403, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'who arrives today?']);
+$wcId = (int) ($r['json']['id'] ?? 0);
+it_check('webchat: the owner\'s send files an ask and reports presence',
+    $wcId > 0 && isset($r['json']['presence']['listening']), $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$wcAsk = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $wcId) {
+        $wcAsk = $a;
+    }
+}
+it_check('webchat: the Mac reads the turns exactly as the thread holds them',
+    $wcAsk !== null && ($wcAsk['kind'] ?? '') === 'ownerchat'
+    && ($wcAsk['ownerchat']['turns'][0]['text'] ?? '') === 'who arrives today?', $r['raw']);
+// A partial streams onto the OPEN row; the phone's poll returns it at once.
+http($guest, 'POST', '/nightshift.php', ['action' => 'ask_partial', 'secret' => $SECRET,
+    'id' => $wcId, 'text' => json_encode(['text' => 'One arr', 'think' => 'checking'])]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcId, 'wait' => 0, 'seen' => 0]);
+it_check('webchat: a partial reaches the phone while the row is still open',
+    ($r['json']['status'] ?? '') === 'open' && ($r['json']['partial']['text'] ?? '') === 'One arr'
+    && ($r['json']['partial']['think'] ?? '') === 'checking', $r['raw']);
+// A bare-prose answer is refused; the JSON envelope lands.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcId, 'text' => 'just prose']);
+it_check('webchat: an answer that is not the envelope is refused in a sentence',
+    $r['code'] === 400 && strpos($r['raw'], 'envelope') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcId,
+    'text' => json_encode(['text' => 'One arrival — Sarah.', 'think' => 'the calendar knows', 'used' => ['today']]),
+    'model' => 'gemma.gguf']);
+it_check('webchat: the envelope lands', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcId, 'wait' => 0, 'seen' => 0]);
+it_check('webchat: the poll collects the answer with its thinking and lookups',
+    ($r['json']['status'] ?? '') === 'answered'
+    && ($r['json']['msg']['text'] ?? '') === 'One arrival — Sarah.'
+    && ($r['json']['msg']['think'] ?? '') === 'the calendar knows'
+    && ($r['json']['msg']['used'][0] ?? '') === 'today', $r['raw']);
+// COLLECTED ONCE: a second poll (another device) reads the same message back
+// and the thread holds exactly one copy of it.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcId, 'wait' => 0, 'seen' => 0]);
+it_check('webchat: a second device polling the same ask gets the answer, not a duplicate',
+    ($r['json']['status'] ?? '') === 'answered' && ($r['json']['msg']['text'] ?? '') === 'One arrival — Sarah.', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+$wcMacs = 0;
+foreach (($r['json']['msgs'] ?? []) as $m) {
+    if (($m['who'] ?? '') === 'mac') {
+        $wcMacs++;
+    }
+}
+it_check('webchat: the thread holds the question and ONE answer',
+    count($r['json']['msgs'] ?? []) === 2 && $wcMacs === 1, $r['raw']);
+// A SECOND SEND SUPERSEDES: the first open ask expires so the Mac never
+// answers a question the owner has moved past.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'and tomorrow?']);
+$wcId2 = (int) ($r['json']['id'] ?? 0);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'actually, this weekend?']);
+$wcId3 = (int) ($r['json']['id'] ?? 0);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcId2, 'wait' => 0, 'seen' => 0]);
+it_check('webchat: a second send supersedes the first — its poll says so honestly',
+    ($r['json']['status'] ?? '') === 'expired' && strpos((string) ($r['json']['say'] ?? ''), 'asleep') !== false, $r['raw']);
+$wcOpen = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE status = 'open' AND kind = 'ownerchat'")->fetchColumn();
+it_check('webchat: one conversation, one ask in flight', $wcOpen === 1 && $wcId3 > $wcId2);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+it_check('webchat: clear empties the shared thread', count($r['json']['msgs'] ?? []) === 0, $r['raw']);
+
 // The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
 it_check('the one switch refuses the machine\'s read', $r['code'] === 409, $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'ask', 'kind' => 'answer', 'question' => 'x?']);
 it_check('…and the owner\'s ask', $r['code'] === 409, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'hello?']);
+it_check('…and the web chat\'s send', $r['code'] === 409, $r['raw']);
 $rootDb->exec('DELETE FROM night_asks');
 $rootDb->exec('DELETE FROM enquiries');
 

@@ -728,6 +728,52 @@ nsk('no rate → no figure, no occupancy → no sleeps claim, garbage absent',
     && !isset($ct['cottages'][1]['facts']) && count($ct['cottages']) === 2
     && strpos(json_encode($ct), 'Array') === false, json_encode($ct));
 
+// ── §25 THE WEB CHAT — the owner's Mac from anywhere, validated pure ──────
+echo "\n== §25 the web chat ==\n";
+
+nsk("'ownerchat' is an ask kind and a message needs words",
+    in_array('ownerchat', NIGHT_ASK_KINDS, true)
+    && night_ask_problem('ownerchat', 0, '') !== ''
+    && night_ask_problem('ownerchat', 0, 'who arrives today?') === '');
+
+// The thread sanitiser: garbage absent, caps held, the Mac's extras kept.
+$wt = night_ownerchat_thread(['instr' => '  short answers  ', 'msgs' => array_merge([
+    ['who' => 'you', 'text' => 'who arrives today?', 'at' => '14:22'],
+    ['who' => 'mac', 'text' => 'Sarah does.', 'think' => 'checking the day', 'used' => ['today', ''], 'model' => 'gemma.gguf'],
+    ['who' => 'martian', 'text' => 'wrong role reads as you'],
+    ['who' => 'you', 'text' => ''],
+    'junk',
+], array_map(fn ($i) => ['who' => 'you', 'text' => 'filler ' . $i], range(1, 50)))]);
+nsk('the thread keeps words, thinking, lookups and the instruction — junk absent, caps held',
+    $wt['instr'] === 'short answers'
+    && count($wt['msgs']) === NIGHT_OWNERCHAT_THREAD_MAX
+    && $wt['msgs'][0]['who'] === 'you'
+    && strpos(json_encode($wt), 'Array') === false, json_encode(array_slice($wt['msgs'], 0, 3)));
+$wt2 = night_ownerchat_thread(['msgs' => [
+    ['who' => 'mac', 'text' => 'Free.', 'think' => 'x', 'used' => ['today'], 'model' => 'm'],
+    ['who' => 'you', 'text' => 'q'],
+]]);
+nsk('a Mac message keeps think/used/model; a your-message never carries them',
+    isset($wt2['msgs'][0]['think']) && $wt2['msgs'][0]['used'] === ['today']
+    && !isset($wt2['msgs'][1]['think']));
+
+// The payload one ask carries out: the NEWEST turns, capped, instruction riding.
+$pl = night_ownerchat_payload(['instr' => 'be brief', 'msgs' => array_map(
+    fn ($i) => ['who' => $i % 2 ? 'mac' : 'you', 'text' => 'turn ' . $i], range(1, 30))]);
+nsk('the ask carries the newest ' . NIGHT_OWNERCHAT_TURNS_MAX . ' turns and the instruction',
+    count($pl['turns']) === NIGHT_OWNERCHAT_TURNS_MAX
+    && $pl['turns'][NIGHT_OWNERCHAT_TURNS_MAX - 1]['text'] === 'turn 30'
+    && $pl['instr'] === 'be brief', json_encode(array_slice($pl['turns'], -2)));
+
+// The answer rule: a JSON envelope with words — anything else refused in a sentence.
+nsk('a web-chat answer must be the JSON envelope, with its words',
+    night_ownerchat_answer_problem('just prose') !== ''
+    && night_ownerchat_answer_problem('{"think":"only thinking"}') !== ''
+    && night_ownerchat_answer_problem(json_encode(['text' => 'Sarah arrives.', 'think' => 'ok', 'used' => ['today']])) === '');
+nsk('…and its caps are its own — over-long words or thinking refused',
+    night_ownerchat_answer_problem(json_encode(['text' => str_repeat('x', NIGHT_OWNERCHAT_TEXT_MAX + 1)])) !== ''
+    && night_ownerchat_answer_problem(json_encode(['text' => 'ok', 'think' => str_repeat('x', NIGHT_OWNERCHAT_THINK_MAX + 1)])) !== '');
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

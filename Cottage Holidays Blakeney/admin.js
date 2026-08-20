@@ -287,6 +287,7 @@ function cmdkRegistry() {
         { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', icon: 'house', kw: 'property add remove cottage price occupancy', sec: 'accom' },
         { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', icon: 'tag', kw: 'rates price season', sec: 'seasongrid' },
         { id: 'pricing', label: 'Pricing', sub: 'Gap offers & demand-based price ideas', icon: 'tag', kw: 'pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity', sec: 'pricing' },
+        { id: 'macchat', label: 'Ask your Mac', sub: 'Chat with the model on your Mac at home', icon: 'chat', kw: 'mac chat ai model ask assistant remote llm talk', sec: 'macchat' },
         { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', icon: 'sync', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
         { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
@@ -11577,6 +11578,7 @@ function copyGuestRegLink(id) {
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
+    macchat: 'Ask your Mac',
     notify: 'Notifications',
     host: 'Profile',
     reviews: 'Reviews',
@@ -11757,11 +11759,166 @@ function settingsRenderSection(section) {
     else if (section === 'seasongrid') renderSeasonGrid();
     else if (section === 'search-learning') renderSearchLearning();
     else if (section === 'pricing') renderPricing();
+    else if (section === 'macchat') renderMacChat();
     else if (section === 'replies') renderSavedReplies();
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
     else settingsShowIndex();
+}
+
+
+// ---- Manage → Ask your Mac --------------------------------------------------
+// The owner talking to the model on their own Mac, FROM ANYWHERE — the ask
+// channel is the meeting point (kind 'ownerchat' in night_asks), so nothing
+// ever connects IN to their house: the Mac's own poll picks the question up
+// and posts the answer back. This screen is a FORMATTER: the site stores the
+// one thread (every device reads the same conversation), the Mac does all
+// the thinking, and every stage of the round trip is said out loud —
+// including the honest failure, a Mac that is asleep.
+let __mcBusy = false;   // an ask in flight from THIS screen
+let __mcStamp = 0;      // supersede: navigating away or re-sending kills the poll
+
+// Escape-first mini-markdown, the chat's own: bold, money in the accent,
+// paragraphs. The model's words are TEXT before they are anything.
+function mcMd(t) {
+    let e = escapeHtml(String(t == null ? '' : t));
+    e = e.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    e = e.replace(/£([\d,]+\.\d{2})/g, '<span class="mc-money">£$1</span>');
+    return e.split('\n').map(l => l.trim() ? `<p>${l}</p>` : '').join('');
+}
+function mcPresenceHtml(st) {
+    if (!st || !st.on) {
+        return `<span class="mc-pres is-off">Switched off — Manage → System check turns the Mac connection on</span>`;
+    }
+    const p = st.presence || {};
+    if (p.listening) {
+        return `<span class="mc-pres is-on"><span class="mc-dot"></span>Your Mac is listening</span>`;
+    }
+    if (p.seen > 0) {
+        const mins = Math.max(1, Math.round((Date.now() / 1000 - p.seen) / 60));
+        const ago = mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)}h ago`;
+        return `<span class="mc-pres is-asleep"><span class="mc-dot"></span>Mac last heard ${ago} — it may be asleep</span>`;
+    }
+    return `<span class="mc-pres is-asleep"><span class="mc-dot"></span>No Mac has connected yet</span>`;
+}
+function mcMsgHtml(m) {
+    if (m.who !== 'mac') {
+        return `<div class="mc-bub mc-you">${escapeHtml(m.text)}</div>`;
+    }
+    let h = '';
+    if (m.think) {
+        h += `<details class="mc-think"><summary>Thought about it</summary><div class="mc-think-b">${escapeHtml(m.think)}</div></details>`;
+    }
+    if (m.used && m.used.length) {
+        h += `<div class="mc-chip">✓ Checked the website · ${escapeHtml(m.used.join(', '))}</div>`;
+    }
+    h += `<div class="mc-bub mc-mac">${mcMd(m.text)}</div>`;
+    return h;
+}
+async function renderMacChat() {
+    const body = document.getElementById('macchat-body');
+    if (!body) return;
+    __mcStamp++;
+    body.innerHTML = `<div class="settings-note">Fetching the conversation…</div>`;
+    let r = null;
+    try { r = await apiPost('nightshift.php', { action: 'chat_thread' }); } catch (e) { r = null; }
+    if (!r || !r.ok) {
+        body.innerHTML = `<div class="settings-note">Couldn't reach the conversation — check the connection and try again.</div>`;
+        return;
+    }
+    body.innerHTML = `
+        <div class="mc-top">${mcPresenceHtml(r)}
+            <button class="btn-sm" id="mc-clear" type="button">Clear</button></div>
+        <div class="mc-log" id="mc-log">${(r.msgs || []).map(mcMsgHtml).join('')
+            || '<div class="mc-empty">Ask from anywhere — your Mac at home does the thinking, the website carries the words. It can look up today, bookings, availability, enquiries and the cottages as you talk.</div>'}</div>
+        <div class="mc-journey" id="mc-journey" role="status" aria-live="polite"></div>
+        <div class="mc-bar">
+            <input type="text" id="mc-in" class="input-glass" placeholder="Ask your Mac anything…" aria-label="Message" autocomplete="off">
+            <button class="btn-sm btn-accent" id="mc-send" type="button">Send</button>
+        </div>`;
+    const log = document.getElementById('mc-log');
+    log.scrollTop = log.scrollHeight;
+    document.getElementById('mc-send').addEventListener('click', mcSend);
+    document.getElementById('mc-in').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); mcSend(); }
+    });
+    document.getElementById('mc-clear').addEventListener('click', async () => {
+        const okGo = await glassConfirm('Clear this conversation? The Mac keeps its own local chats — this only empties the one you share with it from here.');
+        if (!okGo) return;
+        try { await apiPost('nightshift.php', { action: 'chat_clear' }); } catch (e) {}
+        renderMacChat();
+    });
+}
+async function mcSend() {
+    if (__mcBusy) return;
+    const box = document.getElementById('mc-in');
+    const journey = document.getElementById('mc-journey');
+    const log = document.getElementById('mc-log');
+    if (!box || !journey || !log) return;
+    const text = box.value.trim();
+    if (!text) return;
+    __mcBusy = true;
+    const stamp = ++__mcStamp;
+    box.value = '';
+    // Optimistic: the question is on screen at once; the site is storing the
+    // same message, and the thread reload after the answer reconciles.
+    log.insertAdjacentHTML('beforeend', mcMsgHtml({ who: 'you', text }));
+    log.scrollTop = log.scrollHeight;
+    journey.textContent = 'Sent — waiting for your Mac…';
+    let live = null; // the streaming bubble, once a partial lands
+    try {
+        let sendR = null;
+        try { sendR = await apiPost('nightshift.php', { action: 'chat_send', text }); } catch (e) { sendR = { error: 'Could not reach the site.' }; }
+        if (!sendR || sendR.error) {
+            journey.textContent = (sendR && sendR.error) || 'Could not reach the site — your words are back in the box.';
+            box.value = text;
+            return;
+        }
+        const id = sendR.id;
+        if (sendR.presence && !sendR.presence.listening) {
+            journey.textContent = 'Sent. Your Mac isn\u2019t listening right now — it may be asleep. The question waits up to ten minutes.';
+        }
+        // COLLECT: long-poll until the row settles. `seen` carries how much
+        // partial is already painted, so the site answers the moment there is
+        // more. The stamp kills a superseded loop silently.
+        let seen = 0;
+        for (let i = 0; i < 45; i++) {
+            if (stamp !== __mcStamp) return;
+            let pr = null;
+            try { pr = await apiPost('nightshift.php', { action: 'chat_poll', id, wait: 15, seen }); } catch (e) { pr = null; }
+            if (stamp !== __mcStamp) return;
+            if (!pr || pr.error) { continue; }
+            if (pr.status === 'answered' && pr.msg) {
+                if (live) { live.remove(); live = null; }
+                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg));
+                log.scrollTop = log.scrollHeight;
+                journey.textContent = pr.msg.model
+                    ? `answered by your Mac at home · ${pr.msg.model}` : 'answered by your Mac at home';
+                return;
+            }
+            if (pr.status === 'expired') {
+                journey.textContent = pr.say || 'Your Mac didn\u2019t answer in time — it may be asleep.';
+                return;
+            }
+            if (pr.status === 'open' && pr.partial) {
+                const ptxt = pr.partial.text || '';
+                const pthink = pr.partial.think || '';
+                seen = ptxt.length + pthink.length;
+                if (!live) {
+                    log.insertAdjacentHTML('beforeend', '<div class="mc-live" id="mc-live"></div>');
+                    live = document.getElementById('mc-live');
+                }
+                live.innerHTML = (pthink ? `<details class="mc-think" open><summary>Thinking…</summary><div class="mc-think-b">${escapeHtml(pthink)}</div></details>` : '')
+                    + (ptxt ? `<div class="mc-bub mc-mac">${mcMd(ptxt)}<span class="mc-caret" aria-hidden="true"></span></div>` : '');
+                journey.textContent = 'Your Mac is answering…';
+                log.scrollTop = log.scrollHeight;
+            }
+        }
+        journey.textContent = 'Still nothing back — the question may have expired. Send it again when the Mac shows as listening.';
+    } finally {
+        __mcBusy = false;
+    }
 }
 
 // ---- Manage → Search learning ---------------------------------------------

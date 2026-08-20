@@ -517,7 +517,12 @@ route_actions([
             if ($row['status'] !== 'open' || time() >= $until) {
                 break;
             }
-            sleep(1);
+            // CONNECTIVITY: a quarter-second grain, not a whole second — an
+            // answer landing mid-hold reaches the owner up to 750ms sooner,
+            // on every hop of every ask. The sweep stays at ~1s (the loop's
+            // own do-first call covers it), because two UPDATEs every 250ms
+            // is a price for nothing.
+            usleep(250000);
         } while (true);
         json_out([
             'ok' => true,
@@ -525,6 +530,176 @@ route_actions([
             'answer' => (string) ($row['answer'] ?? ''),
             'model' => (string) ($row['model'] ?? ''),
         ]);
+    },
+
+    // ---- THE WEB CHAT: the owner talks to their Mac from anywhere ---
+    //
+    // The phone posts a turn; the Mac's existing poll picks it up and answers
+    // with the SAME chat it runs locally. The site is only the meeting point —
+    // it stores the one thread (every device reads the same conversation),
+    // carries the turns out and the answer back, and composes nothing itself.
+    'chat_thread' => function ($in) {
+        require_admin();
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        // Opening the screen IS the warm hint — the model preloads while the
+        // owner types their first message.
+        if (night_enabled()) {
+            try {
+                content_set_scalar('night-warm-until', time() + 900);
+            } catch (\Throwable $e) {
+            }
+        }
+        json_out([
+            'ok' => true,
+            'msgs' => $t['msgs'],
+            'instr' => $t['instr'],
+            'on' => night_enabled(),
+            'presence' => night_mac_presence(night_devices_read(), time()),
+        ]);
+    },
+    'chat_send' => function ($in) {
+        require_admin();
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check — the switch that connects your Mac.', 'code' => 'night_off'], 409);
+        }
+        $text = mb_substr(trim((string) ($in['text'] ?? '')), 0, NIGHT_OWNERCHAT_TEXT_MAX);
+        if ($text === '') {
+            json_out(['error' => 'Type a message first.'], 400);
+        }
+        night_asks_sweep();
+        // ONE CONVERSATION, ONE ASK IN FLIGHT: a second send supersedes the
+        // first — the Mac must never answer a question the owner has already
+        // moved past (the search supersede rule, applied to chat).
+        try {
+            db()->exec("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'ownerchat'");
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
+        }
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        $t['msgs'][] = ['who' => 'you', 'text' => $text, 'at' => date('H:i')];
+        $t['msgs'] = array_slice($t['msgs'], -NIGHT_OWNERCHAT_THREAD_MAX);
+        content_set_scalar('mac-chat', json_encode($t));
+        $payload = night_ownerchat_payload($t);
+        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
+        $st->execute(['ownerchat', 0, '', mb_substr($text, 0, 500), json_encode($payload)]);
+        try {
+            content_set_scalar('night-warm-until', time() + 900);
+        } catch (\Throwable $e) {
+        }
+        json_out([
+            'ok' => true,
+            'id' => (int) db()->lastInsertId(),
+            'presence' => night_mac_presence(night_devices_read(), time()),
+        ]);
+    },
+    // The phone collects: long-poll that returns the MOMENT anything moves —
+    // a partial (the Mac streams chunks onto the open row), the answer, or
+    // the honest expiry. THE APPEND IS CLAIMED, not assumed: the first poller
+    // to see 'answered' flips it to 'collected' and writes the thread; a
+    // second device polling the same ask reads the thread the winner wrote,
+    // so one answer can never land twice.
+    'chat_poll' => function ($in) {
+        require_admin();
+        $wait = min(20, max(0, (int) ($in['wait'] ?? 0)));
+        if ($wait > 0) {
+            @session_write_close();
+        }
+        $id = (int) ($in['id'] ?? 0);
+        $seen = (int) ($in['seen'] ?? 0); // partial chars the phone already painted
+        $until = time() + $wait;
+        $tick = 0;
+        do {
+            if ($tick % 4 === 0) {
+                night_asks_sweep();
+            }
+            $tick++;
+            $st = db()->prepare('SELECT status, answer, model FROM night_asks WHERE id = ?');
+            $st->execute([$id]);
+            $row = $st->fetch();
+            if (!$row) {
+                json_out(['error' => 'No such ask.'], 404);
+            }
+            if ($row['status'] === 'answered') {
+                $up = db()->prepare("UPDATE night_asks SET status = 'collected' WHERE id = ? AND status = 'answered'");
+                $up->execute([$id]);
+                if ($up->rowCount() === 1) {
+                    $j = json_decode((string) ($row['answer'] ?? ''), true);
+                    $msg = ['who' => 'mac', 'text' => is_array($j) && is_string($j['text'] ?? null)
+                        ? $j['text'] : (string) ($row['answer'] ?? ''), 'at' => date('H:i')];
+                    if (is_array($j)) {
+                        if (is_string($j['think'] ?? null) && $j['think'] !== '') {
+                            $msg['think'] = $j['think'];
+                        }
+                        if (is_array($j['used'] ?? null) && $j['used']) {
+                            $msg['used'] = $j['used'];
+                        }
+                    }
+                    if (night_str($row['model'] ?? '') !== '') {
+                        $msg['model'] = night_str($row['model']);
+                    }
+                    $t = night_ownerchat_thread(content_json('mac-chat', []));
+                    $t['msgs'][] = $msg;
+                    $t['msgs'] = array_slice($t['msgs'], -NIGHT_OWNERCHAT_THREAD_MAX);
+                    content_set_scalar('mac-chat', json_encode($t));
+                }
+                $t2 = night_ownerchat_thread(content_json('mac-chat', []));
+                $last = $t2['msgs'] ? $t2['msgs'][count($t2['msgs']) - 1] : null;
+                json_out(['ok' => true, 'status' => 'answered', 'msg' => $last]);
+            }
+            if ($row['status'] === 'collected') {
+                $t3 = night_ownerchat_thread(content_json('mac-chat', []));
+                $last3 = $t3['msgs'] ? $t3['msgs'][count($t3['msgs']) - 1] : null;
+                json_out(['ok' => true, 'status' => 'answered', 'msg' => $last3]);
+            }
+            if ($row['status'] !== 'open') {
+                json_out(['ok' => true, 'status' => 'expired',
+                    'say' => 'Your Mac didn’t answer in time — it may be asleep or mid-job. The question is still in the thread; send it again when the Mac shows as listening.']);
+            }
+            // A PARTIAL: the Mac streams chunks onto the open row. Returned
+            // the moment there is more than the phone has already painted.
+            $pj = json_decode((string) ($row['answer'] ?? ''), true);
+            $ptxt = is_array($pj) && is_string($pj['text'] ?? null) ? $pj['text'] : '';
+            $pthink = is_array($pj) && is_string($pj['think'] ?? null) ? $pj['think'] : '';
+            if (mb_strlen($ptxt) + mb_strlen($pthink) > $seen) {
+                json_out(['ok' => true, 'status' => 'open', 'partial' => ['text' => $ptxt, 'think' => $pthink]]);
+            }
+            if (time() >= $until) {
+                break;
+            }
+            usleep(250000);
+        } while (true);
+        json_out(['ok' => true, 'status' => 'open']);
+    },
+    'chat_instr' => function ($in) {
+        require_admin();
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        $t['instr'] = mb_substr(trim((string) ($in['text'] ?? '')), 0, NIGHT_OWNERCHAT_INSTR_MAX);
+        content_set_scalar('mac-chat', json_encode($t));
+        json_out(['ok' => true, 'instr' => $t['instr']]);
+    },
+    'chat_clear' => function ($in) {
+        require_admin();
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        content_set_scalar('mac-chat', json_encode(['instr' => $t['instr'], 'msgs' => []]));
+        json_out(['ok' => true]);
+    },
+
+    // ---- the machine streams a partial answer onto an open ask ------
+    // Pseudo-streaming: the Mac posts the answer-so-far every couple of
+    // seconds; chat_poll hands the phone whatever is new. The row stays
+    // OPEN — only 'answer' settles it — and only a web-chat ask takes
+    // partials, because nothing else has a screen watching mid-generation.
+    'ask_partial' => function ($in) {
+        rate_limit('night-partial', 120, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'ask_partial');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $id = (int) ($in['id'] ?? 0);
+        $text = mb_substr((string) ($in['text'] ?? ''), 0, NIGHT_OWNERCHAT_TEXT_MAX + NIGHT_OWNERCHAT_THINK_MAX);
+        $up = db()->prepare("UPDATE night_asks SET answer = ? WHERE id = ? AND status = 'open' AND kind = 'ownerchat'");
+        $up->execute([$text, $id]);
+        json_out(['ok' => true, 'held' => $up->rowCount() === 1]);
     },
 
     // ---- the owner opened search: warm the Mac's engine ------------
@@ -575,8 +750,14 @@ route_actions([
             if ($rows || time() >= $until) {
                 break;
             }
-            sleep(1);
-            night_asks_sweep();
+            // The same quarter-second grain as ask_status: a filed ask meets
+            // the Mac's held poll within ~250ms instead of up to a second.
+            // The sweep runs every fourth tick — its old once-a-second rate.
+            usleep(250000);
+            $tick = (isset($tick) ? $tick : 0) + 1;
+            if ($tick % 4 === 0) {
+                night_asks_sweep();
+            }
         } while (true);
         foreach ($rows as $a) {
             $one = ['id' => (int) $a['id'], 'kind' => (string) $a['kind']];
@@ -613,6 +794,20 @@ route_actions([
                     continue; // nothing to summarise offers nothing
                 }
                 $one['digest'] = ['q' => night_str($a['question']), 'rows' => $rows];
+            } elseif ($a['kind'] === 'ownerchat') {
+                // THE WEB CHAT: the turns and the standing instruction,
+                // exactly as chat_send stored them. Junk decodes to nothing
+                // and the ask dies unanswered at its TTL — the phone's poll
+                // says so honestly.
+                $pl = json_decode((string) ($a['options'] ?? ''), true);
+                $turns = is_array($pl) && is_array($pl['turns'] ?? null) ? $pl['turns'] : [];
+                if (!$turns) {
+                    continue;
+                }
+                $one['ownerchat'] = [
+                    'turns' => $turns,
+                    'instr' => night_str(is_array($pl) ? ($pl['instr'] ?? '') : ''),
+                ];
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as
                 // the enquiry brief: words and a first name, never contact
@@ -696,15 +891,21 @@ route_actions([
         }
         night_asks_sweep();
         $id = (int) ($in['id'] ?? 0);
-        $bad = night_ask_answer_problem($in['text'] ?? '');
-        if ($bad !== '') {
-            json_out(['error' => $bad], 400);
-        }
-        $st = db()->prepare('SELECT status FROM night_asks WHERE id = ?');
+        $st = db()->prepare('SELECT status, kind, options FROM night_asks WHERE id = ?');
         $st->execute([$id]);
         $row = $st->fetch();
         if (!$row) {
             json_out(['error' => 'No such ask.'], 404);
+        }
+        // THE ANSWER RULE FOLLOWS THE KIND: a web-chat answer is a JSON
+        // envelope with its own caps (the thinking rides inside, so the
+        // generic 8000-character rule would refuse honest answers); every
+        // other kind keeps the generic rule it always had.
+        $bad = $row['kind'] === 'ownerchat'
+            ? night_ownerchat_answer_problem($in['text'] ?? '')
+            : night_ask_answer_problem($in['text'] ?? '');
+        if ($bad !== '') {
+            json_out(['error' => $bad], 400);
         }
         if ($row['status'] === 'answered') {
             // A retried POST whose reply was lost — the answer is already
@@ -720,9 +921,7 @@ route_actions([
         // member or the literal 'none'. The Mac's guard enforces this too;
         // the door re-checks because the door must never rely on the caller.
         try {
-            $st2 = db()->prepare('SELECT kind, options FROM night_asks WHERE id = ?');
-            $st2->execute([$id]);
-            $meta = $st2->fetch();
+            $meta = $row;
             if ($meta && $meta['kind'] === 'intent') {
                 $opts = night_ask_options(json_decode((string) ($meta['options'] ?? ''), true));
                 $t = trim((string) $in['text']);

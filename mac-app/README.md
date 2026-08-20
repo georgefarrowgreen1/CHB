@@ -302,6 +302,13 @@ never sent back); replies render a small **markdown** subset (escaped before
 any transform); and every reply carries **Copy** and **Regenerate**, with an
 edit pencil on your own messages.
 
+And the chat travels: **Manage → Ask your Mac** on the website is the same
+model answered from anywhere — your phone posts the question, this app's own
+poll picks it up at home (~1–2 seconds), runs the same chat (lookups,
+thinking, the lot) and streams the answer back. No tunnel, no open port, no
+new password: the Mac only ever dials out to your own site, and a sleeping
+Mac is said honestly rather than spun at.
+
 It also knows its limits, out loud: a **context meter** under the chat reads
 the model's own token numbers (llama.cpp's `/props` and each reply's usage —
 measured or absent, never estimated), and the moment older messages stop

@@ -608,6 +608,45 @@ async function runAskSweep(ctx) {
         const a = got.asks[i] || {};
         const id = saneNum(a.id, 0);
         if (id <= 0) { continue; }
+        // THE WEB CHAT — handled whole, before the model pick, because the
+        // injected handler IS the local chat's core and owns its own engine
+        // and model. `skip` means the owner is mid-send on the Mac itself:
+        // the ask stays open and the next sweep (seconds away) takes it.
+        if (a.kind === 'ownerchat') {
+            const oc = a.ownerchat;
+            if (!c.ownerChat || !oc || !Array.isArray(oc.turns) || !oc.turns.length) {
+                say('a web-chat ask arrived but this build cannot serve it — skipped', 'fail');
+                failed++;
+                continue;
+            }
+            const r = await c.ownerChat(oc, function (partialJson) {
+                // Fire-and-forget: a lost partial costs a beat of streaming,
+                // never the answer.
+                try {
+                    const p = c.site.askPartial(id, partialJson);
+                    if (p && p.catch) { p.catch(function () {}); }
+                } catch (e) { /* the answer still lands */ }
+            });
+            if (r && r.skip) { continue; }
+            if (!r || !r.ok) {
+                say('the web chat · ' + ((r && r.say) || 'the reply failed'), 'fail');
+                failed++;
+                continue;
+            }
+            const sentW = await c.site.answerAsk(id, r.text, r.model || '');
+            if (sentW.ok && sentW.expired) {
+                say('the web chat · answered too late — the owner had moved on', 'skip');
+                continue;
+            }
+            if (!sentW.ok) {
+                say('the web chat · ' + sentW.refusal.say, 'fail');
+                failed++;
+                continue;
+            }
+            say('the web chat · answered while you were out', 'hit');
+            answered++;
+            continue;
+        }
         // THE MODEL FOLLOWS THE KIND: a reply ask uses the reply job's model,
         // an answer ask the answer job's — the owner already chose which
         // model suits which work. Either falls back to the other, because an

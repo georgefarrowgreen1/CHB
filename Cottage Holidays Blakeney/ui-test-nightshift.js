@@ -693,6 +693,100 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const notTaught = await page.evaluate(() => JSON.parse(localStorage.getItem('chb-nlu-learned') || '[]'));
   ok(!notTaught.some((x) => x.c === 'flarp the wumbus'), 'a direct call on the off-menu row still refuses to teach');
 
+  // ── §9 ASK YOUR MAC — the web chat, driven in the browser ────────────────
+  // The screen is a FORMATTER over chat_send/chat_poll; the suite scripts the
+  // site's answers and asserts the narration, the partial paint, the settled
+  // message (thinking folded, lookups chipped, markup inert) and the honest
+  // failures (asleep, expired).
+  await page.evaluate(() => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    window.__mcCalls = [];
+    window.__mcPolls = [];
+    window.apiPost = async (file, body) => {
+      window.__mcCalls.push(body.action);
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, msgs: [
+          { who: 'you', text: 'earlier question', at: '09:00' },
+          { who: 'mac', text: 'Earlier answer.', at: '09:00', used: ['today'] },
+        ], instr: '', presence: { seen: nowSec, listening: true } };
+      }
+      if (body.action === 'chat_send') { return { ok: true, id: 77, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') {
+        const r = window.__mcPolls.shift() || { ok: true, status: 'open' };
+        if (r.__peek) {
+          const live = document.getElementById('mc-live');
+          window.__mcMid = {
+            live: !!live,
+            think: live ? (live.querySelector('.mc-think-b') || {}).textContent || '' : '',
+            text: live ? (live.querySelector('.mc-mac') || {}).textContent || '' : '',
+            journey: document.getElementById('mc-journey').textContent,
+          };
+        }
+        return r;
+      }
+      return { ok: true };
+    };
+    settingsOpen('macchat');
+  });
+  await page.waitForTimeout(300);
+  const mcBoot = await page.evaluate(() => ({
+    pres: document.querySelector('#macchat-body .mc-pres').textContent,
+    msgs: document.querySelectorAll('#mc-log .mc-bub').length,
+    chip: /Checked the website · today/.test(document.getElementById('mc-log').textContent),
+  }));
+  ok(/listening/.test(mcBoot.pres), `presence says the Mac is listening (${mcBoot.pres})`);
+  ok(mcBoot.msgs === 2 && mcBoot.chip, 'the shared thread paints with its lookup chip');
+  // The exchange: a partial streams in, then the answer settles.
+  await page.evaluate(() => {
+    window.__mcPolls = [
+      { ok: true, status: 'open', partial: { text: 'One arr', think: 'checking the day' } },
+      { __peek: true, ok: true, status: 'answered', msg: {
+        who: 'mac', text: '**One arrival** — Sarah. <script>window.__mcPwn = 1</script>',
+        think: 'the calendar knows', used: ['today', 'availability'], model: 'gemma-4b', at: '14:22',
+      } },
+    ];
+  });
+  await page.fill('#mc-in', 'who arrives today?');
+  await page.click('#mc-send');
+  await page.waitForTimeout(600);
+  const mcDone = await page.evaluate(() => {
+    const log = document.getElementById('mc-log');
+    const macs = log.querySelectorAll('.mc-mac');
+    const last = macs[macs.length - 1];
+    return {
+      mid: window.__mcMid,
+      calls: window.__mcCalls.filter((a) => a === 'chat_send' || a === 'chat_poll'),
+      strong: last.querySelectorAll('strong').length,
+      scripts: log.querySelectorAll('script').length,
+      pwned: !!window.__mcPwn,
+      chip: /Checked the website · today, availability/.test(log.textContent),
+      foldOpen: (() => { const f = log.querySelectorAll('.mc-think'); return f[f.length - 1].open; })(),
+      journey: document.getElementById('mc-journey').textContent,
+      liveGone: !document.getElementById('mc-live'),
+    };
+  });
+  ok(mcDone.mid && mcDone.mid.live && /checking the day/.test(mcDone.mid.think) && /One arr/.test(mcDone.mid.text),
+    `the partial painted mid-flight, thinking open (${JSON.stringify(mcDone.mid)})`);
+  ok(mcDone.strong === 1 && mcDone.scripts === 0 && !mcDone.pwned,
+    'the settled answer is markdown with markup INERT');
+  ok(mcDone.chip && mcDone.foldOpen === false && mcDone.liveGone,
+    'lookup chip on, thinking folded closed, the live bubble replaced');
+  ok(/answered by your Mac at home · gemma-4b/.test(mcDone.journey),
+    `the journey signs off naming the Mac (${mcDone.journey})`);
+  // The honest failures: a Mac that is not listening, and an expired ask.
+  await page.evaluate(() => {
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_send') { return { ok: true, id: 78, presence: { listening: false, seen: 0 } }; }
+      if (body.action === 'chat_poll') { return { ok: true, status: 'expired', say: 'Your Mac didn’t answer in time — it may be asleep or mid-job.' }; }
+      return { ok: true };
+    };
+  });
+  await page.fill('#mc-in', 'and tomorrow?');
+  await page.click('#mc-send');
+  await page.waitForTimeout(400);
+  ok(/asleep/.test(await page.textContent('#mc-journey')),
+    'a sleeping Mac is said, never spun: ' + (await page.textContent('#mc-journey')));
+
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 
   console.log(fails ? `\n${fails} CHECK(S) FAILED` : '\nall checks passed');

@@ -617,6 +617,33 @@ signing and what is real; what matters HERE is the site half and the rules.
   must run before the row's or the row swallows the click (measured). Gated by
   core-test §33, test-nightshift §24's cottage checks, test-integration §26c, and
   the ui-test's room-to-think block.
+  **THE WEB CHAT — the owner's Mac from anywhere** (Manage → Ask your Mac,
+  `renderMacChat`/`mcSend` in admin.js; ask kind `ownerchat`). The ask channel is
+  the meeting point, so there is NO tunnel, no open port, no new credential —
+  the Mac only ever dials out. chat_send appends to the ONE shared thread
+  (internal key `mac-chat`, `night_ownerchat_thread` sanitises, cap 40) and files
+  the ask (options = `night_ownerchat_payload`: newest 16 turns + the standing
+  instruction — the Mac composes its own system line, the site hands over FACTS);
+  a second send SUPERSEDES the first (one conversation, one ask in flight). The
+  Mac's sweep handles the kind whole, before the model pick (jobs.runAskSweep →
+  the injected `ownerChat` handler = the LOCAL chat's own chatEngineUp/chatLoop,
+  extracted for exactly this; chatBusy taken so the two chats share the engine,
+  `skip` leaves the ask for the next sweep seconds away). The answer is a JSON
+  ENVELOPE ({text, think, used, ms, tps} — `night_ownerchat_answer_problem` at
+  the door, its own caps because think rides inside); partials stream via
+  `ask_partial` onto the OPEN row (throttled ~1.5s, TOOL holdback applied Mac-side
+  so a lookup being typed never paints on the phone), and `chat_poll` long-polls
+  (≤20s, 250ms grain) returning partial/answered/expired — the APPEND IS CLAIMED
+  ('answered'→'collected' guarded UPDATE), so two devices polling one ask store
+  ONE message. Presence is honest (`night_mac_presence` — listening / last heard /
+  asleep) and expiry says so in a sentence. CONNECTIVITY: both pre-existing holds
+  (asks, ask_status) moved from sleep(1) to 250ms grain — with the Mac's 2s
+  re-arm the channel is effectively instant end to end. Gated by test-nightshift
+  §25 (pure), test-integration §27b (round trip, claim-once, supersede, the
+  switch), core-test §34 (the sweep through the REAL chat core, busy-skip — an
+  instant fake proved nothing, the send must be held — and the partial holdback,
+  break-tested) and ui-test-nightshift §9 (the screen: presence, partial paint,
+  markdown-inert settle, asleep/expired honesty; escape break-tested).
 - **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
   work card): the SOURCE link always exists, and a **Download** button appears only
   once `nightshift-app-url` is set — a button offering a download nothing serves is
