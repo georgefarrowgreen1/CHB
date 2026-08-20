@@ -202,6 +202,15 @@ function fakeSite(handler) {
     });
     let b = await s.brief();
     ok('a good brief comes back', b.ok && b.host === 'George' && b.enquiries.length === 1);
+    ok('…with no memories field on an older site it degrades to an empty list, never undefined',
+        Array.isArray(b.memories) && b.memories.length === 0);
+    s = fakeSite(async function () {
+        return { ok: true, status: 200, json: { ok: true, host: 'G', enquiries: [],
+            memories: ['Never dogs — allergy promise', '', { bad: 1 }, '  spaced  '] } };
+    });
+    b = await s.brief();
+    ok('the brief carries the memories cleaned — the drafts must obey them',
+        b.memories.length === 2 && b.memories[0] === 'Never dogs — allergy promise' && b.memories[1] === 'spaced');
 
     s = fakeSite(async function () { return { ok: false, status: 401, json: { error: 'Not authorised.' } }; });
     b = await s.brief();
@@ -1488,6 +1497,16 @@ function fakeSite(handler) {
         const hostileV = guard.buildPrompt(F, 'George', [{ bad: 1 }, '  ', 'One real example, warm and short.']);
         ok('…and non-string examples never reach the prompt',
             !/object Object/.test(hostileV) && /One real example/.test(hostileV));
+        // ── STANDING PROMISES: the chat's memories BIND the draft. A promise
+        // taught to the chat used to be invisible here, so a draft could
+        // cheerfully contradict it. Rules to obey, never new facts to assert.
+        const withM = guard.buildPrompt(F, 'George', [], ['Never dogs — allergy promise to guests']);
+        ok('the memories block binds the draft and carries the promise',
+            /STANDING PROMISES/.test(withM) && /NEVER contradict/.test(withM)
+            && /Never dogs — allergy promise/.test(withM), withM.slice(-300));
+        ok('…and is absent when the site handed none over — no boilerplate',
+            !/STANDING PROMISES/.test(guard.buildPrompt(F, 'George', []))
+            && !/STANDING PROMISES/.test(guard.buildPrompt(F, 'George', [], [{ bad: 1 }, '  '])));
     }
 
     // ── §25 THE ASK SWEEP — the daytime half, same rules at a moment's tempo ──
@@ -2813,6 +2832,61 @@ function fakeSite(handler) {
             && envS0.text === 'Chapter two next.' && !('sum' in envS0),
             JSON.stringify(envS0));
         try { fs.rmSync(s0.tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // MEMORY PARITY: the memories ride the asks POLL, and the LOCAL chat
+        // grounds on them — one brain, whichever keyboard. And an ok poll
+        // WITHOUT them clears the stash: an owner who pruned the list must
+        // be forgotten here too, never remembered stale.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34m-'));
+        const rec = { sys: [] };
+        let pollMems = ['Never dogs — allergy promise to guests'];
+        const api34m = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs) {
+                        rec.sys.push(msgs[0].content);
+                        return { ok: true, stopped: false, text: 'Quite right — no dogs.', think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () { return { ok: true, host: '', warm: false, asks: [], memories: pollMems }; },
+                    answerAsk: async function () { return { ok: true }; },
+                    askPartial: async function () { return { ok: true, held: true }; },
+                    chatTool: async function () { return { ok: true, data: {} }; },
+                };
+            },
+        });
+        await api34m.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await api34m.askSweep();
+        await api34m.chatSend('can guests bring a dog?');
+        ok('the LOCAL chat grounds on the polled memories — the same facts as the web chat',
+            /always remember/.test(rec.sys[rec.sys.length - 1]) && /Never dogs — allergy promise/.test(rec.sys[rec.sys.length - 1]),
+            (rec.sys[rec.sys.length - 1] || '').slice(0, 200));
+        pollMems = [];
+        await api34m.askSweep();
+        await api34m.chatSend('and now?');
+        ok('…and a pruned list is forgotten on the next poll, never remembered stale',
+            !/Never dogs/.test(rec.sys[rec.sys.length - 1]),
+            (rec.sys[rec.sys.length - 1] || '').slice(0, 200));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // THE REMEMBER PROPOSAL parses like any act — and only ever proposes.
+        const tMod2 = require('../src/core/chattools');
+        const rm = tMod2.chatActCall('Noted — shall I keep that?\nACT {"action":"remember","args":{"text":"Never dogs — allergy promise to guests"}}');
+        ok('a remember act parses with its text and the words stand clean',
+            rm.act && rm.act.action === 'remember' && rm.act.args.text === 'Never dogs — allergy promise to guests'
+            && rm.text === 'Noted — shall I keep that?', JSON.stringify(rm));
+        ok('…and the intro teaches restraint — standing facts only, never one-offs',
+            /remember — args/.test(tMod2.chatActsIntro()) && /never for one-off/.test(tMod2.chatActsIntro()));
     }
     {
         // THE RETRY NET, through the real loop: a fumbled ACT line gets ONE

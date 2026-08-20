@@ -3396,10 +3396,26 @@ http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 // ── THE GROUNDING PACK + MEMORY — every ask arrives already knowing ─────
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save',
     'items' => ['Never dogs — allergy promise to guests', '   ', 'Boiler man is Colin']]);
-it_check('ground: memories save trimmed', count($r['json']['memory'] ?? []) === 2, $r['raw']);
+it_check('ground: memories save trimmed — and each line is DATED today by the server',
+    count($r['json']['memory'] ?? []) === 2
+    && ($r['json']['memory'][0]['at'] ?? '') === date('Y-m-d'), $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
-it_check('ground: the thread carries the memory list back',
-    ($r['json']['memory'][0] ?? '') === 'Never dogs — allergy promise to guests', $r['raw']);
+it_check('ground: the thread carries the memory list back, dated',
+    ($r['json']['memory'][0]['t'] ?? '') === 'Never dogs — allergy promise to guests'
+    && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($r['json']['memory'][0]['at'] ?? '')) === 1, $r['raw']);
+// A RESAVE keeps the dates of lines that stood — retyping never re-dates —
+// and a legacy plain-string row is adopted with its date honestly unknown.
+$rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mac-chat-memory'")
+    ->execute([json_encode(json_encode([
+        ['t' => 'Never dogs — allergy promise to guests', 'at' => '2026-03-01'],
+        'Boiler man is Colin',
+    ]))]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save',
+    'items' => ['Never dogs — allergy promise to guests', 'Boiler man is Colin', 'Check-in is 3pm sharp']]);
+$mm = $r['json']['memory'] ?? [];
+it_check('ground: a resave keeps standing dates, adopts legacy as unknown, dates only the NEW line today',
+    ($mm[0]['at'] ?? 'x') === '2026-03-01' && ($mm[1]['at'] ?? 'x') === ''
+    && ($mm[2]['at'] ?? '') === date('Y-m-d'), json_encode($mm));
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'morning — how are we looking?']);
 $wcGid = (int) ($r['json']['id'] ?? 0);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
@@ -3416,6 +3432,35 @@ it_check('ground: the world sheet rides the ask — fleet, today, money',
 it_check('ground: …with the memories beside it, and NO contact detail anywhere in the pack',
     in_array('Never dogs — allergy promise to guests', $wcGask['ownerchat']['memories'] ?? [], true)
     && strpos(json_encode($wcWorld), '@') === false);
+// PARITY: the memories ride the POLL itself (texts only), so the Mac's own
+// LOCAL chat grounds on the same facts — one brain, whichever keyboard.
+it_check('ground: the asks poll carries the memories as texts for the local chat',
+    in_array('Never dogs — allergy promise to guests', $r['json']['memories'] ?? [], true)
+    && is_string($r['json']['memories'][0] ?? null), json_encode($r['json']['memories'] ?? null));
+// …AND THE NIGHT BRIEF, so an overnight reply draft can never contradict a
+// standing promise taught to the chat. This closed a real gap.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'brief', 'secret' => $SECRET]);
+it_check('ground: the night brief carries the memories too — the drafts must obey them',
+    in_array('Never dogs — allergy promise to guests', $r['json']['memories'] ?? [], true), $r['raw']);
+// THE REMEMBER ACT — through the real answer door: the proposal lands as a
+// validated card; an empty one refuses the whole answer in a sentence.
+$rootDb->exec('DELETE FROM login_attempts');
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'we never take dogs, remember that']);
+$rmId = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $rmId,
+    'text' => json_encode(['text' => 'Noted — want me to keep that?', 'act' => ['action' => 'remember',
+        'args' => ['text' => 'Never dogs — allergy promise to guests']]])]);
+it_check('remember: the proposal lands validated', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $rmId, 'wait' => 0, 'seen' => 0]);
+it_check('remember: the stored card carries the text',
+    ($r['json']['msg']['act']['kind'] ?? '') === 'remember'
+    && ($r['json']['msg']['act']['text'] ?? '') === 'Never dogs — allergy promise to guests', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'remember nothing']);
+$rmId2 = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $rmId2,
+    'text' => json_encode(['text' => 'ok', 'act' => ['action' => 'remember', 'args' => ['text' => '  ']]])]);
+it_check('remember: an empty memory refuses the whole answer in a sentence',
+    $r['code'] === 400 && strpos($r['raw'], 'memory needs its text') !== false, $r['raw']);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'items' => []]);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 $rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");

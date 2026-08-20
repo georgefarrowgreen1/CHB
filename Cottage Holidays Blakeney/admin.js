@@ -12040,6 +12040,34 @@ const MC_ACTS = {
             return sent === true;
         },
     },
+    remember: {
+        title: 'Remember this',
+        verb: 'Remember it',
+        pastVerb: 'Remembered — it rides every conversation now',
+        facts(act) {
+            return `“${escapeHtml(act.text || '')}”<br>Joins the standing memory (⋯ → Memory) — read on every message, on every device.`;
+        },
+        // Already a line, or the list is full: the sentence, never a dead
+        // button. The cap is the sanitiser's — a 13th line would silently
+        // fall off, which is worse than saying so.
+        dead(act) {
+            const cur = ((__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : []).map(mcMemText);
+            if (cur.some((t) => t.trim() === String(act.text || '').trim())) return 'Already remembered — it rides every conversation.';
+            if (cur.length >= 12) return 'The memory is full (12 lines) — prune one under ⋯ → Memory first.';
+            return '';
+        },
+        async run(act) {
+            // The confirm IS what makes it a line — the app still never
+            // writes one of its own accord. Replace-semantics like the
+            // editor: current texts plus this one; the server dates it today.
+            const cur = ((__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : []).map(mcMemText).filter(Boolean);
+            const r = await apiPost('nightshift.php', { action: 'chat_memory_save', items: cur.concat([String(act.text || '')]) });
+            if (!r || !r.ok) return false;
+            if (__mcState) __mcState.memory = r.memory || [];
+            toast('Remembered — it rides every conversation now.');
+            return true;
+        },
+    },
     record_payment: {
         title: 'Record a payment',
         verb: 'Open the form',
@@ -12408,11 +12436,24 @@ async function acClearChat() {
 // THE CHAT'S MEMORY — a visible list the OWNER writes ("never dogs"),
 // riding every ask beside the standing instruction. One memory per line;
 // the app never adds a line of its own, and the server caps both ways.
+// A memory is a {t, at} pair now (dated by the SERVER when first saved;
+// legacy lines carry no date, which is honest). The editor still speaks
+// plain text — one line per memory — and the staleness whisper is the
+// date's whole job: a fact remembered months ago earns a skim, never a
+// silent eviction.
+function mcMemText(m) { return typeof m === 'string' ? m : String((m && m.t) || ''); }
 async function acMemoryEdit() {
     acSheetClose();
-    const cur = (__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : [];
+    const cur = ((__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : []).map(mcMemText).filter(Boolean);
+    const items0 = (__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : [];
+    const cut = ukShiftDays(todayDashed(), -180);
+    const stale = items0.filter((m) => m && typeof m === 'object' && m.at && m.at < cut).map((m) => String(m.t || ''));
+    let msg = 'Things the model should always remember about the business — one per line. It reads these on every message, and only what you write here.';
+    if (stale.length) {
+        msg += ` ${stale.length === 1 ? 'One line was' : chbSayN(stale.length) + ' lines were'} remembered over six months ago — still true? ${stale.map((t) => '“' + t.slice(0, 40) + (t.length > 40 ? '…' : '') + '”').join(', ')}.`;
+    }
     const vals = await glassForm(
-        'Things the model should always remember about the business — one per line. It reads these on every message, and only what you write here.',
+        msg,
         [{ id: 'items', label: 'Memories', type: 'textarea', rows: 7, def: cur.join('\n'),
             placeholder: 'Never dogs — allergy promise to guests' }],
         { title: 'Chat memory', okLabel: 'Save the memories' },

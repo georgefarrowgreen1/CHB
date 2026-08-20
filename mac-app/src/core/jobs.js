@@ -162,7 +162,7 @@ async function runReplyJob(ctx) {
         // appear. Removed rather than guessed at.)
 
         const facts = Object.assign({}, f, { party: guard.partyWords(f.adults, f.children) });
-        const prompt = guard.buildPrompt(facts, c.host, c.voice);
+        const prompt = guard.buildPrompt(facts, c.host, c.voice, c.memories);
         if (c.onProgress) {
             try { c.onProgress({ i: i, of: cleaned.rows.length, who: who }); } catch (e) { /* display only */ }
         }
@@ -598,7 +598,7 @@ async function runAskSweep(ctx) {
         return { answered: 0, failed: 0, log: log, refusal: got.refusal };
     }
     if (!got.asks.length) {
-        return { answered: 0, failed: 0, log: log, warm: !!got.warm };
+        return { answered: 0, failed: 0, log: log, warm: !!got.warm, memories: got.memories };
     }
     const jobs = (c.cfg && c.cfg.jobs) || {};
     let answered = 0;
@@ -818,7 +818,7 @@ async function runAskSweep(ctx) {
         say(who + ' · answered while you waited', 'hit');
         answered++;
     }
-    return { answered: answered, failed: failed, log: log };
+    return { answered: answered, failed: failed, log: log, memories: got.memories };
 }
 
 module.exports = {

@@ -690,7 +690,7 @@ signing and what is real; what matters HERE is the site half and the rules.
   pinned real JPEG stored and served back byte-for-byte; the switch closes the
   photo door), core-test (pairing, --mmproj, parts, the three outcomes),
   ui-test §9 (chip arm/disarm via real setInputFiles, fenced send, collapsed
-  bubble, junk refs never reaching src). NB `' '` must be the ESCAPE in the
+  bubble, junk refs never reaching src). NB `'\u0000'` must be the ESCAPE in the
   attach validator's source — a literal NUL byte turns admin.js into "binary file
   matches" for every grep.
   **SEND BECOMES STOP (■).** `mcSend` is a SYNC wrapper (send, or `mcStop` when
@@ -779,6 +779,29 @@ signing and what is real; what matters HERE is the site half and the rules.
   el.value like any input), labelled "the owner asked you to remember" — the
   app never adds a line, because memory the model invented is the failure
   this shape prevents.
+  **MEMORIES v2 — dated, proposable, and ONE BRAIN.** A memory is `{t, at}`
+  now (`night_ownerchat_memories` adopts legacy strings with at='' — unknown
+  is honest, an invented date defeats the staleness question; the MODEL only
+  ever sees texts via `night_ownerchat_memory_texts`). The SERVER dates:
+  chat_memory_save keeps the date of any line whose text stood and stamps
+  only new lines today, so retyping never re-dates; the ⋯ editor whispers
+  about lines over six months old. The `remember` ACT lets the model PROPOSE
+  a line ("want me to keep that?") — the invariant holds because the card's
+  confirm is what makes it a line, and Already-remembered / a full list (12)
+  are sentences, never dead buttons. AND THE MEMORIES TRAVEL: the night
+  BRIEF carries them so guard.buildPrompt binds every overnight reply draft
+  ("STANDING PROMISES … must NEVER contradict" — this closed a real gap: a
+  promise taught to the chat was invisible to the drafter), and the asks
+  POLL carries them so the Mac's LOCAL chat grounds on the same facts
+  (api.js `chatSiteMemories`, updated on every ok poll INCLUDING to empty —
+  a pruned list must be forgotten, not remembered stale; site.js's mappers
+  are strings-only, because String({bad:1}) is '[object Object]' and the
+  fixture caught it). Gated: test-nightshift (dated sanitiser, texts, the
+  remember act), test-integration §27b (dated save/resave semantics, poll +
+  brief carriage, the act through the answer door), core-test (buildPrompt
+  binding, brief/poll mappers, local-chat parity both ways through the real
+  api), ui-test-nightshift (the card, the full-list sentence, the editor's
+  staleness whisper).
   **THE ROW ERA (migration-118).** The conversation lives in
   `ownerchat_msgs` now, not the mac-chat blob: every message has an ID, so a
   card is addressed EXACTLY (`chat_act_done` takes `id`, kind still
