@@ -1436,7 +1436,7 @@ route_actions([
                 if ($res['act'] === null) {
                     json_out(['error' => 'The proposed action was refused: ' . $res['problem']], 400);
                 }
-                if ($res['act']['kind'] === 'request_payment') {
+                if (in_array($res['act']['kind'], ['request_payment', 'send_arrival_info', 'record_payment'], true)) {
                     $st = db()->prepare('SELECT id FROM bookings WHERE id = ?');
                     $st->execute([(int) $res['act']['booking']]);
                     if (!$st->fetchColumn()) {
@@ -1823,6 +1823,35 @@ route_actions([
                     date('F Y'),
                     date('F Y', strtotime($lStart)),
                 )]);
+            }
+            if ($tool === 'coast') {
+                // Tides + weather for one day, with the arrivals cross-ref —
+                // the thing only this app can add. Each half degrades to an
+                // honest absence: no tide key and a passed forecast horizon
+                // are states, never errors (the coast tier's own rule).
+                $day = night_tool_iso($args['day'] ?? '') ?: $today;
+                $tides = ['ok' => false, 'reason' => 'fetch_failed'];
+                $wx = ['ok' => false];
+                try {
+                    require_once __DIR__ . '/tide-data.php';
+                    $tides = tide_extremes($day, 2);
+                } catch (\Throwable $e) {
+                }
+                try {
+                    require_once __DIR__ . '/weather-data.php';
+                    $wx = weather_daily(14);
+                } catch (\Throwable $e) {
+                }
+                $arr = [];
+                try {
+                    $st = db()->prepare('SELECT name FROM bookings WHERE check_in = ? ORDER BY name LIMIT 6');
+                    $st->execute([$day]);
+                    foreach ($st->fetchAll() as $b) {
+                        $arr[] = (string) $b['name'];
+                    }
+                } catch (\Throwable $e) {
+                }
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_coast($day, $tides, $wx, $arr)]);
             }
             if ($tool === 'expenses') {
                 // The tax year the books use: from 6 April.

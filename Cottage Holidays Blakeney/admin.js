@@ -11948,7 +11948,7 @@ const MC_ACTS = {
             return `${escapeHtml(act.name)} · ${escapeHtml(act.cottage || act.prop)} · ${fmtDate(act.check_in)} → ${fmtDate(act.check_out)} (${n} night${n === 1 ? '' : 's'}) · ${act.adults} adult${act.adults === 1 ? '' : 's'}${act.children ? ` + ${act.children} child${act.children === 1 ? '' : 'ren'}` : ''}`
                 + (act.price ? `<br>Agreed price: ${gbp(Number(act.price))} for the stay.` : '<br>Priced at the standard rate.');
         },
-        async run(act) {
+        async run(act, ix) {
             // The SAME endpoint as the Add Booking form, with every soft stop
             // intact: a clash or an occupancy warning comes back and the card
             // STAYS — no override flag is ever sent from here, because a
@@ -11969,6 +11969,7 @@ const MC_ACTS = {
                 return false;
             }
             if (!res || !res.ok) return false;
+            if (res.id) __mcActRes[ix] = Number(res.id); // this session's follow-up chip
             toast(`Booking added — ${act.name} is on the calendar.`);
             initBackOffice().catch(() => {});
             return true;
@@ -12000,12 +12001,95 @@ const MC_ACTS = {
             return true;
         },
     },
+    add_expense: {
+        title: 'Record an expense',
+        verb: 'Record it',
+        pastVerb: 'Expense recorded',
+        facts(act) {
+            return `${gbp(Number(act.amount) || 0)} · ${escapeHtml(act.category || '')}`
+                + (act.note ? ` — ${escapeHtml(act.note)}` : '')
+                + `<br>Dated ${fmtDate(act.date || todayDashed())}. A record for the books — no money moves.`;
+        },
+        async run(act) {
+            const r = await apiPost('expenses.php', { action: 'add', category: act.category,
+                description: act.note || '', amount: Number(act.amount) || 0,
+                date: act.date || todayDashed(), via: 'ai-chat' });
+            if (!r || !r.ok) return false;
+            toast(`Expense recorded — ${gbp(Number(act.amount) || 0)} ${act.category}.`);
+            return true;
+        },
+    },
+    send_arrival_info: {
+        title: 'Send the arrival info',
+        verb: 'Open the email',
+        pastVerb: 'Arrival info sent',
+        facts(act) {
+            const b = findBookingById(act.booking);
+            if (!b) return '';
+            return `Email ${escapeHtml(b.name || 'the guest')} their directions and arrival details for ${fmtDate(b.checkIn)}. The email preview opens first.`;
+        },
+        dead(act) {
+            const b = findBookingById(act.booking);
+            if (!b) return 'That booking is no longer here.';
+            if (!b.email) return `${escapeHtml(b.name || 'The guest')} has no email on file — add one on their booking first.`;
+            return '';
+        },
+        async run(act) {
+            // Through the preview, exactly as the hub's own link sends it.
+            const sent = await sendArrivalInfo(act.booking, 'ai-chat');
+            return sent === true;
+        },
+    },
+    record_payment: {
+        title: 'Record a payment',
+        verb: 'Open the form',
+        // Open-form honesty (the send_enquiry_reply posture): recording
+        // happens in the form's own validated write, and the model never
+        // states the amount — the card's whole job is the journey.
+        pastVerb: 'Payment form opened — record it there',
+        facts(act) {
+            const b = findBookingById(act.booking);
+            if (!b) return '';
+            const due = bookingDue(findBookingLocation(act.booking), b).balance;
+            return `Open the record-a-payment form for ${escapeHtml(b.name || 'the guest')}${due > 0.5 ? ` — ${gbp(due)} still to pay` : ''}. You enter the figure there.`;
+        },
+        dead(act) {
+            return findBookingById(act.booking) ? '' : 'That booking is no longer here.';
+        },
+        async run(act) {
+            recordPayment(act.booking);
+            return true;
+        },
+    },
 };
+// A confirmed card may offer WHAT NATURALLY FOLLOWS — one quiet chip, never
+// a second proposal. A created booking's id lives only in this session's map
+// (the stored act may not grow fields — the sanitiser would refuse the whole
+// card on the next read), so after a reload the done state simply has no chip.
+let __mcActRes = {};
+const MC_ACT_NEXT = {
+    add_booking(act, ix) {
+        const bid = __mcActRes[ix];
+        return bid ? `<button type="button" class="mc-act-next" data-act="mcActConfirmEmail" data-arg="${Number(bid)}">Send the confirmation ›</button>` : '';
+    },
+    block_dates() {
+        return `<button type="button" class="mc-act-next" data-act="mcActSeeCalendar">See the calendar ›</button>`;
+    },
+    price_override() {
+        return `<button type="button" class="mc-act-next" data-act="nyOfferRates">See it in Rates ›</button>`;
+    },
+};
+function mcActConfirmEmail(bid) { sendConfirmationEmail(Number(bid)); }
+function mcActSeeCalendar() { nav('view-backoffice'); }
 function mcActHtml(act, ix) {
     const spec = MC_ACTS[act.kind];
     if (!spec) return '';
     if (act.done === 'done') {
-        return `<div class="mc-act is-done" id="mc-act-${ix}"><span class="mc-tick">✓</span> ${spec.pastVerb}${act.doneAt ? ' · ' + escapeHtml(act.doneAt) : ''}</div>`;
+        // The follow-up chip: what naturally comes next, offered quietly in
+        // the sign-off — a navigation or an existing preview, never a second
+        // proposal, and nothing fires on render.
+        const next = MC_ACT_NEXT[act.kind] ? MC_ACT_NEXT[act.kind](act, ix) : '';
+        return `<div class="mc-act is-done" id="mc-act-${ix}"><span class="mc-tick">✓</span> ${spec.pastVerb}${act.doneAt ? ' · ' + escapeHtml(act.doneAt) : ''}${next}</div>`;
     }
     if (act.done === 'dismissed') {
         return `<div class="mc-act is-off" id="mc-act-${ix}">Dismissed — nothing was done.</div>`;
@@ -12049,7 +12133,7 @@ async function mcActRun(id) {
     if (!act) return;
     let did = false;
     try {
-        did = await MC_ACTS[act.kind].run(act);
+        did = await MC_ACTS[act.kind].run(act, id);
     } catch (e) {
         // The endpoint's own refusal (a clash, an already-sent window) is the
         // safeguard doing its job — said in its words, and the card stays.

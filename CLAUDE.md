@@ -812,6 +812,27 @@ signing and what is real; what matters HERE is the site half and the rules.
   undo is the owner's own tap), and ical add_block, which now logs at all
   (blocks left no record before). Gated in §27b both ways; the two send-path
   wirings are pinned at source there.
+  **THE COAST TOOL AND THE CAPABILITY THREE.** `coast` (ninth tool) answers
+  tides + weather for ONE day with that day's arrivals cross-referenced —
+  `night_tool_coast` formats everything at the source (times in the QUAY's
+  clock: WorldTides answers UTC, so DateTime→Europe/London or a summer high
+  water reads an hour early), and each half degrades to an honest absence
+  ("No tide key is set"), never a guess. Its integration gate SEEDS the
+  weather cache (content_set_scalar's double-encoded shape, straight into
+  the content table) so no network is touched. Three act kinds join the
+  whitelist: `add_expense` (a RECORD of money already spent — which is why
+  it may join while refunds stay refused by name; a FUTURE date is refused,
+  "a plan is not a fact"), `send_arrival_info` and `record_payment` (both
+  booking-ref kinds, existence-checked at the answer door beside
+  request_payment). record_payment is OPEN-FORM honesty: it opens the
+  recordPayment modal and its done state claims exactly that — the model
+  never states an amount. **A CONFIRMED CARD MAY OFFER WHAT FOLLOWS**
+  (`MC_ACT_NEXT`): one quiet chip in the done sign-off, never a second
+  proposal — add_booking offers "Send the confirmation" with the CREATED id
+  (held in `__mcActRes`, this session's map ONLY: the stored act may not
+  grow fields, the sanitiser would refuse the whole card on the next read,
+  so after a reload the done state simply has no chip), block_dates offers
+  the calendar, price_override offers Rates. Nothing fires on render.
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

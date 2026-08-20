@@ -1174,7 +1174,7 @@ function night_ask_answer_problem($text)
 //  Pure: validation and shaping only. The endpoint owns the SQL.
 // ============================================================
 
-const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries', 'cottages', 'money', 'performance', 'expenses'];
+const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries', 'cottages', 'money', 'performance', 'expenses', 'coast'];
 const NIGHT_TOOL_ROWS_MAX = 12;    // a chat answer, not an export
 const NIGHT_TOOL_RANGE_MAX = 62;   // nights a range may span — two months is a chat, more is a report
 const NIGHT_TOOL_ARG_MAX = 60;     // any string argument's cap
@@ -1235,7 +1235,100 @@ function night_tool_problem($tool, $args, $todayIso)
         }
         return '';
     }
+    if ($tool === 'coast') {
+        // Tides and weather for ONE day. Optional `day`; the forecast's own
+        // horizon is the bound — the past has no tide anyone can still catch.
+        $day = (string) ($a['day'] ?? '');
+        if ($day !== '') {
+            if (night_tool_iso($day) === '') {
+                return 'The day must be YYYY-MM-DD (or leave it out for today).';
+            }
+            if ($day < (string) $todayIso) {
+                return 'The coast tool is about the days ahead — that day has gone.';
+            }
+            if (night_nights((string) $todayIso, $day) > 13) {
+                return 'The forecast only reaches about two weeks out.';
+            }
+        }
+        return '';
+    }
     return ''; // today / enquiries take no arguments; extras are ignored
+}
+
+// ── COAST: tides + weather for one day, every figure formatted here ─────
+// $tides is tide_extremes()'s result, $wx is weather_daily()'s, $arrivals
+// the guests arriving that day — the cross-reference only this app can
+// make. Each half is honestly ABSENT when its source cannot answer (no
+// tide key, forecast horizon passed) rather than guessed at.
+function night_tool_coast($dayIso, $tides, $wx, array $arrivals)
+{
+    $out = ['day' => (string) $dayIso, 'arrivals' => []];
+    foreach ($arrivals as $nm) {
+        if (night_str($nm) !== '') {
+            $out['arrivals'][] = night_str($nm);
+        }
+    }
+    $highs = [];
+    $lows = [];
+    if (is_array($tides) && !empty($tides['ok'])) {
+        foreach ((array) ($tides['extremes'] ?? []) as $e) {
+            $t = strtotime((string) ($e['time'] ?? ''));
+            if ($t === false) {
+                continue;
+            }
+            // The quay's own clock — WorldTides answers in UTC, and a summer
+            // high water quoted an hour early is a walk cut short by the sea.
+            $loc = (new DateTime('@' . $t))->setTimezone(new DateTimeZone('Europe/London'));
+            if ($loc->format('Y-m-d') !== (string) $dayIso) {
+                continue;
+            }
+            $hm = $loc->format('H:i');
+            if (strcasecmp((string) ($e['type'] ?? ''), 'High') === 0) {
+                $highs[] = $hm;
+            } else {
+                $lows[] = $hm;
+            }
+        }
+    }
+    if ($highs || $lows) {
+        $out['tide'] = trim(($highs ? 'High water ' . implode(' and ', $highs) : '')
+            . ($highs && $lows ? ' · ' : '') . ($lows ? 'low ' . implode(' and ', $lows) : ''));
+    } else {
+        $out['tide_note'] = is_array($tides) && ($tides['reason'] ?? '') === 'no_key'
+            ? 'No tide key is set (Manage → System check), so tide times are not available.'
+            : 'Tide times are not available for that day.';
+    }
+    $day = null;
+    if (is_array($wx) && !empty($wx['ok'])) {
+        foreach ((array) ($wx['days'] ?? []) as $d) {
+            if ((string) ($d['date'] ?? '') === (string) $dayIso) {
+                $day = $d;
+                break;
+            }
+        }
+    }
+    if (is_array($day)) {
+        $bits = [];
+        if (night_str($day['summary'] ?? '') !== '') {
+            $bits[] = night_str($day['summary']);
+        }
+        if (isset($day['tmax']) && is_numeric($day['tmax'])) {
+            $bits[] = $day['tmax'] . '°C' . (isset($day['tmin']) && is_numeric($day['tmin']) ? ' (down to ' . $day['tmin'] . '°C)' : '');
+        }
+        if (isset($day['gust']) && is_numeric($day['gust']) && $day['gust'] >= 30) {
+            $bits[] = 'gusts to ' . $day['gust'] . 'mph';
+        }
+        if (isset($day['rain']) && is_numeric($day['rain']) && $day['rain'] >= 1) {
+            $bits[] = $day['rain'] . 'mm of rain expected';
+        }
+        if ($bits) {
+            $out['weather'] = implode(' · ', $bits);
+        }
+    }
+    if (!isset($out['weather'])) {
+        $out['weather_note'] = 'The forecast does not reach that day.';
+    }
+    return $out;
 }
 
 // One stay, shaped for a chat answer. `due` arrives as the SITE's own
@@ -1503,7 +1596,8 @@ function night_tool_expenses(array $rows, $yearLabel)
 //  validator refuses such kinds by name so their absence is a decision a
 //  gate can see, not an oversight.
 // ============================================================
-const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment', 'add_booking', 'send_enquiry_reply'];
+const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment', 'add_booking', 'send_enquiry_reply',
+    'add_expense', 'send_arrival_info', 'record_payment'];
 const NIGHT_ACT_NOTE_MAX = 120;
 const NIGHT_ACT_RATE_MIN = 20;    // the price command's own sanity bounds
 const NIGHT_ACT_RATE_MAX = 2000;
@@ -1590,6 +1684,32 @@ function night_act_problem($act)
         $e = $act['enquiry'] ?? null;
         if (!is_numeric($e) || (int) $e <= 0) {
             return 'send_enquiry_reply needs the enquiry id from a lookup result.';
+        }
+    }
+    if ($kind === 'add_expense') {
+        // A RECORD of money already spent — never money moving out, which is
+        // why it may join the whitelist while refunds stay refused by name.
+        $allowed += ['category' => 1, 'amount' => 1, 'note' => 1, 'date' => 1];
+        if (!is_string($act['category'] ?? null) || trim($act['category']) === ''
+            || mb_strlen($act['category']) > 64) {
+            return 'An expense needs a category (up to 64 characters).';
+        }
+        $amt = $act['amount'] ?? null;
+        if (!is_numeric($amt) || $amt <= 0 || $amt > NIGHT_ACT_PRICE_MAX) {
+            return 'An expense amount must be over £0 and under £' . NIGHT_ACT_PRICE_MAX . '.';
+        }
+        if (isset($act['note']) && (!is_string($act['note']) || mb_strlen($act['note']) > NIGHT_ACT_NOTE_MAX)) {
+            return 'The note is not text under ' . NIGHT_ACT_NOTE_MAX . ' characters.';
+        }
+        if (isset($act['date']) && night_tool_iso($act['date']) === '') {
+            return 'The expense date must be YYYY-MM-DD (or left out for today).';
+        }
+    }
+    if ($kind === 'send_arrival_info' || $kind === 'record_payment') {
+        $allowed += ['booking' => 1];
+        $b2 = $act['booking'] ?? null;
+        if (!is_numeric($b2) || (int) $b2 <= 0) {
+            return $kind . ' needs the booking ref from a lookup result.';
         }
     }
     foreach (array_keys($act) as $k) {
@@ -1681,6 +1801,25 @@ function night_act_resolve($raw, array $names, $todayIso)
     }
     if ($kind === 'send_enquiry_reply') {
         $act['enquiry'] = (int) ($a['enquiry'] ?? 0);
+    }
+    if ($kind === 'add_expense') {
+        $act['category'] = mb_substr(night_str($a['category'] ?? ''), 0, 64);
+        $act['amount'] = round((float) ($a['amount'] ?? 0), 2);
+        if (night_str($a['note'] ?? '') !== '') {
+            $act['note'] = mb_substr(night_str($a['note']), 0, NIGHT_ACT_NOTE_MAX);
+        }
+        $d = night_tool_iso($a['date'] ?? '');
+        if ($d !== '') {
+            // An expense is a record of money ALREADY spent — a receipt can
+            // arrive late (the past is fine), a future one is a plan, not a fact.
+            if ($d > (string) $todayIso) {
+                return ['act' => null, 'problem' => 'An expense is dated when the money was spent — that date has not happened yet.'];
+            }
+            $act['date'] = $d;
+        }
+    }
+    if ($kind === 'send_arrival_info' || $kind === 'record_payment') {
+        $act['booking'] = (int) ($a['booking'] ?? 0);
     }
     $bad = night_act_problem($act);
     return $bad === '' ? ['act' => $act, 'problem' => ''] : ['act' => null, 'problem' => $bad];

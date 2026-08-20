@@ -1061,6 +1061,73 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => /Booking added/.test((document.querySelector('.mc-act.is-done') || {}).textContent || '')
     && window.__mcReqs.filter((r) => r.a === 'chat_act_done' && r.b.verdict === 'done').length === 1),
     'with the clash gone the same card adds the booking and flips done');
+  // THE FOLLOW-UP CHIP: a confirmed add_booking offers "Send the confirmation"
+  // with the CREATED id (this session's map — the stored act may not grow
+  // fields), it fires nothing on render, and tapping it opens the real sender.
+  const fu = await page.evaluate(() => {
+    window.__confirmSends = [];
+    window.sendConfirmationEmail = (bid) => { window.__confirmSends.push(bid); };
+    const chip = document.querySelector('.mc-act.is-done .mc-act-next');
+    return { there: !!chip, label: chip ? chip.textContent : '', arg: chip ? chip.getAttribute('data-arg') : '', fired: window.__confirmSends.length };
+  });
+  ok(fu.there && /Send the confirmation/.test(fu.label) && fu.arg === '99' && fu.fired === 0,
+    `the done card offers the confirmation chip with the CREATED id, inert until tapped (${JSON.stringify(fu)})`);
+  await page.click('.mc-act-next');
+  await page.waitForTimeout(150);
+  ok(await page.evaluate(() => window.__confirmSends.length === 1 && window.__confirmSends[0] === 99),
+    'tapping it opens the real confirmation sender for THAT booking');
+  // ── THE CAPABILITY CARDS: expense / arrival info / record a payment ──
+  // An expense records through the real endpoint WITH the attribution tag; a
+  // guest with no email gets a dead card in a sentence; record_payment opens
+  // the FORM — open-form honesty, the model never states the amount.
+  await page.evaluate(() => {
+    window.__mcReqs = [];
+    window.dbBookings = window.dbBookings || {};
+    dbBookings.jollyboat = [
+      { id: 'b71', dbId: 71, name: 'Rachel Hart', email: '', checkIn: '2027-09-12', checkOut: '2027-09-15', adults: 2, children: 0 },
+      { id: 'b72', dbId: 72, name: 'Dan Rowe', email: 'dan@example.com', checkIn: '2027-09-20', checkOut: '2027-09-23', adults: 2, children: 0 },
+    ];
+    window.__payForms = [];
+    window.recordPayment = (bid) => { window.__payForms.push(bid); };
+    window.apiPost = async (file, body) => {
+      window.__mcReqs.push({ f: file, a: body.action, b: body });
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+          { who: 'mac', id: 506, text: 'Recording it.', at: '12:07', act: { kind: 'add_expense', category: 'Cleaning', amount: 45.5, note: 'changeover deep clean' } },
+          { who: 'mac', id: 507, text: 'Sending directions.', at: '12:08', act: { kind: 'send_arrival_info', booking: 71 } },
+          { who: 'mac', id: 508, text: 'Opening the form.', at: '12:09', act: { kind: 'record_payment', booking: 72 } },
+        ] };
+      }
+      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      return { ok: true, id: 5 };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const cap = await page.evaluate(() => ({
+    live: document.querySelectorAll('.mc-act .mc-act-go').length,
+    exp: (document.getElementById('mc-act-506') || {}).textContent || '',
+    dead: (document.getElementById('mc-act-507') || {}).textContent || '',
+    pay: (document.getElementById('mc-act-508') || {}).textContent || '',
+    fired: window.__mcReqs.filter((r) => r.a !== 'chat_thread'),
+  }));
+  ok(cap.live === 2 && /£45\.50/.test(cap.exp) && /no money moves/.test(cap.exp),
+    `the expense card states figure + category and that no money moves (${cap.exp.slice(0, 90)})`);
+  ok(/no email on file/.test(cap.dead), `a guest without an email gets the sentence, never a dead button (${cap.dead.slice(0, 80)})`);
+  ok(/£/.test(cap.pay) === false || /You enter the figure there/.test(cap.pay),
+    'the payment card promises the FORM — the model never states the amount');
+  ok(cap.fired.length === 0, 'rendering the three fires nothing');
+  await page.evaluate(() => document.getElementById('mc-act-506').querySelector('.mc-act-go').click());
+  await page.waitForTimeout(300);
+  const expRun = await page.evaluate(() => window.__mcReqs.filter((r) => r.f === 'expenses.php' && r.a === 'add').map((r) => r.b));
+  ok(expRun.length === 1 && expRun[0].category === 'Cleaning' && expRun[0].amount === 45.5
+    && expRun[0].via === 'ai-chat' && /^\d{4}-\d{2}-\d{2}$/.test(expRun[0].date),
+    `Confirm records through the real expenses endpoint, attributed, dated today (${JSON.stringify(expRun)})`);
+  await page.evaluate(() => document.getElementById('mc-act-508').querySelector('.mc-act-go').click());
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => window.__payForms.length === 1 && Number(window.__payForms[0]) === 72
+    && /Payment form opened/.test((document.getElementById('mc-act-508') || {}).textContent || '')),
+    'record_payment opens the form for THAT booking and signs off as exactly that much');
   // SEND_ENQUIRY_REPLY: an enquiry no longer waiting is a DEAD card — the
   // sentence, never a dead button.
   await page.evaluate(() => {

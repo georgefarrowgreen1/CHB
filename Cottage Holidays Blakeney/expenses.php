@@ -53,7 +53,7 @@ if ($action === 'add') {
                 'INSERT INTO expenses (category, description, amount, prop_key, recurring, receipt_data, expense_date) VALUES (?,?,?,?,?,?,?)',
             )
             ->execute([$category, $description, $amount, $prop, $recurring, $receiptData, $date]);
-        log_activity('expenses', 'expense.add', 'Expense added — £' . number_format($amount, 2) . ' · ' . $category, ['prop_key' => (string) $prop, 'entity' => 'expense', 'entity_id' => (string) db()->lastInsertId()]);
+        log_activity('expenses', 'expense.add', 'Expense added — £' . number_format($amount, 2) . ' · ' . $category . via_label($in), ['prop_key' => (string) $prop, 'entity' => 'expense', 'entity_id' => (string) db()->lastInsertId()]);
         json_out(op_finish($opTok, ['ok' => true, 'id' => (int) db()->lastInsertId()]));
     } catch (\Throwable $e) {
         // Older DB without the recurring/receipt_data columns — save the core fields.

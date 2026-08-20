@@ -5897,6 +5897,11 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .mc-act-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
 .mc-act.is-done{background:color-mix(in srgb,var(--ok) 10%,transparent);font-size:0.74rem;font-weight:600;color:var(--text-light)}
 .mc-act.is-off{background:none;font-size:0.72rem;color:var(--text-muted)}
+/* the follow-up: one quiet chip in the sign-off — never a second proposal */
+.mc-act-next{display:block;margin-top:8px;border:1px solid var(--glass-border);border-radius:999px;
+  padding:6px 12px;min-height:32px;background:none;color:var(--accent-text);
+  font:600 0.68rem var(--font-sans);cursor:pointer}
+.mc-act-next:hover{background:var(--btn-hover)}
 /* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
 .ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
   max-width:720px;margin:0 auto;display:none;align-items:center;gap:8px;

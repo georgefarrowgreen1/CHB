@@ -1162,7 +1162,7 @@ if ($action === 'send_arrival') {
             db()->prepare('UPDATE bookings SET pre_arrival_ready_at = NULL WHERE id = ?')->execute([$id]);
         } catch (\Throwable $e) {
         }
-        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? '') . ($note !== '' ? ' (reviewed)' : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? '') . ($note !== '' ? ' (reviewed)' : '') . via_label($in), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);

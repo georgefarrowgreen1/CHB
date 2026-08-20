@@ -3498,6 +3498,50 @@ it_check('via: the seasons-save log line carries it too (the price card\'s path)
 $rootDb->exec('DELETE FROM bookings WHERE id IN (' . $viaBid . ',' . $viaBid2 . ')');
 $rootDb->exec("DELETE FROM ical_blocks WHERE prop_key = " . $rootDb->quote($propKey) . " AND check_in = " . $rootDb->quote($dd(730)));
 
+// ── THE COAST TOOL — through the real door, no network ──────────────────
+// The weather cache is SEEDED (content_set_scalar's own double-encoded
+// shape) so weather_daily answers from it; no tide key is set, so the tide
+// half must be an honest absence with a sentence — never a guess or a hang.
+$cstDay = $dd(1);
+$rootDb->prepare("REPLACE INTO content (item_key, item_value) VALUES ('weather-cache', ?)")
+    ->execute([json_encode(json_encode(['at' => time(), 'days' => array_map(
+        fn ($n) => ['date' => $dd($n), 'summary' => 'sunny spells', 'tmax' => 18, 'tmin' => 11, 'gust' => 12, 'rain' => 0.0],
+        range(0, 13),
+    )]))]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET,
+    'tool' => 'coast', 'args' => ['day' => $cstDay]]);
+it_check('coast: the tool answers with the seeded forecast and an honest tide absence',
+    ($r['json']['ok'] ?? false) === true
+    && ($r['json']['data']['day'] ?? '') === $cstDay
+    && strpos((string) ($r['json']['data']['weather'] ?? ''), 'sunny spells') !== false
+    && strpos((string) ($r['json']['data']['tide_note'] ?? ''), 'No tide key') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET,
+    'tool' => 'coast', 'args' => ['day' => date('Y-m-d', strtotime('-1 day'))]]);
+it_check('coast: yesterday is refused in a sentence', $r['code'] === 400, $r['raw']);
+
+// ── THE CAPABILITY ACTS — the answer door validates the three new kinds ──
+$rootDb->exec('DELETE FROM login_attempts');
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'log the cleaner']);
+$capId = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $capId,
+    'text' => json_encode(['text' => 'I can record that.', 'act' => ['action' => 'add_expense',
+        'args' => ['category' => 'Cleaning', 'amount' => 45, 'note' => 'changeover']]])]);
+it_check('acts: an add_expense proposal lands validated', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $capId, 'wait' => 0, 'seen' => 0]);
+it_check('acts: the stored card carries the normalised expense',
+    ($r['json']['msg']['act']['kind'] ?? '') === 'add_expense'
+    && ($r['json']['msg']['act']['amount'] ?? 0) == 45
+    && ($r['json']['msg']['act']['category'] ?? '') === 'Cleaning', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'send directions']);
+$capId2 = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $capId2,
+    'text' => json_encode(['text' => 'Sending.', 'act' => ['action' => 'send_arrival_info', 'args' => ['booking' => 99999999]]])]);
+it_check('acts: send_arrival_info with a guessed ref is refused at the door — no booking, no card',
+    $r['code'] === 400 && strpos($r['raw'], 'no booking has that ref') !== false, $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+$rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
+$rootDb->exec("DELETE FROM content WHERE item_key = 'weather-cache'");
+
 // ── LIVE GUEST DRAFTS — a guest message files a 'chat' ask on the spot ──
 // This suite has burned many 'answer' units by now — clear the toll so the
 // drafts round trip is judged on its own behaviour, not the meter.
