@@ -122,7 +122,9 @@ const snap = (page) =>
     check(s.crownAct === 'crownSheetToggle', `the owner bundle repoints the crown at the assistant (${s.crownAct})`);
     // 5 buttons: Today, Inbox, Payments, Key safes, Manage — the key joined
     // for the keeper's page (owner-asked); the SEARCH knot stays retired.
-    check(s.knotGone && s.dockBtns === 5, `the dock's separate Search knot is retired (${s.dockBtns} buttons, none of them search)`);
+    // Six since AI chat earned its own mark — the INVARIANT here is that none
+    // of them is the retired Search knot, not the count itself.
+    check(s.knotGone && s.dockBtns === 6, `the dock's separate Search knot is retired (${s.dockBtns} buttons, none of them search)`);
     check(!s.open, 'the sheet starts closed');
 
     // ---- A) the crown opens it, and the field is genuinely typable ----

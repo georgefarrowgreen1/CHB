@@ -247,6 +247,9 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
                     <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
                 </button>
+                <button class="admin-dock-btn" data-view="view-aichat" data-label="AI chat" aria-label="AI chat" title="AI chat" data-act="openAiChat">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>
+                </button>
                 <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
                 </button>
@@ -1090,6 +1093,9 @@
 
     <!-- ================= KEY SAFES (per-cottage code keeper) ================= -->
     <main id="view-keysafe" class="page-view container">
+    </main>
+
+    <main id="view-aichat" class="page-view container">
     </main>
 
     <!-- ================= GUEST LOGIN / REGISTER ================= -->
@@ -1968,7 +1974,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=885"></script>
+    <script defer src="app.js?v=886"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
