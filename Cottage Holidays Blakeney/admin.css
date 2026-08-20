@@ -5789,41 +5789,106 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .night-setup[open] > summary::after { transform: rotate(90deg); }
 .night-setup > summary:hover { color: var(--accent-text); }
 
-/* ── MANAGE → ASK YOUR MAC — the web chat with the owner's own model. ──
-   The Mac app's chat vocabulary, restated in the site's tokens: presence as
-   a capsule, the round trip narrated in one status line, thinking folded,
-   the lookup chip a fact. Phone-first — this screen exists for out-and-about. */
-.mc-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.mc-top .btn-sm{margin-left:auto}
-.mc-pres{display:inline-flex;align-items:center;gap:7px;font-size:0.72rem;font-weight:600;
-  color:var(--text-muted);border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
-.mc-pres .mc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok-text)}
+/* ── AI CHAT — its own page (view-aichat), the approved iOS-26 anatomy. ──
+   The page's own bar carries the spark mark, the name and the presence; the
+   welcome is a card with starters; the round trip narrates as capsules IN
+   the log; the composer FLOATS above the safe area; Clear lives behind the
+   … sheet. Phone-first — this page exists for out-and-about. */
+.ac-page{max-width:720px;margin:0 auto;padding-bottom:calc(96px + var(--safe-b))}
+.ac-hd{position:sticky;top:calc(64px + var(--safe-t));z-index:5;display:flex;align-items:center;gap:11px;
+  border:1px solid var(--glass-border);border-radius:22px;padding:10px 14px;margin:6px 0 12px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter)}
+.ac-spark{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 32%,transparent),color-mix(in srgb,var(--accent) 10%,transparent));
+  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
+.ac-spark svg{width:20px;height:20px;stroke:var(--accent-text)}
+.ac-tt{display:flex;flex-direction:column;min-width:0}
+.ac-name{font:700 1rem var(--font-sans);margin:0;letter-spacing:.01em}
+.ac-thin{font-weight:500;color:var(--text-muted)}
+.ac-more{margin-left:auto;width:38px;height:38px;border-radius:50%;border:1px solid var(--glass-border);
+  background:none;color:var(--text-muted);font-size:17px;cursor:pointer;flex:0 0 auto}
+.ac-more:hover{background:var(--btn-hover)}
+.mc-pres{display:inline-flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:600;color:var(--text-muted)}
+.mc-pres .mc-dot{width:7px;height:7px;border-radius:50%;background:var(--ok-text)}
+.mc-pres.is-on{color:var(--ok-text)}
+.mc-pres.is-asleep{color:var(--warn-text)}
 .mc-pres.is-asleep .mc-dot{background:var(--warn-text)}
 .mc-pres.is-off{color:var(--warn-text)}
-.mc-log{display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:56vh;
-  overflow-y:auto;overscroll-behavior:contain;padding:4px 2px}
-.mc-empty{margin:auto;text-align:center;color:var(--text-muted);font-size:0.82rem;max-width:44ch;padding:28px 0}
-.mc-bub{max-width:84%;padding:10px 14px;border-radius:var(--r-md);font-size:0.85rem;line-height:1.55;overflow-wrap:break-word}
-.mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 16%,transparent);
-  border-bottom-right-radius:5px;white-space:pre-wrap}
+.mc-log{display:flex;flex-direction:column;gap:10px;min-height:46vh;padding:2px}
+/* the welcome — a CARD with starters, never a stranded paragraph */
+.mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:26px;
+  padding:24px 20px;background:var(--glass-bg);text-align:center}
+.mc-hello-spark{font-size:22px;color:var(--accent-text)}
+.mc-hello h2{font:600 1.3rem var(--font-serif);margin:8px 0 6px}
+.mc-hello p{color:var(--text-muted);font-size:0.78rem;margin:0 0 14px;line-height:1.55}
+.mc-starters{display:flex;flex-direction:column;gap:8px}
+.mc-schip{border:1px solid var(--glass-border);background:color-mix(in srgb,var(--text-light) 4%,transparent);
+  color:var(--text-light);border-radius:16px;padding:12px 14px;font:500 0.8rem var(--font-sans);
+  cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;min-height:44px}
+.mc-schip:hover{background:var(--btn-hover)}
+.mc-go{color:var(--accent-text);font-weight:700}
+.mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size:0.85rem;line-height:1.55;overflow-wrap:break-word}
+.mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 17%,transparent);
+  border-bottom-right-radius:7px;white-space:pre-wrap}
 .mc-mac{align-self:flex-start;background:color-mix(in srgb,var(--text-light) 6%,transparent);
-  border:1px solid var(--glass-border);border-bottom-left-radius:5px}
+  border:1px solid var(--glass-border);border-bottom-left-radius:7px}
 .mc-mac p{margin:0.35em 0}.mc-mac p:first-child{margin-top:0}.mc-mac p:last-child{margin-bottom:0}
 .mc-money{font-weight:700;color:var(--accent-text);font-variant-numeric:tabular-nums}
-.mc-think{align-self:flex-start;max-width:84%}
+/* the journey — capsules IN the log, one live region each */
+.mc-jcap{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;font-size:0.66rem;font-weight:600;
+  color:var(--text-muted);border:1px solid var(--glass-border);border-radius:999px;padding:5px 13px;
+  background:color-mix(in srgb,var(--text-light) 3%,transparent)}
+.mc-jcap.is-warn{color:var(--warn-text);border-color:color-mix(in srgb,var(--warn-text) 40%,transparent)}
+.mc-spin{width:9px;height:9px;border-radius:50%;border:2px solid var(--accent);
+  border-right-color:transparent;animation:mcSpin .7s linear infinite;flex:0 0 auto}
+@keyframes mcSpin{to{transform:rotate(360deg)}}
+.mc-tick{color:var(--ok-text);font-weight:800}
+.mc-think{align-self:flex-start;max-width:82%}
 .mc-think summary{list-style:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
-  font-size:0.68rem;font-weight:700;color:var(--text-muted);
-  border:1px solid var(--glass-border);border-radius:999px;padding:4px 11px}
+  font-size:0.66rem;font-weight:700;color:var(--text-muted);
+  border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
 .mc-think summary::-webkit-details-marker{display:none}
 .mc-think-b{margin-top:6px;font-size:0.75rem;line-height:1.5;color:var(--text-muted);
   border-left:2px solid var(--glass-border);padding:2px 0 2px 11px;white-space:pre-wrap}
-.mc-chip{align-self:flex-start;font-size:0.68rem;font-weight:600;color:var(--text-muted);
-  border:1px solid var(--glass-border);border-radius:999px;padding:4px 12px}
+.mc-chip{align-self:flex-start;font-size:0.66rem;font-weight:600;color:var(--text-muted);
+  border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
 .mc-live{display:flex;flex-direction:column;gap:8px}
 .mc-caret{display:inline-block;width:6px;height:13px;border-radius:2px;background:var(--accent);
   vertical-align:-2px;animation:mcCaret .9s steps(1) infinite}
 @keyframes mcCaret{50%{opacity:0}}
-.mc-journey{min-height:1.2em;font-size:0.7rem;color:var(--text-muted);padding:6px 2px 2px}
-.mc-bar{display:flex;gap:9px;margin-top:6px}
-.mc-bar .input-glass{flex:1;min-width:0}
-@media (prefers-reduced-motion: reduce){.mc-caret{animation:none}}
+.mc-meta{align-self:flex-start;font-size:0.64rem;color:var(--text-muted);padding-left:4px}
+/* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
+.ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
+  max-width:720px;margin:0 auto;display:none;align-items:center;gap:8px;
+  border:1px solid var(--glass-border);border-radius:28px;padding:8px 8px 8px 18px;
+  background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);
+  box-shadow:var(--shadow-panel)}
+#view-aichat.active .ac-composer{display:flex}
+.ac-composer input{flex:1;min-width:0;border:0;background:none;color:var(--text-light);
+  font:400 0.9rem var(--font-sans);outline:none;min-height:38px}
+.ac-composer input::placeholder{color:var(--text-muted)}
+.ac-send{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
+  background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;
+  transition:transform .35s var(--spring)}
+.ac-send:active{transform:scale(.9)}
+.ac-send svg{width:18px;height:18px}
+/* the … sheet — where Clear went */
+.ac-sheet{position:fixed;inset:0;z-index:2050;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(0,0,0,.35)}
+.ac-sheet[hidden]{display:none}
+.ac-sheet-card{width:100%;max-width:420px;margin:0 12px calc(12px + var(--safe-b));border-radius:26px;
+  overflow:hidden;border:1px solid var(--glass-border);
+  background:var(--glass-bg);backdrop-filter:blur(28px) saturate(1.4);-webkit-backdrop-filter:blur(28px) saturate(1.4);
+  animation:acRise .35s var(--spring)}
+@keyframes acRise{from{transform:translateY(30px);opacity:0}}
+.ac-sheet-card button{display:block;width:100%;border:0;background:none;color:var(--text-light);
+  font:600 0.88rem var(--font-sans);padding:15px 18px;text-align:center;cursor:pointer;
+  border-bottom:1px solid var(--glass-border);min-height:44px}
+.ac-sheet-card button:hover{background:var(--btn-hover)}
+.ac-sheet-card button.ac-quiet{color:var(--text-muted);font-weight:500}
+.ac-sheet-card button:last-child{border-bottom:0}
+@media (prefers-reduced-motion: reduce){
+  .mc-caret,.mc-spin{animation:none}
+  .ac-sheet-card{animation:none}
+  .ac-send{transition:none}
+}

@@ -715,27 +715,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         const r = window.__mcPolls.shift() || { ok: true, status: 'open' };
         if (r.__peek) {
           const live = document.getElementById('mc-live');
+          const caps = document.querySelectorAll('#mc-log .mc-jcap');
           window.__mcMid = {
             live: !!live,
             think: live ? (live.querySelector('.mc-think-b') || {}).textContent || '' : '',
             text: live ? (live.querySelector('.mc-mac') || {}).textContent || '' : '',
-            journey: document.getElementById('mc-journey').textContent,
+            journey: caps.length ? caps[caps.length - 1].textContent : '',
           };
         }
         return r;
       }
       return { ok: true };
     };
-    settingsOpen('macchat');
+    openAiChat();
   });
   await page.waitForTimeout(300);
   const mcBoot = await page.evaluate(() => ({
-    pres: document.querySelector('#macchat-body .mc-pres').textContent,
+    view: (document.querySelector('.page-view.active') || {}).id,
+    pres: document.getElementById('ac-pres').textContent,
     msgs: document.querySelectorAll('#mc-log .mc-bub').length,
     chip: /Checked the website · today/.test(document.getElementById('mc-log').textContent),
+    composer: (() => { const c = document.querySelector('#view-aichat .ac-composer'); return c && getComputedStyle(c).display !== 'none'; })(),
   }));
-  ok(/listening/.test(mcBoot.pres), `presence says the Mac is listening (${mcBoot.pres})`);
+  ok(mcBoot.view === 'view-aichat', `AI chat is its OWN page (${mcBoot.view})`);
+  ok(/Listening/.test(mcBoot.pres), `presence lives in the page's bar (${mcBoot.pres})`);
   ok(mcBoot.msgs === 2 && mcBoot.chip, 'the shared thread paints with its lookup chip');
+  ok(mcBoot.composer, 'the floating composer shows on the active page');
+  // The dock carries the page's own mark, labelled AI chat.
+  ok(await page.evaluate(() => !!document.querySelector('.admin-dock-btn[data-view="view-aichat"][data-label="AI chat"]')),
+    'the dock carries the AI chat mark');
   // The exchange: a partial streams in, then the answer settles.
   await page.evaluate(() => {
     window.__mcPolls = [
@@ -761,18 +769,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       pwned: !!window.__mcPwn,
       chip: /Checked the website · today, availability/.test(log.textContent),
       foldOpen: (() => { const f = log.querySelectorAll('.mc-think'); return f[f.length - 1].open; })(),
-      journey: document.getElementById('mc-journey').textContent,
+      journey: (log.querySelector('.mc-meta') || {}).textContent || '',
       liveGone: !document.getElementById('mc-live'),
+      capsGone: log.querySelectorAll('.mc-jcap').length === 0,
     };
   });
-  ok(mcDone.mid && mcDone.mid.live && /checking the day/.test(mcDone.mid.think) && /One arr/.test(mcDone.mid.text),
-    `the partial painted mid-flight, thinking open (${JSON.stringify(mcDone.mid)})`);
+  ok(mcDone.mid && mcDone.mid.live && /checking the day/.test(mcDone.mid.think) && /One arr/.test(mcDone.mid.text)
+    && /Picked up at home/.test(mcDone.mid.journey),
+    `the partial painted mid-flight, thinking open, the capsule says picked up (${JSON.stringify(mcDone.mid)})`);
   ok(mcDone.strong === 1 && mcDone.scripts === 0 && !mcDone.pwned,
     'the settled answer is markdown with markup INERT');
-  ok(mcDone.chip && mcDone.foldOpen === false && mcDone.liveGone,
-    'lookup chip on, thinking folded closed, the live bubble replaced');
+  ok(mcDone.chip && mcDone.foldOpen === false && mcDone.liveGone && mcDone.capsGone,
+    'lookup chip on, thinking folded closed, the live block and capsules replaced');
   ok(/answered by your Mac at home · gemma-4b/.test(mcDone.journey),
-    `the journey signs off naming the Mac (${mcDone.journey})`);
+    `the meta signs off naming the Mac (${mcDone.journey})`);
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {
@@ -784,8 +794,38 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.fill('#mc-in', 'and tomorrow?');
   await page.click('#mc-send');
   await page.waitForTimeout(400);
-  ok(/asleep/.test(await page.textContent('#mc-journey')),
-    'a sleeping Mac is said, never spun: ' + (await page.textContent('#mc-journey')));
+  const mcSleep = await page.evaluate(() => {
+    const caps = document.querySelectorAll('#mc-log .mc-jcap');
+    const last = caps[caps.length - 1];
+    return { text: last ? last.textContent : '', warn: last ? last.className.includes('is-warn') : false };
+  });
+  ok(/asleep/.test(mcSleep.text) && mcSleep.warn,
+    'a sleeping Mac is said in a warn capsule, never spun: ' + mcSleep.text);
+  // The … sheet: where Clear went. Its New conversation asks first, and the
+  // starters return with the fresh thread.
+  await page.evaluate(() => { window.__chatEvCb = window.__chatEvCb; });
+  await page.click('.ac-more');
+  await page.waitForTimeout(150);
+  ok(!(await page.evaluate(() => document.getElementById('ac-sheet').hidden)),
+    'the … sheet opens with the quiet destructive actions');
+  await page.evaluate(() => {
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_clear') { return { ok: true }; }
+      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      return { ok: true };
+    };
+    window.__realConfirm = window.glassConfirm;
+    window.glassConfirm = async () => true;
+  });
+  await page.click('.ac-sheet-card button');
+  await page.waitForTimeout(300);
+  const mcFresh = await page.evaluate(() => ({
+    sheetHidden: document.getElementById('ac-sheet').hidden,
+    starters: document.querySelectorAll('#mc-log .mc-schip').length,
+  }));
+  ok(mcFresh.sheetHidden && mcFresh.starters === 3,
+    `New conversation clears through the bridge and the welcome card returns with its starters (${JSON.stringify(mcFresh)})`);
+  await page.evaluate(() => { window.glassConfirm = window.__realConfirm; });
 
   ok(pageErrors.length === 0, 'no page errors: ' + pageErrors.join(' | '));
 

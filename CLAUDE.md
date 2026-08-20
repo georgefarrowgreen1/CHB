@@ -617,8 +617,18 @@ signing and what is real; what matters HERE is the site half and the rules.
   must run before the row's or the row swallows the click (measured). Gated by
   core-test §33, test-nightshift §24's cottage checks, test-integration §26c, and
   the ui-test's room-to-think block.
-  **THE WEB CHAT — the owner's Mac from anywhere** (Manage → Ask your Mac,
-  `renderMacChat`/`mcSend` in admin.js; ask kind `ownerchat`). The ask channel is
+  **THE WEB CHAT — the owner's Mac from anywhere** (its own page now:
+  **view-aichat**, "AI chat", the spark glyph in the admin dock — 6 buttons;
+  `openAiChat`/`renderMacChat`/`mcSend` in admin.js, ask kind `ownerchat`;
+  the Manage row stays as a second way in. The rename is DISPLAY-ONLY: the
+  internal ids — the `mac-chat` thread key, the ask kind — keep their names,
+  the rename discipline. The approved iOS-26 anatomy: presence in the page's
+  own bar, a welcome CARD with three starters, the round trip narrated as
+  CAPSULES in the log (waiting → picked up → the warn states), a FLOATING
+  glass composer above --safe-b shown only while the view is active, and
+  Clear behind the … sheet with New conversation + the standing instruction.
+  NB nav()'s view hook owns the render — openAiChat calling it too ran two
+  renders concurrently and orphaned the presence node mid-swap, measured). The ask channel is
   the meeting point, so there is NO tunnel, no open port, no new credential —
   the Mac only ever dials out. chat_send appends to the ONE shared thread
   (internal key `mac-chat`, `night_ownerchat_thread` sanitises, cap 40) and files
