@@ -869,6 +869,75 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(attPhoto.count === 1 && attPhoto.src === 'uploads/chat-photo-0123456789ab.jpg',
     `a photo message paints its thumbnail, and a junk ref never reaches src (${JSON.stringify(attPhoto)})`);
   try { require('fs').rmSync(attTmp, { recursive: true, force: true }); } catch (e) {}
+  // THE STOP. While an ask is in flight the send circle is a ■ (the same
+  // button, alive — the dispatcher must not have disabled it); tapping it
+  // posts chat_stop, keeps the words already streamed with their sign-off,
+  // and hands the button back. A stop before any words stores nothing.
+  await page.evaluate(() => {
+    window.__mcStops = [];
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_send') { return { ok: true, id: 90, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') {
+        // First poll: a partial. After: hang, so the flight stays open.
+        if (!window.__mcPolled) { window.__mcPolled = 1; return { ok: true, status: 'open', partial: { text: 'The weekend looks', think: '' } }; }
+        return new Promise(() => {});
+      }
+      if (body.action === 'chat_stop') {
+        window.__mcStops.push(body.id);
+        return { ok: true, kept: true, msg: { who: 'mac', text: 'The weekend looks', at: '11:00', stopped: true } };
+      }
+      return { ok: true };
+    };
+  });
+  await page.fill('#mc-in', 'how is the weekend looking?');
+  await page.click('#mc-send');
+  await page.waitForTimeout(400);
+  const stArm = await page.evaluate(() => {
+    const b = document.getElementById('mc-send');
+    return { label: b.getAttribute('aria-label'), stop: b.classList.contains('is-stop'),
+      alive: !b.disabled, live: !!document.getElementById('mc-live') };
+  });
+  ok(stArm.label === 'Stop' && stArm.stop && stArm.alive && stArm.live,
+    `in flight the send is a LIVE Stop, mid-partial (${JSON.stringify(stArm)})`);
+  await page.click('#mc-send');
+  await page.waitForTimeout(300);
+  const stDone = await page.evaluate(() => {
+    const b = document.getElementById('mc-send');
+    const log = document.getElementById('mc-log');
+    const macs = log.querySelectorAll('.mc-bub.mc-mac');
+    return { stops: window.__mcStops, label: b.getAttribute('aria-label'),
+      kept: macs.length ? macs[macs.length - 1].textContent : '',
+      meta: /stopped by you — kept what it had said/.test(log.textContent),
+      liveGone: !document.getElementById('mc-live') };
+  });
+  ok(stDone.stops.length === 1 && stDone.stops[0] === 90,
+    `the ■ posts chat_stop with the in-flight ask (${JSON.stringify(stDone.stops)})`);
+  ok(/The weekend looks/.test(stDone.kept) && stDone.meta && stDone.liveGone && stDone.label === 'Send',
+    `the words already said are KEPT with their sign-off and the button hands back (${JSON.stringify({ kept: stDone.kept, label: stDone.label })})`);
+  // A stop BEFORE any words: nothing stored, the capsule says so.
+  await page.evaluate(() => {
+    const before = document.querySelectorAll('#mc-log .mc-bub.mc-mac').length;
+    window.__mcBefore = before;
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_send') { return { ok: true, id: 91, presence: { listening: true } }; }
+      if (body.action === 'chat_poll') { return new Promise(() => {}); }
+      if (body.action === 'chat_stop') { return { ok: true, kept: false }; }
+      return { ok: true };
+    };
+  });
+  await page.fill('#mc-in', 'and next week?');
+  await page.click('#mc-send');
+  await page.waitForTimeout(250);
+  await page.click('#mc-send');
+  await page.waitForTimeout(250);
+  const stEarly = await page.evaluate(() => ({
+    macs: document.querySelectorAll('#mc-log .mc-bub.mc-mac').length,
+    before: window.__mcBefore,
+    say: /Stopped — nothing had come back yet/.test(document.getElementById('mc-log').textContent),
+    label: document.getElementById('mc-send').getAttribute('aria-label'),
+  }));
+  ok(stEarly.macs === stEarly.before && stEarly.say && stEarly.label === 'Send',
+    `a stop before any words stores nothing and says so (${JSON.stringify(stEarly)})`);
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

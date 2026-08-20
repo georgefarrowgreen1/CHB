@@ -804,6 +804,14 @@ function makeApi(deps) {
                             let round = '';
                             let think = '';
                             let lastPost = 0;
+                            // THE OWNER'S ■ REACHES THE MODEL THROUGH THE
+                            // PARTIAL POST'S OWN ANSWER: `held: false` means
+                            // the row is no longer open — the owner stopped
+                            // it (or a newer send superseded it) — so the
+                            // generation aborts and the engine is freed
+                            // instead of finishing words nobody is waiting
+                            // for. The abort path is the local Stop's own.
+                            const oah = new AbortController();
                             const res = await chatLoop(up.eng, turns, String(oc.instr || ''), model, function (e2) {
                                 if (e2.t === 'round' || e2.t === 'tool') { round = ''; }
                                 if (e2.t === 'think') { think += e2.s || ''; }
@@ -812,12 +820,22 @@ function makeApi(deps) {
                                 const tms = now().getTime();
                                 if (postPartial && (show || think) && tms - lastPost >= 1500) {
                                     lastPost = tms;
-                                    postPartial(JSON.stringify({
+                                    const pp = postPartial(JSON.stringify({
                                         text: show,
                                         think: think.slice(0, chatMod.CHAT_THINK_CHARS),
                                     }));
+                                    if (pp && typeof pp.then === 'function') {
+                                        pp.then(function (st) {
+                                            if (st && st.ok && st.held === false) { oah.abort(); }
+                                        }, function () { /* a blip is never a stop */ });
+                                    }
                                 }
-                            }, null, imgUri);
+                            }, oah.signal, imgUri);
+                            if (oah.signal.aborted) {
+                                // The row is expired at the site; posting the
+                                // remainder would only be refused as too late.
+                                return { skip: true };
+                            }
                             if (!res.ok) {
                                 return { ok: false, say: res.say };
                             }

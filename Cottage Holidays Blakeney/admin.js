@@ -11835,6 +11835,11 @@ function mcMsgHtml(m) {
         h += `<div class="mc-chip">✓ Checked the website · ${escapeHtml(m.used.join(', '))}</div>`;
     }
     h += `<div class="mc-bub mc-mac">${mcMd(m.text)}</div>`;
+    if (m.stopped) {
+        // The sign-off rides the MESSAGE, not the session's narration, so a
+        // reload on any device still says these words were cut short.
+        h += `<div class="mc-meta">stopped by you — kept what it had said</div>`;
+    }
     return h;
 }
 // The welcome card — the empty state STARTS you off instead of lecturing.
@@ -12029,7 +12034,77 @@ function mcCap(log, html, warn) {
     log.scrollTop = log.scrollHeight;
     return d;
 }
-async function mcSend() {
+// ── SEND BECOMES STOP. One button, two jobs: while an ask is in flight the
+// ↑ circle is a ■, and tapping it ends the round trip on the owner's terms.
+// mcSend is deliberately a SYNC wrapper returning nothing: the data-act
+// dispatcher disables a button for the life of a returned promise, and the
+// old async mcSend therefore had the send button DEAD for the whole round
+// trip — the exact control a Stop needs alive.
+const MC_IC_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 12l6-6 6 6"/></svg>';
+const MC_IC_STOP = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2.5"/></svg>';
+function mcSendMode(inFlight) {
+    const b = document.getElementById('mc-send');
+    if (!b) return;
+    b.classList.toggle('is-stop', !!inFlight);
+    b.innerHTML = inFlight ? MC_IC_STOP : MC_IC_UP;
+    b.setAttribute('aria-label', inFlight ? 'Stop' : 'Send');
+}
+let __mcAskId = 0;   // the in-flight ask, for chat_stop
+let __mcCap = null;  // the active journey capsule, for mcStop's cleanup
+let __mcStopping = false;
+function mcSend() {
+    if (__mcBusy) { mcStop(); return; }
+    mcSendRun();
+}
+// Stopping is a DECISION, honoured at every layer: the poll dies at once
+// (the stamp), the site settles whatever the Mac had already said into the
+// thread (chat_stop), and the Mac itself stands down within a beat — its
+// next partial post learns nobody is holding the row and aborts.
+async function mcStop() {
+    if (!__mcBusy || __mcStopping) return;
+    __mcStopping = true;
+    const id = __mcAskId;
+    __mcStamp++; // the in-flight poll loop returns silently at its next check
+    const log = document.getElementById('mc-log');
+    const live = document.getElementById('mc-live');
+    if (live) live.remove();
+    const cap = __mcCap && __mcCap.isConnected ? __mcCap : null;
+    let r = null;
+    try { r = await apiPost('nightshift.php', { action: 'chat_stop', id }); } catch (e) { r = null; }
+    try {
+        if (r && r.ok && r.raced === 'answered') {
+            // The answer beat the stop — collect it honestly rather than
+            // hiding words that were already finished.
+            let pr = null;
+            try { pr = await apiPost('nightshift.php', { action: 'chat_poll', id, wait: 0, seen: 0 }); } catch (e) { pr = null; }
+            if (pr && pr.status === 'answered' && pr.msg && log) {
+                if (cap) cap.remove();
+                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg));
+                log.insertAdjacentHTML('beforeend', '<div class="mc-meta" role="status">it had already answered</div>');
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+        }
+        if (r && r.ok && r.msg && log) {
+            // The words already said STAY — mcMsgHtml renders the stopped
+            // sign-off from the message itself, so a reload says the same.
+            if (cap) cap.remove();
+            log.insertAdjacentHTML('beforeend', mcMsgHtml(r.msg));
+            log.scrollTop = log.scrollHeight;
+            return;
+        }
+        if (cap) {
+            cap.className = 'mc-jcap';
+            cap.setAttribute('role', 'status');
+            cap.textContent = 'Stopped — nothing had come back yet. Ask again whenever.';
+        }
+    } finally {
+        __mcBusy = false;
+        __mcStopping = false;
+        mcSendMode(false);
+    }
+}
+async function mcSendRun() {
     if (__mcBusy) return;
     const box = /** @type {HTMLInputElement} */ (document.getElementById('mc-in'));
     const log = document.getElementById('mc-log');
@@ -12042,6 +12117,7 @@ async function mcSend() {
         return;
     }
     __mcBusy = true;
+    mcSendMode(true);
     const stamp = ++__mcStamp;
     box.value = '';
     const hello = log.querySelector('.mc-hello');
@@ -12067,6 +12143,7 @@ async function mcSend() {
     // same message, and the thread reload after the answer reconciles.
     log.insertAdjacentHTML('beforeend', mcMsgHtml(optimistic));
     const cap = mcCap(log, '<span class="mc-spin" aria-hidden="true"></span> Waiting for your Mac…');
+    __mcCap = cap; // mcStop owns the cleanup once the stamp kills this loop
     let live = null; // the streaming block, once a partial lands
     let picked = false;
     try {
@@ -12083,6 +12160,7 @@ async function mcSend() {
         // failed send keeps the attachment armed beside the restored words.
         if (att) mcAttachClear();
         const id = sendR.id;
+        __mcAskId = id; // the ■ stops THIS ask
         if (sendR.presence && !sendR.presence.listening) {
             cap.className = 'mc-jcap is-warn';
             cap.textContent = 'Your Mac isn’t listening right now — it may be asleep. The question waits up to ten minutes.';
@@ -12130,7 +12208,13 @@ async function mcSend() {
         cap.className = 'mc-jcap is-warn';
         cap.textContent = 'Still nothing back — the question may have expired. Send it again when the Mac shows as listening.';
     } finally {
-        __mcBusy = false;
+        // Only the CURRENT flight may clean up: a stopped loop's stamp is
+        // stale, and mcStop (or a newer send) already owns the state — an
+        // unconditional reset here would clear a NEW send's busy flag.
+        if (stamp === __mcStamp) {
+            __mcBusy = false;
+            mcSendMode(false);
+        }
     }
 }
 

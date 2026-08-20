@@ -3241,6 +3241,50 @@ it_check('webchat: an attached document reaches the Mac INTACT, fence and all',
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 @unlink($work . '/' . $wcImg);
 
+// ── THE STOP — the round trip ends on the owner's terms, at every layer ──
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'how is the weekend looking?']);
+$wcSid = (int) ($r['json']['id'] ?? 0);
+http($guest, 'POST', '/nightshift.php', ['action' => 'ask_partial', 'secret' => $SECRET,
+    'id' => $wcSid, 'text' => json_encode(['text' => 'The weekend looks', 'think' => 'checking'])]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_stop', 'id' => $wcSid]);
+it_check('stop: the words already streamed are KEPT and marked stopped',
+    ($r['json']['kept'] ?? false) === true
+    && ($r['json']['msg']['text'] ?? '') === 'The weekend looks'
+    && ($r['json']['msg']['stopped'] ?? false) === true
+    && ($r['json']['msg']['think'] ?? '') === 'checking', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+$wcLastS = $r['json']['msgs'] ? $r['json']['msgs'][count($r['json']['msgs']) - 1] : [];
+it_check('stop: the thread holds the stopped half-answer for every device',
+    ($wcLastS['who'] ?? '') === 'mac' && ($wcLastS['stopped'] ?? false) === true, $r['raw']);
+// The Mac learns through its own partial post: held:false is the signal.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ask_partial', 'secret' => $SECRET,
+    'id' => $wcSid, 'text' => json_encode(['text' => 'The weekend looks quiet'])]);
+it_check('stop: the next partial post answers held:false — the Mac\'s abort signal',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['held'] ?? true) === false, $r['raw']);
+// The Mac's late full answer is refused as too late, so the kept half can
+// never be silently replaced by words the owner declined to wait for.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcSid,
+    'text' => json_encode(['text' => 'The weekend looks quiet everywhere.'])]);
+it_check('stop: a late answer cannot land on a stopped ask',
+    ($r['json']['expired'] ?? false) === true || $r['code'] >= 400, $r['raw']);
+// A stop with NOTHING streamed stores nothing — the question stays askable.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'and next week?']);
+$wcSid2 = (int) ($r['json']['id'] ?? 0);
+$wcCount = count(http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread'])['json']['msgs'] ?? []);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_stop', 'id' => $wcSid2]);
+$wcCount2 = count(http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread'])['json']['msgs'] ?? []);
+it_check('stop: before any words, nothing is stored and nothing is claimed kept',
+    ($r['json']['kept'] ?? true) === false && !isset($r['json']['msg']) && $wcCount2 === $wcCount, $r['raw']);
+// The claim is guarded: an ANSWERED ask says so instead of eating the answer.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'one more?']);
+$wcSid3 = (int) ($r['json']['id'] ?? 0);
+http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcSid3,
+    'text' => json_encode(['text' => 'All quiet.'])]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_stop', 'id' => $wcSid3]);
+it_check('stop: an answer that beat the stop is reported raced, never hidden',
+    ($r['json']['kept'] ?? true) === false && ($r['json']['raced'] ?? '') === 'answered', $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+
 // The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);

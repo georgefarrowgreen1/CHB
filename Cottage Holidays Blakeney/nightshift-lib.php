@@ -1467,6 +1467,11 @@ function night_ownerchat_thread($raw)
             if (night_str($m['model'] ?? '') !== '') {
                 $one['model'] = mb_substr(night_str($m['model']), 0, 80);
             }
+            // A stop is part of the record: these words were cut short by the
+            // owner, and every device's render must say so.
+            if (!empty($m['stopped'])) {
+                $one['stopped'] = true;
+            }
         }
         $msgs[] = $one;
     }
