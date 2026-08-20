@@ -926,6 +926,10 @@ function is_internal_content_key($key)
         return true; // the owner's web chat with their own Mac (nightshift.php
                      // chat_* actions) — their words and the model's, admin-only
     }
+    if ($key === 'mac-chat-memory') {
+        return true; // the chat's owner-curated memories — facts the OWNER wrote
+                     // ("never dogs"), riding every ownerchat ask; admin-only
+    }
     if ($key === 'nightshift-latest-build') {
         return true; // the newest Mac-app release tag, fetched daily by self-repair
     }

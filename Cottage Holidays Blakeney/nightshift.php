@@ -37,6 +37,67 @@ function night_enabled()
     return content_value('night-shift') === '1';
 }
 
+// ── ONE GATHER, TWO READERS ─────────────────────────────────────────────
+// The 'today' and 'money' chat tools AND the world sheet chat_send attaches
+// read these — one derivation, so the grounding pack and a lookup can never
+// disagree about the same day. Each returns the ROWS the pure composers in
+// nightshift-lib.php shape.
+function night_gather_today($today)
+{
+    require_once __DIR__ . '/pricing.php';
+    $st = db()->prepare('SELECT * FROM bookings WHERE check_in <= ? AND check_out >= ? ORDER BY check_in');
+    $st->execute([$today, $today]);
+    $rows = [];
+    foreach ($st->fetchAll() as $b) {
+        try {
+            $b['due'] = (float) booking_amount_due($b, 'balance')['due'];
+        } catch (\Throwable $e) {
+            $b['due'] = 0.0; // an unpriceable row states no figure at all
+        }
+        $rows[] = $b;
+    }
+    $waiting = 0;
+    try {
+        $waiting = (int) db()->query('SELECT COUNT(*) FROM enquiries WHERE declined_at IS NULL')->fetchColumn();
+    } catch (\Throwable $e) {
+        $waiting = 0;
+    }
+    return ['rows' => $rows, 'waiting' => $waiting];
+}
+function night_gather_money($today)
+{
+    require_once __DIR__ . '/pricing.php';
+    $st = db()->prepare('SELECT * FROM bookings WHERE check_out >= ? ORDER BY check_in LIMIT 80');
+    $st->execute([$today]);
+    $owed = [];
+    foreach ($st->fetchAll() as $b) {
+        try {
+            $due = (float) booking_amount_due($b, 'balance')['due'];
+        } catch (\Throwable $e) {
+            $due = 0.0;
+        }
+        if ($due <= 0.5) {
+            continue;
+        }
+        $b['due'] = $due;
+        $b['due_now'] = ((string) $b['check_out'] <= $today) || booking_within_balance_window($b);
+        $owed[] = $b;
+    }
+    $st = db()->prepare("SELECT id, name, prop_key, check_out, hold_amount, agreed_booking_fee
+                           FROM bookings WHERE hold_status = 'charged' AND check_out <= ? ORDER BY check_out DESC LIMIT 30");
+    $st->execute([$today]);
+    $deps = [];
+    foreach ($st->fetchAll() as $b) {
+        $held = damages_collected($b) - damages_returned((int) $b['id']);
+        if ($held <= 0.5) {
+            continue;
+        }
+        $b['dep'] = $held;
+        $deps[] = $b;
+    }
+    return ['owed' => $owed, 'deps' => $deps];
+}
+
 // One enquiry row → the producer's view of it: the site's own price, its own
 // clash answer, that cottage's published Q&A, the display name. ONE
 // derivation, read by the nightly brief AND the ask channel, so the two can
@@ -549,13 +610,29 @@ route_actions([
             } catch (\Throwable $e) {
             }
         }
+        $mem = [];
+        try {
+            $mem = night_ownerchat_memories(content_json('mac-chat-memory', []));
+        } catch (\Throwable $e) {
+        }
         json_out([
             'ok' => true,
             'msgs' => $t['msgs'],
             'instr' => $t['instr'],
+            'memory' => $mem,
             'on' => night_enabled(),
             'presence' => night_mac_presence(night_devices_read(), time()),
         ]);
+    },
+    // ---- the owner edits the chat's memories ------------------------
+    // A visible list the OWNER writes ("never dogs"), riding every ask
+    // beside the standing instruction. The app never adds a line of its
+    // own — memory the model invented is the failure this shape prevents.
+    'chat_memory_save' => function ($in) {
+        require_admin();
+        $items = night_ownerchat_memories(is_array($in['items'] ?? null) ? $in['items'] : []);
+        content_set_scalar('mac-chat-memory', json_encode($items));
+        json_out(['ok' => true, 'memory' => $items]);
     },
     'chat_send' => function ($in) {
         require_admin();
@@ -601,6 +678,41 @@ route_actions([
         $t = night_ownerchat_thread($t); // one sanitiser owns the shape, img/file included
         content_set_scalar('mac-chat', json_encode($t));
         $payload = night_ownerchat_payload($t);
+        // THE GROUNDING PACK: the fleet, today, and the money picture ride
+        // every ask, composed fresh from the SAME gatherers the tools read —
+        // the model's first generation starts grounded instead of spending a
+        // round deciding whether to look. BEST-EFFORT: a failed gather must
+        // never block the send — the model then simply looks things up, which
+        // is exactly yesterday's behaviour.
+        try {
+            $nameOfW = [];
+            foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
+                                    FROM properties WHERE archived_at IS NULL')->fetchAll() as $pr) {
+                $nameOfW[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+            }
+            $fleetRows = [];
+            foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
+                                    FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll() as $pr) {
+                $pr['facts'] = [];
+                $fleetRows[] = $pr;
+            }
+            $todayIsoW = date('Y-m-d');
+            $gT = night_gather_today($todayIsoW);
+            $gM = night_gather_money($todayIsoW);
+            $payload['world'] = night_world(
+                night_tool_cottages($fleetRows)['cottages'],
+                night_tool_today($gT['rows'], $nameOfW, $todayIsoW, $gT['waiting']),
+                night_tool_money($gM['owed'], $gM['deps'], $nameOfW),
+            );
+        } catch (\Throwable $e) {
+        }
+        try {
+            $mems = night_ownerchat_memories(content_json('mac-chat-memory', []));
+            if ($mems) {
+                $payload['memories'] = $mems;
+            }
+        } catch (\Throwable $e) {
+        }
         $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
         $st->execute(['ownerchat', 0, '', mb_substr($text, 0, 500), json_encode($payload)]);
         // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
@@ -971,6 +1083,12 @@ route_actions([
                     'turns' => $turns,
                     'instr' => night_str(is_array($pl) ? ($pl['instr'] ?? '') : ''),
                 ];
+                if (is_array($pl['world'] ?? null)) {
+                    $one['ownerchat']['world'] = $pl['world'];
+                }
+                if (is_array($pl['memories'] ?? null) && $pl['memories']) {
+                    $one['ownerchat']['memories'] = night_ownerchat_memories($pl['memories']);
+                }
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as
                 // the enquiry brief: words and a first name, never contact
@@ -1392,24 +1510,8 @@ route_actions([
         }
         try {
             if ($tool === 'today') {
-                $st = db()->prepare('SELECT * FROM bookings WHERE check_in <= ? AND check_out >= ? ORDER BY check_in');
-                $st->execute([$today, $today]);
-                $rows = [];
-                foreach ($st->fetchAll() as $b) {
-                    try {
-                        $b['due'] = (float) booking_amount_due($b, 'balance')['due'];
-                    } catch (\Throwable $e) {
-                        $b['due'] = 0.0; // an unpriceable row states no figure at all
-                    }
-                    $rows[] = $b;
-                }
-                $waiting = 0;
-                try {
-                    $waiting = (int) db()->query('SELECT COUNT(*) FROM enquiries WHERE declined_at IS NULL')->fetchColumn();
-                } catch (\Throwable $e) {
-                    $waiting = 0;
-                }
-                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_today($rows, $nameOf, $today, $waiting)]);
+                $g = night_gather_today($today);
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_today($g['rows'], $nameOf, $today, $g['waiting'])]);
             }
             if ($tool === 'bookings') {
                 $from = night_tool_iso($args['from'] ?? '') ?: $today;
@@ -1500,37 +1602,10 @@ route_actions([
             }
             if ($tool === 'money') {
                 // Who still owes, judged by the SAME window rule the payask
-                // uses (booking_within_balance_window / checked out) — one
-                // derivation, so the chat and the hub can never disagree.
-                $st = db()->prepare('SELECT * FROM bookings WHERE check_out >= ? ORDER BY check_in LIMIT 80');
-                $st->execute([$today]);
-                $owed = [];
-                foreach ($st->fetchAll() as $b) {
-                    try {
-                        $due = (float) booking_amount_due($b, 'balance')['due'];
-                    } catch (\Throwable $e) {
-                        $due = 0.0;
-                    }
-                    if ($due <= 0.5) {
-                        continue;
-                    }
-                    $b['due'] = $due;
-                    $b['due_now'] = ((string) $b['check_out'] <= $today) || booking_within_balance_window($b);
-                    $owed[] = $b;
-                }
-                $st = db()->prepare("SELECT id, name, prop_key, check_out, hold_amount, agreed_booking_fee
-                                       FROM bookings WHERE hold_status = 'charged' AND check_out <= ? ORDER BY check_out DESC LIMIT 30");
-                $st->execute([$today]);
-                $deps = [];
-                foreach ($st->fetchAll() as $b) {
-                    $held = damages_collected($b) - damages_returned((int) $b['id']);
-                    if ($held <= 0.5) {
-                        continue;
-                    }
-                    $b['dep'] = $held;
-                    $deps[] = $b;
-                }
-                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_money($owed, $deps, $nameOf)]);
+                // uses — one gather shared with the world sheet, so a lookup
+                // and the grounding pack can never disagree.
+                $g = night_gather_money($today);
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_money($g['owed'], $g['deps'], $nameOf)]);
             }
             if ($tool === 'performance') {
                 $mStart = date('Y-m-01');

@@ -113,6 +113,54 @@ function chatActsIntro() {
         + 'cancellations, deleting) you cannot prepare \u2014 say so and point at the back office.';
 }
 
+// ── THE GROUNDING PACK, AS WORDS ────────────────────────────────────────────
+// The site hands over FACTS (world + memories ride the ask payload); this is
+// the ONE place they become prompt text, so the framing cannot drift between
+// callers. Facts are labelled as live-and-trusted; memories as the OWNER'S
+// own notes — never the model's. Returns '' when there is nothing to ground.
+function chatGroundText(world, memories) {
+    const parts = [];
+    const w = world && typeof world === 'object' ? world : null;
+    if (w) {
+        const lines = [];
+        const stays = function (rows) {
+            return (Array.isArray(rows) ? rows : []).map(function (r) {
+                return String(r.guest || '') + ' (' + String(r.cottage || '') + ')'
+                    + (r.still_to_pay ? ' — ' + r.still_to_pay + ' still to pay' : '');
+            }).join('; ');
+        };
+        if (Array.isArray(w.cottages) && w.cottages.length) {
+            lines.push('The cottages: ' + w.cottages.map(function (c) {
+                return String(c.cottage || '') + (c.sleeps ? ' (sleeps ' + c.sleeps + ')' : '')
+                    + (c.nightly ? ' — ' + c.nightly : '');
+            }).join(' • '));
+        }
+        const t = w.today && typeof w.today === 'object' ? w.today : {};
+        if (t.date) {
+            lines.push('Today (' + t.date + '): '
+                + ((t.arrivals || []).length ? 'arriving — ' + stays(t.arrivals) + '. ' : 'no arrivals. ')
+                + ((t.departures || []).length ? 'Leaving — ' + stays(t.departures) + '. ' : '')
+                + ((t.staying || []).length ? 'In residence — ' + stays(t.staying) + '. ' : '')
+                + (t.enquiries_waiting ? t.enquiries_waiting + ' enquiry(ies) waiting for a reply.' : 'No enquiries waiting.'));
+        }
+        const m = w.money && typeof w.money === 'object' ? w.money : null;
+        if (m) {
+            lines.push('Money: ' + (m.due_now_count
+                ? m.due_now_count + ' owing now, ' + String(m.due_now_total || '') + ' in total — ' + stays(m.due_now)
+                : 'nothing due right now')
+                + (m.deposits_to_return ? '. ' + m.deposits_to_return + ' damage deposit(s) ready to return.' : '.'));
+        }
+        if (lines.length) {
+            parts.push('Live facts from the owner\u2019s website, fresher than anything you remember \u2014 trust these:\n' + lines.join('\n'));
+        }
+    }
+    const mems = (Array.isArray(memories) ? memories : []).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    if (mems.length) {
+        parts.push('The owner asked you to always remember:\n' + mems.map(function (x) { return '\u2022 ' + x; }).join('\n'));
+    }
+    return parts.join('\n\n');
+}
+
 // The retry grammar: when a proposal fumbles its JSON, ONE re-ask constrained
 // to this shape makes the line valid by construction \u2014 the exact net the
 // TOOL protocol has had all along. Names only; the site still judges the args.
@@ -249,5 +297,5 @@ module.exports = {
     CHAT_TOOLS, CHAT_TOOL_NAMES, CHAT_TOOL_ROUNDS, CHAT_TOOL_ARG_MAX, CHAT_TOOL_RESULT_MAX,
     CHAT_ACTS, CHAT_ACT_NAMES,
     chatToolsIntro, chatToolCall, chatToolResultMsg, chatToolGrammar,
-    chatActsIntro, chatActCall, chatActGrammar,
+    chatActsIntro, chatActCall, chatActGrammar, chatGroundText,
 };

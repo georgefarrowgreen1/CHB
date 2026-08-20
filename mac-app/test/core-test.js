@@ -1892,6 +1892,19 @@ function fakeSite(handler) {
         ok('the act retry grammar names every action',
             tMod.CHAT_ACT_NAMES.every(function (n) { return tMod.chatActGrammar().indexOf('"' + n + '"') >= 0; })
             && /^root ::= "ACT /.test(tMod.chatActGrammar()));
+        // THE GROUNDING PACK, AS WORDS — facts labelled live-and-trusted,
+        // memories labelled as the OWNER'S; nothing to ground → ''.
+        const gtx = tMod.chatGroundText({
+            cottages: [{ cottage: 'Jollyboat', sleeps: '2 adults', nightly: '£130.00 a night' }],
+            today: { date: '2026-08-20', arrivals: [{ guest: 'Sarah Pemberton', cottage: 'Jollyboat', still_to_pay: '£340.50' }], departures: [], staying: [], enquiries_waiting: 1 },
+            money: { due_now_count: 1, due_now_total: '£340.50', due_now: [{ guest: 'Sarah Pemberton', cottage: 'Jollyboat', still_to_pay: '£340.50' }], deposits_to_return: 0 },
+        }, ['Never dogs — allergy promise']);
+        ok('the ground text carries the fleet, the day, the money and the memory — each labelled honestly',
+            /trust these/.test(gtx) && /Jollyboat \(sleeps 2 adults\)/.test(gtx)
+            && /Sarah Pemberton \(Jollyboat\) — £340.50 still to pay/.test(gtx)
+            && /owner asked you to always remember/.test(gtx) && /Never dogs/.test(gtx), gtx);
+        ok('nothing to ground is an empty string, never boilerplate',
+            tMod.chatGroundText(null, []) === '' && tMod.chatGroundText({}, null) === '');
     })();
 
     // The LOOP, through the real api with a scripted engine and a fake site.
@@ -2647,6 +2660,10 @@ function fakeSite(handler) {
                     asks: async function () {
                         return { ok: true, host: '', warm: false, asks: [{ id: 41, kind: 'ownerchat', ownerchat: {
                             turns: [{ who: 'you', text: 'block jollyboat 1-4 sep' }], instr: '',
+                            world: { cottages: [{ cottage: 'Jollyboat', sleeps: '2 adults' }],
+                                today: { date: '2026-08-20', arrivals: [{ guest: 'Sarah Pemberton', cottage: 'Jollyboat', still_to_pay: '£340.50' }], departures: [], staying: [], enquiries_waiting: 0 },
+                                money: { due_now_count: 1, due_now_total: '£340.50', due_now: [{ guest: 'Sarah Pemberton', cottage: 'Jollyboat', still_to_pay: '£340.50' }], deposits_to_return: 0 } },
+                            memories: ['Never dogs — allergy promise'],
                         } }] };
                     },
                     answerAsk: async function (id, text) { rec.answers.push(text); return { ok: true }; },
@@ -2663,6 +2680,13 @@ function fakeSite(handler) {
             && env41.text === 'I can hold those dates.'
             && /ACT \{"action"/.test(rec.sys[0]),
             JSON.stringify(env41));
+        // THE GROUNDING PACK reaches the system line: world facts and the
+        // owner's memory ride the ask and land labelled in the frame.
+        ok('the world sheet and the memory GROUND the system line',
+            /trust these/.test(rec.sys[0]) && /Jollyboat/.test(rec.sys[0])
+            && /£340\.50 still to pay/.test(rec.sys[0])
+            && /always remember/.test(rec.sys[0]) && /Never dogs/.test(rec.sys[0]),
+            rec.sys[0].slice(-300));
         // The LOCAL chat: never taught, so a local system line carries no
         // ACT protocol — the boundary a gate must own, not a hope.
         await api34e.chatSend('hello there');
