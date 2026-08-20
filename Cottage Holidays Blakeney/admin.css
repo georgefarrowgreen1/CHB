@@ -5858,6 +5858,19 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   vertical-align:-2px;animation:mcCaret .9s steps(1) infinite}
 @keyframes mcCaret{50%{opacity:0}}
 .mc-meta{align-self:flex-start;font-size:0.64rem;color:var(--text-muted);padding-left:4px}
+/* THE WELCOME CARRIES THE DAY — quiet days render nothing here. */
+.mc-day{border:1px solid var(--glass-border);border-radius:18px;padding:14px 15px;
+  background:color-mix(in srgb,var(--accent) 6%,transparent);margin:2px 4px 0}
+.mc-day-t{font:600 1rem var(--font-serif);color:var(--text-light);margin-bottom:8px}
+.mc-day-r{display:flex;align-items:center;gap:10px;padding:6px 0;
+  border-top:1px solid var(--glass-border);font-size:0.78rem;color:var(--text-light)}
+.mc-day-l{flex:1;min-width:0}
+.mc-day-go{border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:999px;
+  min-height:32px;padding:0 12px;cursor:pointer;flex:0 0 auto;
+  background:color-mix(in srgb,var(--accent) 9%,transparent);color:var(--text-light);
+  font:700 0.7rem var(--font-sans)}
+.mc-day-go:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.mc-day-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
 /* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
 .mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:16px;
   padding:12px 14px;background:color-mix(in srgb,var(--accent) 7%,transparent)}

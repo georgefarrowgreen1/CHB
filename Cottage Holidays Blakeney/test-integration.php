@@ -3372,6 +3372,39 @@ it_check('acts: a guessed enquiry id is refused at the door',
 $rootDb->exec('DELETE FROM enquiries WHERE id = ' . $wcEnqId);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 
+// ── LIVE GUEST DRAFTS — a guest message files a 'chat' ask on the spot ──
+// This suite has burned many 'answer' units by now — clear the toll so the
+// drafts round trip is judged on its own behaviour, not the meter.
+$rootDb->exec('DELETE FROM login_attempts');
+$wcTok = str_repeat('d', 32);
+$r = http($guest, 'POST', '/messages.php', ['action' => 'send', 'token' => $wcTok,
+    'body' => 'Is Jollyboat dog-free? My son has allergies.', 'name' => 'Rachel Verney', 'email' => 'rv2@example.com']);
+it_check('drafts: a guest message stores', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$wcDrow = $rootDb->query("SELECT id, entity_id FROM night_asks WHERE kind = 'chat' AND status = 'open' ORDER BY id DESC LIMIT 1")->fetch();
+$wcOpenN = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE kind = 'chat' AND status = 'open'")->fetchColumn();
+it_check('drafts: …and files ONE open chat ask for its thread', $wcDrow !== false && $wcOpenN === 1);
+$wcDtid = (int) $wcDrow['entity_id'];
+http($guest, 'POST', '/messages.php', ['action' => 'send', 'token' => $wcTok, 'body' => 'Also — parking?']);
+$wcOpenN = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE kind = 'chat' AND status = 'open'")->fetchColumn();
+it_check('drafts: a second message SUPERSEDES — one conversation, one ask', $wcOpenN === 1);
+$wcDid2 = (int) $rootDb->query("SELECT id FROM night_asks WHERE kind = 'chat' AND status = 'open' ORDER BY id DESC LIMIT 1")->fetchColumn();
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcDid2,
+    'text' => 'Hello Rachel — yes, completely dog-free, and there is parking right outside.']);
+it_check('drafts: the Mac answers the filed ask', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_draft', 'thread' => $wcDtid]);
+it_check('drafts: opening the thread hands the owner the live draft',
+    strpos((string) ($r['json']['draft'] ?? ''), 'dog-free') !== false, $r['raw']);
+// The read is idempotent — closing and reopening the thread keeps the draft.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_draft', 'thread' => $wcDtid]);
+it_check('drafts: the draft survives a reopen (an unclaimed read)',
+    strpos((string) ($r['json']['draft'] ?? ''), 'dog-free') !== false, $r['raw']);
+// Once the OWNER has replied, the draft answers a question already handled —
+// it is withheld, never offered against a conversation that moved on.
+http($admin, 'POST', '/messages.php', ['action' => 'send', 'thread_id' => $wcDtid, 'body' => 'All sorted by phone.']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_draft', 'thread' => $wcDtid]);
+it_check('drafts: a thread the owner has since replied to offers NOTHING', ($r['json']['draft'] ?? 'x') === '', $r['raw']);
+$rootDb->exec("DELETE FROM night_asks WHERE kind = 'chat'");
+
 // The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
@@ -3382,6 +3415,11 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' =>
 it_check('…and the web chat\'s send', $r['code'] === 409, $r['raw']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_file', 'secret' => $SECRET, 'ref' => 'uploads/chat-photo-0123456789ab.jpg']);
 it_check('…and the photo door', $r['code'] === 409, $r['raw']);
+http($guest, 'POST', '/messages.php', ['action' => 'send', 'token' => str_repeat('e', 32),
+    'body' => 'anyone there?', 'name' => 'Late Larry', 'email' => 'll@example.com']);
+$wcOffAsks = (int) $rootDb->query("SELECT COUNT(*) FROM night_asks WHERE kind = 'chat' AND status = 'open'")->fetchColumn();
+it_check('…and a guest message files NO draft ask while the switch is off — the message itself still stores',
+    $wcOffAsks === 0);
 $rootDb->exec('DELETE FROM night_asks');
 $rootDb->exec('DELETE FROM enquiries');
 

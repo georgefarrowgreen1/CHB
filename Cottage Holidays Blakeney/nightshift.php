@@ -779,6 +779,36 @@ route_actions([
         content_set_scalar('mac-chat', json_encode(night_ownerchat_thread($t)));
         json_out(['ok' => true, 'verdict' => $verdict]);
     },
+    // ---- the owner opens a guest thread: is a live draft waiting? ---
+    // messages.php files a 'chat' ask the moment a guest speaks; the Mac's
+    // sweep answers it within seconds. This hands the freshest answer over —
+    // an idempotent READ, deliberately unclaimed, so closing the thread and
+    // reopening it does not lose the draft. Two honesty guards: a draft older
+    // than two hours is not offered (the conversation has moved on), and a
+    // thread whose NEWEST message is the owner's gets nothing — a draft
+    // written before their own reply would answer a question already handled.
+    'chat_draft' => function ($in) {
+        require_admin();
+        $tid = (int) ($in['thread'] ?? 0);
+        if ($tid <= 0) {
+            json_out(['ok' => true, 'draft' => '']);
+        }
+        try {
+            $lm = db()->prepare('SELECT sender_role FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
+            $lm->execute([$tid]);
+            if ((string) $lm->fetchColumn() !== 'guest') {
+                json_out(['ok' => true, 'draft' => '']);
+            }
+            $st = db()->prepare("SELECT answer FROM night_asks WHERE kind = 'chat' AND entity_id = ?
+                                    AND status IN ('answered', 'collected')
+                                    AND answered_at > DATE_SUB(NOW(), INTERVAL 2 HOUR)
+                                  ORDER BY id DESC LIMIT 1");
+            $st->execute([$tid]);
+            json_out(['ok' => true, 'draft' => night_str($st->fetchColumn() ?: '')]);
+        } catch (\Throwable $e) {
+            json_out(['ok' => true, 'draft' => '']); // no table, no draft — never an error
+        }
+    },
     'chat_instr' => function ($in) {
         require_admin();
         $t = night_ownerchat_thread(content_json('mac-chat', []));

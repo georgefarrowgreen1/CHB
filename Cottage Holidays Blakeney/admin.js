@@ -6630,6 +6630,23 @@ function cmdkBuildResults(ql) {
                     run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
                 }];
                 ask = []; // folded into the fallback row's chips
+                // THE HANDOFF — search is instant and deterministic, and this
+                // is the moment it has honestly shrugged. One row carries the
+                // question to the AI chat (the query travels, nothing is
+                // retyped); the row only exists while the switch is on, so a
+                // closed door is never offered. The miss is STILL filed on
+                // the way out (nav's closeCmdK hook), so the teach loop
+                // loses nothing to the handoff.
+                if (chbMacDraftReady()) {
+                    // wrap/chips match the fallback row's literal shape — the
+                    // array's inferred type comes from element 0 (typecheck).
+                    results.push({
+                        type: 'answer', id: 'ask-mac',
+                        label: 'Ask your Mac — it can look at the whole business',
+                        sub: 'Opens AI chat with this question', wrap: false, chips: [],
+                        run: () => { chbAskMacHandoff(ql); },
+                    });
+                }
                 // THE RECOVERY TIER — every on-device tier abstained, so ask the
                 // Mac's model to PLACE the phrasing on the site's own menu of
                 // canonical questions (never to answer: the deterministic engine
@@ -12039,9 +12056,39 @@ async function mcActDismiss(ix) {
     if (!mcActAt(ix)) return;
     await mcActVerdict(ix, 'dismissed');
 }
+// THE WELCOME CARRIES THE DAY — composed on the phone from chbDuties(), the
+// ONE decision about what needs the owner, so this card and Today's strip can
+// never disagree (and it costs no request and no Mac: correct with the model
+// asleep, never a guess about money). THE RESTRAINT IS THE DESIGN: a quiet
+// day renders NOTHING here — no card, no "all clear" filler — because a
+// greeting that always speaks trains the owner to ignore the one morning it
+// matters. Duties are PLAIN TEXT escaped at this boundary (the chbDuties
+// contract), and each chip is the duty's own run() — the exact route the
+// Needs-you strip gives it. Nothing fires on render.
+let __mcDayDuties = [];
+function mcDayGo(i) {
+    const d = __mcDayDuties[Number(i)];
+    if (d && typeof d.run === 'function') d.run();
+}
+function mcDayHtml() {
+    let duties = [];
+    try { duties = (typeof chbDuties === 'function' ? chbDuties() : []) || []; } catch (e) { duties = []; }
+    __mcDayDuties = duties.slice(0, 3);
+    if (!__mcDayDuties.length) return '';
+    const hr = new Date().getHours();
+    const greet = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
+    const rows = __mcDayDuties.map((d, i) => `<div class="mc-day-r"><span class="mc-day-l">${escapeHtml(d.label || '')}</span>`
+        + (d.act ? `<button type="button" class="mc-day-go" data-act="mcDayGo" data-arg="${i}">${escapeHtml(d.act)} ›</button>` : '')
+        + `</div>`).join('');
+    return `<div class="mc-day">
+        <div class="mc-day-t">${greet} — the day needs you ${__mcDayDuties.length === 1 ? 'once' : chbSayN(__mcDayDuties.length) + ' times'}</div>
+        ${rows}
+        <div class="mc-day-note">The same list as Today's strip — or just ask about any of it.</div>
+    </div>`;
+}
 // The welcome card — the empty state STARTS you off instead of lecturing.
 function mcHelloHtml() {
-    return `<div class="mc-hello">
+    return mcDayHtml() + `<div class="mc-hello">
         <div class="mc-hello-spark" aria-hidden="true">✦</div>
         <h2>Ask your Mac anything</h2>
         <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries, the cottages, the money and the books as you talk — and prepare actions for you to confirm.</p>
@@ -12149,11 +12196,31 @@ async function openAiChat() {
     // element, the suite's page-error check caught it).
     nav('view-aichat');
 }
+// SEARCH HANDS OFF: the dead-end row carries the question here whole. It
+// must wait for renderMacChat's PAINT (dataset.ready) — a send fired
+// mid-render is wiped by the thread's own innerHTML — and gives up quietly
+// after a few seconds rather than sending into a page that never opened.
+function chbAskMacHandoff(q) {
+    try { closeCmdK(); } catch (e) {}
+    openAiChat();
+    const t0 = Date.now();
+    (function arm() {
+        const log = document.getElementById('mc-log');
+        const box = /** @type {HTMLInputElement|null} */ (document.getElementById('mc-in'));
+        if (log && log.dataset.ready === '1' && box && document.querySelector('#view-aichat.active') && !__mcBusy) {
+            box.value = String(q || '');
+            mcSend();
+            return;
+        }
+        if (Date.now() - t0 < 5000) setTimeout(arm, 120);
+    })();
+}
 async function renderMacChat() {
     const log = document.getElementById('mc-log');
     const pres = document.getElementById('ac-pres');
     if (!log || !pres) return;
     __mcStamp++;
+    delete log.dataset.ready;
     log.innerHTML = `<div class="settings-note">Fetching the conversation…</div>`;
     let r = null;
     try { r = await apiPost('nightshift.php', { action: 'chat_thread' }); } catch (e) { r = null; }
@@ -12169,6 +12236,7 @@ async function renderMacChat() {
         presNow.outerHTML = mcPresenceHtml(r).replace('class="mc-pres', 'id="ac-pres" class="mc-pres');
     }
     log.innerHTML = (r.msgs || []).map(mcMsgHtml).join('') || mcHelloHtml();
+    log.dataset.ready = '1'; // the handoff (chbAskMacHandoff) waits for this
     log.scrollTop = log.scrollHeight;
     // Enter sends — bound ONCE on the persistent composer, not per render.
     const box = document.getElementById('mc-in');
@@ -12534,10 +12602,46 @@ function chbChatMacBtnSync() {
     btn.hidden = !(document.body.classList.contains('owner-mode')
         && chbMacDraftReady() && chbMacPresence().listening);
 }
+// ── THE LIVE DRAFT OFFER. messages.php files a 'chat' ask the moment a guest
+// speaks, so by the time the owner opens the thread the Mac's reply is
+// usually waiting. This fetches it ON OPEN (once per thread per open — the
+// observer fires on every class flicker) and lays it into an EMPTY reply box
+// under a toast; a box the owner has typed in is NEVER clobbered — the draft
+// is offered instead (the bank-details rule, draftChatOnMac's own shape).
+// Sending stays the owner's: nothing here posts anything anywhere.
+let __mtDraftTid = 0;
+async function mtDraftOffer() {
+    const modal = document.getElementById('messages-modal');
+    const open = !!(modal && modal.classList.contains('open'));
+    if (!open) { __mtDraftTid = 0; return; }
+    if (!document.body.classList.contains('owner-mode') || !chbMacDraftReady()) return;
+    const tid = parseInt(String(/** @type {any} */ (window).__msgThreadId || ''), 10) || 0;
+    if (!tid || tid === __mtDraftTid) return;
+    __mtDraftTid = tid;
+    let r = null;
+    try { r = await apiPost('nightshift.php', { action: 'chat_draft', thread: tid }); } catch (e) { r = null; }
+    if (!r || !r.draft) return;
+    // The owner may have moved threads (or closed) while the fetch ran.
+    if (parseInt(String(/** @type {any} */ (window).__msgThreadId || ''), 10) !== tid) return;
+    const box = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
+    if (!box) return;
+    const text = String(r.draft);
+    if (!box.value.trim()) {
+        box.value = text;
+        try { toast('Your Mac drafted this reply — read it before sending.'); } catch (e) {}
+        return;
+    }
+    try {
+        toast('Your Mac drafted a reply', '', { label: 'Use it', fn: () => {
+            const b = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('messages-modal-input'));
+            if (b) { b.value = text; b.focus(); }
+        } });
+    } catch (e) {}
+}
 (function () {
     const modal = document.getElementById('messages-modal');
     if (!modal || typeof MutationObserver === 'undefined') return;
-    new MutationObserver(chbChatMacBtnSync).observe(modal, { attributes: true, attributeFilter: ['class', 'style'] });
+    new MutationObserver(() => { chbChatMacBtnSync(); mtDraftOffer(); }).observe(modal, { attributes: true, attributeFilter: ['class', 'style'] });
 })();
 
 function slDismissGuestQ(q) {
