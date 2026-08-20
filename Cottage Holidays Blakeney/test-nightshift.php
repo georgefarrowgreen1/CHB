@@ -918,6 +918,56 @@ $sr = night_act_resolve(['action' => 'send_enquiry_reply', 'args' => ['enquiry' 
 nsk('a send_enquiry_reply carries its id, and a guessed nothing is refused',
     $sr['problem'] === '' && $sr['act']['enquiry'] === 31
     && night_act_resolve(['action' => 'send_enquiry_reply', 'args' => []], $nm, '2026-08-20')['problem'] !== '');
+// THE CAPABILITY THREE. An expense is a RECORD of money already spent (that
+// is why it may join while refunds stay refused by name): the future is not
+// recordable, the amount is bounded, the category required.
+$ex1 = night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Cleaning', 'amount' => 45.5, 'note' => 'changeover deep clean', 'date' => '2026-08-18']], $nm, '2026-08-20');
+nsk('an add_expense resolves whole — category, rounded amount, note, dated when spent',
+    $ex1['problem'] === '' && $ex1['act']['category'] === 'Cleaning' && $ex1['act']['amount'] === 45.5
+    && $ex1['act']['note'] === 'changeover deep clean' && $ex1['act']['date'] === '2026-08-18', json_encode($ex1));
+nsk('…and a dateless expense stores none — the executor dates it today',
+    night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Fees', 'amount' => 12]], $nm, '2026-08-20')['problem'] === ''
+    && !isset(night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Fees', 'amount' => 12]], $nm, '2026-08-20')['act']['date']));
+nsk('…and its refusals: no category, £0, over the ceiling, a FUTURE date (a plan is not a fact)',
+    night_act_resolve(['action' => 'add_expense', 'args' => ['amount' => 45]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Fees', 'amount' => 0]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Fees', 'amount' => 99999]], $nm, '2026-08-20')['problem'] !== ''
+    && strpos(night_act_resolve(['action' => 'add_expense', 'args' => ['category' => 'Fees', 'amount' => 12, 'date' => '2026-09-01']], $nm, '2026-08-20')['problem'], 'not happened yet') !== false);
+nsk('send_arrival_info and record_payment each carry a looked-up booking ref, and a guess is refused',
+    night_act_resolve(['action' => 'send_arrival_info', 'args' => ['booking' => 7]], $nm, '2026-08-20')['act']['booking'] === 7
+    && night_act_resolve(['action' => 'record_payment', 'args' => ['booking' => 9]], $nm, '2026-08-20')['act']['booking'] === 9
+    && night_act_resolve(['action' => 'send_arrival_info', 'args' => []], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'record_payment', 'args' => ['booking' => 0]], $nm, '2026-08-20')['problem'] !== '');
+nsk('the stored-form guard holds on all three — an extra field is refused',
+    night_act_problem(['kind' => 'add_expense', 'category' => 'Fees', 'amount' => 12, 'payee' => 'x']) !== ''
+    && night_act_problem(['kind' => 'send_arrival_info', 'booking' => 7, 'email' => 'x@y.z']) !== ''
+    && night_act_problem(['kind' => 'record_payment', 'booking' => 7, 'amount' => 100]) !== '');
+
+// ── THE COAST TOOL — tides + weather for one day, formatted at the source ──
+nsk('coast: today needs no arguments; a named day must be real, future and inside the horizon',
+    night_tool_problem('coast', [], '2026-08-20') === ''
+    && night_tool_problem('coast', ['day' => '2026-08-22'], '2026-08-20') === ''
+    && night_tool_problem('coast', ['day' => '2026-02-31'], '2026-08-20') !== ''
+    && night_tool_problem('coast', ['day' => '2026-08-19'], '2026-08-20') !== ''
+    && night_tool_problem('coast', ['day' => '2026-09-20'], '2026-08-20') !== '');
+$cst = night_tool_coast('2026-08-22',
+    ['ok' => true, 'extremes' => [
+        ['time' => '2026-08-22T05:41+0000', 'type' => 'High'],   // 06:41 BST
+        ['time' => '2026-08-22T11:55+0000', 'type' => 'Low'],
+        ['time' => '2026-08-22T18:08+0000', 'type' => 'High'],
+        ['time' => '2026-08-23T00:30+0000', 'type' => 'Low'],    // the NEXT day — filtered
+    ]],
+    ['ok' => true, 'days' => [['date' => '2026-08-22', 'summary' => 'sunny spells', 'tmax' => 18, 'tmin' => 11, 'gust' => 34, 'rain' => 0.2]]],
+    ['Wren Marsh', '']);
+nsk('coast: high/low water in the QUAY\'s clock (UTC+1 in summer), the next day filtered out',
+    ($cst['tide'] ?? '') === 'High water 06:41 and 19:08 · low 12:55', json_encode($cst));
+nsk('coast: the weather is one formatted line — gusts named at 30mph+, sub-1mm rain left unsaid',
+    ($cst['weather'] ?? '') === 'sunny spells · 18°C (down to 11°C) · gusts to 34mph', json_encode($cst));
+nsk('coast: the arrivals cross-reference travels, blanks dropped', $cst['arrivals'] === ['Wren Marsh']);
+$cst2 = night_tool_coast('2026-08-22', ['ok' => false, 'reason' => 'no_key'], ['ok' => true, 'days' => []], []);
+nsk('coast: no tide key and a passed horizon are honest ABSENCES with a sentence each, never guesses',
+    !isset($cst2['tide']) && strpos((string) ($cst2['tide_note'] ?? ''), 'No tide key') !== false
+    && !isset($cst2['weather']) && ($cst2['weather_note'] ?? '') !== '');
 
 // ── THE GROUNDING PACK + MEMORY ──────────────────────────────────────────
 $wldToday = ['date' => '2026-08-20',

@@ -42,6 +42,10 @@ const CHAT_TOOLS = {
     money: { args: [], req: [] },
     performance: { args: [], req: [] },
     expenses: { args: [], req: [] },
+    // The coast — tides and weather at Blakeney for one day, with that day's
+    // arrivals cross-referenced. The site formats every figure; the two
+    // things a Blakeney owner is asked about most.
+    coast: { args: ['day'], req: [] },
 };
 const CHAT_TOOL_NAMES = Object.keys(CHAT_TOOLS);
 // Lookups per message. Three answers most questions twice over; a model that
@@ -71,6 +75,9 @@ function chatToolsIntro(todayIso) {
         + 'the damage deposits ready to return.\n'
         + '\u2022 performance \u2014 args {}: this month against last \u2014 stays, nights and revenue from direct bookings.\n'
         + '\u2022 expenses \u2014 args {}: this tax year\u2019s logged expenses, total and by category.\n'
+        + '\u2022 coast \u2014 args {"day":"YYYY-MM-DD"} (optional, default today): tide times and the weather '
+        + 'at Blakeney for that day, plus who arrives then. Use it for anything about tides, the sea, '
+        + 'walks, or what the weather is doing.\n'
         + 'Quote figures exactly as the results state them \u2014 never calculate or invent money. '
         + 'If a lookup fails, say so plainly.';
 }
@@ -88,6 +95,11 @@ const CHAT_ACTS = {
     request_payment: { args: ['booking'], req: ['booking'] },
     add_booking: { args: ['cottage', 'check_in', 'check_out', 'name', 'adults', 'children', 'price'], req: ['cottage', 'check_in', 'check_out', 'name', 'adults'] },
     send_enquiry_reply: { args: ['enquiry'], req: ['enquiry'] },
+    // A RECORD of money already spent — never money moving out, which is why
+    // it may join while refunds stay refused by name.
+    add_expense: { args: ['category', 'amount', 'note', 'date'], req: ['category', 'amount'] },
+    send_arrival_info: { args: ['booking'], req: ['booking'] },
+    record_payment: { args: ['booking'], req: ['booking'] },
 };
 const CHAT_ACT_NAMES = Object.keys(CHAT_ACTS);
 
@@ -108,6 +120,13 @@ function chatActsIntro() {
         + 'says someone has booked or asks you to book someone in.\n'
         + '\u2022 send_enquiry_reply \u2014 args {"enquiry":<id>}: open the drafted reply to a waiting enquiry, '
         + 'ready for the owner to read and send. The id MUST be an `id` from the enquiries lookup \u2014 never a guess.\n'
+        + '\u2022 add_expense \u2014 args {"category":"Cleaning","amount":45,"note":"...","date":"YYYY-MM-DD"} '
+        + '(note and date optional; the date is when the money was spent, never a future day): '
+        + 'record a business expense the owner tells you about.\n'
+        + '\u2022 send_arrival_info \u2014 args {"booking":<ref>}: email a guest their arrival details '
+        + '(directions, times). The ref MUST be a `ref` from a lookup result \u2014 never a guess.\n'
+        + '\u2022 record_payment \u2014 args {"booking":<ref>}: open the record-a-payment form for a booking, '
+        + 'ready for the owner to enter what was received \u2014 you never state the amount.\n'
         + 'Rules: at most ONE action per reply; say in plain words what the card will do; NEVER claim '
         + 'the action is done \u2014 the owner confirms it on their phone. Anything else (refunds, '
         + 'cancellations, deleting) you cannot prepare \u2014 say so and point at the back office.';

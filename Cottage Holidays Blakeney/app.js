@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 558;
+const ADMIN_BUNDLE_V = 559;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 226;
+const ADMIN_CSS_V = 227;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -6963,17 +6963,17 @@ function depositInvoiceStatus(depAmt, holdStatus, returnedAmt, settledDate) {
 // Generate and download a PDF invoice for one booking
 let guestBookingsCache = []; // {propKey, booking, address} for the logged-in guest
 
-async function sendArrivalInfo(bookingId) {
+async function sendArrivalInfo(bookingId, via) {
     const b = findBookingById(bookingId);
     if (!b) {
         glassAlert("Couldn't find that booking to email.");
-        return;
+        return false;
     }
     if (!b.email) {
         glassAlert('This booking has no guest email on file.');
-        return;
+        return false;
     }
-    await previewAndSendEmail({
+    return await previewAndSendEmail({
         id: b.dbId,
         kind: 'email.arrival',
         to: b.email,
@@ -6981,7 +6981,9 @@ async function sendArrivalInfo(bookingId) {
         fallbackConfirm: `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
         doSend: async () => {
             try {
-                await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
+                const arrBody = { action: 'send_arrival', id: b.dbId };
+                if (via) arrBody.via = via; // an AI card's send is attributed in the log
+                await apiPost('bookings.php', arrBody);
                 toast(`Arrival info sent to ${b.email}.`);
                 await loadData();
                 renderCalendar();
@@ -18105,7 +18107,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'aichat13';
+    const BUILD = 'aichat14';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
