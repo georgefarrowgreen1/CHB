@@ -830,6 +830,75 @@ nsk('a stopped answer STAYS stopped through the round trip, and only a mac messa
     && !isset($sp['msgs'][1]['stopped'])
     && !isset($sp['msgs'][2]['stopped']), json_encode($sp['msgs']));
 
+// ── §26 THE WIDER READS AND THE PROPOSED ACTIONS ─────────────────────────
+echo "\n== §26 tier 1 reads + tier 2 proposals ==\n";
+$nm = ['jollyboat' => 'Jollyboat', '21a' => '21A Westgate Street', 'pimpernel' => 'Pimpernel'];
+nsk('the whitelist gained the three whole-business reads',
+    in_array('money', NIGHT_TOOLS, true) && in_array('performance', NIGHT_TOOLS, true)
+    && in_array('expenses', NIGHT_TOOLS, true)
+    && night_tool_problem('money', [], '2026-08-20') === '');
+$mn = night_tool_money(
+    [['id' => 7, 'name' => 'Sarah Pemberton', 'prop_key' => 'jollyboat', 'check_in' => '2026-08-22', 'check_out' => '2026-08-25', 'due' => 340.5, 'due_now' => true, 'email' => 'leak@x.com'],
+     ['id' => 8, 'name' => 'Dan Rowe', 'prop_key' => '21a', 'check_in' => '2026-10-01', 'check_out' => '2026-10-04', 'due' => 200.0, 'due_now' => false]],
+    [['id' => 5, 'name' => 'Eve Hart', 'prop_key' => 'pimpernel', 'check_out' => '2026-08-18', 'dep' => 75.0]],
+    $nm,
+);
+nsk('money splits due-now from later, carries the booking REF, and NO contact detail travels',
+    ($mn['due_now'][0]['ref'] ?? 0) === 7 && ($mn['due_now'][0]['still_to_pay'] ?? '') === '£340.50'
+    && ($mn['due_later'][0]['guest'] ?? '') === 'Dan Rowe'
+    && ($mn['deposits_to_return'][0]['deposit'] ?? '') === '£75.00'
+    && strpos(json_encode($mn), 'leak@x.com') === false, json_encode($mn));
+$pf = night_tool_performance(
+    [['check_in' => '2026-08-03', 'check_out' => '2026-08-07', 'revenue' => 500.0]],
+    [['check_in' => '2026-07-10', 'check_out' => '2026-07-12', 'revenue' => 200.0],
+     ['check_in' => '2026-07-20', 'check_out' => '2026-07-23', 'revenue' => 300.0]],
+    'August 2026', 'July 2026',
+);
+nsk('performance sums stays, nights and money — and STATES its direct-only frame',
+    $pf['this_month']['nights'] === 4 && $pf['this_month']['revenue'] === '£500.00'
+    && $pf['last_month']['stays'] === 2 && $pf['last_month']['nights'] === 5
+    && strpos($pf['frame'], 'platform stays') !== false, json_encode($pf));
+$ex = night_tool_expenses([
+    ['amount' => 60, 'category' => 'Cleaning'], ['amount' => 40, 'category' => 'Cleaning'],
+    ['amount' => 25, 'category' => 'Repairs'],
+], '2026/27');
+nsk('expenses total by category, biggest first',
+    $ex['total'] === '£125.00' && $ex['by_category'][0]['category'] === 'Cleaning'
+    && $ex['by_category'][0]['total'] === '£100.00' && $ex['logged'] === 3, json_encode($ex));
+
+// THE PROPOSALS. The whitelist is closed, the past is not proposable, a
+// cottage resolves exactly as the availability tool resolves one, and money
+// OUT is refused BY NAME — its absence is a decision, not an oversight.
+$ok1 = night_act_resolve(['action' => 'block_dates', 'args' => ['cottage' => 'jolly', 'from' => '2026-09-01', 'to' => '2026-09-04', 'note' => 'boiler service']], $nm, '2026-08-20');
+nsk('a block resolves its cottage to the key and stores normalised',
+    $ok1['problem'] === '' && $ok1['act']['prop'] === 'jollyboat' && $ok1['act']['cottage'] === 'Jollyboat'
+    && $ok1['act']['from'] === '2026-09-01' && $ok1['act']['note'] === 'boiler service', json_encode($ok1));
+$ok2 = night_act_resolve(['action' => 'price_override', 'args' => ['cottage' => 'Pimpernel', 'from' => '2026-09-01', 'to' => '2026-09-08', 'rate' => 150]], $nm, '2026-08-20');
+nsk('a price override carries its bounded rate', $ok2['problem'] === '' && $ok2['act']['rate'] === 150.0, json_encode($ok2));
+nsk('the refusals, each in a sentence: unknown kind (refund BY NAME), ambiguous cottage, the past, a silly rate, a guessed booking',
+    night_act_resolve(['action' => 'refund', 'args' => []], $nm, '2026-08-20')['problem'] !== ''
+    && strpos(night_act_resolve(['action' => 'refund', 'args' => []], $nm, '2026-08-20')['problem'], 'moves money out') !== false
+    && strpos(night_act_resolve(['action' => 'block_dates', 'args' => ['cottage' => 'e', 'from' => '2026-09-01', 'to' => '2026-09-02']], $nm, '2026-08-20')['problem'], 'More than one') !== false
+    && night_act_resolve(['action' => 'block_dates', 'args' => ['cottage' => 'jolly', 'from' => '2026-08-01', 'to' => '2026-08-22']], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'price_override', 'args' => ['cottage' => 'jolly', 'from' => '2026-09-01', 'to' => '2026-09-02', 'rate' => 5]], $nm, '2026-08-20')['problem'] !== ''
+    && night_act_resolve(['action' => 'request_payment', 'args' => []], $nm, '2026-08-20')['problem'] !== '');
+nsk('the stored-form guard: an extra field is refused, and a verdict is done or dismissed',
+    night_act_problem(['kind' => 'block_dates', 'prop' => 'jollyboat', 'cottage' => 'J', 'from' => '2026-09-01', 'to' => '2026-09-02', 'email' => 'x@y.z']) !== ''
+    && night_act_problem(['kind' => 'request_payment', 'booking' => 7, 'done' => 'maybe']) !== ''
+    && night_act_problem(['kind' => 'request_payment', 'booking' => 7, 'done' => 'done', 'doneAt' => '14:22']) === '');
+// The sanitiser is the SECOND guard: a valid act (verdict included) survives
+// the round trip on a mac message; junk is dropped; a you-message never
+// carries one however the row was assembled.
+$ta = night_ownerchat_thread(night_ownerchat_thread(['msgs' => [
+    ['who' => 'mac', 'text' => 'I can block that.', 'act' => ['kind' => 'block_dates', 'prop' => 'jollyboat', 'cottage' => 'Jollyboat', 'from' => '2026-09-01', 'to' => '2026-09-04', 'done' => 'done', 'doneAt' => '14:22']],
+    ['who' => 'mac', 'text' => 'And this.', 'act' => ['kind' => 'refund', 'amount' => 999]],
+    ['who' => 'you', 'text' => 'block it', 'act' => ['kind' => 'block_dates', 'prop' => 'jollyboat', 'cottage' => 'J', 'from' => '2026-09-01', 'to' => '2026-09-02']],
+]]));
+nsk('a valid act survives the sanitiser twice with its verdict; junk and you-side acts are dropped',
+    ($ta['msgs'][0]['act']['done'] ?? '') === 'done'
+    && !isset($ta['msgs'][1]['act'])
+    && !isset($ta['msgs'][2]['act']), json_encode($ta['msgs']));
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

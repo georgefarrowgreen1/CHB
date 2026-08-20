@@ -184,10 +184,17 @@ function makeApi(deps) {
     // a watcher can discard one that turns out to be a tool call,
     // { tool }/{ tool_done } around each lookup. The RETURN VALUE carries
     // the whole answer — events are a watcher's luxury, never the record.
-    async function chatLoop(eng, turns, instr, model, ev, signal, img) {
+    async function chatLoop(eng, turns, instr, model, ev, signal, img, acts) {
         let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
         const site = toolsOn ? siteFor() : null;
         let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
+        // The ACT protocol is taught ONLY where a confirm card can render —
+        // the web chat. The local screen never learns it, so a local reply
+        // can never carry a proposal nothing will show (gated).
+        const actsOn = !!acts && toolsOn;
+        if (actsOn) {
+            extra += (extra ? '\n\n' : '') + chatToolsMod.chatActsIntro();
+        }
         // The STANDING INSTRUCTION joins the system content — typed by
         // the owner or absent, never written by the app.
         if (instr) {
@@ -300,8 +307,20 @@ function makeApi(deps) {
                 { role: 'user', content: resultBody },
             ]);
         }
+        // The PROPOSAL, parsed off the final answer: the ACT line is always
+        // stripped from the words (a protocol line never paints), a bad one
+        // is dropped and NAMED — never repaired, the guard.js rule.
+        let act = null;
+        let actBad = null;
+        if (actsOn) {
+            const ap = chatToolsMod.chatActCall(answer);
+            answer = ap.text;
+            act = ap.act;
+            actBad = ap.bad;
+        }
         return {
             ok: true, answer: answer, think: thinkAll.trim(), used: used,
+            act: act, actBad: actBad,
             stopped: stopped, dropped: dropped, ms: r.ms, tokensPerSec: r.tokensPerSec,
             ctxUsed: (r.promptTokens || 0) + (r.tokens || 0),
         };
@@ -816,7 +835,10 @@ function makeApi(deps) {
                                 if (e2.t === 'round' || e2.t === 'tool') { round = ''; }
                                 if (e2.t === 'think') { think += e2.s || ''; }
                                 if (e2.t === 'tok') { round += e2.s || ''; }
-                                const show = /^\s*TOOL/.test(round) ? '' : round;
+                                // TOOL rounds never paint; an ACT line being
+                                // typed is a protocol line too — the words
+                                // before it stream, the line itself never does.
+                                const show = /^\s*TOOL/.test(round) ? '' : round.split(/\n[ \t]*ACT\b/)[0];
                                 const tms = now().getTime();
                                 if (postPartial && (show || think) && tms - lastPost >= 1500) {
                                     lastPost = tms;
@@ -830,7 +852,7 @@ function makeApi(deps) {
                                         }, function () { /* a blip is never a stop */ });
                                     }
                                 }
-                            }, oah.signal, imgUri);
+                            }, oah.signal, imgUri, true);
                             if (oah.signal.aborted) {
                                 // The row is expired at the site; posting the
                                 // remainder would only be refused as too late.
@@ -839,16 +861,24 @@ function makeApi(deps) {
                             if (!res.ok) {
                                 return { ok: false, say: res.say };
                             }
+                            if (res.actBad) {
+                                askLog.push({ at: nightMod.hhmm(), say: 'the web chat proposed an action it fumbled — dropped (' + res.actBad + ')', level: 'info' });
+                            }
+                            const env = {
+                                text: res.answer,
+                                think: res.think.slice(0, chatMod.CHAT_THINK_CHARS),
+                                used: res.used,
+                                ms: res.ms,
+                                tps: res.tokensPerSec,
+                            };
+                            // The PROPOSAL rides as data — the site validates
+                            // it at its own door and the phone renders the
+                            // confirm card. This Mac can execute nothing.
+                            if (res.act) { env.act = res.act; }
                             return {
                                 ok: true,
                                 model: model,
-                                text: JSON.stringify({
-                                    text: res.answer,
-                                    think: res.think.slice(0, chatMod.CHAT_THINK_CHARS),
-                                    used: res.used,
-                                    ms: res.ms,
-                                    tps: res.tokensPerSec,
-                                }),
+                                text: JSON.stringify(env),
                             };
                         } finally {
                             chatBusy = false;

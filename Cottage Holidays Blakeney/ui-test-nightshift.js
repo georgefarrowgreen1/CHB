@@ -938,6 +938,79 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(stEarly.macs === stEarly.before && stEarly.say && stEarly.label === 'Send',
     `a stop before any words stores nothing and says so (${JSON.stringify(stEarly)})`);
+  // THE ACTION CARD — the model proposes, THIS PHONE disposes. Rendering a
+  // card fires NOTHING; Confirm runs the real endpoint (captured) and marks
+  // the verdict; Dismiss marks with no business POST; an unknown kind — the
+  // closed-registry rule — renders no card at all.
+  await page.evaluate(() => {
+    window.__mcReqs = [];
+    window.apiPost = async (file, body) => {
+      window.__mcReqs.push(file + ':' + body.action);
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+          { who: 'you', text: 'block jollyboat for the boiler', at: '12:00' },
+          { who: 'mac', text: 'I can hold those dates.', at: '12:01', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04', note: 'boiler' } },
+          { who: 'mac', text: 'And this one you should never see.', at: '12:02', act: { kind: 'delete_everything', prop: 'jollyboat' } },
+        ] };
+      }
+      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  const acCard = await page.evaluate(() => ({
+    cards: document.querySelectorAll('#mc-log .mc-act').length,
+    facts: (document.querySelector('.mc-act-f') || {}).textContent || '',
+    note: /Nothing happens until you confirm/.test(document.getElementById('mc-log').textContent),
+    fired: window.__mcReqs.filter((r) => !/chat_thread/.test(r)),
+  }));
+  ok(acCard.cards === 1 && /Jollyboat/.test(acCard.facts) && /4 nights/.test(acCard.facts) && /boiler/.test(acCard.facts),
+    `ONE card renders with its stated facts — the unknown kind renders none (${JSON.stringify({ cards: acCard.cards, facts: acCard.facts })})`);
+  ok(acCard.note && acCard.fired.length === 0,
+    `rendering a proposal fires NOTHING, and the card says so (${JSON.stringify(acCard.fired)})`);
+  // Dismiss: the verdict is recorded, no business endpoint is touched.
+  await page.click('.mc-act-no');
+  await page.waitForTimeout(250);
+  const acDis = await page.evaluate(() => ({
+    reqs: window.__mcReqs.filter((r) => !/chat_thread/.test(r)),
+    off: !!document.querySelector('.mc-act.is-off'),
+    buttons: document.querySelectorAll('.mc-act-go').length,
+  }));
+  ok(acDis.reqs.length === 1 && /nightshift\.php:chat_act_done/.test(acDis.reqs[0]) && acDis.off && acDis.buttons === 0,
+    `Dismiss records the verdict and ONLY the verdict — the card goes inert (${JSON.stringify(acDis)})`);
+  // Confirm: the real endpoint runs (the block's checkout is EXCLUSIVE —
+  // to + 1 day), then the verdict lands and the card flips done.
+  await page.evaluate(() => {
+    window.__mcReqs = [];
+    window.apiPost = async (file, body) => {
+      window.__mcReqs.push({ f: file, a: body.action, prop: body.prop, ci: body.check_in, co: body.check_out, v: body.verdict });
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, instr: '', presence: { seen: Math.floor(Date.now() / 1000), listening: true }, msgs: [
+          { who: 'mac', text: 'Holding them.', at: '12:03', act: { kind: 'block_dates', prop: 'jollyboat', cottage: 'Jollyboat', from: '2027-09-01', to: '2027-09-04' } },
+        ] };
+      }
+      if (body.action === 'chat_act_done') { return { ok: true, verdict: body.verdict }; }
+      return { ok: true };
+    };
+    window.__realInit = window.initBackOffice;
+    window.initBackOffice = async () => {};
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  await page.click('.mc-act-go');
+  await page.waitForTimeout(350);
+  const acGo = await page.evaluate(() => {
+    window.initBackOffice = window.__realInit;
+    const blocks = window.__mcReqs.filter((r) => r.a === 'add_block');
+    const verdicts = window.__mcReqs.filter((r) => r.a === 'chat_act_done');
+    return { blocks, verdicts, done: !!document.querySelector('.mc-act.is-done') };
+  });
+  ok(acGo.blocks.length === 1 && acGo.blocks[0].f === 'ical-import.php'
+    && acGo.blocks[0].prop === 'jollyboat' && acGo.blocks[0].ci === '2027-09-01' && acGo.blocks[0].co === '2027-09-05',
+    `Confirm runs the REAL block endpoint, checkout exclusive (${JSON.stringify(acGo.blocks)})`);
+  ok(acGo.verdicts.length === 1 && acGo.verdicts[0].v === 'done' && acGo.done,
+    `…then the verdict lands and the card reads done (${JSON.stringify(acGo.verdicts)})`);
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

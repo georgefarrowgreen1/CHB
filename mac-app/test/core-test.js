@@ -1857,6 +1857,28 @@ function fakeSite(handler) {
     ok('the retry grammar names every tool',
         tMod.CHAT_TOOL_NAMES.every(function (n) { return tMod.chatToolGrammar().indexOf('"' + n + '"') >= 0; })
         && /^root ::= /m.test(tMod.chatToolGrammar()));
+    // THE PROPOSALS (Tier 2): the ACT line becomes DATA and is always
+    // STRIPPED from the words; the whitelist is closed and money-out kinds
+    // are simply not in it — this Mac can prepare, never perform.
+    ok('the whole-business reads joined the tool whitelist',
+        ['money', 'performance', 'expenses'].every(function (n) { return tMod.CHAT_TOOL_NAMES.indexOf(n) >= 0; }));
+    (function () {
+        const a = tMod.chatActCall('I can block that for you.\nACT {"action":"block_dates","args":{"cottage":"Jollyboat","from":"2026-09-01","to":"2026-09-04","note":"boiler"}}');
+        ok('a valid proposal parses and the protocol line never reaches the words',
+            a.act && a.act.action === 'block_dates' && a.act.args.cottage === 'Jollyboat'
+            && a.text === 'I can block that for you.' && a.bad === null, JSON.stringify(a));
+        const r = tMod.chatActCall('Done!\nACT {"action":"refund_deposit","args":{"booking":3}}');
+        ok('an unknown action — refunds included — is dropped and NAMED, never repaired',
+            r.act === null && /block_dates, price_override, request_payment/.test(r.bad || '')
+            && r.text === 'Done!', JSON.stringify(r));
+        ok('a proposal missing a required argument is dropped and named',
+            tMod.chatActCall('ACT {"action":"price_override","args":{"cottage":"J"}}').bad !== null);
+        ok('a plain answer proposes nothing', tMod.chatActCall('One arrival today.').act === null
+            && tMod.chatActCall('One arrival today.').bad === null);
+        ok('the acts intro teaches the confirm rule in so many words',
+            /never claim/i.test(tMod.chatActsIntro()) && /owner confirms/i.test(tMod.chatActsIntro())
+            && /refunds/i.test(tMod.chatActsIntro()));
+    })();
 
     // The LOOP, through the real api with a scripted engine and a fake site.
     const mkChatApi = function (script, siteImpl, secretVal) {
@@ -2582,6 +2604,57 @@ function fakeSite(handler) {
             rec.partials >= 1 && rec.sawAbort && rec.answers.length === 0
             && swS.ok && swS.answered === 0 && (swS.failed || 0) === 0,
             JSON.stringify({ partials: rec.partials, abort: rec.sawAbort, answers: rec.answers.length, sw: swS }));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // PROPOSALS RIDE THE ENVELOPE — and only the WEB chat is ever taught
+        // the ACT protocol: a local reply can never carry a card nothing
+        // will render.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34e-'));
+        const rec = { answers: [], sys: [] };
+        const api34e = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs) {
+                        rec.sys.push(msgs[0].content);
+                        return { ok: true, stopped: false,
+                            text: 'I can hold those dates.\nACT {"action":"block_dates","args":{"cottage":"Jollyboat","from":"2026-09-01","to":"2026-09-04"}}',
+                            think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () {
+                        return { ok: true, host: '', warm: false, asks: [{ id: 41, kind: 'ownerchat', ownerchat: {
+                            turns: [{ who: 'you', text: 'block jollyboat 1-4 sep' }], instr: '',
+                        } }] };
+                    },
+                    answerAsk: async function (id, text) { rec.answers.push(text); return { ok: true }; },
+                    askPartial: async function () { return { ok: true, held: true }; },
+                    chatTool: async function () { return { ok: true, data: {} }; },
+                };
+            },
+        });
+        await api34e.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await api34e.askSweep();
+        const env41 = JSON.parse(rec.answers[0]);
+        ok('a web-chat proposal rides the envelope as DATA, stripped from the words',
+            env41.act && env41.act.action === 'block_dates' && env41.act.args.cottage === 'Jollyboat'
+            && env41.text === 'I can hold those dates.'
+            && /ACT \{"action"/.test(rec.sys[0]),
+            JSON.stringify(env41));
+        // The LOCAL chat: never taught, so a local system line carries no
+        // ACT protocol — the boundary a gate must own, not a hope.
+        await api34e.chatSend('hello there');
+        ok('the local chat is never taught the ACT protocol',
+            rec.sys.length >= 2 && !/ACT \{"action"/.test(rec.sys[rec.sys.length - 1]),
+            (rec.sys[rec.sys.length - 1] || '').slice(0, 120));
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
     }
 
