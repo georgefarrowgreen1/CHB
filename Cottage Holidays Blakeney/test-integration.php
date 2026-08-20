@@ -3542,6 +3542,38 @@ http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 $rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
 $rootDb->exec("DELETE FROM content WHERE item_key = 'weather-cache'");
 
+// ── THE ROLLING SUMMARY — a long conversation keeps its head ────────────
+// 20 filler rows put convo 9 past the 16-turn payload cap, so the ask says
+// `dropped`; the answer's `sum` stores per conversation; the NEXT ask hands
+// it back as `summary`; clearing the conversation forgets it.
+$rootDb->exec('DELETE FROM login_attempts');
+$sumIns = $rootDb->prepare("INSERT INTO ownerchat_msgs (who, text, at, convo) VALUES (?,?, '09:00', 9)");
+for ($i = 1; $i <= 20; $i++) {
+    $sumIns->execute([$i % 2 ? 'you' : 'mac', 'filler turn ' . $i]);
+}
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'and where were we?', 'convo' => 9]);
+$sumId = (int) ($r['json']['id'] ?? 0);
+$sumAsk = json_decode((string) $rootDb->query('SELECT options FROM night_asks WHERE id = ' . $sumId)->fetchColumn(), true);
+it_check('sum: past the payload cap the ask says how many turns were CUT — and offers no summary it does not hold',
+    (int) ($sumAsk['dropped'] ?? 0) === 5 && !isset($sumAsk['summary']), json_encode(array_keys($sumAsk ?? [])));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $sumId,
+    'text' => json_encode(['text' => 'We were planning the welcome book.', 'sum' => 'Planning the welcome book; chapter one is arrivals; tone agreed as warm.'])]);
+it_check('sum: an answer carrying its summary lands', ($r['json']['ok'] ?? false) === true, $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $sumId, 'wait' => 0, 'seen' => 0]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'carry on then', 'convo' => 9]);
+$sumId2 = (int) ($r['json']['id'] ?? 0);
+$sumAsk2 = json_decode((string) $rootDb->query('SELECT options FROM night_asks WHERE id = ' . $sumId2)->fetchColumn(), true);
+it_check('sum: the NEXT ask hands the stored summary back beside the fresh dropped count',
+    ($sumAsk2['summary'] ?? '') === 'Planning the welcome book; chapter one is arrivals; tone agreed as warm.'
+    && (int) ($sumAsk2['dropped'] ?? 0) > 0, json_encode($sumAsk2['summary'] ?? null));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $sumId2,
+    'text' => json_encode(['text' => 'ok', 'sum' => str_repeat('a', 700)])]);
+it_check('sum: an overlong summary refuses the envelope in a sentence', $r['code'] === 400 && strpos($r['raw'], 'summary') !== false, $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear', 'convo' => 9]);
+$sumRow = json_decode((string) json_decode((string) $rootDb->query("SELECT item_value FROM content WHERE item_key = 'mac-chat-sum'")->fetchColumn(), true), true);
+it_check('sum: clearing the conversation forgets its summary', !isset($sumRow[9]) && !isset($sumRow['9']), json_encode($sumRow));
+$rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
+
 // ── LIVE GUEST DRAFTS — a guest message files a 'chat' ask on the spot ──
 // This suite has burned many 'answer' units by now — clear the toll so the
 // drafts round trip is judged on its own behaviour, not the meter.

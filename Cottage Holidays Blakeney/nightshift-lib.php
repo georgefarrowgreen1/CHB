@@ -1846,6 +1846,34 @@ const NIGHT_OWNERCHAT_LAST_TURN_CHARS = NIGHT_OWNERCHAT_TEXT_MAX;
 const NIGHT_OWNERCHAT_THINK_MAX = 6000;  // a reasoning model's passage
 const NIGHT_OWNERCHAT_INSTR_MAX = 500;   // the standing instruction
 const NIGHT_OWNERCHAT_FILE_MAX = 60;     // an attached document's shown name
+const NIGHT_OWNERCHAT_SUM_MAX = 600;     // a conversation's condensed memory
+const NIGHT_OWNERCHAT_SUM_CAP = 24;      // conversations that keep one (the rail's own cap)
+
+// The rolling-summary store: a map convo → condensed text, owner-side JSON
+// sanitised on every read (junk degrades to nothing, the same posture as
+// every other content-row map). The SUMMARY is the model's own condensed
+// memory of turns the payload cap has cut — it rides the next ask so a long
+// conversation keeps its head, and it is only ever REQUESTED once the trim
+// is real (dropped > 0): a summary of a fully-visible thread is paid-for
+// context saying nothing new.
+function night_ownerchat_sums($raw)
+{
+    $out = [];
+    if (!is_array($raw)) {
+        return $out;
+    }
+    foreach ($raw as $k => $v) {
+        $cv = (int) $k;
+        $txt = night_str($v);
+        if ($cv >= 1 && $txt !== '') {
+            $out[$cv] = mb_substr($txt, 0, NIGHT_OWNERCHAT_SUM_MAX);
+        }
+        if (count($out) >= NIGHT_OWNERCHAT_SUM_CAP) {
+            break;
+        }
+    }
+    return $out;
+}
 
 // A chat photo reference — the ONE shape chat_send mints (chat_photo_store in
 // db.php) and the only shape chat_file will serve back. Everything else reads
@@ -2054,6 +2082,9 @@ function night_ownerchat_answer_problem($raw)
     }
     if (isset($j['used']) && !is_array($j['used'])) {
         return 'The lookups must be a list of tool names.';
+    }
+    if (isset($j['sum']) && (!is_string($j['sum']) || mb_strlen($j['sum']) > NIGHT_OWNERCHAT_SUM_MAX)) {
+        return 'The summary is not text, or is over ' . NIGHT_OWNERCHAT_SUM_MAX . ' characters.';
     }
     return '';
 }

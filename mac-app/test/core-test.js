@@ -1905,6 +1905,28 @@ function fakeSite(handler) {
             && /owner asked you to always remember/.test(gtx) && /Never dogs/.test(gtx), gtx);
         ok('nothing to ground is an empty string, never boilerplate',
             tMod.chatGroundText(null, []) === '' && tMod.chatGroundText({}, null) === '');
+        // ── THE ROLLING SUMMARY. The SUM line is protocol: parsed off the
+        // answer, STRIPPED from the words either way, capped; a malformed one
+        // is dropped — the words stand and next turn asks again.
+        const sm1 = tMod.chatSumCall('We were on the welcome book.\nSUM {"text":"Welcome book planned; chapter one arrivals."}');
+        ok('a SUM line is parsed off and the words stand clean',
+            sm1.sum === 'Welcome book planned; chapter one arrivals.'
+            && sm1.text === 'We were on the welcome book.', JSON.stringify(sm1));
+        ok('a fumbled SUM is dropped, never repaired — and a plain answer carries none',
+            tMod.chatSumCall('Done.\nSUM not json at all').sum === null
+            && /^Done\.$/.test(tMod.chatSumCall('Done.\nSUM not json at all').text)
+            && tMod.chatSumCall('One arrival today.').sum === null
+            && tMod.chatSumCall('One arrival today.').text === 'One arrival today.');
+        ok('an overlong summary is cut to the cap, never refused whole',
+            (tMod.chatSumCall('Ok.\nSUM {"text":"' + 'a'.repeat(700) + '"}').sum || '').length === tMod.CHAT_SUM_CHARS);
+        ok('the SUM intro asks for the protocol line and the honesty rule',
+            /SUM \{"text":/.test(tMod.chatSumIntro()) && /never invent/i.test(tMod.chatSumIntro()));
+        // The summary joins the ground labelled as the model's OWN earlier
+        // notes — never as fresh fact — and an absent one adds nothing.
+        const gs = tMod.chatGroundText(null, [], 'Welcome book planned; tone warm.');
+        ok('a stored summary grounds as the conversation\'s own condensed memory',
+            /Earlier in this conversation \(condensed/.test(gs) && /tone warm/.test(gs)
+            && tMod.chatGroundText(null, [], '') === '');
     })();
 
     // ── THE CHAT BENCH — the scorer is gated here; the live run is a hand
@@ -2732,6 +2754,65 @@ function fakeSite(handler) {
             rec.sys.length >= 2 && !/ACT \{"action"/.test(rec.sys[rec.sys.length - 1]),
             (rec.sys[rec.sys.length - 1] || '').slice(0, 120));
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // THE ROLLING SUMMARY, through the real handler: an ask that says
+        // turns were CUT teaches the SUM protocol and grounds the stored
+        // summary as the model's own earlier notes; the reply's SUM line is
+        // stripped from the words and rides the envelope as data. An ask
+        // with NOTHING cut teaches nothing — and a stray SUM line is still
+        // stripped, but never travels.
+        const mk34s = function (withDrop) {
+            const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34s-'));
+            const rec = { answers: [], sys: [] };
+            const oc = { turns: [{ who: 'you', text: 'and where were we?' }], instr: '' };
+            if (withDrop) { oc.dropped = 5; oc.summary = 'Welcome book planned; tone warm.'; }
+            const api = require('../src/core/api').makeApi({
+                dir: tmp, machine: M16,
+                secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+                makeEngine: function () {
+                    return {
+                        id: 'llamacpp', name: 'fake', base: 'http://x',
+                        reachable: async function () { return true; },
+                        props: async function () { return { ctx: 4096 }; },
+                        chatStream: async function (msgs) {
+                            rec.sys.push(msgs[0].content);
+                            return { ok: true, stopped: false,
+                                text: 'Chapter two next.\nSUM {"text":"Welcome book; chapter two underway."}',
+                                think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                        },
+                    };
+                },
+                makeSite: function () {
+                    return {
+                        asks: async function () { return { ok: true, host: '', warm: false, asks: [{ id: 61, kind: 'ownerchat', ownerchat: oc }] }; },
+                        answerAsk: async function (id, text) { rec.answers.push(text); return { ok: true }; },
+                        askPartial: async function () { return { ok: true, held: true }; },
+                        chatTool: async function () { return { ok: true, data: {} }; },
+                    };
+                },
+            });
+            return { api: api, rec: rec, tmp: tmp };
+        };
+        const s1 = mk34s(true);
+        await s1.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await s1.api.askSweep();
+        const envS = JSON.parse(s1.rec.answers[0]);
+        ok('a trimmed ask teaches SUM, grounds the stored summary, and the reply\'s line rides as data',
+            /SUM \{"text":/.test(s1.rec.sys[0]) && /Earlier in this conversation \(condensed/.test(s1.rec.sys[0])
+            && /tone warm/.test(s1.rec.sys[0])
+            && envS.text === 'Chapter two next.' && envS.sum === 'Welcome book; chapter two underway.',
+            JSON.stringify(envS));
+        try { fs.rmSync(s1.tmp, { recursive: true, force: true }); } catch (e) {}
+        const s0 = mk34s(false);
+        await s0.api.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await s0.api.askSweep();
+        const envS0 = JSON.parse(s0.rec.answers[0]);
+        ok('a fully-visible thread is never asked for one — a stray SUM line is stripped and never travels',
+            !/SUM \{"text":/.test(s0.rec.sys[0]) && !/Earlier in this conversation/.test(s0.rec.sys[0])
+            && envS0.text === 'Chapter two next.' && !('sum' in envS0),
+            JSON.stringify(envS0));
+        try { fs.rmSync(s0.tmp, { recursive: true, force: true }); } catch (e) {}
     }
     {
         // THE RETRY NET, through the real loop: a fumbled ACT line gets ONE

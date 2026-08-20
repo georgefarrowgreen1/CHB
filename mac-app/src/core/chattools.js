@@ -137,8 +137,16 @@ function chatActsIntro() {
 // the ONE place they become prompt text, so the framing cannot drift between
 // callers. Facts are labelled as live-and-trusted; memories as the OWNER'S
 // own notes — never the model's. Returns '' when there is nothing to ground.
-function chatGroundText(world, memories) {
+function chatGroundText(world, memories, summary) {
     const parts = [];
+    // The conversation's own condensed memory — turns the payload cap has
+    // cut, kept by the model's previous SUM line. Labelled as exactly that,
+    // so the model treats it as its own earlier notes, never fresh fact.
+    const sm = String(summary || '').trim();
+    if (sm) {
+        parts.push('Earlier in this conversation (condensed — your own previous summary of turns '
+            + 'no longer shown):\n' + sm.slice(0, CHAT_SUM_CHARS));
+    }
     const w = world && typeof world === 'object' ? world : null;
     if (w) {
         const lines = [];
@@ -178,6 +186,40 @@ function chatGroundText(world, memories) {
         parts.push('The owner asked you to always remember:\n' + mems.map(function (x) { return '\u2022 ' + x; }).join('\n'));
     }
     return parts.join('\n\n');
+}
+
+// ── THE ROLLING SUMMARY (webchat only, and only once the trim is real) ──────
+// When the site says turns have been cut (`dropped` > 0) the model is asked
+// to END each reply with SUM {"text":"..."} — a condensed memory of the WHOLE
+// conversation. The line is protocol: stripped from the words, held back from
+// partials, carried in the envelope as data; the site stores it per
+// conversation and hands it back in the next ask's grounding. A fully-visible
+// thread is never asked — a summary of what is already there says nothing new.
+const CHAT_SUM_CHARS = 600;
+function chatSumIntro() {
+    return 'Your view of this conversation is trimmed to the recent turns — older ones are no '
+        + 'longer shown. END every reply with EXACTLY one extra line: SUM {"text":"..."} — a neutral '
+        + 'condensed memory (under 500 characters) of the WHOLE conversation so far: decisions made, '
+        + 'facts established, names and figures. Update your earlier summary if one is shown above; '
+        + 'never invent anything for it.';
+}
+// The final answer → its summary, if any. The SUM line is STRIPPED from the
+// words either way (a protocol line must never paint); a malformed one is
+// simply dropped — the words always stand, and next turn asks again.
+function chatSumCall(raw) {
+    const text = String(raw == null ? '' : raw);
+    const m = text.match(/^[ \t]*SUM\b(.*)$/m);
+    if (!m) { return { text: text, sum: null }; }
+    const cleaned = (text.slice(0, m.index) + text.slice(m.index + m[0].length))
+        .replace(/\n{3,}/g, '\n\n').trim();
+    const rest = m[1];
+    const start = rest.indexOf('{');
+    let j = null;
+    if (start >= 0) {
+        try { j = JSON.parse(rest.slice(start)); } catch (e) { j = null; }
+    }
+    const s = j && typeof j === 'object' && typeof j.text === 'string' ? j.text.trim() : '';
+    return { text: cleaned, sum: s ? s.slice(0, CHAT_SUM_CHARS) : null };
 }
 
 // The retry grammar: when a proposal fumbles its JSON, ONE re-ask constrained
@@ -317,4 +359,5 @@ module.exports = {
     CHAT_ACTS, CHAT_ACT_NAMES,
     chatToolsIntro, chatToolCall, chatToolResultMsg, chatToolGrammar,
     chatActsIntro, chatActCall, chatActGrammar, chatGroundText,
+    CHAT_SUM_CHARS, chatSumIntro, chatSumCall,
 };
