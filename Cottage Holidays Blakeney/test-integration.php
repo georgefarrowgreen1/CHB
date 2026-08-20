@@ -3420,6 +3420,84 @@ http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'items'
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 $rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
 
+// ── CONVERSATIONS (migration-119) — the rail, through the real endpoints ──
+// Every row names its conversation; the ask carries it as entity_id, so an
+// answer lands in the conversation the question was asked in — never in
+// whichever one a device happens to be looking at when it arrives.
+$rootDb->exec('DELETE FROM login_attempts'); // the suite's own answer calls, not the meter
+$rootDb->exec('DELETE FROM ownerchat_msgs');
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'who owes me money?', 'convo' => 1]);
+$cvA1 = (int) ($r['json']['id'] ?? 0);
+$cvEnt1 = (int) $rootDb->query('SELECT entity_id FROM night_asks WHERE id = ' . $cvA1)->fetchColumn();
+it_check('convo: the ask carries its conversation as entity_id', $cvEnt1 === 1);
+http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $cvA1,
+    'text' => json_encode(['text' => 'Nobody owes a penny.'])]);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $cvA1, 'wait' => 0, 'seen' => 0]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'plan the welcome book', 'convo' => 2]);
+$cvA2 = (int) ($r['json']['id'] ?? 0);
+http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $cvA2,
+    'text' => json_encode(['text' => 'Chapter one: arrivals.'])]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $cvA2, 'wait' => 0, 'seen' => 0]);
+it_check('convo: the second conversation collects its own answer',
+    ($r['json']['msg']['text'] ?? '') === 'Chapter one: arrivals.', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread', 'convo' => 1]);
+$cvTexts1 = array_map(function ($m) { return $m['text']; }, $r['json']['msgs'] ?? []);
+it_check('convo: conversation 1 holds ONLY its own turns',
+    $cvTexts1 === ['who owes me money?', 'Nobody owes a penny.'], $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread', 'convo' => 2]);
+$cvTexts2 = array_map(function ($m) { return $m['text']; }, $r['json']['msgs'] ?? []);
+it_check('convo: conversation 2 holds ONLY its own turns',
+    $cvTexts2 === ['plan the welcome book', 'Chapter one: arrivals.'], $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+it_check('convo: a device opening cold lands on the NEWEST conversation',
+    (int) ($r['json']['convo'] ?? 0) === 2, $r['raw']);
+$cvList = $r['json']['convos'] ?? [];
+it_check('convo: the rail lists both, newest activity first, titled by the first question',
+    count($cvList) === 2
+    && (int) $cvList[0]['convo'] === 2 && $cvList[0]['title'] === 'plan the welcome book'
+    && (int) $cvList[1]['convo'] === 1 && $cvList[1]['title'] === 'who owes me money?', json_encode($cvList));
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear', 'convo' => 2]);
+it_check('convo: clear names its conversation', (int) ($r['json']['convo'] ?? 0) === 2, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+it_check('convo: clearing one conversation leaves the other whole — and it becomes the landing',
+    (int) ($r['json']['convo'] ?? 0) === 1
+    && ($r['json']['msgs'][0]['text'] ?? '') === 'who owes me money?'
+    && count($r['json']['convos'] ?? []) === 1, $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+$rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
+
+// ── VIA-AI ATTRIBUTION — a write the card executed says so in the log ───
+// via_label is a CLOSED whitelist: 'ai-chat' earns the suffix, anything
+// else earns nothing — the client can never invent an attribution string.
+$viaLog = function () use ($rootDb) {
+    return (string) $rootDb->query('SELECT summary FROM activity_log ORDER BY id DESC LIMIT 1')->fetchColumn();
+};
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey,
+    'name' => 'Via Card Guest', 'email' => '', 'phone' => '', 'check_in' => $dd(720), 'check_out' => $dd(723),
+    'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'via' => 'ai-chat']);
+$viaBid = (int) ($r['json']['id'] ?? 0);
+it_check('via: an AI-card booking is attributed in the activity log',
+    $viaBid > 0 && strpos($viaLog(), 'via AI chat') !== false, $viaLog());
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'add', 'prop_key' => $propKey,
+    'name' => 'Via Junk Guest', 'email' => '', 'phone' => '', 'check_in' => $dd(725), 'check_out' => $dd(727),
+    'adults' => 2, 'children' => 0, 'payment' => 'unpaid', 'via' => 'burglary']);
+$viaBid2 = (int) ($r['json']['id'] ?? 0);
+it_check('via: an unrecognised via earns NOTHING — the whitelist holds',
+    $viaBid2 > 0 && strpos($viaLog(), 'via') === false, $viaLog());
+$r = http($admin, 'POST', '/ical-import.php', ['action' => 'add_block', 'prop' => $propKey,
+    'check_in' => $dd(730), 'check_out' => $dd(732), 'via' => 'ai-chat']);
+it_check('via: an AI-card block leaves an attributed record',
+    ($r['json']['ok'] ?? false) === true && strpos($viaLog(), 'Dates blocked') !== false
+    && strpos($viaLog(), 'via AI chat') !== false, $viaLog());
+// request_payment's wiring is the same one-line suffix — pinned at source so
+// it cannot silently drop (the send itself needs a mailer this suite stubs).
+it_check('via: the payment-request log line carries the attribution helper',
+    strpos((string) file_get_contents(__DIR__ . '/bookings.php'), "' payment request emailed — ') . (\$b['name'] ?? '') . via_label(\$in)") !== false);
+it_check('via: the seasons-save log line carries it too (the price card\'s path)',
+    strpos((string) file_get_contents(__DIR__ . '/rates.php'), "'Seasonal rates updated (' . count(\$cleaned) . ')' . via_label(\$in)") !== false);
+$rootDb->exec('DELETE FROM bookings WHERE id IN (' . $viaBid . ',' . $viaBid2 . ')');
+$rootDb->exec("DELETE FROM ical_blocks WHERE prop_key = " . $rootDb->quote($propKey) . " AND check_in = " . $rootDb->quote($dd(730)));
+
 // ── LIVE GUEST DRAFTS — a guest message files a 'chat' ask on the spot ──
 // This suite has burned many 'answer' units by now — clear the toll so the
 // drafts round trip is judged on its own behaviour, not the meter.

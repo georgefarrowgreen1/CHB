@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('hand', {
     // never crosses back — same posture as setSecret.
     connect: function (code) { return ipcRenderer.invoke('hand:connect', code); },
     testSite: function () { return ipcRenderer.invoke('hand:testSite'); },
+    benchModel: function (id) { return ipcRenderer.invoke('hand:benchModel', id); },
     searchModels: function (term) { return ipcRenderer.invoke('hand:searchModels', term); },
     modelFiles: function (id) { return ipcRenderer.invoke('hand:modelFiles', id); },
     downloadModel: function (row) { return ipcRenderer.invoke('hand:downloadModel', row); },

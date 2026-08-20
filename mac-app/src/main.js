@@ -505,6 +505,7 @@ function wire() {
     ipcMain.handle('hand:setSecret', function (e, v) { return api.setSecret(v); });
     ipcMain.handle('hand:connect', function (e, code) { return api.connect(code); });
     ipcMain.handle('hand:testSite', function () { return api.testSite(); });
+    ipcMain.handle('hand:benchModel', function (e, id) { return api.benchModel(id); });
     ipcMain.handle('hand:searchModels', function (e, term) { return api.searchModels(term); });
     ipcMain.handle('hand:modelFiles', function (e, id) { return api.modelFiles(id); });
     ipcMain.handle('hand:downloadModel', function (e, row) {

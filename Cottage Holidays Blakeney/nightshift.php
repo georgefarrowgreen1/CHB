@@ -78,10 +78,13 @@ function ownerchat_row_to_msg(array $r)
     $clean['id'] = (int) $r['id'];
     return $clean;
 }
-// The newest $limit messages, oldest-first for the screen.
-function ownerchat_rows($limit = 40)
+// The newest $limit messages, oldest-first for the screen. A convo of 0
+// means "no filter" (pre-119 callers); every live caller passes one.
+function ownerchat_rows($limit = 40, $convo = 0)
 {
-    $st = db()->prepare('SELECT * FROM ownerchat_msgs ORDER BY id DESC LIMIT ' . (int) $limit);
+    $st = db()->prepare('SELECT * FROM ownerchat_msgs'
+        . ((int) $convo >= 1 ? ' WHERE convo = ' . (int) $convo : '')
+        . ' ORDER BY id DESC LIMIT ' . (int) $limit);
     $st->execute();
     $out = [];
     foreach (array_reverse($st->fetchAll()) as $r) {
@@ -94,15 +97,15 @@ function ownerchat_rows($limit = 40)
 }
 // Validate through the ONE sanitiser, then append. Returns the clean msg
 // with its new id, or null when the sanitiser refused it whole.
-function ownerchat_append(array $msg)
+function ownerchat_append(array $msg, $convo = 1)
 {
     $t = night_ownerchat_thread(['msgs' => [$msg]]);
     if (!$t['msgs']) {
         return null;
     }
     $m = $t['msgs'][0];
-    $st = db()->prepare('INSERT INTO ownerchat_msgs (who, text, think, used, model, stopped, act, img, file, at)
-                         VALUES (?,?,?,?,?,?,?,?,?,?)');
+    $st = db()->prepare('INSERT INTO ownerchat_msgs (who, text, think, used, model, stopped, act, img, file, at, convo)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?)');
     $st->execute([
         $m['who'], $m['text'],
         $m['think'] ?? null,
@@ -113,9 +116,46 @@ function ownerchat_append(array $msg)
         $m['img'] ?? null,
         $m['file'] ?? null,
         $m['at'] ?? date('H:i'),
+        max(1, (int) $convo),
     ]);
     $m['id'] = (int) db()->lastInsertId();
     return $m;
+}
+// Which conversation? An explicit choice wins; otherwise the NEWEST one with
+// anything in it — the phone opening cold lands where the owner last was.
+function ownerchat_cur_convo($want)
+{
+    if ((int) $want >= 1) {
+        return (int) $want;
+    }
+    try {
+        $last = db()->query('SELECT convo FROM ownerchat_msgs ORDER BY id DESC LIMIT 1')->fetchColumn();
+        return max(1, (int) $last);
+    } catch (\Throwable $e) {
+        return 1;
+    }
+}
+// The rail: every conversation with anything in it, newest activity first,
+// titled by its FIRST question (first line only — an attached document's
+// fence must never become a title).
+function ownerchat_convos($cap = 24)
+{
+    $out = [];
+    $st = db()->query('SELECT convo, COUNT(*) AS n, MAX(id) AS last FROM ownerchat_msgs
+                        GROUP BY convo ORDER BY last DESC LIMIT ' . (int) $cap);
+    $tq = db()->prepare("SELECT text FROM ownerchat_msgs WHERE convo = ? AND who = 'you' ORDER BY id LIMIT 1");
+    foreach ($st->fetchAll() as $r) {
+        $tq->execute([(int) $r['convo']]);
+        $first = night_str($tq->fetchColumn() ?: '');
+        $line = trim((string) preg_split('/\R/', $first)[0]);
+        $title = mb_substr($line, 0, 60);
+        $out[] = [
+            'convo' => (int) $r['convo'],
+            'n' => (int) $r['n'],
+            'title' => $title !== '' ? $title : 'Conversation ' . (int) $r['convo'],
+        ];
+    }
+    return $out;
 }
 // One-time adoption: the blob's messages become rows, the blob keeps only
 // the instruction. Best-effort — a failed adoption leaves the blob intact
@@ -704,8 +744,11 @@ route_actions([
         require_admin();
         ownerchat_adopt();
         $t = night_ownerchat_thread(content_json('mac-chat', []));
+        $cv = ownerchat_cur_convo($in['convo'] ?? 0);
+        $convos = [];
         try {
-            $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_THREAD_MAX);
+            $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_THREAD_MAX, $cv);
+            $convos = ownerchat_convos();
         } catch (\Throwable $e) {
             // Un-migrated: the blob still serves the read; writes say so.
         }
@@ -727,6 +770,8 @@ route_actions([
             'msgs' => $t['msgs'],
             'instr' => $t['instr'],
             'memory' => $mem,
+            'convo' => $cv,
+            'convos' => $convos,
             'on' => night_enabled(),
             'presence' => night_mac_presence(night_devices_read(), time()),
         ]);
@@ -781,9 +826,10 @@ route_actions([
             $msg['file'] = mb_substr($fname, 0, NIGHT_OWNERCHAT_FILE_MAX);
         }
         $stored = null; // before the try — PHPStan cannot infer never from json_out
+        $cv = ownerchat_cur_convo($in['convo'] ?? 0);
         try {
             ownerchat_adopt();
-            $stored = ownerchat_append($msg); // one sanitiser owns the shape, img/file included
+            $stored = ownerchat_append($msg, $cv); // one sanitiser owns the shape, img/file included
         } catch (\Throwable $e) {
             json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
         }
@@ -791,7 +837,7 @@ route_actions([
             json_out(['error' => 'Type a message first.'], 400);
         }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX);
+        $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $cv);
         $payload = night_ownerchat_payload($t);
         // THE GROUNDING PACK: the fleet, today, and the money picture ride
         // every ask, composed fresh from the SAME gatherers the tools read —
@@ -828,8 +874,11 @@ route_actions([
             }
         } catch (\Throwable $e) {
         }
+        // entity_id carries the CONVERSATION, so the poll and the stop append
+        // the answer into the convo the question was asked in — never into
+        // whichever one a device happens to be looking at when it lands.
         $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
-        $st->execute(['ownerchat', 0, '', mb_substr($text, 0, 500), json_encode($payload)]);
+        $st->execute(['ownerchat', $cv, '', mb_substr($text, 0, 500), json_encode($payload)]);
         // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
         // on the same connection, so a lastInsertId read after it answers for
         // the CONTENT row (0, under ON DUPLICATE) — measured in CI as every
@@ -866,12 +915,13 @@ route_actions([
                 night_asks_sweep();
             }
             $tick++;
-            $st = db()->prepare('SELECT status, answer, model FROM night_asks WHERE id = ?');
+            $st = db()->prepare('SELECT status, answer, model, entity_id FROM night_asks WHERE id = ?');
             $st->execute([$id]);
             $row = $st->fetch();
             if (!$row) {
                 json_out(['error' => 'No such ask.'], 404);
             }
+            $cv = max(1, (int) ($row['entity_id'] ?? 1)); // the convo the ask belongs to
             if ($row['status'] === 'answered') {
                 $up = db()->prepare("UPDATE night_asks SET status = 'collected' WHERE id = ? AND status = 'answered'");
                 $up->execute([$id]);
@@ -897,7 +947,7 @@ route_actions([
                     }
                     $stored = null;
                     try {
-                        $stored = ownerchat_append($msg);
+                        $stored = ownerchat_append($msg, $cv);
                     } catch (\Throwable $e) {
                     }
                     json_out(['ok' => true, 'status' => 'answered', 'msg' => $stored]);
@@ -908,7 +958,8 @@ route_actions([
             if ($row['status'] === 'answered' || $row['status'] === 'collected') {
                 $lastM = null;
                 try {
-                    $stq = db()->query("SELECT * FROM ownerchat_msgs WHERE who = 'mac' ORDER BY id DESC LIMIT 1");
+                    $stq = db()->prepare("SELECT * FROM ownerchat_msgs WHERE who = 'mac' AND convo = ? ORDER BY id DESC LIMIT 1");
+                    $stq->execute([$cv]);
                     $lr = $stq->fetch();
                     if ($lr) {
                         $lastM = ownerchat_row_to_msg($lr);
@@ -962,9 +1013,11 @@ route_actions([
         }
         // Claimed. The partial is read AFTER the claim, so nothing can grow
         // it underneath us (ask_partial only writes to an OPEN row).
-        $st = db()->prepare('SELECT answer FROM night_asks WHERE id = ?');
+        $st = db()->prepare('SELECT answer, entity_id FROM night_asks WHERE id = ?');
         $st->execute([$id]);
-        $pj = json_decode((string) ($st->fetchColumn() ?: ''), true);
+        $srow = $st->fetch() ?: [];
+        $cv = max(1, (int) ($srow['entity_id'] ?? 1));
+        $pj = json_decode((string) ($srow['answer'] ?? ''), true);
         $ptxt = is_array($pj) && is_string($pj['text'] ?? null) ? trim($pj['text']) : '';
         if ($ptxt === '') {
             // Nothing had come back yet — nothing is stored, so the question
@@ -977,7 +1030,7 @@ route_actions([
         }
         $stored = null;
         try {
-            $stored = ownerchat_append($msg);
+            $stored = ownerchat_append($msg, $cv);
         } catch (\Throwable $e) {
         }
         json_out(['ok' => true, 'kept' => $stored !== null, 'msg' => $stored]);
@@ -1057,15 +1110,20 @@ route_actions([
         content_set_scalar('mac-chat', json_encode($t));
         json_out(['ok' => true, 'instr' => $t['instr']]);
     },
+    // Clears ONE conversation — the rail's others are untouched. Clearing
+    // was the only way to start fresh before the rail; now it is only ever
+    // the destructive tap it says it is.
     'chat_clear' => function ($in) {
         require_admin();
+        $cv = ownerchat_cur_convo($in['convo'] ?? 0);
         try {
-            db()->exec('DELETE FROM ownerchat_msgs');
+            $dl = db()->prepare('DELETE FROM ownerchat_msgs WHERE convo = ?');
+            $dl->execute([$cv]);
         } catch (\Throwable $e) {
         }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
         content_set_scalar('mac-chat', json_encode(['instr' => $t['instr'], 'msgs' => []]));
-        json_out(['ok' => true]);
+        json_out(['ok' => true, 'convo' => $cv]);
     },
 
     // ---- the machine streams a partial answer onto an open ask ------

@@ -151,7 +151,7 @@ if (($in['action'] ?? '') === 'seasons_save') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Seasonal rates table missing — run migration-seasons.sql in phpMyAdmin first'], 500);
     }
-    log_activity('rates', 'rates.seasons_save', 'Seasonal rates updated (' . count($cleaned) . ')', ['prop_key' => $propKey]);
+    log_activity('rates', 'rates.seasons_save', 'Seasonal rates updated (' . count($cleaned) . ')' . via_label($in), ['prop_key' => $propKey]);
     json_out(['ok' => true, 'count' => count($cleaned)]);
 }
 

@@ -1279,6 +1279,15 @@ function log_comms_outcome($action, $label, $result, $bookingId, $propKey = '')
     $why = isset($result['error']) ? (string) $result['error'] : 'unknown error';
     log_activity('comms', $action, $label . ' FAILED to send — ' . $why, $opts + ['severity' => 'warn']);
 }
+// A write the AI chat's action card executed says so in the activity log —
+// the owner reading "Booking created" a week later deserves to know whether
+// they typed it or confirmed a model's proposal. CLOSED whitelist: the one
+// recognised value earns the suffix, anything else earns nothing, so the
+// client can never invent an attribution string that lands in the log.
+function via_label($in)
+{
+    return (($in['via'] ?? '') === 'ai-chat') ? ' · via AI chat' : '';
+}
 function log_activity($category, $action, $summary, $opts = [])
 {
     try {

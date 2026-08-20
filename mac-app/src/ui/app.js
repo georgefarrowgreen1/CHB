@@ -320,7 +320,10 @@
                     ' <span class="role' + (uses.length ? '' : ' dim') + '">' + role + '</span></b>' +
                     '<span class="mono">' + esc(m.id) + ' · ' + esc(m.quant || m.format) + ' · ' + m.sizeGB + ' GB</span>' +
                     '<span>' + (uses.length ? esc(uses.join(' · ')) : 'Nothing points at it — choose it on a job under Work, or delete the file.') + '</span></div>' +
-                    '<div class="rail">' + chip(m.fit, m.why) + '</div></div>';
+                    '<div class="rail">' + chip(m.fit, m.why) +
+                    (m.format === 'gguf' ? '<button class="mini" type="button" data-bench="' + esc(m.id) + '">Bench</button>' : '') +
+                    '</div></div>' +
+                    '<div class="benchout" id="bench-' + esc(m.id).replace(/[^A-Za-z0-9_-]/g, '_') + '" hidden></div>';
             }).join('')
             : '<div class="row"><div class="main"><b>No models yet</b><span>Press <strong>Add model…</strong>. On 16 GB, an 8B or 14B at Q4 is the place to start.</span></div></div>';
         $('modelsNote').textContent = 'A model is a file — delete it in the Models folder and it leaves this list.';
@@ -727,6 +730,27 @@
 
     // ── actions ──────────────────────────────────────────────────────────
     document.addEventListener('click', async function (ev) {
+        var bb = ev.target.closest ? ev.target.closest('[data-bench]') : null;
+        if (bb && window.hand.benchModel) {
+            // THE BENCH — minutes of real generation, said up front; the
+            // verdict names the failing axis, never just a number.
+            var bid = bb.getAttribute('data-bench');
+            var slot = document.getElementById('bench-' + bid.replace(/[^A-Za-z0-9_-]/g, '_'));
+            bb.disabled = true;
+            bb.textContent = 'Benching…';
+            if (slot) { slot.hidden = false; slot.textContent = 'Running the committed questions against this model — a few minutes. The chat waits its turn.'; }
+            var br;
+            try { br = await window.hand.benchModel(bid); } catch (e) { br = { ok: false, say: 'The app could not reach its own engine.' }; }
+            bb.disabled = false;
+            bb.textContent = 'Bench';
+            if (slot) {
+                slot.hidden = false;
+                slot.textContent = br && br.ok ? br.verdict.say
+                    : ((br && br.say) || 'The bench could not run.');
+                slot.className = 'benchout' + (br && br.ok && br.verdict.safe ? ' ok' : br && br.ok ? ' warn' : '');
+            }
+            return;
+        }
         var t = ev.target;
         var nav = t.closest ? t.closest('.snav[data-v]') : null;
         if (nav) { go(parseInt(nav.getAttribute('data-v'), 10) || 0); return; }

@@ -358,6 +358,9 @@ if ($action === 'add_block') {
     db()
         ->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
         ->execute([$prop, 'owner', $uid, $checkIn, $checkOut]);
+    // Blocks never left a record before — worth one regardless, and it is
+    // where an AI-chat card's block says so (via_label's closed whitelist).
+    log_activity('booking', 'block.add', 'Dates blocked — ' . $prop . ' ' . $checkIn . ' → ' . $checkOut . via_label($in), ['prop_key' => $prop]);
     json_out(['ok' => true]);
 }
 

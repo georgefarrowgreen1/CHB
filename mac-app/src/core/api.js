@@ -34,6 +34,7 @@ const jobsMod = require('./jobs');
 const runnerMod = require('./runner');
 const chatMod = require('./chat');
 const chatToolsMod = require('./chattools');
+const benchMod = require('./bench');
 
 function makeApi(deps) {
     const d = deps || {};
@@ -693,6 +694,29 @@ function makeApi(deps) {
                 }
             }
             return r;
+        },
+
+        // THE BENCH, FROM THE LIBRARY: the same committed cases the CLI runs
+        // (src/core/bench.js — one bench, two doors), against THIS Mac's real
+        // engine with the named model loaded. Takes chatBusy so a bench and a
+        // chat never fight over the engine; a bench is minutes of generation,
+        // so the button says so and the verdict is worth the wait.
+        async benchModel(modelId) {
+            const model = String(modelId || '');
+            if (!model) { return { ok: false, say: 'Name a model to bench.' }; }
+            if (chatBusy || running) { return { ok: false, say: 'The engine is busy — try again in a moment.' }; }
+            chatBusy = true;
+            try {
+                const up = await chatEngineUp(model);
+                if (!up.ok) { return { ok: false, say: up.say }; }
+                const out = await benchMod.benchRun(up.eng, model, null);
+                askLog.push({ at: nightMod.hhmm(), say: 'benched ' + model + ' — ' + out.verdict.say, level: 'info' });
+                return { ok: true, model: model, lines: out.lines, verdict: out.verdict };
+            } catch (e) {
+                return { ok: false, say: 'The bench fell over: ' + ((e && e.message) || e) };
+            } finally {
+                chatBusy = false;
+            }
         },
 
         // Run tonight's work now. Guarded against two at once: a second run

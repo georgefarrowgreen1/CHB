@@ -251,6 +251,9 @@
                 <span class="mc-pres" id="ac-pres"></span>
                 <button class="ac-more" type="button" data-act="acSheetOpen" aria-label="More" aria-haspopup="true">⋯</button>
             </div>
+            <!-- The conversations rail — one chip per conversation, filled by
+                 renderMacChat, hidden while there is only one to be in. -->
+            <div class="mc-rail" id="mc-rail" role="tablist" aria-label="Conversations" hidden></div>
             <div class="mc-log" id="mc-log" aria-live="polite"></div>
             <div class="ac-composer">
                 <!-- A pending attachment (one at a time) sits ABOVE the input
@@ -268,7 +271,7 @@
                     <button type="button" data-act="acNewChat" role="menuitem">New conversation</button>
                     <button type="button" data-act="acInstrEdit" role="menuitem">Standing instruction…</button>
                     <button type="button" data-act="acMemoryEdit" role="menuitem">Memory…</button>
-                    <button type="button" class="ac-quiet" data-act="acNewChat" role="menuitem">Clear this conversation</button>
+                    <button type="button" class="ac-quiet" data-act="acClearChat" role="menuitem">Clear this conversation</button>
                     <button type="button" class="ac-quiet" data-act="acSheetClose" role="menuitem">Cancel</button>
                 </div>
             </div>
