@@ -37,6 +37,107 @@ function night_enabled()
     return content_value('night-shift') === '1';
 }
 
+// ── THE CONVERSATION AS ROWS (migration-118) ────────────────────────────
+// The web chat's thread lives in ownerchat_msgs now: every message has an
+// ID, so an action card is addressed exactly (never by position), two
+// devices appending cannot overwrite each other, and the old 40-message cap
+// becomes a display window over a retained history. The `mac-chat` content
+// key survives carrying the standing instruction; its old msgs are ADOPTED
+// into rows on the first read after the migration, so nothing already said
+// is lost. Every row still passes through night_ownerchat_thread's
+// sanitiser on the way out — the table changes WHERE messages live, never
+// what may live in one.
+function ownerchat_row_to_msg(array $r)
+{
+    $m = ['who' => (string) $r['who'], 'text' => (string) $r['text'], 'at' => (string) $r['at']];
+    foreach (['think' => 'think', 'model' => 'model', 'img' => 'img', 'file' => 'file'] as $col => $k) {
+        if (night_str($r[$col] ?? '') !== '') {
+            $m[$k] = $r[$col];
+        }
+    }
+    if (!empty($r['stopped'])) {
+        $m['stopped'] = true;
+    }
+    $used = json_decode((string) ($r['used'] ?? ''), true);
+    if (is_array($used) && $used) {
+        $m['used'] = $used;
+    }
+    $act = json_decode((string) ($r['act'] ?? ''), true);
+    if (is_array($act)) {
+        if (night_str($r['act_done'] ?? '') !== '') {
+            $act['done'] = $r['act_done'];
+            $act['doneAt'] = night_str($r['act_done_at'] ?? '');
+        }
+        $m['act'] = $act;
+    }
+    $t = night_ownerchat_thread(['msgs' => [$m]]);
+    if (!$t['msgs']) {
+        return null; // a row the sanitiser refuses whole renders as nothing
+    }
+    $clean = $t['msgs'][0];
+    $clean['id'] = (int) $r['id'];
+    return $clean;
+}
+// The newest $limit messages, oldest-first for the screen.
+function ownerchat_rows($limit = 40)
+{
+    $st = db()->prepare('SELECT * FROM ownerchat_msgs ORDER BY id DESC LIMIT ' . (int) $limit);
+    $st->execute();
+    $out = [];
+    foreach (array_reverse($st->fetchAll()) as $r) {
+        $m = ownerchat_row_to_msg($r);
+        if ($m !== null) {
+            $out[] = $m;
+        }
+    }
+    return $out;
+}
+// Validate through the ONE sanitiser, then append. Returns the clean msg
+// with its new id, or null when the sanitiser refused it whole.
+function ownerchat_append(array $msg)
+{
+    $t = night_ownerchat_thread(['msgs' => [$msg]]);
+    if (!$t['msgs']) {
+        return null;
+    }
+    $m = $t['msgs'][0];
+    $st = db()->prepare('INSERT INTO ownerchat_msgs (who, text, think, used, model, stopped, act, img, file, at)
+                         VALUES (?,?,?,?,?,?,?,?,?,?)');
+    $st->execute([
+        $m['who'], $m['text'],
+        $m['think'] ?? null,
+        isset($m['used']) ? json_encode($m['used']) : null,
+        $m['model'] ?? null,
+        !empty($m['stopped']) ? 1 : 0,
+        isset($m['act']) ? json_encode($m['act']) : null,
+        $m['img'] ?? null,
+        $m['file'] ?? null,
+        $m['at'] ?? date('H:i'),
+    ]);
+    $m['id'] = (int) db()->lastInsertId();
+    return $m;
+}
+// One-time adoption: the blob's messages become rows, the blob keeps only
+// the instruction. Best-effort — a failed adoption leaves the blob intact
+// for the next read to try again.
+function ownerchat_adopt()
+{
+    try {
+        if ((int) db()->query('SELECT COUNT(*) FROM ownerchat_msgs')->fetchColumn() > 0) {
+            return;
+        }
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        if (!$t['msgs']) {
+            return;
+        }
+        foreach ($t['msgs'] as $m) {
+            ownerchat_append($m);
+        }
+        content_set_scalar('mac-chat', json_encode(['instr' => $t['instr'], 'msgs' => []]));
+    } catch (\Throwable $e) {
+    }
+}
+
 // ── ONE GATHER, TWO READERS ─────────────────────────────────────────────
 // The 'today' and 'money' chat tools AND the world sheet chat_send attaches
 // read these — one derivation, so the grounding pack and a lookup can never
@@ -601,7 +702,13 @@ route_actions([
     // carries the turns out and the answer back, and composes nothing itself.
     'chat_thread' => function ($in) {
         require_admin();
+        ownerchat_adopt();
         $t = night_ownerchat_thread(content_json('mac-chat', []));
+        try {
+            $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_THREAD_MAX);
+        } catch (\Throwable $e) {
+            // Un-migrated: the blob still serves the read; writes say so.
+        }
         // Opening the screen IS the warm hint — the model preloads while the
         // owner types their first message.
         if (night_enabled()) {
@@ -673,10 +780,18 @@ route_actions([
         if ($fname !== '') {
             $msg['file'] = mb_substr($fname, 0, NIGHT_OWNERCHAT_FILE_MAX);
         }
+        $stored = null; // before the try — PHPStan cannot infer never from json_out
+        try {
+            ownerchat_adopt();
+            $stored = ownerchat_append($msg); // one sanitiser owns the shape, img/file included
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+        }
+        if ($stored === null) {
+            json_out(['error' => 'Type a message first.'], 400);
+        }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $t['msgs'][] = $msg;
-        $t = night_ownerchat_thread($t); // one sanitiser owns the shape, img/file included
-        content_set_scalar('mac-chat', json_encode($t));
+        $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX);
         $payload = night_ownerchat_payload($t);
         // THE GROUNDING PACK: the fleet, today, and the money picture ride
         // every ask, composed fresh from the SAME gatherers the tools read —
@@ -780,19 +895,27 @@ route_actions([
                     if (night_str($row['model'] ?? '') !== '') {
                         $msg['model'] = night_str($row['model']);
                     }
-                    $t = night_ownerchat_thread(content_json('mac-chat', []));
-                    $t['msgs'][] = $msg;
-                    $t['msgs'] = array_slice($t['msgs'], -NIGHT_OWNERCHAT_THREAD_MAX);
-                    content_set_scalar('mac-chat', json_encode($t));
+                    $stored = null;
+                    try {
+                        $stored = ownerchat_append($msg);
+                    } catch (\Throwable $e) {
+                    }
+                    json_out(['ok' => true, 'status' => 'answered', 'msg' => $stored]);
                 }
-                $t2 = night_ownerchat_thread(content_json('mac-chat', []));
-                $last = $t2['msgs'] ? $t2['msgs'][count($t2['msgs']) - 1] : null;
-                json_out(['ok' => true, 'status' => 'answered', 'msg' => $last]);
+                // The claim was lost to another device — fall through to the
+                // collected read below, which serves what the winner stored.
             }
-            if ($row['status'] === 'collected') {
-                $t3 = night_ownerchat_thread(content_json('mac-chat', []));
-                $last3 = $t3['msgs'] ? $t3['msgs'][count($t3['msgs']) - 1] : null;
-                json_out(['ok' => true, 'status' => 'answered', 'msg' => $last3]);
+            if ($row['status'] === 'answered' || $row['status'] === 'collected') {
+                $lastM = null;
+                try {
+                    $stq = db()->query("SELECT * FROM ownerchat_msgs WHERE who = 'mac' ORDER BY id DESC LIMIT 1");
+                    $lr = $stq->fetch();
+                    if ($lr) {
+                        $lastM = ownerchat_row_to_msg($lr);
+                    }
+                } catch (\Throwable $e) {
+                }
+                json_out(['ok' => true, 'status' => 'answered', 'msg' => $lastM]);
             }
             if ($row['status'] !== 'open') {
                 json_out(['ok' => true, 'status' => 'expired',
@@ -852,43 +975,49 @@ route_actions([
         if (is_array($pj) && is_string($pj['think'] ?? null) && trim($pj['think']) !== '') {
             $msg['think'] = $pj['think'];
         }
-        $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $t['msgs'][] = $msg;
-        $t = night_ownerchat_thread($t);
-        content_set_scalar('mac-chat', json_encode($t));
-        $last = $t['msgs'] ? $t['msgs'][count($t['msgs']) - 1] : null;
-        json_out(['ok' => true, 'kept' => true, 'msg' => $last]);
+        $stored = null;
+        try {
+            $stored = ownerchat_append($msg);
+        } catch (\Throwable $e) {
+        }
+        json_out(['ok' => true, 'kept' => $stored !== null, 'msg' => $stored]);
     },
     // ---- the owner decides a proposed action ------------------------
     // The VERDICT is thread state: a card confirmed on one phone must render
     // inert on every device and every reload, or the same email is one tap
     // from going twice. Deliberately does NOT execute anything — execution
     // happened on the phone through the ordinary admin endpoints before this
-    // is called (done), or never (dismissed). The index is verified against
-    // the act's own kind so a thread that rotated under the cap cannot mark
-    // the wrong card.
+    // is called (done), or never (dismissed). ADDRESSED BY ID now (the row
+    // era): the message's id is the card, so nothing can rotate underneath
+    // it — the kind is still verified, and the decide is a GUARDED update so
+    // two devices deciding at once store exactly one verdict.
     'chat_act_done' => function ($in) {
         require_admin();
-        $idx = (int) ($in['idx'] ?? -1);
+        $id = (int) ($in['id'] ?? 0);
         $kind = night_str($in['kind'] ?? '');
         $verdict = $in['verdict'] ?? '';
         if ($verdict !== 'done' && $verdict !== 'dismissed') {
             json_out(['error' => 'The verdict is done or dismissed.'], 400);
         }
-        $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $m = $t['msgs'][$idx] ?? null;
-        if (!is_array($m) || ($m['who'] ?? '') !== 'mac' || !is_array($m['act'] ?? null)
-            || ($m['act']['kind'] ?? '') !== $kind) {
+        $st = db()->prepare("SELECT * FROM ownerchat_msgs WHERE id = ? AND who = 'mac'");
+        $st->execute([$id]);
+        $row = $st->fetch();
+        $act = $row ? json_decode((string) ($row['act'] ?? ''), true) : null;
+        if (!is_array($act) || ($act['kind'] ?? '') !== $kind) {
             json_out(['error' => 'The conversation has moved on — refresh and look again.'], 409);
         }
-        if (isset($m['act']['done'])) {
+        if (night_str($row['act_done'] ?? '') !== '') {
             // Already decided (another device, or a double tap) — the stored
             // verdict stands; saying so beats silently re-deciding.
-            json_out(['ok' => true, 'already' => true, 'verdict' => $m['act']['done']]);
+            json_out(['ok' => true, 'already' => true, 'verdict' => $row['act_done']]);
         }
-        $t['msgs'][$idx]['act']['done'] = $verdict;
-        $t['msgs'][$idx]['act']['doneAt'] = date('H:i');
-        content_set_scalar('mac-chat', json_encode(night_ownerchat_thread($t)));
+        $up = db()->prepare('UPDATE ownerchat_msgs SET act_done = ?, act_done_at = ? WHERE id = ? AND act_done IS NULL');
+        $up->execute([$verdict, date('H:i'), $id]);
+        if ($up->rowCount() !== 1) {
+            $st->execute([$id]);
+            $row2 = $st->fetch();
+            json_out(['ok' => true, 'already' => true, 'verdict' => night_str($row2['act_done'] ?? '')]);
+        }
         json_out(['ok' => true, 'verdict' => $verdict]);
     },
     // ---- the owner opens a guest thread: is a live draft waiting? ---
@@ -930,6 +1059,10 @@ route_actions([
     },
     'chat_clear' => function ($in) {
         require_admin();
+        try {
+            db()->exec('DELETE FROM ownerchat_msgs');
+        } catch (\Throwable $e) {
+        }
         $t = night_ownerchat_thread(content_json('mac-chat', []));
         content_set_scalar('mac-chat', json_encode(['instr' => $t['instr'], 'msgs' => []]));
         json_out(['ok' => true]);
