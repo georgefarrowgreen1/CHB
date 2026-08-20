@@ -5798,22 +5798,18 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
    container's own clearance was sized for a title, and with the name gone
    the bar is a status strip, not a masthead (owner: "smaller and closer"). */
 .ac-page{max-width:720px;margin:-18px auto 0;padding-bottom:calc(96px + var(--safe-b))}
-.ac-hd{position:sticky;top:calc(64px + var(--safe-t));z-index:5;display:flex;align-items:center;gap:9px;
-  border:1px solid var(--glass-border);border-radius:18px;padding:6px 10px;margin:0 0 10px;
+.ac-hd{position:sticky;top:calc(64px + var(--safe-t));z-index:5;display:flex;align-items:center;gap:8px;
+  border:1px solid var(--glass-border);border-radius:999px;padding:3px 5px 3px 13px;margin:0 0 8px;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter)}
-.ac-spark{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;flex:0 0 auto;
-  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 32%,transparent),color-mix(in srgb,var(--accent) 10%,transparent));
-  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
-.ac-spark svg{width:16px;height:16px;stroke:var(--accent-text)}
-.ac-more{margin-left:auto;width:32px;height:32px;border-radius:50%;border:1px solid var(--glass-border);
-  background:none;color:var(--text-muted);font-size:15px;cursor:pointer;flex:0 0 auto}
+.ac-more{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--glass-border);
+  background:none;color:var(--text-muted);font-size:14px;cursor:pointer;flex:0 0 auto}
 .ac-more:hover{background:var(--btn-hover)}
 .mc-pres{display:inline-flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:600;color:var(--text-muted)}
 /* In the page's bar the presence is the ONE line of text, so it steps up —
    contextual, because renderMacChat rebuilds the node and a class would be
    lost in the swap. */
-.ac-hd .mc-pres{font-size:0.72rem;gap:7px}
-.ac-hd .mc-pres .mc-dot{width:7px;height:7px}
+.ac-hd .mc-pres{font-size:0.68rem;gap:6px}
+.ac-hd .mc-pres .mc-dot{width:6px;height:6px}
 .mc-pres .mc-dot{width:7px;height:7px;border-radius:50%;background:var(--ok-text)}
 .mc-pres.is-on{color:var(--ok-text)}
 .mc-pres.is-asleep{color:var(--warn-text)}
