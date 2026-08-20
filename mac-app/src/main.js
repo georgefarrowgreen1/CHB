@@ -151,7 +151,11 @@ function trayMenu() {
         { label: traySays(), enabled: false },
         { type: 'separator' },
         { label: 'Run tonight’s work now',
-            click: function () { if (api && api.runNow) { api.runNow().catch(function () { /* said in the log */ }); } } },
+            // Through the SAME wrapper as the menu item and ⌘R — calling
+            // api.runNow directly skipped the power assertion (a lid-closed
+            // run stalled mid-draft) and never sent hand:progress/hand:ran,
+            // so an open window kept showing the stale night.
+            click: function () { runNow().catch(function () { /* said in the log */ }); } },
         { label: 'Open the window',
             click: function () { if (win) { win.show(); win.focus(); } else { create(); } } },
         { type: 'separator' },

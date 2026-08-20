@@ -989,8 +989,11 @@ function makeApi(deps) {
                 }
                 askAnswered += out.answered;
                 out.log.forEach(function (l) { askLog.push(l); });
+                // ONE cap. A second slice(-20) sat under this line and made
+                // it dead code — state()'s slice(-40) could never see more
+                // than 20, so a busy day's earlier answers vanished from the
+                // one record the log exists to keep.
                 if (askLog.length > 80) { askLog = askLog.slice(-80); }
-                askLog = askLog.slice(-20);
                 // Idle-stop: only re-armed when a sweep actually touched the
                 // engine (an ask existed). A stop while a NIGHT run holds the
                 // engine is impossible — runNight and this never overlap.

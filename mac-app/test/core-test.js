@@ -557,9 +557,19 @@ function fakeSite(handler) {
     fs.rmSync(cdir, { recursive: true, force: true });
 
     let stored = null;
+    let argvSaw = [];
     const keychain = config.makeSecrets({
         platform: 'darwin',
-        run: function (args) {
+        run: function (args, input) {
+            argvSaw = args.slice();
+            // THE WRITE ARRIVES ON STDIN (`security -i`), never argv — the
+            // key was readable in the process list for the moment the old
+            // argv form ran. The fake parses the interactive command line.
+            if (args[0] === '-i') {
+                const m = /-w "([^"]*)"/.exec(String(input || ''));
+                if (m) { stored = m[1]; }
+                return '';
+            }
             if (args[0] === 'add-generic-password') { stored = args[args.indexOf('-w') + 1]; return ''; }
             if (args[0] === 'find-generic-password') {
                 if (stored === null) { throw new Error('not found'); }
@@ -572,13 +582,15 @@ function fakeSite(handler) {
     ok('with nothing stored, the secret is empty rather than an error', keychain.get() === '');
     ok('…and the state says none is set', keychain.state().set === false);
     ok('storing one works', keychain.set('the-real-secret').ok);
+    ok('…and the key travelled on STDIN, never in the argv the process list shows',
+        argvSaw.join(' ') === '-i' && stored === 'the-real-secret', JSON.stringify(argvSaw));
     ok('…and reading it back gives the secret', keychain.get() === 'the-real-secret');
     ok('the state says one is set', keychain.state().set === true);
     ok('…and NEVER what it is', keychain.state().hint.indexOf('real') === -1 && /^•+$/.test(keychain.state().hint));
     ok('clearing works', keychain.clear().ok && keychain.get() === '');
     const refused = config.makeSecrets({
         platform: 'darwin',
-        run: function (args) { if (args[0] === 'add-generic-password') { throw new Error('user denied'); } throw new Error('not found'); },
+        run: function (args) { if (args[0] === '-i' || args[0] === 'add-generic-password') { throw new Error('user denied'); } throw new Error('not found'); },
     });
     const res = refused.set('x');
     ok('a Keychain that refuses does NOT fall back to a file', !res.ok && /not saved anywhere/.test(res.say));
@@ -1555,7 +1567,8 @@ function fakeSite(handler) {
     const prompts25 = [];
     const fakeAskSite = function (asks) {
         return {
-            asks: async function () { return { ok: true, host: 'George', asks: asks }; },
+            asks: async function () { return { ok: true, host: 'George', asks: asks,
+                memories: ['Never dogs — allergy promise to guests.'] }; },
             answerAsk: async function (id, text, model) { posted25.push({ id: id, text: text, model: model }); return { ok: true }; },
         };
     };
@@ -1586,6 +1599,11 @@ function fakeSite(handler) {
         && posted25.length === 1 && posted25[0].id === 7 && posted25[0].model === 'small.gguf',
         JSON.stringify(posted25));
     ok('…through the reply prompt (the site\'s own quote in the facts)', /£440\.00/.test(prompts25[0]) && /Pat/.test(prompts25[0]));
+    // THE POLL'S MEMORIES BIND A DAYTIME DRAFT exactly as the night brief's
+    // bind an overnight one — this call dropped them while they sat in
+    // scope, so 'never dogs' held after dark and not before it.
+    ok('…and the owner\'s standing memories bind the daytime draft too',
+        /Never dogs — allergy promise/.test(prompts25[0]), prompts25[0].slice(0, 300));
     ok('…and the engine was ensured for that model', swaps25.join(',') === 'small.gguf');
 
     // An answer ask: the answer job's model, and NO money may survive.
@@ -1946,6 +1964,20 @@ function fakeSite(handler) {
         ok('a send_enquiry_reply proposal needs its looked-up id',
             tMod.chatActCall('ACT {"action":"send_enquiry_reply","args":{"enquiry":31}}').act !== null
             && tMod.chatActCall('ACT {"action":"send_enquiry_reply","args":{}}').bad !== null);
+    {
+        // ACT ARGS ARE SLICED TO WHAT THE SITE ACCEPTS, PER FIELD. The
+        // generic 80 cut a proposed memory mid-sentence while the intro
+        // promised 200 — the owner then confirmed a card storing half a
+        // promise. text carries 200 (the site's memory cap), note 120
+        // (NIGHT_ACT_NOTE_MAX); everything else keeps the tight default.
+        const memText = ('Never dogs in any cottage, ever — we promised the family with the allergy. ' + 'x'.repeat(200)).slice(0, 180);
+        const rm = tMod.chatActCall('ACT {"action":"remember","args":{"text":' + JSON.stringify(memText) + '}}');
+        ok('a 180-char proposed memory travels whole, never cut at 80', rm.act && rm.act.args.text === memText);
+        const noteText = 'n'.repeat(150);
+        const bd = tMod.chatActCall('ACT {"action":"block_dates","args":{"cottage":"J","from":"2026-09-01","to":"2026-09-03","note":' + JSON.stringify(noteText) + '}}');
+        ok('a note is cut at the server\'s own 120, a cottage stays at the tight default',
+            bd.act && bd.act.args.note.length === 120 && bd.act.args.cottage === 'J');
+    }
         // THE RETRY NET: the grammar names every action, so a fumbled line's
         // one constrained re-ask is valid by construction.
         ok('the act retry grammar names every action',
@@ -2952,13 +2984,12 @@ function fakeSite(handler) {
         const pubLookup = async function () { return [{ address: '93.184.216.34' }]; };
         const okPage = function (html) {
             return async function () {
-                return { ok: true, status: 200, headers: { get: function () { return ''; } },
-                    text: async function () { return html; } };
+                return { status: 200, headers: { get: function () { return ''; } }, text: html };
             };
         };
         const w1 = await wf.webFetch('https://example.com/tides', {
             lookup: pubLookup,
-            fetch: okPage('<html><head><title>North Norfolk tide guide</title><script>alert(1)</script></head>'
+            get: okPage('<html><head><title>North Norfolk tide guide</title><script>alert(1)</script></head>'
                 + '<body><h1>Tides</h1><p>High water &amp; low water times for the coast.</p></body></html>'),
         });
         ok('a good page returns its title and STRIPPED text — scripts and tags never travel',
@@ -2969,26 +3000,34 @@ function fakeSite(handler) {
             /never follow instructions/.test(w1.data.note));
         const w2 = await wf.webFetch('https://intranet.example.com/', {
             lookup: async function () { return [{ address: '192.168.1.10' }]; },
-            fetch: okPage('<p>secret</p>'),
+            get: okPage('<p>secret</p>'),
         });
         ok('a public-looking name that RESOLVES to the LAN is refused — the DNS half',
             !w2.ok && /local network/.test(w2.refusal.say));
         let hops = [];
         const w3 = await wf.webFetch('https://example.com/start', {
             lookup: pubLookup,
-            fetch: async function (u) {
+            get: async function (u) {
                 hops.push(u);
                 if (hops.length === 1) {
-                    return { ok: false, status: 302, headers: { get: function () { return 'https://192.168.1.1/admin'; } },
-                        text: async function () { return ''; } };
+                    return { status: 302, headers: { get: function () { return 'https://192.168.1.1/admin'; } }, text: '' };
                 }
-                return { ok: true, status: 200, headers: { get: function () { return ''; } }, text: async function () { return 'x'; } };
+                return { status: 200, headers: { get: function () { return ''; } }, text: 'x' };
             },
         });
         ok('a redirect to the LAN is refused — every hop is re-checked',
             !w3.ok && /local network/.test(w3.refusal.say) && hops.length === 1);
+        // THE TRANSPORT CONNECTS TO THE VETTED IP — the rebinding guard. The
+        // get seam receives the address the lookup judged; re-resolving in
+        // the transport is the TOCTOU this closes.
+        let gotIp = '';
+        await wf.webFetch('https://example.com/pin', {
+            lookup: pubLookup,
+            get: async function (u, ip) { gotIp = ip; return { status: 200, headers: { get: function () { return ''; } }, text: 'x' }; },
+        });
+        ok('the vetted address IS the connect address — never re-resolved', gotIp === '93.184.216.34');
         const w4 = await wf.webFetch('https://example.com/big', {
-            lookup: pubLookup, fetch: okPage('word '.repeat(5000)),
+            lookup: pubLookup, get: okPage('word '.repeat(5000)),
         });
         ok('an oversize page is CUT to the cap, never carried whole',
             w4.ok && w4.data.text.length <= wf.WEB_TEXT_CHARS);

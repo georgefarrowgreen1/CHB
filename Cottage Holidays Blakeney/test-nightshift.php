@@ -560,6 +560,17 @@ nsk('…separators and trailing .00 forgiven both ways',
 nsk('a figure the records never state is refused, named in the sentence',
     strpos(night_digest_answer_problem('Repairs ran to about £450 overall.', $dr), '£450') !== false);
 nsk('a summary with no money at all sails through', night_digest_answer_problem('Mostly boiler grumbles.', $dr) === '');
+// TRAILING ZEROS ARE ONLY FORGIVEN AFTER A DECIMAL POINT. An unconditional
+// rtrim stripped them off INTEGERS, so £450 grounded against rows holding
+// only £45 (and £4,500 likewise) — the door accepting figures 10x-100x the
+// records, against exactly the buggy or hostile device it exists to catch.
+$drz = ['The deposit back to Hannah is £45.'];
+nsk('an integer 10x the records is refused — 450 never grounds on 45',
+    strpos(night_digest_answer_problem('Returned £450 to Hannah.', $drz), '£450') !== false
+    && strpos(night_digest_answer_problem('Returned £4,500 to Hannah.', $drz), '£4,500') !== false);
+nsk('…while £45.00 still legitimately grounds on £45, and the reverse',
+    night_digest_answer_problem('Returned £45.00 to Hannah.', $drz) === ''
+    && night_digest_answer_problem('Returned £45 today.', ['Deposit of £45.00 held.']) === '');
 
 // ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
 echo "\n== §21 the voice examples ==\n";
@@ -640,8 +651,11 @@ nsk("'teach' is a queue kind with the fourteen-day window",
 echo "\n== §24 the chat's tools ==\n";
 
 // The whitelist and the refusals — each a sentence, never a code.
-nsk('an unknown tool is refused naming the real ones',
-    strpos(night_tool_problem('delete_booking', [], '2026-08-19'), 'today, bookings, availability, enquiries and cottages') !== false);
+// The correction is DERIVED from NIGHT_TOOLS, never restated by hand — the
+// hand-written list stopped at the original five, so a fumbling model was
+// actively taught that money/performance/expenses/coast do not exist.
+nsk('an unknown tool is refused naming EVERY real one, derived from the whitelist',
+    strpos(night_tool_problem('delete_booking', [], '2026-08-19'), implode(', ', NIGHT_TOOLS)) !== false);
 nsk('cottages takes no arguments and passes', night_tool_problem('cottages', [], '2026-08-19') === '');
 nsk('today and enquiries take no arguments and pass',
     night_tool_problem('today', ['junk' => 1], '2026-08-19') === ''

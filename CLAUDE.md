@@ -879,6 +879,31 @@ signing and what is real; what matters HERE is the site half and the rules.
   whole rule table incl. the DNS half and the redirect re-check, the
   long-URL regression, and the wiring through the real loop (the page
   reaches the model, the site's door is never knocked).
+  **THE AUDIT'S TEN (Aug 2026 review sweep), for the record.** `ask_partial`'s
+  `held` was the UPDATE's rowCount() — MySQL counts CHANGED rows and the
+  streamed text legitimately freezes during a held-back protocol line, so a
+  byte-identical re-post read as "not held" and aborted healthy generations;
+  held is a SELECT of the row's status now (gated: identical re-post stays
+  held). The digest door's number canon rtrim'd zeros off INTEGERS (£450
+  grounded on £45 rows — 10x-100x accepted); zeros are forgiven only after a
+  decimal point, matching the Mac's checkDigest. The DAYTIME reply ask
+  dropped the poll's memories while the night brief bound them — passed now.
+  ACT args were all sliced at 80 (a proposed memory cut mid-sentence against
+  an intro promising 200): text carries 200, note 120. webfetch's transport
+  is https.request CONNECTED TO THE VETTED IP (fetch re-resolved the name —
+  the rebinding TOCTOU), body read STREAMING and cut at the byte cap with an
+  ABSOLUTE deadline (res.text() buffered unbounded after the timeout cleared
+  at headers; a trickling server wedged chatBusy for ever). The Keychain
+  write rides `security -i` STDIN, never argv (the key was in the process
+  list; a key with quote/backslash chars — no real one — keeps the argv
+  path rather than corrupt the store). The tray's Run-now goes through the
+  runNow() WRAPPER (calling api.runNow direct skipped the power assertion
+  and the window refresh). night_tool_problem's unknown-tool correction is
+  DERIVED from NIGHT_TOOLS (the hand list stopped at five and taught the
+  model the newer four don't exist). askLog's dead second slice(-20) is
+  gone (it starved state()'s slice(-40)). And updater.js's comment claimed
+  a same-host asset check the code never performed — the comment now states
+  the real rule (https only; same-host would refuse every GitHub release).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

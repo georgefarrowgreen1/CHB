@@ -693,7 +693,11 @@ async function runAskSweep(ctx) {
             }
             f.party = guard.partyWords(f.adults, f.children);
             who = f.first || f.name || 'an enquiry';
-            const r = await c.engine.write(guard.buildPrompt(f, got.host, got.voice), model);
+            // The poll's memories bind a DAYTIME draft exactly as the night
+            // brief's bind an overnight one — this call dropped them while
+            // they sat in scope, so a promise taught to the chat held after
+            // dark and not before it.
+            const r = await c.engine.write(guard.buildPrompt(f, got.host, got.voice, got.memories), model);
             if (!r.ok) {
                 say(who + ' · ' + r.say, 'fail');
                 failed++;
