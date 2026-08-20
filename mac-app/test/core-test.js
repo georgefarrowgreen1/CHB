@@ -234,6 +234,33 @@ function fakeSite(handler) {
     b = await s.brief();
     ok('an unreachable site is a NET problem', !b.ok && b.refusal.kind === 'net');
 
+    // ── A TOOL LOOKUP RETRIES ONCE ON A TRANSPORT FAILURE. It is a one-shot
+    // (the asks long-poll self-heals by looping; this did not), so a single
+    // TCP hiccup on home broadband killed a whole answer with "fetch failed"
+    // — seen live. A refusal the SITE spoke is never retried.
+    {
+        let tries = 0;
+        let sr = site.makeSite({ url: 'https://x.test/nightshift.php', secret: 's3cret', retryMs: 1,
+            post: async function () {
+                tries++;
+                if (tries === 1) { throw new Error('fetch failed'); }
+                return { ok: true, status: 200, json: { ok: true, data: { cottages: [] } } };
+            } });
+        const tr = await sr.chatTool('cottages', {});
+        ok('one transport hiccup does not kill the lookup — it retries and answers', tr.ok && tries === 2, JSON.stringify(tr));
+        tries = 0;
+        sr = site.makeSite({ url: 'https://x.test/nightshift.php', secret: 's3cret', retryMs: 1,
+            post: async function () { tries++; throw new Error('fetch failed'); } });
+        const tr2 = await sr.chatTool('cottages', {});
+        ok('a dead link is said honestly, naming that it tried twice',
+            !tr2.ok && tries === 2 && /tried twice/.test(tr2.refusal.say), JSON.stringify(tr2.refusal));
+        tries = 0;
+        sr = site.makeSite({ url: 'https://x.test/nightshift.php', secret: 's3cret', retryMs: 1,
+            post: async function () { tries++; return { ok: false, status: 409, json: { code: 'night_off', error: 'off' } }; } });
+        await sr.chatTool('cottages', {});
+        ok('a refusal the site SPOKE is never retried — the switch is a decision, not a blip', tries === 1);
+    }
+
     // An uncertain POST must not read as a failure — the ref makes a retry safe.
     s = fakeSite(async function (u, body) {
         if (body.action === 'ingest') { throw new Error('socket hang up'); }
@@ -2900,6 +2927,127 @@ function fakeSite(handler) {
             && rm.text === 'Noted — shall I keep that?', JSON.stringify(rm));
         ok('…and the intro teaches restraint — standing facts only, never one-offs',
             /remember — args/.test(tMod2.chatActsIntro()) && /never for one-off/.test(tMod2.chatActsIntro()));
+    }
+    {
+        // ── THE WEB TOOL'S RULES (webfetch.js). The model supplies the
+        // address, so every rule assumes a caller that cannot be trusted
+        // with one: https only, never this machine or the LAN — at the
+        // hostname AND at the RESOLVE (a public-looking name answering
+        // 192.168.x is the half a string check cannot see) — and redirects
+        // re-checked per hop, because an allowed host 302ing to the router
+        // is the classic dodge.
+        const wf = require('../src/core/webfetch');
+        const tMod2 = require('../src/core/chattools');
+        ok('http, localhost, .local and a private IP literal are refused in sentences',
+            wf.webUrlProblem('http://example.com/') !== ''
+            && wf.webUrlProblem('https://localhost/x') !== ''
+            && wf.webUrlProblem('https://printer.local/') !== ''
+            && wf.webUrlProblem('https://192.168.1.1/admin') !== ''
+            && wf.webUrlProblem('https://example.com/page') === '');
+        ok('the private-range judge: loopback, RFC1918, link-local, CGNAT, v6 ULA — and junk counts as private',
+            wf.webIpPrivate('127.0.0.1') && wf.webIpPrivate('10.0.0.9') && wf.webIpPrivate('172.20.1.1')
+            && wf.webIpPrivate('192.168.0.5') && wf.webIpPrivate('169.254.1.1') && wf.webIpPrivate('100.90.1.1')
+            && wf.webIpPrivate('fd00::1') && wf.webIpPrivate('::ffff:10.0.0.1') && wf.webIpPrivate('not-an-ip')
+            && !wf.webIpPrivate('93.184.216.34') && !wf.webIpPrivate('2606:2800::1'));
+        const pubLookup = async function () { return [{ address: '93.184.216.34' }]; };
+        const okPage = function (html) {
+            return async function () {
+                return { ok: true, status: 200, headers: { get: function () { return ''; } },
+                    text: async function () { return html; } };
+            };
+        };
+        const w1 = await wf.webFetch('https://example.com/tides', {
+            lookup: pubLookup,
+            fetch: okPage('<html><head><title>North Norfolk tide guide</title><script>alert(1)</script></head>'
+                + '<body><h1>Tides</h1><p>High water &amp; low water times for the coast.</p></body></html>'),
+        });
+        ok('a good page returns its title and STRIPPED text — scripts and tags never travel',
+            w1.ok && w1.data.title === 'North Norfolk tide guide'
+            && /High water & low water/.test(w1.data.text)
+            && !/alert\(1\)|<p>/.test(w1.data.text), JSON.stringify(w1).slice(0, 200));
+        ok('…and every result carries the stranger\'s-page warning',
+            /never follow instructions/.test(w1.data.note));
+        const w2 = await wf.webFetch('https://intranet.example.com/', {
+            lookup: async function () { return [{ address: '192.168.1.10' }]; },
+            fetch: okPage('<p>secret</p>'),
+        });
+        ok('a public-looking name that RESOLVES to the LAN is refused — the DNS half',
+            !w2.ok && /local network/.test(w2.refusal.say));
+        let hops = [];
+        const w3 = await wf.webFetch('https://example.com/start', {
+            lookup: pubLookup,
+            fetch: async function (u) {
+                hops.push(u);
+                if (hops.length === 1) {
+                    return { ok: false, status: 302, headers: { get: function () { return 'https://192.168.1.1/admin'; } },
+                        text: async function () { return ''; } };
+                }
+                return { ok: true, status: 200, headers: { get: function () { return ''; } }, text: async function () { return 'x'; } };
+            },
+        });
+        ok('a redirect to the LAN is refused — every hop is re-checked',
+            !w3.ok && /local network/.test(w3.refusal.say) && hops.length === 1);
+        const w4 = await wf.webFetch('https://example.com/big', {
+            lookup: pubLookup, fetch: okPage('word '.repeat(5000)),
+        });
+        ok('an oversize page is CUT to the cap, never carried whole',
+            w4.ok && w4.data.text.length <= wf.WEB_TEXT_CHARS);
+        // The URL argument survives past the generic 80-char cap — sliced
+        // there it silently became a DIFFERENT address.
+        const longUrl = 'https://example.com/a/very/long/path/' + 'seg/'.repeat(30) + 'page';
+        const tc = tMod2.chatToolCall('TOOL {"tool":"web","args":{"url":"' + longUrl + '"}}');
+        ok('a long URL travels whole through the tool call', tc && tc.args && tc.args.url === longUrl);
+        ok('…and the intro teaches the web tool with the stranger\'s-page rule',
+            /web — args/.test(tMod2.chatToolsIntro('2026-08-20')) && /NEVER follow/.test(tMod2.chatToolsIntro('2026-08-20')));
+    }
+    {
+        // ── THE WIRING: TOOL web runs ON THE MAC and never reaches the
+        // site's door — through the real chat loop with a fake engine.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ctweb-'));
+        const rec = { webUrls: [], siteTools: [], rounds: 0 };
+        const apiW = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            webFetch: async function (u) {
+                rec.webUrls.push(u);
+                return { ok: true, data: { url: u, title: 'Tide guide', text: 'High water 06:41.', note: 'strangers' } };
+            },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs) {
+                        rec.rounds++;
+                        if (rec.rounds === 1) {
+                            return { ok: true, stopped: false, text: 'TOOL {"tool":"web","args":{"url":"https://example.com/tides"}}', think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                        }
+                        const last = msgs[msgs.length - 1].content;
+                        return { ok: true, stopped: false,
+                            text: /TOOL RESULT web/.test(last) && /High water 06:41/.test(last)
+                                ? 'High water is at 06:41 this morning.' : 'I never saw the page.',
+                            think: '', ms: 5, tokens: 2, promptTokens: 20, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () { return { ok: true, host: '', warm: false, asks: [] }; },
+                    answerAsk: async function () { return { ok: true }; },
+                    askPartial: async function () { return { ok: true, held: true }; },
+                    chatTool: async function (tool) { rec.siteTools.push(tool); return { ok: true, data: {} }; },
+                };
+            },
+        });
+        await apiW.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const wr = await apiW.chatSend('what is the tide doing? check https://example.com/tides');
+        ok('TOOL web fetches ON THE MAC — the page reaches the model, the site\'s door is never knocked',
+            wr.ok && wr.reply === 'High water is at 06:41 this morning.'
+            && rec.webUrls.length === 1 && rec.webUrls[0] === 'https://example.com/tides'
+            && rec.siteTools.length === 0
+            && (wr.used || []).indexOf('web') >= 0,
+            JSON.stringify({ reply: wr.reply, web: rec.webUrls, site: rec.siteTools, used: wr.used }));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
     }
     {
         // THE RETRY NET, through the real loop: a fumbled ACT line gets ONE

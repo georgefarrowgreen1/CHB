@@ -106,6 +106,8 @@ function makeSite(opts) {
     // app already makes, so the site can say which Mac runs what.
     const build = String(o.build || '');
     const send = o.post || post;
+    // The one-shot retry's pause — injectable so the suite is not slowed.
+    const retryMs = Number.isFinite(o.retryMs) ? o.retryMs : 1200;
 
     // A refusal the app can act on, rather than an exception with a status in it.
     function refusal(r) {
@@ -183,13 +185,24 @@ function makeSite(opts) {
             if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
             let r;
             try {
-                r = await send(url, {
+                const body = {
                     action: 'chat_tool', secret: secret, build: build,
                     tool: String(tool || ''),
                     args: (args && typeof args === 'object' && !Array.isArray(args)) ? args : {},
-                });
+                };
+                try {
+                    r = await send(url, body);
+                } catch (e1) {
+                    // ONE RETRY on a transport failure. A lookup is a one-shot
+                    // (the asks long-poll self-heals by looping; this did not),
+                    // so a single TCP hiccup on home broadband killed the whole
+                    // answer with "fetch failed" — seen live. A refusal the
+                    // SITE spoke is never retried; only a throw is.
+                    await new Promise(function (res2) { setTimeout(res2, retryMs); });
+                    r = await send(url, body);
+                }
             } catch (e) {
-                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site (tried twice): ' + (e && e.message ? e.message : 'no answer') } };
             }
             if (!r.ok || !r.json || !r.json.ok) {
                 return { ok: false, refusal: refusal(r) };
