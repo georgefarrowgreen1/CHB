@@ -1174,7 +1174,7 @@ function night_ask_answer_problem($text)
 //  Pure: validation and shaping only. The endpoint owns the SQL.
 // ============================================================
 
-const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries', 'cottages'];
+const NIGHT_TOOLS = ['today', 'bookings', 'availability', 'enquiries', 'cottages', 'money', 'performance', 'expenses'];
 const NIGHT_TOOL_ROWS_MAX = 12;    // a chat answer, not an export
 const NIGHT_TOOL_RANGE_MAX = 62;   // nights a range may span — two months is a chat, more is a report
 const NIGHT_TOOL_ARG_MAX = 60;     // any string argument's cap
@@ -1248,6 +1248,10 @@ function night_tool_stay(array $r, array $names)
     $out = (string) ($r['check_out'] ?? '');
     $due = (float) ($r['due'] ?? 0);
     return [
+        // The booking id, as an opaque REF: a proposed action points at it
+        // EXACTLY instead of resolving a guest name fuzzily. An id is not
+        // contact detail — the withholding rule is about emails and phones.
+        'ref' => (int) ($r['id'] ?? 0),
         'guest' => night_str($r['name'] ?? ''),
         'cottage' => night_str($names[$pk] ?? $pk),
         'check_in' => $in,
@@ -1389,6 +1393,227 @@ function night_tool_cottages(array $rows)
     return ['cottages' => array_slice($out, 0, NIGHT_TOOL_ROWS_MAX)];
 }
 
+// MONEY: who still owes, split by whether it is due NOW — the same judgement
+// the payask makes (booking_within_balance_window / checked out), passed in
+// as a flag so this stays pure — plus the deposits ready to go back. Figures
+// formatted server-side; names travel, contact details never; each row
+// carries `ref` (the booking id) so a proposed action can point EXACTLY at a
+// booking rather than resolving a name fuzzily.
+function night_tool_money(array $owed, array $deposits, array $names)
+{
+    $now = [];
+    $later = [];
+    foreach ($owed as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $row = night_tool_stay($r, $names);
+        if (!empty($r['due_now']) && count($now) < NIGHT_TOOL_ROWS_MAX) {
+            $now[] = $row;
+        } elseif (empty($r['due_now']) && count($later) < NIGHT_TOOL_ROWS_MAX) {
+            $later[] = $row;
+        }
+    }
+    $dep = [];
+    foreach ($deposits as $r) {
+        if (!is_array($r) || count($dep) >= NIGHT_TOOL_ROWS_MAX) {
+            continue;
+        }
+        $dep[] = [
+            'guest' => night_str($r['name'] ?? ''),
+            'cottage' => night_str($names[(string) ($r['prop_key'] ?? '')] ?? ($r['prop_key'] ?? '')),
+            'left' => (string) ($r['check_out'] ?? ''),
+            'deposit' => night_money((float) ($r['dep'] ?? 0)),
+            'ref' => (int) ($r['id'] ?? 0),
+        ];
+    }
+    return ['due_now' => $now, 'due_later' => $later, 'deposits_to_return' => $dep];
+}
+
+// PERFORMANCE: this month against last, from DIRECT bookings — and the frame
+// SAYS so, because platform stays never touch this ledger and a number that
+// silently omits them reads as the whole business.
+function night_tool_performance(array $thisM, array $lastM, $monthLabel, $lastLabel)
+{
+    $sum = function (array $rows) {
+        $stays = 0;
+        $nights = 0;
+        $rev = 0.0;
+        foreach ($rows as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $stays++;
+            $nights += night_nights((string) ($r['check_in'] ?? ''), (string) ($r['check_out'] ?? ''));
+            $rev += (float) ($r['revenue'] ?? 0);
+        }
+        return ['stays' => $stays, 'nights' => $nights, 'revenue' => night_money($rev)];
+    };
+    return [
+        'frame' => 'Direct bookings only, counted by the month the stay starts — platform stays (Airbnb etc.) are not in these figures.',
+        'this_month' => ['month' => night_str($monthLabel)] + $sum($thisM),
+        'last_month' => ['month' => night_str($lastLabel)] + $sum($lastM),
+    ];
+}
+
+// EXPENSES: the tax year so far, by category — the frame the books use.
+function night_tool_expenses(array $rows, $yearLabel)
+{
+    $total = 0.0;
+    $cats = [];
+    $n = 0;
+    foreach ($rows as $r) {
+        if (!is_array($r)) {
+            continue;
+        }
+        $amt = (float) ($r['amount'] ?? 0);
+        $total += $amt;
+        $n++;
+        $cat = night_str($r['category'] ?? '') ?: 'General';
+        $cats[$cat] = ($cats[$cat] ?? 0) + $amt;
+    }
+    arsort($cats);
+    $byCat = [];
+    foreach (array_slice($cats, 0, NIGHT_TOOL_ROWS_MAX, true) as $c => $amt) {
+        $byCat[] = ['category' => $c, 'total' => night_money($amt)];
+    }
+    return [
+        'tax_year' => night_str($yearLabel),
+        'logged' => $n,
+        'total' => night_money($total),
+        'by_category' => $byCat,
+        'frame' => 'Only expenses logged in the app — the same caveat the Income & tax screen states.',
+    ];
+}
+
+// ============================================================
+//  ACTIONS THE MODEL MAY PROPOSE — and only ever propose.
+//
+//  THE SAFETY SHAPE, in one sentence: the model proposes, the phone disposes.
+//  An act travels as data in the answer envelope, renders as a CARD in the
+//  chat, and executes ONLY when the owner taps Confirm — on the phone,
+//  through the same admin session, endpoints and refusals every back-office
+//  button uses (clash check, resend guard, undo). The device key can execute
+//  NOTHING: nothing here runs server-side, and no nightshift device action
+//  writes business state. A closed whitelist, validated at the answer door
+//  AND again by the thread sanitiser (defence in depth — the second guard
+//  also covers a hand-edited content row), means an unknown or malformed act
+//  is refused or dropped, never "tried". Money OUT (refunds, deposit
+//  returns, cancellations) is deliberately not in the list, and the
+//  validator refuses such kinds by name so their absence is a decision a
+//  gate can see, not an oversight.
+// ============================================================
+const NIGHT_ACT_KINDS = ['block_dates', 'price_override', 'request_payment'];
+const NIGHT_ACT_NOTE_MAX = 120;
+const NIGHT_ACT_RATE_MIN = 20;    // the price command's own sanity bounds
+const NIGHT_ACT_RATE_MAX = 2000;
+
+// Validate the STORED form (prop already a key). '' or a sentence. This is
+// the sanitiser's guard, so it must hold on every re-read of the thread.
+function night_act_problem($act)
+{
+    if (!is_array($act)) {
+        return 'An action must be an object.';
+    }
+    $kind = $act['kind'] ?? '';
+    if (!in_array($kind, NIGHT_ACT_KINDS, true)) {
+        return 'The only actions are ' . implode(', ', NIGHT_ACT_KINDS) . '.';
+    }
+    $allowed = ['kind' => 1, 'done' => 1, 'doneAt' => 1];
+    if ($kind === 'block_dates' || $kind === 'price_override') {
+        $allowed += ['prop' => 1, 'cottage' => 1, 'from' => 1, 'to' => 1];
+        $allowed += $kind === 'block_dates' ? ['note' => 1] : ['rate' => 1];
+        $from = night_tool_iso($act['from'] ?? '');
+        $to = night_tool_iso($act['to'] ?? '');
+        if ($from === '' || $to === '' || $from > $to) {
+            return 'The action needs from and to dates (YYYY-MM-DD), first night to last night.';
+        }
+        if (night_nights($from, $to) + 1 > NIGHT_TOOL_RANGE_MAX) {
+            return 'That range is longer than ' . NIGHT_TOOL_RANGE_MAX . ' nights.';
+        }
+        if (!is_string($act['prop'] ?? null) || !preg_match('/^[a-z0-9-]{1,40}$/', $act['prop'])) {
+            return 'The action names no cottage.';
+        }
+        if ($kind === 'price_override') {
+            $rate = $act['rate'] ?? null;
+            if (!is_numeric($rate) || $rate < NIGHT_ACT_RATE_MIN || $rate > NIGHT_ACT_RATE_MAX) {
+                return 'The nightly rate must be between £' . NIGHT_ACT_RATE_MIN . ' and £' . NIGHT_ACT_RATE_MAX . '.';
+            }
+        }
+        if ($kind === 'block_dates' && isset($act['note'])
+            && (!is_string($act['note']) || mb_strlen($act['note']) > NIGHT_ACT_NOTE_MAX)) {
+            return 'The note is not text under ' . NIGHT_ACT_NOTE_MAX . ' characters.';
+        }
+    }
+    if ($kind === 'request_payment') {
+        $allowed += ['booking' => 1];
+        $b = $act['booking'] ?? null;
+        if (!is_numeric($b) || (int) $b <= 0) {
+            return 'request_payment needs the booking ref from a lookup result.';
+        }
+    }
+    foreach (array_keys($act) as $k) {
+        if (!isset($allowed[$k])) {
+            return 'The action carries a field it may not: ' . night_str((string) $k) . '.';
+        }
+    }
+    $done = $act['done'] ?? null;
+    if ($done !== null && $done !== 'done' && $done !== 'dismissed') {
+        return 'An action verdict is done or dismissed.';
+    }
+    return '';
+}
+
+// Resolve what the MODEL emitted ({action, args{...}}) into the stored form:
+// cottage name → prop key (matched against the live list exactly as the
+// availability tool does — ambiguity refused NAMING the choices), dates
+// checked against today (the past is not proposable), everything else
+// through night_act_problem. Returns ['act' => stored|null, 'problem' => ''].
+function night_act_resolve($raw, array $names, $todayIso)
+{
+    if (!is_array($raw)) {
+        return ['act' => null, 'problem' => 'An action must be an object.'];
+    }
+    $kind = night_str($raw['action'] ?? ($raw['kind'] ?? ''));
+    if (!in_array($kind, NIGHT_ACT_KINDS, true)) {
+        return ['act' => null, 'problem' => 'The only actions are ' . implode(', ', NIGHT_ACT_KINDS) . ' — nothing that moves money out or deletes.'];
+    }
+    $a = is_array($raw['args'] ?? null) ? $raw['args'] : [];
+    $act = ['kind' => $kind];
+    if ($kind === 'block_dates' || $kind === 'price_override') {
+        $want = mb_strtolower(trim(night_str($a['cottage'] ?? '')));
+        $hits = [];
+        foreach ($names as $pk => $nm) {
+            if (mb_strtolower((string) $nm) === $want || mb_strtolower((string) $pk) === $want
+                || ($want !== '' && mb_stripos((string) $nm, $want) !== false)) {
+                $hits[(string) $pk] = (string) $nm;
+            }
+        }
+        if (count($hits) !== 1) {
+            return ['act' => null, 'problem' => (count($hits) === 0 ? 'No cottage called that. ' : 'More than one cottage matches. ')
+                . 'The cottages are: ' . implode(', ', array_values($names)) . '.'];
+        }
+        $act['prop'] = (string) array_key_first($hits);
+        $act['cottage'] = $hits[$act['prop']];
+        $act['from'] = night_tool_iso($a['from'] ?? '');
+        $act['to'] = night_tool_iso($a['to'] ?? '');
+        if ($act['from'] !== '' && $act['from'] < (string) $todayIso) {
+            return ['act' => null, 'problem' => 'That starts in the past — actions are for dates from today on.'];
+        }
+        if ($kind === 'price_override') {
+            $act['rate'] = round((float) ($a['rate'] ?? 0), 2);
+        }
+        if ($kind === 'block_dates' && night_str($a['note'] ?? '') !== '') {
+            $act['note'] = mb_substr(night_str($a['note']), 0, NIGHT_ACT_NOTE_MAX);
+        }
+    }
+    if ($kind === 'request_payment') {
+        $act['booking'] = (int) ($a['booking'] ?? 0);
+    }
+    $bad = night_act_problem($act);
+    return $bad === '' ? ['act' => $act, 'problem' => ''] : ['act' => null, 'problem' => $bad];
+}
+
 // ============================================================
 //  THE WEB CHAT — the owner talking to their Mac from anywhere.
 //
@@ -1471,6 +1696,13 @@ function night_ownerchat_thread($raw)
             // owner, and every device's render must say so.
             if (!empty($m['stopped'])) {
                 $one['stopped'] = true;
+            }
+            // A PROPOSED ACTION survives only if it still validates — the
+            // second of the two guards (the answer door is the first), so a
+            // hand-edited content row can never render a card the whitelist
+            // does not know. Its done/dismissed verdict rides with it.
+            if (isset($m['act']) && night_act_problem($m['act']) === '') {
+                $one['act'] = $m['act'];
             }
         }
         $msgs[] = $one;

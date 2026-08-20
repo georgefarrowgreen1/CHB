@@ -5858,6 +5858,21 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   vertical-align:-2px;animation:mcCaret .9s steps(1) infinite}
 @keyframes mcCaret{50%{opacity:0}}
 .mc-meta{align-self:flex-start;font-size:0.64rem;color:var(--text-muted);padding-left:4px}
+/* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
+.mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:16px;
+  padding:12px 14px;background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.mc-act-t{font:700 0.7rem var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;
+  color:var(--accent-text);margin-bottom:5px}
+.mc-act-f{font-size:0.8rem;line-height:1.5;color:var(--text-light)}
+.mc-act-btns{display:flex;gap:8px;margin-top:10px}
+.mc-act-go{border:0;border-radius:999px;padding:0 16px;min-height:38px;cursor:pointer;
+  background:var(--accent);color:var(--accent-ink);font:700 0.76rem var(--font-sans)}
+.mc-act-no{border:1px solid var(--glass-border);border-radius:999px;padding:0 14px;min-height:38px;
+  cursor:pointer;background:none;color:var(--text-muted);font:600 0.76rem var(--font-sans)}
+.mc-act-no:hover{color:var(--text-light);background:var(--btn-hover)}
+.mc-act-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
+.mc-act.is-done{background:color-mix(in srgb,var(--ok) 10%,transparent);font-size:0.74rem;font-weight:600;color:var(--text-light)}
+.mc-act.is-off{background:none;font-size:0.72rem;color:var(--text-muted)}
 /* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
 .ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
   max-width:720px;margin:0 auto;display:none;align-items:center;gap:8px;

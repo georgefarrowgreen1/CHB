@@ -659,6 +659,11 @@ route_actions([
                         if (is_array($j['used'] ?? null) && $j['used']) {
                             $msg['used'] = $j['used'];
                         }
+                        // The proposal rides into the thread; the sanitiser
+                        // is the second guard and drops anything invalid.
+                        if (isset($j['act'])) {
+                            $msg['act'] = $j['act'];
+                        }
                     }
                     if (night_str($row['model'] ?? '') !== '') {
                         $msg['model'] = night_str($row['model']);
@@ -741,6 +746,38 @@ route_actions([
         content_set_scalar('mac-chat', json_encode($t));
         $last = $t['msgs'] ? $t['msgs'][count($t['msgs']) - 1] : null;
         json_out(['ok' => true, 'kept' => true, 'msg' => $last]);
+    },
+    // ---- the owner decides a proposed action ------------------------
+    // The VERDICT is thread state: a card confirmed on one phone must render
+    // inert on every device and every reload, or the same email is one tap
+    // from going twice. Deliberately does NOT execute anything — execution
+    // happened on the phone through the ordinary admin endpoints before this
+    // is called (done), or never (dismissed). The index is verified against
+    // the act's own kind so a thread that rotated under the cap cannot mark
+    // the wrong card.
+    'chat_act_done' => function ($in) {
+        require_admin();
+        $idx = (int) ($in['idx'] ?? -1);
+        $kind = night_str($in['kind'] ?? '');
+        $verdict = $in['verdict'] ?? '';
+        if ($verdict !== 'done' && $verdict !== 'dismissed') {
+            json_out(['error' => 'The verdict is done or dismissed.'], 400);
+        }
+        $t = night_ownerchat_thread(content_json('mac-chat', []));
+        $m = $t['msgs'][$idx] ?? null;
+        if (!is_array($m) || ($m['who'] ?? '') !== 'mac' || !is_array($m['act'] ?? null)
+            || ($m['act']['kind'] ?? '') !== $kind) {
+            json_out(['error' => 'The conversation has moved on — refresh and look again.'], 409);
+        }
+        if (isset($m['act']['done'])) {
+            // Already decided (another device, or a double tap) — the stored
+            // verdict stands; saying so beats silently re-deciding.
+            json_out(['ok' => true, 'already' => true, 'verdict' => $m['act']['done']]);
+        }
+        $t['msgs'][$idx]['act']['done'] = $verdict;
+        $t['msgs'][$idx]['act']['doneAt'] = date('H:i');
+        content_set_scalar('mac-chat', json_encode(night_ownerchat_thread($t)));
+        json_out(['ok' => true, 'verdict' => $verdict]);
     },
     'chat_instr' => function ($in) {
         require_admin();
@@ -1037,11 +1074,45 @@ route_actions([
             }
         } catch (\Throwable $e) {
         }
+        // A PROPOSED ACTION IS VALIDATED AT THIS DOOR, the first of the two
+        // guards: the whitelist is closed, the cottage resolves against the
+        // live list (ambiguity refused naming the choices), the past is not
+        // proposable, and a request_payment ref must be a booking that
+        // EXISTS. The act is stored NORMALISED (prop key + display name), so
+        // everything downstream renders one shape. A bad act refuses the
+        // whole answer in a sentence — the Mac validated first, so meeting
+        // this is a buggy or hostile device, not a model having a bad day.
+        $storeText = trim((string) $in['text']);
+        if ($row['kind'] === 'ownerchat') {
+            $env = json_decode($storeText, true);
+            if (is_array($env) && isset($env['act'])) {
+                $nameOfA = [];
+                try {
+                    foreach (db()->query('SELECT prop_key, name FROM properties WHERE archived_at IS NULL')->fetchAll() as $pr) {
+                        $nameOfA[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+                    }
+                } catch (\Throwable $e) {
+                }
+                $res = night_act_resolve($env['act'], $nameOfA, date('Y-m-d'));
+                if ($res['act'] === null) {
+                    json_out(['error' => 'The proposed action was refused: ' . $res['problem']], 400);
+                }
+                if ($res['act']['kind'] === 'request_payment') {
+                    $st = db()->prepare('SELECT id FROM bookings WHERE id = ?');
+                    $st->execute([(int) $res['act']['booking']]);
+                    if (!$st->fetchColumn()) {
+                        json_out(['error' => 'The proposed action was refused: no booking has that ref.'], 400);
+                    }
+                }
+                $env['act'] = $res['act'];
+                $storeText = json_encode($env);
+            }
+        }
         // Guarded write: the WHERE re-checks open, so two racing answers
         // cannot both land (the first wins, the second reads back as replayed).
         $up = db()->prepare("UPDATE night_asks SET status = 'answered', answer = ?, model = ?, answered_at = NOW()
                               WHERE id = ? AND status = 'open'");
-        $up->execute([trim((string) $in['text']), night_str($in['model'] ?? ''), $id]);
+        $up->execute([$storeText, night_str($in['model'] ?? ''), $id]);
         json_out(['ok' => true, 'replayed' => $up->rowCount() === 0]);
     },
 
@@ -1389,6 +1460,77 @@ route_actions([
                     $rows[] = $pr;
                 }
                 json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_cottages($rows)]);
+            }
+            if ($tool === 'money') {
+                // Who still owes, judged by the SAME window rule the payask
+                // uses (booking_within_balance_window / checked out) — one
+                // derivation, so the chat and the hub can never disagree.
+                $st = db()->prepare('SELECT * FROM bookings WHERE check_out >= ? ORDER BY check_in LIMIT 80');
+                $st->execute([$today]);
+                $owed = [];
+                foreach ($st->fetchAll() as $b) {
+                    try {
+                        $due = (float) booking_amount_due($b, 'balance')['due'];
+                    } catch (\Throwable $e) {
+                        $due = 0.0;
+                    }
+                    if ($due <= 0.5) {
+                        continue;
+                    }
+                    $b['due'] = $due;
+                    $b['due_now'] = ((string) $b['check_out'] <= $today) || booking_within_balance_window($b);
+                    $owed[] = $b;
+                }
+                $st = db()->prepare("SELECT id, name, prop_key, check_out, hold_amount, agreed_booking_fee
+                                       FROM bookings WHERE hold_status = 'charged' AND check_out <= ? ORDER BY check_out DESC LIMIT 30");
+                $st->execute([$today]);
+                $deps = [];
+                foreach ($st->fetchAll() as $b) {
+                    $held = damages_collected($b) - damages_returned((int) $b['id']);
+                    if ($held <= 0.5) {
+                        continue;
+                    }
+                    $b['dep'] = $held;
+                    $deps[] = $b;
+                }
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_money($owed, $deps, $nameOf)]);
+            }
+            if ($tool === 'performance') {
+                $mStart = date('Y-m-01');
+                $mEnd = date('Y-m-t');
+                $lStart = date('Y-m-01', strtotime($mStart . ' -1 month'));
+                $lEnd = date('Y-m-t', strtotime($lStart));
+                $pull = function ($a, $b2) {
+                    $st = db()->prepare('SELECT * FROM bookings WHERE check_in >= ? AND check_in <= ?');
+                    $st->execute([$a, $b2]);
+                    $rows = [];
+                    foreach ($st->fetchAll() as $bk) {
+                        try {
+                            $bk['revenue'] = (float) booking_rental_price($bk);
+                        } catch (\Throwable $e) {
+                            $bk['revenue'] = 0.0;
+                        }
+                        $rows[] = $bk;
+                    }
+                    return $rows;
+                };
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_performance(
+                    $pull($mStart, $mEnd),
+                    $pull($lStart, $lEnd),
+                    date('F Y'),
+                    date('F Y', strtotime($lStart)),
+                )]);
+            }
+            if ($tool === 'expenses') {
+                // The tax year the books use: from 6 April.
+                $y = (int) date('Y');
+                $taxStart = (date('md') >= '0406' ? $y : $y - 1) . '-04-06';
+                $st = db()->prepare('SELECT amount, category FROM expenses WHERE expense_date >= ? LIMIT 500');
+                $st->execute([$taxStart]);
+                json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_expenses(
+                    $st->fetchAll(),
+                    substr($taxStart, 0, 4) . '/' . substr((string) ((int) substr($taxStart, 0, 4) + 1), 2),
+                )]);
             }
             // enquiries — the brief's own view, WITHOUT its draft stand-down
             // filter: that filter is about not re-drafting, and the chat is

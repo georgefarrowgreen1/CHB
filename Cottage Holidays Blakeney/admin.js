@@ -11804,7 +11804,7 @@ function mcPresenceHtml(st) {
     }
     return `<span class="mc-pres is-asleep"><span class="mc-dot"></span>No Mac connected yet</span>`;
 }
-function mcMsgHtml(m) {
+function mcMsgHtml(m, ix) {
     if (m.who !== 'mac') {
         let yh = '';
         // A photo bubble: `img` is the server's stored ref (pattern-checked —
@@ -11840,14 +11840,151 @@ function mcMsgHtml(m) {
         // reload on any device still says these words were cut short.
         h += `<div class="mc-meta">stopped by you — kept what it had said</div>`;
     }
+    if (m.act && MC_ACTS[m.act.kind]) {
+        h += mcActHtml(m.act, ix);
+    }
     return h;
+}
+// ── THE ACTION CARD — the model proposes, THIS PHONE disposes. ─────────────
+// A card states exactly what will happen and NOTHING runs until Confirm is
+// tapped — execution goes through the same admin session, endpoints and
+// refusals as the back office's own buttons (the clash check, the resend
+// guard, the payment preview, the undo stack), so the Mac and its model
+// never hold a way to act by themselves. The registry is a CLOSED map: a
+// kind it does not name renders no card at all, however the thread was
+// assembled — the third guard, after the answer door and the sanitiser.
+const MC_ACTS = {
+    block_dates: {
+        title: 'Block dates',
+        verb: 'Block the dates',
+        pastVerb: 'Dates blocked',
+        facts(act) {
+            const n = nightsBetween(act.from, act.to) + 1;
+            return `${escapeHtml(act.cottage || act.prop)} · ${fmtDate(act.from)} – ${fmtDate(act.to)} (${n} night${n === 1 ? '' : 's'}) — nothing can book them.`
+                + (act.note ? `<br>Note: ${escapeHtml(act.note)}` : '');
+        },
+        async run(act) {
+            // The same endpoint the Block-out-dates dialog posts — its own
+            // clash refusal included. `to` is the last blocked NIGHT, so the
+            // free-again day is the one after.
+            await apiPost('ical-import.php', { action: 'add_block', prop: act.prop, check_in: act.from, check_out: ukShiftDays(act.to, 1) });
+            toast('Dates blocked.');
+            initBackOffice().catch(() => {});
+            return true;
+        },
+    },
+    price_override: {
+        title: 'Set the price',
+        verb: 'Set the price',
+        pastVerb: 'Price set',
+        facts(act) {
+            return `${escapeHtml(act.cottage || act.prop)} · ${gbp(Number(act.rate) || 0)} a night · ${fmtDate(act.from)} – ${fmtDate(act.to)}.`;
+        },
+        async run(act) {
+            // The search command's own applier: splices the seasons, saves
+            // through the validated endpoint, records the undo.
+            await cmdkApplyPriceOverride(act.prop, act.from, act.to, Number(act.rate) || 0, 'AI chat');
+            toast(`Price set — ${gbp(Number(act.rate) || 0)} a night. Undo lives in search.`);
+            return true;
+        },
+    },
+    request_payment: {
+        title: 'Ask for the payment',
+        verb: 'Open the request',
+        pastVerb: 'Request sent',
+        facts(act) {
+            const b = findBookingById(act.booking);
+            if (!b) return '';
+            // The LIVE figure, from the one owed derivation — never the
+            // model's memory of it.
+            const due = bookingDue(findBookingLocation(act.booking), b).balance;
+            if (due <= 0.5) return '';
+            return `Email ${escapeHtml(b.name || 'the guest')} their payment link — ${gbp(due)} still to pay. The email preview opens first.`;
+        },
+        // A DEAD proposal says why instead of offering a dead button: the
+        // booking may have gone, or settled since the model looked.
+        dead(act) {
+            const b = findBookingById(act.booking);
+            if (!b) return 'That booking is no longer here.';
+            if (bookingDue(findBookingLocation(act.booking), b).balance <= 0.5) return `${escapeHtml(b.name || 'The guest')} is already settled — nothing to ask.`;
+            return '';
+        },
+        async run(act) {
+            // THROUGH THE PREVIEW — one-tap-send-blind on money would be a
+            // downgrade (the act-in-place rule). Backing out returns false
+            // and the card stays live.
+            const sent = await requestPayment(act.booking, undefined);
+            return sent === true;
+        },
+    },
+};
+function mcActHtml(act, ix) {
+    const spec = MC_ACTS[act.kind];
+    if (!spec) return '';
+    if (act.done === 'done') {
+        return `<div class="mc-act is-done" id="mc-act-${ix}"><span class="mc-tick">✓</span> ${spec.pastVerb}${act.doneAt ? ' · ' + escapeHtml(act.doneAt) : ''}</div>`;
+    }
+    if (act.done === 'dismissed') {
+        return `<div class="mc-act is-off" id="mc-act-${ix}">Dismissed — nothing was done.</div>`;
+    }
+    const dead = spec.dead ? spec.dead(act) : '';
+    if (dead) {
+        return `<div class="mc-act is-off" id="mc-act-${ix}">${dead}</div>`;
+    }
+    return `<div class="mc-act" id="mc-act-${ix}" role="group" aria-label="Proposed action">
+        <div class="mc-act-t">${spec.title}</div>
+        <div class="mc-act-f">${spec.facts(act)}</div>
+        <div class="mc-act-btns">
+            <button type="button" class="mc-act-go" data-act="mcActRun" data-arg="${ix}">${spec.verb}</button>
+            <button type="button" class="mc-act-no" data-act="mcActDismiss" data-arg="${ix}">Dismiss</button>
+        </div>
+        <div class="mc-act-note">Nothing happens until you confirm — this runs from your phone with the site’s own checks.</div>
+    </div>`;
+}
+function mcActAt(ix) {
+    const m = __mcState && Array.isArray(__mcState.msgs) ? __mcState.msgs[Number(ix)] : null;
+    return m && m.who === 'mac' && m.act && MC_ACTS[m.act.kind] && !m.act.done ? m.act : null;
+}
+async function mcActVerdict(ix, verdict) {
+    const act = __mcState.msgs[Number(ix)].act;
+    let r = null;
+    try { r = await apiPost('nightshift.php', { action: 'chat_act_done', idx: Number(ix), kind: act.kind, verdict }); } catch (e) { r = { error: e && e.message }; }
+    if (r && r.ok) {
+        act.done = r.verdict || verdict;
+        act.doneAt = act.doneAt || '';
+        const node = document.getElementById('mc-act-' + ix);
+        if (node) node.outerHTML = mcActHtml(act, Number(ix));
+        return;
+    }
+    // The thread moved (another device, the cap rotated) — refresh rather
+    // than guess which card the index means now.
+    toast((r && r.error) || 'The conversation has moved on — refreshing.');
+    renderMacChat();
+}
+async function mcActRun(ix) {
+    const act = mcActAt(ix);
+    if (!act) return;
+    let did = false;
+    try {
+        did = await MC_ACTS[act.kind].run(act);
+    } catch (e) {
+        // The endpoint's own refusal (a clash, an already-sent window) is the
+        // safeguard doing its job — said in its words, and the card stays.
+        glassAlert((e && e.message) || 'That could not be done just now.');
+        return;
+    }
+    if (did) await mcActVerdict(ix, 'done');
+}
+async function mcActDismiss(ix) {
+    if (!mcActAt(ix)) return;
+    await mcActVerdict(ix, 'dismissed');
 }
 // The welcome card — the empty state STARTS you off instead of lecturing.
 function mcHelloHtml() {
     return `<div class="mc-hello">
         <div class="mc-hello-spark" aria-hidden="true">✦</div>
         <h2>Ask your Mac anything</h2>
-        <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries and the cottages as you talk.</p>
+        <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries, the cottages, the money and the books as you talk — and prepare actions for you to confirm.</p>
         <div class="mc-starters">
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Who arrives today?">Who arrives today? <span class="mc-go">›</span></button>
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Is anything free this weekend?">Anything free this weekend? <span class="mc-go">›</span></button>
@@ -12079,7 +12216,12 @@ async function mcStop() {
             try { pr = await apiPost('nightshift.php', { action: 'chat_poll', id, wait: 0, seen: 0 }); } catch (e) { pr = null; }
             if (pr && pr.status === 'answered' && pr.msg && log) {
                 if (cap) cap.remove();
-                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg));
+                let rIx;
+                if (__mcState) {
+                    __mcState.msgs = (__mcState.msgs || []).concat([pr.msg]);
+                    rIx = __mcState.msgs.length - 1;
+                }
+                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg, rIx));
                 log.insertAdjacentHTML('beforeend', '<div class="mc-meta" role="status">it had already answered</div>');
                 log.scrollTop = log.scrollHeight;
                 return;
@@ -12089,7 +12231,12 @@ async function mcStop() {
             // The words already said STAY — mcMsgHtml renders the stopped
             // sign-off from the message itself, so a reload says the same.
             if (cap) cap.remove();
-            log.insertAdjacentHTML('beforeend', mcMsgHtml(r.msg));
+            let sIx;
+            if (__mcState) {
+                __mcState.msgs = (__mcState.msgs || []).concat([r.msg]);
+                sIx = __mcState.msgs.length - 1;
+            }
+            log.insertAdjacentHTML('beforeend', mcMsgHtml(r.msg, sIx));
             log.scrollTop = log.scrollHeight;
             return;
         }
@@ -12159,6 +12306,10 @@ async function mcSendRun() {
         // The send carried it — only NOW does the pending chip clear, so a
         // failed send keeps the attachment armed beside the restored words.
         if (att) mcAttachClear();
+        // The local mirror stays in step with what the server stored — an
+        // action card is addressed by its INDEX in this list, so drifting
+        // here would confirm the wrong card.
+        if (__mcState) { __mcState.msgs = (__mcState.msgs || []).concat([optimistic]); }
         const id = sendR.id;
         __mcAskId = id; // the ■ stops THIS ask
         if (sendR.presence && !sendR.presence.listening) {
@@ -12178,7 +12329,12 @@ async function mcSendRun() {
             if (pr.status === 'answered' && pr.msg) {
                 if (live) { live.remove(); live = null; }
                 cap.remove();
-                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg));
+                let mIx;
+                if (__mcState) {
+                    __mcState.msgs = (__mcState.msgs || []).concat([pr.msg]);
+                    mIx = __mcState.msgs.length - 1;
+                }
+                log.insertAdjacentHTML('beforeend', mcMsgHtml(pr.msg, mIx));
                 log.insertAdjacentHTML('beforeend', `<div class="mc-meta" role="status">answered by your Mac at home${pr.msg.model ? ' · ' + escapeHtml(pr.msg.model) : ''}</div>`);
                 log.scrollTop = log.scrollHeight;
                 return;

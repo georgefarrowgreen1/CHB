@@ -36,6 +36,12 @@ const CHAT_TOOLS = {
     // owner asked about a cottage and the model had nothing to see, not
     // even the names to put into an availability call.
     cottages: { args: [], req: [] },
+    // The whole-business reads (Tier 1): who owes and the deposits to go
+    // back, this month against last, the tax year's expenses. All composed
+    // and CAPPED server-side; names travel, contact details never.
+    money: { args: [], req: [] },
+    performance: { args: [], req: [] },
+    expenses: { args: [], req: [] },
 };
 const CHAT_TOOL_NAMES = Object.keys(CHAT_TOOLS);
 // Lookups per message. Three answers most questions twice over; a model that
@@ -61,8 +67,82 @@ function chatToolsIntro(todayIso) {
         + '\u2022 cottages \u2014 args {}: the cottages themselves \u2014 their names, what each sleeps, the base '
         + 'nightly rate, and their published questions and answers. Use it whenever the owner asks about '
         + 'a cottage, its price, or what it offers, and to learn the exact names availability needs.\n'
+        + '\u2022 money \u2014 args {}: who still owes (split due now / due later, each row with a `ref`) and '
+        + 'the damage deposits ready to return.\n'
+        + '\u2022 performance \u2014 args {}: this month against last \u2014 stays, nights and revenue from direct bookings.\n'
+        + '\u2022 expenses \u2014 args {}: this tax year\u2019s logged expenses, total and by category.\n'
         + 'Quote figures exactly as the results state them \u2014 never calculate or invent money. '
         + 'If a lookup fails, say so plainly.';
+}
+
+// \u2500\u2500 ACTIONS THE MODEL MAY PROPOSE \u2014 and only ever propose. \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// The safety shape in one sentence: the model proposes, the phone disposes.
+// An ACT line becomes DATA in the answer envelope; the owner's phone renders
+// it as a card and NOTHING happens until they tap Confirm \u2014 execution runs
+// through the phone's own admin session and the site's existing refusals.
+// This Mac can execute nothing: the whitelist below is a closed set the site
+// re-validates at its own door, and money-out kinds are deliberately absent.
+const CHAT_ACTS = {
+    block_dates: { args: ['cottage', 'from', 'to', 'note'], req: ['cottage', 'from', 'to'] },
+    price_override: { args: ['cottage', 'from', 'to', 'rate'], req: ['cottage', 'from', 'to', 'rate'] },
+    request_payment: { args: ['booking'], req: ['booking'] },
+};
+const CHAT_ACT_NAMES = Object.keys(CHAT_ACTS);
+
+function chatActsIntro() {
+    return 'You may also PREPARE an action for the owner to confirm \u2014 you can never perform one. '
+        + 'When the owner asks you to do one of these things, end your reply with EXACTLY one line: '
+        + 'ACT {"action":"<name>","args":{...}}\n'
+        + 'The actions (dates are first night to last night, YYYY-MM-DD):\n'
+        + '\u2022 block_dates \u2014 args {"cottage":"...","from":"...","to":"...","note":"..."} (note optional): '
+        + 'hold dates so nothing can book them.\n'
+        + '\u2022 price_override \u2014 args {"cottage":"...","from":"...","to":"...","rate":150}: '
+        + 'set the nightly rate for those dates (\u00a320\u2013\u00a32000).\n'
+        + '\u2022 request_payment \u2014 args {"booking":<ref>}: email a guest their payment link. The ref '
+        + 'MUST be a `ref` you saw in a lookup result this conversation \u2014 never a guess.\n'
+        + 'Rules: at most ONE action per reply; say in plain words what the card will do; NEVER claim '
+        + 'the action is done \u2014 the owner confirms it on their phone. Anything else (refunds, '
+        + 'cancellations, deleting) you cannot prepare \u2014 say so and point at the back office.';
+}
+
+// The final answer \u2192 its proposal, if any. Returns { text, act|null, bad|null }:
+// the ACT line is STRIPPED from the words either way (a protocol line must
+// never paint), an unknown or malformed act is reported so the caller can
+// log it \u2014 dropped and named, never repaired (guard.js's own rule).
+function chatActCall(raw) {
+    const text = String(raw == null ? '' : raw);
+    const m = text.match(/^[ \t]*ACT\b(.*)$/m);
+    if (!m) { return { text: text, act: null, bad: null }; }
+    const cleaned = (text.slice(0, m.index) + text.slice(m.index + m[0].length))
+        .replace(/\n{3,}/g, '\n\n').trim();
+    const rest = m[1];
+    const start = rest.indexOf('{');
+    let j = null;
+    if (start >= 0) {
+        try { j = JSON.parse(rest.slice(start)); } catch (e) { j = null; }
+    }
+    if (!j || typeof j !== 'object') {
+        return { text: cleaned, act: null, bad: 'no JSON object after ACT' };
+    }
+    const name = String(j.action || '');
+    const spec = CHAT_ACTS[name];
+    if (!spec) {
+        return { text: cleaned, act: null, bad: 'no such action \u2014 the actions are ' + CHAT_ACT_NAMES.join(', ') };
+    }
+    const args = {};
+    let missing = '';
+    spec.args.forEach(function (k) {
+        const v = (j.args && typeof j.args === 'object') ? j.args[k] : undefined;
+        if (typeof v === 'string' && v.trim() !== '') { args[k] = v.trim().slice(0, CHAT_TOOL_ARG_MAX); }
+        if (typeof v === 'number' && isFinite(v)) { args[k] = v; }
+    });
+    spec.req.forEach(function (k) {
+        if (!(k in args) && !missing) { missing = k; }
+    });
+    if (missing) {
+        return { text: cleaned, act: null, bad: 'the action is missing ' + missing };
+    }
+    return { text: cleaned, act: { action: name, args: args }, bad: null };
 }
 
 // One reply → what it is. Returns:
@@ -144,5 +224,7 @@ function chatToolGrammar() {
 
 module.exports = {
     CHAT_TOOLS, CHAT_TOOL_NAMES, CHAT_TOOL_ROUNDS, CHAT_TOOL_ARG_MAX, CHAT_TOOL_RESULT_MAX,
+    CHAT_ACTS, CHAT_ACT_NAMES,
     chatToolsIntro, chatToolCall, chatToolResultMsg, chatToolGrammar,
+    chatActsIntro, chatActCall,
 };

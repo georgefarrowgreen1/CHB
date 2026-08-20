@@ -3285,6 +3285,65 @@ it_check('stop: an answer that beat the stop is reported raced, never hidden',
     ($r['json']['kept'] ?? true) === false && ($r['json']['raced'] ?? '') === 'answered', $r['raw']);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 
+// ── TIER 1: the whole-business reads, through the real door ─────────────
+$rootDb->exec("INSERT INTO expenses (category, description, amount, expense_date) VALUES ('Cleaning', 'it test', 60.00, CURDATE())");
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'money', 'args' => []]);
+it_check('tools: money answers with its three lists and never a contact detail',
+    ($r['json']['ok'] ?? false) === true
+    && is_array($r['json']['data']['due_now'] ?? null) && is_array($r['json']['data']['deposits_to_return'] ?? null)
+    && strpos($r['raw'], '@') === false, substr($r['raw'], 0, 200));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'performance', 'args' => []]);
+it_check('tools: performance states its direct-only frame',
+    ($r['json']['ok'] ?? false) === true && strpos((string) ($r['json']['data']['frame'] ?? ''), 'platform stays') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'expenses', 'args' => []]);
+it_check('tools: expenses totals the tax year',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['data']['logged'] ?? 0) >= 1, $r['raw']);
+$rootDb->exec("DELETE FROM expenses WHERE description = 'it test'");
+
+// ── TIER 2: a proposal travels as DATA, is validated at the door, and its
+// verdict is thread state — while the device key can still EXECUTE nothing.
+$wcProp = $rootDb->query('SELECT prop_key, name FROM properties ORDER BY prop_key LIMIT 1')->fetch();
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'block it next month']);
+$wcAid = (int) ($r['json']['id'] ?? 0);
+$wcFrom = date('Y-m-d', strtotime('+30 days'));
+$wcTo = date('Y-m-d', strtotime('+33 days'));
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid,
+    'text' => json_encode(['text' => 'I can hold those dates.', 'act' => ['action' => 'block_dates',
+        'args' => ['cottage' => $wcProp['name'], 'from' => $wcFrom, 'to' => $wcTo, 'note' => 'boiler']]])]);
+it_check('acts: a valid proposal lands', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $wcAid, 'wait' => 0, 'seen' => 0]);
+$wcAct = $r['json']['msg']['act'] ?? null;
+it_check('acts: the phone receives it NORMALISED — prop key resolved, note kept, no verdict yet',
+    is_array($wcAct) && ($wcAct['kind'] ?? '') === 'block_dates'
+    && ($wcAct['prop'] ?? '') === $wcProp['prop_key'] && ($wcAct['note'] ?? '') === 'boiler'
+    && !isset($wcAct['done']), $r['raw']);
+$wcIdx = count(http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread'])['json']['msgs'] ?? []) - 1;
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'idx' => $wcIdx, 'kind' => 'block_dates', 'verdict' => 'done']);
+it_check('acts: the verdict is thread state', ($r['json']['verdict'] ?? '') === 'done', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_act_done', 'idx' => $wcIdx, 'kind' => 'block_dates', 'verdict' => 'dismissed']);
+it_check('acts: a decided card cannot be re-decided — the stored verdict stands',
+    ($r['json']['already'] ?? false) === true && ($r['json']['verdict'] ?? '') === 'done', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+$wcLastA = $r['json']['msgs'][count($r['json']['msgs'] ?? []) - 1] ?? [];
+it_check('acts: every device reads the same decided card',
+    (($wcLastA['act']['done'] ?? '') === 'done') && ($wcLastA['act']['doneAt'] ?? '') !== '', $r['raw']);
+// The door's refusals, each in a sentence.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'try the bad ones']);
+$wcAid2 = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid2,
+    'text' => json_encode(['text' => 'Refunding now.', 'act' => ['action' => 'refund', 'args' => ['booking' => 1]]])]);
+it_check('acts: money OUT is refused at the door BY NAME',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'moves money out') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid2,
+    'text' => json_encode(['text' => 'Asking now.', 'act' => ['action' => 'request_payment', 'args' => ['booking' => 999999]]])]);
+it_check('acts: a guessed booking ref is refused — the ref must be real',
+    $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), 'no booking') !== false, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'answer', 'secret' => $SECRET, 'id' => $wcAid2,
+    'text' => json_encode(['text' => 'Blocking yesterday.', 'act' => ['action' => 'block_dates',
+        'args' => ['cottage' => $wcProp['name'], 'from' => date('Y-m-d', strtotime('-5 days')), 'to' => date('Y-m-d')]]])]);
+it_check('acts: the past is not proposable', $r['code'] === 400, $r['raw']);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+
 // The switch closes BOTH new directions, like brief and ingest.
 http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
 $r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
