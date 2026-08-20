@@ -12272,6 +12272,26 @@ async function acNewChat() {
     try { await apiPost('nightshift.php', { action: 'chat_clear' }); } catch (e) {}
     renderMacChat();
 }
+// THE CHAT'S MEMORY — a visible list the OWNER writes ("never dogs"),
+// riding every ask beside the standing instruction. One memory per line;
+// the app never adds a line of its own, and the server caps both ways.
+async function acMemoryEdit() {
+    acSheetClose();
+    const cur = (__mcState && Array.isArray(__mcState.memory)) ? __mcState.memory : [];
+    const vals = await glassForm(
+        'Things the model should always remember about the business — one per line. It reads these on every message, and only what you write here.',
+        [{ id: 'items', label: 'Memories', type: 'textarea', rows: 7, def: cur.join('\n'),
+            placeholder: 'Never dogs — allergy promise to guests' }],
+        { title: 'Chat memory', okLabel: 'Save the memories' },
+    );
+    if (vals === null) return;
+    const items = String(vals.items || '').split('\n').map((x) => x.trim()).filter(Boolean);
+    try {
+        const r = await apiPost('nightshift.php', { action: 'chat_memory_save', items });
+        if (__mcState && r && r.ok) __mcState.memory = r.memory || items;
+        toast(items.length ? 'Remembered — these ride every conversation now.' : 'Memory cleared.');
+    } catch (e) { toast('Could not save the memories just now.'); }
+}
 async function acInstrEdit() {
     acSheetClose();
     const cur = (__mcState && __mcState.instr) || '';

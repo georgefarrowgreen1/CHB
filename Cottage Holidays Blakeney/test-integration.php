@@ -3372,6 +3372,33 @@ it_check('acts: a guessed enquiry id is refused at the door',
 $rootDb->exec('DELETE FROM enquiries WHERE id = ' . $wcEnqId);
 http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 
+// ── THE GROUNDING PACK + MEMORY — every ask arrives already knowing ─────
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save',
+    'items' => ['Never dogs — allergy promise to guests', '   ', 'Boiler man is Colin']]);
+it_check('ground: memories save trimmed', count($r['json']['memory'] ?? []) === 2, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+it_check('ground: the thread carries the memory list back',
+    ($r['json']['memory'][0] ?? '') === 'Never dogs — allergy promise to guests', $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'morning — how are we looking?']);
+$wcGid = (int) ($r['json']['id'] ?? 0);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$wcGask = null;
+foreach (($r['json']['asks'] ?? []) as $a) {
+    if ((int) ($a['id'] ?? 0) === $wcGid) {
+        $wcGask = $a;
+    }
+}
+$wcWorld = $wcGask['ownerchat']['world'] ?? null;
+it_check('ground: the world sheet rides the ask — fleet, today, money',
+    is_array($wcWorld) && count($wcWorld['cottages'] ?? []) >= 1
+    && isset($wcWorld['today']['arrivals']) && isset($wcWorld['money']['due_now_total']), json_encode($wcWorld));
+it_check('ground: …with the memories beside it, and NO contact detail anywhere in the pack',
+    in_array('Never dogs — allergy promise to guests', $wcGask['ownerchat']['memories'] ?? [], true)
+    && strpos(json_encode($wcWorld), '@') === false);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'items' => []]);
+http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
+$rootDb->exec("DELETE FROM night_asks WHERE kind = 'ownerchat'");
+
 // ── LIVE GUEST DRAFTS — a guest message files a 'chat' ask on the spot ──
 // This suite has burned many 'answer' units by now — clear the toll so the
 // drafts round trip is judged on its own behaviour, not the meter.

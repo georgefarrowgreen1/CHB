@@ -1171,6 +1171,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => (document.getElementById('messages-modal-input') || {}).value === 'my own words'),
     'a box the owner typed in is NEVER clobbered — the draft is offered instead');
   await page.evaluate(() => { document.getElementById('messages-modal').classList.remove('open'); });
+  // THE MEMORY EDITOR: the ⋯ sheet's Memory… opens a real textarea, one per
+  // line, and Save posts the trimmed list — memory the OWNER writes.
+  await page.evaluate(() => {
+    window.__memSaves = [];
+    window.apiPost = async (file, body) => {
+      if (body.action === 'chat_memory_save') { window.__memSaves.push(body.items); return { ok: true, memory: body.items }; }
+      if (body.action === 'chat_thread') { return { ok: true, on: true, msgs: [], instr: '', memory: ['Never dogs'], presence: { seen: Math.floor(Date.now() / 1000), listening: true } }; }
+      return { ok: true };
+    };
+    return renderMacChat();
+  });
+  await page.waitForTimeout(250);
+  await page.click('.ac-more');
+  await page.waitForTimeout(150);
+  await page.click('[data-act="acMemoryEdit"]');
+  await page.waitForTimeout(300);
+  const memBox = await page.evaluate(() => (document.getElementById('gdf-items') || {}).value || '');
+  ok(memBox === 'Never dogs', `the editor opens prefilled from the stored list (${JSON.stringify(memBox)})`);
+  await page.fill('#gdf-items', 'Never dogs — allergy promise\n  \nBoiler man is Colin');
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#glass-dialog button')].find((x) => /Save the memories/.test(x.textContent)); if (b) b.click(); });
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => JSON.stringify(window.__memSaves[0]) === JSON.stringify(['Never dogs — allergy promise', 'Boiler man is Colin'])),
+    'Save posts the trimmed list — blank lines never become memories');
   // The honest failures: a Mac that is not listening, and an expired ask.
   await page.evaluate(() => {
     window.apiPost = async (file, body) => {

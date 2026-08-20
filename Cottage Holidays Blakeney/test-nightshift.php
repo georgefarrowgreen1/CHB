@@ -919,6 +919,31 @@ nsk('a send_enquiry_reply carries its id, and a guessed nothing is refused',
     $sr['problem'] === '' && $sr['act']['enquiry'] === 31
     && night_act_resolve(['action' => 'send_enquiry_reply', 'args' => []], $nm, '2026-08-20')['problem'] !== '');
 
+// ── THE GROUNDING PACK + MEMORY ──────────────────────────────────────────
+$wldToday = ['date' => '2026-08-20',
+    'arrivals' => array_map(fn ($i) => ['guest' => 'Guest ' . $i, 'cottage' => 'Jollyboat', 'still_to_pay' => '£100.00', 'email' => 'x@y.z', 'ref' => $i], range(1, 9)),
+    'departures' => [], 'staying' => [['guest' => 'Eve Hart', 'cottage' => 'Pimpernel']], 'enquiries_waiting' => 2];
+$wldMoney = ['due_now' => [
+    ['guest' => 'Sarah Pemberton', 'cottage' => 'Jollyboat', 'still_to_pay' => '£340.50', 'ref' => 7],
+    ['guest' => 'Dan Rowe', 'cottage' => '21A Westgate Street', 'still_to_pay' => '£200.00', 'ref' => 8],
+], 'due_later' => [], 'deposits_to_return' => [['guest' => 'Eve Hart']]];
+$wld = night_world(
+    [['cottage' => 'Jollyboat', 'sleeps' => '2 adults', 'nightly' => '£130.00 a night'], ['cottage' => '']],
+    $wldToday, $wldMoney,
+);
+nsk('the world sheet SLIMS: lists cut to ' . NIGHT_WORLD_LIST_MAX . ', a nameless cottage dropped, the money totalled',
+    count($wld['today']['arrivals']) === NIGHT_WORLD_LIST_MAX
+    && count($wld['cottages']) === 1
+    && $wld['money']['due_now_count'] === 2 && $wld['money']['due_now_total'] === '£540.50'
+    && $wld['money']['deposits_to_return'] === 1
+    && $wld['today']['enquiries_waiting'] === 2, json_encode($wld['money']));
+nsk('…and NO contact detail or ref survives into the pack — names and figures only',
+    strpos(json_encode($wld), '@') === false && strpos(json_encode($wld), '"ref"') === false, json_encode($wld));
+nsk('memories sanitise: trimmed, junk dropped, capped both ways, the app adds nothing',
+    night_ownerchat_memories(['  never dogs  ', '', ['x'], str_repeat('m', 300)]) === ['never dogs', str_repeat('m', NIGHT_OWNERCHAT_MEM_CHARS)]
+    && count(night_ownerchat_memories(array_fill(0, 30, 'x'))) === NIGHT_OWNERCHAT_MEM_MAX
+    && night_ownerchat_memories('junk') === []);
+
 echo "\n== Summary ==\n";
 if ($fails) {
     echo "  $fails CHECK(S) FAILED ❌\n";

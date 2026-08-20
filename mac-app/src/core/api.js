@@ -184,7 +184,7 @@ function makeApi(deps) {
     // a watcher can discard one that turns out to be a tool call,
     // { tool }/{ tool_done } around each lookup. The RETURN VALUE carries
     // the whole answer — events are a watcher's luxury, never the record.
-    async function chatLoop(eng, turns, instr, model, ev, signal, img, acts) {
+    async function chatLoop(eng, turns, instr, model, ev, signal, img, acts, ground) {
         let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
         const site = toolsOn ? siteFor() : null;
         let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
@@ -194,6 +194,13 @@ function makeApi(deps) {
         const actsOn = !!acts && toolsOn;
         if (actsOn) {
             extra += (extra ? '\n\n' : '') + chatToolsMod.chatActsIntro();
+        }
+        // THE GROUNDING PACK — pre-composed fact text (chatGroundText) that
+        // rode the ask. It joins the system content BEFORE the instruction,
+        // so the first generation starts already knowing the business and a
+        // lookup round is depth, not a prerequisite.
+        if (typeof ground === 'string' && ground.trim() !== '') {
+            extra += (extra ? '\n\n' : '') + ground;
         }
         // The STANDING INSTRUCTION joins the system content — typed by
         // the owner or absent, never written by the app.
@@ -873,7 +880,8 @@ function makeApi(deps) {
                                         }, function () { /* a blip is never a stop */ });
                                     }
                                 }
-                            }, oah.signal, imgUri, true);
+                            }, oah.signal, imgUri, true,
+                            chatToolsMod.chatGroundText(oc.world, oc.memories));
                             if (oah.signal.aborted) {
                                 // The row is expired at the site; posting the
                                 // remainder would only be refused as too late.

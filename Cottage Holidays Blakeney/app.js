@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 555;
+const ADMIN_BUNDLE_V = 556;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -12873,6 +12873,12 @@ function glassDialog(opts) {
                             }
                             // 'file': photo picker (camera on a phone); resolves
                             // the File object, never the fakepath string.
+                            // 'textarea': multi-line text (the chat's memory
+                            // list) — collected via el.value like any input.
+                            if (f.type === 'textarea') {
+                                return label + `<textarea class="input-glass" id="gdf-${f.id}" rows="${Number(f.rows) || 6}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(String(f.def == null ? '' : f.def))}</textarea>`
+                                    + (f.hint ? `<div class="gdf-hint">${escapeHtml(f.hint)}</div>` : '');
+                            }
                             if (f.type === 'file') {
                                 return label + `<input class="input-glass" id="gdf-${f.id}" type="file" accept="image/*" capture="environment">`;
                             }
@@ -18099,7 +18105,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'aichat10';
+    const BUILD = 'aichat11';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

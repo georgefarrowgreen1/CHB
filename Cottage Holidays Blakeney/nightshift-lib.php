@@ -1814,6 +1814,85 @@ function night_ownerchat_payload($thread)
     return $out;
 }
 
+// ── THE GROUNDING PACK ──────────────────────────────────────────────────
+// The world sheet that rides EVERY ownerchat ask: the fleet, today's
+// movements, the money picture — so the model's first generation is already
+// grounded instead of spending a whole round deciding whether to look. The
+// site hands over FACTS (the payload rule); the Mac composes its own words
+// around them. SLIMMER than the tools on purpose: this rides every ask and
+// pays context for it, so each list is cut hard — the tools remain the way
+// to go deep. Names travel, contact details never (same withholding rule,
+// same gate-by-absence).
+const NIGHT_WORLD_LIST_MAX = 5;
+const NIGHT_OWNERCHAT_MEM_MAX = 12;       // memories the owner may keep
+const NIGHT_OWNERCHAT_MEM_CHARS = 200;    // one memory's cap
+
+function night_world(array $fleet, array $today, array $money)
+{
+    $slimStay = function ($r) {
+        $o = ['guest' => night_str($r['guest'] ?? ''), 'cottage' => night_str($r['cottage'] ?? '')];
+        if (night_str($r['still_to_pay'] ?? '') !== '') {
+            $o['still_to_pay'] = $r['still_to_pay'];
+        }
+        return $o;
+    };
+    $cut = function ($rows) use ($slimStay) {
+        return array_map($slimStay, array_slice(is_array($rows) ? $rows : [], 0, NIGHT_WORLD_LIST_MAX));
+    };
+    $cots = [];
+    foreach (array_slice($fleet, 0, 8) as $c) {
+        if (!is_array($c) || night_str($c['cottage'] ?? '') === '') {
+            continue;
+        }
+        $one = ['cottage' => night_str($c['cottage'])];
+        foreach (['sleeps', 'nightly'] as $k) {
+            if (night_str($c[$k] ?? '') !== '') {
+                $one[$k] = $c[$k];
+            }
+        }
+        $cots[] = $one;
+    }
+    $dueRows = $cut($money['due_now'] ?? []);
+    $dueTotal = 0.0;
+    foreach ((is_array($money['due_now'] ?? null) ? $money['due_now'] : []) as $r) {
+        $dueTotal += (float) str_replace(['£', ','], '', (string) ($r['still_to_pay'] ?? '0'));
+    }
+    return [
+        'cottages' => $cots,
+        'today' => [
+            'date' => night_str($today['date'] ?? ''),
+            'arrivals' => $cut($today['arrivals'] ?? []),
+            'departures' => $cut($today['departures'] ?? []),
+            'staying' => $cut($today['staying'] ?? []),
+            'enquiries_waiting' => (int) ($today['enquiries_waiting'] ?? 0),
+        ],
+        'money' => [
+            'due_now_count' => count(is_array($money['due_now'] ?? null) ? $money['due_now'] : []),
+            'due_now_total' => night_money($dueTotal),
+            'due_now' => $dueRows,
+            'deposits_to_return' => count(is_array($money['deposits_to_return'] ?? null) ? $money['deposits_to_return'] : []),
+        ],
+    ];
+}
+
+// The owner's memories, sanitised: strings only, trimmed, capped both ways.
+// Memory the OWNER wrote — the app never adds a line of its own.
+function night_ownerchat_memories($raw)
+{
+    $out = [];
+    foreach ((is_array($raw) ? $raw : []) as $m) {
+        $t = night_str($m);
+        if ($t === '') {
+            continue;
+        }
+        $out[] = mb_substr($t, 0, NIGHT_OWNERCHAT_MEM_CHARS);
+        if (count($out) >= NIGHT_OWNERCHAT_MEM_MAX) {
+            break;
+        }
+    }
+    return $out;
+}
+
 // May this land as a web-chat answer? The answer is a JSON envelope —
 // { text, think?, used?, ms?, tps? } — because the fold and the chip need
 // their facts beside the words. '' or a sentence; the generic 8000-char
