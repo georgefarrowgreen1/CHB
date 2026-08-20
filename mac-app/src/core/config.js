@@ -172,8 +172,11 @@ function merge(base, over) {
 // Keychain that refuses — without touching a real keychain.
 function makeSecrets(opts) {
     const o = opts || {};
-    const run = o.run || function (args) {
-        return String(execFileSync('security', args, { encoding: 'utf8', timeout: 5000 })).replace(/\n$/, '');
+    const run = o.run || function (args, input) {
+        return String(execFileSync('security', args,
+            input === undefined
+                ? { encoding: 'utf8', timeout: 5000 }
+                : { encoding: 'utf8', timeout: 5000, input: input })).replace(/\n$/, '');
     };
     const mac = o.platform !== undefined ? o.platform === 'darwin' : process.platform === 'darwin';
 
@@ -199,8 +202,20 @@ function makeSecrets(opts) {
                 return this.clear();
             }
             try {
-                // -U updates in place rather than failing on an existing item.
-                run(['add-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w', v, '-U']);
+                // THE KEY NEVER RIDES A COMMAND LINE. As an argv value it was
+                // readable by any process listing processes for the moment
+                // `security` ran — the same exposure deploy.yml refuses for
+                // the signing certificate. `security -i` takes the command on
+                // STDIN instead (-U updates in place rather than failing on
+                // an existing item). A key with quote/backslash/control
+                // characters would fight -i's parser — no real key has any
+                // (the site mints hex) — so only then does the old argv path
+                // run, trading brief exposure for never corrupting the store.
+                if (/^[\x21-\x7e]+$/.test(v) && !/["\\]/.test(v)) {
+                    run(['-i'], 'add-generic-password -U -s "' + SERVICE + '" -a "' + ACCOUNT + '" -w "' + v + '"\n');
+                } else {
+                    run(['add-generic-password', '-s', SERVICE, '-a', ACCOUNT, '-w', v, '-U']);
+                }
                 return { ok: true };
             } catch (e) {
                 // NO PLAINTEXT FALLBACK. See the header.

@@ -1070,18 +1070,24 @@ function night_digest_answer_problem($text, $rows)
     foreach ((is_array($rows) ? $rows : []) as $r) {
         $hay .= ' ' . night_str($r);
     }
+    // ONE canonical form for both sides: £120 grounds £120.00 and the
+    // reverse — trailing zeros are stripped ONLY after a decimal point.
+    // An unconditional rtrim($n, '0') did it to INTEGERS too, so £450
+    // grounded against rows containing only £45 (and £4500 likewise): the
+    // door accepted figures 10x–100x what the records state, failing open
+    // against exactly the buggy or hostile device it exists to catch. The
+    // Mac's own checkDigest trims decimals only; the two now agree.
+    $canon = function ($s) {
+        return strpos($s, '.') !== false ? rtrim(rtrim($s, '0'), '.') : $s;
+    };
     $hayNums = [];
     if (preg_match_all('/£\s*([\d,]+(?:\.\d+)?)/u', $hay, $hm)) {
         foreach ($hm[1] as $n) {
-            $hayNums[str_replace(',', '', $n)] = true;
+            $hayNums[$canon(str_replace(',', '', $n))] = true;
         }
     }
     foreach ($m[1] as $n) {
-        $norm = str_replace(',', '', $n);
-        // £120 in a row grounds £120.00 in the summary, and the reverse.
-        $trim = rtrim(rtrim($norm, '0'), '.');
-        $ok = isset($hayNums[$norm]) || isset($hayNums[$norm . '.00']) || isset($hayNums[$trim]) || isset($hayNums[$trim . '.00']);
-        if (!$ok) {
+        if (!isset($hayNums[$canon(str_replace(',', '', $n))])) {
             return 'The summary states £' . $n . ', which appears in none of the records it was built from.';
         }
     }
@@ -1195,7 +1201,10 @@ function night_tool_iso($v)
 function night_tool_problem($tool, $args, $todayIso)
 {
     if (!in_array($tool, NIGHT_TOOLS, true)) {
-        return 'No such tool — the tools are today, bookings, availability, enquiries and cottages.';
+        // DERIVED from the whitelist, never restated by hand: the hand-written
+        // list stopped at the original five, so the correction actively taught
+        // a fumbling model that money/performance/expenses/coast do not exist.
+        return 'No such tool — the tools are ' . implode(', ', NIGHT_TOOLS) . '.';
     }
     $a = is_array($args) ? $args : [];
     if ($tool === 'availability') {

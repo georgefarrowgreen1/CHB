@@ -3256,6 +3256,16 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' =>
 $wcSid = (int) ($r['json']['id'] ?? 0);
 http($guest, 'POST', '/nightshift.php', ['action' => 'ask_partial', 'secret' => $SECRET,
     'id' => $wcSid, 'text' => json_encode(['text' => 'The weekend looks', 'think' => 'checking'])]);
+// AN IDENTICAL PARTIAL IS STILL HELD. The visible text legitimately freezes
+// while the model types a held-back TOOL/ACT/SUM protocol line, so two
+// throttled posts can be byte-identical — and `held` derived from the
+// UPDATE's rowCount() (MySQL counts CHANGED rows) read the second one as
+// "not held", aborting a healthy generation nobody stopped. `held` is a
+// fact about the ROW now.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ask_partial', 'secret' => $SECRET,
+    'id' => $wcSid, 'text' => json_encode(['text' => 'The weekend looks', 'think' => 'checking'])]);
+it_check('stop: a byte-identical partial re-post still answers held:true — a frozen stream is not a stop',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['held'] ?? false) === true, $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_stop', 'id' => $wcSid]);
 it_check('stop: the words already streamed are KEPT and marked stopped',
     ($r['json']['kept'] ?? false) === true

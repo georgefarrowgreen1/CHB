@@ -95,45 +95,91 @@ function webStripHtml(html) {
     return s.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
 }
 
+// The transport: ONE GET over https.request, CONNECTED TO THE VETTED IP with
+// the hostname riding as SNI + Host header — never re-resolved. Node's fetch
+// resolves the name itself, which reopened the classic rebinding TOCTOU: a
+// TTL-0 domain answers a public IP for the guard's lookup and the router for
+// the fetch a moment later. Connecting to the address the guard judged is
+// what makes the judgement mean anything (TLS still verifies the certificate
+// against the HOSTNAME, via servername). The body is read STREAMING and cut
+// at the byte cap as it arrives — res.text() buffered a whole multi-GB file
+// before any cap applied — and the deadline is ABSOLUTE, covering the body:
+// the old timeout was cleared when headers landed, so a server that sent
+// headers then trickled for ever wedged chatBusy until the app restarted.
+// Resolves { status, headers: {get}, text }; rejects on transport failure.
+function defaultGet(urlStr, ip) {
+    return new Promise(function (resolve, reject) {
+        const u = new URL(urlStr);
+        let settled = false;
+        const finish = function (fn, v) { if (!settled) { settled = true; clearTimeout(hard); fn(v); } };
+        const req = require('https').request({
+            host: ip || u.hostname,
+            servername: u.hostname,
+            port: u.port ? Number(u.port) : 443,
+            path: (u.pathname || '/') + (u.search || ''),
+            method: 'GET',
+            headers: {
+                Host: u.hostname + (u.port ? ':' + u.port : ''),
+                'User-Agent': 'CottageHolidaysBlakeney',
+                Accept: 'text/html,text/plain,*/*',
+            },
+        }, function (res) {
+            const chunks = [];
+            let bytes = 0;
+            res.on('data', function (c) {
+                bytes += c.length;
+                chunks.push(c);
+                if (bytes >= WEB_FETCH_BYTES_MAX) { req.destroy(); done(); }
+            });
+            res.on('end', done);
+            function done() {
+                finish(resolve, {
+                    status: res.statusCode || 0,
+                    headers: { get: function (h) { const v = res.headers[String(h).toLowerCase()]; return Array.isArray(v) ? v[0] : (v || ''); } },
+                    text: Buffer.concat(chunks).toString('utf8').slice(0, WEB_FETCH_BYTES_MAX),
+                });
+            }
+        });
+        const hard = setTimeout(function () {
+            req.destroy(new Error('timed out'));
+            finish(reject, new Error('the page took too long'));
+        }, WEB_FETCH_TIMEOUT_MS);
+        req.on('error', function (e) { finish(reject, e); });
+        req.end();
+    });
+}
+
 async function webFetch(rawUrl, deps) {
     const d = deps || {};
-    const fetchImpl = d.fetch || (typeof fetch === 'function' ? fetch : null);
+    const get = d.get || defaultGet;
     const lookup = d.lookup || async function (host) {
         return require('dns').promises.lookup(host, { all: true });
     };
-    if (!fetchImpl) {
-        return { ok: false, refusal: { kind: 'setup', say: 'This build cannot fetch web pages.' } };
-    }
     let url = String(rawUrl || '').trim();
     for (let hop = 0; hop <= WEB_REDIRECTS_MAX; hop++) {
         const bad = webUrlProblem(url);
         if (bad) { return { ok: false, refusal: { kind: 'refused', say: bad } }; }
         const host = new URL(url).hostname;
         // THE RESOLVE CHECK — the half a hostname rule cannot do. Refuses a
-        // public-looking name whose DNS answer is the router.
+        // public-looking name whose DNS answer is the router, and the address
+        // it vets is the address the transport CONNECTS to (never re-resolved).
+        let ip = '';
         try {
             const addrs = await lookup(host);
             const list = Array.isArray(addrs) ? addrs : [addrs];
             if (!list.length || list.some(function (a) { return webIpPrivate(a && a.address); })) {
                 return { ok: false, refusal: { kind: 'refused', say: 'That address points at this machine or the local network — not a public page.' } };
             }
+            ip = String(list[0].address || '');
         } catch (e) {
             return { ok: false, refusal: { kind: 'net', say: 'That address does not resolve: ' + host } };
         }
-        const ctl = new AbortController();
-        const t = setTimeout(function () { ctl.abort(); }, WEB_FETCH_TIMEOUT_MS);
         let res;
         try {
-            res = await fetchImpl(url, {
-                redirect: 'manual',
-                signal: ctl.signal,
-                headers: { 'User-Agent': 'CottageHolidaysBlakeney', Accept: 'text/html,text/plain,*/*' },
-            });
+            res = await get(url, ip);
         } catch (e) {
-            clearTimeout(t);
             return { ok: false, refusal: { kind: 'net', say: 'Could not fetch that page: ' + (e && e.message ? e.message : 'no answer') } };
         }
-        clearTimeout(t);
         if (res.status >= 300 && res.status < 400) {
             const loc = res.headers && res.headers.get ? res.headers.get('location') : '';
             if (!loc || hop === WEB_REDIRECTS_MAX) {
@@ -142,15 +188,10 @@ async function webFetch(rawUrl, deps) {
             url = new URL(loc, url).toString(); // relative Locations resolve; the next hop re-checks
             continue;
         }
-        if (!res.ok) {
+        if (res.status < 200 || res.status >= 300) {
             return { ok: false, refusal: { kind: 'net', say: 'The page answered ' + res.status + '.' } };
         }
-        let body = '';
-        try {
-            body = String(await res.text()).slice(0, WEB_FETCH_BYTES_MAX);
-        } catch (e) {
-            return { ok: false, refusal: { kind: 'net', say: 'The page could not be read.' } };
-        }
+        const body = String(res.text || '');
         const tm = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
         const looksHtml = /<[a-z!/]/i.test(body);
         const text = (looksHtml ? webStripHtml(body) : body.trim()).slice(0, WEB_TEXT_CHARS);

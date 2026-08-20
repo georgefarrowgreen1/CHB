@@ -73,7 +73,10 @@ function makeUpdater(deps) {
                 return { ok: false, state: 'unknown', say: "Couldn't reach the update server." };
             }
             const v = updateVerdict(currentVersion, release, assetName);
-            // The asset must live on the same host as the feed said it would.
+            // The one transport rule enforced on the asset: its address must
+            // be https. Deliberately NOT a same-host check — GitHub serves
+            // release assets from a different host than the API feed, so
+            // pinning the host would refuse every real release.
             if ((v.state === 'available' || v.state === 'manual') && !httpsOnly(v.url)) {
                 return { ok: true, state: 'unknown', version: v.version, say: 'A newer version exists but its download address is not https.' };
             }

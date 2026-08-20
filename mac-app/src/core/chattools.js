@@ -279,7 +279,13 @@ function chatActCall(raw) {
     let missing = '';
     spec.args.forEach(function (k) {
         const v = (j.args && typeof j.args === 'object') ? j.args[k] : undefined;
-        if (typeof v === 'string' && v.trim() !== '') { args[k] = v.trim().slice(0, CHAT_TOOL_ARG_MAX); }
+        if (typeof v === 'string' && v.trim() !== '') {
+            // Sliced to what the SITE accepts, per field — the generic 80
+            // cut a proposed memory mid-sentence while the intro promised
+            // 200, so the owner confirmed a card storing half a promise.
+            const cap = k === 'text' ? 200 : k === 'note' ? 120 : CHAT_TOOL_ARG_MAX;
+            args[k] = v.trim().slice(0, cap);
+        }
         if (typeof v === 'number' && isFinite(v)) { args[k] = v; }
     });
     spec.req.forEach(function (k) {

@@ -1186,7 +1186,17 @@ route_actions([
         $text = mb_substr((string) ($in['text'] ?? ''), 0, NIGHT_OWNERCHAT_TEXT_MAX + NIGHT_OWNERCHAT_THINK_MAX);
         $up = db()->prepare("UPDATE night_asks SET answer = ? WHERE id = ? AND status = 'open' AND kind = 'ownerchat'");
         $up->execute([$text, $id]);
-        json_out(['ok' => true, 'held' => $up->rowCount() === 1]);
+        // `held` is a FACT about the row, never the UPDATE's rowCount():
+        // MySQL counts CHANGED rows, and the streamed text legitimately
+        // freezes while the model types a held-back TOOL/ACT/SUM protocol
+        // line — so two throttled posts can be byte-identical, the second
+        // changes nothing, and a rowCount answer read "not held", aborting
+        // a healthy generation nobody stopped (and the still-open ask then
+        // re-ran the whole thing). A stopped/superseded ask reads not-open
+        // here whatever the bytes say, which is the one meaning held has.
+        $st = db()->prepare("SELECT status FROM night_asks WHERE id = ? AND kind = 'ownerchat'");
+        $st->execute([$id]);
+        json_out(['ok' => true, 'held' => $st->fetchColumn() === 'open']);
     },
 
     // ---- the machine fetches an attached chat photo ----------------
