@@ -904,6 +904,30 @@ signing and what is real; what matters HERE is the site half and the rules.
   gone (it starved state()'s slice(-40)). And updater.js's comment claimed
   a same-host asset check the code never performed — the comment now states
   the real rule (https only; same-host would refuse every GitHub release).
+  **THE PHONE-SIDE TEN (round 2 of the same sweep).** A refused chat_send
+  now speaks the SERVER'S sentence (the catch swallowed 409/503/400 into
+  "Could not reach the site" — the owner checked WiFi for a switch that was
+  off) and takes the optimistic bubble DOWN with the words back in the box.
+  `mcCollect` is the ONE collect loop (mcSendRun + mcResume), budgeted on
+  ELAPSED TIME never iterations (45 iterations died in ~70s mid-stream —
+  chat_poll returns whenever the partial grows); `renderMacChat` stamp-guards
+  its own chat_thread fetch (a stale response repainted the wrong convo) and
+  fires **`mcResume`** when `__mcBusy` — nav-away-and-back used to strand
+  busy forever with the answer stored but never collected. The act cards'
+  bookingDue calls passed `findBookingLocation(act.booking)` — an OBJECT
+  where a prop-key string goes, and always null anyway (client ids vs the
+  act's numeric id), so a no-locked-price booking read "already settled"
+  over real money; the key now comes off the booking actually found.
+  `chat_memory_save` gained **ADD-ONE mode** and the remember card uses it —
+  replace semantics from a stale phone mirror silently deleted lines another
+  device had added (dup → `already: true`, full list → 409 sentence).
+  `acNewChat` refuses to guess with no state (a derived number landed inside
+  an existing conversation). `draftChatOnMac` re-checks the THREAD after its
+  await (guest A's draft could land in guest B's box — mtDraftOffer's own
+  guard, now on both paths). And messages.php files NO draft ask for a
+  photo-only guest message — the pipeline can't see the image, so the Mac
+  drafted confidently against an empty message. All gated (ui-test-nightshift
+  round-2 block, integration §27b add-one + photo-only).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

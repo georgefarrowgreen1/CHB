@@ -782,6 +782,31 @@ route_actions([
     // own — memory the model invented is the failure this shape prevents.
     'chat_memory_save' => function ($in) {
         require_admin();
+        // ADD-ONE mode (the remember card): the SERVER merges, because the
+        // phone's mirror can be stale — replace semantics from a device
+        // whose chat_thread snapshot predates another device's edits
+        // silently deleted the newer lines on confirm. Dedupe by text; the
+        // cap refuses in a sentence rather than letting the sanitiser drop
+        // a 13th line on the floor.
+        if (night_str($in['add'] ?? '') !== '') {
+            $add = mb_substr(night_str($in['add']), 0, NIGHT_OWNERCHAT_MEM_CHARS);
+            $cur = [];
+            try {
+                $cur = night_ownerchat_memories(content_json('mac-chat-memory', []));
+            } catch (\Throwable $e) {
+            }
+            foreach ($cur as $m) {
+                if (trim($m['t']) === trim($add)) {
+                    json_out(['ok' => true, 'memory' => $cur, 'already' => true]);
+                }
+            }
+            if (count($cur) >= NIGHT_OWNERCHAT_MEM_MAX) {
+                json_out(['error' => 'The memory is full (' . NIGHT_OWNERCHAT_MEM_MAX . ' lines) — prune one under ⋯ → Memory first.'], 409);
+            }
+            $cur[] = ['t' => $add, 'at' => date('Y-m-d')];
+            content_set_scalar('mac-chat-memory', json_encode($cur));
+            json_out(['ok' => true, 'memory' => $cur]);
+        }
         // The editor sends TEXTS (one per line). Dates are the server's:
         // a line whose text already exists keeps its date, a new line is
         // dated today — so retyping the list never re-dates what stood.
