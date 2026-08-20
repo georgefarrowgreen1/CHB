@@ -2290,6 +2290,133 @@ function fakeSite(handler) {
         try { fs.rmSync(h.tmp, { recursive: true, force: true }); } catch (e) {}
     }
 
+    // ── §34 THE WEB CHAT'S MAC HALF — the ask sweep runs the chat core ──────
+    console.log('\n§34 the web chat’s Mac half');
+    {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34-'));
+        const answers = [];
+        const partials = [];
+        let asksPayload = [{ id: 9, kind: 'ownerchat', ownerchat: {
+            turns: [{ who: 'you', text: 'who arrives today?' }],
+            instr: 'Answer in one short sentence.',
+        } }];
+        const api34 = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs, model, opts, onEv) {
+                        // The busy case's LOCAL send holds the engine long
+                        // enough for the sweep to genuinely arrive mid-send —
+                        // an instant fake proved nothing (measured: the send
+                        // finished before the sweep began, and the skip was
+                        // never exercised).
+                        if (/long local question/.test(msgs[msgs.length - 1].content)) {
+                            await new Promise(function (r3) { setTimeout(r3, 60); });
+                            return { ok: true, stopped: false, text: 'held answer', think: '', ms: 5, tokens: 2, promptTokens: 10, tokensPerSec: 1 };
+                        }
+                        // The web ask must carry the local chat's whole frame:
+                        // system line + tool protocol + the standing instruction
+                        // + the carried turn.
+                        const sys = msgs[0].content;
+                        if (!/one short sentence/.test(sys) || !/TOOL \{"tool"/.test(sys)) {
+                            return { ok: true, stopped: false, text: 'FRAME MISSING', think: '', ms: 5, tokens: 2, promptTokens: 50, tokensPerSec: 1 };
+                        }
+                        onEv({ token: '<think>the calendar knows</think>**Sarah** arrives today.' });
+                        return { ok: true, stopped: false, text: '<think>the calendar knows</think>**Sarah** arrives today.', think: '', ms: 5, tokens: 2, promptTokens: 50, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () { return { ok: true, host: 'George', asks: asksPayload, warm: false }; },
+                    answerAsk: async function (id, text, model) { answers.push({ id: id, text: text, model: model }); return { ok: true }; },
+                    askPartial: async function (id, text) { partials.push({ id: id, text: text }); return { ok: true }; },
+                    chatTool: async function () { return { ok: true, data: {} }; },
+                };
+            },
+        });
+        await api34.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        const sw = await api34.askSweep();
+        ok('the sweep answers a web-chat ask through the REAL chat core',
+            sw.ok && sw.answered === 1 && answers.length === 1 && answers[0].id === 9
+            && answers[0].model === 'm.gguf', JSON.stringify(sw));
+        ok('…and the answer is the JSON envelope: words, real thinking, no invention',
+            (function () {
+                const j = JSON.parse(answers[0].text);
+                return j.text === '**Sarah** arrives today.' && j.think === 'the calendar knows'
+                    && Array.isArray(j.used);
+            })(), answers[0].text);
+        ok('the web ask never touches chats.json — the Mac’s own conversations stay its own',
+            api34.chatHistory().thread.length === 0);
+        // BUSY SKIP: the owner mid-send on the Mac itself → the ask stays
+        // open (no answer, no failure) for the next sweep, seconds away.
+        answers.length = 0;
+        asksPayload = [{ id: 10, kind: 'ownerchat', ownerchat: { turns: [{ who: 'you', text: 'hi' }], instr: '' } }];
+        // Hold the LOCAL chat open, then sweep into it.
+        const held = new Promise(function (resolve) {
+            api34.chatSend('long local question').then(resolve);
+        });
+        await new Promise(function (r2) { setTimeout(r2, 5); });
+        const sw2 = await api34.askSweep();
+        await held;
+        ok('a sweep while the owner is mid-send SKIPS — the ask stays for the next pass',
+            sw2.ok && sw2.answered === 0 && answers.length === 0, JSON.stringify(sw2));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
+        // PARTIALS: a long streamed reply posts the answer-so-far, throttled,
+        // with the TOOL holdback applied — a lookup being typed never paints
+        // on the phone either.
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-ct34b-'));
+        const partials = [];
+        let clockMs = 1000000;
+        const api34b = require('../src/core/api').makeApi({
+            dir: tmp, machine: M16,
+            now: function () { return new Date(clockMs); },
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeEngine: function () {
+                return {
+                    id: 'llamacpp', name: 'fake', base: 'http://x',
+                    reachable: async function () { return true; },
+                    props: async function () { return { ctx: 4096 }; },
+                    chatStream: async function (msgs, model, opts, onEv) {
+                        if (msgs.some(function (m) { return /TOOL RESULT/.test(m.content); })) {
+                            // Round two: the answer, streamed in pieces with the
+                            // clock advancing so the throttle opens.
+                            onEv({ token: 'One ' }); clockMs += 2000;
+                            onEv({ token: 'arrival — ' }); clockMs += 2000;
+                            onEv({ token: 'Sarah.' });
+                            return { ok: true, stopped: false, text: 'One arrival — Sarah.', think: '', ms: 5, tokens: 2, promptTokens: 40, tokensPerSec: 1 };
+                        }
+                        // Round one: a tool call, streamed — held back.
+                        onEv({ token: 'TOOL {"tool":"today","args":{}}' }); clockMs += 2000;
+                        return { ok: true, stopped: false, text: 'TOOL {"tool":"today","args":{}}', think: '', ms: 5, tokens: 2, promptTokens: 40, tokensPerSec: 1 };
+                    },
+                };
+            },
+            makeSite: function () {
+                return {
+                    asks: async function () { return { ok: true, host: '', asks: [{ id: 11, kind: 'ownerchat', ownerchat: { turns: [{ who: 'you', text: 'busy day?' }], instr: '' } }], warm: false }; },
+                    answerAsk: async function () { return { ok: true }; },
+                    askPartial: async function (id, text) { partials.push(text); return { ok: true }; },
+                    chatTool: async function () { return { ok: true, data: { arrivals: 1 } }; },
+                };
+            },
+        });
+        await api34b.saveConfig({ chatModel: 'm.gguf', autoStart: false });
+        await api34b.askSweep();
+        ok('partials stream to the site, throttled, and a TOOL round never paints',
+            partials.length >= 1
+            && partials.every(function (t) { return !/"text":"\s*TOOL/.test(t); })
+            && partials.some(function (t) { return /One arrival/.test(JSON.parse(t).text) || /One /.test(JSON.parse(t).text); }),
+            JSON.stringify(partials));
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+    }
+
     console.log('\n== Summary ==');
     if (fails) {
         console.log('  ' + fails + ' of ' + (fails + passes) + ' CHECK(S) FAILED ❌\n');

@@ -941,7 +941,7 @@ function night_voice_examples($templates)
 // expired ask is REFUSED an answer rather than quietly accepting one late).
 // The open cap is small for the same reason the queue's is: a runaway
 // clicker, or a stuck Mac, must not turn the table into a pile.
-const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat', 'intent', 'digest'];
+const NIGHT_ASK_KINDS = ['reply', 'answer', 'chat', 'intent', 'digest', 'ownerchat'];
 // The INTENT ask's list: the site's canonical questions. Small and bounded —
 // this is a menu the model picks from, not a corpus.
 const NIGHT_ASK_OPTS_MAX = 40;
@@ -1105,6 +1105,9 @@ function night_ask_problem($kind, $entityId, $question)
     }
     if ($kind === 'digest' && night_str($question) === '') {
         return 'A digest ask needs the question the summary answers.';
+    }
+    if ($kind === 'ownerchat' && night_str($question) === '') {
+        return 'A chat message needs some words.';
     }
     if ($kind === 'answer') {
         $q = night_str($question);
@@ -1384,4 +1387,106 @@ function night_tool_cottages(array $rows)
         $out[] = $one;
     }
     return ['cottages' => array_slice($out, 0, NIGHT_TOOL_ROWS_MAX)];
+}
+
+// ============================================================
+//  THE WEB CHAT — the owner talking to their Mac from anywhere.
+//
+//  The phone posts a turn as an ask; the Mac's existing poll answers it with
+//  the SAME chat it runs locally. The site is only the meeting point: it
+//  stores the conversation (so every device reads one thread), carries the
+//  recent turns out and the answer back, and never composes a word itself.
+//  No tunnel, no open port, no new credential — the Mac only ever dials out.
+// ============================================================
+const NIGHT_OWNERCHAT_TURNS_MAX = 16;    // turns that travel with one ask
+const NIGHT_OWNERCHAT_TURN_CHARS = 1500; // one turn's cap, both directions
+const NIGHT_OWNERCHAT_THREAD_MAX = 40;   // the stored thread's cap (content row)
+const NIGHT_OWNERCHAT_TEXT_MAX = 8000;   // the answer's words
+const NIGHT_OWNERCHAT_THINK_MAX = 6000;  // a reasoning model's passage
+const NIGHT_OWNERCHAT_INSTR_MAX = 500;   // the standing instruction
+
+// Whatever the content row held → a clean thread. A message is who + words;
+// a Mac message may carry think/used/model for the fold and the chip.
+function night_ownerchat_thread($raw)
+{
+    $msgs = [];
+    $rows = is_array($raw) && is_array($raw['msgs'] ?? null) ? $raw['msgs'] : [];
+    foreach ($rows as $m) {
+        if (!is_array($m)) {
+            continue;
+        }
+        $who = ($m['who'] ?? '') === 'mac' ? 'mac' : 'you';
+        $text = night_str($m['text'] ?? '');
+        if ($text === '') {
+            continue;
+        }
+        $one = ['who' => $who, 'text' => mb_substr($text, 0, NIGHT_OWNERCHAT_TEXT_MAX),
+            'at' => mb_substr(night_str($m['at'] ?? ''), 0, 16)];
+        if ($who === 'mac') {
+            $think = night_str($m['think'] ?? '');
+            if ($think !== '') {
+                $one['think'] = mb_substr($think, 0, NIGHT_OWNERCHAT_THINK_MAX);
+            }
+            $used = [];
+            foreach ((is_array($m['used'] ?? null) ? $m['used'] : []) as $u) {
+                if (is_string($u) && $u !== '') {
+                    $used[] = mb_substr($u, 0, 24);
+                }
+            }
+            if ($used) {
+                $one['used'] = array_slice($used, 0, 4);
+            }
+            if (night_str($m['model'] ?? '') !== '') {
+                $one['model'] = mb_substr(night_str($m['model']), 0, 80);
+            }
+        }
+        $msgs[] = $one;
+    }
+    return [
+        'instr' => mb_substr(night_str(is_array($raw) ? ($raw['instr'] ?? '') : ''), 0, NIGHT_OWNERCHAT_INSTR_MAX),
+        'msgs' => array_slice($msgs, -NIGHT_OWNERCHAT_THREAD_MAX),
+    ];
+}
+
+// The payload one ask carries OUT: the newest turns that fit, plus the
+// standing instruction. The Mac composes its own system line — the site
+// hands over facts, never prompt text.
+function night_ownerchat_payload($thread)
+{
+    $t = night_ownerchat_thread($thread);
+    $turns = [];
+    foreach (array_slice($t['msgs'], -NIGHT_OWNERCHAT_TURNS_MAX) as $m) {
+        $turns[] = ['who' => $m['who'], 'text' => mb_substr($m['text'], 0, NIGHT_OWNERCHAT_TURN_CHARS)];
+    }
+    $out = ['turns' => $turns];
+    if ($t['instr'] !== '') {
+        $out['instr'] = $t['instr'];
+    }
+    return $out;
+}
+
+// May this land as a web-chat answer? The answer is a JSON envelope —
+// { text, think?, used?, ms?, tps? } — because the fold and the chip need
+// their facts beside the words. '' or a sentence; the generic 8000-char
+// answer rule does not apply (think rides inside), so this owns its caps.
+function night_ownerchat_answer_problem($raw)
+{
+    $j = json_decode((string) (is_string($raw) ? $raw : ''), true);
+    if (!is_array($j)) {
+        return 'A web-chat answer must be the JSON envelope this app posts.';
+    }
+    $text = $j['text'] ?? null;
+    if (!is_string($text) || trim($text) === '') {
+        return 'A web-chat answer needs its words.';
+    }
+    if (mb_strlen($text) > NIGHT_OWNERCHAT_TEXT_MAX) {
+        return 'The answer is longer than ' . NIGHT_OWNERCHAT_TEXT_MAX . ' characters.';
+    }
+    if (isset($j['think']) && (!is_string($j['think']) || mb_strlen($j['think']) > NIGHT_OWNERCHAT_THINK_MAX)) {
+        return 'The thinking is not text, or is over ' . NIGHT_OWNERCHAT_THINK_MAX . ' characters.';
+    }
+    if (isset($j['used']) && !is_array($j['used'])) {
+        return 'The lookups must be a list of tool names.';
+    }
+    return '';
 }

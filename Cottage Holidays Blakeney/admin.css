@@ -5788,3 +5788,42 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .night-setup > summary::after { content: '›'; font-size: 1rem; transition: transform 0.18s var(--fluid-bezier); }
 .night-setup[open] > summary::after { transform: rotate(90deg); }
 .night-setup > summary:hover { color: var(--accent-text); }
+
+/* ── MANAGE → ASK YOUR MAC — the web chat with the owner's own model. ──
+   The Mac app's chat vocabulary, restated in the site's tokens: presence as
+   a capsule, the round trip narrated in one status line, thinking folded,
+   the lookup chip a fact. Phone-first — this screen exists for out-and-about. */
+.mc-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mc-top .btn-sm{margin-left:auto}
+.mc-pres{display:inline-flex;align-items:center;gap:7px;font-size:0.72rem;font-weight:600;
+  color:var(--text-muted);border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
+.mc-pres .mc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok-text)}
+.mc-pres.is-asleep .mc-dot{background:var(--warn-text)}
+.mc-pres.is-off{color:var(--warn-text)}
+.mc-log{display:flex;flex-direction:column;gap:10px;min-height:200px;max-height:56vh;
+  overflow-y:auto;overscroll-behavior:contain;padding:4px 2px}
+.mc-empty{margin:auto;text-align:center;color:var(--text-muted);font-size:0.82rem;max-width:44ch;padding:28px 0}
+.mc-bub{max-width:84%;padding:10px 14px;border-radius:var(--r-md);font-size:0.85rem;line-height:1.55;overflow-wrap:break-word}
+.mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 16%,transparent);
+  border-bottom-right-radius:5px;white-space:pre-wrap}
+.mc-mac{align-self:flex-start;background:color-mix(in srgb,var(--text-light) 6%,transparent);
+  border:1px solid var(--glass-border);border-bottom-left-radius:5px}
+.mc-mac p{margin:0.35em 0}.mc-mac p:first-child{margin-top:0}.mc-mac p:last-child{margin-bottom:0}
+.mc-money{font-weight:700;color:var(--accent-text);font-variant-numeric:tabular-nums}
+.mc-think{align-self:flex-start;max-width:84%}
+.mc-think summary{list-style:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:0.68rem;font-weight:700;color:var(--text-muted);
+  border:1px solid var(--glass-border);border-radius:999px;padding:4px 11px}
+.mc-think summary::-webkit-details-marker{display:none}
+.mc-think-b{margin-top:6px;font-size:0.75rem;line-height:1.5;color:var(--text-muted);
+  border-left:2px solid var(--glass-border);padding:2px 0 2px 11px;white-space:pre-wrap}
+.mc-chip{align-self:flex-start;font-size:0.68rem;font-weight:600;color:var(--text-muted);
+  border:1px solid var(--glass-border);border-radius:999px;padding:4px 12px}
+.mc-live{display:flex;flex-direction:column;gap:8px}
+.mc-caret{display:inline-block;width:6px;height:13px;border-radius:2px;background:var(--accent);
+  vertical-align:-2px;animation:mcCaret .9s steps(1) infinite}
+@keyframes mcCaret{50%{opacity:0}}
+.mc-journey{min-height:1.2em;font-size:0.7rem;color:var(--text-muted);padding:6px 2px 2px}
+.mc-bar{display:flex;gap:9px;margin-top:6px}
+.mc-bar .input-glass{flex:1;min-width:0}
+@media (prefers-reduced-motion: reduce){.mc-caret{animation:none}}

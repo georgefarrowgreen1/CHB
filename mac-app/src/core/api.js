@@ -145,6 +145,153 @@ function makeApi(deps) {
     // The loaded context window, measured once per session — /props is cheap
     // but the number only changes when the server restarts with new flags.
     let chatCtx = 0;
+    // ── THE CHAT'S SHARED CORE — the local screen and the WEB CHAT (the
+    // ask channel's ownerchat kind) run the SAME machinery, split in two so
+    // each caller keeps its own order: chatEngineUp brings the engine up and
+    // measures the meter's denominator; chatLoop is the bounded tool loop.
+    // `ev` hears the same events the window does ({round}/{think}/{tok}/
+    // {tool}/{tool_done}); the web chat turns them into streamed partials.
+    async function chatEngineUp(model) {
+        const id = engineId();
+        const eng = engineFor(id);
+        // The screenshot this feature answers: llama.cpp's own web UI
+        // saying "Server unavailable". Here the app STARTS it instead.
+        if (cfg.autoStart && runner) {
+            const up = await ensureEngine(id, model);
+            if (!up.ok) {
+                return { ok: false, say: up.say };
+            }
+        } else if (!(await eng.reachable())) {
+            return { ok: false, say: eng.name + ' is not answering on ' + eng.base + ' — start it under Settings → Engine.' };
+        }
+        // THE METER'S DENOMINATOR — measured once (llama.cpp /props),
+        // 0 when the engine does not report, and 0 shows NO meter:
+        // a guessed meter is worse than none.
+        if (!chatCtx && eng.props) {
+            try { chatCtx = (await eng.props()).ctx || 0; } catch (e) { chatCtx = 0; }
+        }
+        return { ok: true, eng: eng };
+    }
+    // ── THE TOOL LOOP — the model may LOOK THINGS UP (chattools.js
+    // owns the protocol; the site's chat_tool action owns the door).
+    // Every path is bounded: lookups cap at CHAT_TOOL_ROUNDS, a
+    // fumbled call gets ONE grammar-constrained retry, and both
+    // latches are one-way — the loop always ends at a sentence.
+    // STREAMED: every round streams over `ev` as it decodes — { think }
+    // for a reasoning model's own thinking (the reasoning_content field
+    // or an in-content <think> block, split live by chat.js's state
+    // machine), { tok } for answer text, { round } opening each round so
+    // a watcher can discard one that turns out to be a tool call,
+    // { tool }/{ tool_done } around each lookup. The RETURN VALUE carries
+    // the whole answer — events are a watcher's luxury, never the record.
+    async function chatLoop(eng, turns, instr, model, ev, signal) {
+        let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
+        const site = toolsOn ? siteFor() : null;
+        let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
+        // The STANDING INSTRUCTION joins the system content — typed by
+        // the owner or absent, never written by the app.
+        if (instr) {
+            extra += (extra ? '\n\n' : '')
+                + 'The owner’s standing instruction for this conversation: ' + instr;
+        }
+        let msgs = chatMod.chatForModel(turns, '', extra);
+        // TRIM HONESTY: how many stored turns no longer travel.
+        const dropped = Math.max(0, turns.length - (msgs.length - 1));
+        const used = [];
+        let lookups = 0;
+        let grammarNext = false;
+        let fumbled = false;
+        let thinkAll = '';
+        let answer = '';
+        let stopped = false;
+        let r = null;
+        for (;;) {
+            const split = chatMod.chatThinkStream();
+            ev({ t: 'round' });
+            r = await eng.chatStream(msgs, model, {
+                // The retry runs cool: a constrained decode at chat
+                // temperature wanders inside the grammar's freedoms.
+                temperature: grammarNext ? 0.2 : 0.7,
+                maxTokens: 900, timeoutMs: 180000, signal: signal,
+                grammar: grammarNext ? chatToolsMod.chatToolGrammar() : '',
+            }, function (e2) {
+                if (e2.think) { ev({ t: 'think', s: e2.think }); }
+                if (e2.token) {
+                    const bits = split(e2.token);
+                    if (bits.think) { ev({ t: 'think', s: bits.think }); }
+                    if (bits.answer) { ev({ t: 'tok', s: bits.answer }); }
+                }
+            });
+            if (!r.ok) {
+                return { ok: false, say: r.say };
+            }
+            // The authoritative split runs on the WHOLE text — the live
+            // one above only routed the paint.
+            const parts = chatMod.chatThinkSplit(r.text);
+            thinkAll += (r.think ? r.think + '\n' : '') + (parts.think ? parts.think + '\n' : '');
+            if (r.stopped) {
+                stopped = true;
+                answer = parts.answer;
+                break;
+            }
+            const call = toolsOn ? chatToolsMod.chatToolCall(parts.answer) : null;
+            if (!call) {
+                answer = parts.answer;
+                break;
+            }
+            if (call.bad) {
+                if (!fumbled) {
+                    // It TRIED — re-run the same turn with the decode
+                    // constrained so the call is valid by construction.
+                    fumbled = true;
+                    grammarNext = true;
+                    continue;
+                }
+                msgs = msgs.concat([
+                    { role: 'assistant', content: parts.answer },
+                    { role: 'user', content: 'That tool call was not valid (' + call.bad + '). Answer in plain words instead.' },
+                ]);
+                toolsOn = false;
+                grammarNext = false;
+                continue;
+            }
+            grammarNext = false;
+            if (lookups >= chatToolsMod.CHAT_TOOL_ROUNDS) {
+                msgs = msgs.concat([
+                    { role: 'assistant', content: parts.answer },
+                    { role: 'user', content: 'No more lookups this message — answer now, in plain words, from what you already have.' },
+                ]);
+                toolsOn = false;
+                continue;
+            }
+            lookups++;
+            ev({ t: 'tool', name: call.tool });
+            const res = await site.chatTool(call.tool, call.args);
+            if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
+            // The payload rides the event so THIS SESSION can show
+            // "what did it see" — it is deliberately not stored, so
+            // chats.json keeps words, not records.
+            ev({
+                t: 'tool_done', name: call.tool, ok: !!res.ok,
+                data: res.ok ? res.data : { error: (res.refusal && res.refusal.say) || 'the website did not answer' },
+            });
+            // A refused lookup travels back as a RESULT saying so — the
+            // model then answers honestly rather than the send dying on
+            // a switch the owner can flip.
+            const resultBody = res.ok
+                ? chatToolsMod.chatToolResultMsg(call.tool, res.data)
+                : chatToolsMod.chatToolResultMsg(call.tool, { error: (res.refusal && res.refusal.say) || 'the website did not answer' });
+            msgs = msgs.concat([
+                { role: 'assistant', content: parts.answer },
+                { role: 'user', content: resultBody },
+            ]);
+        }
+        return {
+            ok: true, answer: answer, think: thinkAll.trim(), used: used,
+            stopped: stopped, dropped: dropped, ms: r.ms, tokensPerSec: r.tokensPerSec,
+            ctxUsed: (r.promptTokens || 0) + (r.tokens || 0),
+        };
+    }
     // The chat's model: the owner's explicit pick, else the reply job's — the
     // model already trusted with prose. '' means neither exists yet.
     function chatModelId() {
@@ -566,6 +713,71 @@ function makeApi(deps) {
                     ensureEngineFor: cfg.autoStart && runner
                         ? function (model) { return ensureEngine(id, model); }
                         : null,
+                    // THE WEB CHAT'S WORKER — the owner talking to this Mac
+                    // from their phone, over the same channel. It runs the
+                    // LOCAL chat's own core (engine, tools, thinking), holds
+                    // chatBusy so the two chats take turns on the engine, and
+                    // SKIPS (ask stays open, next sweep is seconds away) when
+                    // the owner is mid-send here. `postPartial` streams the
+                    // answer-so-far back for the phone to paint.
+                    ownerChat: async function (oc, postPartial) {
+                        if (chatBusy || running) {
+                            return { skip: true };
+                        }
+                        const model = chatModelId();
+                        if (!model) {
+                            return { ok: false, say: 'no chat model chosen — pick one on the Chat screen' };
+                        }
+                        chatBusy = true;
+                        try {
+                            const up = await chatEngineUp(model);
+                            if (!up.ok) {
+                                return { ok: false, say: up.say };
+                            }
+                            const turns = (Array.isArray(oc.turns) ? oc.turns : []).map(function (m) {
+                                return { role: (m && m.who) === 'mac' ? 'assistant' : 'user', text: String((m && m.text) || '') };
+                            });
+                            // Rebuild the streaming view from the loop's own
+                            // events — the TOOL holdback the window applies,
+                            // applied here so a lookup being typed never
+                            // paints on the phone either. Throttled: a
+                            // partial every ~1.5s is streaming; every token
+                            // would be a request per word.
+                            let round = '';
+                            let think = '';
+                            let lastPost = 0;
+                            const res = await chatLoop(up.eng, turns, String(oc.instr || ''), model, function (e2) {
+                                if (e2.t === 'round' || e2.t === 'tool') { round = ''; }
+                                if (e2.t === 'think') { think += e2.s || ''; }
+                                if (e2.t === 'tok') { round += e2.s || ''; }
+                                const show = /^\s*TOOL/.test(round) ? '' : round;
+                                const tms = now().getTime();
+                                if (postPartial && (show || think) && tms - lastPost >= 1500) {
+                                    lastPost = tms;
+                                    postPartial(JSON.stringify({
+                                        text: show,
+                                        think: think.slice(0, chatMod.CHAT_THINK_CHARS),
+                                    }));
+                                }
+                            }, null);
+                            if (!res.ok) {
+                                return { ok: false, say: res.say };
+                            }
+                            return {
+                                ok: true,
+                                model: model,
+                                text: JSON.stringify({
+                                    text: res.answer,
+                                    think: res.think.slice(0, chatMod.CHAT_THINK_CHARS),
+                                    used: res.used,
+                                    ms: res.ms,
+                                    tps: res.tokensPerSec,
+                                }),
+                            };
+                        } finally {
+                            chatBusy = false;
+                        }
+                    },
                 });
                 // THE WARM HINT (seamlessness rung 2): search is open at the
                 // site, so bring the engine up NOW — a dead end then meets a
@@ -708,28 +920,16 @@ function makeApi(deps) {
             chatAbort = new AbortController();
             const signal = chatAbort.signal;
             try {
-                const id = engineId();
-                const eng = engineFor(id);
-                // The screenshot this feature answers: llama.cpp's own web UI
-                // saying "Server unavailable". Here the app STARTS it instead.
-                if (cfg.autoStart && runner) {
-                    const up = await ensureEngine(id, model);
-                    if (!up.ok) {
-                        return { ok: false, say: up.say };
-                    }
-                } else if (!(await eng.reachable())) {
-                    return { ok: false, say: eng.name + ' is not answering on ' + eng.base + ' — start it under Settings → Engine.' };
-                }
-                // THE METER'S DENOMINATOR — measured once (llama.cpp /props),
-                // 0 when the engine does not report, and 0 shows NO meter:
-                // a guessed meter is worse than none.
-                if (!chatCtx && eng.props) {
-                    try { chatCtx = (await eng.props()).ctx || 0; } catch (e) { chatCtx = 0; }
+                const up = await chatEngineUp(model);
+                if (!up.ok) {
+                    return { ok: false, say: up.say };
                 }
                 const th = chatEnsureThread();
                 // The question joins the thread BEFORE the call: it was said,
-                // whatever the model does about it. A REGENERATE re-asks the
-                // question already there instead of saying it twice.
+                // whatever the model does about it — but AFTER the engine is
+                // confirmed up, so an engine refusal hands the words back
+                // instead of storing a question nothing will answer. A
+                // REGENERATE re-asks the question already there.
                 if (!regen) {
                     const um = { role: 'user', text: t, at: nightMod.hhmm() };
                     if (fileName) { um.file = fileName; }
@@ -739,158 +939,36 @@ function makeApi(deps) {
                 th.at = now().getTime();
                 writeChat();
                 chatPushEv({ t: 'start', thread: chatDb.cur });
-                // ── THE TOOL LOOP — the model may LOOK THINGS UP (chattools.js
-                // owns the protocol; the site's chat_tool action owns the door).
-                // Every path is bounded: lookups cap at CHAT_TOOL_ROUNDS, a
-                // fumbled call gets ONE grammar-constrained retry, and both
-                // latches are one-way — the loop always ends at a sentence.
-                // The tool turns are EPHEMERAL: the stored thread keeps the
-                // owner's words and the final answer, never the machinery,
-                // so chats.json cannot fill with JSON nobody asked to keep.
-                //
-                // STREAMED now: every round streams over `push` as it decodes —
-                // { think } for a reasoning model's own thinking (either the
-                // reasoning_content field or an in-content <think> block, split
-                // live by chat.js's state machine), { tok } for answer text,
-                // { round } opening each round so the window can discard a
-                // round that turns out to be a tool call, { tool }/{ tool_done }
-                // around each lookup, { done } at the end. The RETURN VALUE
-                // still carries the whole answer — events are a window's luxury,
-                // never the record.
-                let toolsOn = !!(configMod.siteUrl(cfg) && secrets.get());
-                const site = toolsOn ? siteFor() : null;
-                let extra = toolsOn ? chatToolsMod.chatToolsIntro(siteMod.today(now())) : '';
-                // The conversation's STANDING INSTRUCTION joins the system
-                // content — typed by the owner or absent, never written by
-                // the app, and it rides every turn of this thread.
-                if (th.instr) {
-                    extra += (extra ? '\n\n' : '')
-                        + 'The owner’s standing instruction for this conversation: ' + th.instr;
-                }
-                let msgs = chatMod.chatForModel(th.msgs, '', extra);
-                // TRIM HONESTY: how many stored turns no longer travel. Said
-                // to the window so "why did it forget?" is answered before
-                // it is asked.
-                const dropped = Math.max(0, th.msgs.length - (msgs.length - 1));
-                const used = [];
-                let lookups = 0;
-                let grammarNext = false;
-                let fumbled = false;
-                let thinkAll = '';
-                let answer = '';
-                let stopped = false;
-                let r = null;
-                for (;;) {
-                    const split = chatMod.chatThinkStream();
-                    chatPushEv({ t: 'round' });
-                    r = await eng.chatStream(msgs, model, {
-                        // The retry runs cool: a constrained decode at chat
-                        // temperature wanders inside the grammar's freedoms.
-                        temperature: grammarNext ? 0.2 : 0.7,
-                        maxTokens: 900, timeoutMs: 180000, signal: signal,
-                        grammar: grammarNext ? chatToolsMod.chatToolGrammar() : '',
-                    }, function (ev) {
-                        if (ev.think) { chatPushEv({ t: 'think', s: ev.think }); }
-                        if (ev.token) {
-                            const bits = split(ev.token);
-                            if (bits.think) { chatPushEv({ t: 'think', s: bits.think }); }
-                            if (bits.answer) { chatPushEv({ t: 'tok', s: bits.answer }); }
-                        }
-                    });
-                    if (!r.ok) {
-                        chatPushEv({ t: 'done', ok: false, say: r.say });
-                        return { ok: false, say: r.say };
-                    }
-                    // The authoritative split runs on the WHOLE text — the live
-                    // one above only routed the paint.
-                    const parts = chatMod.chatThinkSplit(r.text);
-                    thinkAll += (r.think ? r.think + '\n' : '') + (parts.think ? parts.think + '\n' : '');
-                    if (r.stopped) {
-                        stopped = true;
-                        answer = parts.answer;
-                        break;
-                    }
-                    const call = toolsOn ? chatToolsMod.chatToolCall(parts.answer) : null;
-                    if (!call) {
-                        answer = parts.answer;
-                        break;
-                    }
-                    if (call.bad) {
-                        if (!fumbled) {
-                            // It TRIED — re-run the same turn with the decode
-                            // constrained so the call is valid by construction.
-                            fumbled = true;
-                            grammarNext = true;
-                            continue;
-                        }
-                        msgs = msgs.concat([
-                            { role: 'assistant', content: parts.answer },
-                            { role: 'user', content: 'That tool call was not valid (' + call.bad + '). Answer in plain words instead.' },
-                        ]);
-                        toolsOn = false;
-                        grammarNext = false;
-                        continue;
-                    }
-                    grammarNext = false;
-                    if (lookups >= chatToolsMod.CHAT_TOOL_ROUNDS) {
-                        msgs = msgs.concat([
-                            { role: 'assistant', content: parts.answer },
-                            { role: 'user', content: 'No more lookups this message — answer now, in plain words, from what you already have.' },
-                        ]);
-                        toolsOn = false;
-                        continue;
-                    }
-                    lookups++;
-                    chatPushEv({ t: 'tool', name: call.tool });
-                    const res = await site.chatTool(call.tool, call.args);
-                    if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
-                    // The payload rides the event so THIS SESSION can show
-                    // "what did it see" — it is deliberately not stored, so
-                    // chats.json keeps words, not records.
-                    chatPushEv({
-                        t: 'tool_done', name: call.tool, ok: !!res.ok,
-                        data: res.ok ? res.data : { error: (res.refusal && res.refusal.say) || 'the website did not answer' },
-                    });
-                    // A refused lookup travels back as a RESULT saying so — the
-                    // model then answers honestly rather than the send dying on
-                    // a switch the owner can flip.
-                    const resultBody = res.ok
-                        ? chatToolsMod.chatToolResultMsg(call.tool, res.data)
-                        : chatToolsMod.chatToolResultMsg(call.tool, { error: (res.refusal && res.refusal.say) || 'the website did not answer' });
-                    msgs = msgs.concat([
-                        { role: 'assistant', content: parts.answer },
-                        { role: 'user', content: resultBody },
-                    ]);
+                const res = await chatLoop(up.eng, th.msgs, th.instr || '', model, chatPushEv, signal);
+                if (!res.ok) {
+                    chatPushEv({ t: 'done', ok: false, say: res.say });
+                    return { ok: false, say: res.say };
                 }
                 // A STOP that landed before any answer stores NOTHING: the
                 // question stays, nothing was answered, and regenerate can
                 // re-ask. Anything already said is kept — the owner pressed
                 // Stop having read it, not to erase it.
-                if (answer !== '') {
+                if (res.answer !== '') {
                     th.msgs = chatMod.chatPush(th.msgs, {
-                        role: 'assistant', text: answer, at: nightMod.hhmm(),
-                        think: thinkAll.trim(), used: used,
+                        role: 'assistant', text: res.answer, at: nightMod.hhmm(),
+                        think: res.think, used: res.used,
                     });
                     writeChat();
                 }
                 if (startedModel && runner) {
                     armIdleStop();
                 }
-                // The meter's numbers: what the FINAL turn occupied, by the
-                // model's own count. 0 when the engine did not report — the
-                // window shows nothing then rather than a guess.
-                const ctxUsed = (r.promptTokens || 0) + (r.tokens || 0);
                 chatPushEv({
-                    t: 'done', ok: true, stopped: stopped, used: used,
-                    model: model, ms: r.ms, tokensPerSec: r.tokensPerSec,
-                    ctx: chatCtx, ctxUsed: ctxUsed, dropped: dropped,
+                    t: 'done', ok: true, stopped: res.stopped, used: res.used,
+                    model: model, ms: res.ms, tokensPerSec: res.tokensPerSec,
+                    ctx: chatCtx, ctxUsed: res.ctxUsed, dropped: res.dropped,
                 });
                 return {
-                    ok: true, reply: answer, stopped: stopped, think: thinkAll.trim(),
-                    ms: r.ms, tokensPerSec: r.tokensPerSec, model: model, used: used,
-                    ctx: chatCtx, ctxUsed: ctxUsed, dropped: dropped,
+                    ok: true, reply: res.answer, stopped: res.stopped, think: res.think,
+                    ms: res.ms, tokensPerSec: res.tokensPerSec, model: model, used: res.used,
+                    ctx: chatCtx, ctxUsed: res.ctxUsed, dropped: res.dropped,
                 };
-            } finally {
+                        } finally {
                 chatBusy = false;
                 chatAbort = null;
             }

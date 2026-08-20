@@ -317,19 +317,28 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   // Pick a clear range for real, Done, then Block — the payload is the picker's.
   await page.evaluate(() => document.getElementById('gdf-range').click());
   await page.waitForTimeout(250);
-  const picks = await page.evaluate((iso) => {
-    const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) { c.click(); return true; } return false; };
-    return [tap(iso.a), tap(iso.b)];
-  }, { a: (() => { const t = new Date(); t.setDate(t.getDate() + 40); return t.toISOString().slice(0, 10); })(), b: (() => { const t = new Date(); t.setDate(t.getDate() + 42); return t.toISOString().slice(0, 10); })() });
-  // +40 days may sit in next month's grid — page forward until both taps land.
-  if (!(picks[0] && picks[1])) {
+  // THE DAYS ARE PINNED to month-after-next, the 10th → the 12th — never
+  // "today + 40": +40 and +42 straddle a month boundary for a few days every
+  // month, and the two picks can then NEVER share one grid (measured: green
+  // on 19 Aug, red on 20 Aug — Sep 29 + Oct 1). Month-after-next is always
+  // whole, always future, always clear of the fixtures' near-term stays.
+  // UTC-noon construction, because toISOString on a local date is the
+  // local-in-UTC-out trap (the ukShiftDays lesson).
+  const bdIso = (() => {
+    const now = new Date();
+    const d = (day) => new Date(Date.UTC(now.getFullYear(), now.getMonth() + 2, day, 12)).toISOString().slice(0, 10);
+    return { a: d(10), b: d(12) };
+  })();
+  for (let hop = 0; hop < 4; hop++) {
+    const there = await page.evaluate((ds) => !!document.querySelector(`#dp-grid [data-day="${ds}"]`), bdIso.a);
+    if (there) break;
     await page.evaluate(() => dpChangeMonth(1));
     await page.waitForTimeout(150);
-    await page.evaluate((iso) => {
-      const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) c.click(); };
-      tap(iso.a); tap(iso.b);
-    }, { a: (() => { const t = new Date(); t.setDate(t.getDate() + 40); return t.toISOString().slice(0, 10); })(), b: (() => { const t = new Date(); t.setDate(t.getDate() + 42); return t.toISOString().slice(0, 10); })() });
   }
+  await page.evaluate((iso) => {
+    const tap = (ds) => { const c = document.querySelector(`#dp-grid [data-day="${ds}"]`); if (c) c.click(); };
+    tap(iso.a); tap(iso.b);
+  }, bdIso);
   await page.evaluate(() => { const b = document.querySelector('#date-picker [data-act="dpDone"]'); if (b) b.click(); });
   await page.waitForTimeout(250);
   const blocks = [];

@@ -275,6 +275,22 @@ function makeSite(opts) {
             return { ok: true, replayed: !!r.json.replayed };
         },
 
+        // A PARTIAL onto an open web-chat ask — pseudo-streaming's outbound
+        // half. Fire-and-forget at every call site: a lost partial costs a
+        // beat of streaming, never the answer, so failures are swallowed
+        // into { ok:false } and nobody retries them.
+        async askPartial(id, text) {
+            if (!url || !secret) {
+                return { ok: false };
+            }
+            try {
+                const r = await send(url, { action: 'ask_partial', secret: secret, id: id, text: String(text || '') });
+                return { ok: !!(r.ok && r.json && r.json.ok) };
+            } catch (e) {
+                return { ok: false };
+            }
+        },
+
         // CONNECT WITH A CODE. The one call made BEFORE this app holds anything:
         // it hands over eight characters the owner read off the website and gets
         // back a key of its own. The code is single-use and short-lived at the

@@ -888,6 +888,10 @@ function is_internal_content_key($key)
     if ($key === 'night-warm-until') {
         return true; // the search-open warm hint the Mac's poll reads
     }
+    if ($key === 'mac-chat') {
+        return true; // the owner's web chat with their own Mac (nightshift.php
+                     // chat_* actions) — their words and the model's, admin-only
+    }
     if ($key === 'nightshift-latest-build') {
         return true; // the newest Mac-app release tag, fetched daily by self-repair
     }
