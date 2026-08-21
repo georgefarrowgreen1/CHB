@@ -101,7 +101,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // guest tap on the site). NOTHING in the whole suite drove page.goBack() before
   // this, which is why eight of them could sit broken.
   console.log('\n4. Back closes the top sheet and stays put');
-  const sheets = ['lightbox', 'faq-modal', 'reviews-modal', 'welcome-modal',
+  const sheets = ['lightbox', 'faq-modal', 'amenities-modal', 'reviews-modal', 'welcome-modal',
     'guest-details-modal', 'guest-security-modal', 'exp-suggest-modal', 'photo-upload-modal'];
   for (const id of sheets) {
     // A previous iteration's Back can still be settling, and app.js is re-evaluated
@@ -115,6 +115,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       currentGuest = { email: 'g@e.com', name: 'G', phone: '', address: '', postcode: '' };
       if (i === 'lightbox') { openProperty('jollyboat'); openLightbox(0); }
       else if (i === 'faq-modal') openFaqModal('jollyboat');
+      else if (i === 'amenities-modal') openAmenitiesModal('jollyboat');
       else if (i === 'reviews-modal') openAllReviews('jollyboat');
       else if (i === 'welcome-modal') await openWelcomeBook('jollyboat');
       else if (i === 'guest-details-modal') openGuestDetailsModal();

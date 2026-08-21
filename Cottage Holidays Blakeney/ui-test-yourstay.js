@@ -82,7 +82,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!h, 'the pre-arrival countdown hub renders for an upcoming stay');
   ok(h && h.n === '10' && /days to go/.test(h.u), `countdown reads 10 days to go (${h && h.n} / ${h && h.u})`);
   ok(h && /Jollyboat/.test(h.title) && /10 days/.test(h.title), `hub names the cottage + countdown (${h && h.title.trim()})`);
-  ok(h && h.tiles === 5, `hub carries the planning tiles (${h && h.tiles})`);
+  ok(h && h.tiles === 6, `hub carries the planning tiles (${h && h.tiles})`);
   ok(h && /balance/i.test(h.sub) && h.pay, 'balance-due stay shows the balance note + Pay CTA');
   // 2a-ii) THE ASK IS NOT THE SMALLEST TYPE IN THE CARD, AND NOTHING HERE IS UNDER
   // THE PHONE TOUCH FLOOR. Two rules this screen was breaking on the DEFAULT theme
@@ -877,6 +877,45 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // icon and label sat 3px apart. Asserted on the ICON, which is what the eye
   // actually compares, and swept across desktop widths.
   console.log('\n31) the account header pills line up');
+  // 32) THE AMENITIES TILE. Asked for: an Amenities tab where "Things to do"
+  // was, and Things to do moved past Contact host — so the ORDER is the
+  // requirement and is asserted as such. The list it opens is the SAME store
+  // the cottage page prints as pills (amenities-<k>), so a guest reads one
+  // list whether they are browsing or staying; and a cottage with nothing
+  // written up names a person rather than asserting the cottage has none.
+  console.log('\n32. Amenities on the stay');
+  const amPage = await openPage({ name: 'Amy Nunn', email: 'amy@x.co' }, [mk('jollyboat', d(9), d(12), Object.assign({ payment: 'paid' }, priced))]);
+  const amv = await amPage.evaluate(async () => {
+    const el = document.querySelector('.my-stay-hub-soon');
+    const labels = [...el.querySelectorAll('.hub-tile span')].map((s) => s.textContent.trim());
+    // With a list written up.
+    siteContent['amenities-jollyboat'] = ['Wood-burning stove', 'Walled courtyard', 'Sea view'];
+    openAmenitiesModal('jollyboat');
+    const m = document.getElementById('amenities-modal');
+    const pills = [...m.querySelectorAll('.amenity-pill .amenity-text')].map((p) => p.textContent.trim());
+    const filled = { open: m.classList.contains('open'), title: (document.getElementById('amenities-modal-title') || {}).textContent || '', pills };
+    closeAmenitiesModal();
+    // With nothing written up.
+    delete siteContent['amenities-jollyboat'];
+    const had = (propertyContent.jollyboat || {}).amenities;
+    if (propertyContent.jollyboat) propertyContent.jollyboat.amenities = [];
+    openAmenitiesModal('jollyboat');
+    const emptyTxt = (document.getElementById('amenities-modal-list') || {}).textContent || '';
+    const emptyAsk = !!m.querySelector('[data-act="toggleChat"]');
+    closeAmenitiesModal();
+    if (propertyContent.jollyboat) propertyContent.jollyboat.amenities = had;
+    return { labels, filled, empty: { txt: emptyTxt.trim(), ask: emptyAsk }, shut: !m.classList.contains('open') };
+  });
+  ok(JSON.stringify(amv.labels) === JSON.stringify(['Directions', 'Good to know', 'Welcome book', 'Amenities', 'Contact host', 'Things to do']),
+    `the tiles read in the asked-for order (${amv.labels.join(' · ')})`);
+  ok(amv.filled.open && /Jollyboat/.test(amv.filled.title), `the tile opens a sheet named for the cottage (${amv.filled.title.trim()})`);
+  ok(JSON.stringify(amv.filled.pills) === JSON.stringify(['Wood-burning stove', 'Walled courtyard', 'Sea view']),
+    `it prints the cottage's own saved list as pills (${amv.filled.pills.join(', ')})`);
+  ok(!/no amenities|nothing in|none/i.test(amv.empty.txt) && amv.empty.ask,
+    `an unwritten list names a person, never "no amenities" ("${amv.empty.txt.slice(0, 70)}")`);
+  ok(amv.shut, 'Close shuts it');
+  await amPage.close();
+
   const pillPage = await openPage({ name: 'Pill Guest', email: 'pill@x.co' }, []);
   await pillPage.setViewportSize({ width: 1280, height: 900 });
   await pillPage.waitForTimeout(200);

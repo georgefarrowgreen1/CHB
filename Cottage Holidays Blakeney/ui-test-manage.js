@@ -266,13 +266,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     settingsOpenAccom('21a');
     const detail = document.getElementById('accom-detail');
     // Every rebuilt section renders captioned wells (through the closed folds).
-    const welled = ['text', 'house', 'safety', 'seasons', 'arrival', 'location', 'local', 'faq', 'welcome', 'opsnotes'].filter((id) => {
+    const welled = ['text', 'amenities', 'house', 'safety', 'seasons', 'arrival', 'location', 'local', 'faq', 'welcome', 'opsnotes'].filter((id) => {
       const f = document.getElementById('bhub-fold-ac-21a-' + id);
       return f && f.querySelector('.acr-cap') && f.querySelector('.acr-well');
     });
     // Verdicts count the loaded stores.
     const cap = (id) => ((detail.querySelector(`[data-grp="ac-21a-${id}"] .st-cap`) || {}).textContent || '').trim();
-    const verdicts = { text: cap('text'), seasons: cap('seasons'), faq: cap('faq') };
+    const verdicts = { amenities: cap('amenities'), seasons: cap('seasons'), faq: cap('faq') };
     // The house steppers write through the SAME updateRuleField save.
     const minBtn = document.querySelector('#bhub-fold-ac-21a-house .acr-step button:last-child');
     const before = propertyRates['21a'].minNights || 1;
@@ -299,8 +299,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const pinUnset = ((document.querySelector('[data-grp="ac-21a-location"] ~ * , #bhub-fold-ac-21a-location') && document.getElementById('bhub-fold-ac-21a-location').querySelector('.st-cap.is-unk')) ? 'unk' : 'other');
     return { welled: welled.length, verdicts, stepped, before, friFlipped, occ, occBefore, seasonRow: /School summer/.test(seasonRow) && /£175/.test(seasonRow) && /18\/07\/2026/.test(seasonRow), pinUnset };
   });
-  ok(uni.welled === 10, `all ten rebuilt sections render captioned wells (${uni.welled})`);
-  ok(/2 features/.test(uni.verdicts.text) && /1 season/.test(uni.verdicts.seasons) && /1 answer/.test(uni.verdicts.faq), `the fold verdicts count the loaded stores (${uni.verdicts.text} / ${uni.verdicts.seasons} / ${uni.verdicts.faq})`);
+  ok(uni.welled === 11, `all eleven rebuilt sections render captioned wells (${uni.welled})`);
+  ok(/2 amenities/.test(uni.verdicts.amenities) && /1 season/.test(uni.verdicts.seasons) && /1 answer/.test(uni.verdicts.faq), `the fold verdicts count the loaded stores (${uni.verdicts.amenities} / ${uni.verdicts.seasons} / ${uni.verdicts.faq})`);
   ok(uni.stepped.mirror === uni.before + 1 && String(uni.stepped.input) === String(uni.before + 1), `the min-nights stepper writes the input AND the rule mirror (${uni.stepped.mirror})`);
   ok(uni.friFlipped, 'a day chip click toggles the arrival-day rule through the real checkbox');
   ok(String(uni.occ.bumped) === String(parseInt(uni.occBefore, 10) + 1) && String(uni.occ.mirror) === String(uni.occBefore), 'occupancy steppers bump the input only — Save guest limits stays the write');
@@ -340,6 +340,47 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(pb.acts, 'each cell keeps reorder / replace / remove on the real data-acts');
   ok(pb.pvLive === 'The Flint Loft', `the tile preview follows the title as you type (${pb.pvLive})`);
   ok(pb.saved.length === 2, `Save card writes both content keys (${pb.saved.join(', ')})`);
+
+  // §4e AMENITIES ARE THEIR OWN SECTION, and the save reports where you can
+  // see it. Moving the features well out of "Text & details" is only a win
+  // if the whole editor came with it — the rows, the add button, the real
+  // save, and a message slot INSIDE this fold (it used to write into the
+  // text section's span, which the move would have hidden behind a closed
+  // fold: a save that looks like it did nothing).
+  console.log('§4e Amenities: its own section, the real save, its own message');
+  const am = await page.evaluate(async () => {
+    siteContent['amenities-21a'] = ['Wood-burning stove', 'Walled courtyard'];
+    settingsOpenAccom('21a');
+    const detail = document.getElementById('accom-detail');
+    const label = ((detail.querySelector('[data-grp="ac-21a-amenities"] .bhub-fold-lbl, [data-grp="ac-21a-amenities"]') || {}).textContent || '');
+    const fold = document.getElementById('bhub-fold-ac-21a-amenities');
+    const rows = fold ? fold.querySelectorAll('#accom-am-rows-21a [data-am]') : [];
+    // The text section no longer carries them — one editor, one home.
+    const textFold = document.getElementById('bhub-fold-ac-21a-text');
+    const strayInText = !!(textFold && textFold.querySelector('[data-am]'));
+    // Add a row through the REAL button, type into it, save through the REAL
+    // button, and read what actually went to the server.
+    let posted = null;
+    const origPost = window.apiPost;
+    window.apiPost = async (url, body) => { if (/content/.test(url)) posted = body; return { ok: true }; };
+    accomAddAmenity('21a');
+    const typed = document.querySelectorAll('#accom-am-rows-21a [data-am]');
+    typed[typed.length - 1].value = 'Sea view from the bedroom';
+    await accomSaveAmenities('21a');
+    window.apiPost = origPost;
+    const msg = (document.getElementById('accom-am-msg-21a') || {}).textContent || '';
+    const msgInFold = !!(fold && fold.querySelector('#accom-am-msg-21a'));
+    return {
+      label, rows: rows.length, strayInText,
+      saved: posted && posted.value ? posted.value : null,
+      msg: msg.trim(), msgInFold,
+    };
+  });
+  ok(/Amenities/.test(am.label), `the cottage page carries an Amenities section (${am.label.trim().slice(0, 40)})`);
+  ok(am.rows === 2, `it renders a row per saved amenity (${am.rows})`);
+  ok(!am.strayInText, 'the features well has LEFT "Text & details" — one editor, one home');
+  ok(am.saved && am.saved.length === 3 && am.saved[2] === 'Sea view from the bedroom', `Add + Save writes the typed list through the real endpoint (${JSON.stringify(am.saved)})`);
+  ok(am.msgInFold && /Saved/.test(am.msg), `the save reports inside this fold, where you can see it ("${am.msg}")`);
 
   console.log('§5 Website content: two verdict groups, the real editors inside');
   await page.evaluate(() => settingsOpen('content'));

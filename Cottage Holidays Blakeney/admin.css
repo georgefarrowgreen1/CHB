@@ -4887,6 +4887,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acr-lbl { flex: 1 1 auto; }
 .acr-cap { font-size: 0.68rem; letter-spacing: 0.09em; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 14px 2px 6px; }
 .acr-well { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
+/* A sentence UNDER a well, saying where what you just typed shows up. */
+.acr-note { font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); margin: 8px 4px 0; }
 .acr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
 .acr-row + .acr-row, .acr-row + .acr-status { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 .acr-lbl { font-size: 0.9rem; min-width: 0; }

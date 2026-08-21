@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 568;
+const ADMIN_BUNDLE_V = 569;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 230;
+const ADMIN_CSS_V = 231;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4437,6 +4437,7 @@ async function renderGuestBookings() {
                             <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                             <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
                             <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                            <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
                             <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
                             <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
                         </div>
@@ -4840,8 +4841,9 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                 <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                 <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
                 <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
-                <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
+                <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
                 <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+                <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
             </div>
         </div>`;
 }
@@ -8350,6 +8352,11 @@ function renderAmenities(propKey) {
         .join('');
 }
 
+// The Amenities tile's glyph — a house with a tick, stated once because both
+// My Stays hubs (pre-arrival and in-residence) carry the tile.
+const IC_AMENITY =
+    '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.2 12 4l9 7.2"/><path d="M5.5 10.3V20h13v-9.7"/><path d="M9 15.2l2 2 4-4"/></svg>';
+
 // ---- "Safety & property" list (per cottage) — mirrors the amenities pattern ----
 const DEFAULT_SAFETY = ['Smoke alarm', 'Carbon monoxide detector', 'First-aid kit available'];
 let activePropSafety = [];
@@ -11737,6 +11744,46 @@ function closeFaqModal() {
     const m = document.getElementById('faq-modal');
     if (m) m.classList.remove('open');
 }
+// ---- Amenities, on the guest's own stay ----
+// The SAME list the cottage page prints as pills (amenities-<k>, falling
+// back to the built-in one) — one store, so what a guest read while booking
+// is what they read again from their stay. Read-only; edited in
+// Manage → cottage → Amenities.
+function guestAmenityList(propKey) {
+    const saved = siteContent['amenities-' + propKey];
+    const def = propertyContent[propKey];
+    const list = Array.isArray(saved)
+        ? saved
+        : def && Array.isArray(def.amenities)
+          ? def.amenities
+          : [];
+    return list.map((a) => String(a || '').trim()).filter(Boolean);
+}
+function openAmenitiesModal(propKey) {
+    const m = document.getElementById('amenities-modal');
+    const body = document.getElementById('amenities-modal-list');
+    const title = document.getElementById('amenities-modal-title');
+    if (!m || !body) return;
+    const meta = propertyMeta[propKey] || { name: propKey };
+    if (title) title.innerText = 'Amenities — ' + meta.name;
+    const ams = guestAmenityList(propKey);
+    // A cottage with nothing listed gets a sentence naming a person, not a
+    // blank sheet — the faq-modal rule. Never "no amenities", which states
+    // something false about the cottage rather than about our own list.
+    body.innerHTML = ams.length
+        ? `<div class="amenity-sheet">${ams.map((a) => `<div class="amenity-pill"><span class="amenity-text">${escapeHtml(a)}</span></div>`).join('')}</div>
+            <p class="amenity-sheet-note">Anything you need that isn&rsquo;t here, just ask — we&rsquo;ll tell you what&rsquo;s in the cottage.</p>
+            <button type="button" class="btn-sm btn-edit" data-act="toggleChat">Message us</button>`
+        : `<p class="amenity-sheet-note" style="margin-top:6px;">We haven&rsquo;t written the list for ${escapeHtml(meta.name)} up yet — ask us what&rsquo;s in the cottage and we&rsquo;ll tell you.</p>
+            <button type="button" class="btn-primary" style="padding:11px 24px;" data-act="toggleChat">Message us</button>`;
+    overlayHistPush(); // Back closes this overlay
+    m.classList.add('open');
+}
+function closeAmenitiesModal() {
+    overlayHistConsume();
+    const m = document.getElementById('amenities-modal');
+    if (m) m.classList.remove('open');
+}
 function toggleFaq(id) {
     const item = document.getElementById(id);
     if (!item) return;
@@ -13222,13 +13269,20 @@ document.addEventListener('keydown', (e) => {
         if (m && m.classList.contains('open')) closeAllReviews();
         const fm = document.getElementById('faq-modal');
         if (fm && fm.classList.contains('open')) closeFaqModal();
+        const am = document.getElementById('amenities-modal');
+        if (am && am.classList.contains('open')) closeAmenitiesModal();
         const pl = document.getElementById('photo-lightbox');
         if (pl && pl.classList.contains('open')) closePhotoLightbox();
     }
 });
 document.addEventListener('click', (e) => {
-    if (e.target && e.target.id === 'reviews-modal') closeAllReviews();
-    if (e.target && e.target.id === 'faq-modal') closeFaqModal();
+    // The backdrop IS the element with the id, so a click landing on it (and
+    // not on anything inside) closes the sheet. One narrowing for all three.
+    const t = e.target;
+    const id = t instanceof Element ? t.id : '';
+    if (id === 'reviews-modal') closeAllReviews();
+    if (id === 'faq-modal') closeFaqModal();
+    if (id === 'amenities-modal') closeAmenitiesModal();
 });
 
 // ---- Global keyboard handling for the glass modals, the date picker and the
@@ -15421,6 +15475,7 @@ function closeTopOverlay() {
     if (open('guest-details-modal')) { closeGuestDetailsModal(); return true; }
     if (open('welcome-modal')) { closeWelcomeModal(); return true; }
     if (open('faq-modal')) { closeFaqModal(); return true; }
+    if (open('amenities-modal')) { closeAmenitiesModal(); return true; }
     if (open('reviews-modal')) { closeAllReviews(); return true; }
     if (open('chat-widget')) { closeChat(); return true; }
     return false;
@@ -18107,7 +18162,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'oneassist1';
+    const BUILD = 'amenity1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

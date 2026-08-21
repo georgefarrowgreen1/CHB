@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=295">
+    <link rel="stylesheet" href="app.css?v=296">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1552,6 +1552,16 @@
         </div>
     </div>
 
+    <div id="amenities-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="amenities-modal-title">
+        <div class="reviews-modal-box glass-panel">
+            <div class="reviews-modal-head">
+                <h2 class="section-title" id="amenities-modal-title" style="margin:0;font-size:1.5rem;">Amenities</h2>
+                <button class="reviews-modal-close" data-act="closeAmenitiesModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="reviews-modal-body" id="amenities-modal-list" style="display:block;"></div>
+        </div>
+    </div>
+
     <!-- GLASS DIALOG (replaces native alert/confirm/prompt) -->
     <!-- Full-screen photo lightbox (opened by clicking any gallery image) -->
     <div id="lightbox" class="lightbox" data-act="backdropClose" data-close="closeLightbox" data-close-in="lightbox-stage">
@@ -1974,7 +1984,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=908"></script>
+    <script defer src="app.js?v=909"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
