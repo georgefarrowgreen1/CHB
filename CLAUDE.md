@@ -1026,6 +1026,23 @@ signing and what is real; what matters HERE is the site half and the rules.
   the trimmed continuation), mac ui-test (the row, Continue carrying the
   draft, a send going through chatContinue) and ui-test-nightshift (the same
   from the phone, including that a taken-up offer never returns).
+  **AND THEN IT WAS LOOKED AT (the handoff UI pass).** Screenshotting both
+  surfaces found four things no gate could: the capsule was a filled accent
+  slab with an uppercase CONTINUE, LOUDER than the conversation it sits above
+  — it is a hairline row now, a device mark, the title quoted, the draft
+  beneath, and a quiet `Continue ›`; the `⇠` glyph painted as a broken-looking
+  dashed arrow (a real phone/laptop SVG instead, and the two surfaces now
+  share one anatomy); the mirror's dashed accent paragraph read as an ERROR
+  message (a serif title + one muted line under a hairline — a PLACE, not a
+  warning); and **the Mac's own subtitle had become a LIE** — "nothing here
+  reaches the website or a guest" is true of a local thread and false of a
+  handed-off one, so `#chatSub` is rewritten per mode (the rail's "read-only"
+  sub went the same way). Two more from the day card: `chbSayN(2)` is "a
+  couple", which read as "a couple things need you" — the documented trap,
+  hit — and the tail COUNTED rows the owner could already see, so it now
+  renders only when there are none ("nothing else needs you"). The rail's
+  three hover marks moved from three fixed `right:` values into a spaced set,
+  because a fourth would have collided.
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

@@ -822,7 +822,8 @@ function fakeState(over) {
         await page.waitForTimeout(400);
         ok('the phone\'s activity is offered as one quiet row, quoting the unsent draft',
             (await page.locator('#handoffRow').count()) === 1
-            && /Continue .the boiler./.test(await page.textContent('#handoffRow'))
+            && /from your phone/.test(await page.textContent('#handoffRow'))
+            && /the boiler/.test(await page.textContent('#handoffRow'))
             && /and what did we pay/.test(await page.textContent('#handoffRow')));
         await page.click('#handoffGo');
         await page.waitForTimeout(300);

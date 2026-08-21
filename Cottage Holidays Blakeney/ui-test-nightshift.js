@@ -995,7 +995,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     text: (document.getElementById('mc-hand') || {}).textContent || '',
     ad: (window.__hoPosts || []).filter((b) => b.action === 'handoff_put').length,
   }));
-  ok(hoCard.row && /Continue “the boiler” from your Mac/.test(hoCard.text) && /colin quo/.test(hoCard.text),
+  ok(hoCard.row && /from your Mac/.test(hoCard.text) && /the boiler/.test(hoCard.text) && /colin quo/.test(hoCard.text),
     `the Mac's activity is offered as one quiet row, quoting the unsent draft (${hoCard.text.trim().slice(0, 90)})`);
   ok(hoCard.ad >= 1, 'opening the page advertises THIS phone, so the offer can go the other way');
   // THE DRAFT TRAVELS — the detail that makes it a continuation.
