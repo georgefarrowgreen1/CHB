@@ -118,6 +118,10 @@ function makeApi(deps) {
     // a poll delivers; an ok poll ALWAYS updates (a cleared list clears here
     // too), a refused one never does (site off is not memories gone).
     let chatSiteMemories = [];
+    // HANDOFF: what the PHONE is doing, as of the last ok poll — the window
+    // reads it to offer "continue this here". Null the moment it is stale or
+    // absent, so a dismissed capsule never returns from memory.
+    let chatHandoff = null;
     // Thread ids carry a counter beside the clock: two conversations minted
     // in the same millisecond (a test, a fast hand) must never share an id —
     // a shared id makes pick ambiguous and delete a double delete.
@@ -562,6 +566,10 @@ function makeApi(deps) {
                 // answered while the owner was at the site today, and the
                 // last few log lines so an answered ask is visible HERE too.
                 asks: { today: askAnswered, log: askLog.slice(-40) },
+                // HANDOFF: what the phone is doing, if the last poll heard
+                // something fresh — the Chat screen turns it into one quiet
+                // offer to continue it here.
+                handoff: chatHandoff,
                 nights: nights.slice(0, 30),
                 running: running,
             };
@@ -974,6 +982,10 @@ function makeApi(deps) {
                 if (out.memories !== undefined) {
                     chatSiteMemories = Array.isArray(out.memories) ? out.memories : [];
                 }
+                // HANDOFF: what the phone is doing, refreshed on EVERY ok
+                // poll including to null — an offer the site no longer makes
+                // (stale, or the owner moved on) must stop being offered here.
+                chatHandoff = (out.handoff && typeof out.handoff === 'object') ? out.handoff : null;
                 // THE WARM HINT (seamlessness rung 2): search is open at the
                 // site, so bring the engine up NOW — a dead end then meets a
                 // warm model. Only when auto-start is on, only when nothing
@@ -1228,6 +1240,38 @@ function makeApi(deps) {
             return { ok: true, convo: r.convo, say: r.already
                 ? 'Already on your phone — conversation ' + r.convo + ' in the AI chat rail.'
                 : 'Sent — it is conversation ' + r.convo + ' in the AI chat rail on your phone.' };
+        },
+        // ── HANDOFF ─────────────────────────────────────────────────────
+        // Say what this Mac is doing, so the phone can offer to continue it.
+        // Best-effort by design: an advertisement nobody hears costs nothing,
+        // so a failure here must never surface as an error to the owner.
+        async handoffSay(act) {
+            const a = act || {};
+            const r = await siteFor().advertise({
+                convo: a.convo || 0,
+                thread: a.thread || '',
+                title: a.title || '',
+                draft: a.draft || '',
+            });
+            return { ok: !!(r && r.ok) };
+        },
+        // What the phone is doing, if the last poll heard something fresh.
+        handoffOffer() {
+            return chatHandoff;
+        },
+        // Continue a handed-off conversation from here: the owner's words go
+        // into the WEB conversation (one record, not two drifting copies) and
+        // the site files the ask — which this same Mac answers seconds later
+        // through the ordinary sweep, so the reply lands on every device.
+        async chatContinue(convo, text) {
+            const t = String(text || '').trim();
+            if (!t) { return { ok: false, say: 'Type a message first.' }; }
+            const r = await siteFor().say(convo, t);
+            if (!r.ok) {
+                return { ok: false, say: (r.refusal && r.refusal.say) || 'The site did not answer.' };
+            }
+            askLog.push({ say: 'continued conversation ' + r.convo + ' from this Mac', kind: 'ok' });
+            return { ok: true, id: r.id, convo: r.convo };
         },
         // The web chat's rail, READ-ONLY, for the window's "On your phone"
         // view. Replying stays on the phone — the admin session and the

@@ -598,7 +598,7 @@ async function runAskSweep(ctx) {
         return { answered: 0, failed: 0, log: log, refusal: got.refusal };
     }
     if (!got.asks.length) {
-        return { answered: 0, failed: 0, log: log, warm: !!got.warm, memories: got.memories };
+        return { answered: 0, failed: 0, log: log, warm: !!got.warm, memories: got.memories, handoff: got.handoff || null };
     }
     const jobs = (c.cfg && c.cfg.jobs) || {};
     let answered = 0;
@@ -822,7 +822,7 @@ async function runAskSweep(ctx) {
         say(who + ' · answered while you waited', 'hit');
         answered++;
     }
-    return { answered: answered, failed: failed, log: log, memories: got.memories };
+    return { answered: answered, failed: failed, log: log, memories: got.memories, handoff: got.handoff || null };
 }
 
 module.exports = {

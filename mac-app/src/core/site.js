@@ -209,6 +209,45 @@ function makeSite(opts) {
             }
             return { ok: true, data: (r.json.data && typeof r.json.data === 'object') ? r.json.data : {} };
         },
+        // HANDOFF. `advertise` says what this Mac is doing (the site is the
+        // rendezvous both devices already talk to); the phone's own activity
+        // arrives free on the asks poll. `say` continues a handed-off
+        // conversation with the owner's words — see nightshift's chat_say
+        // for why that is a narrowing of chat_import rather than a new power.
+        async advertise(act) {
+            if (!url || !secret) { return { ok: false }; }
+            if (urlProblem(url)) { return { ok: false }; }
+            const a = act || {};
+            try {
+                const r = await send(url, {
+                    action: 'handoff_put', secret: secret, build: build,
+                    convo: parseInt(a.convo, 10) || 0,
+                    thread: String(a.thread || ''),
+                    title: String(a.title || ''),
+                    draft: String(a.draft || ''),
+                });
+                return { ok: !!(r.ok && r.json && r.json.ok) };
+            } catch (e) {
+                return { ok: false }; // an advertisement nobody hears is not an error
+            }
+        },
+        async say(convo, text) {
+            if (!url || !secret) {
+                return { ok: false, refusal: { kind: 'setup', say: 'No site address or secret set yet.' } };
+            }
+            const bad = urlProblem(url);
+            if (bad) { return { ok: false, refusal: { kind: 'setup', say: bad } }; }
+            let r;
+            try {
+                r = await send(url, { action: 'chat_say', secret: secret, build: build, convo: parseInt(convo, 10) || 0, text: String(text || '') });
+            } catch (e) {
+                return { ok: false, refusal: { kind: 'net', say: 'Could not reach the site: ' + (e && e.message ? e.message : 'no answer') } };
+            }
+            if (!r.ok || !r.json || !r.json.ok) {
+                return { ok: false, refusal: refusal(r) };
+            }
+            return { ok: true, id: parseInt(r.json.id, 10) || 0, convo: parseInt(r.json.convo, 10) || 0 };
+        },
         // CHAT CONTINUITY. importChat sends a LOCAL conversation to become a
         // web one (exactly-once by ref — the site answers `already` on a
         // retry); mirror READS the web rail, and only reads — replying
@@ -319,6 +358,10 @@ function makeSite(opts) {
                 // The warm hint: the owner has search open, so bringing the
                 // engine up NOW means a dead end meets a warm model.
                 warm: r.json.warm === true,
+                // HANDOFF: what the phone is doing right now, when it is
+                // fresh enough to offer. Null on the ordinary poll — nothing
+                // to continue is not news.
+                handoff: (r.json.handoff && typeof r.json.handoff === 'object') ? r.json.handoff : null,
             };
         },
         // Post one ask's answer. `replayed` and `expired` are both fine

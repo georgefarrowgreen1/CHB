@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('hand', {
     chatExport: function (id) { return ipcRenderer.invoke('hand:chatExport', id); },
     chatSendToPhone: function (id) { return ipcRenderer.invoke('hand:chatSendToPhone', id); },
     webChat: function (convo) { return ipcRenderer.invoke('hand:webChat', convo); },
+    handoffSay: function (act) { return ipcRenderer.invoke('hand:handoffSay', act); },
+    chatContinue: function (convo, text) { return ipcRenderer.invoke('hand:chatContinue', convo, text); },
     chatAttach: function () { return ipcRenderer.invoke('hand:chatAttach'); },
     chatClear: function () { return ipcRenderer.invoke('hand:chatClear'); },
     chatNew: function () { return ipcRenderer.invoke('hand:chatNew'); },

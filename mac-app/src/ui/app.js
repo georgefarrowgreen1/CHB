@@ -505,8 +505,9 @@
                     + '<span class="ct">' + esc(c.title) + '</span>'
                     + '<span class="cn">' + c.n + ' message' + (c.n === 1 ? '' : 's') + '</span></button>';
             }).join('');
-        log.innerHTML = '<div class="trimnote">From the AI chat on your phone — read-only here. '
-            + 'Reply from the phone, where the action cards live.</div>'
+        log.innerHTML = '<div class="trimnote">From the AI chat on your phone. '
+            + 'Carry on here and your words join the SAME conversation — the action '
+            + 'cards it proposes are confirmed on the phone, where they can act.</div>'
             + (mirror.msgs || []).map(function (m) {
                 return m.who === 'you'
                     ? '<div class="bub user">' + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>'
@@ -514,13 +515,78 @@
             }).join('');
         log.scrollTop = log.scrollHeight;
         var box = $('chatIn');
-        if (box) { box.disabled = true; box.placeholder = 'Read-only — reply from your phone'; }
+        // THE COMPOSER IS LIVE HERE NOW. It was read-only when the mirror was
+        // only a viewer; continuing a conversation is the whole point of a
+        // handoff, so the words go to the SAME conversation (chat_say) rather
+        // than forking a local copy of it.
+        if (box) { box.disabled = false; box.placeholder = 'Continue this conversation\u2026'; }
+        handoffAdvertise(true);
+    }
+    // After continuing, the Mac answers its own filed ask within seconds; poll
+    // the conversation until the reply appears. Bounded by TIME, not by loop
+    // count (the chat-poll lesson), and silently abandoned if the owner walks
+    // away from the view.
+    async function mirrorAwait(convo, had) {
+        var until = Date.now() + 3 * 60 * 1000;
+        while (Date.now() < until) {
+            await new Promise(function (r) { setTimeout(r, 2000); });
+            if (!mirror || mirror.convo !== convo) { return; }
+            var r2 = null;
+            try { r2 = await window.hand.webChat(convo); } catch (e) { r2 = null; }
+            if (!mirror || mirror.convo !== convo) { return; }
+            if (r2 && r2.ok && (r2.msgs || []).length > had) {
+                mirror = r2;
+                renderMirror();
+                return;
+            }
+        }
     }
     function mirrorExit() {
         mirror = null;
         var box = $('chatIn');
         if (box) { box.disabled = false; box.placeholder = 'Ask anything\u2026'; }
         renderChat();
+    }
+    // ── HANDOFF ─────────────────────────────────────────────────────────
+    // Say what this window is doing, so the phone can offer to continue it.
+    // Debounced, because a keystroke is not an activity — a PAUSE is; and
+    // silent, because an advertisement nobody hears costs nothing.
+    var handTimer = null;
+    var handSeen = 0; // the `at` of an offer already dismissed, so it stays gone
+    function handoffAdvertise(now) {
+        if (handTimer) { clearTimeout(handTimer); handTimer = null; }
+        var go = function () {
+            if (!window.hand.handoffSay) { return; }
+            var t = (C && C.threads || []).filter(function (x) { return x.id === (C || {}).cur; })[0];
+            var box = $('chatIn');
+            window.hand.handoffSay({
+                // A LOCAL thread has no `convo` — the site cannot serve a
+                // conversation that lives on this Mac's disk, so the phone is
+                // never offered one. Sending it over first is the ⇗, a
+                // deliberate tap; the advertisement still carries the draft.
+                convo: mirror ? (mirror.convo || 0) : 0,
+                thread: (C || {}).cur || '',
+                title: mirror
+                    ? ((mirror.convos || []).filter(function (c) { return c.convo === mirror.convo; })[0] || {}).title || 'a conversation'
+                    : ((t && t.title) || 'a conversation'),
+                draft: box && !box.disabled ? String(box.value || '').slice(0, 2000) : '',
+            }).catch(function () {});
+        };
+        if (now) { go(); } else { handTimer = setTimeout(go, 2500); }
+    }
+    // The OFFER, from the other side: one quiet row above the log. It appears
+    // only while the phone's activity is fresh (the site decides), says what
+    // it was, and never acts on its own.
+    function handoffOfferHtml() {
+        var h = (S && S.handoff) || null;
+        if (!h || !h.convo || h.at <= handSeen) { return ''; }
+        return '<div class="handoff" id="handoffRow">'
+            + '<span class="hoi" aria-hidden="true">\u21e0</span>'
+            + '<span class="hot">Continue \u201c' + esc(h.title || 'your conversation') + '\u201d from your phone'
+            + (h.draft ? '<span class="hod">' + esc(h.draft.slice(0, 90)) + '</span>' : '') + '</span>'
+            + '<button class="mini" type="button" id="handoffGo">Continue</button>'
+            + '<button class="hox" type="button" id="handoffNo" aria-label="Not now">\u2715</button>'
+            + '</div>';
     }
     function renderChat() {
         if (!C) { return; }
@@ -551,7 +617,7 @@
                 + (dropSeen[C.cur] === 1 ? 'message no longer travels' : dropSeen[C.cur] + ' messages no longer travel')
                 + ' to the model.</div>';
         }
-        log.innerHTML = html;
+        log.innerHTML = handoffOfferHtml() + html;
         if (live) { liveMount(log); }
         log.scrollTop = log.scrollHeight;
         // The model picker — the owner's pick, else the reply job's, said so.
@@ -685,6 +751,24 @@
         var box = $('chatIn');
         var text = String(preset || box.value || '').trim();
         var btn = $('chatSendBtn');
+        // CONTINUING a handed-off conversation: the words belong to the web
+        // conversation, and this Mac answers the ask it files moments later
+        // through the ordinary sweep — so the reply lands on every device
+        // rather than in a second copy here.
+        if (mirror && !live) {
+            if (!text) { return; }
+            box.value = '';
+            var cr = await window.hand.chatContinue(mirror.convo, text);
+            if (!cr || !cr.ok) {
+                box.value = text; // the words come back with the reason
+                toast((cr && cr.say) || 'Could not reach the site.');
+                return;
+            }
+            mirror.msgs = (mirror.msgs || []).concat([{ who: 'you', text: text, at: '' }]);
+            renderMirror();
+            mirrorAwait(mirror.convo, (mirror.msgs || []).length);
+            return;
+        }
         if (live) {
             // The button IS Stop while a reply streams.
             if (window.hand.chatStop) { window.hand.chatStop(); }
@@ -824,6 +908,27 @@
         // NB the export and delete marks live INSIDE the row button, so both
         // must be asked before the row itself — the row check would swallow
         // their clicks (measured: export opened the conversation instead).
+        // THE OFFER: continue what the phone was doing, draft and all.
+        if (t.closest && t.closest('#handoffGo')) {
+            var ho = (S && S.handoff) || null;
+            if (ho && ho.convo) {
+                handSeen = ho.at; // taken up — do not offer it again
+                await openPhoneView(ho.convo);
+                var bx2 = $('chatIn');
+                // THE UNFINISHED SENTENCE TRAVELS. Half-typed on the phone,
+                // waiting in the composer here — the detail that makes this
+                // feel like continuing rather than starting again.
+                if (bx2 && ho.draft && !bx2.value) { bx2.value = ho.draft; bx2.focus(); }
+            }
+            return;
+        }
+        if (t.closest && t.closest('#handoffNo')) {
+            var hn = (S && S.handoff) || null;
+            if (hn) { handSeen = hn.at; }
+            var row = $('handoffRow');
+            if (row) { row.remove(); }
+            return;
+        }
         var cph = t.closest ? t.closest('.cph') : null;
         if (cph) {
             if (window.hand.chatSendToPhone) {
@@ -861,6 +966,7 @@
             if (!live && window.hand.chatPick) {
                 C = await window.hand.chatPick(crow.getAttribute('data-id'));
                 renderChat();
+                handoffAdvertise(true);
             }
             return;
         }
@@ -1097,6 +1203,10 @@
         }
     }
 
+    // A PAUSE is an activity; a keystroke is not. The composer advertises on
+    // the debounce, so the phone can offer to continue with the half-typed
+    // sentence intact — and costs one small POST per pause, not per key.
+    $('chatIn').addEventListener('input', function () { handoffAdvertise(false); });
     // The conversations search — renderer-only, over what is already in hand.
     $('chatSearch').addEventListener('input', function () {
         railQ = String(this.value || '').trim();

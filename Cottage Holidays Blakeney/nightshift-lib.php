@@ -1908,6 +1908,85 @@ function night_chat_ref_ok($ref)
 
 // Whatever the content row held → a clean thread. A message is who + words;
 // a Mac message may carry think/used/model for the fold and the chip.
+// ── HANDOFF: "you were just doing this over there" ───────────────────────
+// Apple's Handoff has three parts — a rendezvous, an advertisement, and a
+// resume that carries your unfinished state. We have no Bluetooth and no
+// iCloud, but we have something that plays the rendezvous perfectly: the
+// site, which BOTH devices already talk to constantly. So each surface
+// advertises what it is doing, the other reads it on a call it was making
+// anyway (the Mac's asks poll, the phone's chat_thread), and offers to
+// continue. Proximity has no analogue here; RECENCY is the honest
+// substitute — an activity older than a few minutes is not "what you were
+// just doing", so it is never offered.
+const NIGHT_HANDOFF_FRESH = 300;      // seconds an advertisement stays offerable
+const NIGHT_HANDOFF_DRAFT_MAX = 2000; // the unsent words that travel with it
+const NIGHT_HANDOFF_TITLE_MAX = 80;
+
+// One device's activity, sanitised. '' for `dev` means unusable.
+function night_handoff_one($raw)
+{
+    if (!is_array($raw)) {
+        return null;
+    }
+    $dev = night_str($raw['dev'] ?? '');
+    if ($dev !== 'mac' && $dev !== 'web') {
+        return null;
+    }
+    $at = (int) ($raw['at'] ?? 0);
+    if ($at <= 0) {
+        return null;
+    }
+    // A LOCAL Mac thread and a web CONVERSATION are different addresses, and
+    // only one of them the phone can open by itself: the site cannot serve a
+    // conversation that lives on the Mac's own disk. `convo` is offerable to
+    // either side; `thread` is the Mac's own bookmark, carried so the Mac can
+    // recognise its own advertisement and never offer itself back.
+    return [
+        'dev' => $dev,
+        'convo' => max(0, (int) ($raw['convo'] ?? 0)),
+        'thread' => mb_substr(night_str($raw['thread'] ?? ''), 0, 40),
+        'title' => mb_substr(night_str($raw['title'] ?? ''), 0, NIGHT_HANDOFF_TITLE_MAX),
+        'draft' => mb_substr(night_str($raw['draft'] ?? ''), 0, NIGHT_HANDOFF_DRAFT_MAX),
+        'at' => $at,
+    ];
+}
+
+// The stored map {mac: {...}, web: {...}}, sanitised both ways.
+function night_handoff_map($raw)
+{
+    $out = [];
+    foreach (['mac', 'web'] as $d) {
+        $one = night_handoff_one(is_array($raw) ? ($raw[$d] ?? null) : null);
+        if ($one && $one['dev'] === $d) {
+            $out[$d] = $one;
+        }
+    }
+    return $out;
+}
+
+// What the OTHER device is doing, if it is fresh enough to offer. Null is
+// the ordinary answer — nothing to continue is not a failure.
+function night_handoff_offer($raw, $forDev, $now)
+{
+    $other = $forDev === 'mac' ? 'web' : 'mac';
+    $map = night_handoff_map($raw);
+    if (!isset($map[$other])) {
+        return null;
+    }
+    $one = $map[$other];
+    // A CONVERSATION THE OTHER SIDE CANNOT OPEN IS NOT AN OFFER. The phone
+    // can only continue something the site holds, so a Mac advertising a
+    // purely local thread (convo 0) is advertising to nobody — it must send
+    // the conversation over first, which is a deliberate tap, not ambient.
+    if ($forDev === 'web' && $one['convo'] <= 0) {
+        return null;
+    }
+    if ((int) $now - $one['at'] > NIGHT_HANDOFF_FRESH) {
+        return null;
+    }
+    return $one;
+}
+
 // ── LONG-POLL CONCURRENCY CAP ────────────────────────────────────────────
 // The device-key long-poll doors (asks/chat_poll/ask_status) each hold a
 // PHP-FPM worker for up to 25s. A request-count rate limit does NOT bound

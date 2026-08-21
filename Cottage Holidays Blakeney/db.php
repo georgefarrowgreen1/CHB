@@ -930,6 +930,10 @@ function is_internal_content_key($key)
         return true; // the chat's owner-curated memories — facts the OWNER wrote
                      // ("never dogs"), riding every ownerchat ask; admin-only
     }
+    if ($key === 'chat-handoff') {
+        return true; // what each surface is doing right now, so the other can
+                     // offer to continue it — the owner's own activity
+    }
     if ($key === 'mac-chat-imports') {
         return true; // chat continuity's exactly-once ledger — import ref →
                      // the conversation it became, so a retried POST lands once

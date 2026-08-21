@@ -973,6 +973,44 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(stEarly.macs === stEarly.before && stEarly.say && stEarly.label === 'Send',
     `a stop before any words stores nothing and says so (${JSON.stringify(stEarly)})`);
 
+  // ── HANDOFF: what the Mac was doing, offered here — and this phone says
+  // what IT is doing so the offer can go the other way.
+  await page.evaluate(() => {
+    window.__hoPosts = [];
+    window.apiPost = async (file, body) => {
+      window.__hoPosts.push(body);
+      if (body.action === 'chat_thread') {
+        return { ok: true, on: true, convo: Number(body.convo) || 1,
+          convos: [{ convo: 1, n: 2, title: 'the boiler' }], memory: [], msgs: [], instr: '',
+          handoff: { dev: 'mac', convo: 1, title: 'the boiler', draft: 'and what did colin quo', at: 999 },
+          presence: { seen: Math.floor(Date.now() / 1000), listening: true } };
+      }
+      return { ok: true };
+    };
+    return openAiChat();
+  });
+  await page.waitForTimeout(350);
+  const hoCard = await page.evaluate(() => ({
+    row: !!document.getElementById('mc-hand'),
+    text: (document.getElementById('mc-hand') || {}).textContent || '',
+    ad: (window.__hoPosts || []).filter((b) => b.action === 'handoff_put').length,
+  }));
+  ok(hoCard.row && /Continue “the boiler” from your Mac/.test(hoCard.text) && /colin quo/.test(hoCard.text),
+    `the Mac's activity is offered as one quiet row, quoting the unsent draft (${hoCard.text.trim().slice(0, 90)})`);
+  ok(hoCard.ad >= 1, 'opening the page advertises THIS phone, so the offer can go the other way');
+  // THE DRAFT TRAVELS — the detail that makes it a continuation.
+  await page.click('[data-act="mcHandoffGo"]');
+  await page.waitForTimeout(300);
+  ok(await page.evaluate(() => document.getElementById('mc-in').value === 'and what did colin quo'),
+    'Continue carries the half-typed sentence into the composer');
+  ok(await page.evaluate(() => !document.getElementById('mc-hand')),
+    '…and the offer stands down once taken up');
+  // Dismissal sticks: the same activity is never offered twice.
+  await page.evaluate(() => { document.getElementById('mc-in').value = ''; return renderMacChat(); });
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !document.getElementById('mc-hand')),
+    'a taken-up offer does not come back on the next render');
+
   // ── ROUND-2 AUDIT FIXES, each driven through the real screen ─────────────
   // (a) A REFUSED SEND SPEAKS THE SERVER'S SENTENCE and un-paints the
   // optimistic bubble. It used to say "Could not reach the site" about a

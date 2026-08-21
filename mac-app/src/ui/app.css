@@ -517,6 +517,16 @@ select.pop{padding-right:6px}
 .crow .cph{position:absolute;right:38px;top:50%;transform:translateY(-50%);border:0;background:none;
   color:var(--text-muted);font-size:11px;cursor:pointer;padding:4px;border-radius:6px;opacity:0}
 .crow:hover .cph,.crow .cph:focus-visible{opacity:1}
+/* HANDOFF: one quiet row above the log — an offer, never an alert. */
+.handoff{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:12px;
+  background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.handoff .hoi{color:var(--accent-text,var(--accent));font-size:15px}
+.handoff .hot{flex:1 1 auto;min-width:0;font-size:13px;color:var(--text-light)}
+.handoff .hod{display:block;font-size:12px;color:var(--text-muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-style:italic}
+.handoff .hox{border:0;background:none;color:var(--text-muted);font-size:12px;cursor:pointer;
+  padding:4px 6px;border-radius:6px;flex:0 0 auto}
 .crow.phview,.crow.phback{border-top:1px solid color-mix(in srgb,var(--text-light) 10%,transparent)}
 .crow.phview .ct,.crow.phback .ct{color:var(--accent-text,var(--accent))}
 /* The standing instruction — a bar the pill opens, never a dialog. */
