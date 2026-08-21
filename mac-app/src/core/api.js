@@ -218,6 +218,12 @@ function makeApi(deps) {
             extra += (extra ? '\n\n' : '')
                 + 'The owner’s standing instruction for this conversation: ' + instr;
         }
+        // The hosts the OWNER named this conversation — the web tool may
+        // fetch only these (webfetch.js), so an injected page cannot steer a
+        // second fetch to an attacker host with business data in the query.
+        const ownerHosts = webfetchMod.webOwnerHosts(
+            (Array.isArray(turns) ? turns : []).filter(function (t) { return t && t.role === 'user'; })
+                .map(function (t) { return typeof t.text === 'string' ? t.text : ''; }).join('\n'));
         let msgs = chatMod.chatForModel(turns, '', extra);
         // A PHOTO joins the NEWEST turn as OpenAI content parts — the question
         // and its image are one message, exactly as the fenced document rule
@@ -308,7 +314,7 @@ function makeApi(deps) {
             // not site data, and the site's one-endpoint key must not become
             // a proxy. Everything else is the site's own read.
             const res = call.tool === 'web'
-                ? await webFetch(call.args.url)
+                ? await webFetch(call.args.url, { allowedHosts: ownerHosts })
                 : await site.chatTool(call.tool, call.args);
             if (used.indexOf(call.tool) < 0) { used.push(call.tool); }
             // The payload rides the event so THIS SESSION can show

@@ -1908,6 +1908,38 @@ function night_chat_ref_ok($ref)
 
 // Whatever the content row held → a clean thread. A message is who + words;
 // a Mac message may carry think/used/model for the fold and the chip.
+// ── LONG-POLL CONCURRENCY CAP ────────────────────────────────────────────
+// The device-key long-poll doors (asks/chat_poll/ask_status) each hold a
+// PHP-FPM worker for up to 25s. A request-count rate limit does NOT bound
+// that — a held connection never releases its window slot — so a holder of
+// the key could fire enough concurrent long-polls to exhaust a small FPM
+// pool and stall guest-facing pages. This caps CONCURRENT holds using
+// MySQL advisory locks (the book_lock mechanism — auto-freed if a worker
+// dies): a door claims one of N slots without blocking; when all are taken
+// it does NOT hold the request open (answers its snapshot now and the Mac
+// re-arms in ~2s), so the pool can never be drained however many
+// authenticated requests arrive. Best-effort where GET_LOCK is absent.
+const NIGHT_POLL_SLOTS = 8;
+function night_poll_slot()
+{
+    for ($i = 1; $i <= NIGHT_POLL_SLOTS; $i++) {
+        try {
+            $st = db()->prepare('SELECT GET_LOCK(?, 0)');
+            $st->execute(['chb_nightpoll_' . $i]);
+            $got = $st->fetchColumn();
+            if ($got === null) {
+                return 'chb_nightpoll_0'; // GET_LOCK unsupported — a non-empty sentinel so the caller still holds (unprotected, as before)
+            }
+            if ((int) $got === 1) {
+                return 'chb_nightpoll_' . $i;
+            }
+        } catch (\Throwable $e) {
+            return 'chb_nightpoll_0'; // best-effort: never let the cap itself break a poll
+        }
+    }
+    return ''; // every slot busy — the caller must not hold
+}
+
 // ── THE IMPORTED CONVERSATION (chat continuity) — may this land? ─────────
 // A local Mac chat becomes a web conversation ONLY through this door: refs
 // are the exactly-once mechanism (a lost reply retries the same ref and the

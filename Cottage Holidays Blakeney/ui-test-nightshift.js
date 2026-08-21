@@ -1383,9 +1383,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(await page.evaluate(() => window.__dayGo === 1), "a day chip runs the duty's own route");
   await page.evaluate(() => { window.chbDuties = () => []; return renderMacChat(); });
   await page.waitForTimeout(250);
-  ok(await page.evaluate(() => !document.querySelector('.mc-day') && !!document.querySelector('.mc-hello')),
-    'a QUIET day renders no card at all — the restraint is the design');
-  await page.evaluate(() => { window.chbDuties = window.__realDuties; });
+  // The day's SHAPE reads chbDayTuples (the Today ops line's own source) —
+  // stub it as the gate already stubs chbDuties. A genuinely quiet day (no
+  // duty AND no movements) shows no card.
+  const quietDay = await page.evaluate(() => {
+    window.__realTuples2 = window.chbDayTuples;
+    window.chbDuties = () => [];
+    window.chbDayTuples = () => [];
+    return (async () => { await renderMacChat(); return { card: !!document.querySelector('.mc-day'), hello: !!document.querySelector('.mc-hello') }; })();
+  });
+  ok(!quietDay.card && quietDay.hello,
+    'a genuinely QUIET day (no duty, no movements) renders no card — the restraint is the design');
+  // A day with MOVEMENTS but no outstanding duty still greets — the
+  // "colleague who got in early" case. One arrival, nothing owed.
+  const activeDay = await page.evaluate(() => {
+    const t = (function () { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    window.chbDuties = () => [];
+    window.chbDayTuples = () => [{ pk: 'jollyboat', ci: t, co: '2027-12-31', arrived: false, due: 0 }];
+    return (async () => { await renderMacChat(); return {
+      card: !!document.querySelector('.mc-day'),
+      text: (document.querySelector('.mc-day') || {}).textContent || '',
+      chips: document.querySelectorAll('.mc-day-go').length,
+    }; })();
+  });
+  ok(activeDay.card && /arrival/.test(activeDay.text) && !/to collect/.test(activeDay.text) && activeDay.chips === 0,
+    `an active day with no duty still greets with the day's shape (${JSON.stringify(activeDay).slice(0, 160)})`);
+  await page.evaluate(() => { window.chbDayTuples = window.__realTuples2; window.chbDuties = window.__realDuties; });
   // ── THE CONVERSATIONS RAIL (migration-119). One chip per conversation,
   // the current one marked; picking another refetches THAT one; "New
   // conversation" opens beside the old ones and destroys NOTHING; and a

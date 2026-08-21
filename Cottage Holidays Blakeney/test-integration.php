@@ -1306,6 +1306,13 @@ $rootDb->exec('UPDATE bookings SET deposit_paid = ' . $dep . ' WHERE id = ' . $n
 $row = $acct();
 it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
 it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
+// CLEAN UP the Due Date Guest, whose dates are RELATIVE (+260 days). Later
+// sections use FIXED 2027-05 dates, so on days where +260 lands in that
+// window the two collided and refused the op-ledger phone enquiry as a
+// clash — a clock-dependent flake (green one day, red the next) that had
+// nothing to do with the code under test. Deleting it here removes the
+// collision at its source.
+if ($dueBookingId > 0) { $rootDb->exec('DELETE FROM bookings WHERE id = ' . $dueBookingId); }
 
 // ---- 17. THE SERVER STAMPS ITS OWN CLOCK ON EVERY REPLY --------------------
 // A browser's Date is whatever the device says, and a device clock can be wrong
@@ -3775,6 +3782,43 @@ $r = http($admin, 'POST', '/search.php', ['q' => 'Ref Probe']);
 $s28b = array_filter(is_array($r['json']['results'] ?? null) ? $r['json']['results'] : [], function ($x) { return ($x['type'] ?? '') === 'booking'; });
 it_check('…while a real name still finds its booking', count($s28b) >= 1, $r['raw']);
 $rootDb->exec("DELETE FROM bookings WHERE email = 'refprobe@x.test'");
+
+// ── §29 The long-poll concurrency cap ────────────────────────────────────
+// A device-key holder must not exhaust the FPM worker pool by firing many
+// parallel long-polls that each block a worker for 25s. With every advisory
+// slot busy, the door answers its snapshot NOW instead of holding. Proven by
+// holding all 8 slots on a SEPARATE connection, then timing an `asks` poll
+// with wait=3: capped → it returns fast; uncapped → it would hold ~3s.
+echo "\n== §29 long-poll concurrency cap ==\n";
+// Self-sufficient state: the switch ON and the queue EMPTY, so a poll holds
+// its wait unless the slot cap intervenes.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$rootDb->exec("DELETE FROM night_asks");
+$slotDb = new PDO("mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4", $DB_USER, $DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$held = 0;
+for ($i = 1; $i <= 8; $i++) {
+    $st = $slotDb->prepare('SELECT GET_LOCK(?, 0)');
+    $st->execute(['chb_nightpoll_' . $i]);
+    $held += (int) $st->fetchColumn();
+}
+it_check('all 8 poll slots can be held on one connection', $held === 8);
+$t0 = microtime(true);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 3]);
+$elapsed = microtime(true) - $t0;
+it_check('with every slot busy, a wait=3 poll returns FAST — no worker held (' . round($elapsed, 2) . 's)',
+    ($r['json']['ok'] ?? false) === true && $elapsed < 2.0, 'elapsed=' . round($elapsed, 2));
+for ($i = 1; $i <= 8; $i++) {
+    $slotDb->prepare('SELECT RELEASE_LOCK(?)')->execute(['chb_nightpoll_' . $i]);
+}
+// With slots free again, a wait poll is allowed to HOLD (it honours the wait).
+$t0 = microtime(true);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 3]);
+$elapsed2 = microtime(true) - $t0;
+// time() is second-granular, so a wait=3 holds ~2.0-3.0s; the capped case
+// returns ~0.01s, so ≥1.5 cleanly separates "held" from "bailed".
+it_check('…and with a slot free it holds the wait as before (' . round($elapsed2, 2) . 's)',
+    ($r['json']['ok'] ?? false) === true && $elapsed2 >= 1.5, 'elapsed=' . round($elapsed2, 2));
+$slotDb = null;
 
 echo "\n== Summary ==\n";
 if ($fail) {
