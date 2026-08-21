@@ -1737,6 +1737,27 @@ $r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' =>
 it_check('…while the ordinary preview is still the reply shell (the flag is the switch)',
     strpos((string) ($r['json']['html'] ?? ''), 'About your booking') !== false, substr((string) ($r['json']['html'] ?? ''), 0, 300));
 
+// THE HOUSE RULES RIDE THE ARRIVAL EMAIL — the WIRING half. test-emails-render
+// drives the composer with rules ON its payload and passes whether or not
+// anything ever reads the content key; this saves real rules through the real
+// endpoint and reads them back out of the real rendered email.
+$r = http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'houserules-' . $propKey,
+    'value' => ['No smoking indoors', 'Quiet after 10pm']]);
+it_check('(fixture) house rules saved for the cottage', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'arrival_preview', 'id' => $arBid2]);
+it_check('the review screen NAMES the rules among the facts it adds',
+    ($r['json']['facts']['rules'] ?? []) === ['No smoking indoors', 'Quiet after 10pm'], $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'arrival' => true, 'message' => $prevMsg]);
+$hrHtml = (string) ($r['json']['html'] ?? '');
+it_check('…and the email itself carries them',
+    strpos($hrHtml, 'A few house rules') !== false && strpos($hrHtml, 'No smoking indoors') !== false
+    && strpos($hrHtml, 'Quiet after 10pm') !== false, substr($hrHtml, -600));
+// With none saved the block is absent — not an empty heading.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'houserules-' . $propKey, 'value' => []]);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'arrival' => true, 'message' => $prevMsg]);
+it_check('…and with none saved there is no block at all',
+    stripos((string) ($r['json']['html'] ?? ''), 'house rules') === false, substr((string) ($r['json']['html'] ?? ''), -400));
+
 // SENDING IT BY HAND. Mail is disabled here, so this proves the half that
 // matters more anyway: a send that FAILS must not pretend. The route answers
 // 5xx, the booking is not marked sent, and the waiting state SURVIVES — a

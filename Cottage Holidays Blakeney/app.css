@@ -2123,6 +2123,27 @@ a.card {
 .amenity-sheet .amenity-pill {
   flex: 0 1 auto;
 }
+/* The House rules sheet on My Stays. A rule is a SENTENCE, not a tag — it
+   wraps and reads down the page, where an amenity is a name and flows. */
+.hr-sheet {
+  margin-bottom: 16px;
+}
+.hr-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.hr-line + .hr-line {
+  border-top: 1px solid var(--glass-border);
+}
+.hr-line .ic {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--accent-text);
+}
 .amenity-sheet-note {
   font-size: 0.85rem;
   line-height: 1.55;

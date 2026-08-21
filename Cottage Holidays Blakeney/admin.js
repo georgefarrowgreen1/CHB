@@ -367,7 +367,11 @@ function cmdkActions(q) {
         A('rates', 'Change prices & rates', 'Nightly and seasonal pricing', 'price rate nightly cost charge seasonal summer holiday raise lower adjust set fee', /(change|edit|update|set|adjust|raise|lower|manage|amend).{0,14}(price|rate|pricing|cost|nightly|charge|fee)|season(al)? (rate|price)|price.{0,6}(change|update)/, toManage('seasongrid')),
         A('email', 'Compose an email', 'Write a new message', 'send write mail email message compose new create make', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); }),
         A('welcome', cName ? `Welcome guide — ${cName}` : 'Edit the welcome guide', 'In-stay guide: Wi-Fi, appliances, bins, tips', 'welcome book guide in stay wifi manual instructions house information handbook', /(edit|change|update|write|add).{0,18}(welcome|guide|in.?stay|house ?book|handbook)/, toAccom('welcome')),
-        A('house', cName ? `House rules — ${cName}` : 'Edit house rules', 'Pets, smoking, parties, quiet hours', 'rules policy pets smoking parties quiet hours house', /(edit|change|update|set).{0,14}(house ?rule|rule)/, toAccom('house')),
+        // TWO sections, two answers: the rules a guest OBSERVES, and the times
+        // and limits the booking form ENFORCES. Asking for "house rules" used
+        // to land on the times panel with the rules a scroll below it.
+        A('houserules', cName ? `House rules — ${cName}` : 'Edit house rules', 'Pets, smoking, parties, quiet hours', 'rules policy pets smoking parties quiet hours house dogs', /(edit|change|update|set|add).{0,14}(house ?rule|rule)/, toAccom('houserules')),
+        A('house', cName ? `Times & limits — ${cName}` : 'Check-in times & limits', 'Check-in/out, minimum nights, arrival days', 'check in out time minimum maximum nights arrival days guest limits occupancy', /(edit|change|update|set).{0,18}(check.?in|check.?out|minimum night|arrival day|guest limit|occupancy)/, toAccom('house')),
         A('photos', cName ? `Photos — ${cName}` : 'Cottage photos', 'Manage the gallery', 'photo image picture gallery upload cottage', /(add|upload|change|edit|manage|new|put).{0,18}(photo|image|picture|gallery)/, toAccom('photos')),
         A('text', cName ? `Text & details — ${cName}` : 'Cottage text & details', 'Description and blurb', 'description text blurb wording details about copy', /(edit|change|update|write|rewrite).{0,18}(description|text|blurb|wording|details|copy)/, toAccom('text')),
         A('faq', cName ? `Questions & answers — ${cName}` : 'Cottage FAQs', 'Common questions guests see', 'faq question answer', /(edit|change|update|add|write).{0,14}(faq|q ?& ?a|question)/, toAccom('faq')),
@@ -5720,17 +5724,17 @@ function helpTopics() {
             related: ['weekend-pricing'] },
         { id: 'checkin-times', title: 'Set check-in / check-out times & min nights', cat: 'Cottages',
             kw: 'check in out time arrival departure minimum nights maximum stay rules house arrival days',
-            steps: ['Open Cottages → the cottage → House rules & stay.', 'Set check-in / check-out times, minimum & maximum nights and allowed arrival days.'],
+            steps: ['Open Cottages → the cottage → Times & limits.', 'Set check-in / check-out times, minimum & maximum nights and allowed arrival days.'],
             doIt: { label: 'Open Cottages', run: sec('accom') },
             related: ['house-rules', 'max-guests'] },
         { id: 'max-guests', title: 'Change how many guests are allowed', cat: 'Cottages',
             kw: 'max guests occupancy adults children people limit how many sleeps capacity',
-            steps: ['Open Cottages → the cottage → House rules & stay.', 'Set the max adults, children and total — the enquiry form enforces them.'],
+            steps: ['Open Cottages → the cottage → Times & limits.', 'Set the max adults, children and total — the enquiry form enforces them.'],
             doIt: { label: 'Open Cottages', run: sec('accom') },
             related: ['checkin-times'] },
         { id: 'house-rules', title: 'Edit house rules (pets, smoking…)', cat: 'Cottages',
             kw: 'house rules pets smoking parties quiet hours policy edit dogs allowed',
-            steps: ['Open Cottages → the cottage → House rules & stay.', 'Add or edit the bullet rules guests see (pets, smoking, parties, quiet hours).'],
+            steps: ['Open Cottages → the cottage → House rules.', 'Add or edit the rules guests see (pets, smoking, parties, quiet hours) — they read them on the cottage page and again during their stay.'],
             doIt: { label: 'Open Cottages', run: sec('accom') },
             related: ['checkin-times'] },
         { id: 'arrival-details', title: 'Set the pre-arrival info guests get', cat: 'Cottages',
@@ -9343,7 +9347,7 @@ function cmdkPickCottage(sec) {
         return;
     }
     const secLabel = {
-        welcome: 'Welcome guide', house: 'House rules', photos: 'Photos', text: 'Text & details',
+        welcome: 'Welcome guide', house: 'Times & limits', houserules: 'House rules', photos: 'Photos', text: 'Text & details',
         faq: 'Questions & answers', arrival: 'Arrival info', web: 'Website & SEO', rates: 'Prices & rates',
     }[sec] || '';
     const old = document.getElementById('cottage-pick-overlay');
@@ -13847,10 +13851,21 @@ const ACCOM_SECTIONS = [
         ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>',
     },
     {
+        // RENAMED, display-only — the id stays 'house', so every deep link,
+        // help topic and search route still resolves. This section is the
+        // functional BOOKING constraints; the rules a guest must observe are
+        // their own section below, which is what "House rules" means to them
+        // and what their stay screen now shows.
         id: 'house',
-        label: 'House rules',
+        label: 'Times &amp; limits',
         sub: 'Check-in/out times, minimum nights &amp; which days guests can arrive',
-        ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>',
+        ic: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/>',
+    },
+    {
+        id: 'houserules',
+        label: 'House rules',
+        sub: 'What guests agree to — pets, smoking, quiet hours',
+        ic: '<path d="M8 4h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9.5 3.2h5v2.6h-5z"/><path d="M9.5 11h5M9.5 15h3"/>',
     },
     {
         id: 'safety',
@@ -13959,6 +13974,15 @@ function settingsOpenAccom(k) {
                 if (id === 'amenities') {
                     const ams = accomAmenityList(k);
                     return ams.length ? stCap('ok', ams.length + ' amenit' + (ams.length === 1 ? 'y' : 'ies')) : stCap('unk', 'none yet');
+                }
+                if (id === 'houserules') {
+                    // The OWNER'S OWN rules only. The three auto lines are always
+                    // there, so counting them would make every cottage read "3 rules"
+                    // whether the owner had written any or not — a claim about
+                    // nothing. Never "none yet" either: the auto lines mean a guest
+                    // always gets an answer, so the honest empty state is silence.
+                    const hrs = houseRulesList(k);
+                    return hrs.length ? stCap('ok', hrs.length + ' rule' + (hrs.length === 1 ? '' : 's')) : '';
                 }
                 if (id === 'safety') { const n = accomSafetyList(k).length; return n ? stCap('ok', n + ' item' + (n === 1 ? '' : 's')) : stCap('unk', 'none yet'); }
                 if (id === 'seasons') { const n = (propertySeasons[k] || []).length; return n ? stCap('ok', n + ' season' + (n === 1 ? '' : 's')) : ''; }
@@ -22094,17 +22118,37 @@ function accomSectionHtml(k, sec) {
                         ${occ(`occ-total-${k}`, 'Max guests in total', 1, o.maxTotal, '')}
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('saveOccupancy', String(k))}>Save guest limits</button></div>
                     </div>`;
-                    })()}
-                    <div class="acr-cap">Extra house rules — bullets guests see</div>
+                    })()}`;
+        case 'houserules': {
+            // The SAME store as before (houserules-<k>, defaulting to
+            // DEFAULT_HOUSE_RULES) and the SAME save — the rows host, the add
+            // and the save actions are untouched, so only the section this
+            // well lives in has moved.
+            //
+            // The three AUTO lines are shown read-only above it because the
+            // guest reads them as rules and the owner edits them as settings:
+            // an owner who cannot see them here writes "check out by 10" as a
+            // fourth bullet and the guest reads it twice. They are quoted from
+            // guestHouseRuleList — the guest's own derivation — so this panel
+            // cannot state a different checkout time from the one they see.
+            const auto = (typeof guestHouseRuleList === 'function' ? guestHouseRuleList(k) : []).slice(0, 3);
+            return `<div class="acr-cap">From this cottage&rsquo;s settings</div>
+                    <div class="acr-well">
+                        ${auto.map((t) => `<div class="acr-row"><span class="acr-lbl">${escapeHtml(t)}</span></div>`).join('')}
+                    </div>
+                    <p class="acr-note">Guests see these first, so there is no need to write them out again. Change them under <strong>Times &amp; limits</strong>.</p>
+                    <div class="acr-cap">Your own rules</div>
                     <div class="acr-well">
                         <div id="accom-houserules-rows-${k}" class="acw-list">${houseRulesList(k)
                             .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
                             .join('')}</div>
                         <div class="acw-acts">
                             <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save house rules</button>
                         </div>
-                    </div>`;
+                    </div>
+                    <p class="acr-note">One per row, a sentence each. They show on the cottage page and behind the <strong>House rules</strong> tile on the guest&rsquo;s own stay.</p>`;
+        }
         case 'safety':
             return `
                     <div class="acr-cap">Shown under &ldquo;Safety &amp; property&rdquo; on the cottage page</div>
@@ -28039,6 +28083,9 @@ async function openArrivalReview(bookingId) {
         host.innerHTML = `<div class="arv-facts">
             <div class="arv-cap">Added automatically, below your message</div>
             ${factRows.map((r) => `<div class="arv-row"><span>${escapeHtml(r[0])}</span><b>${escapeHtml(String(r[1]))}</b></div>`).join('')}
+            ${Array.isArray(f.rules) && f.rules.length
+                ? `<div class="arv-row"><span>House rules</span><b>${f.rules.map((r) => escapeHtml(String(r))).join('<br>')}</b></div>`
+                : ''}
             <div class="arv-row"><span>Also</span><b>Directions link · “Open my booking” button · your phone number</b></div>
             <p class="arv-note">The key safe code is never emailed — it appears on their booking page.</p>
         </div>`;

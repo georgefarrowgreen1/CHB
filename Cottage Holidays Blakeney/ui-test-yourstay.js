@@ -906,7 +906,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (propertyContent.jollyboat) propertyContent.jollyboat.amenities = had;
     return { labels, filled, empty: { txt: emptyTxt.trim(), ask: emptyAsk }, shut: !m.classList.contains('open') };
   });
-  ok(JSON.stringify(amv.labels) === JSON.stringify(['Directions', 'Good to know', 'Welcome book', 'Amenities', 'Contact host', 'Things to do']),
+  ok(JSON.stringify(amv.labels) === JSON.stringify(['Directions', 'House rules', 'Welcome book', 'Amenities', 'Contact host', 'Things to do']),
     `the tiles read in the asked-for order (${amv.labels.join(' · ')})`);
   ok(amv.filled.open && /Jollyboat/.test(amv.filled.title), `the tile opens a sheet named for the cottage (${amv.filled.title.trim()})`);
   ok(JSON.stringify(amv.filled.pills) === JSON.stringify(['Wood-burning stove', 'Walled courtyard', 'Sea view']),
@@ -915,6 +915,51 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `an unwritten list names a person, never "no amenities" ("${amv.empty.txt.slice(0, 70)}")`);
   ok(amv.shut, 'Close shuts it');
   await amPage.close();
+
+  // 33) HOUSE RULES took the "Good to know" tile. Asked for after a screenshot
+  // of that sheet EMPTY on the customer's own screen — a cottage with no FAQs
+  // written up opened a sheet with nothing in it. House rules cannot be empty:
+  // check-in, checkout and the guest limit are facts every cottage has, so the
+  // guest always gets an answer. The list is the cottage page's OWN derivation,
+  // so the two surfaces cannot state different times.
+  console.log('\n33. House rules on the stay');
+  const hrPage = await openPage({ name: 'Rue Marsden', email: 'rue@x.co' }, [mk('jollyboat', d(8), d(11), Object.assign({ payment: 'paid' }, priced))]);
+  const hrv = await hrPage.evaluate(async () => {
+    propertyRates.jollyboat = Object.assign({}, propertyRates.jollyboat || {}, { checkInTime: '16:00', checkOutTime: '09:30' });
+    occupancyLimits.jollyboat = { maxAdults: 2, maxChildren: 0, maxTotal: 2 };
+    siteContent['houserules-jollyboat'] = ['No smoking indoors', 'Quiet after 10pm — the lane carries sound'];
+    openHouseRulesModal('jollyboat');
+    const m = document.getElementById('houserules-modal');
+    const lines = [...m.querySelectorAll('.hr-line span')].map((s) => s.textContent.trim());
+    const out = {
+      open: m.classList.contains('open'),
+      title: (document.getElementById('houserules-modal-title') || {}).textContent || '',
+      lines,
+      // The SAME derivation the cottage page prints — asserted as equality, so
+      // a second definition cannot appear without failing here.
+      matchesPage: JSON.stringify(lines) === JSON.stringify(guestHouseRuleList('jollyboat')),
+    };
+    closeHouseRulesModal();
+    // With NO rules written up the settings lines still stand on their own.
+    delete siteContent['houserules-jollyboat'];
+    const had = DEFAULT_HOUSE_RULES.slice();
+    DEFAULT_HOUSE_RULES.length = 0;
+    openHouseRulesModal('jollyboat');
+    out.bare = [...m.querySelectorAll('.hr-line span')].map((s) => s.textContent.trim());
+    closeHouseRulesModal();
+    DEFAULT_HOUSE_RULES.push(...had);
+    out.shut = !m.classList.contains('open');
+    return out;
+  });
+  ok(hrv.open && /Jollyboat/.test(hrv.title), `the tile opens a sheet named for the cottage (${hrv.title.trim()})`);
+  ok(hrv.lines[0] === 'Check-in after 16:00' && hrv.lines[1] === 'Checkout before 09:30' && hrv.lines[2] === '2 guests maximum',
+    `it leads with the times this cottage really enforces (${hrv.lines.slice(0, 3).join(' · ')})`);
+  ok(hrv.lines.includes('No smoking indoors') && hrv.lines.includes('Quiet after 10pm — the lane carries sound'),
+    `…then the owner's own rules (${hrv.lines.length} lines)`);
+  ok(hrv.matchesPage, 'the sheet and the cottage page read ONE derivation');
+  ok(hrv.bare.length === 3, `with nothing written up it is still not empty (${hrv.bare.length} lines) — the defect this replaced`);
+  ok(hrv.shut, 'Close shuts it');
+  await hrPage.close();
 
   const pillPage = await openPage({ name: 'Pill Guest', email: 'pill@x.co' }, []);
   await pillPage.setViewportSize({ width: 1280, height: 900 });

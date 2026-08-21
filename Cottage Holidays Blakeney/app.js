@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 570;
+const ADMIN_BUNDLE_V = 572;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -4436,7 +4436,7 @@ async function renderGuestBookings() {
                         <div class="hub-grid">
                             <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                             <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
-                            <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                            <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
                             <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
                             <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
                             <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
@@ -4839,7 +4839,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
             ${guestWeatherStripHtml(b)}
             <div class="hub-grid">
                 <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
-                <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                <button class="hub-tile" ${chbAttrs('openHouseRulesModal', String(propKey))}>${IC_RULES}<span>House rules</span></button>
                 <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
                 <button class="hub-tile" ${chbAttrs('openAmenitiesModal', String(propKey))}>${IC_AMENITY}<span>Amenities</span></button>
                 <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
@@ -8352,6 +8352,14 @@ function renderAmenities(propKey) {
         .join('');
 }
 
+// The House rules tile's glyph — a clipboard with a ruled line, stated once
+// because both My Stays hubs carry the tile. It REPLACED the FAQ tile
+// ("Good to know"), which on a cottage with no questions written up opened an
+// empty sheet; the FAQ content still reaches a staying guest through the chat's
+// own on-device answerer, and still has its button on the cottage page.
+const IC_RULES =
+    '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9.5 3.2h5v2.6h-5z"/><path d="M9.5 11h5M9.5 15h3"/></svg>';
+
 // The Amenities tile's glyph — a house with a tick, stated once because both
 // My Stays hubs (pre-arrival and in-residence) carry the tile.
 const IC_AMENITY =
@@ -8711,27 +8719,32 @@ function curatedTripPlan({ interests, days }) {
     return plan;
 }
 // ---- House rules: derived from each cottage's own settings ----
-function renderHouseRules(propKey) {
-    const wrap = document.getElementById('prop-house-rules');
-    if (!wrap) return;
+// ONE derivation, read by BOTH surfaces — the cottage page's list (below) and
+// the House rules sheet on the guest's own stay. The auto lines come from the
+// booking rules the cottage really enforces, so a guest cannot be told one
+// checkout time while choosing and another while staying; the rest is the
+// owner's own list (Manage → cottage → House rules). Plain text out — every
+// caller escapes at its own boundary (the chbDuties rule).
+function guestHouseRuleList(propKey) {
     const r = propertyRates[propKey] || defaultRates[propKey] || {};
     const lim = occupancyLimits[propKey] || {};
-    const ci = r.checkInTime || '15:00';
-    const co = r.checkOutTime || '10:00';
     const maxG = lim.maxTotal || 0;
-    const item = (text) =>
-        `<div class="things-item">${IC_CHECK} <span>${escapeHtml(text)}</span></div>`;
-    // Auto lines from the functional booking rules, then the owner's custom
-    // house-rules list (managed in Manage → Preferences → cottage → House rules).
     const custom = Array.isArray(siteContent['houserules-' + propKey])
         ? siteContent['houserules-' + propKey]
         : DEFAULT_HOUSE_RULES;
-    wrap.innerHTML = [
-        item(`Check-in after ${ci}`),
-        item(`Checkout before ${co}`),
-        maxG ? item(`${maxG} guest${maxG === 1 ? '' : 's'} maximum`) : '',
+    return [
+        `Check-in after ${r.checkInTime || '15:00'}`,
+        `Checkout before ${r.checkOutTime || '10:00'}`,
+        maxG ? `${maxG} guest${maxG === 1 ? '' : 's'} maximum` : '',
     ]
-        .concat(custom.map(item))
+        .concat(custom.map((c) => String(c || '').trim()))
+        .filter(Boolean);
+}
+function renderHouseRules(propKey) {
+    const wrap = document.getElementById('prop-house-rules');
+    if (!wrap) return;
+    wrap.innerHTML = guestHouseRuleList(propKey)
+        .map((text) => `<div class="things-item">${IC_CHECK} <span>${escapeHtml(text)}</span></div>`)
         .join('');
 }
 
@@ -11784,6 +11797,33 @@ function closeAmenitiesModal() {
     const m = document.getElementById('amenities-modal');
     if (m) m.classList.remove('open');
 }
+// ---- House rules, on the guest's own stay ----
+// The SAME list the cottage page prints (guestHouseRuleList) — the booking
+// rules the cottage actually enforces, then the owner's own. Read-only;
+// edited in Manage → cottage → House rules. Unlike the FAQ sheet this
+// replaced, it is never empty: check-in, checkout and the guest limit are
+// facts every cottage has, so a guest always gets an answer here.
+function openHouseRulesModal(propKey) {
+    const m = document.getElementById('houserules-modal');
+    const body = document.getElementById('houserules-modal-list');
+    const title = document.getElementById('houserules-modal-title');
+    if (!m || !body) return;
+    const meta = propertyMeta[propKey] || { name: propKey };
+    if (title) title.innerText = 'House rules — ' + meta.name;
+    const rules = guestHouseRuleList(propKey);
+    body.innerHTML = `<div class="hr-sheet">${rules
+        .map((t) => `<div class="hr-line">${IC_CHECK}<span>${escapeHtml(t)}</span></div>`)
+        .join('')}</div>
+        <p class="amenity-sheet-note">Anything you&rsquo;re not sure about, just ask — we&rsquo;d always rather you asked than wondered.</p>
+        <button type="button" class="btn-sm btn-edit" data-act="toggleChat">Message us</button>`;
+    overlayHistPush(); // Back closes this overlay
+    m.classList.add('open');
+}
+function closeHouseRulesModal() {
+    overlayHistConsume();
+    const m = document.getElementById('houserules-modal');
+    if (m) m.classList.remove('open');
+}
 function toggleFaq(id) {
     const item = document.getElementById(id);
     if (!item) return;
@@ -13271,6 +13311,8 @@ document.addEventListener('keydown', (e) => {
         if (fm && fm.classList.contains('open')) closeFaqModal();
         const am = document.getElementById('amenities-modal');
         if (am && am.classList.contains('open')) closeAmenitiesModal();
+        const hr = document.getElementById('houserules-modal');
+        if (hr && hr.classList.contains('open')) closeHouseRulesModal();
         const pl = document.getElementById('photo-lightbox');
         if (pl && pl.classList.contains('open')) closePhotoLightbox();
     }
@@ -13283,6 +13325,7 @@ document.addEventListener('click', (e) => {
     if (id === 'reviews-modal') closeAllReviews();
     if (id === 'faq-modal') closeFaqModal();
     if (id === 'amenities-modal') closeAmenitiesModal();
+    if (id === 'houserules-modal') closeHouseRulesModal();
 });
 
 // ---- Global keyboard handling for the glass modals, the date picker and the
@@ -15476,6 +15519,7 @@ function closeTopOverlay() {
     if (open('welcome-modal')) { closeWelcomeModal(); return true; }
     if (open('faq-modal')) { closeFaqModal(); return true; }
     if (open('amenities-modal')) { closeAmenitiesModal(); return true; }
+    if (open('houserules-modal')) { closeHouseRulesModal(); return true; }
     if (open('reviews-modal')) { closeAllReviews(); return true; }
     if (open('chat-widget')) { closeChat(); return true; }
     return false;
@@ -18162,7 +18206,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'greet1a';
+    const BUILD = 'hrmail1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

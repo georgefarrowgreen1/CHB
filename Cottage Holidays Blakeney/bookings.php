@@ -1200,6 +1200,11 @@ if ($action === 'arrival_preview') {
             'arrive' => email_date($b['check_in']) . ', from ' . email_time($b['check_in_time'] ?: '15:00'),
             'leave' => $b['check_out'] ? email_date($b['check_out']) . ', by ' . email_time($b['check_out_time'] ?: '10:00') : '',
             'address' => $addr,
+            // The cottage's house rules ride the email now, so the review screen
+            // names them among the facts it adds — an owner who cannot see they
+            // are already going writes them into the message by hand and the
+            // guest reads them twice. Same helper the send uses.
+            'rules' => arrival_house_rules($b['prop_key'] ?? ''),
         ],
     ]);
 }

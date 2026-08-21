@@ -2461,6 +2461,14 @@ function arrival_email_body($b)
     // never emailed (see send_arrival_for_booking); the guest reveals it in-app once
     // they're there. What changed is that the app is now one tap away.
     $stayUrl = site_base_url() . 'index.html?open=stay';
+    // The cottage's own house rules, resolved by the CALLER (arrival_email_payload)
+    // so this composer stays pure and driveable with no database.
+    $rules = [];
+    foreach (is_array($b['rules'] ?? null) ? $b['rules'] : [] as $r) {
+        if (is_scalar($r) && trim((string) $r) !== '') {
+            $rules[] = trim((string) $r);
+        }
+    }
 
     $subject = "You arrive {$inDate} — everything you need for {$prop}";
     $text =
@@ -2470,6 +2478,7 @@ function arrival_email_body($b)
         "\n" .
         ($addr !== '' ? "Address:\n{$addr}\nDirections: " . email_maplink($addr) . "\n\n" : '') .
         "Your entry details appear on your booking page once you're here:\n{$stayUrl}\n\n" .
+        ($rules ? "A few house rules:\n" . implode("\n", array_map(fn($r) => '- ' . $r, $rules)) . "\n\n" : '') .
         ($phone !== '' ? "Trouble getting in, or running late? Call {$phone} — or just reply to this email.\n\n" : "Running late or stuck? Just reply to this email.\n\n") .
         "We look forward to seeing you.\n\nCottage Holidays Blakeney";
 
@@ -2504,6 +2513,25 @@ function arrival_email_body($b)
             $accent,
         ) .
         email_btn($stayUrl, 'Open my booking') .
+        // THE HOUSE RULES, and only the owner's OWN. The arrive/leave rows above
+        // already state the times, so repeating them as "Check-in after 3pm"
+        // would say one fact twice in one email — the guest's stay screen leads
+        // with them because nothing else there does. A rule is PROSE, so this is
+        // email_note (the design system's callout), never email_rows, whose
+        // right-rail 14px bold is for a label and a value. Free text typed by a
+        // person, so escaped here (email_note expects PRE-ESCAPED HTML). Nothing
+        // saved → no heading, no empty block.
+        // NOT email_note. The tinted accent callout directly above the button is
+        // "your entry details" — the one thing this email needs the guest to act
+        // on — and a second identical block under it makes two shouts where the
+        // design system means one. Rules are REFERENCE: read once, observed for a
+        // week. So they sit in the flow as prose.
+        ($rules
+            // Body ink, NOT email_p's muted variant: these are the owner's own
+            // terms, not a footnote about them.
+            ? email_p('<strong style="color:#2A2622;">A few house rules</strong><br>' .
+                implode('<br>', array_map(fn($r) => '&bull;&nbsp; ' . email_esc($r), $rules)))
+            : '') .
         email_footnote(
             $phone !== ''
                 ? 'Trouble getting in, or running late? Call <a href="tel:' .
@@ -3781,6 +3809,14 @@ function arrival_email_payload($bk, $note = '')
     // The door/key code (arrival-<prop>) is deliberately NOT emailed; guests
     // reveal it in-app via the geofenced "My Bookings" flow (arrival-access.php),
     // so this path never even decrypts it.
+    //
+    // THE HOUSE RULES TRAVEL WITH IT, resolved HERE rather than in the composer:
+    // arrival_email_body is one of the pure builders, and a content_value() call
+    // inside one breaks every gate that drives it with no database (the rule
+    // email_host_name() already follows). Only an explicitly SAVED list travels —
+    // no fallback to the two generic courtesies the cottage page shows when the
+    // key is absent, because "please treat the cottage as your own home" under a
+    // heading reading House rules is filler in an email a guest reads once.
     return [
         'prop_key' => $bk['prop_key'] ?? '',
         'prop_name' => $prop['name'],
@@ -3792,7 +3828,37 @@ function arrival_email_payload($bk, $note = '')
         'check_out_time' => $bk['check_out_time'] ?? '10:00',
         'address' => $prop['address'],
         'note' => $note,
+        'rules' => arrival_house_rules($bk['prop_key'] ?? ''),
     ];
+}
+// The cottage's own house rules, as plain text lines, for the arrival email.
+// Sanitised at the boundary: a hand-edited content row cannot put markup or a
+// non-string into a guest's inbox, and a runaway list cannot make the email
+// unreadable (cap 12 — the rest are on the guest's own stay screen, which is
+// where the full list always lives).
+function arrival_house_rules($propKey)
+{
+    if (trim((string) $propKey) === '') {
+        return [];
+    }
+    $raw = content_json('houserules-' . $propKey, []);
+    if (!is_array($raw)) {
+        return [];
+    }
+    $out = [];
+    foreach ($raw as $r) {
+        if (!is_scalar($r)) {
+            continue;
+        }
+        $t = trim(preg_replace('/\s+/u', ' ', (string) $r));
+        if ($t !== '') {
+            $out[] = mb_substr($t, 0, 160);
+        }
+        if (count($out) >= 12) {
+            break;
+        }
+    }
+    return $out;
 }
 function send_arrival_for_booking($bk, $note = '')
 {

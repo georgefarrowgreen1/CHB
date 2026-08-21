@@ -266,7 +266,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     settingsOpenAccom('21a');
     const detail = document.getElementById('accom-detail');
     // Every rebuilt section renders captioned wells (through the closed folds).
-    const welled = ['text', 'amenities', 'house', 'safety', 'seasons', 'arrival', 'location', 'local', 'faq', 'welcome', 'opsnotes'].filter((id) => {
+    const welled = ['text', 'amenities', 'house', 'houserules', 'safety', 'seasons', 'arrival', 'location', 'local', 'faq', 'welcome', 'opsnotes'].filter((id) => {
       const f = document.getElementById('bhub-fold-ac-21a-' + id);
       return f && f.querySelector('.acr-cap') && f.querySelector('.acr-well');
     });
@@ -299,7 +299,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const pinUnset = ((document.querySelector('[data-grp="ac-21a-location"] ~ * , #bhub-fold-ac-21a-location') && document.getElementById('bhub-fold-ac-21a-location').querySelector('.st-cap.is-unk')) ? 'unk' : 'other');
     return { welled: welled.length, verdicts, stepped, before, friFlipped, occ, occBefore, seasonRow: /School summer/.test(seasonRow) && /£175/.test(seasonRow) && /18\/07\/2026/.test(seasonRow), pinUnset };
   });
-  ok(uni.welled === 11, `all eleven rebuilt sections render captioned wells (${uni.welled})`);
+  ok(uni.welled === 12, `all twelve rebuilt sections render captioned wells (${uni.welled})`);
   ok(/2 amenities/.test(uni.verdicts.amenities) && /1 season/.test(uni.verdicts.seasons) && /1 answer/.test(uni.verdicts.faq), `the fold verdicts count the loaded stores (${uni.verdicts.amenities} / ${uni.verdicts.seasons} / ${uni.verdicts.faq})`);
   ok(uni.stepped.mirror === uni.before + 1 && String(uni.stepped.input) === String(uni.before + 1), `the min-nights stepper writes the input AND the rule mirror (${uni.stepped.mirror})`);
   ok(uni.friFlipped, 'a day chip click toggles the arrival-day rule through the real checkbox');
@@ -381,6 +381,51 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!am.strayInText, 'the features well has LEFT "Text & details" — one editor, one home');
   ok(am.saved && am.saved.length === 3 && am.saved[2] === 'Sea view from the bedroom', `Add + Save writes the typed list through the real endpoint (${JSON.stringify(am.saved)})`);
   ok(am.msgInFold && /Saved/.test(am.msg), `the save reports inside this fold, where you can see it ("${am.msg}")`);
+
+  // §4f HOUSE RULES ARE THEIR OWN SECTION — and the one that WAS called "House
+  // rules" is now named for what it holds. Two things a guest means by the
+  // phrase were in one panel: the rules they must observe, and the times and
+  // limits the booking form enforces. The rules now have a section, a tile on
+  // the guest's stay, and a verdict counting the OWNER'S OWN lines.
+  console.log('§4f House rules: its own section, the settings quoted, the real save');
+  const hr = await page.evaluate(async () => {
+    siteContent['houserules-21a'] = ['No smoking indoors', 'Quiet after 10pm'];
+    propertyRates['21a'] = Object.assign({}, propertyRates['21a'] || {}, { checkInTime: '16:00', checkOutTime: '09:30' });
+    settingsOpenAccom('21a');
+    const detail = document.getElementById('accom-detail');
+    const label = (id) => ((detail.querySelector(`[data-grp="ac-21a-${id}"]`) || {}).textContent || '');
+    const fold = document.getElementById('bhub-fold-ac-21a-houserules');
+    const rows = fold ? fold.querySelectorAll('#accom-houserules-rows-21a [data-hr]') : [];
+    // The read-only settings lines are QUOTED from the guest's own derivation,
+    // so this panel cannot state a different checkout time from the sheet.
+    const auto = fold ? [...fold.querySelectorAll('.acr-row .acr-lbl')].map((e) => e.textContent.trim()) : [];
+    const want = guestHouseRuleList('21a').slice(0, 3);
+    // They have LEFT the times panel — one editor, one home.
+    const strayInHouse = !!(document.getElementById('bhub-fold-ac-21a-house') || { querySelector: () => null }).querySelector('[data-hr]');
+    let posted = null;
+    const origPost = window.apiPost;
+    window.apiPost = async (url, body) => { if (/content/.test(url)) posted = body; return { ok: true }; };
+    accomAddHouseRule('21a');
+    const typed = document.querySelectorAll('#accom-houserules-rows-21a [data-hr]');
+    typed[typed.length - 1].value = 'Please strip the beds before you go';
+    await accomSaveHouseRules('21a');
+    window.apiPost = origPost;
+    return {
+      rulesLabel: label('houserules'), timesLabel: label('house'),
+      rows: rows.length, auto, want, strayInHouse,
+      cap: ((detail.querySelector('[data-grp="ac-21a-houserules"] .st-cap') || {}).textContent || '').trim(),
+      saved: posted && posted.value ? posted.value : null,
+    };
+  });
+  ok(/House rules/.test(hr.rulesLabel) && /Times & limits/.test(hr.timesLabel),
+    `the two are named apart (${hr.rulesLabel.trim().slice(0, 22)} / ${hr.timesLabel.trim().slice(0, 22)})`);
+  ok(hr.rows === 2, `the section renders a row per saved rule (${hr.rows})`);
+  ok(!hr.strayInHouse, 'the rules well has LEFT the times panel — one editor, one home');
+  ok(JSON.stringify(hr.auto) === JSON.stringify(hr.want) && /16:00/.test(hr.auto.join(' ')),
+    `the settings lines quote the guest's own derivation (${hr.auto.join(' · ')})`);
+  ok(/2 rules/.test(hr.cap), `the verdict counts the OWNER'S rules, not the auto lines (${hr.cap})`);
+  ok(hr.saved && hr.saved.length === 3 && hr.saved[2] === 'Please strip the beds before you go',
+    `Add + Save writes the typed list through the real endpoint (${JSON.stringify(hr.saved)})`);
 
   console.log('§5 Website content: two verdict groups, the real editors inside');
   await page.evaluate(() => settingsOpen('content'));
