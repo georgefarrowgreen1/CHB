@@ -12257,16 +12257,33 @@ function mcDayHtml() {
     let duties = [];
     try { duties = (typeof chbDuties === 'function' ? chbDuties() : []) || []; } catch (e) { duties = []; }
     __mcDayDuties = duties.slice(0, 3);
-    if (!__mcDayDuties.length) return '';
+    // THE DAY'S SHAPE — the same derivation the Today ops line reads, so the
+    // two cannot disagree. Reads like a colleague who got in early: it greets
+    // with the movements even on a day that needs NOTHING, and only a
+    // genuinely empty day (no arrivals, departures or money) stays silent so
+    // the generic hello can show.
+    let shape = { parts: [], owed: 0 };
+    try { shape = chbOpsParts(chbDayTuples()); } catch (e) {}
+    if (!__mcDayDuties.length && !shape.parts.length && shape.owed <= 0.005) return '';
     const hr = new Date().getHours();
     const greet = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
+    let host = '';
+    try { host = String((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '').trim().split(/\s+/)[0]; } catch (e) {}
+    // The brief line: the movements, then the money, then how it stands.
+    const bits = shape.parts.slice();
+    if (shape.owed > 0.005) bits.push('£' + Math.round(shape.owed).toLocaleString('en-GB') + ' to collect');
+    const brief = bits.length ? bits.join(' · ')
+        : (__mcDayDuties.length ? '' : 'a quiet one');
+    const tail = __mcDayDuties.length
+        ? (__mcDayDuties.length === 1 ? '· one thing needs you' : '· ' + chbSayN(__mcDayDuties.length) + ' things need you')
+        : (shape.parts.length || shape.owed > 0.005 ? '· nothing else needs you' : '');
     const rows = __mcDayDuties.map((d, i) => `<div class="mc-day-r"><span class="mc-day-l">${escapeHtml(d.label || '')}</span>`
         + (d.act ? `<button type="button" class="mc-day-go" data-act="mcDayGo" data-arg="${i}">${escapeHtml(d.act)} ›</button>` : '')
         + `</div>`).join('');
     return `<div class="mc-day">
-        <div class="mc-day-t">${greet} — the day needs you ${__mcDayDuties.length === 1 ? 'once' : chbSayN(__mcDayDuties.length) + ' times'}</div>
+        <div class="mc-day-t">${escapeHtml(greet + (host ? ' ' + host : ''))}${brief ? ' — ' + escapeHtml(brief) : ''} ${escapeHtml(tail)}</div>
         ${rows}
-        <div class="mc-day-note">The same list as Today's strip — or just ask about any of it.</div>
+        <div class="mc-day-note">${__mcDayDuties.length ? 'The same list as Today’s strip — or just ask about any of it.' : 'All caught up — ask me anything about the day.'}</div>
     </div>`;
 }
 // The welcome card — the empty state STARTS you off instead of lecturing.
@@ -19707,16 +19724,11 @@ function chbOpsParts(tuples) {
     if (changeovers) parts.push(changeovers === 1 ? '1 changeover' : changeovers + ' changeovers');
     return { parts, owed };
 }
-function todayOpsLine() {
-    const el = document.getElementById('today-date');
-    if (!el) return;
-    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-    // THE HEADER LINE the owner reads first — deposit-aware (bookingDue), so it
-    // agrees with the bookings summary below it and with each booking's own
-    // row; owner-arranged money is never volunteered; before their check-in
-    // time a guest is an "arrival", after it they're "staying" (matches the
-    // booking-row badge). The tuples carry those judgements; chbOpsParts owns
-    // the words, shared with the offline day sheet.
+// The day's direct-booking movements as tuples for chbOpsParts — the ops
+// line and the AI chat's morning brief share it, so they cannot disagree
+// about the shape of the day. Deposit-aware (bookingDue) and owner-arranged
+// money is never volunteered, the same judgements the ops line always made.
+function chbDayTuples() {
     const tuples = [];
     Object.keys(dbBookings || {}).forEach((k) => {
         (dbBookings[k] || []).forEach((b) => {
@@ -19728,7 +19740,19 @@ function todayOpsLine() {
             tuples.push({ pk: k, ci: b.checkIn, co: b.checkOut, arrived: typeof hasCheckedIn === 'function' && hasCheckedIn(b), due });
         });
     });
-    const { parts, owed } = chbOpsParts(tuples);
+    return tuples;
+}
+function todayOpsLine() {
+    const el = document.getElementById('today-date');
+    if (!el) return;
+    const date = chbNow().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    // THE HEADER LINE the owner reads first — deposit-aware (bookingDue), so it
+    // agrees with the bookings summary below it and with each booking's own
+    // row; owner-arranged money is never volunteered; before their check-in
+    // time a guest is an "arrival", after it they're "staying" (matches the
+    // booking-row badge). The tuples carry those judgements; chbOpsParts owns
+    // the words, shared with the offline day sheet.
+    const { parts, owed } = chbOpsParts(chbDayTuples());
     if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
     // innerHTML: every part is generated (counts + the owed button) — no user text.
     el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');

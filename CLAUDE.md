@@ -973,6 +973,18 @@ signing and what is real; what matters HERE is the site half and the rules.
   timing). Confirmed NOT problems: CSRF on every admin door, night_require_key
   fails closed on a corrupt row, chat_import strips act/img/think, the
   pinned-IP transport closes the rebinding TOCTOU incl. cloud-metadata IPs.
+  **THE WELCOME OPENS THE DAY LIKE A COLLEAGUE.** mcDayHtml (the AI chat's
+  empty-state card) greeted only when a DUTY was outstanding — a day with an
+  arrival but nothing owed showed the generic hello. It now greets with the
+  day's SHAPE whenever there is one ("Morning George — 1 arrival · £340 to
+  collect · nothing else needs you"), host's first name included, duties
+  folded in as tappable rows beneath; only a genuinely empty day (no
+  movement, no money, no duty) stays silent. The shape is chbOpsParts over a
+  new `chbDayTuples` — the Today ops line's own tuple-building extracted, so
+  the greeting and the ops line cannot disagree (deposit-aware, owner-arranged
+  money never volunteered). Gated by ui-test-nightshift's day-card block
+  (quiet/active/duty; chbDayTuples stubbed the way chbDuties is — dbBookings is
+  a const, not on window).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
