@@ -531,6 +531,8 @@ function wire() {
     // and only ever at a path the owner just chose.
     ipcMain.handle('hand:chatSendToPhone', function (e, id) { return api.chatSendToPhone(id); });
     ipcMain.handle('hand:webChat', function (e, convo) { return api.webChat(convo); });
+    ipcMain.handle('hand:handoffSay', function (e, act) { return api.handoffSay(act); });
+    ipcMain.handle('hand:chatContinue', function (e, convo, text) { return api.chatContinue(convo, text); });
     ipcMain.handle('hand:chatExport', async function (e, id) {
         const r = api.chatExport(id);
         if (!r.ok) { return r; }

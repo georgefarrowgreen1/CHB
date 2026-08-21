@@ -985,6 +985,47 @@ signing and what is real; what matters HERE is the site half and the rules.
   money never volunteered). Gated by ui-test-nightshift's day-card block
   (quiet/active/duty; chbDayTuples stubbed the way chbDuties is — dbBookings is
   a const, not on window).
+  **HANDOFF — "you were just doing this over there."** Apple's version needs
+  Bluetooth and iCloud; ours needs neither, because the SITE is a rendezvous
+  both surfaces already talk to constantly. Each advertises what it is doing
+  (`handoff_put`, internal key `chat-handoff`, a map keyed BY DEVICE — the
+  claimed device is decided by HOW the caller authenticated, never taken from
+  the body) and the other reads it on a call it was making anyway: the Mac's
+  `asks` poll, the phone's `chat_thread`. So continuity costs no new traffic
+  and no new channel. Proximity has no analogue; **RECENCY is the honest
+  substitute** (`NIGHT_HANDOFF_FRESH` 300s — older than that is not "what you
+  were just doing"). The offer is ONE quiet dismissible row, and **the unsent
+  DRAFT travels with it** — the half-typed sentence is waiting in the composer
+  on the other side, which is the detail that makes it a continuation.
+  **A RENDER IS NOT AN ACTIVITY**: advertising fires on ARRIVING at the page,
+  switching conversation, sending, and a 2.5s typing PAUSE — never from the
+  renderer, because the action-card gates hold that page to "a render fires
+  nothing" and they are right to.
+  **DIVERGENCE IS ANSWERED BY MAKING THE SERVER THE RECORD.** `chat_say` lets
+  the Mac append the OWNER's words to a web conversation and files the ask its
+  own sweep answers seconds later — so a handed-off conversation has ONE
+  record and the reply lands on every device, instead of two copies drifting.
+  The mirror's composer is therefore LIVE now (it was read-only when it was
+  only a viewer); the cards it proposes are still confirmed on the phone,
+  which is the one thing that surface cannot do. `chat_send` and `chat_say`
+  share `ownerchat_file_ask` — one supersede, one payload, one grounding — or
+  a conversation would mean different things by which keyboard was used.
+  **THE BOUNDARY, STATED**: chat_say lets a device key put words in the thread
+  as the owner, which `chat_import` could already do for a whole conversation
+  — a narrowing, not a new class: one turn, an EXISTING convo only, capped and
+  rate-limited, every proposed action still confirmed on the phone.
+  **THE ONE ASYMMETRY, and it is inherent**: a Mac sitting in a LOCAL thread
+  advertises `convo: 0` and the site withholds that offer — it cannot serve a
+  conversation that lives on the Mac's own disk. Sending it over first is the
+  ⇗ (a deliberate tap); after that it is a web conversation and handoff is
+  ambient both ways. Gated: test-nightshift §20c (the validator, incl. the
+  recency gate both sides of the line and the local-thread withholding),
+  test-integration's handoff block (advertise → the Mac hears it on its own
+  poll → chat_say → ONE record → supersede still holds → 401/404/400/409),
+  core-test (advertise, the offer forgotten when the site stops making it,
+  the trimmed continuation), mac ui-test (the row, Continue carrying the
+  draft, a send going through chatContinue) and ui-test-nightshift (the same
+  from the phone, including that a taken-up offer never returns).
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`

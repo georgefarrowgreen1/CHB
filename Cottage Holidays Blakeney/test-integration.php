@@ -3789,6 +3789,66 @@ $rootDb->exec("DELETE FROM bookings WHERE email = 'refprobe@x.test'");
 // slot busy, the door answers its snapshot NOW instead of holding. Proven by
 // holding all 8 slots on a SEPARATE connection, then timing an `asks` poll
 // with wait=3: capped → it returns fast; uncapped → it would hold ~3s.
+// ── HANDOFF — the round trip, through the real doors ─────────────────────
+// Self-sufficient state: an earlier section leaves the switch off, and this
+// block is about what happens when it is ON.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$rootDb->exec("DELETE FROM night_asks");
+// The phone says what it is doing; the MAC hears it on the poll it makes
+// anyway; the Mac continues the conversation with the owner's words and the
+// site files the ask the Mac then answers. One record, two surfaces.
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_send', 'text' => 'what did colin quote for the boiler?']);
+$hoAsk = (int) ($r['json']['id'] ?? 0);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
+$hoConvo = (int) ($r['json']['convo'] ?? 0);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'handoff_put',
+    'convo' => $hoConvo, 'title' => 'the boiler', 'draft' => 'and what did we pay las']);
+it_check('handoff: the phone advertises what it is doing', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET]);
+$hoOffer = $r['json']['handoff'] ?? null;
+it_check('handoff: the Mac hears it on the poll it was making anyway — draft and all',
+    is_array($hoOffer) && ($hoOffer['dev'] ?? '') === 'web' && (int) ($hoOffer['convo'] ?? 0) === $hoConvo
+    && ($hoOffer['title'] ?? '') === 'the boiler'
+    && strpos((string) ($hoOffer['draft'] ?? ''), 'what did we pay') !== false, $r['raw']);
+// THE UNSENT DRAFT is the detail that makes it a continuation — assert it
+// travels rather than being dropped as chrome.
+it_check('handoff: …and the record is the OWNER\'s own activity, never a guest detail',
+    strpos(json_encode($hoOffer), '@') === false, json_encode($hoOffer));
+// The Mac continues it: the owner's words land in the SAME conversation and
+// an ask is filed for the Mac to answer.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_say', 'secret' => $SECRET,
+    'convo' => $hoConvo, 'text' => 'and what did we pay last time?']);
+$hoSaid = (int) ($r['json']['id'] ?? 0);
+it_check('handoff: the Mac continues the conversation and an ask is filed',
+    ($r['json']['ok'] ?? false) === true && $hoSaid > 0 && (int) ($r['json']['convo'] ?? 0) === $hoConvo, $r['raw']);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread', 'convo' => $hoConvo]);
+$hoMsgs = $r['json']['msgs'] ?? [];
+it_check('handoff: ONE record — the Mac-typed words are in the phone\'s own conversation',
+    count($hoMsgs) >= 2 && ($hoMsgs[count($hoMsgs) - 1]['who'] ?? '') === 'you'
+    && strpos((string) $hoMsgs[count($hoMsgs) - 1]['text'], 'what did we pay last time') !== false, $r['raw']);
+// SUPERSEDE still holds: continuing kills the earlier open ask, so the Mac
+// never answers a question the owner has moved past.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'ask_status', 'secret' => $SECRET, 'id' => $hoAsk]);
+$r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_poll', 'id' => $hoAsk, 'wait' => 0]);
+it_check('handoff: the earlier ask was superseded, exactly as a phone send would',
+    ($r['json']['status'] ?? '') === 'expired', $r['raw']);
+// The doors' refusals.
+it_check('handoff: chat_say needs the device key',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'chat_say', 'convo' => $hoConvo, 'text' => 'x'])['code'] === 401);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_say', 'secret' => $SECRET, 'convo' => 987654, 'text' => 'x']);
+it_check('handoff: it continues an EXISTING conversation only — never invents one',
+    $r['code'] === 404, $r['raw']);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_say', 'secret' => $SECRET, 'convo' => $hoConvo, 'text' => '   ']);
+it_check('handoff: an empty continuation is refused in a sentence', $r['code'] === 400, $r['raw']);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '']);
+it_check('handoff: the one switch closes both halves',
+    http($guest, 'POST', '/nightshift.php', ['action' => 'chat_say', 'secret' => $SECRET, 'convo' => $hoConvo, 'text' => 'x'])['code'] === 409
+    && http($guest, 'POST', '/nightshift.php', ['action' => 'handoff_put', 'secret' => $SECRET, 'convo' => 1])['code'] === 409);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'night-shift', 'value' => '1']);
+$rootDb->exec("DELETE FROM ownerchat_msgs");
+$rootDb->exec("DELETE FROM night_asks");
+$rootDb->prepare('DELETE FROM content WHERE item_key = ?')->execute(['chat-handoff']);
+
 echo "\n== §29 long-poll concurrency cap ==\n";
 // Self-sufficient state: the switch ON and the queue EMPTY, so a poll holds
 // its wait unless the slot cap intervenes.

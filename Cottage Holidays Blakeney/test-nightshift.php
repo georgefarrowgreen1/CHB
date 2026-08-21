@@ -584,6 +584,39 @@ nsk('the cap refuses the 41st message, named',
 nsk("a who outside you/mac is refused", night_chat_import_problem('imp-1', [['who' => 'guest', 'text' => 'x']]) !== '');
 nsk('a wordless message is refused', night_chat_import_problem('imp-1', [['who' => 'you', 'text' => '  ']]) !== '');
 
+// ── §20c HANDOFF — what each surface is doing, and what may be offered ───
+echo "\n== §20c the handoff advertisement ==\n";
+$hoNow = 1000000;
+$hoWeb = ['dev' => 'web', 'convo' => 4, 'thread' => '', 'title' => 'the boiler', 'draft' => 'what did colin', 'at' => $hoNow];
+$hoMac = ['dev' => 'mac', 'convo' => 7, 'thread' => 'c99-1', 'title' => 'pricing', 'draft' => '', 'at' => $hoNow];
+nsk('a well-shaped activity sanitises whole',
+    (night_handoff_one($hoWeb)['title'] ?? '') === 'the boiler'
+    && (night_handoff_one($hoWeb)['draft'] ?? '') === 'what did colin');
+nsk('an unknown device is refused, and so is an undated one',
+    night_handoff_one(['dev' => 'watch', 'at' => $hoNow]) === null
+    && night_handoff_one(['dev' => 'web', 'at' => 0]) === null);
+nsk('the draft and title are CAPPED, never carried whole',
+    mb_strlen(night_handoff_one(['dev' => 'web', 'at' => $hoNow, 'draft' => str_repeat('x', 5000)])['draft']) === NIGHT_HANDOFF_DRAFT_MAX
+    && mb_strlen(night_handoff_one(['dev' => 'web', 'at' => $hoNow, 'title' => str_repeat('t', 400)])['title']) === NIGHT_HANDOFF_TITLE_MAX);
+nsk('a device cannot claim to be the other one — the map is keyed by device',
+    night_handoff_map(['mac' => $hoWeb, 'web' => $hoWeb]) === ['web' => night_handoff_one($hoWeb)]);
+$hoMap = ['web' => $hoWeb, 'mac' => $hoMac];
+nsk('each side is offered the OTHER\'s activity, never its own',
+    (night_handoff_offer($hoMap, 'mac', $hoNow)['dev'] ?? '') === 'web'
+    && (night_handoff_offer($hoMap, 'web', $hoNow)['dev'] ?? '') === 'mac');
+// RECENCY is our substitute for Handoff's proximity: what you were doing
+// minutes ago is offerable; an hour ago is not "what you were just doing".
+nsk('a stale activity is not offered — recency is the whole gate',
+    night_handoff_offer($hoMap, 'mac', $hoNow + NIGHT_HANDOFF_FRESH + 1) === null
+    && night_handoff_offer($hoMap, 'mac', $hoNow + NIGHT_HANDOFF_FRESH - 1) !== null);
+// A Mac sitting in a LOCAL thread advertises convo 0 — the site cannot serve
+// a conversation that lives on its disk, so the phone is never offered one.
+nsk('a local-only Mac thread is never offered to the phone',
+    night_handoff_offer(['mac' => ['dev' => 'mac', 'convo' => 0, 'thread' => 'c1', 'title' => 'local', 'at' => $hoNow]], 'web', $hoNow) === null);
+nsk('…while the MAC may still be offered a phone conversation', night_handoff_offer($hoMap, 'mac', $hoNow) !== null);
+nsk('nothing stored is the ordinary answer, not a failure',
+    night_handoff_offer([], 'mac', $hoNow) === null && night_handoff_offer('junk', 'web', $hoNow) === null);
+
 // ── §21 HOW GEORGE WRITES — the voice examples (integration step 3) ──────
 echo "\n== §21 the voice examples ==\n";
 $tpls = [

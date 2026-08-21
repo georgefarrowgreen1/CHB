@@ -3063,6 +3063,53 @@ function fakeSite(handler) {
         ok('no allowlist supplied means no restriction', wf.webHostAllowed('anything.example', null));
     }
     {
+        // ── HANDOFF: the Mac advertises what it is doing, hears what the
+        // phone is doing on the poll it already makes, and continues a
+        // handed-off conversation with the owner's words — into the SAME
+        // web conversation, never a second local copy.
+        const tmpH = fs.mkdtempSync(path.join(os.tmpdir(), 'chb-hand-'));
+        const recH = { ads: [], says: [] };
+        let pollHand = { dev: 'web', convo: 4, title: 'the boiler', draft: 'and what did we pay', at: 111 };
+        const apiH = require('../src/core/api').makeApi({
+            dir: tmpH, machine: M16,
+            secrets: { available: true, get: function () { return 'k'; }, set: function () { return { ok: true }; }, state: function () { return { set: true, hint: '' }; } },
+            makeSite: function () {
+                return {
+                    asks: async function () { return { ok: true, host: 'George', asks: [], handoff: pollHand }; },
+                    advertise: async function (a) { recH.ads.push(a); return { ok: true }; },
+                    say: async function (convo, text) { recH.says.push({ convo: convo, text: text }); return { ok: true, id: 9, convo: convo }; },
+                };
+            },
+        });
+        await apiH.saveConfig({ autoStart: false });
+        await apiH.handoffSay({ convo: 0, thread: 'c1-2', title: 'pricing', draft: 'half a sen' });
+        ok('the Mac advertises what it is doing, draft and all',
+            recH.ads.length === 1 && recH.ads[0].thread === 'c1-2' && recH.ads[0].draft === 'half a sen');
+        // The REAL sweep — the poll the Mac already makes every couple of
+        // seconds is what carries the phone's activity to the desk.
+        await apiH.askSweep();
+        const offer = apiH.handoffOffer();
+        ok('…and hears the phone\'s activity on the poll it already makes, draft intact',
+            offer && offer.convo === 4 && offer.title === 'the boiler'
+            && offer.draft === 'and what did we pay', JSON.stringify(offer));
+        ok('…and the window is handed the same offer in its state',
+            ((await apiH.state()).handoff || {}).convo === 4);
+        // AN OFFER THE SITE STOPS MAKING STOPS BEING OFFERED HERE. Refreshed
+        // on every ok poll INCLUDING to null — a stale capsule must not
+        // survive in memory (the chatSiteMemories rule).
+        pollHand = null;
+        await apiH.askSweep();
+        ok('an offer the site no longer makes is forgotten, not remembered stale',
+            apiH.handoffOffer() === null);
+        const cH = await apiH.chatContinue(4, '  and what did we pay last time?  ');
+        ok('continuing sends the owner\'s words to the WEB conversation, trimmed',
+            cH.ok && recH.says.length === 1 && recH.says[0].convo === 4
+            && recH.says[0].text === 'and what did we pay last time?', JSON.stringify(recH.says));
+        ok('an empty continuation never reaches the site',
+            !(await apiH.chatContinue(4, '   ')).ok && recH.says.length === 1);
+        try { fs.rmSync(tmpH, { recursive: true, force: true }); } catch (e) {}
+    }
+    {
         // ── CHAT CONTINUITY: "Send to my phone" maps the LOCAL thread into
         // the site's import shape, exactly-once by the thread's own id, and
         // the mirror read is a straight pass-through. Nothing syncs on its

@@ -208,6 +208,11 @@ function fakeState(over) {
                     window.__calls.push(['chatExport', id]);
                     return { ok: true, path: '/Users/g/Desktop/chat.md' };
                 },
+                handoffSay: async function (act) { window.__ads = (window.__ads || []).concat([act]); return { ok: true }; },
+                chatContinue: async function (convo, text) {
+                    window.__cont = (window.__cont || []).concat([{ convo: convo, text: text }]);
+                    return { ok: true, id: 5, convo: convo };
+                },
                 chatSendToPhone: async function (id) {
                     window.__calls.push(['chatSendToPhone', id]);
                     return { ok: true, convo: 7, say: 'Sent — it is conversation 7 in the AI chat rail on your phone.' };
@@ -807,6 +812,47 @@ function fakeState(over) {
             (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'chatExport'; }); }))
             && /Saved to/.test(await page.textContent('#toastSays')));
 
+        // ── HANDOFF: what the phone was doing, offered here — draft and all.
+        await page.addInitScript('window.__state = ' + JSON.stringify(fakeState({
+            handoff: { dev: 'web', convo: 4, title: 'the boiler', draft: 'and what did we pay las', at: 999 },
+        })) + '; window.__nextState = null; window.__ads = []; window.__cont = [];');
+        await page.reload();
+        await page.waitForTimeout(400);
+        await page.click('[data-v="4"]');        // Chat
+        await page.waitForTimeout(400);
+        ok('the phone\'s activity is offered as one quiet row, quoting the unsent draft',
+            (await page.locator('#handoffRow').count()) === 1
+            && /Continue .the boiler./.test(await page.textContent('#handoffRow'))
+            && /and what did we pay/.test(await page.textContent('#handoffRow')));
+        await page.click('#handoffGo');
+        await page.waitForTimeout(300);
+        ok('Continue opens THAT conversation and carries the half-typed sentence into the box',
+            (await page.evaluate(function () { return window.__calls.some(function (c) { return c[0] === 'webChat' && c[1] === 4; }); }))
+            && (await page.inputValue('#chatIn')) === 'and what did we pay las');
+        // Continuing sends into the SAME web conversation, never a local copy.
+        await page.fill('#chatIn', 'and what did we pay last time?');
+        await page.click('#chatSendBtn');
+        await page.waitForTimeout(300);
+        ok('a send while continuing goes to the web conversation through chatContinue',
+            await page.evaluate(function () {
+                return (window.__cont || []).length === 1 && window.__cont[0].convo === 4
+                    && window.__cont[0].text === 'and what did we pay last time?';
+            }), await page.evaluate(function () { return JSON.stringify(window.__cont); }));
+        ok('…and the words appear in the conversation at once',
+            /what did we pay last time/.test(await page.textContent('#chatLog')));
+        // Typing here advertises THIS Mac — debounced, so a pause not a key.
+        await page.evaluate(function () { window.__ads = []; });
+        await page.click('#phoneBack');
+        await page.waitForTimeout(200);
+        await page.fill('#chatIn', 'a half-typed thought');
+        await page.waitForTimeout(2900);
+        ok('a PAUSE in the composer advertises this Mac, carrying the draft',
+            await page.evaluate(function () {
+                var a = (window.__ads || []).filter(function (x) { return /half-typed/.test(x.draft || ''); });
+                return a.length >= 1 && (window.__ads || []).length <= 3;
+            }), await page.evaluate(function () { return JSON.stringify(window.__ads); }));
+        await page.fill('#chatIn', '');
+
         // ── CONTINUITY: send-to-phone on a row, and the read-only mirror.
         await page.evaluate(function () {
             var b = document.querySelector('#chatThreads .cph');
@@ -822,10 +868,15 @@ function fakeState(over) {
             (await page.locator('#chatThreads .phrow').count()) === 2
             && (await page.locator('#phoneBack').count()) === 1
             && /Who owes me money/.test(await page.textContent('#chatThreads')));
-        ok('…renders the thread READ-ONLY — banner up, composer disabled',
-            /read-only/i.test(await page.textContent('#chatLog'))
+        // The mirror was read-only when it was only a VIEWER. Handoff makes it
+        // a place to carry on: the composer is live and the banner says where
+        // the words go — the same conversation, with cards still confirmed on
+        // the phone, which is the one thing this surface cannot do.
+        ok('…renders the thread with a live composer and says where the words go',
+            /SAME conversation/i.test(await page.textContent('#chatLog'))
+            && /confirmed on the phone/i.test(await page.textContent('#chatLog'))
             && /Two balances are open/.test(await page.textContent('#chatLog'))
-            && (await page.evaluate(function () { return document.getElementById('chatIn').disabled; })));
+            && (await page.evaluate(function () { return document.getElementById('chatIn').disabled === false; })));
         await page.click('#phoneBack');
         await page.waitForTimeout(200);
         ok('back restores the local rail and re-arms the composer',

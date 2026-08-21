@@ -157,6 +157,111 @@ function ownerchat_convos($cap = 24)
     }
     return $out;
 }
+// ONE SEND, TWO DOORS. chat_send (the phone, with the owner's admin
+// session) and chat_say (the MAC, continuing a handed-off conversation on
+// its device key) must compose the SAME ask — same supersede, same payload,
+// same grounding — or a conversation would mean different things depending
+// which surface the owner happened to be typing on. Auth and attachments
+// are the callers' business; everything here is shared. Returns
+// ['id' => askId, 'convo' => n]; json_out()s on its own refusals.
+function ownerchat_file_ask(array $msg, $convoIn)
+{
+    night_asks_sweep();
+    // ONE CONVERSATION, ONE ASK IN FLIGHT: a second send supersedes the
+    // first — the Mac must never answer a question the owner has already
+    // moved past (the search supersede rule, applied to chat).
+    try {
+        db()->exec("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'ownerchat'");
+    } catch (\Throwable $e) {
+        json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
+    }
+    $stored = null; // before the try — PHPStan cannot infer never from json_out
+    $cv = ownerchat_cur_convo($convoIn);
+    try {
+        ownerchat_adopt();
+        $stored = ownerchat_append($msg, $cv); // one sanitiser owns the shape, img/file included
+    } catch (\Throwable $e) {
+        json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+    }
+    if ($stored === null) {
+        json_out(['error' => 'Type a message first.'], 400);
+    }
+    $t = night_ownerchat_thread(content_json('mac-chat', []));
+    $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $cv);
+    $payload = night_ownerchat_payload($t);
+    // THE ROLLING SUMMARY. Once the payload cap is really cutting history
+    // (`dropped` > 0) the ask says so — the Mac then teaches the SUM
+    // protocol — and the conversation's stored summary rides along, so a
+    // long conversation keeps its head. A fully-visible thread sends
+    // neither: a summary of what is already in the payload is paid-for
+    // context saying nothing new.
+    try {
+        $cnt = db()->prepare('SELECT COUNT(*) FROM ownerchat_msgs WHERE convo = ?');
+        $cnt->execute([$cv]);
+        $droppedN = max(0, (int) $cnt->fetchColumn() - NIGHT_OWNERCHAT_TURNS_MAX);
+        if ($droppedN > 0) {
+            $payload['dropped'] = $droppedN;
+            $sums = night_ownerchat_sums(content_json('mac-chat-sum', []));
+            if (isset($sums[$cv])) {
+                $payload['summary'] = $sums[$cv];
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    // THE GROUNDING PACK: the fleet, today, and the money picture ride
+    // every ask, composed fresh from the SAME gatherers the tools read —
+    // the model's first generation starts grounded instead of spending a
+    // round deciding whether to look. BEST-EFFORT: a failed gather must
+    // never block the send — the model then simply looks things up, which
+    // is exactly yesterday's behaviour.
+    try {
+        $nameOfW = [];
+        foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
+                                FROM properties WHERE archived_at IS NULL')->fetchAll() as $pr) {
+            $nameOfW[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
+        }
+        $fleetRows = [];
+        foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
+                                FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll() as $pr) {
+            $pr['facts'] = [];
+            $fleetRows[] = $pr;
+        }
+        $todayIsoW = date('Y-m-d');
+        $gT = night_gather_today($todayIsoW);
+        $gM = night_gather_money($todayIsoW);
+        $payload['world'] = night_world(
+            night_tool_cottages($fleetRows)['cottages'],
+            night_tool_today($gT['rows'], $nameOfW, $todayIsoW, $gT['waiting']),
+            night_tool_money($gM['owed'], $gM['deps'], $nameOfW),
+        );
+    } catch (\Throwable $e) {
+    }
+    try {
+        // TEXTS only — the model reads the words; a memory's date is
+        // editor chrome, not context worth paying for on every ask.
+        $mems = night_ownerchat_memory_texts(night_ownerchat_memories(content_json('mac-chat-memory', [])));
+        if ($mems) {
+            $payload['memories'] = $mems;
+        }
+    } catch (\Throwable $e) {
+    }
+    // entity_id carries the CONVERSATION, so the poll and the stop append
+    // the answer into the convo the question was asked in — never into
+    // whichever one a device happens to be looking at when it lands.
+    $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
+    $st->execute(['ownerchat', $cv, '', mb_substr((string) $msg['text'], 0, 500), json_encode($payload)]);
+    // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
+    // on the same connection, so a lastInsertId read after it answers for
+    // the CONTENT row (0, under ON DUPLICATE) — measured in CI as every
+    // send returning id 0 and every poll finding "No such ask".
+    $askId = (int) db()->lastInsertId();
+    try {
+        content_set_scalar('night-warm-until', time() + 900);
+    } catch (\Throwable $e) {
+    }
+return ['id' => $askId, 'convo' => $cv];
+}
+
 // One-time adoption: the blob's messages become rows, the blob keeps only
 // the instruction. Best-effort — a failed adoption leaves the blob intact
 // for the next read to try again.
@@ -768,6 +873,13 @@ route_actions([
             $mem = night_ownerchat_memories(content_json('mac-chat-memory', []));
         } catch (\Throwable $e) {
         }
+        // HANDOFF rides the call the phone already makes — what the Mac is
+        // doing right now, if it is fresh enough to be worth offering.
+        $hand = null;
+        try {
+            $hand = night_handoff_offer(content_json('chat-handoff', []), 'web', time());
+        } catch (\Throwable $e) {
+        }
         json_out([
             'ok' => true,
             'msgs' => $t['msgs'],
@@ -776,6 +888,7 @@ route_actions([
             'convo' => $cv,
             'convos' => $convos,
             'on' => night_enabled(),
+            'handoff' => $hand,
             'presence' => night_mac_presence(night_devices_read(), time()),
         ]);
     },
@@ -838,15 +951,6 @@ route_actions([
         if ($text === '') {
             json_out(['error' => 'Type a message first.'], 400);
         }
-        night_asks_sweep();
-        // ONE CONVERSATION, ONE ASK IN FLIGHT: a second send supersedes the
-        // first — the Mac must never answer a question the owner has already
-        // moved past (the search supersede rule, applied to chat).
-        try {
-            db()->exec("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'ownerchat'");
-        } catch (\Throwable $e) {
-            json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
-        }
         $msg = ['who' => 'you', 'text' => $text, 'at' => date('H:i')];
         // A PHOTO rides the send itself (a ~1MB data URI in one POST beats a
         // second endpoint and a ref handshake). Stored as a FILE, never in
@@ -868,93 +972,10 @@ route_actions([
         if ($fname !== '') {
             $msg['file'] = mb_substr($fname, 0, NIGHT_OWNERCHAT_FILE_MAX);
         }
-        $stored = null; // before the try — PHPStan cannot infer never from json_out
-        $cv = ownerchat_cur_convo($in['convo'] ?? 0);
-        try {
-            ownerchat_adopt();
-            $stored = ownerchat_append($msg, $cv); // one sanitiser owns the shape, img/file included
-        } catch (\Throwable $e) {
-            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
-        }
-        if ($stored === null) {
-            json_out(['error' => 'Type a message first.'], 400);
-        }
-        $t = night_ownerchat_thread(content_json('mac-chat', []));
-        $t['msgs'] = ownerchat_rows(NIGHT_OWNERCHAT_TURNS_MAX, $cv);
-        $payload = night_ownerchat_payload($t);
-        // THE ROLLING SUMMARY. Once the payload cap is really cutting history
-        // (`dropped` > 0) the ask says so — the Mac then teaches the SUM
-        // protocol — and the conversation's stored summary rides along, so a
-        // long conversation keeps its head. A fully-visible thread sends
-        // neither: a summary of what is already in the payload is paid-for
-        // context saying nothing new.
-        try {
-            $cnt = db()->prepare('SELECT COUNT(*) FROM ownerchat_msgs WHERE convo = ?');
-            $cnt->execute([$cv]);
-            $droppedN = max(0, (int) $cnt->fetchColumn() - NIGHT_OWNERCHAT_TURNS_MAX);
-            if ($droppedN > 0) {
-                $payload['dropped'] = $droppedN;
-                $sums = night_ownerchat_sums(content_json('mac-chat-sum', []));
-                if (isset($sums[$cv])) {
-                    $payload['summary'] = $sums[$cv];
-                }
-            }
-        } catch (\Throwable $e) {
-        }
-        // THE GROUNDING PACK: the fleet, today, and the money picture ride
-        // every ask, composed fresh from the SAME gatherers the tools read —
-        // the model's first generation starts grounded instead of spending a
-        // round deciding whether to look. BEST-EFFORT: a failed gather must
-        // never block the send — the model then simply looks things up, which
-        // is exactly yesterday's behaviour.
-        try {
-            $nameOfW = [];
-            foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
-                                    FROM properties WHERE archived_at IS NULL')->fetchAll() as $pr) {
-                $nameOfW[$pr['prop_key']] = (string) ($pr['name'] ?: $pr['prop_key']);
-            }
-            $fleetRows = [];
-            foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
-                                    FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll() as $pr) {
-                $pr['facts'] = [];
-                $fleetRows[] = $pr;
-            }
-            $todayIsoW = date('Y-m-d');
-            $gT = night_gather_today($todayIsoW);
-            $gM = night_gather_money($todayIsoW);
-            $payload['world'] = night_world(
-                night_tool_cottages($fleetRows)['cottages'],
-                night_tool_today($gT['rows'], $nameOfW, $todayIsoW, $gT['waiting']),
-                night_tool_money($gM['owed'], $gM['deps'], $nameOfW),
-            );
-        } catch (\Throwable $e) {
-        }
-        try {
-            // TEXTS only — the model reads the words; a memory's date is
-            // editor chrome, not context worth paying for on every ask.
-            $mems = night_ownerchat_memory_texts(night_ownerchat_memories(content_json('mac-chat-memory', [])));
-            if ($mems) {
-                $payload['memories'] = $mems;
-            }
-        } catch (\Throwable $e) {
-        }
-        // entity_id carries the CONVERSATION, so the poll and the stop append
-        // the answer into the convo the question was asked in — never into
-        // whichever one a device happens to be looking at when it lands.
-        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
-        $st->execute(['ownerchat', $cv, '', mb_substr($text, 0, 500), json_encode($payload)]);
-        // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
-        // on the same connection, so a lastInsertId read after it answers for
-        // the CONTENT row (0, under ON DUPLICATE) — measured in CI as every
-        // send returning id 0 and every poll finding "No such ask".
-        $askId = (int) db()->lastInsertId();
-        try {
-            content_set_scalar('night-warm-until', time() + 900);
-        } catch (\Throwable $e) {
-        }
+        $out = ownerchat_file_ask($msg, $in['convo'] ?? 0);
         json_out([
             'ok' => true,
-            'id' => $askId,
+            'id' => $out['id'],
             'presence' => night_mac_presence(night_devices_read(), time()),
         ]);
     },
@@ -1254,6 +1275,90 @@ route_actions([
         json_out(['ok' => true, 'data' => base64_encode($raw), 'mime' => 'image/jpeg']);
     },
 
+    // ---- HANDOFF: each surface advertises what it is doing ---------------
+    // Written by whichever device the owner is using; READ by the other on a
+    // call it was already making (the Mac's asks poll, the phone's
+    // chat_thread), so continuity costs no extra traffic on either side.
+    // BOTH auth kinds open this one door — the phone with its admin session,
+    // the Mac with its device key — because the record is the same record and
+    // two doors would drift. The device it claims to be is NOT taken from the
+    // caller: it is decided by HOW they authenticated.
+    'handoff_put' => function ($in) {
+        rate_limit('night-handoff', 90, 60);
+        $dev = '';
+        if (!empty($_SESSION['admin_id'])) {
+            require_admin();      // the CSRF half still applies to the phone
+            $dev = 'web';
+        } else {
+            night_require_key((string) ($in['secret'] ?? ''), 'handoff_put', $in['build'] ?? '');
+            $dev = 'mac';
+        }
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $one = night_handoff_one([
+            'dev' => $dev,
+            'convo' => $in['convo'] ?? 0,
+            'thread' => $in['thread'] ?? '',
+            'title' => $in['title'] ?? '',
+            'draft' => $in['draft'] ?? '',
+            'at' => time(),
+        ]);
+        if (!$one) {
+            json_out(['error' => 'That is not an activity this can carry.'], 400);
+        }
+        $map = [];
+        try {
+            $map = night_handoff_map(content_json('chat-handoff', []));
+        } catch (\Throwable $e) {
+        }
+        $map[$dev] = $one;
+        content_set_scalar('chat-handoff', json_encode($map));
+        json_out(['ok' => true]);
+    },
+
+    // ---- THE MAC CONTINUES A HANDED-OFF CONVERSATION ---------------------
+    // The owner's own words, typed on the Mac, into a WEB conversation — so a
+    // handed-off chat has ONE record instead of two copies drifting apart.
+    // It composes exactly the ask chat_send composes (ownerchat_file_ask owns
+    // that), and the Mac then answers it through the ordinary machinery
+    // seconds later: the answer therefore appears identically on every device.
+    //
+    // THE BOUNDARY, STATED: this lets a device key put words in the thread as
+    // the OWNER, which chat_import could already do for a whole imported
+    // conversation — so it is a narrowing of scope, not a new class of power.
+    // It appends to an EXISTING conversation only, one turn, capped and
+    // rate-limited, and every action the model proposes off the back of it
+    // still needs a confirm on the phone.
+    'chat_say' => function ($in) {
+        rate_limit('night-say', 30, 60);
+        night_require_key((string) ($in['secret'] ?? ''), 'chat_say', $in['build'] ?? '');
+        if (!night_enabled()) {
+            json_out(['error' => 'Overnight work is switched off in Manage → System check.', 'code' => 'night_off'], 409);
+        }
+        $text = mb_substr(trim((string) ($in['text'] ?? '')), 0, NIGHT_OWNERCHAT_TEXT_MAX);
+        if ($text === '') {
+            json_out(['error' => 'Type a message first.'], 400);
+        }
+        $cv = (int) ($in['convo'] ?? 0);
+        if ($cv <= 0) {
+            json_out(['error' => 'Say which conversation this continues.'], 400);
+        }
+        // AN EXISTING conversation only — the Mac continues what is already
+        // there; starting one is the phone's own send, or an import.
+        try {
+            $ex = db()->prepare('SELECT COUNT(*) FROM ownerchat_msgs WHERE convo = ?');
+            $ex->execute([$cv]);
+            if ((int) $ex->fetchColumn() === 0) {
+                json_out(['error' => 'There is no such conversation to continue.'], 404);
+            }
+        } catch (\Throwable $e) {
+            json_out(['error' => 'The chat needs its migration — run the migrations (Manage → System check → Run migrations).', 'code' => 'night_no_table'], 503);
+        }
+        $out = ownerchat_file_ask(['who' => 'you', 'text' => $text, 'at' => date('H:i')], $cv);
+        json_out(['ok' => true, 'id' => $out['id'], 'convo' => $out['convo']]);
+    },
+
     // ---- CHAT CONTINUITY: a local Mac conversation becomes a web one ----
     // The Mac's own Chat screen is deliberately offline-first and private —
     // nothing syncs unless the owner taps "Send to my phone" there. This is
@@ -1517,6 +1622,16 @@ route_actions([
             }
         }
         $ap = ['ok' => true, 'host' => $host, 'asks' => $out];
+        // HANDOFF the other way: what the phone is doing, if fresh. Rides
+        // the poll the Mac makes every couple of seconds anyway, so the
+        // offer reaches the desk about as fast as walking to it.
+        try {
+            $hoff = night_handoff_offer(content_json('chat-handoff', []), 'mac', time());
+            if ($hoff) {
+                $ap['handoff'] = $hoff;
+            }
+        } catch (\Throwable $e) {
+        }
         // THE MEMORIES RIDE THE POLL (texts only), so the Mac's own local
         // chat grounds on the same standing facts as the web chat — one
         // brain, whichever keyboard. Best-effort: absent when unreadable,

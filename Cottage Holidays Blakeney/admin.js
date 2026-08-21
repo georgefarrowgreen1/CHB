@@ -12287,6 +12287,67 @@ function mcDayHtml() {
     </div>`;
 }
 // The welcome card — the empty state STARTS you off instead of lecturing.
+// ── HANDOFF, the phone's half ────────────────────────────────────────────
+// The site is the rendezvous both surfaces already talk to, so continuity
+// needs no pairing and no new channel: this advertises what the phone is
+// doing (debounced — a PAUSE is an activity, a keystroke is not), and the
+// Mac's own activity arrives free on the chat_thread this page already
+// makes. Best-effort throughout: an advertisement nobody hears costs
+// nothing, so a failure here is never shown.
+let __mcHandTimer = /** @type {any} */ (null);
+let __mcHandSeen = 0; // the `at` of an offer already dismissed — stays gone
+function mcHandoffSay(now) {
+    if (__mcHandTimer) { clearTimeout(__mcHandTimer); __mcHandTimer = null; }
+    const go = () => {
+        const box = /** @type {HTMLInputElement|null} */ (document.getElementById('mc-in'));
+        const cur = ((__mcState && __mcState.convos) || []).filter((c) => Number(c.convo) === Number(__mcConvo))[0];
+        apiPost('nightshift.php', {
+            action: 'handoff_put',
+            convo: __mcConvo || 0,
+            title: (cur && cur.title) || 'this conversation',
+            draft: box ? String(box.value || '').slice(0, 2000) : '',
+        }).catch(() => {});
+    };
+    if (now) { go(); } else { __mcHandTimer = setTimeout(go, 2500); }
+}
+// The offer: one quiet row at the top of the log. Rendered only while the
+// site still calls the Mac's activity fresh, and never acts on its own.
+function mcHandoffHtml() {
+    const h = (__mcState && __mcState.handoff) || null;
+    if (!h || Number(h.at) <= __mcHandSeen) return '';
+    // A Mac sitting in a LOCAL thread advertises convo 0 — the site cannot
+    // serve what lives on its disk, so the server withholds that offer and
+    // this never renders it. Belt and braces, because a card that cannot
+    // open anything is worse than no card.
+    if (!Number(h.convo)) return '';
+    return `<div class="mc-hand" id="mc-hand">
+        <span class="mc-hand-i" aria-hidden="true">⇠</span>
+        <span class="mc-hand-t">Continue “${escapeHtml(h.title || 'your conversation')}” from your Mac
+        ${h.draft ? `<span class="mc-hand-d">${escapeHtml(String(h.draft).slice(0, 90))}</span>` : ''}</span>
+        <button type="button" class="btn-sm btn-accent" data-act="mcHandoffGo">Continue</button>
+        <button type="button" class="mc-hand-x" data-act="mcHandoffNo" aria-label="Not now">✕</button>
+    </div>`;
+}
+async function mcHandoffGo() {
+    const h = (__mcState && __mcState.handoff) || null;
+    if (!h || !Number(h.convo)) return;
+    __mcHandSeen = Number(h.at);
+    __mcConvo = Number(h.convo);
+    await renderMacChat();
+    // THE UNFINISHED SENTENCE TRAVELS — half-typed at the desk, waiting in
+    // the composer here. The detail that makes it a continuation.
+    const box = /** @type {HTMLInputElement|null} */ (document.getElementById('mc-in'));
+    if (box && h.draft && !box.value) { box.value = h.draft; box.focus(); }
+}
+// The composer's own hook — declared zero-arg so the dispatcher cannot pass
+// anything that would read as "advertise NOW" and defeat the debounce.
+function mcTyped() { mcHandoffSay(false); }
+function mcHandoffNo() {
+    const h = (__mcState && __mcState.handoff) || null;
+    if (h) { __mcHandSeen = Number(h.at); }
+    const row = document.getElementById('mc-hand');
+    if (row) row.remove();
+}
 function mcHelloHtml() {
     return mcDayHtml() + `<div class="mc-hello">
         <div class="mc-hello-spark" aria-hidden="true">✦</div>
@@ -12395,6 +12456,9 @@ async function openAiChat() {
     // orphaned by the first's swap (measured: outerHTML on a parentless
     // element, the suite's page-error check caught it).
     nav('view-aichat');
+    // ARRIVING is an activity; RENDERING is not — the render fires nothing,
+    // which is the invariant the action-card gates hold the page to.
+    mcHandoffSay(true);
 }
 // SEARCH HANDS OFF: the dead-end row carries the question here whole. It
 // must wait for renderMacChat's PAINT (dataset.ready) — a send fired
@@ -12440,7 +12504,7 @@ async function renderMacChat() {
     if (presNow.parentNode) {
         presNow.outerHTML = mcPresenceHtml(r).replace('class="mc-pres', 'id="ac-pres" class="mc-pres');
     }
-    log.innerHTML = (r.msgs || []).map(mcMsgHtml).join('') || mcHelloHtml();
+    log.innerHTML = mcHandoffHtml() + ((r.msgs || []).map(mcMsgHtml).join('') || mcHelloHtml());
     log.dataset.ready = '1'; // the handoff (chbAskMacHandoff) waits for this
     log.scrollTop = log.scrollHeight;
     // AN ASK IN FLIGHT SURVIVES THE RE-RENDER — without this, nav away and
@@ -12491,6 +12555,7 @@ function mcConvoPick(n) {
     if (!want || want === __mcConvo || __mcBusy) return;
     __mcConvo = want;
     renderMacChat();
+    mcHandoffSay(true); // a different conversation IS a different activity
 }
 // ── the ... sheet: new / instruction / clear, and never the loudest thing.
 function acSheetOpen() {
@@ -12727,6 +12792,7 @@ async function mcSendRun() {
         // The send carried it — only NOW does the pending chip clear, so a
         // failed send keeps the attachment armed beside the restored words.
         if (att) mcAttachClear();
+        mcHandoffSay(true); // the newest question is what the desk should be offered
         // The local mirror stays in step with what the server stored — an
         // action card is addressed by its INDEX in this list, so drifting
         // here would confirm the wrong card.
