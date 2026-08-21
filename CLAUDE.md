@@ -1483,6 +1483,46 @@ while BOOKING and not while staying in it.
   narrowing — a third copy of `e.target.id` would have ADDED a type error; folding
   removed two. tsc budget 728 → 726.
 
+## House rules take the "Good to know" tile, and get a section of their own
+
+**Asked for after a screenshot of that sheet EMPTY on the customer's own screen**: a
+cottage with no FAQs written up opened "Good to Know — Pimpernel" with nothing in it.
+House rules cannot be empty — check-in, checkout and the guest limit are facts every
+cottage has — so the tile now opens something that always answers.
+- **ONE DERIVATION, both surfaces.** `guestHouseRuleList(propKey)` (app.js) is the three
+  AUTO lines from the booking rules the cottage really enforces, then the owner's own
+  `houserules-<k>` list. `renderHouseRules` (the cottage page) was rewritten to read it,
+  so a guest cannot be told one checkout time while choosing and another while staying —
+  ui-test-yourstay §33 asserts the sheet EQUALS it rather than re-listing the lines.
+- **The FAQ is not lost, it is moved off a dead end.** `openFaqModal` keeps its button on
+  the cottage page (booking-time Q&A) and the chat's on-device `guestFaqAnswer` still
+  answers a typed question during the stay. What went is the TILE that opened an empty
+  sheet.
+- **A rule is a SENTENCE; an amenity is a NAME.** `.hr-line` is a hairline-separated list
+  that wraps, where `.amenity-sheet` flows pills — the two sheets sit one tile apart and
+  deliberately do not share a layout.
+- **THE OLD "House rules" SECTION WAS NAMED FOR SOMETHING ELSE.** `ACCOM_SECTIONS`
+  `house` held check-in/out times, min/max nights, arrival days and guest limits — the
+  functional BOOKING constraints — with the rules well buried at its foot. It is
+  **"Times & limits"** now (display-only, the id stays `house`, so every deep link, help
+  topic and search route still resolves) and `houserules` is its own section carrying the
+  same rows host, add and save actions.
+- **The new section QUOTES the auto lines read-only**, from `guestHouseRuleList` itself:
+  an owner who cannot see that checkout is already stated writes "check out by 10" as a
+  fourth bullet and the guest reads it twice. Gated as EQUALITY with the guest's list.
+- **The verdict counts the OWNER'S rules only** — counting the auto lines would make
+  every cottage read "3 rules" whether the owner had written any or not, a claim about
+  nothing (break-tested). And it never says "none yet": the auto lines mean a guest
+  always gets an answer, so the honest empty state is silence.
+- **Search learned the split too** — "edit house rules" routes to `houserules`, and a new
+  action carries check-in/limits queries to `house`. Asking for the rules used to land on
+  the times panel with the rules a scroll below.
+- Gates: ui-test-yourstay §33 (the sheet, the enforced times, the shared derivation, the
+  never-empty case) + §32's order line, ui-test-manage §4c (12 welled sections) + §4f
+  (its own section, the quoted settings, the verdict, Add+Save through the real
+  endpoint), ui-test-guest-modals. Break-tests fired on the shared derivation and the
+  verdict's count.
+
 ## The guest's invoice: ONE document, two presentations
 
 **AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style
