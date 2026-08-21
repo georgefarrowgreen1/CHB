@@ -5834,10 +5834,16 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 .mc-hello h2{font:600 1.3rem var(--font-serif);margin:8px 0 6px}
 .mc-hello p{color:var(--text-muted);font-size:0.78rem;margin:0 0 14px;line-height:1.55}
 .mc-starters{display:flex;flex-direction:column;gap:8px}
-.mc-schip{border:1px solid var(--glass-border);background:color-mix(in srgb,var(--text-light) 4%,transparent);
-  color:var(--text-light);border-radius:16px;padding:12px 14px;font:500 0.8rem var(--font-sans);
-  cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;min-height:44px}
-.mc-schip:hover{background:var(--btn-hover)}
+/* ONE CHIP. The starters, search's refinements and the day rows' actions all
+   mean "tap this to go on" — they were three shapes for one idea. This is the
+   search chip's own spec (.cmdk-chip), widened to a full-width row because a
+   starter is a sentence rather than a word, and kept at the 44px floor. */
+.mc-schip{border:1px solid var(--glass-border);background:var(--glass-hover);
+  color:var(--text-light);border-radius:var(--r-pill);padding:12px 16px;
+  font-size:var(--cmdk-fs-sub);font-weight:600;letter-spacing:0.01em;
+  cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center;
+  min-height:44px;transition:border-color 0.2s var(--fluid-bezier),background 0.2s var(--fluid-bezier)}
+.mc-schip:hover{border-color:var(--accent);background:var(--btn-hover)}
 .mc-go{color:var(--accent-text);font-weight:700}
 .mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size:0.85rem;line-height:1.55;overflow-wrap:break-word}
 .mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 17%,transparent);
