@@ -2429,11 +2429,16 @@ function arrival_default_message($name, $prop)
 {
     return 'Hello ' . $name . ' — everything you need for ' . $prop . ' is below. We look forward to seeing you.';
 }
-function send_arrival_email($b)
+// THE ARRIVAL EMAIL, COMPOSED — pure of the transport, so the REVIEW screen can
+// preview the real thing. It could not before: the composer's preview went
+// through build_enquiry_reply_email, which wraps whatever is in the box in the
+// enquiry-reply shell AND opens with its own "Hello <name>," — so the owner was
+// shown a different email from the one that sends, greeting the guest twice
+// (the reviewed message already opens with the house sentence). A screen that
+// says "this is exactly what your guest will receive" has to be able to build
+// exactly that. Returns ['subject','text','html'].
+function arrival_email_body($b)
 {
-    if (empty($b['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on file'];
-    }
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $name = first_name($b['name'], 'Guest');
     // Derive the cottage name rather than depending on the caller to pass prop_name —
@@ -2512,7 +2517,15 @@ function send_arrival_email($b)
         $accent,
     );
 
-    return smtp_send($b['email'], $name, $subject, $text, $html);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+function send_arrival_email($b)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $m = arrival_email_body($b);
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
 }
 
 // Passwordless sign-in link. $g: a guest row (needs name, email). $url: the
@@ -3753,26 +3766,38 @@ function payment_receipt_body($b)
 
 // Build + send the arrival email for a saved booking row, then mark it sent.
 // Returns the smtp_send result. Never throws. Requires db() (always loaded).
+// The arrival email's PAYLOAD, assembled from a booking row, stated once — the
+// send and the review screen's preview both build from this, so the preview
+// cannot show a different cottage name, address or time from the one that goes.
+function arrival_email_payload($bk, $note = '')
+{
+    $prop = ['name' => $bk['prop_key'] ?? '', 'address' => ''];
+    try {
+        $p = db()->prepare('SELECT name, address FROM properties WHERE prop_key = ?');
+        $p->execute([$bk['prop_key'] ?? '']);
+        $prop = $p->fetch() ?: $prop;
+    } catch (\Throwable $e) {
+    }
+    // The door/key code (arrival-<prop>) is deliberately NOT emailed; guests
+    // reveal it in-app via the geofenced "My Bookings" flow (arrival-access.php),
+    // so this path never even decrypts it.
+    return [
+        'prop_key' => $bk['prop_key'] ?? '',
+        'prop_name' => $prop['name'],
+        'name' => $bk['name'] ?? '',
+        'email' => $bk['email'] ?? '',
+        'check_in' => $bk['check_in'] ?? '',
+        'check_out' => $bk['check_out'] ?? '',
+        'check_in_time' => $bk['check_in_time'] ?? '15:00',
+        'check_out_time' => $bk['check_out_time'] ?? '10:00',
+        'address' => $prop['address'],
+        'note' => $note,
+    ];
+}
 function send_arrival_for_booking($bk, $note = '')
 {
     try {
-        $p = db()->prepare('SELECT name, address FROM properties WHERE prop_key = ?');
-        $p->execute([$bk['prop_key']]);
-        $prop = $p->fetch() ?: ['name' => $bk['prop_key'], 'address' => ''];
-        // The door/key code (arrival-<prop>) is deliberately NOT emailed; guests
-        // reveal it in-app via the geofenced "My Bookings" flow (arrival-access.php),
-        // so this path never even decrypts it.
-        $res = send_arrival_email([
-            'prop_key' => $bk['prop_key'],
-            'prop_name' => $prop['name'],
-            'name' => $bk['name'],
-            'email' => $bk['email'],
-            'check_in' => $bk['check_in'],
-            'check_out' => $bk['check_out'],
-            'check_in_time' => $bk['check_in_time'] ?? '15:00',
-            'address' => $prop['address'],
-            'note' => $note,
-        ]);
+        $res = send_arrival_email(arrival_email_payload($bk, $note));
         if (!empty($res['ok'])) {
             try {
                 db()

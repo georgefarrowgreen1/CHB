@@ -153,6 +153,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const defCount = await page.evaluate(() => EMAIL_TPL_DEFAULTS.length);
   ok(savedList.length === 1 + defCount && savedList.slice(1).every((t) => /^d-/.test(t.id)),
     `…and the starters materialise behind it (${savedList.length} stored, ${defCount} starters)`);
+  // NO STARTER GREETS. build_enquiry_reply_email opens every reply with its own
+  // "Hello <first>," — it has to, since an owner typing a bare message still gets
+  // one — so a starter body that greets sends TWO. The starters' own comment says
+  // "no greeting"; this is what makes that true rather than remembered. (An
+  // owner's OWN saved reply may greet: it is their wording, and they see the
+  // preview. Only the ones we ship are ours to hold to the rule.)
+  const greeters = await page.evaluate(() =>
+    EMAIL_TPL_DEFAULTS.filter((t) => /^\s*(?:Hello|Hi|Dear|Good (?:morning|afternoon|evening))\b/i.test(t.body || '')).map((t) => t.id));
+  ok(greeters.length === 0, `no starter reply greets — the template does that (${greeters.join(', ') || 'none'})`);
   await page.evaluate(() => { window.__alerts = []; nav('view-backoffice'); window.openBookingEmail('b9'); });
   await page.waitForTimeout(250);
 

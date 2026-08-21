@@ -11647,10 +11647,12 @@ async function hubRefundPicker(bookingId) {
 function chbDraftBookingReply(b, propKey) {
     const meta = propertyMeta[propKey] || {};
     const gt = bookingDue(propKey, b);
-    const first = ((b.name || 'there').trim().split(/\s+/)[0]) || 'there';
+    // NO GREETING HERE — the same rule chbDraftEnquiryReply follows, and its
+    // SIBLING was still breaking it. build_enquiry_reply_email opens every reply
+    // with its own "Hello <first>,", so a draft that greeted too went out
+    // "Hello Laura," / "Hello Laura," on every drafted booking reply. The
+    // template owns the greeting; this owns the body.
     const lines = [
-        `Hello ${first},`,
-        '',
         `Thanks for your message about your stay at ${meta.name || 'the cottage'} (${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}).`,
         `Check-in is from ${b.checkInTime || '15:00'} on arrival day, and checkout by ${b.checkOutTime || '10:00'}.`,
     ];
@@ -27737,9 +27739,14 @@ async function previewComposedEmail() {
             id: rec.dbId,
             subject: subject.trim(),
             message: body.trim(),
+            // THE ARRIVAL REVIEW PREVIEWS ITS OWN TEMPLATE. sendEnquiryEmail
+            // already routes this target to send_arrival; without the same flag
+            // here the preview rendered the reply shell instead — a different
+            // email from the one that sends, greeting the guest twice.
+            ...(t.arrival ? { arrival: true } : {}),
             // The preview must show the buttons or it is not the email that
             // goes out; the server validates them against the live state.
-            ...(t.kind === 'booking' && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
+            ...(t.kind === 'booking' && !t.arrival && __etplChosen.length ? { actions: __etplChosen.slice() } : {}),
         });
         const frame = document.getElementById('enq-email-preview-frame');
         if (frame)

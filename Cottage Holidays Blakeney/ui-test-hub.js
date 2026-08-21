@@ -1146,8 +1146,12 @@ let approveWill409 = false;
   const draft = await page.evaluate(() => (document.getElementById('enq-email-body') || {}).value || '');
   // £390: section B part-paid this booking £100 against its £440+£50, and the
   // draft reads bookingDue live — which is the point.
-  ok(/Hello Walk-in/.test(draft) && /Check-in is from 15:00/.test(draft) && /remaining balance is £390\.00/.test(draft),
-    `the draft speaks this booking's facts (${draft.split('\n')[0]} … balance line present)`);
+  // NB the draft does NOT greet — build_enquiry_reply_email opens every reply
+  // with its own "Hello <first>,", so a greeting here made two (the enquiry
+  // drafter learned this; its booking sibling had not). Gated as an absence in
+  // search-test §26; what this check owns is the FACTS.
+  ok(!/^\s*(?:Hello|Hi|Dear)\s+Walk-in/i.test(draft) && /Check-in is from 15:00/.test(draft) && /remaining balance is £390\.00/.test(draft),
+    `the draft speaks this booking's facts, ungreeted (${draft.split('\n')[0]} … balance line present)`);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
 

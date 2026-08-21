@@ -1714,6 +1714,29 @@ it_check('the preview offers a message to edit', !empty($r['json']['message']) &
 it_check('…and the facts it will add, so nothing is typed twice',
     !empty($r['json']['facts']['arrive']) && !empty($r['json']['subject']), $r['raw']);
 
+// AND THE PREVIEW IS THE EMAIL THAT SENDS. Reported from a phone: the review
+// screen promised "this is exactly what your guest will receive" and rendered
+// the ENQUIRY-REPLY shell — "About your booking", plus its own "Hello <name>,"
+// above a prefilled message that already greets, so the guest's name appeared
+// twice. The send had always routed to the arrival template; only the preview
+// had not. This is the WIRING check: test-emails-render drives the builder and
+// passes with this route deleted, which is exactly the helper-tested-alone trap.
+$prevMsg = (string) ($r['json']['message'] ?? '');
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'arrival' => true, 'subject' => 'You arrive', 'message' => $prevMsg]);
+$prevHtml = (string) ($r['json']['html'] ?? '');
+it_check('the arrival preview renders the ARRIVAL template',
+    strpos($prevHtml, 'You arrive') !== false && strpos($prevHtml, 'About your booking') === false, substr($prevHtml, 0, 300));
+// The name appears (it is in the message) — what must not happen is a GREETING
+// of it twice. Counted the way the render gate counts, on the tags-to-spaces text.
+$prevPlain = preg_replace('/\s+/', ' ', html_entity_decode(preg_replace('/<[^>]*>/', ' ', $prevHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+$prevGreets = preg_match_all('/\b(?:Hello|Hi|Dear)\s+Waits\b/i', $prevPlain);
+it_check('…and greets the guest exactly once (' . $prevGreets . ')', $prevGreets === 1, substr($prevPlain, 0, 240));
+// Without the flag the SAME request is still the reply composer — so the flag
+// is what routes it, and the two templates really are different.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'email_preview', 'id' => $arBid2, 'subject' => 'You arrive', 'message' => $prevMsg]);
+it_check('…while the ordinary preview is still the reply shell (the flag is the switch)',
+    strpos((string) ($r['json']['html'] ?? ''), 'About your booking') !== false, substr((string) ($r['json']['html'] ?? ''), 0, 300));
+
 // SENDING IT BY HAND. Mail is disabled here, so this proves the half that
 // matters more anyway: a send that FAILS must not pretend. The route answers
 // 5xx, the booking is not marked sent, and the waiting state SURVIVES — a
