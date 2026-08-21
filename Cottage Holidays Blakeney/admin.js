@@ -4342,9 +4342,9 @@ function cmdkIntent(q) {
     //      this falls through, so the words still search globally.)
     try {
         const ctx = cmdkPageContext();
-        if (ctx && ctx.cottage && /^\s*(its?|the|this|that)?\s*(rate|rates|price|prices|pricing|fee|fees|photo|photos|gallery|image|images|text|description|details|feature|features|web|website|seo)s?\s*(please|for it|for this one)?\s*$/i.test(q)) {
+        if (ctx && ctx.cottage && /^\s*(its?|the|this|that)?\s*(rate|rates|price|prices|pricing|fee|fees|photo|photos|gallery|image|images|text|description|details|amenity|amenities|feature|features|web|website|seo)s?\s*(please|for it|for this one)?\s*$/i.test(q)) {
             const nm = ctx.cottageName || ctx.cottage;
-            const sec = /photo|gallery|image/i.test(q) ? 'photos' : /text|descrip|detail|feature/i.test(q) ? 'text' : /web|seo/i.test(q) ? 'web' : 'rates';
+            const sec = /photo|gallery|image/i.test(q) ? 'photos' : /amenit|feature/i.test(q) ? 'amenities' : /text|descrip|detail/i.test(q) ? 'text' : /web|seo/i.test(q) ? 'web' : 'rates';
             const meta = typeof ACCOM_SECTIONS !== 'undefined' ? ACCOM_SECTIONS.find((s) => s.id === sec) : null;
             return [ans(`${nm} · ${meta ? meta.label : sec}`, 'Open this cottage’s editor', () => { if (typeof cmdkOpenAccomSec === 'function') cmdkOpenAccomSec(ctx.cottage, sec); })];
         }
@@ -13826,8 +13826,17 @@ const ACCOM_SECTIONS = [
     {
         id: 'text',
         label: 'Text & details',
-        sub: 'Title, description &amp; features',
+        sub: 'Title, description &amp; the words on the page',
         ic: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    },
+    {
+        // Amenities left "Text & details" when the guest gained a tile of
+        // their own for them: a list the guest opens from their stay is a
+        // thing in its own right, not a paragraph's footnote.
+        id: 'amenities',
+        label: 'Amenities',
+        sub: 'What the cottage has — guests see this',
+        ic: '<path d="M4 10.5 12 4l8 6.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-5h4v5"/>',
     },
     {
         id: 'web',
@@ -13945,9 +13954,9 @@ function settingsOpenAccom(k) {
             try {
                 if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
                 if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
-                if (id === 'text') {
-                    const ams = Array.isArray(siteContent['amenities-' + k]) ? siteContent['amenities-' + k] : ((propertyContent[k] || {}).amenities || []);
-                    return ams.length ? stCap('ok', ams.length + ' feature' + (ams.length === 1 ? '' : 's')) : '';
+                if (id === 'amenities') {
+                    const ams = accomAmenityList(k);
+                    return ams.length ? stCap('ok', ams.length + ' amenit' + (ams.length === 1 ? 'y' : 'ies')) : stCap('unk', 'none yet');
                 }
                 if (id === 'safety') { const n = accomSafetyList(k).length; return n ? stCap('ok', n + ' item' + (n === 1 ? '' : 's')) : stCap('unk', 'none yet'); }
                 if (id === 'seasons') { const n = (propertySeasons[k] || []).length; return n ? stCap('ok', n + ' season' + (n === 1 ? '' : 's')) : ''; }
@@ -21776,6 +21785,15 @@ function collectListRows(wrap, attr) {
 }
 
 // ---- Safety & property list (per cottage) ----
+// ONE definition of a cottage's amenities for the back office — the saved
+// list, else the built-in one the cottage page falls back to. The editor,
+// the section's verdict capsule and anything else asking must read this, or
+// the count on the fold row can disagree with the rows inside it.
+function accomAmenityList(k) {
+    if (Array.isArray(siteContent['amenities-' + k])) return siteContent['amenities-' + k].slice();
+    const def = propertyContent[k];
+    return def && Array.isArray(def.amenities) ? def.amenities.slice() : [];
+}
 function accomSafetyList(k) {
     return Array.isArray(siteContent['safety-' + k])
         ? siteContent['safety-' + k].slice()
@@ -21901,7 +21919,11 @@ function accomAddAmenity(k) {
 async function accomSaveAmenities(k) {
     const wrap = document.getElementById('accom-am-rows-' + k);
     const items = collectListRows(wrap, 'am');
-    const m = document.getElementById('accom-text-msg-' + k);
+    // Its OWN message slot. This used to write into #accom-text-msg-<k>,
+    // which was fine while the two lived in one section and became invisible
+    // the moment amenities got a fold of their own — a save reporting into a
+    // closed fold reads as a save that did nothing.
+    const m = document.getElementById('accom-am-msg-' + k);
     try {
         await saveContent('amenities-' + k, items);
         siteContent['amenities-' + k] = items;
@@ -21954,13 +21976,27 @@ function accomSectionHtml(k, sec) {
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
                     </div>`;
         }
+        case 'amenities': {
+            // The SAME store as before (amenities-<k>, falling back to the
+            // built-in list) and the SAME save — accomAddAmenity /
+            // accomSaveAmenities and the #accom-am-rows-<k> host are
+            // untouched, so only the section this well lives in has moved.
+            const ams = accomAmenityList(k);
+            return `<div class="acr-cap">What guests get</div>
+                    <div class="acr-well">
+                        <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
+                        <div class="acw-acts">
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add amenity</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save amenities</button>
+                            <span id="accom-am-msg-${k}" style="font-size:0.8rem;"></span>
+                        </div>
+                    </div>
+                    <p class="acr-note">One per row, a few words each. They show as pills on the cottage page and behind the <strong>Amenities</strong> tile on the guest&rsquo;s own stay.</p>`;
+        }
         case 'text': {
             const def = propertyContent[k] || {};
             const tv = (f, d) =>
                 siteContent[k + '-' + f] != null ? siteContent[k + '-' + f] : d || '';
-            const ams = Array.isArray(siteContent['amenities-' + k])
-                ? siteContent['amenities-' + k]
-                : def.amenities || [];
             return `<div class="acr-cap">On the cottage page</div>
                     <div class="acr-well">
                         <div class="acw-frow"><label for="accom-t-title-${k}">Title</label><input type="text" class="input-glass" id="accom-t-title-${k}" value="${escapeHtml(tv('title', def.title))}"></div>
@@ -21969,14 +22005,6 @@ function accomSectionHtml(k, sec) {
                         <div class="acw-frow"><label for="accom-t-desc-${k}">Description</label><textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea></div>
                         <div class="acw-frow"><label for="accom-t-location-${k}">Location blurb</label><input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}"></div>
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;"></span></div>
-                    </div>
-                    <div class="acr-cap">Features — the pills guests see</div>
-                    <div class="acr-well">
-                        <div id="accom-am-rows-${k}" class="acw-list">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
-                        <div class="acw-acts">
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add feature</button>
-                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save features</button>
-                        </div>
                     </div>`;
         }
         case 'rates': {

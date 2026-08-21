@@ -2109,6 +2109,26 @@ a.card {
   min-width: 0;
   outline: none;
 }
+/* The Amenities sheet on My Stays — the SAME pills the cottage page prints,
+   FLOWING to their own content rather than on a grid. A grid track wide
+   enough for "Off-street parking" is one column on a phone, so short
+   amenities each took a full row of a narrow sheet; wrapping lets three
+   short ones share a line and a long one take what it needs. */
+.amenity-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.amenity-sheet .amenity-pill {
+  flex: 0 1 auto;
+}
+.amenity-sheet-note {
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
 /* ---- Airbnb-style cottage page ---- */
 #view-21a {
   padding-bottom: calc(112px + var(--safe-b));

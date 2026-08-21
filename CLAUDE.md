@@ -1413,6 +1413,45 @@ its own click).
   third pill at 390px squeezed the cottage name to 24px and the drawer's own gate
   caught it.
 
+## Amenities are a tab on the guest's stay, and a section of their own
+
+**Asked for**: an Amenities tab on the customer page where "Things to do" sat, with
+Things to do moved past Contact host. The data already existed and had exactly one
+surface — the pills on the cottage page — so a guest could read what the cottage has
+while BOOKING and not while staying in it.
+- **ONE STORE, both surfaces.** `guestAmenityList(propKey)` (app.js) and
+  `accomAmenityList(k)` (admin.js) read the same `amenities-<k>` content key with the
+  same `propertyContent[k].amenities` fallback the cottage page uses — so the sheet a
+  guest opens from their stay and the pills they read while choosing cannot differ, and
+  the fold's count cannot disagree with the rows inside it. Read-only on the guest side;
+  there is no second store and no second editor.
+- **The tile is on BOTH My Stays hubs** (pre-arrival and in-residence) — "what's in the
+  cottage" is a question with a shorter fuse once you are in it, not a longer one — and
+  the pre-arrival ORDER is the ask: Directions, Good to know, Welcome book, Amenities,
+  Contact host, Things to do. Gated as an order (ui-test-yourstay §32), not as presence.
+- **THE PILLS FLOW, they are not a grid.** `repeat(auto-fit, minmax(150px, 1fr))` is one
+  column inside a 296px sheet on a 402px phone (two tracks need 308), so every short
+  amenity took a whole row of a narrow sheet — measured on the build's own screenshot.
+  `flex-wrap` with `flex: 0 1 auto` lets three short ones share a line and "Off-street
+  parking" take what it needs.
+- **An empty list names a person, never the cottage.** "No amenities" is a false claim
+  about the COTTAGE where the true one is about our own list — the faq-modal rule,
+  break-tested.
+- **Manage: its own section** (`ACCOM_SECTIONS` id `amenities`, between Text & details
+  and Home page card). The well moved out of `case 'text'` whole — same
+  `#accom-am-rows-<k>` host, same `accomAddAmenity` / `accomSaveAmenities` — and the
+  fold verdict moved with it ("✓ 5 amenities"). **The one thing the move broke and the
+  gate caught**: `accomSaveAmenities` reported into `#accom-text-msg-<k>`, which was
+  fine while the two shared a section and became a save reporting into a DIFFERENT,
+  closed fold the moment it did not. Its own `#accom-am-msg-<k>` now.
+- Gates: ui-test-yourstay §32 (order, the sheet, the empty state), ui-test-manage §4c
+  (11 welled sections, the verdict) + §4e (its own section, Add+Save through the real
+  endpoint, the message slot), ui-test-guest-modals (the sheet joins the Back-closes
+  sweep). Three break-tests fired: the order, the message slot, the empty state.
+- NB the backdrop-click handler folds all three sheets into ONE `instanceof Element`
+  narrowing — a third copy of `e.target.id` would have ADDED a type error; folding
+  removed two. tsc budget 728 → 726.
+
 ## The guest's invoice: ONE document, two presentations
 
 **AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style
