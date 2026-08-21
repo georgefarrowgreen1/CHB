@@ -481,7 +481,7 @@
         // CONTINUITY, the read half: the web chat's rail, viewable here —
         // read-only, because replying belongs to the phone's admin session.
         + '<button class="crow phview" id="phoneView"><span class="ct">On your phone</span>'
-        + '<span class="cn">the AI chat’s conversations · read-only</span></button>';
+        + '<span class="cn">the AI chat’s conversations</span></button>';
     }
     // ── "ON YOUR PHONE" — the web chat mirrored, read-only ──────────────
     var mirror = null; // {convo, convos, msgs} while viewing; renderChat exits
@@ -505,9 +505,10 @@
                     + '<span class="ct">' + esc(c.title) + '</span>'
                     + '<span class="cn">' + c.n + ' message' + (c.n === 1 ? '' : 's') + '</span></button>';
             }).join('');
-        log.innerHTML = '<div class="trimnote">From the AI chat on your phone. '
-            + 'Carry on here and your words join the SAME conversation — the action '
-            + 'cards it proposes are confirmed on the phone, where they can act.</div>'
+        const mTitle = ((mirror.convos || []).filter(function (c) { return c.convo === mirror.convo; })[0] || {}).title || 'a conversation';
+        log.innerHTML = '<div class="phctx"><b>' + esc(mTitle) + '</b>'
+            + '<span>From the AI chat on your phone \u00b7 carry on here and your words join the '
+            + 'same conversation. Anything it proposes is confirmed on the phone.</span></div>'
             + (mirror.msgs || []).map(function (m) {
                 return m.who === 'you'
                     ? '<div class="bub user">' + esc(m.text) + (m.at ? '<span class="bmeta">' + esc(m.at) + '</span>' : '') + '</div>'
@@ -520,6 +521,11 @@
         // handoff, so the words go to the SAME conversation (chat_say) rather
         // than forking a local copy of it.
         if (box) { box.disabled = false; box.placeholder = 'Continue this conversation\u2026'; }
+        // THE PAGE MUST NOT PROMISE WHAT THIS MODE BREAKS. The local chat's
+        // "nothing here reaches the website" is true of a LOCAL thread and
+        // false of a handed-off one, where the words are the site's record.
+        var sub = $('chatSub');
+        if (sub) { sub.textContent = 'A conversation from your phone. What you type here joins it — on the website, on every device.'; }
         handoffAdvertise(true);
     }
     // After continuing, the Mac answers its own filed ask within seconds; poll
@@ -580,17 +586,25 @@
     function handoffOfferHtml() {
         var h = (S && S.handoff) || null;
         if (!h || !h.convo || h.at <= handSeen) { return ''; }
+        // An OFFER, not an alert: a device mark, one line, the unfinished
+        // words beneath it, and a quiet action. Deliberately NOT a filled
+        // pill — it must never out-shout the conversation it sits above.
         return '<div class="handoff" id="handoffRow">'
-            + '<span class="hoi" aria-hidden="true">\u21e0</span>'
-            + '<span class="hot">Continue \u201c' + esc(h.title || 'your conversation') + '\u201d from your phone'
-            + (h.draft ? '<span class="hod">' + esc(h.draft.slice(0, 90)) + '</span>' : '') + '</span>'
-            + '<button class="mini" type="button" id="handoffGo">Continue</button>'
+            + '<span class="hoi" aria-hidden="true">'
+            + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+            + '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.8 18.6h2.4"/></svg></span>'
+            + '<span class="hot">Continue on from your phone'
+            + '<span class="hoq"> \u201c' + esc(h.title || 'your conversation') + '\u201d</span>'
+            + (h.draft ? '<span class="hod">\u2026' + esc(h.draft.slice(0, 70)) + '</span>' : '') + '</span>'
+            + '<button class="hogo" type="button" id="handoffGo">Continue \u203a</button>'
             + '<button class="hox" type="button" id="handoffNo" aria-label="Not now">\u2715</button>'
             + '</div>';
     }
     function renderChat() {
         if (!C) { return; }
         if (mirror) { mirror = null; var bx = $('chatIn'); if (bx) { bx.disabled = false; bx.placeholder = 'Ask anything\u2026'; } }
+        var sub0 = $('chatSub');
+        if (sub0) { sub0.textContent = 'Just you and the model, on this Mac. Nothing here reaches the website or a guest.'; }
         chatRailPaint();
         var log = $('chatLog');
         var thread = C.thread || [];

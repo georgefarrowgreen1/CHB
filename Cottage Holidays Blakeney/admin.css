@@ -5870,16 +5870,21 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 @keyframes mcCaret{50%{opacity:0}}
 .mc-meta{align-self:flex-start;font-size:0.64rem;color:var(--text-muted);padding-left:4px}
 /* THE WELCOME CARRIES THE DAY — quiet days render nothing here. */
-/* HANDOFF: one quiet offer above the log — never an alert, always dismissible. */
-.mc-hand{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;
-  border:1px solid color-mix(in srgb, var(--accent) 30%, transparent);border-radius:var(--r-lg);
-  background:color-mix(in srgb, var(--accent) 8%, transparent)}
-.mc-hand-i{color:var(--accent-text);font-size:15px;flex:0 0 auto}
-.mc-hand-t{flex:1 1 auto;min-width:0;font-size:0.86rem;line-height:1.35}
-.mc-hand-d{display:block;font-size:0.78rem;color:var(--text-muted);font-style:italic;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.mc-hand-x{border:0;background:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;
-  padding:6px;border-radius:8px;flex:0 0 auto;min-width:44px;min-height:44px}
+/* HANDOFF: one quiet offer above the log — never an alert, always
+   dismissible, and never a filled pill: it must yield to the conversation
+   beneath it. Same anatomy as the Mac window's, at phone width. */
+.mc-hand{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:9px 11px;
+  border:1px solid color-mix(in srgb, var(--text-light) 12%, transparent);border-radius:var(--r-lg);
+  background:color-mix(in srgb, var(--text-light) 4%, transparent)}
+.mc-hand-i{color:var(--text-muted);flex:0 0 auto;display:flex;align-items:center}
+.mc-hand-t{flex:1 1 auto;min-width:0;font-size:0.78rem;line-height:1.35;color:var(--text-muted)}
+.mc-hand-q{color:var(--text-light);font-weight:500}
+.mc-hand-d{display:block;font-size:0.74rem;color:var(--text-muted);opacity:0.85;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.mc-hand-go{border:0;background:none;color:var(--accent-text);font-size:0.8rem;font-weight:600;
+  cursor:pointer;padding:8px 2px;border-radius:8px;flex:0 0 auto;white-space:nowrap;min-height:44px}
+.mc-hand-x{border:0;background:none;color:var(--text-muted);font-size:0.72rem;cursor:pointer;
+  padding:6px;border-radius:8px;flex:0 0 auto;min-width:34px;min-height:44px;opacity:0.7}
 .mc-day{border:1px solid var(--glass-border);border-radius:18px;padding:14px 15px;
   background:color-mix(in srgb,var(--accent) 6%,transparent);margin:2px 4px 0}
 .mc-day-t{font:600 1rem var(--font-serif);color:var(--text-light);margin-bottom:8px}

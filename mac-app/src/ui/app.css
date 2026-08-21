@@ -514,19 +514,40 @@ select.pop{padding-right:6px}
 .crow.hide{display:none}
 /* Continuity: the send-to-phone mark (third glyph on a row) and the
    phone-view rows. */
-.crow .cph{position:absolute;right:38px;top:50%;transform:translateY(-50%);border:0;background:none;
-  color:var(--text-muted);font-size:11px;cursor:pointer;padding:4px;border-radius:6px;opacity:0}
+/* THE ROW'S MARKS SIT IN A ROW. Three absolutely-positioned glyphs at
+   fixed rights is a collision waiting for a fourth; this lays them out. */
+.crow{position:relative}
+.crow .cph,.crow .cexp,.crow .cx{position:absolute;top:50%;transform:translateY(-50%);border:0;
+  background:none;color:var(--text-muted);cursor:pointer;padding:5px;border-radius:7px;
+  opacity:0;font-size:11.5px;line-height:1}
+.crow .cph{right:44px}
+.crow .cexp{right:25px}
+.crow .cx{right:6px}
 .crow:hover .cph,.crow .cph:focus-visible{opacity:1}
-/* HANDOFF: one quiet row above the log — an offer, never an alert. */
-.handoff{display:flex;align-items:center;gap:10px;margin:0 0 14px;padding:10px 14px;
-  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:12px;
-  background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.handoff .hoi{color:var(--accent-text,var(--accent));font-size:15px}
-.handoff .hot{flex:1 1 auto;min-width:0;font-size:13px;color:var(--text-light)}
+.crow .cph:hover,.crow .cexp:hover,.crow .cx:hover{color:var(--text-light);
+  background:color-mix(in srgb,var(--text-light) 8%,transparent)}
+/* HANDOFF: one quiet row above the log — an OFFER, never an alert, so no
+   filled pill and no tinted slab: a hairline, a device mark, and a text
+   action that yields to the conversation beneath it. */
+.handoff{display:flex;align-items:center;gap:11px;margin:0 0 16px;padding:9px 12px;
+  border:1px solid color-mix(in srgb,var(--text-light) 12%,transparent);border-radius:11px;
+  background:color-mix(in srgb,var(--text-light) 3%,transparent)}
+.handoff .hoi{color:var(--text-muted);display:flex;align-items:center;flex:0 0 auto}
+.handoff .hot{flex:1 1 auto;min-width:0;font-size:12.5px;color:var(--text-muted);line-height:1.35}
+.handoff .hoq{color:var(--text-light);font-weight:500}
 .handoff .hod{display:block;font-size:12px;color:var(--text-muted);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;margin-top:2px;font-style:italic}
-.handoff .hox{border:0;background:none;color:var(--text-muted);font-size:12px;cursor:pointer;
-  padding:4px 6px;border-radius:6px;flex:0 0 auto}
+  overflow:hidden;text-overflow:ellipsis;margin-top:1px;opacity:0.85}
+.handoff .hogo{border:0;background:none;color:var(--accent-text,var(--accent));font-size:12.5px;
+  font-weight:600;cursor:pointer;padding:6px 4px;border-radius:8px;flex:0 0 auto;white-space:nowrap}
+.handoff .hogo:hover{text-decoration:underline}
+.handoff .hox{border:0;background:none;color:var(--text-muted);font-size:11px;cursor:pointer;
+  padding:6px;border-radius:8px;flex:0 0 auto;opacity:0.7}
+.handoff .hox:hover{opacity:1}
+/* The mirror's context strip: a PLACE (what you are looking at), not a
+   warning — the dashed accent paragraph read as an error message. */
+.phctx{margin:0 0 16px;padding:0 2px 12px;border-bottom:1px solid color-mix(in srgb,var(--text-light) 10%,transparent)}
+.phctx b{display:block;font-family:var(--font-serif,inherit);font-size:15px;color:var(--text-light);margin-bottom:3px}
+.phctx span{display:block;font-size:12px;color:var(--text-muted);line-height:1.45}
 .crow.phview,.crow.phback{border-top:1px solid color-mix(in srgb,var(--text-light) 10%,transparent)}
 .crow.phview .ct,.crow.phback .ct{color:var(--accent-text,var(--accent))}
 /* The standing instruction — a bar the pill opens, never a dialog. */

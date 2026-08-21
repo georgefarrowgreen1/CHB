@@ -12274,8 +12274,13 @@ function mcDayHtml() {
     if (shape.owed > 0.005) bits.push('£' + Math.round(shape.owed).toLocaleString('en-GB') + ' to collect');
     const brief = bits.length ? bits.join(' · ')
         : (__mcDayDuties.length ? '' : 'a quiet one');
+    // DON'T SAY IT TWICE. With duty rows directly beneath, a "two things
+    // need you" tail counts what the owner can already see — and chbSayN(2)
+    // is "a couple", which reads as "a couple things" before a noun (the
+    // documented trap, hit here). The tail earns its place only when there
+    // are NO rows, where "nothing else needs you" is the whole point.
     const tail = __mcDayDuties.length
-        ? (__mcDayDuties.length === 1 ? '· one thing needs you' : '· ' + chbSayN(__mcDayDuties.length) + ' things need you')
+        ? ''
         : (shape.parts.length || shape.owed > 0.005 ? '· nothing else needs you' : '');
     const rows = __mcDayDuties.map((d, i) => `<div class="mc-day-r"><span class="mc-day-l">${escapeHtml(d.label || '')}</span>`
         + (d.act ? `<button type="button" class="mc-day-go" data-act="mcDayGo" data-arg="${i}">${escapeHtml(d.act)} ›</button>` : '')
@@ -12320,11 +12325,17 @@ function mcHandoffHtml() {
     // this never renders it. Belt and braces, because a card that cannot
     // open anything is worse than no card.
     if (!Number(h.convo)) return '';
+    // The Mac's own anatomy, at phone width: a device mark, one line naming
+    // the conversation, the unfinished words beneath, and a QUIET action —
+    // an offer must never out-shout the conversation it sits above (the
+    // filled uppercase pill did, measured on the build's own screenshot).
     return `<div class="mc-hand" id="mc-hand">
-        <span class="mc-hand-i" aria-hidden="true">⇠</span>
-        <span class="mc-hand-t">Continue “${escapeHtml(h.title || 'your conversation')}” from your Mac
-        ${h.draft ? `<span class="mc-hand-d">${escapeHtml(String(h.draft).slice(0, 90))}</span>` : ''}</span>
-        <button type="button" class="btn-sm btn-accent" data-act="mcHandoffGo">Continue</button>
+        <span class="mc-hand-i" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="4.5" width="19" height="12" rx="2"/><path d="M1.5 19.5h21"/></svg>
+        </span>
+        <span class="mc-hand-t">Continue on from your Mac<span class="mc-hand-q"> “${escapeHtml(h.title || 'your conversation')}”</span>
+        ${h.draft ? `<span class="mc-hand-d">…${escapeHtml(String(h.draft).slice(0, 60))}</span>` : ''}</span>
+        <button type="button" class="mc-hand-go" data-act="mcHandoffGo">Continue ›</button>
         <button type="button" class="mc-hand-x" data-act="mcHandoffNo" aria-label="Not now">✕</button>
     </div>`;
 }
@@ -12352,7 +12363,7 @@ function mcHelloHtml() {
     return mcDayHtml() + `<div class="mc-hello">
         <div class="mc-hello-spark" aria-hidden="true">✦</div>
         <h2>Ask your Mac anything</h2>
-        <p>It does the thinking at home; the website carries the words. It can look up today, bookings, availability, enquiries, the cottages, the money, the books, the coast and the wider web as you talk — and prepare actions for you to confirm.</p>
+        <p>It does the thinking at home; the website carries the words. Ask about the day, the money, a cottage, the tides — or anything on the web. It prepares actions; you confirm them.</p>
         <div class="mc-starters">
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Who arrives today?">Who arrives today? <span class="mc-go">›</span></button>
             <button type="button" class="mc-schip" data-act="mcStarter" data-arg="Is anything free this weekend?">Anything free this weekend? <span class="mc-go">›</span></button>
