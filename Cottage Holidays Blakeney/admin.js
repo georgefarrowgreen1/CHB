@@ -8720,7 +8720,7 @@ function cmdkRenderInner() {
             (P ? `<div class="cmdk-group-label">Pinned</div>${pinHtml}` : '') +
             // The greeting is SPOKEN, not a caption — the sentence-case pulse line
             // the Manage and Money landings open with (§20 finds it by its words).
-            (B ? `<div class="cmdk-pulse">${cmdkGreeting()}.</div>${briefHtml}` : '') +
+            (B ? `<div class="cmdk-pulse">${escapeHtml(cmdkDayLine())}</div>${briefHtml}` : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
             // The landing's own dead end. It used to print the raw scope key
@@ -9082,6 +9082,36 @@ function cmdkClear() {
 function cmdkGreeting() {
     const h = chbNow().getHours();
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Late tonight';
+}
+// The landing's line: the shared sentence, or the bare greeting on a day
+// with nothing in it — "Afternoon George." reads better than a greeting
+// followed by a dash and nothing.
+function cmdkDayLine() {
+    const d = chbDaySentence();
+    return d.bits.length ? d.greet + ' — ' + d.bits.join(' · ') : d.greet + '.';
+}
+// ── THE DAY, SAID ONCE ───────────────────────────────────────────────────
+// The search landing's greeting and the AI chat's day card were two
+// sentences about one afternoon: search said a bare "Good afternoon." over
+// cards you could not act on, the chat carried the day's shape. Both read
+// the SAME derivations (chbDayTuples → chbOpsParts), so the difference was
+// clothes. This is the sentence, composed once; each surface adds its own
+// tail. chbNow() throughout, so a pinned clock moves both.
+function chbDaySentence() {
+    const h = chbNow().getHours();
+    const greet = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : h < 22 ? 'Evening' : 'Late tonight';
+    let host = '';
+    try {
+        host = String((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '')
+            .trim().split(/\s+/)[0];
+    } catch (e) {}
+    let shape = { parts: [], owed: 0 };
+    try { shape = chbOpsParts(chbDayTuples()); } catch (e) {}
+    const bits = shape.parts.slice();
+    if (shape.owed > 0.005) {
+        bits.push('£' + Math.round(shape.owed).toLocaleString('en-GB') + ' to collect');
+    }
+    return { greet: greet + (host ? ' ' + host : ''), bits: bits, shape: shape };
 }
 // Run a quick-action (chip) on a result row without dismissing via the row.
 // ACT IN PLACE. Every quick-action used to begin `closeCmdK()` — search handed
@@ -12257,22 +12287,17 @@ function mcDayHtml() {
     let duties = [];
     try { duties = (typeof chbDuties === 'function' ? chbDuties() : []) || []; } catch (e) { duties = []; }
     __mcDayDuties = duties.slice(0, 3);
-    // THE DAY'S SHAPE — the same derivation the Today ops line reads, so the
-    // two cannot disagree. Reads like a colleague who got in early: it greets
-    // with the movements even on a day that needs NOTHING, and only a
+    // THE DAY'S SHAPE — chbDaySentence, the SAME sentence the search
+    // landing's greeting reads, so the two surfaces cannot drift into two
+    // voices for one afternoon. Reads like a colleague who got in early: it
+    // greets with the movements even on a day that needs NOTHING, and only a
     // genuinely empty day (no arrivals, departures or money) stays silent so
     // the generic hello can show.
-    let shape = { parts: [], owed: 0 };
-    try { shape = chbOpsParts(chbDayTuples()); } catch (e) {}
-    if (!__mcDayDuties.length && !shape.parts.length && shape.owed <= 0.005) return '';
-    const hr = new Date().getHours();
-    const greet = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
-    let host = '';
-    try { host = String((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '').trim().split(/\s+/)[0]; } catch (e) {}
-    // The brief line: the movements, then the money, then how it stands.
-    const bits = shape.parts.slice();
-    if (shape.owed > 0.005) bits.push('£' + Math.round(shape.owed).toLocaleString('en-GB') + ' to collect');
-    const brief = bits.length ? bits.join(' · ')
+    const day = chbDaySentence();
+    const shape = day.shape;
+    if (!__mcDayDuties.length && !day.bits.length) return '';
+    const greet = day.greet;
+    const brief = day.bits.length ? day.bits.join(' · ')
         : (__mcDayDuties.length ? '' : 'a quiet one');
     // DON'T SAY IT TWICE. With duty rows directly beneath, a "two things
     // need you" tail counts what the owner can already see — and chbSayN(2)
@@ -12286,7 +12311,7 @@ function mcDayHtml() {
         + (d.act ? `<button type="button" class="mc-day-go" data-act="mcDayGo" data-arg="${i}">${escapeHtml(d.act)} ›</button>` : '')
         + `</div>`).join('');
     return `<div class="mc-day">
-        <div class="mc-day-t">${escapeHtml(greet + (host ? ' ' + host : ''))}${brief ? ' — ' + escapeHtml(brief) : ''} ${escapeHtml(tail)}</div>
+        <div class="mc-day-t">${escapeHtml(greet)}${brief ? ' — ' + escapeHtml(brief) : ''} ${escapeHtml(tail)}</div>
         ${rows}
         <div class="mc-day-note">${__mcDayDuties.length ? 'The same list as Today’s strip — or just ask about any of it.' : 'All caught up — ask me anything about the day.'}</div>
     </div>`;

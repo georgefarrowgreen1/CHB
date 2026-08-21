@@ -973,6 +973,34 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(stEarly.macs === stEarly.before && stEarly.say && stEarly.label === 'Send',
     `a stop before any words stores nothing and says so (${JSON.stringify(stEarly)})`);
 
+  // ── ONE ASSISTANT: the search landing's greeting and the chat's day card
+  // are the SAME sentence about the same day (chbDaySentence). Two voices
+  // for one afternoon is what this closes, so the gate compares the two
+  // surfaces' actual rendered words rather than either one alone.
+  const oneDay = await page.evaluate(() => {
+    const t = (function () { const d = new Date(); const p = (v) => String(v).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })();
+    window.__realDuties2 = window.chbDuties;
+    window.__realTuples3 = window.chbDayTuples;
+    window.chbDuties = () => [{ label: 'Sarah Pemberton still owes £340.50', act: 'Chase', run: () => {} }];
+    window.chbDayTuples = () => [{ pk: 'jollyboat', ci: t, co: '2027-12-31', arrived: false, due: 340.5 }];
+    const said = chbDaySentence();
+    const line = cmdkDayLine();
+    return (async () => {
+      await renderMacChat();
+      const card = document.querySelector('.mc-day-t');
+      return { said: said, line: line, card: (card || {}).textContent || '' };
+    })();
+  });
+  ok(/^(Morning|Afternoon|Evening|Late tonight)/.test(oneDay.said.greet) && oneDay.said.bits.length >= 2
+    && oneDay.said.bits.some((b) => /arrival/.test(b)) && oneDay.said.bits.some((b) => /to collect/.test(b)),
+    `the day is composed ONCE — greeting, movements and money (${JSON.stringify(oneDay.said.bits)})`);
+  ok(oneDay.line.indexOf(oneDay.said.greet) === 0 && oneDay.said.bits.every((b) => oneDay.line.indexOf(b) > 0),
+    `the search landing's line is that sentence (${oneDay.line})`);
+  ok(oneDay.card.indexOf(oneDay.said.greet) >= 0 && oneDay.said.bits.every((b) => oneDay.card.indexOf(b) >= 0),
+    `…and the chat's day card is the SAME sentence, not a second one (${oneDay.card.trim().slice(0, 90)})`);
+  await page.evaluate(() => { window.chbDuties = window.__realDuties2; window.chbDayTuples = window.__realTuples3; });
+
   // ── HANDOFF: what the Mac was doing, offered here — and this phone says
   // what IT is doing so the offer can go the other way.
   await page.evaluate(() => {

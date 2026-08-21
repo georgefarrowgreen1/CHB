@@ -1043,6 +1043,28 @@ signing and what is real; what matters HERE is the site half and the rules.
   renders only when there are none ("nothing else needs you"). The rail's
   three hover marks moved from three fixed `right:` values into a spaced set,
   because a fourth would have collided.
+  **ONE ASSISTANT — the day is composed ONCE.** The search landing greeted
+  with a bare "Good afternoon." over boards, while the AI chat's card carried
+  the day's shape; two sentences about one afternoon, from the SAME
+  derivations. `chbDaySentence()` is that sentence — greeting + host's first
+  name + chbOpsParts over chbDayTuples — and both surfaces read it
+  (`cmdkDayLine()` adds the landing's full stop on a quiet day; the chat adds
+  its own duty tail). chbNow() throughout, so a pinned clock moves both.
+  **ONE CHIP**: `.mc-schip` takes `.cmdk-chip`'s own spec (glass-hover ground,
+  --r-pill, the sub type step, the accent hover border), widened to a
+  full-width row because a starter is a sentence, still at the 44px floor —
+  three shapes for "tap this to go on" became one. **ONE VOICE**: the pop-out's
+  field says "Ask anything…", the chat's words.
+  **TWO OF THE SIX DID NOT SURVIVE CONTACT, and that is the record.** The
+  demo's "answer frame" would have labelled the chat's answer ANSWER — but it
+  is the only thing on that screen, so the label distinguishes it from nothing,
+  and promoting the model's prose into a verdict card means PARSING a figure
+  out of its words, which is the grounding rule inverted. The "state
+  vocabulary" would have given the knot a worded capsule — but `CHB_MSTATE_LABEL`
+  was deliberately REMOVED (the knot carries state as COLOUR with a hover
+  title), so that is a considered decision, not a drift. And "rows become
+  actionable" was already true: a brief row RUNS its duty on tap; only the
+  board cards look inert, and a chip repeating the row's own tap is noise.
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
