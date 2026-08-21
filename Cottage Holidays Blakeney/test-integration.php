@@ -1306,6 +1306,13 @@ $rootDb->exec('UPDATE bookings SET deposit_paid = ' . $dep . ' WHERE id = ' . $n
 $row = $acct();
 it_check('deposit settled → the account moves to the BALANCE', ($row['next_payment']['kind'] ?? '') === 'balance', json_encode($row['next_payment'] ?? null));
 it_check('…asking for what is actually left', $grand > 0 && $dep > 0 && abs((float) ($row['next_payment']['due'] ?? 0) - round($grand - $dep, 2)) < 0.005, json_encode($row['next_payment'] ?? null));
+// CLEAN UP the Due Date Guest, whose dates are RELATIVE (+260 days). Later
+// sections use FIXED 2027-05 dates, so on days where +260 lands in that
+// window the two collided and refused the op-ledger phone enquiry as a
+// clash — a clock-dependent flake (green one day, red the next) that had
+// nothing to do with the code under test. Deleting it here removes the
+// collision at its source.
+if ($dueBookingId > 0) { $rootDb->exec('DELETE FROM bookings WHERE id = ' . $dueBookingId); }
 
 // ---- 17. THE SERVER STAMPS ITS OWN CLOCK ON EVERY REPLY --------------------
 // A browser's Date is whatever the device says, and a device clock can be wrong
