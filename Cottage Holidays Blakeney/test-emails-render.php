@@ -789,6 +789,91 @@ chk('§8 the facts are still generated beneath it (dates, address, button)',
     && strpos($avH, 'open=stay') !== false);
 chk('§8 the subject is untouched by the note', strpos($avRev['subject'], 'You arrive') === 0);
 
+// ---------------------------------------------------------------------------
+//  §9  NO EMAIL GREETS THE SAME PERSON TWICE
+//  Reported from a phone: the arrival email's REVIEW screen showed "Hello Laura,"
+//  and then "Hello Laura — everything you need for Pimpernel is below." §6 owns
+//  the one template that defect had been found on before; this is the SWEEP, so
+//  the next one cannot ship on a template nobody thought to check.
+//
+//  It reads the RENDERED output of every template §1 built and counts greetings
+//  BY NAME, in each half separately — a name greeted twice is the defect
+//  whatever composed it, and per-name is what lets a guest email that also
+//  greets the owner pass honestly. The name is discovered from the greeting
+//  itself rather than listed, so a new fixture is covered the day it is added.
+echo "\n== \u{00A7}9 no email greets the same person twice ==\n";
+$greetRe = '/(?:^|[>\s])(?:Hello|Hi|Dear)[  ]+([A-Z][\p{L}\'’-]{1,30})\b/u';
+$greetCount = function ($s) use ($greetRe) {
+    // A tag becomes a SPACE, never nothing: "Hello <strong>Wren</strong>" is one
+    // greeting and the markup between the word and the name would otherwise hide
+    // it, while a bare strip_tags welds "…below.<br>Hello Wren" into one word and
+    // hides the SECOND greeting — which is the case this section exists to catch
+    // (the break-test found 1 of 2 until this was a space). Entities decode too,
+    // or an O&#039;Brien is a different name in each half.
+    $plain = preg_replace('/<[^>]*>/u', ' ', (string) $s);
+    $plain = html_entity_decode($plain, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $plain = preg_replace('/\s+/u', ' ', $plain);
+    $by = [];
+    if (preg_match_all($greetRe, ' ' . $plain, $m)) {
+        foreach ($m[1] as $who) {
+            $by[$who] = ($by[$who] ?? 0) + 1;
+        }
+    }
+    return $by;
+};
+$dupes = [];
+$sweptNames = 0;
+foreach ($RENDERED as $label => $msg) {
+    foreach (['html', 'text'] as $half) {
+        foreach ($greetCount($msg[$half] ?? '') as $who => $n) {
+            $sweptNames++;
+            if ($n > 1) {
+                $dupes[] = "$label ($half): \"$who\" greeted $n times";
+            }
+        }
+    }
+}
+chk('every rendered template greets each person at most once', $dupes === []);
+foreach ($dupes as $d) {
+    echo "        $d\n";
+}
+// VACUITY GUARD: a counter that finds no greetings at all would pass on
+// everything. These templates really do greet, so the sweep must have seen a
+// good number of them.
+chk('…and the sweep really saw greetings (' . $sweptNames . ' name-in-half hits)', $sweptNames >= 20);
+// AND IT CAN TELL ONE FROM TWO on a real composed email, not just in principle —
+// the same break-test shape §6 uses, driven through the arrival template because
+// that is the one this defect was reported on.
+$avDbl = $avRender(array_merge($avB, ['note' => "Hello Wren — everything you need is below.\nHello Wren, again."]));
+$dblSeen = $greetCount($avDbl['html']);
+chk('…and a doubly-greeting message is caught (Wren × ' . ($dblSeen['Wren'] ?? 0) . ')',
+    ($dblSeen['Wren'] ?? 0) === 2);
+
+// THE ARRIVAL REVIEW PREVIEWS THE EMAIL THAT SENDS. The composer's preview used
+// to go through build_enquiry_reply_email — the enquiry-reply shell, which opens
+// with its own "Hello <name>," above a reviewed message that already greets. So
+// the owner was shown a DIFFERENT email from the one their tap sends, greeting
+// the guest twice. Both halves of that are asserted here: the preview builder
+// produces byte-for-byte what the send does, and it greets once.
+$avPrevHtml = arrival_email_body(array_merge($avB, ['note' => $avNote]))['html'];
+chk('§9 the arrival preview builds byte-for-byte what the send builds', $avPrevHtml === $avH);
+// The REPORTED case: the composer opens prefilled with the house sentence, which
+// greets — so a shell that greets as well is two. Driven with the real prefill.
+$avDefMsg = arrival_default_message(first_name($avB['name'], 'Guest'), $avB['prop_name']);
+$avDefGreet = $greetCount(arrival_email_body(array_merge($avB, ['note' => $avDefMsg]))['html']);
+chk('§9 …and the prefilled message greets Wren exactly once (' . ($avDefGreet['Wren'] ?? 0) . ')',
+    ($avDefGreet['Wren'] ?? 0) === 1);
+// …which is exactly what the OLD preview route produced twice. Rendering it here
+// proves the sweep catches the shape that was reported, not merely a synthetic one.
+$avOld = build_enquiry_reply_email(array_merge($B, ['name' => $avB['name']]), 'You arrive', $avDefMsg, 'booking');
+$avOldGreet = $greetCount((string) $avOld['html']);
+chk('§9 …and the reply shell it used to use really did greet twice (' . ($avOldGreet['Wren'] ?? 0) . ')',
+    ($avOldGreet['Wren'] ?? 0) === 2);
+// The reply shell is what it must NOT be — asserted as an absence, because the
+// wrong template renders perfectly well and only looks wrong.
+chk('§9 …and is the ARRIVAL template, not the reply shell',
+    strpos($avPrevHtml, 'About your booking') === false && strpos($avPrevHtml, 'You arrive') !== false);
+
 @unlink($tmp);
 echo "\n== Summary ==\n";
 if ($fail) {

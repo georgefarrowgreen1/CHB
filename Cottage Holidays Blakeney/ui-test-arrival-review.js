@@ -58,6 +58,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         });
       }
       if (b.action === 'send_arrival') return json({ ok: true });
+      // The preview route answers so the request itself can be inspected: the
+      // ARRIVAL flag is what makes the server build the arrival template rather
+      // than the reply shell, and without it the owner is shown a different
+      // email from the one their tap sends.
+      if (b.action === 'email_preview') return json({ ok: true, subject: 'You arrive Fri 28 Aug', html: '<!doctype html><html><body><h1>You arrive Fri 28 Aug</h1></body></html>' });
       if (b.__url === 'content.php' && b.action === 'get_all') return json({ ok: true, content: { 'arrival-review': '1' } });
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
@@ -134,6 +139,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `an ordinary compose gets its own chrome back (${restored.title}, tools ${restored.tools})`);
   await page.evaluate(async () => { await chbOpenTarget('arrival-40'); });
   await page.waitForTimeout(600);
+
+  // THE PREVIEW IS THE EMAIL THAT SENDS. Reported from a phone: the review
+  // screen said "this is exactly what your guest will receive" over the
+  // enquiry-reply shell — "About your booking", and its own "Hello Sarah,"
+  // above a prefilled message that already greets. The send had always routed
+  // to the arrival template; only the preview had not, so the two disagreed and
+  // the owner saw the guest's name twice. The flag is what routes it.
+  console.log('3b. the preview asks for the ARRIVAL template');
+  posts.length = 0;
+  await page.evaluate(() => window.previewComposedEmail());
+  await page.waitForTimeout(400);
+  const prev = posts.filter((p) => p.action === 'email_preview').pop();
+  ok(!!prev && prev.arrival === true, `the preview posts arrival:true (${prev && JSON.stringify(prev.arrival)})`);
+  ok(!!prev && prev.__url === 'bookings.php' && prev.id === 40, 'against this booking');
+  // Saved-reply buttons belong to a reply, not to the arrival email — the
+  // reply tools stand down on this screen, so the preview must not ask for
+  // buttons the template has no place for.
+  ok(!!prev && prev.actions === undefined, 'and carries no saved-reply buttons');
 
   console.log('4. sending goes through the arrival template with the edited words');
   await page.evaluate(() => {

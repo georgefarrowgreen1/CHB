@@ -296,6 +296,37 @@ table and looked like a different product from the confirmation that follows the
   sentence — and one passed with the whole amount block gone, because `email_h()` renders
   the same words as the heading. Assert the halves separately, and target the BLOCK
   (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
+- **NOBODY IS GREETED TWICE, AND §9 IS THE SWEEP THAT KEEPS IT TRUE.** The
+  double-greeting defect was found once (the enquiry drafter, §6) and fixed once, and
+  then shipped TWICE MORE on surfaces nobody thought to re-check — reported from a phone
+  as "Hello Laura," above "Hello Laura — everything you need for Pimpernel is below."
+  **`build_enquiry_reply_email` owns the greeting** (it must: an owner typing a bare
+  message still gets one), so anything that FILLS its body must not greet. Three things
+  were: (1) the arrival REVIEW screen's preview went through that builder at all — the
+  SEND had always routed to `send_arrival` and only the preview had not, so "this is
+  exactly what your guest will receive" was showing the enquiry-reply shell ("About your
+  booking", purple bar, its own greeting) over a message that already greets; (2)
+  **`chbDraftBookingReply`** opened with `Hello <first>,` — the enquiry drafter's own
+  lesson, unlearned by its sibling; (3) nothing held the STARTER reply library to the
+  rule its own comment states. Fixes: `arrival_email_body()` + `arrival_email_payload()`
+  split out of `send_arrival_email`/`send_arrival_for_booking` so the preview builds the
+  REAL email from the REAL payload (`email_preview` takes `arrival: true`; admin.js sends
+  it, and sends no saved-reply buttons with it — the arrival template has no place for
+  them); the booking drafter de-greeted; the starters gated.
+- **§9 COUNTS GREETINGS BY NAME OVER EVERY RENDERED TEMPLATE**, in each half separately,
+  discovering the name FROM the greeting rather than from a list — so a new fixture is
+  covered the day it is added, and an email that greets a guest AND the owner still
+  passes honestly. Two things it had to get right: a tag becomes a **SPACE**, never
+  nothing (a bare `strip_tags` welds `…below.<br>Hello Wren` into one word and hides the
+  SECOND greeting — the break-test found 1 of 2 until this was fixed, i.e. the counter
+  was blind to exactly the defect it exists to catch), and entities are decoded (an
+  `O&#039;Brien` is a different name in each half). Vacuity-guarded at ≥20 name-in-half
+  hits; it sweeps 46.
+- **A HELPER-ONLY GATE MISSES THE ROUTE, again.** test-emails-render drives
+  `arrival_email_body` and passes **with the whole `arrival` branch deleted from
+  bookings.php** — break-tested. The wiring is gated in **test-integration §23**, which
+  posts the real `email_preview` both ways and reproduces the reported defect exactly
+  ("greets the guest exactly once (2)") when the branch is off.
 
 ## A refund asks whether it is still you (the step-up)
 

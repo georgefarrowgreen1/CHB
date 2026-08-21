@@ -1083,6 +1083,22 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
     // No host name → falls back to the business name.
     vm.runInContext(`dbBookings.jollyboat = []; siteContent['host-name'] = '';`, ctx);
     check('draft falls back to the business name with no host name set', /Cottage Holidays Blakeney$/.test(ctx.chbDraftEnquiryReply(enq).trim()));
+    // ITS SIBLING BROKE THE SAME RULE, and nothing had ever looked. ✨ Draft
+    // reply on a BOOKING goes through the same build_enquiry_reply_email, and
+    // chbDraftBookingReply opened with "Hello <first>," — so every drafted
+    // booking reply greeted the guest twice, the exact defect fixed above,
+    // shipped on the half that was never checked. Reported from a phone.
+    if (typeof ctx.chbDraftBookingReply === 'function') {
+        vm.runInContext(`siteContent['host-name'] = 'George';`, ctx);
+        const bk = { id: 'b1', dbId: 1, name: 'Laura Dean', email: 'l@x.co', checkIn: '2026-09-06', checkOut: '2026-09-09', checkInTime: '15:00', checkOutTime: '10:00', adults: 2, children: 0 };
+        const bd = ctx.chbDraftBookingReply(bk, 'jollyboat');
+        check('booking draft does NOT greet either — the template owns that',
+            !/^\s*(Hi|Hello|Dear)\s+Laura/i.test(bd), bd.split('\n')[0]);
+        check('booking draft opens on its own first line', /^Thanks for your message about your stay/.test(bd), bd.split('\n')[0]);
+        // And nowhere ELSE in the body, or the template's greeting still makes two.
+        check('…and never greets her further down', !/\b(Hi|Hello|Dear)\s+Laura\b/i.test(bd), bd);
+        check('booking draft still names the cottage + dates', /Jollyboat/.test(bd) && /06\/09\/2026/.test(bd) && /09\/09\/2026/.test(bd));
+    }
     vm.runInContext(`siteContent['faqs-jollyboat'] = []; activeFrontProperty = '21a';`, ctx);
 }
 

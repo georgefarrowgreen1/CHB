@@ -1247,6 +1247,17 @@ if ($action === 'email_preview') {
     }
     $message = mb_substr(trim((string) ($in['message'] ?? '')), 0, 5000);
     $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
+    require_once __DIR__ . '/mailer.php';
+    // THE ARRIVAL REVIEW PREVIEWS THE ARRIVAL EMAIL. The send has always routed to
+    // send_arrival (the reply shell would lose the designed email) and the PREVIEW
+    // did not — so the owner was shown the enquiry-reply template, which opens with
+    // its own "Hello <name>," above a reviewed message that already greets. Two
+    // greetings, and a preview of an email nobody receives. Same builder as the
+    // send, from the same payload.
+    if (!empty($in['arrival'])) {
+        $m = arrival_email_body(arrival_email_payload($b, $message));
+        json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
+    }
     $priceEst = null;
     try {
         // Agreed (locked-in) price when the booking has a snapshot; live rates only as fallback
