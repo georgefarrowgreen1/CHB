@@ -56,6 +56,31 @@ function webIpPrivate(ip) {
     return false;
 }
 
+// The hosts the OWNER named in their own words this conversation. The web
+// tool may fetch ONLY these — a prompt-injection page (or a hostile guest
+// message the owner asks the model to answer) cannot then steer a SECOND
+// fetch to attacker.example with the business data encoded in the query
+// string, because attacker.example was never in the owner's turns. A
+// public→public redirect WITHIN an owner-named site is still allowed (that
+// is the site's own choice, re-checked only for SSRF), so this gates the
+// model's CHOICE of destination, not the site's.
+function webOwnerHosts(text) {
+    const out = {};
+    const add = function (h) { const k = String(h || '').toLowerCase().replace(/^www\./, ''); if (k) { out[k] = true; } };
+    String(text || '').replace(/https?:\/\/([a-z0-9.-]+)/gi, function (_, h) { add(h); return _; });
+    // A bare domain the owner typed ("ask about example.com/foo") counts too.
+    String(text || '').replace(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})\b/gi, function (_, h) { add(h); return _; });
+    return out;
+}
+function webHostAllowed(host, allowed) {
+    const h = String(host || '').toLowerCase().replace(/^www\./, '');
+    if (!allowed || !Object.keys(allowed).length) { return true; } // no restriction supplied (direct callers, tests)
+    if (allowed[h]) { return true; }
+    // A subdomain of an owner-named host is allowed (docs.example.com when
+    // the owner said example.com); never the reverse.
+    return Object.keys(allowed).some(function (a) { return h === a || h.endsWith('.' + a); });
+}
+
 // '' or a sentence, from the URL STRING alone (the resolve check runs after).
 function webUrlProblem(raw) {
     let u;
@@ -156,10 +181,17 @@ async function webFetch(rawUrl, deps) {
         return require('dns').promises.lookup(host, { all: true });
     };
     let url = String(rawUrl || '').trim();
+    const allowed = d.allowedHosts || null;
     for (let hop = 0; hop <= WEB_REDIRECTS_MAX; hop++) {
         const bad = webUrlProblem(url);
         if (bad) { return { ok: false, refusal: { kind: 'refused', say: bad } }; }
         const host = new URL(url).hostname;
+        // Hop 0 only: the model may fetch only a host the OWNER named. A
+        // redirect within that site is the site's choice (re-checked for
+        // SSRF below), not the model's, so it is not re-gated here.
+        if (hop === 0 && !webHostAllowed(host, allowed)) {
+            return { ok: false, refusal: { kind: 'refused', say: 'I can only open a web address you have mentioned — name the site and I will read it.' } };
+        }
         // THE RESOLVE CHECK — the half a hostname rule cannot do. Refuses a
         // public-looking name whose DNS answer is the router, and the address
         // it vets is the address the transport CONNECTS to (never re-resolved).
@@ -207,5 +239,6 @@ async function webFetch(rawUrl, deps) {
 
 module.exports = {
     webFetch, webUrlProblem, webIpPrivate, webStripHtml,
+    webOwnerHosts, webHostAllowed,
     WEB_TEXT_CHARS, WEB_UNTRUSTED_NOTE,
 };

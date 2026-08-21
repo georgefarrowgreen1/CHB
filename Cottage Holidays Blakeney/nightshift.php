@@ -703,6 +703,9 @@ route_actions([
         // share a session, so a held lock here would freeze every other admin
         // tab for the whole wait.
         $wait = min(10, max(0, (int) ($in['wait'] ?? 0)));
+        if ($wait > 0 && night_poll_slot() === '') {
+            $wait = 0; // slots busy — answer now, hold no worker
+        }
         if ($wait > 0) {
             @session_write_close();
         }
@@ -964,6 +967,9 @@ route_actions([
     'chat_poll' => function ($in) {
         require_admin();
         $wait = min(20, max(0, (int) ($in['wait'] ?? 0)));
+        if ($wait > 0 && night_poll_slot() === '') {
+            $wait = 0; // slots busy — answer now, hold no worker
+        }
         if ($wait > 0) {
             @session_write_close();
         }
@@ -1302,9 +1308,16 @@ route_actions([
     },
 
     // The other direction, READ-ONLY: the Mac window may show the web chat's
-    // conversations. No new data class — the Mac already reads these turns
-    // whenever it answers an ask — and deliberately NO write: replying stays
-    // on the phone, where the admin session and the action cards live.
+    // conversations. Deliberately NO write — replying stays on the phone,
+    // where the admin session and the action cards live. NB the READ is
+    // genuinely wider than the other device-key doors: it hands back EVERY
+    // conversation's title and the full messages of one, where the ask
+    // channel only ever transmitted the newest turns of the one convo the
+    // owner was actively asking about. That is the honest blast radius of a
+    // compromised key on this door — acceptable because it is the OWNER's
+    // own chat history (their words and the model's), never guest PII beyond
+    // what `brief` already exposes, and the device key is the boundary the
+    // whole channel already trusts.
     'chat_mirror' => function ($in) {
         rate_limit('night-mirror', 60, 60);
         night_require_key((string) ($in['secret'] ?? ''), 'chat_mirror', $in['build'] ?? '');
@@ -1363,6 +1376,12 @@ route_actions([
         // 20-second poll later. No session is held (machine routes have
         // none), and the loop re-sweeps so an expiry mid-wait is honoured.
         $wait = min(25, max(0, (int) ($in['wait'] ?? 0)));
+        // CONCURRENCY CAP: with every long-poll slot busy, do NOT hold a
+        // worker — answer the current snapshot and let the Mac re-arm. Stops
+        // a device-key holder draining the FPM pool with parallel holds.
+        if ($wait > 0 && night_poll_slot() === '') {
+            $wait = 0;
+        }
         $until = time() + $wait;
         $out = [];
         $rows = []; // before the try — the json_out-in-catch rule again

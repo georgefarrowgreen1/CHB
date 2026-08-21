@@ -952,6 +952,27 @@ signing and what is real; what matters HERE is the site half and the rules.
   think-absence + ref + already + mirror pass-through), mac ui-test (the ⇗
   through the bridge, the read-only view, back re-arms the composer — NB
   the phview row joins `.crow`, so rail-count checks exclude `.phview`).
+  **THE SECURITY PASS (Aug 2026), for the record.** The web tool could be an
+  UNCONFIRMED exfil channel — a prompt-injection page or hostile guest
+  message could steer a SECOND fetch to attacker.example with guest names +
+  balances in the query string (a fetch is not an ACT, so no owner confirm).
+  Closed: the web tool may fetch ONLY a host the OWNER named this
+  conversation (`webOwnerHosts`/`webHostAllowed` over the user turns; a
+  subdomain of a named host passes, the reverse never; a redirect WITHIN an
+  owner-named site is the site's choice, re-checked only for SSRF). The
+  device-key long-poll doors (`asks`/`chat_poll`/`ask_status`) each held an
+  FPM worker up to 25s with only a request-COUNT limit — a key holder could
+  drain the pool; a MySQL-advisory concurrency cap (`night_poll_slot`,
+  8 slots, the book_lock mechanism) now makes a door answer its snapshot NOW
+  when every slot is busy rather than hold. And `chat_mirror`'s comment
+  claimed false parity — it IS a wider read (every convo title + one convo's
+  full messages) than the ask channel; the comment now states the honest
+  blast radius of a compromised key (owner's own chat history, never guest
+  PII beyond `brief`). Gated: core-test (the exfil guard both ways),
+  test-integration §29 (the cap held on a second connection, proven by
+  timing). Confirmed NOT problems: CSRF on every admin door, night_require_key
+  fails closed on a corrupt row, chat_import strips act/img/think, the
+  pinned-IP transport closes the rebinding TOCTOU incl. cloud-metadata IPs.
   **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
   moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
   test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
