@@ -1549,6 +1549,65 @@ cottage has — so the tile now opens something that always answers.
     is what fails. Second time in two days this shape has bitten (the arrival preview
     route was the first).
 
+## What the cottage HAS and what guests AGREE TO, where they are needed
+
+Two per-cottage stores (`amenities-<k>`, `houserules-<k>`) had display surfaces and
+nothing else could see them. Found by asking who reads the keys — the answer was
+"only the four renderers".
+- **THE ASSISTANT WAS BLIND TO BOTH.** `night_tool_cottages` handed the model a
+  cottage's name, occupancy, base rate and up to six published Q&A. Asked *"can
+  guests bring a dog to Pimpernel?"* it had nothing to answer from, and its guard
+  correctly DROPS a bluff — so the question every holiday let is asked most got a
+  shrug about a fact the site holds. Both lists ride the tool now, capped at
+  `NIGHT_TOOL_LIST_MAX` (10) and shaped in the pure lib.
+- **THE WORLD SHEET DELIBERATELY DOES NOT CARRY THEM**, and that is asserted as an
+  ABSENCE: the pack rides EVERY ask and pays context for it, so the Q&A, the
+  amenities and the rules are all withheld there and the `cottages` tool is where
+  you go deep — the discipline `night_world` was built with.
+- **THE GUEST CHAT'S ON-DEVICE ANSWERER GAINED A SECOND TIER** (`guestFactCorpus`,
+  consulted only when `guestFaqCorpus` abstains). A rule is ONE entry each — "no
+  dogs, sorry" answers the dog question and the quiet-hours rule answers another —
+  while the amenities are ONE entry per cottage, because answering "is there a
+  dishwasher?" with the single word "Dishwasher" is a worse reply than none; the
+  list, led by what they asked about, is an answer. **The ordering is the whole
+  safety story**: a written answer can never be outscored by a derived one, so this
+  can only turn a silence into an answer. Break-tested by inverting it, which fires
+  the parking check.
+- NB a check phrased "what TIME do we need to be quiet" tests the wrong thing — it
+  hits the built-in check-in/checkout topic on the word *time* and the written
+  answer wins BY DESIGN. Phrase a tier-2 assertion so it reaches tier 2.
+
+## The House Rules were a defined term with teeth and no document
+
+Clause 3 says follow them; clause 8 lets us cancel with **no refund** for seriously
+breaking them — and clause 1 defined them as *"a short separate document we send
+with your confirmation"*, which does not exist and never did. The contract could
+end a stay over a document nobody was ever sent.
+- **The definition is GENERATED per cottage** (`termsHouseRules`, the mechanism
+  `termsSecurityDeposit` already uses) and names where they really are: the
+  cottage's page, and the arrival email before you travel.
+- **The rules THEMSELVES sit in clause 3**, directly after the sentence that tells
+  you to follow them (`houseRulesClauseParagraphs`) — a term you agree to should be
+  readable where you agree to it.
+- **Only the owner's OWN rules**, not `guestHouseRuleList`'s — the gate caught the
+  first version restating "Check-in after 15:00" as a house rule, which clause 1
+  already defines and the confirmation already states. Same line the arrival email
+  draws, and no fallback to `DEFAULT_HOUSE_RULES`, whose two courtesies clause 3's
+  own opening sentence already covers. Nothing saved → clause 3 says nothing.
+- **The Confirmation definition claimed to carry "directions and the House Rules"** —
+  those travel in the ARRIVAL email. Corrected, and both literals are now LABEL-ONLY
+  in `termsSections` so the dead copy cannot drift back.
+- `TERMS_VERSION` 2026-08a → **2026-08b**.
+- Gates: ui-test-terms §5b/§5c (the absent document, the generated definition, the
+  corrected confirmation, the rules in clause 3 and their placement, the empty
+  case), smoke-test's guest-FAQ block (7 new), test-nightshift (4), test-integration
+  §26c (the wiring + the world sheet's absence). Break-tests fired on the corpus
+  precedence, the clause-3 wiring and the endpoint read.
+- **THE HELPER-ONLY GATE MISSED THE WIRING FOR THE THIRD TIME THIS WEEK**: deleting
+  the `content_json` reads from nightshift.php leaves test-nightshift **fully
+  green**, because it drives `night_tool_cottages` with the lists already on its
+  rows. Whenever a pure lib gains a field, gate the ROUTE that fills it.
+
 ## The guest's invoice: ONE document, two presentations
 
 **AND IT IS MODERN, not a letterhead** (asked for as *"still looks like an old style

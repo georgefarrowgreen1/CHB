@@ -1518,6 +1518,42 @@ if (typeof get('guestFaqAnswer') === 'function') {
     check('guest FAQ answers a built-in topic (parking)', !!park && /park/i.test(park.q + ' ' + park.a), park ? park.q : 'null');
     check('guest FAQ returns null for an unrelated question (→ owner)', faq('what is the airspeed of a swallow') === null);
     check('guest FAQ ignores a bare greeting', faq('hi there') === null);
+
+    // ---- THE SECOND TIER: the facts the site keeps that nobody wrote as a Q&A.
+    // The house rules and the amenities are proper per-cottage stores now and the
+    // matcher could not see either, so "can we bring our dog?" went to a person
+    // even where the rules answer it plainly. Consulted ONLY when the written
+    // corpus abstains — that ordering is what makes this safe, so it is asserted
+    // rather than assumed.
+    vm.runInContext(`
+        siteContent['houserules-jollyboat'] = ['No smoking indoors', 'Quiet after 10pm — the lane carries sound'];
+        siteContent['amenities-jollyboat'] = ['Wood-burning stove', 'Dishwasher', 'Off-street parking'];
+    `, ctx);
+    const smoke = faq('is smoking allowed inside?');
+    check('guest FAQ answers from a HOUSE RULE when no Q&A covers it',
+        !!smoke && /No smoking indoors/.test(smoke.a), smoke ? smoke.a : 'null');
+    // NB phrased so it reaches tier 2 at all: "what time…" hits the built-in
+    // check-in/checkout topic on the word "time", and a written answer WINS by
+    // design — which is the precedence being asserted two checks below. What
+    // this one owns is that among the RULES the right one is chosen.
+    const quiet = faq('are there any quiet hours');
+    check('…and picks the RULE that matches, not just any rule',
+        !!quiet && /Quiet after 10pm/.test(quiet.a), quiet ? quiet.a : 'null');
+    const dish = faq('is there a dishwasher');
+    check('guest FAQ answers from the AMENITIES, as a list rather than one word',
+        !!dish && /Jollyboat has:/.test(dish.a) && /Dishwasher/.test(dish.a), dish ? dish.a : 'null');
+    // THE WRITTEN ANSWER STILL WINS. "Off-street parking" is an amenity AND the
+    // built-in parking topic exists — a derived list must never displace either.
+    const park2 = faq('where can I park the car');
+    check('a written answer still beats the derived list (parking)',
+        !!park2 && !/Jollyboat has:/.test(park2.a), park2 ? park2.a : 'null');
+    const dog2 = faq('can I bring my dog?');
+    check('…and the dogs FAQ is untouched by the new tier',
+        !!dog2 && /dogs stay free/.test(dog2.a), dog2 ? dog2.a : 'null');
+    // Still precision-biased: the new corpus must not answer anything and everything.
+    check('the second tier stays silent on an unrelated question',
+        faq('what is the airspeed of a swallow') === null);
+    vm.runInContext(`delete siteContent['houserules-jollyboat']; delete siteContent['amenities-jollyboat'];`, ctx);
 }
 
 // ---- Payments ledger: a refund the owner has issued reads "Completed" (not a

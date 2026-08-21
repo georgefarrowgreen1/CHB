@@ -223,7 +223,12 @@ function ownerchat_file_ask(array $msg, $convoIn)
         $fleetRows = [];
         foreach (db()->query('SELECT prop_key, name, couple_rate, max_adults, max_children, max_total
                                 FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll() as $pr) {
+            // The WORLD SHEET stays thin on purpose — it rides EVERY ask and
+            // pays context for it, so the Q&A, the amenities and the rules are
+            // all withheld here and the `cottages` tool is where you go deep.
             $pr['facts'] = [];
+            $pr['amenities'] = [];
+            $pr['rules'] = [];
             $fleetRows[] = $pr;
         }
         $todayIsoW = date('Y-m-d');
@@ -2118,6 +2123,19 @@ route_actions([
                         $facts = [];
                     }
                     $pr['facts'] = $facts;
+                    // What the cottage HAS and what guests AGREE TO — the two
+                    // stores the model could not see. Same shape as the Q&A
+                    // above: read here, shaped and capped in the pure lib.
+                    foreach (['amenities' => 'amenities-', 'rules' => 'houserules-'] as $k => $prefix) {
+                        $pr[$k] = [];
+                        try {
+                            $v = content_json($prefix . $pr['prop_key'], []);
+                            if (is_array($v)) {
+                                $pr[$k] = $v;
+                            }
+                        } catch (\Throwable $e) {
+                        }
+                    }
                     $rows[] = $pr;
                 }
                 json_out(['ok' => true, 'tool' => $tool, 'data' => night_tool_cottages($rows)]);
