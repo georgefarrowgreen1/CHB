@@ -2949,6 +2949,34 @@ it_check('chat_tool: bookings finds the stay by name, cottage NAMED not keyed',
 it_check('chat_tool: no email, phone, address or postcode in the payload',
     strpos($r['raw'], 'ctg@gmail.com') === false && strpos($r['raw'], '900456') === false, mb_substr($r['raw'], 0, 200));
 
+// THE COTTAGES TOOL KNOWS WHAT THE COTTAGE HAS AND WHAT GUESTS AGREE TO. Both
+// are per-cottage stores the model could not see, so "can guests bring a dog?"
+// had nothing to answer from. test-nightshift drives the shaping with the lists
+// already on its rows and passes whether or not anything reads the content
+// table — this is the WIRING half, the trap that has bitten twice this week.
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'amenities-' . $propKey,
+    'value' => ['Wood-burning stove', 'Off-street parking']]);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'houserules-' . $propKey,
+    'value' => ['Sorry, no dogs here', 'Quiet after 10pm']]);
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'chat_tool', 'secret' => $SECRET, 'tool' => 'cottages']);
+$ctCot = null;
+foreach ($r['json']['data']['cottages'] ?? [] as $c) {
+    if (($c['cottage'] ?? '') === ($expectName26c ?: $propKey)) { $ctCot = $c; }
+}
+it_check('chat_tool: the cottages tool carries the saved amenities',
+    in_array('Wood-burning stove', $ctCot['amenities'] ?? [], true), json_encode($ctCot));
+it_check('chat_tool: …and the saved house rules — the dog question is answerable',
+    in_array('Sorry, no dogs here', $ctCot['rules'] ?? [], true), json_encode($ctCot));
+// The WORLD SHEET stays thin: it rides every ask and pays context for it, so
+// the deep lists belong to the tool. Asserted as an absence, because a pack
+// that quietly grew would cost tokens on every single question.
+$r = http($guest, 'POST', '/nightshift.php', ['action' => 'asks', 'secret' => $SECRET, 'wait' => 0]);
+it_check('the world sheet does NOT carry them — the tool is where you go deep',
+    strpos($r['raw'], 'Wood-burning stove') === false && strpos($r['raw'], 'Sorry, no dogs here') === false,
+    mb_substr($r['raw'], 0, 300));
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'amenities-' . $propKey, 'value' => []]);
+http($admin, 'POST', '/content.php', ['action' => 'set', 'key' => 'houserules-' . $propKey, 'value' => []]);
+
 // The cottages tool — the fleet through the real endpoint. This is the tool
 // behind "the AI can't see cottage data": the first four all assumed the
 // model knew what the cottages WERE.

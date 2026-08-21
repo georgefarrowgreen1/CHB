@@ -124,6 +124,51 @@ const clause = (text, n) => {
   ok(/Balance due date:\s*30 days before/.test(odefs), '…and to the 30-day window pricing.php defaults to');
   ok(!/\b0%|NaN|undefined/.test(ot.text), 'never 0%, NaN or undefined');
 
+  // ── 5b. THE HOUSE RULES ARE A DEFINED TERM WITH TEETH ──────────────────────
+  // Clause 3 says follow them and clause 8 lets us cancel with no refund for
+  // seriously breaking them — while the definition described "a short separate
+  // document we send with your confirmation", which does not exist and never
+  // did. So the contract could end a stay over a document nobody was sent.
+  // The rules live per cottage in the content table; the definition is
+  // generated from where they REALLY are, and the clause that relies on them
+  // carries them, so a guest accepting the terms has actually read them.
+  console.log('5b. the House Rules definition describes what really happens');
+  const hrPage = await openSite(browser, base, {
+    payment: { deposit_pct: 30, balance_days: 45 },
+    content: { 'houserules-jollyboat': ['No smoking indoors', 'Quiet after 10pm'] },
+  });
+  const hrT = await termsText(hrPage);
+  const hrDefs = clause(hrT.text, 1);
+  const hrC3 = clause(hrT.text, 3);
+  ok(!/separate document/i.test(hrT.text),
+    'the promise of a separate document nobody sends is gone from the whole contract');
+  ok(/House Rules:\s*the rules for Jollyboat, shown on its page/.test(hrDefs),
+    `the definition names the cottage and where they are (${(hrDefs.match(/House Rules: [^\n]*/) || [''])[0].slice(0, 90)})`);
+  ok(/form part of these terms/.test(hrDefs), '…and still says they form part of the terms');
+  // The CONFIRMATION definition claimed to carry directions and the House Rules.
+  // Those travel in the ARRIVAL email, a week before the stay.
+  ok(/Confirmation:[^\n]*arrival details before you travel/.test(hrDefs)
+    && !/Confirmation:[^\n]*directions and the House Rules\./.test(hrDefs),
+    `the Confirmation definition says what it really carries (${(hrDefs.match(/Confirmation: [^\n]*/) || [''])[0].slice(0, 100)})`);
+  // And the rules themselves are IN the clause that tells you to follow them.
+  ok(/The House Rules for this property are:/.test(hrC3)
+    && /No smoking indoors; Quiet after 10pm/.test(hrC3),
+    `clause 3 carries the cottage's own rules (${(hrC3.match(/The House Rules for this property are:[^\n]*/) || [''])[0].slice(0, 80)})`);
+  ok(hrC3.indexOf('follow the House Rules') < hrC3.indexOf('The House Rules for this property are:'),
+    '…directly after the sentence that names them');
+  await hrPage.close();
+
+  console.log('5c. a cottage with no rules written up claims none');
+  // The faq-modal rule, in the contract: never a heading with nothing under it,
+  // and never a list the owner has not written.
+  const hrNone = await openSite(browser, base, { payment: { deposit_pct: 30, balance_days: 45 } });
+  const hnT = await termsText(hrNone);
+  ok(!/The House Rules for this property are:/.test(clause(hnT.text, 3)),
+    'no rules saved → clause 3 states none');
+  ok(/House Rules:\s*the rules for Jollyboat/.test(clause(hnT.text, 1)),
+    '…but the definition still tells the guest where to find them');
+  await hrNone.close();
+
   console.log('6. the Limited policy publishes the window it actually enforces');
   // rentalRefundBlocked() refuses a rental refund inside 7 days under Limited,
   // and the published policy used to stop at "7–14 days" — so a guest cancelling

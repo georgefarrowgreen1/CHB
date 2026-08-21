@@ -1448,6 +1448,8 @@ function night_tool_availability($cottage, $fromIso, $toIso, array $takenBy, $pr
 // its own published Q&A, capped. Nothing here is guest data, so there is
 // nothing to withhold beyond the caps.
 const NIGHT_TOOL_FACTS_MAX = 6;
+// The amenities / house-rules lists the cottages tool hands over per cottage.
+const NIGHT_TOOL_LIST_MAX = 10;
 function night_tool_cottages(array $rows)
 {
     $out = [];
@@ -1489,6 +1491,28 @@ function night_tool_cottages(array $rows)
         }
         if ($facts) {
             $one['facts'] = $facts;
+        }
+        // WHAT THE COTTAGE HAS, AND WHAT GUESTS AGREE TO. Both are stores the
+        // site already keeps per cottage and the model could not see: asked
+        // "can guests bring a dog to Pimpernel?" it had nothing to answer from,
+        // and the guard correctly drops a bluff — so the one question every
+        // holiday let is asked most got a shrug about a fact the site holds.
+        // Capped like the Q&A: the tool is where you go DEEP, but a fleet of
+        // cottages with forty lines each would crowd out the answer.
+        foreach ([['amenities', 'amenities'], ['rules', 'rules']] as [$src, $key]) {
+            $list = [];
+            foreach (is_array($r[$src] ?? null) ? $r[$src] : [] as $v) {
+                if (!is_scalar($v)) {
+                    continue;
+                }
+                $t = night_str($v);
+                if ($t !== '') {
+                    $list[] = mb_substr($t, 0, NIGHT_BRIEF_FACT_A_MAX);
+                }
+            }
+            if ($list) {
+                $one[$key] = array_slice($list, 0, NIGHT_TOOL_LIST_MAX);
+            }
         }
         $out[] = $one;
     }

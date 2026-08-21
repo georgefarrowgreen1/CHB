@@ -787,6 +787,28 @@ nsk('no rate → no figure, no occupancy → no sleeps claim, garbage absent',
     && !isset($ct['cottages'][1]['facts']) && count($ct['cottages']) === 2
     && strpos(json_encode($ct), 'Array') === false, json_encode($ct));
 
+// WHAT THE COTTAGE HAS, AND WHAT GUESTS AGREE TO. Both are stores the site keeps
+// per cottage and the model could not see: asked "can guests bring a dog to
+// Pimpernel?" it had nothing to answer from, and its guard correctly drops a
+// bluff — so the question every holiday let is asked most got a shrug about a
+// fact the site holds. Capped like the Q&A, and NEVER invented.
+$cl = night_tool_cottages([
+    ['name' => 'Pimpernel', 'couple_rate' => 175, 'max_adults' => 4, 'max_children' => 2, 'max_total' => 4,
+     'amenities' => array_merge(['Wood-burning stove', 'Sea view'], array_map(fn ($i) => 'Thing ' . $i, range(1, 12))),
+     'rules' => ['No smoking indoors', 'Sorry, no dogs at Pimpernel', '', '   ', ['nested'], null]],
+    ['name' => 'Bare Cottage', 'couple_rate' => 100, 'amenities' => 'junk', 'rules' => null],
+]);
+nsk('a cottage carries its amenities and its house rules',
+    ($cl['cottages'][0]['amenities'][0] ?? '') === 'Wood-burning stove'
+    && in_array('Sorry, no dogs at Pimpernel', $cl['cottages'][0]['rules'] ?? [], true),
+    json_encode($cl['cottages'][0] ?? null));
+nsk('both lists cap at ' . NIGHT_TOOL_LIST_MAX,
+    count($cl['cottages'][0]['amenities']) === NIGHT_TOOL_LIST_MAX);
+nsk('junk rows are dropped, the good ones stand',
+    count($cl['cottages'][0]['rules']) === 2 && strpos(json_encode($cl), 'Array') === false, json_encode($cl['cottages'][0]['rules'] ?? null));
+nsk('a cottage with neither claims neither — no empty keys to reason from',
+    !isset($cl['cottages'][1]['amenities']) && !isset($cl['cottages'][1]['rules']), json_encode($cl['cottages'][1] ?? null));
+
 // ── §25 THE WEB CHAT — the owner's Mac from anywhere, validated pure ──────
 echo "\n== §25 the web chat ==\n";
 

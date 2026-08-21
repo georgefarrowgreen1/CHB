@@ -6859,6 +6859,48 @@ const TERMS_MONEY_DEFS = {
     Deposit: () => termsPct() + '% of the Price, payable when you book.',
     'Balance due date': () => termsDays() + ' before your arrival date.',
 };
+// THE HOUSE RULES ARE A DEFINED TERM WITH TEETH — clause 3 says follow them and
+// clause 8 lets us cancel with no refund for seriously breaking them — and the
+// definition described "a short separate document we send with your
+// confirmation", which does not exist and never did. The rules live in the
+// content table per cottage and reach the guest on the cottage's page, on their
+// stay screen and in the arrival email. So the definition is GENERATED per
+// cottage now, the same mechanism the security deposit uses, and says where
+// they really are. Never claims a list that isn't there.
+function termsHouseRules(propKey) {
+    const meta = (typeof propertyMeta === 'object' && propertyMeta && propertyMeta[propKey]) || null;
+    const where =
+        'the rules for ' + ((meta && meta.name) || 'the property') +
+        ', shown on its page on the Website and sent to you with your arrival details before you travel. They form part of these terms.';
+    return where;
+}
+// The rules THEMSELVES, in the clause that already tells you to follow them.
+// A term you agree to should be readable where you agree to it, not promised
+// as a document that arrives later.
+function houseRulesClauseParagraphs(propKey) {
+    const base = (termsSections.find((s) => s.h.startsWith('3.')) || { p: [] }).p;
+    // THE OWNER'S OWN RULES, not guestHouseRuleList's — the same line the arrival
+    // email draws, and for the same reason. That helper leads with the auto
+    // lines (check-in, checkout, the guest limit), which clause 1 already
+    // defines and the confirmation already states; repeating them here would put
+    // one fact in a contract twice. And no fallback to DEFAULT_HOUSE_RULES,
+    // whose two courtesies clause 3's own opening sentence already covers.
+    let rules = [];
+    try {
+        const saved = siteContent['houserules-' + propKey];
+        if (Array.isArray(saved)) {
+            rules = saved.map((r) => String(r || '').trim()).filter(Boolean).slice(0, 20);
+        }
+    } catch (e) {}
+    if (!rules.length) return base;
+    // Placed directly after the sentence that names them, so the reader meets
+    // the rules at the point the clause relies on them.
+    const at = base.findIndex((p) => /follow the House Rules/.test(p));
+    const line = 'The House Rules for this property are: ' + rules.join('; ') + '.';
+    const out = base.slice();
+    out.splice(at >= 0 ? at + 1 : out.length, 0, line);
+    return out;
+}
 function paymentClauseParagraphs() {
     const paras = [
         'The price is confirmed in your confirmation.',
@@ -6884,6 +6926,7 @@ function definitionParagraphs(propKey) {
     return defs.map((par) => {
         const label = (par.match(/^([^:]{1,26}):\s/) || [])[1];
         if (label === 'Security deposit') return label + ': ' + termsSecurityDeposit(propKey);
+        if (label === 'House Rules') return label + ': ' + termsHouseRules(propKey);
         if (label && TERMS_MONEY_DEFS[label]) return label + ': ' + TERMS_MONEY_DEFS[label]();
         return par;
     });
@@ -6892,6 +6935,7 @@ function definitionParagraphs(propKey) {
 function effectiveTermsSections(propKey) {
     return termsSections.map((s) => {
         if (s.h.startsWith('1.')) return { h: s.h, p: definitionParagraphs(propKey) };
+        if (s.h.startsWith('3.')) return { h: s.h, p: houseRulesClauseParagraphs(propKey) };
         if (s.h.startsWith('5.')) return { h: s.h, p: paymentClauseParagraphs() };
         if (s.h.startsWith('7.')) return { h: s.h, p: cancellationClauseParagraphs(propKey) };
         return s;
@@ -8176,7 +8220,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-08a';
+const TERMS_VERSION = '2026-08b';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -8185,7 +8229,10 @@ const termsSections = [
             'Arrival/Departure Date: when your stay starts and ends, as shown in our confirmation.',
             'Booking: your confirmed stay at the property.',
             'Booking request: your request to book — it becomes a Booking only once we confirm it in writing.',
-            'Confirmation: our written acceptance of your booking request, with arrival/departure details, directions and the House Rules.',
+            // WHAT THE CONFIRMATION REALLY CARRIES. It used to promise "directions
+            // and the House Rules" — those travel in the ARRIVAL email, a week
+            // before the stay, and never did travel in the confirmation.
+            'Confirmation: our written acceptance of your booking request, with your dates, times and price. Directions and the House Rules follow with your arrival details before you travel.',
             'Price: the total cost of your stay, shown on the website and in our confirmation.',
             // These three carry only their LABEL and their place in the order — the
             // text is generated per cottage from the live payment schedule and the
@@ -8193,7 +8240,10 @@ const termsSections = [
             'Deposit: (generated)',
             'Balance due date: (generated)',
             'Security deposit: (generated)',
-            'House Rules: a short separate document we send with your confirmation; it forms part of these terms.',
+            // LABEL ONLY — generated per cottage by termsHouseRules(). The text
+            // after the colon is discarded, so the old claim about a separate
+            // document cannot drift back in.
+            'House Rules: (generated)',
             'Permitted pets: any animal the owner has agreed in writing you may bring.',
             'Group: you and everyone staying or visiting under your booking.',
             'We/us: ' + TERMS_BUSINESS + '.',
@@ -10763,6 +10813,48 @@ function guestFaqCorpus() {
     } catch (e) {}
     return out;
 }
+// THE SECOND TIER: the facts the site keeps that were never written as a Q&A.
+// A guest typing "can we bring our dog?" got no on-device answer even though
+// the cottage's house rules say so plainly — the matcher only ever read written
+// Q&A, so the question every holiday let is asked most went to a person.
+//
+// It is a SEPARATE corpus, consulted only when the written one abstains, and
+// that ordering is the whole safety story: a cottage with a real parking FAQ
+// still answers from it, because a derived entry can never outscore an answer
+// the owner wrote. Monotonic — this can only turn a silence into an answer.
+function guestFactCorpus() {
+    const out = [];
+    try {
+        const meta = typeof propertyMeta === 'object' && propertyMeta ? propertyMeta : {};
+        const active = typeof activeFrontProperty !== 'undefined' && activeFrontProperty ? [activeFrontProperty] : Object.keys(meta);
+        const keys = (active.length ? active : Object.keys(meta)).filter((k) => meta[k]);
+        keys.forEach((pk) => {
+            const name = (meta[pk] && meta[pk].name) || 'the cottage';
+            // A RULE IS ITS OWN ANSWER — one entry each, because "no dogs, sorry"
+            // answers the dog question and the quiet-hours rule answers a
+            // different one. Only the OWNER'S rules: the auto lines (check-in,
+            // checkout, guest limit) are already answered by CHAT_FAQ entries
+            // built from the same settings, and a second copy would compete.
+            const rules = Array.isArray(siteContent['houserules-' + pk]) ? siteContent['houserules-' + pk] : [];
+            rules.forEach((r) => {
+                const t = String(r || '').trim();
+                if (t) out.push({ q: t, a: t });
+            });
+            // AMENITIES ARE ONE ENTRY, NOT ONE EACH. Answering "is there a
+            // dishwasher?" with the single word "Dishwasher" is a worse reply
+            // than none; the list, led by the thing they asked about, is an
+            // answer. Every amenity word is on the q side, so any of them match.
+            const ams = (typeof guestAmenityList === 'function' ? guestAmenityList(pk) : []).slice(0, 30);
+            if (ams.length) {
+                out.push({
+                    q: 'amenities facilities ' + ams.join(' '),
+                    a: name + ' has: ' + ams.join(', ') + '.',
+                });
+            }
+        });
+    } catch (e) {}
+    return out;
+}
 // Returns the best-matching FAQ {q,a} for a typed question, or null when nothing
 // confidently matches (precision-biased: a wrong guest answer is worse than
 // none, so it needs a real question-word hit, not just answer-text coincidence).
@@ -10774,18 +10866,25 @@ function guestFaqAnswer(text) {
     const qset = new Set();
     words.forEach((w) => { qset.add(w); (GUEST_FAQ_SYN[w] || '').split(' ').filter(Boolean).forEach((s) => qset.add(s)); });
     const tok = (s) => new Set((s || '').toLowerCase().split(/[^a-z0-9-]+/).filter((w) => w.length > 1));
-    let best = null, bestScore = 0, bestQHits = 0;
-    guestFaqCorpus().forEach((c) => {
-        // Whole-word match (so "cot" doesn't hit "cottage"); a word in BOTH the
-        // question and the answer is the strongest signal (+3).
-        const qtoks = tok(c.q), atoks = tok(c.a);
-        let s = 0, qh = 0;
-        qset.forEach((w) => { if (qtoks.has(w)) { qh++; s += 2; } if (atoks.has(w)) s += 1; });
-        if (s > bestScore) { bestScore = s; bestQHits = qh; best = c; }
-    });
-    // Precision-biased: need a real question-word hit AND a total worth ≥ 3 (a
-    // distinctive word echoed in both Q & A, or two overlapping words).
-    return best && bestQHits >= 1 && bestScore >= 3 ? best : null;
+    // ONE scoring pass, run over a corpus. Precision-biased: needs a real
+    // question-word hit AND a total worth ≥ 3 (a distinctive word echoed in both
+    // Q & A, or two overlapping words).
+    const pick = (corpus) => {
+        let best = null, bestScore = 0, bestQHits = 0;
+        corpus.forEach((c) => {
+            // Whole-word match (so "cot" doesn't hit "cottage"); a word in BOTH the
+            // question and the answer is the strongest signal (+3).
+            const qtoks = tok(c.q), atoks = tok(c.a);
+            let s = 0, qh = 0;
+            qset.forEach((w) => { if (qtoks.has(w)) { qh++; s += 2; } if (atoks.has(w)) s += 1; });
+            if (s > bestScore) { bestScore = s; bestQHits = qh; best = c; }
+        });
+        return best && bestQHits >= 1 && bestScore >= 3 ? best : null;
+    };
+    // The owner's WRITTEN answers first, and they win outright — the derived
+    // facts are consulted only where the written corpus has nothing, so this
+    // can turn a silence into an answer and never an answer into a worse one.
+    return pick(guestFaqCorpus()) || pick(guestFactCorpus());
 }
 // A typed guest question the on-device FAQ assistant couldn't answer is recorded
 // (fire-and-forget, best-effort) so the owner can see recurring gaps and turn
@@ -18206,7 +18305,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hrmail1';
+    const BUILD = 'hrreach1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
