@@ -874,6 +874,51 @@ chk('§9 …and the reply shell it used to use really did greet twice (' . ($avO
 chk('§9 …and is the ARRIVAL template, not the reply shell',
     strpos($avPrevHtml, 'About your booking') === false && strpos($avPrevHtml, 'You arrive') !== false);
 
+// ---------------------------------------------------------------------------
+//  §10 THE ARRIVAL EMAIL CARRIES THE HOUSE RULES
+//  Asked for. The rules already reach the guest twice (the cottage page while
+//  they choose, the House rules tile while they stay) and NOT in the one email
+//  they read on the way. Resolved by the SENDER (arrival_email_payload) and
+//  passed down, because this composer is one of the pure builders — a
+//  content_value() call inside it breaks every gate that drives it with no
+//  database. So the composer is driven here with rules ON the payload.
+echo "\n== \u{00A7}10 the arrival email carries the house rules ==\n";
+$hrRules = ['No smoking indoors', 'Quiet after 10pm & no parties', 'Please strip the beds <before> you go'];
+$hrOut = arrival_email_body(array_merge($avB, ['rules' => $hrRules]));
+chk('§10 the rules reach the HTML half', strpos($hrOut['html'], 'No smoking indoors') !== false
+    && strpos($hrOut['html'], 'A few house rules') !== false);
+chk('§10 …and the text half, as its own list', strpos($hrOut['text'], "A few house rules:\n- No smoking indoors") !== false);
+chk('§10 every rule travels, not just the first', strpos($hrOut['html'], 'Quiet after 10pm') !== false
+    && strpos($hrOut['text'], 'Quiet after 10pm') !== false);
+// Owner free text — escaped at the boundary, never markup in a guest's inbox.
+chk('§10 free text is ESCAPED', strpos($hrOut['html'], '<before>') === false
+    && strpos($hrOut['html'], '&lt;before&gt;') !== false && strpos($hrOut['html'], '&amp;') !== false);
+// IT MUST NOT SAY THE TIMES TWICE. The Arrive/Leave rows above already state
+// them, so the AUTO lines the guest's stay screen leads with are deliberately
+// NOT here — only the owner's own list travels.
+chk('§10 the arrive/leave rows stay the only statement of the times',
+    substr_count($hrOut['html'], 'any time from') === 1
+    && strpos($hrOut['html'], 'Check-in after') === false
+    && strpos($hrOut['html'], 'Checkout before') === false);
+// Nothing saved → no heading and no empty block, on either half.
+$hrNone = arrival_email_body($avB);
+chk('§10 no rules → no heading, no empty block',
+    stripos($hrNone['html'], 'house rules') === false && stripos($hrNone['text'], 'house rules') === false);
+// A hand-edited content row cannot put a non-string or a runaway list into an
+// inbox — the composer filters its own input as well as the payload builder.
+$hrJunk = arrival_email_body(array_merge($avB, ['rules' => ['Fine', '', '   ', ['nested'], null, 'Also fine']]));
+chk('§10 junk rows are dropped, the good ones stand',
+    substr_count($hrJunk['html'], '&bull;') === 2 && strpos($hrJunk['html'], 'Also fine') !== false);
+chk('§10 a non-array rules field is simply no rules',
+    stripos(arrival_email_body(array_merge($avB, ['rules' => 'no smoking']))['html'], 'house rules') === false);
+// And the REVIEWED note still replaces the house sentence with the rules present —
+// the two blocks are independent, which is the thing a combined check would miss.
+$hrBoth = arrival_email_body(array_merge($avB, ['note' => $avNote, 'rules' => $hrRules]));
+chk('§10 a reviewed message and the rules coexist',
+    strpos($hrBoth['html'], 'left the milk in the fridge') !== false
+    && strpos($hrBoth['html'], 'No smoking indoors') !== false
+    && strpos($hrBoth['html'], 'everything you need for') === false);
+
 @unlink($tmp);
 echo "\n== Summary ==\n";
 if ($fail) {

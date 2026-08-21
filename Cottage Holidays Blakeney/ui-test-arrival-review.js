@@ -54,7 +54,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           ok: true,
           subject: 'You arrive Fri 28 Aug — everything you need for 21A Westgate',
           message: 'Hello Sarah — everything you need for 21A Westgate is below. We look forward to seeing you.',
-          facts: { cottage: '21A Westgate', arrive: 'Fri 28 Aug, from 3pm', leave: 'Mon 31 Aug, by 10am', address: '21A Westgate Street, Blakeney' },
+          facts: { cottage: '21A Westgate', arrive: 'Fri 28 Aug, from 3pm', leave: 'Mon 31 Aug, by 10am', address: '21A Westgate Street, Blakeney', rules: ['No smoking indoors', 'Quiet after 10pm'] },
         });
       }
       if (b.action === 'send_arrival') return json({ ok: true });
@@ -121,6 +121,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/everything you need for/.test(opened.body), `the MESSAGE is prefilled and editable (${opened.body.slice(0, 40)}…)`);
   ok(/Fri 28 Aug, from 3pm/.test(opened.facts) && /Westgate Street/.test(opened.facts) && /never emailed/.test(opened.facts),
     'the facts it adds are shown, including that the code is never emailed');
+  // THE HOUSE RULES RIDE THE EMAIL, so the panel names them among the facts —
+  // an owner who cannot see they are already going types them into the message
+  // and the guest reads them twice. Same reason the dates and address are here.
+  ok(/House rules/.test(opened.facts) && /No smoking indoors/.test(opened.facts) && /Quiet after 10pm/.test(opened.facts),
+    'the house rules are named among them too, so they are not typed again');
   ok(/Arrival email/.test(opened.title), `the screen is named for what it is (${opened.title})`);
   // Saved replies inserts an ENQUIRY-reply paragraph and ✨ Draft reply writes a
   // BOOKING reply — either would replace the arrival message with something

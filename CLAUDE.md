@@ -1522,6 +1522,32 @@ cottage has — so the tile now opens something that always answers.
   (its own section, the quoted settings, the verdict, Add+Save through the real
   endpoint), ui-test-guest-modals. Break-tests fired on the shared derivation and the
   verdict's count.
+- **AND THEY RIDE THE ARRIVAL EMAIL** (asked for). They reached the guest twice — the
+  cottage page while choosing, the tile while staying — and not in the one email read on
+  the way. **Resolved by the SENDER**, `arrival_email_payload` → `arrival_house_rules`,
+  and passed down on the payload: `arrival_email_body` is one of the PURE composers and
+  a `content_value()` call inside one breaks every gate that drives it with no database
+  (the `email_host_name()` rule).
+  - **Only the owner's OWN list travels.** The three auto lines are NOT repeated — the
+    Arrive/Leave rows above already state the times, and saying one fact twice in one
+    email is the defect the double-greeting sweep had just finished closing. And there
+    is no fallback to `DEFAULT_HOUSE_RULES`: "please treat the cottage as your own home"
+    under a heading reading *House rules* is filler in an email read once.
+  - **NOT `email_note`.** The tinted accent callout directly above the button is "your
+    entry details" — the thing this email needs the guest to ACT on — and a second
+    identical block under it makes two shouts where the design system means one. Rules
+    are reference, so they sit in the flow as `email_p` at body ink. Caught by looking at
+    the rendered email, not by a gate.
+  - Sanitised at BOTH ends (a hand-edited content row cannot put markup or a non-string
+    in an inbox; capped at 12, the full list always being on the stay screen), escaped at
+    the boundary, and the review composer's facts panel NAMES them so the owner does not
+    type them into the message as well.
+  - **THE COMPOSER GATE CANNOT SEE THE WIRING** — break-tested: deleting the `rules` line
+    from `arrival_email_payload` leaves test-emails-render §10 fully green, because it
+    drives the builder with rules already on the payload. test-integration §23 saves real
+    rules through the real endpoint and reads them out of the real rendered email; that
+    is what fails. Second time in two days this shape has bitten (the arrival preview
+    route was the first).
 
 ## The guest's invoice: ONE document, two presentations
 

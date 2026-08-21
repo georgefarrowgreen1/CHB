@@ -28083,6 +28083,9 @@ async function openArrivalReview(bookingId) {
         host.innerHTML = `<div class="arv-facts">
             <div class="arv-cap">Added automatically, below your message</div>
             ${factRows.map((r) => `<div class="arv-row"><span>${escapeHtml(r[0])}</span><b>${escapeHtml(String(r[1]))}</b></div>`).join('')}
+            ${Array.isArray(f.rules) && f.rules.length
+                ? `<div class="arv-row"><span>House rules</span><b>${f.rules.map((r) => escapeHtml(String(r))).join('<br>')}</b></div>`
+                : ''}
             <div class="arv-row"><span>Also</span><b>Directions link · “Open my booking” button · your phone number</b></div>
             <p class="arv-note">The key safe code is never emailed — it appears on their booking page.</p>
         </div>`;
