@@ -2310,6 +2310,39 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   `refreshInboxBadge()` (data lands), and the two settings hooks above.
 - NB `#day-spine[hidden] { display: none; }` is load-bearing: the spine's own
   `display: flex` outranks the hidden attribute (the arrival stand-down lesson).
+- **THE REFINEMENT ROUND (five built, one refuted).** Proposed on a canvas
+  against the SHIPPED frame, then each driven: **the rail's current mark
+  GLIDES** (`.rail-ind` — the dock's pill turned vertical, travelling on
+  `translate` with the rows above it, re-seated by a ResizeObserver, snapping
+  under reduced motion); **Today opens like every other screen** (on rail
+  widths its own `#today-date` carries the greeting at the spine's serif scale
+  and the redundant `h1` stands down — below the rail it renders byte for byte
+  as before, and the greeting is never hidden-but-present); **the theme row
+  names its DESTINATION** ("Switch to dark" — a control says what it does, and
+  the label, `aria-label` and glyph all read the class `toggleTheme` keeps);
+  **composure past 1720px** (`body.rail-wide` + `body.rail-widecol` — the
+  ensemble centres as ONE unit, and the two column caps get their own
+  arithmetic because CSS cannot see the active view's `.wide` from `<body>`);
+  and **Payments shares the title's rail** on rail screens (longhand
+  `margin-left: 0` only — the `.mo-pulse` shorthand lesson).
+- **THE REFUTED ONE, and it is pinned as a decision.** The condensed spine was
+  going to NAME THE RECORD you are in, on the reasoning that the old condensed
+  header did and losing it was a regression. Driving it says otherwise: at rail
+  widths a hub **docks beside its own list** (`bookingsSplitWide`, ≥1200), so
+  the active view is still the workspace and the record is on screen with its
+  own head; below 1200 the hub is standalone and the header, which exists
+  there, names it exactly as before. No width is missing the place, so the
+  spine would have been a SECOND name for a fact already on screen. §8 pins
+  both halves, so the absence stays a tested decision.
+- **TWO TRAPS THE ROUND ITSELF PRODUCED, both worth keeping.** A changed-guard
+  must check the DOM's TRUTH, not only its own memory: `initBackOffice` paints
+  `#today-date` with the bare date the instant the page opens, so a memo-only
+  guard believed itself current and left the greeting off — two memos now (the
+  intended string and the WRITTEN one, because innerHTML normalises on write).
+  And an index-based CSS edit ate an `@media` opener while removing a block,
+  which silently unbalanced every rule after it — the rail simply stopped
+  hiding at 390px, four sections away from the edit. Delete CSS by matching
+  the whole rule, never by slicing to the next brace.
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav

@@ -19947,10 +19947,16 @@ function chbRailEnsure() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
             <span class="rail-lbl">Ask anything…</span><span class="rail-kbd">⌘K</span>
         </button>
-        <button type="button" class="rail-theme" data-act="toggleTheme" aria-label="Switch theme" title="Switch theme">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2M12 19.4v2M21.4 12h-2M4.6 12h-2M18.4 5.6l-1.4 1.4M7 17l-1.4 1.4M18.4 18.4L17 17M7 7L5.6 5.6"/></svg>
-            <span class="rail-lbl">Theme</span>
+        <button type="button" class="rail-theme" data-act="railToggleTheme" aria-label="Switch theme" title="Switch theme">
+            <span class="rail-theme-ic" aria-hidden="true"></span>
+            <span class="rail-lbl" id="rail-theme-lbl">Theme</span>
         </button>`;
+    // The gliding current mark — the dock's pill, turned vertical. Behind the
+    // rows (they carry z-index 1); sized and translated by chbRailPlaceInd.
+    const ind = document.createElement('span');
+    ind.className = 'rail-ind';
+    ind.setAttribute('aria-hidden', 'true');
+    el.insertBefore(ind, el.firstChild);
     // The two navs must read as ONE vocabulary, so each row that has a dock
     // twin CLONES the dock button's own <svg> — identity by construction; the
     // literals above are the fallback, and the Cottages glyph has no twin.
@@ -19980,6 +19986,19 @@ function chbRailEnsure() {
         matchMedia('(min-width: 1200px)').addEventListener('change', () => {
             try { chbFrameSync(); } catch (e) {}
         });
+    } catch (e) {}
+    // The rail's geometry moves for reasons beyond a tab change (the fold,
+    // fonts landing) — watch it rather than remembering to re-place the pill
+    // from each spot (the watchAdminDock rule).
+    try {
+        if (typeof ResizeObserver === 'function') {
+            const ro = new ResizeObserver(() => {
+                requestAnimationFrame(() => {
+                    try { chbRailPlaceInd(); } catch (e) {}
+                });
+            });
+            ro.observe(el);
+        }
     } catch (e) {}
     // The spine condenses on scroll while it is the top of the page (rail
     // screens have no header). HYSTERESIS is load-bearing, ported from the
@@ -20030,6 +20049,30 @@ function chbRailSync(duties, owed) {
     const ks = duties.filter((d) => d.kind === 'keysafe');
     set('rail-cnt-keysafe', ks.length ? String(ks.length) : '', ks.some((d) => d.sev === 'danger'));
 }
+// Seat the gliding pill under the current row. Travel on TRANSLATE (a
+// combined transform teleports — the dock's own lesson); size set instantly.
+function chbRailPlaceInd() {
+    const rail = document.getElementById('admin-rail');
+    if (!rail) return;
+    const ind = /** @type {HTMLElement|null} */ (rail.querySelector('.rail-ind'));
+    if (!ind) return;
+    const cur = /** @type {HTMLElement|null} */ (rail.querySelector('.rail-row[aria-current="page"]'));
+    if (!cur || cur.getClientRects().length === 0) {
+        ind.style.opacity = '0';
+        return;
+    }
+    ind.style.left = cur.offsetLeft + 'px';
+    ind.style.width = cur.offsetWidth + 'px';
+    ind.style.height = cur.offsetHeight + 'px';
+    ind.style.translate = '0 ' + cur.offsetTop + 'px';
+    ind.style.opacity = '1';
+}
+// The theme row through the rail: app.js's own toggleTheme (persistence
+// included), then a resync so the row's label flips with the theme it names.
+function railToggleTheme() {
+    try { toggleTheme(); } catch (e) {}
+    try { chbFrameSync(); } catch (e) {}
+}
 function chbFrameSync() {
     const owner = document.body.classList.contains('owner-mode');
     // The rail's width boundaries as body CLASSES (see chbRailEnsure) — CSS
@@ -20040,6 +20083,31 @@ function chbFrameSync() {
         const mid = matchMedia('(min-width: 1200px)').matches;
         document.body.classList.toggle('rail-on', owner && mid);
         document.body.classList.toggle('rail-fold', owner && mid && !wide);
+        // Composure past 1720: the rail-and-column ensemble centres as ONE
+        // unit instead of crowding the monitor's left corner.
+        document.body.classList.toggle('rail-wide', owner && matchMedia('(min-width: 1720px)').matches);
+        // …and WHICH column it is centring: .container caps at 1200 and
+        // .container.wide at 1500, so the ensemble's width — and therefore
+        // where it must sit to be centred — depends on the active view. CSS
+        // cannot see the active view's class from <body>; this carries it.
+        const avc = document.querySelector('.page-view.active');
+        document.body.classList.toggle('rail-widecol', !!avc && avc.classList.contains('wide'));
+    } catch (e) {}
+    // The theme row names its DESTINATION — "Theme" is a noun, a control
+    // should say what it does. Read off the class toggleTheme keeps.
+    try {
+        const light = document.body.classList.contains('light-mode');
+        const lbl = document.getElementById('rail-theme-lbl');
+        if (lbl) lbl.textContent = light ? 'Switch to dark' : 'Switch to light';
+        const tbtn = document.querySelector('#admin-rail .rail-theme');
+        if (tbtn) {
+            tbtn.setAttribute('aria-label', light ? 'Switch to dark' : 'Switch to light');
+            tbtn.setAttribute('title', light ? 'Switch to dark' : 'Switch to light');
+            const ic = tbtn.querySelector('.rail-theme-ic');
+            if (ic) ic.innerHTML = light
+                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5z"/></svg>'
+                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2M12 19.4v2M21.4 12h-2M4.6 12h-2M18.4 5.6l-1.4 1.4M7 17l-1.4 1.4M18.4 18.4L17 17M7 7L5.6 5.6"/></svg>';
+        }
     } catch (e) {}
     // ONE derivation per sync: the day sentence (its tuple walk carries the
     // owed figure the rail's Payments count needs) and the duty list, each
@@ -20053,6 +20121,14 @@ function chbFrameSync() {
     try {
         chbRailEnsure();
         chbRailSync(duties, day ? day.shape.owed : 0);
+        chbRailPlaceInd();
+    } catch (e) {}
+    // Today's head follows the rail band (the greeting joins the ops line
+    // there) — re-render it when we're on it; its own changed-guard makes
+    // this free when nothing moved.
+    try {
+        const avNow = document.querySelector('.page-view.active');
+        if (owner && avNow && avNow.id === 'view-backoffice') todayOpsLine();
     } catch (e) {}
     const sp = chbSpineEnsure();
     const av = document.querySelector('.page-view.active');
@@ -20090,6 +20166,15 @@ function chbFrameSync() {
     const cnt = duties.length
         ? `<button type="button" class="spine-cnt" data-act="tryAccessBackOffice" title="${duties.length} thing${duties.length === 1 ? '' : 's'} still want${duties.length === 1 ? 's' : ''} you">${duties.length}</button>`
         : '';
+    // NB the spine deliberately does NOT name the record you are in. It was
+    // proposed (the condensed header used to, and losing that looked like a
+    // regression) and REFUTED by driving it: at rail widths a hub DOCKS into
+    // its list's pane — bookingsSplitWide, ≥1200 — so the active view is
+    // still the workspace and the record is on screen beside its list, named
+    // by its own head; below 1200 the hub is standalone and the header, which
+    // exists there, names it exactly as it always did. There is no width at
+    // which the place is missing, so a place here would be a second name for
+    // a fact already on screen.
     const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties">${chips}${more}</span>`;
     // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
     // and an unconditional innerHTML would destroy keyboard focus (and any
@@ -20151,6 +20236,8 @@ function chbDayTuples() {
     });
     return tuples;
 }
+let __todayOpsHtml = '';
+let __todayOpsDom = '';
 function todayOpsLine() {
     const el = document.getElementById('today-date');
     if (!el) return;
@@ -20163,8 +20250,30 @@ function todayOpsLine() {
     // the words, shared with the offline day sheet.
     const { parts, owed } = chbOpsParts(chbDayTuples());
     if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
+    // On rail screens Today opens the way every other screen now does — the
+    // serif day sentence — so the GREETING joins this line there (CSS gives
+    // it the spine's scale and hides the h1 above; below the rail this
+    // renders byte-identical to before). Injected only while rail-on, never
+    // hidden-but-present: a textContent read must not see a greeting the
+    // screen isn't showing (the fold rule, inverted). Changed-guard because
+    // chbFrameSync now re-renders this on every sync — an unconditional
+    // rewrite would destroy focus on the owed button (the spine's lesson).
+    let greet = '';
+    if (document.body.classList.contains('rail-on')) {
+        try { greet = '<span class="today-greet">' + escapeHtml(chbDaySentence().greet) + ' — </span>'; } catch (e) {}
+    }
     // innerHTML: every part is generated (counts + the owed button) — no user text.
-    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    const opsHtml = greet + escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    // The guard checks the DOM's TRUTH, not just its own memory: initBackOffice
+    // paints this node with the bare date the instant the page opens (before
+    // data lands), so a memo-only guard believed itself up to date and left
+    // the greeting off — measured. Two memos because innerHTML NORMALISES on
+    // write, so the intended string and the written one are not comparable.
+    if (opsHtml !== __todayOpsHtml || el.innerHTML !== __todayOpsDom) {
+        el.innerHTML = opsHtml;
+        __todayOpsHtml = opsHtml;
+        __todayOpsDom = el.innerHTML;
+    }
     // The day's VERDICT sits BESIDE THE TITLE, not trailing the date line —
     // it answers "is anything wrong?", which is a fact about the screen, while
     // the line beneath it lists the day's movements. Only the ✓, and only when
