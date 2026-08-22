@@ -7,6 +7,10 @@
     {
       "id": "page-2",
       "name": "Other directions"
+    },
+    {
+      "id": "page-3",
+      "name": "In a browser"
     }
   ],
   "artboards": [
@@ -81,6 +85,33 @@
       "y": 0,
       "w": 860,
       "h": 600
+    },
+    {
+      "file": "WebWide.dc.html",
+      "title": "1440 — maximised",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 1500,
+      "h": 650
+    },
+    {
+      "file": "WebLaptop.dc.html",
+      "title": "1180 — the rail folds",
+      "page": "page-3",
+      "x": 0,
+      "y": 790,
+      "w": 1240,
+      "h": 670
+    },
+    {
+      "file": "WebNarrow.dc.html",
+      "title": "960 — the pane goes",
+      "page": "page-3",
+      "x": 0,
+      "y": 1600,
+      "w": 1020,
+      "h": 665
     }
   ],
   "annotations": [
@@ -123,10 +154,18 @@
       "y": -150,
       "w": 620,
       "text": "Two directions I did NOT take, sketched honestly so the choice is a real one. Each names what it would win and what it would cost. If either reads better than the proposal, say so and I will build that one out instead."
+    },
+    {
+      "id": "web-note",
+      "page": "page-3",
+      "x": 1600,
+      "y": 0,
+      "w": 480,
+      "text": "THE SAME DESIGN, IN A BROWSER — three real widths, not three tidy ones.\n\nThe left rail was the one decision I flagged, and this is what it costs. At 1440 it earns its place: every area named, with live state beside it.\n\nAt 1180 it folds to icons — and folded, it IS a vertical dock. The proposal has reinvented the thing it replaced, minus the counts, which degrade to pips because £1,190 does not fit in 62px.\n\nSo the honest read: the rail is a win on a big screen and a wash on a small one. If most of your back-office time is on a phone or a half-width window, that argues for keeping the header dock and taking only the day spine — which survives every width."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-1"
+    "page": "page-3"
   }
 }

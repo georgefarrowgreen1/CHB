@@ -350,3 +350,108 @@ writeFileSync(new URL('./DirectionC.dc.html', import.meta.url), page(`<div class
 </div>`, LOFI));
 
 console.log('wrote Inbox, Record, Money, Cottages, Phone, DirectionB, DirectionC');
+
+/* =====================  IN A BROWSER  =====================
+   The same design, in the thing it actually runs in. The question a bare
+   1440 frame cannot answer is what the left rail costs as the window
+   narrows — so these are three real browser widths, not three tidy ones. */
+const WEB = `
+    .win{width:100%;box-sizing:border-box;background:#e6e2da;border-radius:11px;overflow:hidden;box-shadow:0 24px 70px rgba(30,54,72,0.2);}
+    .cbar{height:42px;display:flex;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid rgba(28,46,58,0.09);}
+    .lights{display:flex;gap:7px;flex:0 0 auto;}
+    .lt{width:11px;height:11px;border-radius:50%;background:rgba(28,46,58,0.16);}
+    .tabs{display:flex;gap:6px;flex:0 0 auto;}
+    .tab{display:flex;align-items:center;gap:7px;height:27px;padding:0 13px;border-radius:8px 8px 0 0;background:#fff;font-size:0.72rem;font-weight:500;color:var(--ink);}
+    .url{flex:1 1 auto;max-width:430px;height:27px;border-radius:999px;background:rgba(255,255,255,0.86);display:flex;align-items:center;gap:8px;padding:0 13px;font-size:0.71rem;color:var(--muted);}
+    .rail.mini{width:62px;flex:0 0 62px;padding:20px 9px 14px;align-items:center;}
+    .rail.mini .brandrow{padding:0 0 18px;justify-content:center;}
+    .rail.mini .brandrow div,.rail.mini .nav span:not(.cnt),.rail.mini .askbtn span{display:none;}
+    .rail.mini .navs{width:100%;align-items:center;}
+    .rail.mini .nav{justify-content:center;padding:11px 0;width:100%;position:relative;}
+    /* FOLDED, THE COUNT IS LOST — "£1,190" cannot live in a 62px rail, so it
+       degrades to a pip. That is the honest cost of the fold, not a detail:
+       the live state beside each area is the rail's whole advantage over a
+       dock, and it is the first thing to go when the window narrows. */
+    .rail.mini .cnt{position:absolute;top:7px;right:10px;margin:0;width:7px;height:7px;border-radius:50%;background:var(--muted);font-size:0;line-height:0;overflow:hidden;color:transparent;}
+    .rail.mini .cnt.hot{background:var(--danger);}
+    .rail.mini .askbtn{justify-content:center;padding:11px 0;}
+    .caption{font-family:var(--sans);font-size:0.8rem;color:var(--muted);margin:0 0 12px;line-height:1.55;}
+    .caption b{color:var(--ink);font-weight:600;}
+    .wrap{padding:26px 26px 30px;background:#efece5;box-sizing:border-box;}
+`;
+const chrome = (inner) => `      <div class="cbar">
+        <span class="lights"><span class="lt"></span><span class="lt"></span><span class="lt"></span></span>
+        <span class="tabs"><span class="tab"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 17l2.4-8.4 4 3.6L12 4l2.6 8.2 4-3.6L21 17z" fill="#c6885e"/></svg>Back office</span></span>
+        <span class="url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="10.5" width="14" height="10" rx="2.4"/><path d="M8.4 10.5V7.6a3.6 3.6 0 0 1 7.2 0v2.9"/></svg>cottageholidaysblakeney.co.uk</span>
+      </div>
+${inner}`;
+
+const webShell = (mini, on, body) => `<div class="win">
+${chrome(`      <div class="shell" style="min-height:0;">
+${mini ? RAIL(on).replace('class="rail"', 'class="rail mini"') : RAIL(on)}
+        <div class="main">
+${SPINE}
+          <div class="body">
+${body}
+          </div>
+        </div>
+      </div>`)}
+</div>`;
+
+const LIST_FULL = `            <div class="seg"><span class="segb on">All</span><span class="segb">Needs paying</span><span class="segb">Arriving</span><span class="segb">Past</span></div>
+            <div class="cap">Upcoming</div>
+            <div class="grp">
+              <div class="row"><span class="rowlbl">Wren Hollis<span class="rowsub">Pimpernel · today → 25 Aug</span></span><span class="stc ok">Paid ✓</span></div>
+              <div class="row sel"><span class="rowlbl">Sarah Pemberton<span class="rowsub">Jollyboat · 28 Aug → 31 Aug</span></span><span class="stc warn">£520.00 due</span></div>
+              <div class="row"><span class="rowlbl">Laura Mtungwazi<span class="rowsub">Pimpernel · tomorrow → 26 Aug</span></span><span class="stc bad">No directions</span></div>
+            </div>`;
+
+const PANE = `            <div class="pane">
+              <div class="panehd">
+                <div class="paneid">Sarah Pemberton</div>
+                <div class="panewhen">Jollyboat · Fri 28 → Mon 31 Aug · 3 nights</div>
+              </div>
+              <div style="padding:14px 18px 2px;">
+                <div class="cap" style="margin-top:0;">Next</div>
+                <div style="background:color-mix(in srgb,var(--warn) 11%,transparent);border:1px solid color-mix(in srgb,var(--warn) 22%,transparent);border-radius:var(--r-md);padding:13px 15px;">
+                  <div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn-text);">Step 4 of 6 · Balance</div>
+                  <div style="font-size:0.88rem;font-weight:600;margin-top:5px;">Ask for the balance — £520.00</div>
+                </div>
+              </div>
+              <div class="kv"><span class="kvk">Received so far</span><span class="kvv money">£147.50</span></div>
+              <div class="kv"><span class="kvk">Still to pay</span><span class="kvv money">£520.00</span></div>
+              <div class="paneact"><button class="btn pri" type="button">Request payment</button><button class="btn" type="button">Email</button></div>
+            </div>`;
+
+/* 1440 — a maximised laptop. Everything fits: rail, spine, list, pane. */
+writeFileSync(new URL('./WebWide.dc.html', import.meta.url), page(`<div class="wrap" style="width:1500px;">
+  <p class="caption"><b>1440px — a maximised 15&Prime; laptop.</b> Everything fits at once: the rail named, the day spine, the list and the record beside it. This is the width the bare artboards were drawn at.</p>
+${webShell(false, 'Today', `            <div class="split">
+              <div class="listcol">
+${LIST_FULL}
+              </div>
+${PANE}
+            </div>`)}
+</div>`, SPLIT + WEB));
+
+/* 1180 — a browser that is not maximised. The rail folds to icons. */
+writeFileSync(new URL('./WebLaptop.dc.html', import.meta.url), page(`<div class="wrap" style="width:1240px;">
+  <p class="caption"><b>1180px — a browser window that is not maximised, or a 13&Prime; laptop.</b> The rail folds to icons at 1200 and the record pane stays. Worth saying plainly: folded, the rail is a vertical dock — so at this width the proposal has reinvented the thing it replaced, minus the live counts, which shrink to pips.</p>
+${webShell(true, 'Today', `            <div class="split">
+              <div class="listcol">
+${LIST_FULL}
+              </div>
+${PANE}
+            </div>`)}
+</div>`, SPLIT + WEB));
+
+/* 960 — a half-screen window. The pane goes; the record opens as a page. */
+writeFileSync(new URL('./WebNarrow.dc.html', import.meta.url), page(`<div class="wrap" style="width:1020px;">
+  <p class="caption"><b>960px — half a screen, or a small laptop.</b> Below 1200 the pane cannot hold its 380px and stay readable, so it goes: the record opens as a full page, exactly as the app already behaves today. The spine and its duties survive every width — that is the part of the proposal that does not depend on room.</p>
+${webShell(true, 'Today', `            <div>
+${LIST_FULL}
+              <p class="caption" style="margin:14px 4px 0;">Tapping a row opens the stay as its own page, with a back link — the ≤1200px behaviour the app already has.</p>
+            </div>`)}
+</div>`, SPLIT + WEB));
+
+console.log('wrote WebWide, WebLaptop, WebNarrow');
