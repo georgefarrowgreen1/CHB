@@ -11796,6 +11796,7 @@ function settingsShowIndex() {
     if (idx) idx.style.display = '';
     if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
+    try { chbFrameSync(); } catch (e) {} // Cottages row stands down with its section
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpen(section) {
@@ -11840,6 +11841,10 @@ function settingsOpen(section) {
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
     settingsRenderSection(section);
+    // The rail's Cottages row goes current the moment the cottages section
+    // paints — settingsOpen doesn't nav() when Manage is already up, so the
+    // nav() hook alone would miss this drill-in.
+    try { chbFrameSync(); } catch (e) {}
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 // Populate one Manage section's live content. Extracted from settingsOpen so the
@@ -19778,6 +19783,11 @@ function needsYouExpand() {
     renderNeedsYou();
 }
 function renderNeedsYou() {
+    // The frame (day spine + rail counts) rides every duty refresh — this
+    // function is THE "duties changed" moment (a dozen call sites), and the
+    // sync must run BEFORE the early returns below, or a strip that empties
+    // would leave stale chips and counts behind.
+    try { chbFrameSync(); } catch (e) {}
     const wrap = document.getElementById('needs-you');
     const list = document.getElementById('needs-you-list');
     if (!wrap || !list) return;
@@ -19827,6 +19837,163 @@ function renderNeedsYou() {
         (items.length > shown.length
             ? `<button type="button" class="btn-sm btn-edit ny-more" data-act="needsYouExpand">Show ${items.length - shown.length} more</button>`
             : '');
+}
+
+// ── THE FRAME: the day spine + the rail (the approved redesign) ─────────────
+// Two additions to the chrome AROUND the screens, none to the screens:
+//
+// THE DAY SPINE carries the day onto every admin view that doesn't already
+// open with it — one sentence (cmdkDayLine, the same derivation the search
+// landing and the AI chat's day card read, so no surface can disagree about
+// one afternoon) plus up to two duty chips wearing the duties' own routes.
+// Today is EXCLUDED because Today IS the day (its header line + the Needs-you
+// strip), and the AI chat is excluded because its welcome card already opens
+// the day like a colleague — a second statement is the double-greeting defect.
+// The offline day sheet owns the day under body.offline-snap, so the spine
+// stands down there too. It is IN FLOW, not sticky: the prototype's sticky
+// spine had to condense on scroll (and oscillated until it got hysteresis),
+// but production's header already condenses and names the screen — a second
+// sticky bar would be chrome stacking. NB it carries NO heading element:
+// a11y-test §6 scopes the outline to .page-view.active, and a heading here
+// would sit above every view's own h1.
+//
+// THE RAIL is the same six destinations the header dock holds, plus Cottages,
+// as a left column at ≥1200px with live state beside each — the width where
+// labels and counts earn their room. Below 1200 the header dock IS the folded
+// rail (the canvas's own read: folded to icons it had reinvented the thing it
+// replaced), so the dock stays byte-identical there; admin.css swaps the two
+// at the one boundary and every dock gate keeps measuring at 390 untouched.
+// Every count is the surface's OWN derivation said again, never a second one:
+// Today = chbDuties().length (the Home-badge number), Inbox = unseenEnquiries()
+// (the dock pip's number), Payments = chbOpsParts(chbDayTuples()).owed (the
+// ops line's figure), Key safes = the keysafe duties in the same list.
+let __chbSpineChips = 0; // how many duty chips the spine last rendered (gate hook)
+function chbSpineEnsure() {
+    let el = document.getElementById('day-spine');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'day-spine';
+        el.hidden = true;
+        // Parked on <body>; chbFrameSync re-parents it into the ACTIVE view so
+        // it inherits that view's container width and padding at every
+        // breakpoint (the #booking-hub-content re-parenting pattern).
+        document.body.appendChild(el);
+    }
+    return el;
+}
+// The dock's own stroke glyphs (kept byte-identical so the two navs read as
+// one vocabulary) + a house glyph for Cottages, which has no dock button.
+const CHB_RAIL_ROWS = [
+    { view: 'view-backoffice', label: 'Today', act: 'data-act="tryAccessBackOffice"', cnt: 'today',
+        ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/>' },
+    { view: 'view-inbox', label: 'Inbox', act: 'data-act="openInbox"', cnt: 'inbox',
+        ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
+    { view: 'view-aichat', label: 'AI chat', act: 'data-act="openAiChat"',
+        ic: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>' },
+    { view: 'view-accounts', label: 'Payments', act: 'data-act="openAccounts"', cnt: 'money',
+        ic: '<circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text>' },
+    { view: '', rail: 'cottages', label: 'Cottages', act: 'data-act="navSettingsSection" data-arg="accom"',
+        ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.8V20h13V9.8"/><path d="M9.5 20v-6h5v6"/>' },
+    { view: 'view-keysafe', label: 'Key safes', act: 'data-act="openKeysafe"', cnt: 'keysafe',
+        ic: '<circle cx="8" cy="15.5" r="4.5"/><path d="M11.5 12 20.5 3"/><path d="M16 7.5l2.5 2.5"/><path d="M18.5 5l2 2"/>' },
+    { view: 'view-settings', label: 'Manage', act: 'data-act="openArea" data-arg="manage"',
+        ic: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' },
+];
+function chbRailEnsure() {
+    if (document.getElementById('admin-rail')) return;
+    const el = document.createElement('nav');
+    el.id = 'admin-rail';
+    el.setAttribute('aria-label', 'Back office');
+    el.innerHTML = CHB_RAIL_ROWS.map(
+        (r) => `
+        <button type="button" class="rail-row" ${r.act}${r.view ? ` data-view="${r.view}"` : ''}${r.rail ? ` data-rail="${r.rail}"` : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${r.ic}</svg>
+            <span class="rail-lbl">${r.label}</span>
+            ${r.cnt ? `<span class="rail-cnt" id="rail-cnt-${r.cnt}" style="display:none;"></span>` : ''}
+        </button>`,
+    ).join('');
+    document.body.appendChild(el);
+}
+function chbRailSync(duties) {
+    const rail = document.getElementById('admin-rail');
+    if (!rail) return;
+    // Current row MIRRORS the dock's own .current — nav() maintains that class
+    // (and its hub→workspace alias map) even while the dock is display:none at
+    // ≥1200, so there is ONE alias map, not two that drift.
+    const cur = document.querySelector('.admin-dock-btn.current');
+    const curView = cur ? cur.getAttribute('data-view') || '' : '';
+    // Cottages refinement: while Manage is showing the cottages section, the
+    // Cottages row is the honest current. Judged on the PAINT
+    // (getClientRects), not a class — the property-is-not-the-pixel rule.
+    const accomSec = document.getElementById('sec-accom');
+    const cottagesOn = curView === 'view-settings' && !!accomSec && accomSec.getClientRects().length > 0;
+    rail.querySelectorAll('.rail-row').forEach((r) => {
+        const isCot = r.getAttribute('data-rail') === 'cottages';
+        const on = isCot ? cottagesOn : !cottagesOn && !!r.getAttribute('data-view') && r.getAttribute('data-view') === curView;
+        if (on) r.setAttribute('aria-current', 'page');
+        else r.removeAttribute('aria-current');
+    });
+    const set = (id, txt, hot) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = txt;
+        el.style.display = txt ? '' : 'none';
+        el.classList.toggle('is-hot', !!hot);
+    };
+    set('rail-cnt-today', duties.length ? String(duties.length) : '', duties.some((d) => d.sev === 'danger'));
+    let enq = 0;
+    try { enq = unseenEnquiries(); } catch (e) {}
+    set('rail-cnt-inbox', enq > 0 ? String(enq) : '', enq > 0);
+    let owed = 0;
+    try { owed = chbOpsParts(chbDayTuples()).owed; } catch (e) {}
+    set('rail-cnt-money', owed > 0.005 ? '£' + Math.round(owed).toLocaleString('en-GB') : '', false);
+    const ks = duties.filter((d) => d.kind === 'keysafe');
+    set('rail-cnt-keysafe', ks.length ? String(ks.length) : '', ks.some((d) => d.sev === 'danger'));
+}
+function chbFrameSync() {
+    const owner = document.body.classList.contains('owner-mode');
+    let duties = [];
+    if (owner) {
+        try { duties = chbDuties(); } catch (e) {}
+    }
+    try {
+        chbRailEnsure();
+        chbRailSync(duties);
+    } catch (e) {}
+    const sp = chbSpineEnsure();
+    const av = document.querySelector('.page-view.active');
+    const avId = av ? av.id : '';
+    const on =
+        owner &&
+        !!av &&
+        ADMIN_VIEWS.indexOf(avId) !== -1 &&
+        avId !== 'view-backoffice' &&
+        avId !== 'view-aichat' &&
+        !document.body.classList.contains('offline-snap');
+    if (!on) {
+        sp.hidden = true;
+        __chbSpineChips = 0;
+        return;
+    }
+    if (sp.parentElement !== av || av.firstElementChild !== sp) av.insertBefore(sp, av.firstChild);
+    let line = '';
+    try { line = cmdkDayLine(); } catch (e) {}
+    // Labels are chbDuties' PLAIN TEXT, escaped here at the render boundary —
+    // the needsYouItems contract; the go string is interpolated RAW because it
+    // is attribute markup built by chbAttrs, exactly as the strip does it.
+    const chips = duties
+        .slice(0, 2)
+        .map(
+            (d) => `<button type="button" class="spine-duty is-${d.sev}" ${d.go} title="${escapeHtml(d.label)}"><span class="spine-dot" aria-hidden="true"></span>${escapeHtml(d.label)}</button>`,
+        )
+        .join('');
+    const more =
+        duties.length > 2
+            ? `<button type="button" class="spine-duty is-more" data-act="tryAccessBackOffice" title="Everything on Today">${duties.length - 2} more</button>`
+            : '';
+    __chbSpineChips = Math.min(2, duties.length);
+    sp.innerHTML = `<span class="spine-day">${escapeHtml(line)}</span>${chips}${more}`;
+    sp.hidden = false;
 }
 // The header's living second line: the date plus what today actually holds —
 // arrivals, departures, changeovers and money still to collect. Quiet days
@@ -29438,6 +29605,10 @@ try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → se
 // otherwise be stranded inside an open window with no way out.
 try { crownSheetBind(); } catch (e) {}
 try { cmdkEnsureOverlay(); } catch (e) {}
+// Paint the frame (day spine + rail) the moment the bundle lands — an owner
+// restored straight onto Inbox or Payments must not wait for a Today visit
+// (renderNeedsYou) to see the day and the rail's counts.
+try { chbFrameSync(); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key !== 'Escape' || !cmdkIsOpen()) return;

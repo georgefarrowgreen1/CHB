@@ -2256,6 +2256,13 @@ function nav(viewId, anchorId = null) {
         }
     } catch (e) {}
 
+    // The frame (day spine + rail) follows every view change. NOT a stub —
+    // the __ADMIN_LOADED guard keeps guest navs from pulling the bundle.
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
+    } catch (e) {}
+
     // The cottage page's sticky booking bar lives on <body> (so its position:fixed
     // isn't trapped by the page-view transform); show it only on the cottage page.
     try {
@@ -16730,6 +16737,12 @@ function refreshInboxBadge() {
         today.textContent = n;
         today.style.display = n > 0 ? 'flex' : 'none';
     }
+    // The rail's Inbox count is this number said in its own slot — refresh it
+    // wherever the pips refresh, so the two can never disagree.
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
+    } catch (e) {}
     // Pending enquiries is the FALLBACK count, used only until the back office is
     // loaded. Once it is, admin.js sets the badge from chbDuties() — the real
     // "needs you" number, which also counts balances to chase, deposits to return

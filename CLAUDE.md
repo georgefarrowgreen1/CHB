@@ -2220,6 +2220,63 @@ Gated in ui-test-terms (8 checks: the button at 16/4/2/1, the count never inflat
 unassigned reviews, and the owner-side half source-scanned); the button threshold, the
 stranded count and the option label are each break-tested.
 
+## The frame — the day spine and the rail (the built redesign)
+
+**Approved as a canvas + working prototype (design/, PR #1194), then built.** Two
+pieces of chrome AROUND the screens, none to the screens; both live in
+`chbFrameSync()` (admin.js) + the FRAME block at the foot of admin.css, gated by
+**ui-test-railspine.js** (40 checks, five break-tested in isolation).
+- **THE DAY SPINE** (`#day-spine`, JS-built) carries the day onto every admin view
+  that doesn't already open with it: one sentence — `cmdkDayLine()`, the SAME
+  derivation the search landing and the AI chat's day card read, gated as EQUALITY —
+  plus up to two duty chips wearing `chbDuties()`'s own `go` route attributes
+  (labels escaped at this render boundary, the needsYouItems contract) and an
+  "N more" chip routing to Today. EXCLUDED by name: `view-backoffice` (Today IS the
+  day — header line + Needs-you strip) and `view-aichat` (its welcome card opens the
+  day); it also stands down under `body.offline-snap`, where the day sheet owns the
+  day. It is IN FLOW, deliberately not sticky: the prototype's sticky spine needed
+  scroll-condensing with hysteresis (it oscillated — condensing shortens
+  scrollHeight, which clamps scrollTop and re-expands it), and production's header
+  already condenses and names the screen, so a second sticky bar is chrome
+  stacking. It is RE-PARENTED into the active `<main>` as its first child (the
+  `#booking-hub-content` pattern) so it inherits each view's container width — and
+  it carries NO heading element, because a11y §6 scopes the outline to
+  `.page-view.active` and a heading here would sit above every view's own h1.
+- **THE RAIL** (`#admin-rail`, JS-built onto `<body>`) is the dock's six
+  destinations plus **Cottages** as a left column at **≥1200px only**, with live
+  state beside each. Below 1200 the header dock IS the folded rail (the canvas's
+  own read: folded to icons, a rail just reinvents the dock), so the dock stays
+  byte-identical there — every dock gate measures at 390 and none needed re-aiming
+  (verified before building). Every count is the surface's OWN derivation said
+  again, never a second one: Today = `chbDuties().length` (the Home-badge number),
+  Inbox = `unseenEnquiries()` (the pip's number), Payments =
+  `chbOpsParts(chbDayTuples()).owed` (the ops line's figure), Key safes = the
+  keysafe duties in the same list — each gated as equality against the in-page
+  derivation. The current row MIRRORS `.admin-dock-btn.current` (nav() maintains
+  it, alias map included, even while the dock is display:none) so there is ONE
+  alias map; the Cottages row goes current on the PAINT of `#sec-accom`
+  (getClientRects, the property-is-not-the-pixel rule), which needs the
+  `chbFrameSync()` calls in settingsOpen/settingsShowIndex — settingsOpen doesn't
+  nav() when Manage is already up, so the nav() hook alone misses the drill-in.
+  The rail sits UNDER the fixed header (same `calc(100px + var(--safe-t))`
+  clearance the containers use) so the header — crown, condensed title — is
+  untouched; content shifts with `width: auto` + margins (the base `.container`
+  is `width: 100%`, and 100% plus a margin overflows; `width: auto` lets the
+  body's flex-stretch size it), LEFT-ANCHORED on purpose — the approved prototype
+  is a rail plus a column, not a centred page. `search-first` and `offline-snap`
+  trim the rail's mirror rows exactly as they trim the dock (Cottages goes with
+  Manage in both). The current icon takes `--accent-text`, not `--accent` — the
+  cmdk tile lesson, 2.70:1 under the 3:1 non-text bar.
+- **Sync sites** (all guarded try/catch, and `chbFrameSync` is deliberately NOT a
+  facade stub — the nav()/refreshInboxBadge hooks check `__ADMIN_LOADED` first so
+  a guest navigation can never pull the admin bundle): the head of
+  `renderNeedsYou()` (THE duties-changed moment, BEFORE its early returns or an
+  emptying strip would leave stale chips), nav()'s view switch, the admin.js
+  footer (an owner restored straight onto Inbox must not wait for a Today visit),
+  `refreshInboxBadge()` (data lands), and the two settings hooks above.
+- NB `#day-spine[hidden] { display: none; }` is load-bearing: the spine's own
+  `display: flex` outranks the hidden attribute (the arrival stand-down lesson).
+
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old

@@ -5985,3 +5985,181 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   .ac-sheet-card{animation:none}
   .ac-send{transition:none}
 }
+
+/* ============================================================
+   THE FRAME — the day spine + the rail (the approved redesign).
+   Two pieces of chrome AROUND the screens, built by admin.js
+   (chbFrameSync); nothing here touches a screen's own anatomy.
+   ============================================================ */
+/* ---- The day spine: the day, carried onto every admin view that doesn't
+   already open with it. IN FLOW (never sticky — the header already condenses
+   and names the screen; a second sticky bar is chrome stacking), re-parented
+   into the active view so it inherits that view's container width. The
+   [hidden] guard is load-bearing: display:flex outranks the hidden attribute
+   (the arrival stand-down lesson — the property is not the pixel). ---- */
+#day-spine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 18px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--glass-border);
+}
+#day-spine[hidden] {
+  display: none;
+}
+.spine-day {
+  font-family: var(--font-serif);
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-light);
+  line-height: 1.35;
+}
+/* A duty chip wears the strip's own severity vocabulary at capsule size —
+   the ink + tint pairs are the st-cap percentages a11y-test §1b discovers
+   and measures, restated here so the chips join that sweep automatically. */
+.spine-duty {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 13px 6px 11px;
+  border-radius: var(--r-pill);
+  min-height: 34px;
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.spine-duty.is-danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
+.spine-duty.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
+.spine-duty.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent); }
+.spine-duty.is-more { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
+@media (hover: hover) {
+  .spine-duty:hover { filter: brightness(1.06); }
+}
+.spine-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: currentColor;
+}
+@media (max-width: 640px) {
+  #day-spine { margin-bottom: 14px; padding-bottom: 12px; }
+  .spine-day { font-size: 0.95rem; }
+  .spine-duty { font-size: 0.73rem; max-width: 100%; }
+}
+
+/* ---- The rail: the dock's destinations plus Cottages, as a left column
+   with live state, at the ONE width where labels and counts earn their room.
+   Below 1200px the header dock IS the folded rail (folded to icons a rail
+   just reinvents the dock — the canvas's own honest read), so the dock stays
+   byte-identical there and every dock gate keeps measuring at 390 untouched.
+   The rail sits UNDER the fixed header (same clearance the containers use)
+   so the header — crown, condensed title — is never touched. ---- */
+#admin-rail {
+  display: none;
+}
+@media (min-width: 1200px) {
+  body.owner-mode #admin-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: fixed;
+    left: 14px;
+    top: calc(100px + var(--safe-t));
+    bottom: 18px;
+    width: 212px;
+    overflow-y: auto;
+    /* Below the header (1500) and the search pop-out (1430+); above content. */
+    z-index: 1200;
+    padding: 10px;
+    border-radius: var(--r-lg);
+    background: color-mix(in srgb, var(--text-light) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
+  }
+  /* The dock stands down — the rail carries the same destinations with more
+     said beside each. moveDockIndicator self-heals (offsetParent null hides
+     the pill) and nav() keeps maintaining .current, which the rail mirrors. */
+  body.owner-mode header .admin-dock-wrap {
+    display: none;
+  }
+  /* Content shifts beside the rail. width:auto (not the base 100%) so the
+     flex-column stretch sizes each main to the remaining room — 100% plus a
+     margin would overflow the viewport. Left-anchored ON PURPOSE: the
+     approved prototype is a rail plus a column, not a centred page. */
+  body.owner-mode main.container {
+    width: auto;
+    margin-left: 244px;
+    margin-right: 24px;
+  }
+}
+.rail-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-light);
+  font: 500 0.88rem var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.rail-row svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.rail-row:hover {
+  background: var(--btn-hover);
+}
+.rail-row[aria-current='page'] {
+  background: var(--glass-hover);
+  font-weight: 600;
+}
+/* The accent as an ICON here would sit under the 3:1 non-text bar on the
+   light ground (the cmdk tile lesson, 2.70:1) — the -text token clears it. */
+.rail-row[aria-current='page'] svg {
+  color: var(--accent-text);
+}
+.rail-lbl {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rail-cnt {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.rail-cnt.is-hot {
+  color: var(--danger-text);
+}
+/* The two standing dock trims apply to the rail's mirror rows too: search-first
+   collapses Payments+Manage into ⌘K (Cottages is a Manage section, so it goes
+   with them), and the offline day sheet trims the dead destinations. */
+body.owner-mode.search-first #admin-rail .rail-row[data-view='view-accounts'],
+body.owner-mode.search-first #admin-rail .rail-row[data-view='view-settings'],
+body.owner-mode.search-first #admin-rail .rail-row[data-rail='cottages'] {
+  display: none;
+}
+body.offline-snap #admin-rail .rail-row[data-view='view-inbox'],
+body.offline-snap #admin-rail .rail-row[data-view='view-accounts'],
+body.offline-snap #admin-rail .rail-row[data-view='view-settings'],
+body.offline-snap #admin-rail .rail-row[data-rail='cottages'] {
+  display: none;
+}
