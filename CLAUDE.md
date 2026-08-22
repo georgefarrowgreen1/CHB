@@ -2334,6 +2334,12 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   there, names it exactly as before. No width is missing the place, so the
   spine would have been a SECOND name for a fact already on screen. §8 pins
   both halves, so the absence stays a tested decision.
+- **AND HIDING TODAY'S h1 ORPHANED ITS VERDICT** — ui-test-needs-you caught
+  it: the "Nothing needs you" capsule sits BESIDE the head, and with the h1
+  gone at rail widths it floated alone above the sentence. `.bo-today-head`
+  goes `display: contents` there so the verdict lifts onto the sentence's own
+  row. The gate now asserts the RELATIONSHIP (beside whichever element is the
+  head at that width), not an element that only exists at one of them.
 - **TWO TRAPS THE ROUND ITSELF PRODUCED, both worth keeping.** A changed-guard
   must check the DOM's TRUTH, not only its own memory: `initBackOffice` paints
   `#today-date` with the bare date the instant the page opens, so a memo-only

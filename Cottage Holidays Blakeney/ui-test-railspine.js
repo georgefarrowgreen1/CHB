@@ -433,13 +433,19 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     // ---- 6. Payments shares one rail.
     await page.evaluate(async () => { await openAccounts(); });
     await page.waitForTimeout(900);
+    // EVERY answer element, not whichever matches first: the rule is a
+    // four-selector list, and a break-test that disabled one of them passed
+    // because the query happened to match a still-styled sibling. Measuring
+    // the whole set is what makes this non-vacuous.
     const rails = await page.evaluate(() => {
         const title = document.querySelector('#view-accounts h1, #view-accounts .section-title');
-        const grp = document.querySelector('#money-overview .bhub-fold-grp, #money-overview > .glass-panel');
-        if (!title || !grp) return null;
-        return { t: Math.round(title.getBoundingClientRect().left), g: Math.round(grp.getBoundingClientRect().left) };
+        const kids = [...document.querySelectorAll('#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap, #money-overview > .glass-panel, #money-overview .mo-pulse')]
+            .filter((el) => el.getClientRects().length > 0);
+        if (!title || !kids.length) return null;
+        const t = Math.round(title.getBoundingClientRect().left);
+        return { t, n: kids.length, worst: Math.max(...kids.map((el) => Math.abs(Math.round(el.getBoundingClientRect().left) - t))) };
     });
-    ok(!!rails && Math.abs(rails.t - rails.g) <= 2, `Payments’ title and its answers share ONE rail (${rails ? rails.t + ' vs ' + rails.g : 'not found'})`);
+    ok(!!rails && rails.n >= 2 && rails.worst <= 2, `Payments’ title and ALL ${rails ? rails.n : 0} of its answers share ONE rail (worst ${rails ? rails.worst : '?'}px out)`);
     await page.setViewportSize({ width: 1000, height: 900 });
     await page.waitForTimeout(500);
     ok(await page.evaluate(() => {

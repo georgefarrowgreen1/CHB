@@ -6371,6 +6371,28 @@ body.rail-on.admin-screen #today-date .ops-owed {
   font: inherit;
   color: var(--accent-text);
 }
+/* The day's VERDICT belongs beside the head — and at rail widths the head is
+   the sentence, not the hidden h1. display:contents lifts the verdict out of
+   .bo-today-head so it can sit on the sentence's own row; without it the
+   capsule floated alone above the sentence (ui-test-needs-you caught it). */
+body.rail-on.admin-screen .dashboard-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+body.rail-on.admin-screen .bo-today-head {
+  display: contents;
+}
+body.rail-on.admin-screen #today-date {
+  order: 1;
+  flex: 1 1 auto;
+  margin: 0;
+}
+body.rail-on.admin-screen #today-verdict {
+  order: 2;
+  flex: 0 0 auto;
+}
 /* The AI chat's pill bar sticks at 64px to sit under the condensed header —
    which does not exist on rail screens, so it floated down over the page's
    own rows and INTERCEPTED their taps (ui-test-nightshift caught the handoff
