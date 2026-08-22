@@ -2340,6 +2340,15 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   goes `display: contents` there so the verdict lifts onto the sentence's own
   row. The gate now asserts the RELATIONSHIP (beside whichever element is the
   head at that width), not an element that only exists at one of them.
+- **AND THE PILL SAT 16px LOW FOR A DAY** (reported from a Mac, with a photo).
+  `.rail-ind` is `position: absolute` with no `top`, so its static origin is
+  the flex CONTENT box — below the rail's 16px top padding — while `offsetTop`
+  is measured from the PADDING edge: translating by offsetTop counted the
+  padding twice and the pill straddled the gap between two rows. `top: 0` is
+  the fix and is load-bearing. The gate had asserted only that the pill MOVED
+  between rows, which passed the whole time; it now asserts the pill HUGS its
+  row on all four edges. A travelling indicator needs both checks — that it
+  travels, and that it lands.
 - **TWO TRAPS THE ROUND ITSELF PRODUCED, both worth keeping.** A changed-guard
   must check the DOM's TRUTH, not only its own memory: `initBackOffice` paints
   `#today-date` with the bare date the instant the page opens, so a memo-only

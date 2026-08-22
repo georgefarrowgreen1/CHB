@@ -6430,6 +6430,13 @@ body.rail-on.admin-screen .ac-hd {
    pill is the fill now. Reduced motion snaps, the admin dock's precedent. */
 .rail-ind {
   position: absolute;
+  /* top:0 is load-bearing — WITHOUT it the pill's static origin is the flex
+     CONTENT box (below the rail's 16px top padding) while offsetTop is
+     measured from the PADDING edge, so the padding is counted twice and the
+     pill sits 16px low, straddling the gap between two rows. Measured: pill
+     at y=373 against a row at y=357. `left` is set explicitly by the placer
+     for the same reason; only the vertical travel is animated. */
+  top: 0;
   z-index: 0;
   border-radius: var(--r-sm);
   background: var(--glass-hover);
