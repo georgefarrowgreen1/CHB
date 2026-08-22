@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --ink:#1b2a34; --muted:#52646e; --ground:#f5f1e9;
+      --glass:rgba(255,255,255,0.78); --line:rgba(28,46,58,0.12); --hair:rgba(28,46,58,0.08);
+      --accent:#c6885e; --accent-text:#965c35; --accent-ink:#1b1208;
+      --ok:#4caf50; --ok-text:#29712d; --warn:#ffa726; --warn-text:#9c5300;
+      --danger:#e57373; --danger-text:#bc2626; --info:#3884c5; --info-text:#316784;
+      --p-21a:#42a5f5; --p-jolly:#43a047; --p-pimp:#9c27b0;
+      --r-sm:12px; --r-md:16px; --r-lg:22px; --r-panel:40px;
+      --serif:"Playfair Display",Georgia,serif; --sans:"Montserrat","Helvetica Neue",Arial,sans-serif;
+    }
+    body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;}
+    a{color:var(--accent-text);} a:hover{color:#7d4a29;}
+    .shell{display:flex;min-height:900px;}
+    /* ---- the rail ---- */
+    .rail{width:220px;flex:0 0 220px;background:rgba(255,255,255,0.5);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:22px 14px 16px;box-sizing:border-box;}
+    .brandrow{display:flex;align-items:center;gap:10px;padding:0 8px 20px;}
+    .bname{font-family:var(--serif);font-size:0.98rem;font-weight:600;line-height:1.15;}
+    .bsub{font-size:0.62rem;letter-spacing:0.13em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+    .navs{display:flex;flex-direction:column;gap:2px;}
+    .nav{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--r-sm);color:var(--ink);font-size:0.87rem;font-weight:500;}
+    .nav .ic{flex:0 0 auto;color:var(--muted);}
+    .nav.on{background:rgba(255,255,255,0.92);box-shadow:0 1px 3px rgba(30,54,72,0.08);font-weight:600;}
+    .nav.on .ic{color:var(--accent-text);}
+    .navsp{flex:1 1 auto;}
+    .cnt{margin-left:auto;font-size:0.72rem;font-weight:600;color:var(--muted);}
+    .cnt.hot{color:var(--danger-text);}
+    .askbtn{display:flex;align-items:center;gap:9px;width:100%;box-sizing:border-box;padding:10px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,0.72);color:var(--muted);font-family:var(--sans);font-size:0.82rem;text-align:left;}
+    .kbd{margin-left:auto;font-size:0.66rem;color:var(--muted);border:1px solid var(--hair);border-radius:5px;padding:1px 5px;}
+    /* ---- the spine ---- */
+    .main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;}
+    .spine{padding:20px 30px 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,0.34);}
+    .daysent{font-family:var(--serif);font-size:1.34rem;font-weight:600;line-height:1.28;}
+    .dayops{font-size:0.85rem;color:var(--muted);margin-top:5px;}
+    .duties{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px;}
+    .duty{display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;padding:5px 12px 5px 10px;border-radius:999px;white-space:nowrap;}
+    .duty.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);border:1px solid color-mix(in srgb,var(--danger) 24%,transparent);}
+    .duty.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);border:1px solid color-mix(in srgb,var(--warn) 24%,transparent);}
+    .duty.ok{color:var(--ok-text);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 24%,transparent);}
+    .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+    /* ---- the body ---- */
+    .body{flex:1 1 auto;overflow:hidden;padding:24px 30px;}
+    .col{max-width:1080px;}
+    .cap{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 4px 8px;}
+    .cap.attn{color:var(--danger-text);}
+    .grp{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 6px 18px rgba(30,54,72,0.05);margin-bottom:18px;}
+    .frow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;padding:12px 18px;}
+    .frow + .frow{border-top:1px solid var(--hair);}
+    .flbl{font-weight:600;font-size:0.95rem;min-width:0;}
+    .fsub{display:block;font-weight:400;font-size:0.78rem;color:var(--muted);margin-top:2px;}
+    .fright{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+    .stc{display:inline-flex;align-items:center;gap:6px;font-size:0.76rem;font-weight:600;padding:4px 11px;border-radius:999px;white-space:nowrap;}
+    .stc.ok{color:var(--ok-text);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 24%,transparent);}
+    .stc.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);border:1px solid color-mix(in srgb,var(--warn) 24%,transparent);}
+    .stc.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);border:1px solid color-mix(in srgb,var(--danger) 24%,transparent);}
+    .stc.unk{color:var(--muted);background:color-mix(in srgb,var(--muted) 10%,transparent);border:1px solid color-mix(in srgb,var(--muted) 18%,transparent);font-weight:500;}
+    .chev{color:var(--muted);font-size:1.05rem;}
+    .money{font-family:var(--serif);font-size:1.05rem;font-weight:600;}
+    .ptag{display:inline-flex;align-items:center;gap:6px;font-size:0.72rem;font-weight:600;color:var(--muted);}
+    /* ---- the lane strip ---- */
+    .lanes{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 16px 16px;box-shadow:0 6px 18px rgba(30,54,72,0.05);}
+    .lanehd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px;}
+    .lanemo{font-family:var(--serif);font-size:0.95rem;font-weight:600;}
+    .lanenav{font-size:0.78rem;color:var(--muted);}
+    .lane{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+    .lanelbl{width:96px;flex:0 0 auto;font-size:0.74rem;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px;}
+    .track{flex:1 1 auto;height:26px;border-radius:7px;background:rgba(28,46,58,0.045);position:relative;overflow:hidden;}
+    .bar{position:absolute;top:3px;height:20px;border-radius:5px;display:flex;align-items:center;padding:0 8px;box-sizing:border-box;font-size:0.68rem;font-weight:600;color:#fff;}
+    .days{display:flex;margin-left:105px;margin-top:2px;}
+    .dnum{flex:1 1 0;font-size:0.6rem;color:var(--muted);text-align:center;}
+  
+    .sk{width:860px;height:600px;box-sizing:border-box;padding:26px 28px;background:#fbfaf7;font-family:var(--sans);}
+    .skh{font-family:var(--serif);font-size:1.3rem;font-weight:600;}
+    .skw{font-size:0.83rem;color:var(--muted);margin-top:6px;line-height:1.55;max-width:660px;}
+    .skwire{margin-top:20px;border:1.5px dashed rgba(28,46,58,0.28);border-radius:var(--r-md);padding:16px;background:#fff;}
+    .sb{background:rgba(28,46,58,0.07);border-radius:6px;height:11px;}
+    .skrow{display:flex;align-items:center;gap:12px;padding:11px 12px;border-bottom:1px solid rgba(28,46,58,0.08);}
+    .skpill{font-size:0.68rem;font-weight:600;padding:3px 10px;border-radius:999px;border:1.5px dashed rgba(28,46,58,0.3);color:var(--muted);white-space:nowrap;}
+    .tradeoff{margin-top:16px;font-size:0.79rem;line-height:1.6;color:var(--muted);}
+    .tradeoff b{color:var(--ink);}
+</style>
+</helmet>
+<div class="sk">
+  <div class="skh">Direction B — the day is the app</div>
+  <div class="skw">No areas at all. One scrolling list of everything that wants you today, newest judgement first; Money, Inbox and Cottages become <em>filters</em> on that list rather than places you go. The most extreme reading of what this business actually is: one person, one day at a time.</div>
+  <div class="skwire">
+    <div style="display:flex;gap:8px;margin-bottom:14px;"><span class="skpill">Everything</span><span class="skpill">Money</span><span class="skpill">Guests</span><span class="skpill">Cottages</span><span class="skpill">Done</span></div>
+    <div class="skrow"><span class="sb" style="width:9px;height:9px;border-radius:50%;background:rgba(190,60,60,0.5);"></span><span style="flex:1;"><span class="sb" style="width:62%;"></span><span class="sb" style="width:38%;margin-top:6px;height:8px;"></span></span><span class="skpill">Send it</span></div>
+    <div class="skrow"><span class="sb" style="width:9px;height:9px;border-radius:50%;background:rgba(200,140,40,0.5);"></span><span style="flex:1;"><span class="sb" style="width:48%;"></span><span class="sb" style="width:56%;margin-top:6px;height:8px;"></span></span><span class="skpill">Rotate</span></div>
+    <div class="skrow"><span class="sb" style="width:9px;height:9px;border-radius:50%;background:rgba(200,140,40,0.5);"></span><span style="flex:1;"><span class="sb" style="width:70%;"></span><span class="sb" style="width:30%;margin-top:6px;height:8px;"></span></span><span class="skpill">Ask</span></div>
+    <div class="skrow" style="border-bottom:none;opacity:0.55;"><span class="sb" style="width:9px;height:9px;border-radius:50%;background:rgba(28,46,58,0.2);"></span><span style="flex:1;"><span class="sb" style="width:40%;"></span></span><span class="skpill">Opportunity</span></div>
+  </div>
+  <div class="tradeoff"><b>Why it might win:</b> nothing is ever more than one screen away, and there is no "which page was that on".<br><b>What it costs:</b> browsing dies. Looking up a stay in November, or last year's takings, has no home — everything becomes a search. Bad on the days when nothing needs you.</div>
+</div>
+</x-dc>
+</body>
+</html>
