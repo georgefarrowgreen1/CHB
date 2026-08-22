@@ -455,3 +455,178 @@ ${LIST_FULL}
 </div>`, SPLIT + WEB));
 
 console.log('wrote WebWide, WebLaptop, WebNarrow');
+
+/* =====================  ON A PHONE  =====================
+   The mobile answer to the three proposals, and it is not symmetrical:
+   the RAIL does not exist here (it is the dock the app already has) and
+   the PANE does not exist here (the record is a page). Only the day
+   spine crosses over — and it has to earn its ~150px by condensing. */
+const PHONE2 = PHONE + `
+    /* No painted status bar — the real one draws over this. What the
+       artboard owes it is the ROOM, which is what this padding is. */
+    .phead{padding-top:52px;position:relative;}
+    .phead.cond{padding:48px 16px 10px;display:flex;align-items:center;gap:11px;}
+    .pcondsent{font-family:var(--serif);font-size:0.94rem;font-weight:600;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .pback{display:flex;align-items:center;gap:5px;font-size:0.8rem;font-weight:600;color:var(--accent-text);flex:0 0 auto;}
+    .pdcount{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;font-size:0.7rem;font-weight:700;flex:0 0 auto;color:var(--danger-text);background:color-mix(in srgb,var(--danger) 14%,transparent);border:1px solid color-mix(in srgb,var(--danger) 26%,transparent);}
+    .pmore{display:inline-flex;align-items:center;font-size:0.73rem;font-weight:600;padding:5px 11px;border-radius:999px;color:var(--muted);background:color-mix(in srgb,var(--muted) 9%,transparent);border:1px solid color-mix(in srgb,var(--muted) 17%,transparent);}
+    .pid{font-family:var(--serif);font-size:1.32rem;font-weight:600;line-height:1.2;}
+    .pwhen{font-size:0.78rem;color:var(--muted);margin-top:5px;line-height:1.5;}
+    .payline{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;}
+    .paysub{display:block;font-size:0.75rem;color:var(--muted);margin-top:3px;}
+    .psticky{display:flex;align-items:center;gap:9px;padding:11px 16px 26px;border-top:1px solid var(--line);background:rgba(255,255,255,0.82);}
+    .pcta{flex:1 1 auto;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:0.88rem;font-weight:600;border:none;font-family:var(--sans);}
+    .picon{width:46px;height:46px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,0.7);display:flex;align-items:center;justify-content:center;color:var(--accent-text);}
+    .pseg{display:flex;gap:2px;padding:3px;background:rgba(28,46,58,0.05);border-radius:999px;margin-bottom:14px;}
+    .psegb{flex:1 1 0;text-align:center;font-size:0.76rem;font-weight:600;padding:8px 4px;border-radius:999px;color:var(--muted);}
+    .psegb.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(30,54,72,0.1);}
+    .pcomposer{position:absolute;left:14px;right:14px;bottom:14px;display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:999px;background:rgba(255,255,255,0.92);border:1px solid var(--line);box-shadow:0 8px 26px rgba(30,54,72,0.14);}
+    .pcomposer .ptxt{flex:1 1 auto;font-size:0.86rem;color:var(--muted);}
+    .psend{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+    .pcard{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px 18px 16px;box-shadow:0 6px 18px rgba(30,54,72,0.05);}
+    .pchip{display:block;width:100%;box-sizing:border-box;text-align:left;padding:12px 15px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,0.66);font-family:var(--sans);font-size:0.85rem;color:var(--ink);}
+`;
+const DOCK = (on) => `  <div class="pdock">
+${[['Today','<rect x="3" y="4.6" width="18" height="16" rx="3"/><path d="M3 9.4h18M8 2.6v4M16 2.6v4"/>',true],
+   ['Inbox','<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 6.6l8 6 8-6"/>',false],
+   ['Money','<circle cx="12" cy="12" r="9"/><path d="M14.4 8.6a3.2 3.2 0 0 0-4.6.5c-1 1.4-.4 3 .6 3.9M9 12.4h4.6M9.6 15.6h4.6"/>',false],
+   ['Ask','<path d="M12 3.6l1.9 4.5 4.5 1.9-4.5 1.9L12 16.4l-1.9-4.5L5.6 10l4.5-1.9z"/>',false],
+   ['More','<circle cx="5.5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor"/>',false],
+].map(([l,p,pip]) => `    <span class="pd${l===on?' on':''}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${p}</svg>${pip&&l!==on?'<span class="pip"></span>':pip?'<span class="pip"></span>':''}${l}</span>`).join('\n')}
+  </div>`;
+
+/* --- Today: the spine at rest, all of it --- */
+writeFileSync(new URL('./Phone.dc.html', import.meta.url), page(`<div class="pshell">
+  <div class="phead">
+    <div class="pdaysent">Morning George — Wren arrives today, Cara leaves.</div>
+    <div class="pops">1 arrival · 1 departure · £340.00 to collect</div>
+    <div class="duties" style="margin-top:11px;">
+      <span class="duty bad" style="font-size:0.73rem;"><span class="dot" style="background:var(--danger)"></span>Laura arrives tomorrow — no directions</span>
+      <span class="duty warn" style="font-size:0.73rem;"><span class="dot" style="background:var(--warn)"></span>Pimpernel key safe</span>
+      <span class="pmore">1 more</span>
+    </div>
+  </div>
+  <div class="pbody">
+    <div class="cap" style="margin-top:0;">Today at the cottages</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Wren Hollis arrives<span class="fsub">Pimpernel · from 4pm</span></span><span class="stc ok">✓ Ready</span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Cara Nunn leaves<span class="fsub">Jollyboat · by 10am</span></span><span class="stc warn">£75 back</span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Two staying on<span class="fsub">21A until Mon · Jollyboat until Wed</span></span><span class="chev">›</span></div>
+    </div>
+    <div class="cap">Money</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">To collect<span class="fsub">2 guests · one overdue</span></span><span class="fright"><span class="money">£1,190.00</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">To give back<span class="fsub">Cara&rsquo;s deposit, ready today</span></span><span class="fright"><span class="money">£75.00</span><span class="chev">›</span></span></div>
+    </div>
+  </div>
+${DOCK('Today')}
+</div>`, PHONE2));
+
+/* --- A stay: the pane becomes a page, the spine condenses --- */
+writeFileSync(new URL('./PhoneStay.dc.html', import.meta.url), page(`<div class="pshell">
+  <div class="phead cond">
+    <span class="pback"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>Today</span>
+    <span class="pcondsent">Wren arrives today, Cara leaves</span>
+    <span class="pdcount">3</span>
+  </div>
+  <div class="pbody">
+    <div class="pid">Sarah Pemberton</div>
+    <div class="pwhen">Jollyboat · Fri 28 → Mon 31 Aug · 3 nights · 2 adults<br>in 15:00 / out 10:00</div>
+
+    <div class="cap" style="margin-top:16px;">Next</div>
+    <div style="background:color-mix(in srgb,var(--warn) 11%,transparent);border:1px solid color-mix(in srgb,var(--warn) 22%,transparent);border-radius:var(--r-lg);padding:14px 16px;">
+      <div style="font-size:0.68rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn-text);">Step 4 of 6 · Balance</div>
+      <div style="font-size:0.92rem;font-weight:600;margin-top:5px;">Ask for the balance — £520.00</div>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:4px;">Due by 21/09/2026 · £147.50 already in</div>
+    </div>
+
+    <div class="grp" style="margin-top:16px;">
+      <div class="payline"><span class="flbl" style="font-size:0.9rem;">Received so far<span class="paysub">£50.00 deposit held · card</span></span><span class="fright"><span class="money">£147.50</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 16px;"><span class="flbl" style="font-size:0.9rem;">Guest details<span class="fsub">Everyone staying is recorded</span></span><span class="stc ok">All recorded ✓</span></div>
+      <div class="frow" style="padding:13px 16px;"><span class="flbl" style="font-size:0.9rem;">Emails<span class="fsub">Confirmation sent 14/08</span></span><span class="chev">›</span></div>
+      <div class="frow" style="padding:13px 16px;"><span class="flbl" style="font-size:0.9rem;">Activity<span class="fsub">Deposit received 14/08 · 4 more</span></span><span class="chev">›</span></div>
+      <div class="frow" style="padding:13px 16px;"><span class="flbl" style="font-size:0.9rem;">Note<span class="fsub">&ldquo;Arriving late — after 8pm&rdquo;</span></span><span class="chev">›</span></div>
+    </div>
+  </div>
+  <div class="psticky">
+    <button class="pcta" type="button">Request payment · £520.00</button>
+    <span class="picon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4.5 5.5h15v13h-15z"/><path d="M5 6l7 5.5L19 6"/></svg></span>
+    <span class="picon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6.6 4.4h3l1.4 3.5-2 1.5a11 11 0 0 0 5.6 5.6l1.5-2 3.5 1.4v3a1.6 1.6 0 0 1-1.8 1.6A15.6 15.6 0 0 1 5 6.2a1.6 1.6 0 0 1 1.6-1.8z"/></svg></span>
+  </div>
+</div>`, PHONE2));
+
+/* --- Money: the five answers, condensed spine --- */
+writeFileSync(new URL('./PhoneMoney.dc.html', import.meta.url), page(`<div class="pshell">
+  <div class="phead cond">
+    <span class="pcondsent">Wren arrives today, Cara leaves</span>
+    <span class="pdcount">3</span>
+  </div>
+  <div class="pbody">
+    <div style="font-size:0.84rem;color:var(--muted);margin:0 2px 14px;line-height:1.55;">Two guests owe you £1,190.00 · one deposit to give back.</div>
+    <div class="cap attn" style="margin-top:0;">Needs attention</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Dan Rowe is overdue<span class="fsub">Stay finished 12 Aug · chased twice</span></span><span class="money" style="color:var(--danger-text);">£670.00</span></div>
+    </div>
+    <div class="cap">The five answers</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">To collect<span class="fsub">2 guests</span></span><span class="fright"><span class="money">£1,190.00</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">To move out<span class="fsub">Landed, less what is ring-fenced</span></span><span class="fright"><span class="money">£294.75</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">To give back<span class="fsub">Cara leaves today</span></span><span class="fright"><span class="money">£75.00</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">The books<span class="fsub">Tax year to date</span></span><span class="fright"><span class="money">£18,420</span><span class="chev">›</span></span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Recent<span class="fsub">Wren Hollis, £468.00</span></span><span class="fright"><span class="stc ok">✓ Settled</span><span class="chev">›</span></span></div>
+    </div>
+  </div>
+${DOCK('Money')}
+</div>`, PHONE2));
+
+/* --- Inbox: the folder switch, full width --- */
+writeFileSync(new URL('./PhoneInbox.dc.html', import.meta.url), page(`<div class="pshell">
+  <div class="phead cond">
+    <span class="pcondsent">Wren arrives today, Cara leaves</span>
+    <span class="pdcount">3</span>
+  </div>
+  <div class="pbody">
+    <div class="pseg"><span class="psegb on">Enquiries · 4</span><span class="psegb">Messages · 1</span><span class="psegb">Email</span></div>
+    <div class="cap attn" style="margin-top:0;">Waiting longest</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Priya Shah<span class="fsub">Jollyboat · 10–13 Sep · 2 adults</span></span><span class="stc bad">3 days</span></div>
+    </div>
+    <div class="cap">Waiting on you</div>
+    <div class="grp">
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Marcus Bell<span class="fsub">Pimpernel · 4–8 Oct · yesterday</span></span><span class="stc warn">Free</span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Ana Ferreira<span class="fsub">21A Westgate · 12–15 Sep · today</span></span><span class="stc warn">Free</span></div>
+      <div class="frow" style="padding:13px 15px;"><span class="flbl" style="font-size:0.9rem;">Joel Adeyemi<span class="fsub">Jollyboat · 5–9 Sep · today</span></span><span class="stc bad">Taken</span></div>
+    </div>
+  </div>
+${DOCK('Inbox')}
+</div>`, PHONE2));
+
+/* --- Ask: where the rail's search field goes on a phone --- */
+writeFileSync(new URL('./PhoneAsk.dc.html', import.meta.url), page(`<div class="pshell">
+  <div class="phead cond">
+    <span class="pcondsent">Ask anything</span>
+    <span class="pdcount">3</span>
+  </div>
+  <div class="pbody" style="position:relative;padding-bottom:0;">
+    <div class="pcard">
+      <div style="font-family:var(--serif);font-size:1.08rem;font-weight:600;line-height:1.3;">Morning George — 1 arrival, £340.00 to collect, and three things want you.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:15px;">
+        <button class="pchip" type="button" style="color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 26%,transparent);background:color-mix(in srgb,var(--danger) 9%,transparent);">Laura arrives tomorrow with no directions</button>
+        <button class="pchip" type="button" style="color:var(--warn-text);border-color:color-mix(in srgb,var(--warn) 26%,transparent);background:color-mix(in srgb,var(--warn) 9%,transparent);">Pimpernel key safe is still on Dan&rsquo;s code</button>
+        <button class="pchip" type="button" style="color:var(--warn-text);border-color:color-mix(in srgb,var(--warn) 26%,transparent);background:color-mix(in srgb,var(--warn) 9%,transparent);">Sarah&rsquo;s balance — £520.00, due in 6 days</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">
+      <button class="pchip" type="button">Who owes me money?</button>
+      <button class="pchip" type="button">How much can I move out?</button>
+    </div>
+    <div class="pcomposer">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--muted);flex:0 0 auto;"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <span class="ptxt">Ask anything…</span>
+      <span class="psend"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+    </div>
+  </div>
+${DOCK('Ask')}
+</div>`, PHONE2));
+
+console.log('wrote Phone, PhoneStay, PhoneMoney, PhoneInbox, PhoneAsk');

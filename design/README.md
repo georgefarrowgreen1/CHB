@@ -28,6 +28,10 @@ stop describing the product.
 3. **In a browser** — the same design at 1440 / 1180 / 960, which is where the
    left rail's cost shows: folded to icons it is a vertical dock, and the live
    counts beside each area degrade to pips.
+4. **On a phone** — Today, a stay, Inbox, Money, Ask at 390. Two of the three
+   changes do not exist here: the rail becomes the bottom dock the app already
+   has, and the pane becomes a page. Only the day spine crosses over, and it
+   condenses to one line off Today to earn its ~150px.
 
 The seeded `.html` is gitignored — it embeds the whole canvas editor. Re-seed it
 with the `/design` skill's helper from these files.

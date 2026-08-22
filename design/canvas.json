@@ -11,6 +11,10 @@
     {
       "id": "page-3",
       "name": "In a browser"
+    },
+    {
+      "id": "page-4",
+      "name": "On a phone"
     }
   ],
   "artboards": [
@@ -61,10 +65,10 @@
     },
     {
       "file": "Phone.dc.html",
-      "title": "Phone — the frame folds",
-      "page": "page-1",
-      "x": 1560,
-      "y": 2240,
+      "title": "Today",
+      "page": "page-4",
+      "x": 0,
+      "y": 0,
       "w": 390,
       "h": 844
     },
@@ -112,6 +116,42 @@
       "y": 1600,
       "w": 1020,
       "h": 665
+    },
+    {
+      "file": "PhoneStay.dc.html",
+      "title": "A stay — the pane becomes a page",
+      "page": "page-4",
+      "x": 490,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "PhoneInbox.dc.html",
+      "title": "Inbox",
+      "page": "page-4",
+      "x": 980,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "PhoneMoney.dc.html",
+      "title": "Money",
+      "page": "page-4",
+      "x": 1470,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "PhoneAsk.dc.html",
+      "title": "Ask",
+      "page": "page-4",
+      "x": 1960,
+      "y": 0,
+      "w": 390,
+      "h": 844
     }
   ],
   "annotations": [
@@ -162,10 +202,18 @@
       "y": 0,
       "w": 480,
       "text": "THE SAME DESIGN, IN A BROWSER — three real widths, not three tidy ones.\n\nThe left rail was the one decision I flagged, and this is what it costs. At 1440 it earns its place: every area named, with live state beside it.\n\nAt 1180 it folds to icons — and folded, it IS a vertical dock. The proposal has reinvented the thing it replaced, minus the counts, which degrade to pips because £1,190 does not fit in 62px.\n\nSo the honest read: the rail is a win on a big screen and a wash on a small one. If most of your back-office time is on a phone or a half-width window, that argues for keeping the header dock and taking only the day spine — which survives every width."
+    },
+    {
+      "id": "phone-note",
+      "page": "page-4",
+      "x": 0,
+      "y": -260,
+      "w": 620,
+      "text": "ON A PHONE, TWO OF THE THREE CHANGES DO NOT EXIST.\n\nThe RAIL has nowhere to go — it becomes the bottom dock, which is what the app already has. The PANE has nowhere to go either — the record opens as a page with a back link, which is also what the app already does below 1200.\n\nWhat crosses over is the DAY SPINE, and it is the whole proposal on a phone. It costs about 150px at rest, so it condenses to one line the moment you leave Today: the day sentence and a count of what still wants you, carried on every screen. That is the change I would actually defend.\n\nThe third duty does not fit at 390px — it becomes \"1 more\" rather than wrapping to a third row of chips."
     }
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-3"
+    "page": "page-4"
   }
 }

@@ -30,7 +30,7 @@ try {
 // its content clips, and clipping is the one failure that matters here.
 const W = {
     Main: 1440, Record: 1440, Inbox: 1440, Money: 1440, Cottages: 1440,
-    Phone: 390, WebWide: 1500, WebLaptop: 1240, WebNarrow: 1020,
+    Phone: 390, PhoneStay: 390, PhoneMoney: 390, PhoneInbox: 390, PhoneAsk: 390, WebWide: 1500, WebLaptop: 1240, WebNarrow: 1020,
     DirectionB: 860, DirectionC: 860,
 };
 const OUT = process.env.OUT || '/home/user/gout';
