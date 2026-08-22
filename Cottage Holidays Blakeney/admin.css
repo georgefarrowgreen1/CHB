@@ -5138,7 +5138,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    title started at one edge and the centred 640px column at another, two
    starting lines on one screen. LONGHAND margin-left only (the .mo-pulse
    shorthand lesson); below the rail the centred column stays gate-pinned. */
-body.NOPE-not-a-class #money-overview .bhub-fold-grp,
+body.rail-on.admin-screen #money-overview .bhub-fold-grp,
 body.rail-on.admin-screen #money-overview .bhub-grpcap,
 body.rail-on.admin-screen #money-overview > .glass-panel,
 body.rail-on.admin-screen #money-overview .mo-pulse {
