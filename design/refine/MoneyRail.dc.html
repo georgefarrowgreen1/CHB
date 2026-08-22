@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "Montserrat", "Helvetica Neue", Arial, sans-serif; color: #1b2a34; }
+    a { color: #965c35; } a:hover { color: #7a4a2a; }
+  </style>
+</helmet>
+
+<div style="width: 980px; box-sizing: border-box; background: #f5f1e9; padding: 34px 38px 38px">
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">Refinement 6</div>
+  <div style="margin: 0 0 18px"><div style="font-family: "Playfair Display", Georgia, serif; font-size: 21px; font-weight: 600; margin: 0 0 6px">Payments: the title and its answers should share a rail</div><div style="font-size: 13px; line-height: 1.6; color: #52646e">On rail screens the &ldquo;Payments&rdquo; title sits on the page&rsquo;s left rail while the five answers centre on their own 640px column — two starting lines on one screen. Align the answers&rsquo; column with the title, the way the booking hub&rsquo;s 760px column carries its own back-link.</div></div>
+  <div style="display: flex; gap: 34px">
+    <div style="flex: 1">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">Today — two rails</div>
+      <div style="background: rgba(255,255,255,0.92); border: 1px solid rgba(28,46,58,0.12); border-radius: 16px; padding: 18px 20px; position: relative">
+        <div style="position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: rgba(229,115,115,0.5)"></div>
+        <div style="position: absolute; left: 110px; top: 56px; bottom: 14px; width: 1px; background: rgba(229,115,115,0.5)"></div>
+        <div style="font-family: "Playfair Display", Georgia, serif; font-size: 22px; font-weight: 600; margin: 0 0 16px">Payments</div>
+        <div style="margin-left: 90px">
+          <div style="border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; padding: 9px 13px; font-size: 12px; margin: 0 0 7px">To collect <span style="float: right; font-family: "Playfair Display", Georgia, serif">&pound;1,190</span></div>
+          <div style="border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; padding: 9px 13px; font-size: 12px">To move out <span style="float: right; font-family: "Playfair Display", Georgia, serif">&pound;294.75</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="flex: 1">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">Proposed — one rail</div>
+      <div style="background: rgba(255,255,255,0.92); border: 1px solid rgba(28,46,58,0.12); border-radius: 16px; padding: 18px 20px; position: relative">
+        <div style="position: absolute; left: 20px; top: 0; bottom: 0; width: 1px; background: rgba(76,175,80,0.55)"></div>
+        <div style="font-family: "Playfair Display", Georgia, serif; font-size: 22px; font-weight: 600; margin: 0 0 16px">Payments</div>
+        <div style="border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; padding: 9px 13px; font-size: 12px; margin: 0 0 7px">To collect <span style="float: right; font-family: "Playfair Display", Georgia, serif">&pound;1,190</span></div>
+        <div style="border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; padding: 9px 13px; font-size: 12px">To move out <span style="float: right; font-family: "Playfair Display", Georgia, serif">&pound;294.75</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="font-size: 12.5px; line-height: 1.6; color: #52646e; margin: 20px 0 0">
+    Scoped to rail screens only — below 1200 the centred 640px column stays exactly as its own gates pinned it.
+    <b style="color: #1b2a34">Cost:</b> one margin rule keyed on the classes the rail already sets.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

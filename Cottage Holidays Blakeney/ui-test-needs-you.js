@@ -216,7 +216,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { __nyChats = 0; __nyMod = { rev: 0, ph: 0, exp: 0 }; __nyCronQuiet = false; await openBookings(); });
   await page.waitForTimeout(1400);
   const q = await page.evaluate(() => {
-    const h1 = document.querySelector('#view-backoffice .bo-today-head .section-title');
+    // The verdict sits beside THE HEAD — and which element that is depends on
+    // the width: below the rail it is the h1, at rail widths the h1 stands
+    // down and the day SENTENCE is the head (the frame's Today anatomy). The
+    // relationship is the invariant; the element is not.
+    const h1el = document.querySelector('#view-backoffice .bo-today-head .section-title');
+    const h1 = h1el && h1el.getClientRects().length > 0 ? h1el : document.getElementById('today-date');
     const v = document.getElementById('today-verdict');
     const hr = h1 ? h1.getBoundingClientRect() : null;
     const vr = v ? v.getBoundingClientRect() : null;

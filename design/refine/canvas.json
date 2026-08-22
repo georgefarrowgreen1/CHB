@@ -1,0 +1,71 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "title": "1 \u00b7 The condensed spine names the place",
+      "x": 0,
+      "y": 0,
+      "w": 980,
+      "h": 560
+    },
+    {
+      "file": "RailGlide.dc.html",
+      "title": "2 \u00b7 The current mark glides",
+      "x": 1080,
+      "y": 0,
+      "w": 860,
+      "h": 560
+    },
+    {
+      "file": "TodayHead.dc.html",
+      "title": "3 \u00b7 Today opens like everywhere else",
+      "x": 0,
+      "y": 700,
+      "w": 980,
+      "h": 640
+    },
+    {
+      "file": "ThemeHonest.dc.html",
+      "title": "4 \u00b7 The theme row says what it does",
+      "x": 1080,
+      "y": 700,
+      "w": 560,
+      "h": 460
+    },
+    {
+      "file": "WideDesk.dc.html",
+      "title": "5 \u00b7 Composure past 1720px",
+      "x": 0,
+      "y": 1470,
+      "w": 680,
+      "h": 640
+    },
+    {
+      "file": "MoneyRail.dc.html",
+      "title": "6 \u00b7 Payments shares one rail",
+      "x": 780,
+      "y": 1470,
+      "w": 980,
+      "h": 600
+    }
+  ],
+  "annotations": [
+    {
+      "id": "intro",
+      "x": 0,
+      "y": -190,
+      "w": 560,
+      "text": "SIX REFINEMENTS, each independent, each reversible \u2014 found by driving the shipped frame, not by imagining a new one.\\n\\nEvery proposal names its cost or tradeoff. Nothing here touches the phone: the one phone-shaped idea (a bottom dock) was considered and dropped \u2014 it reverses a deliberate, gated decision (one nav, in the header) for no gain the canvas itself could defend.\\n\\nSay which numbers to build \u2014 1, 2 and 4 are an afternoon; 3 re-aims existing checks and is the only one with real gate surgery."
+    },
+    {
+      "id": "lead",
+      "x": 1080,
+      "y": -110,
+      "w": 380,
+      "text": "1 is the lead: it fixes the one genuine REGRESSION the redesign introduced \u2014 the condensed header used to name the record you were in, and the spine currently doesn't."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

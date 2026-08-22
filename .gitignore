@@ -36,3 +36,4 @@ Cottage Holidays Blakeney/.phpstan-cache/
 # design/*.html also swallowed back-office-prototype.html, which is 44KB of
 # hand-written source and must be tracked.
 design/chb-back-office-redesign.html
+design/refine/back-office-refinements.html

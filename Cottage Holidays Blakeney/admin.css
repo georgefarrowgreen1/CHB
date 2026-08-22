@@ -5134,6 +5134,16 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    two columns of one page. */
 #accounts-content .bhub-fold-grp { max-width: 640px; }
 .mo-pulse { font-size: 0.9rem; color: var(--text-muted); width: 100%; max-width: 640px; margin: 2px auto 0; }
+/* On rail screens the answers align with the title's own left rail — the
+   title started at one edge and the centred 640px column at another, two
+   starting lines on one screen. LONGHAND margin-left only (the .mo-pulse
+   shorthand lesson); below the rail the centred column stays gate-pinned. */
+body.rail-on.admin-screen #money-overview .bhub-fold-grp,
+body.rail-on.admin-screen #money-overview .bhub-grpcap,
+body.rail-on.admin-screen #money-overview > .glass-panel,
+body.rail-on.admin-screen #money-overview .mo-pulse {
+  margin-left: 0;
+}
 .mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; }
 @media (hover: hover) { .mo-row:hover .bhub-kv-label { color: var(--accent-text); } }
 /* Every row in these folds names a GUEST (or a Due-now marker) — sentence
@@ -6264,9 +6274,12 @@ body.rail-on.admin-screen main.container {
   font: 500 0.74rem var(--font-sans);
   cursor: pointer;
 }
+.rail-theme-ic,
 .rail-theme svg {
   width: 15px;
   height: 15px;
+  flex: 0 0 auto;
+  display: inline-flex;
 }
 .rail-theme:hover {
   background: var(--btn-hover);
@@ -6319,6 +6332,67 @@ body.rail-fold.admin-screen #admin-rail .rail-cnt.is-hot {
 body.rail-fold.admin-screen main.container {
   margin-left: 96px;
 }
+/* Composure past 1720px: the rail-and-column ensemble centres as ONE unit —
+   left-anchored composition reads as crowding a corner on a big monitor.
+   The ensemble is rail (220) + gap (18) + the column's own cap, so the two
+   caps get their own arithmetic (1438 = 220+18+1200, 1738 = 220+18+1500) and
+   the container sits 238px right of the rail's left edge in both. Measured
+   equal-margin at 1920 in each. Below 1720 nothing changes. */
+body.rail-wide.admin-screen #admin-rail {
+  left: calc((100vw - 1438px) / 2);
+}
+body.rail-wide.admin-screen main.container {
+  margin-left: calc((100vw - 1438px) / 2 + 238px);
+  margin-right: 24px;
+}
+body.rail-wide.rail-widecol.admin-screen #admin-rail {
+  left: calc((100vw - 1738px) / 2);
+}
+body.rail-wide.rail-widecol.admin-screen main.container {
+  margin-left: calc((100vw - 1738px) / 2 + 238px);
+}
+/* Today opens the way every other screen now does: the serif day sentence
+   IS the head on rail screens — the greeting joins #today-date's own render
+   (todayOpsLine), the redundant h1 stands down (the rail's current row and
+   the content already say where you are), and the owed control keeps its
+   size inside the sentence. Below the rail, byte-identical to before. */
+body.rail-on.admin-screen .bo-today-head h1 {
+  display: none;
+}
+body.rail-on.admin-screen #today-date {
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-light);
+  text-wrap: balance;
+}
+body.rail-on.admin-screen #today-date .ops-owed {
+  font: inherit;
+  color: var(--accent-text);
+}
+/* The day's VERDICT belongs beside the head — and at rail widths the head is
+   the sentence, not the hidden h1. display:contents lifts the verdict out of
+   .bo-today-head so it can sit on the sentence's own row; without it the
+   capsule floated alone above the sentence (ui-test-needs-you caught it). */
+body.rail-on.admin-screen .dashboard-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+body.rail-on.admin-screen .bo-today-head {
+  display: contents;
+}
+body.rail-on.admin-screen #today-date {
+  order: 1;
+  flex: 1 1 auto;
+  margin: 0;
+}
+body.rail-on.admin-screen #today-verdict {
+  order: 2;
+  flex: 0 0 auto;
+}
 /* The AI chat's pill bar sticks at 64px to sit under the condensed header —
    which does not exist on rail screens, so it floated down over the page's
    own rows and INTERCEPTED their taps (ui-test-nightshift caught the handoff
@@ -6350,8 +6424,34 @@ body.rail-on.admin-screen .ac-hd {
 .rail-row:hover {
   background: var(--btn-hover);
 }
-.rail-row[aria-current='page'] {
+/* The current mark GLIDES — the dock's pill turned vertical, so the two navs
+   share one motion vocabulary. Travel on translate (a combined transform
+   teleports); rows sit above it; the row's own fill stands down since the
+   pill is the fill now. Reduced motion snaps, the admin dock's precedent. */
+.rail-ind {
+  position: absolute;
+  z-index: 0;
+  border-radius: var(--r-sm);
   background: var(--glass-hover);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate 0.42s var(--spring),
+    width 0.2s ease,
+    height 0.2s ease,
+    opacity 0.2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-ind { transition: opacity 0.2s ease; }
+}
+#admin-rail .rail-row,
+#admin-rail .rail-ask,
+#admin-rail .rail-theme,
+#admin-rail .rail-brand {
+  position: relative;
+  z-index: 1;
+}
+.rail-row[aria-current='page'] {
   font-weight: 600;
 }
 /* The accent as an ICON here would sit under the 3:1 non-text bar on the

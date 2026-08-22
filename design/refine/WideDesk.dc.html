@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "Montserrat", "Helvetica Neue", Arial, sans-serif; color: #1b2a34; }
+    a { color: #965c35; } a:hover { color: #7a4a2a; }
+  </style>
+</helmet>
+
+<div style="width: 680px; box-sizing: border-box; background: #f5f1e9; padding: 34px 38px 38px">
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">Refinement 5</div>
+  <div style="margin: 0 0 18px"><div style="font-family: "Playfair Display", Georgia, serif; font-size: 21px; font-weight: 600; margin: 0 0 6px">Very wide screens deserve composure, not a growing void</div><div style="font-size: 13px; line-height: 1.6; color: #52646e">The rail layout is left-anchored by design — a rail plus a column. Past about 1720px that reads as everything crowding one corner of the monitor. Beyond that width, the rail-and-content ensemble should centre as one unit, keeping their relationship fixed.</div></div>
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">1920px today — left-anchored</div>
+  <div style="position: relative; width: 560px; height: 150px; background: rgba(28,46,58,0.05); border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; overflow: hidden"><div style="position: absolute; left: 10px; top: 10px; bottom: 10px; width: 64px; background: rgba(255,255,255,0.85); border: 1px solid rgba(28,46,58,0.12); border-radius: 8px"></div><div style="position: absolute; left: 88px; top: 10px; bottom: 10px; width: 300px; background: rgba(255,255,255,0.7); border: 1px solid rgba(28,46,58,0.08); border-radius: 8px"></div><div style="position: absolute; right: 10px; top: 62px; width: 210px; text-align: center; font-size: 10.5px; color: #52646e">empty</div><div style="position: absolute; left: 12px; bottom: -1px; font-size: 10.5px; color: #52646e; padding: 4px 2px">content hugs the rail; the void grows with the screen</div></div>
+  <div style="height: 18px"></div>
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #52646e; margin: 0 0 8px">1920px proposed — the ensemble centres past 1720</div>
+  <div style="position: relative; width: 560px; height: 150px; background: rgba(28,46,58,0.05); border: 1px solid rgba(28,46,58,0.08); border-radius: 10px; overflow: hidden"><div style="position: absolute; left: 70px; top: 10px; bottom: 10px; width: 64px; background: rgba(255,255,255,0.85); border: 1px solid rgba(28,46,58,0.12); border-radius: 8px"></div><div style="position: absolute; left: 148px; top: 10px; bottom: 10px; width: 300px; background: rgba(255,255,255,0.7); border: 1px solid rgba(28,46,58,0.08); border-radius: 8px"></div><div style="position: absolute; right: 10px; top: 62px; width: 90px; text-align: center; font-size: 10.5px; color: #52646e"></div><div style="position: absolute; left: 12px; bottom: -1px; font-size: 10.5px; color: #52646e; padding: 4px 2px">the ensemble centres as ONE unit; margins balance</div></div>
+  <div style="font-size: 12.5px; line-height: 1.6; color: #52646e; margin: 20px 0 0">
+    One more body-class boundary from matchMedia (the pattern the rail already uses — no stray media width).
+    <b style="color: #1b2a34">Tradeoff:</b> below 1720 nothing changes; owners on laptops never see it.
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

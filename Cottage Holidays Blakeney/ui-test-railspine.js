@@ -288,6 +288,173 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     });
     ok(floors.length === 0, `every rail row and spine chip is ≥24px and named${floors.length ? ' — ' + floors.join(', ') : ''}`);
 
+    console.log('§8 the refinements');
+    // ---- The spine does NOT name the record you are in, and that is a
+    // DECISION, not an oversight — so it is pinned. It was proposed (the
+    // condensed header used to name it) and refuted by driving it: at rail
+    // widths a hub DOCKS beside its own list, so the record is on screen with
+    // its own head; below 1200 the hub is standalone and the header, which
+    // exists there, names it. Neither width is missing the place.
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => openBookingHub('b502'));
+    await page.waitForTimeout(1100);
+    const docked = await page.evaluate(() => {
+        const c = document.getElementById('booking-hub-content');
+        return {
+            active: (document.querySelector('.page-view.active') || {}).id,
+            parent: c && c.parentElement ? c.parentElement.id : '',
+            painted: !!c && c.getClientRects().length > 0,
+            named: /Sarah/.test((c && c.textContent) || ''),
+        };
+    });
+    ok(docked.parent === 'bookings-detail-pane' && docked.painted, 'at rail width a booking hub DOCKS beside its list, never becoming a page');
+    ok(docked.active === 'view-backoffice', '…so the workspace stays the active view');
+    ok(docked.named, '…and the record names itself in the pane — the place is already on screen');
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => openBookingHub('b502'));
+    await page.waitForTimeout(1100);
+    ok(await page.evaluate(() => {
+        const t = document.getElementById('admin-head-title');
+        const h = document.querySelector('header');
+        return !!h && h.getClientRects().length > 0 && /Sarah/.test((t && t.textContent) || '');
+    }), 'below the rail the standalone hub keeps the header, which names it — no width loses the place');
+    await page.evaluate(() => { try { bookingHubBack(); } catch (e) {} });
+    await page.waitForTimeout(700);
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(400);
+
+    // ---- 2. The current mark glides.
+    await page.evaluate(async () => { await openAccounts(); });
+    await page.waitForTimeout(700);
+    const g1 = await page.evaluate(() => {
+        const i = /** @type {HTMLElement} */ (document.querySelector('#admin-rail .rail-ind'));
+        const c = document.querySelector('#admin-rail .rail-row[aria-current="page"]');
+        return { t: i ? i.style.translate : '', op: i ? i.style.opacity : '', cur: c ? (c.querySelector('.rail-lbl') || {}).textContent : '' };
+    });
+    ok(!!g1.t && g1.op === '1', `the pill is seated under the current row (${g1.cur}, translate ${g1.t})`);
+    await page.click('#admin-rail .rail-row[data-view="view-inbox"]');
+    await page.waitForTimeout(900);
+    const g2 = await page.evaluate(() => {
+        const i = /** @type {HTMLElement} */ (document.querySelector('#admin-rail .rail-ind'));
+        const cs = i ? getComputedStyle(i) : null;
+        return { t: i ? i.style.translate : '', trans: cs ? cs.transitionProperty : '' };
+    });
+    ok(g2.t !== g1.t, `and TRAVELS to the next (${g1.t} → ${g2.t})`);
+    ok(/translate/.test(g2.trans), `on a transform, never layout (${g2.trans.split(',')[0]})`);
+    ok(await page.evaluate(() => {
+        const i = document.querySelector('#admin-rail .rail-ind');
+        const rows = [...document.querySelectorAll('#admin-rail .rail-row')];
+        return !!i && rows.every((r) => +getComputedStyle(r).zIndex >= +getComputedStyle(i).zIndex);
+    }), 'with the rows above it, so it reads as the fill and not a cover');
+
+    // ---- 3. Today opens like everywhere else.
+    await page.evaluate(async () => { await tryAccessBackOffice(); });
+    await page.waitForTimeout(1200);
+    const th = await page.evaluate(() => {
+        const h1 = document.querySelector('.bo-today-head h1');
+        const line = document.getElementById('today-date');
+        return {
+            h1Hidden: !h1 || h1.getClientRects().length === 0,
+            greet: (document.querySelector('#today-date .today-greet') || { textContent: '' }).textContent.trim(),
+            derived: '',
+            size: line ? Math.round(parseFloat(getComputedStyle(line).fontSize)) : 0,
+            spine: (() => { const sp = document.getElementById('day-spine'); return !!sp && !sp.hidden; })(),
+        };
+    });
+    const derivedGreet = await page.evaluate(() => chbDaySentence().greet);
+    ok(th.greet.startsWith(derivedGreet), `Today opens with the day’s own greeting ("${th.greet}")`);
+    ok(th.h1Hidden, 'and the redundant "Today" h1 stands down — the rail already says where you are');
+    ok(th.size >= 18, `at the spine’s own serif scale (${th.size}px)`);
+    ok(!th.spine, 'while the spine itself stays OFF Today — one statement of the day, never two');
+    // Below the rail it is byte-identical to before: no greeting injected.
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.waitForTimeout(500);
+    // Land on Today explicitly: crossing 1200 UNDOCKS whatever hub is sitting
+    // in the pane into its standalone view (bookingsSplitWide's own boundary
+    // handler), so a resize alone leaves this reading the wrong screen.
+    await page.evaluate(async () => { await tryAccessBackOffice(); });
+    await page.waitForTimeout(900);
+    const below = await page.evaluate(() => {
+        const h1 = document.querySelector('.bo-today-head h1');
+        return {
+            greet: !!document.querySelector('#today-date .today-greet'),
+            h1: !!h1 && h1.getClientRects().length > 0,
+            railOn: document.body.classList.contains('rail-on'),
+            active: (document.querySelector('.page-view.active') || {}).id,
+        };
+    });
+    ok(!below.greet && below.h1, `below the rail the old head returns whole — the greeting is never hidden-but-present ${JSON.stringify(below)}`);
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(400);
+
+    // ---- 4. The theme row says what it does.
+    const t1 = await page.evaluate(() => ({
+        light: document.body.classList.contains('light-mode'),
+        lbl: (document.getElementById('rail-theme-lbl') || { textContent: '' }).textContent.trim(),
+        aria: (document.querySelector('#admin-rail .rail-theme') || { getAttribute: () => '' }).getAttribute('aria-label'),
+    }));
+    ok(/Switch to (dark|light)/.test(t1.lbl), `the theme row names its destination ("${t1.lbl}")`);
+    ok(t1.lbl === (t1.light ? 'Switch to dark' : 'Switch to light'), 'and names the RIGHT one for the theme in force');
+    ok(t1.aria === t1.lbl, 'with the accessible name saying the same thing');
+    await page.click('#admin-rail .rail-theme');
+    await page.waitForTimeout(600);
+    const t2 = await page.evaluate(() => ({
+        light: document.body.classList.contains('light-mode'),
+        lbl: (document.getElementById('rail-theme-lbl') || { textContent: '' }).textContent.trim(),
+    }));
+    ok(t2.light !== t1.light, 'tapping it really flips the theme');
+    ok(t2.lbl !== t1.lbl && /Switch to/.test(t2.lbl), `and the label flips with it ("${t2.lbl}")`);
+    await page.click('#admin-rail .rail-theme');
+    await page.waitForTimeout(500);
+
+    // ---- 5. Composure past 1720.
+    await page.setViewportSize({ width: 1920, height: 950 });
+    await page.waitForTimeout(500);
+    await page.evaluate(async () => { await openAccounts(); });
+    await page.waitForTimeout(700);
+    const wide = await page.evaluate(() => {
+        const r = document.getElementById('admin-rail');
+        const m = document.querySelector('main.container.page-view.active');
+        if (!r || !m) return null;
+        const rb = r.getBoundingClientRect(), mb = m.getBoundingClientRect();
+        return { left: Math.round(rb.left), right: Math.round(window.innerWidth - mb.right), gap: Math.round(mb.left - rb.right) };
+    });
+    ok(!!wide && Math.abs(wide.left - wide.right) < 6, `past 1720 the ensemble CENTRES (${wide.left}px left, ${wide.right}px right)`);
+    ok(!!wide && wide.gap > 0 && wide.gap < 60, `and the rail keeps its own relationship to the column (${wide.gap}px)`);
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(400);
+    ok(await page.evaluate(() => {
+        const r = document.getElementById('admin-rail');
+        return !!r && Math.round(r.getBoundingClientRect().left) < 40;
+    }), 'below 1720 it is left-anchored again — a rail plus a column');
+
+    // ---- 6. Payments shares one rail.
+    await page.evaluate(async () => { await openAccounts(); });
+    await page.waitForTimeout(900);
+    // EVERY answer element, not whichever matches first: the rule is a
+    // four-selector list, and a break-test that disabled one of them passed
+    // because the query happened to match a still-styled sibling. Measuring
+    // the whole set is what makes this non-vacuous.
+    const rails = await page.evaluate(() => {
+        const title = document.querySelector('#view-accounts h1, #view-accounts .section-title');
+        const kids = [...document.querySelectorAll('#money-overview .bhub-fold-grp, #money-overview .bhub-grpcap, #money-overview > .glass-panel, #money-overview .mo-pulse')]
+            .filter((el) => el.getClientRects().length > 0);
+        if (!title || !kids.length) return null;
+        const t = Math.round(title.getBoundingClientRect().left);
+        return { t, n: kids.length, worst: Math.max(...kids.map((el) => Math.abs(Math.round(el.getBoundingClientRect().left) - t))) };
+    });
+    ok(!!rails && rails.n >= 2 && rails.worst <= 2, `Payments’ title and ALL ${rails ? rails.n : 0} of its answers share ONE rail (worst ${rails ? rails.worst : '?'}px out)`);
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.waitForTimeout(500);
+    ok(await page.evaluate(() => {
+        const grp = document.querySelector('#money-overview .bhub-fold-grp, #money-overview > .glass-panel');
+        if (!grp) return true;
+        const b = grp.getBoundingClientRect();
+        return Math.abs(b.left - (window.innerWidth - b.right)) < 40;
+    }), 'and below the rail the centred column is untouched — its own gates still hold');
+
     if (errs.length) { console.log('  PAGE ERRORS:\n  ' + errs.join('\n  ')); fails += errs.length; }
     console.log(fails ? `RAILSPINE TEST FAILED ❌ (${fails})` : 'RAILSPINE TEST PASSED ✅');
     await done(fails);
