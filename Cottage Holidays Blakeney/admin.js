@@ -10491,8 +10491,18 @@ function bhubMenuPlace(btn, menu) {
     menu.style.bottom = '';
     const b = btn.getBoundingClientRect();
     const margin = 14;
+    // Room ABOVE stops at the fixed header's bottom edge, not the viewport top.
+    // Measured at 844×390 with the day spine above the hub: the flipped-up menu
+    // ran to y=16, and its top items hit-tested to the header's own dock button —
+    // readable, untappable. The header is fixed and opaque; space under it is
+    // not space.
+    let hb = 0;
+    try {
+        const hdr = document.querySelector('header');
+        if (hdr) hb = Math.max(0, hdr.getBoundingClientRect().bottom);
+    } catch (e) {}
     const below = window.innerHeight - b.bottom - 6 - margin;
-    const above = b.top - 6 - margin;
+    const above = b.top - 6 - margin - hb;
     const want = menu.scrollHeight;
     if (want > below && above > below) {
         menu.style.top = 'auto';
