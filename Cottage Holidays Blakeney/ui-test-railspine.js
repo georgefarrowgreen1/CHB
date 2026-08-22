@@ -334,6 +334,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         return { t: i ? i.style.translate : '', op: i ? i.style.opacity : '', cur: c ? (c.querySelector('.rail-lbl') || {}).textContent : '' };
     });
     ok(!!g1.t && g1.op === '1', `the pill is seated under the current row (${g1.cur}, translate ${g1.t})`);
+    // …and LANDS ON IT, to the pixel. The first version of this section only
+    // asserted the pill MOVED, which passed while it sat 16px low against
+    // every row — the rail's top padding counted twice (reported from a Mac).
+    const fit = await page.evaluate(() => {
+        const i = document.querySelector('#admin-rail .rail-ind');
+        const c = document.querySelector('#admin-rail .rail-row[aria-current="page"]');
+        if (!i || !c) return null;
+        const a = i.getBoundingClientRect(), b = c.getBoundingClientRect();
+        return { dy: Math.round(a.top - b.top), dx: Math.round(a.left - b.left), dh: Math.round(a.height - b.height), dw: Math.round(a.width - b.width) };
+    });
+    ok(!!fit && Math.abs(fit.dy) <= 1 && Math.abs(fit.dx) <= 1 && Math.abs(fit.dh) <= 1 && Math.abs(fit.dw) <= 1,
+        `and it HUGS that row exactly ${fit ? JSON.stringify(fit) : '(not found)'}`);
     await page.click('#admin-rail .rail-row[data-view="view-inbox"]');
     await page.waitForTimeout(900);
     const g2 = await page.evaluate(() => {
