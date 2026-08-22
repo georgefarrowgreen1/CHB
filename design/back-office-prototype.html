@@ -114,11 +114,12 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
   overflow:hidden;box-shadow:var(--shadow);margin-bottom:18px;}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
   min-height:50px;padding:13px 18px;text-align:left;}
-.row+.row{border-top:1px solid var(--hair);}
-.row:hover{background:var(--glass-2);}
+.row+.row,.fold+.row,.row+.fold{border-top:1px solid var(--hair);}
+button.row:hover{background:var(--glass-2);}
 .row[aria-selected="true"]{background:var(--glass-2);box-shadow:inset 3px 0 0 var(--accent);}
+.row[aria-expanded="true"]{background:var(--glass-2);}
 .lbl{font-weight:600;font-size:0.95rem;min-width:0;}
-.sub{display:block;font-weight:400;font-size:0.78rem;color:var(--muted);margin-top:2px;}
+.sub{display:block;font-weight:400;font-size:0.78rem;color:var(--muted);margin-top:2px;line-height:1.45;}
 .right{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
 .money{font-family:var(--serif);font-size:1.05rem;font-weight:600;font-variant-numeric:tabular-nums;}
 .chev{color:var(--muted);}
@@ -127,37 +128,60 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
 .stc.ok{color:var(--ok-text);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 24%,transparent);}
 .stc.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);border:1px solid color-mix(in srgb,var(--warn) 24%,transparent);}
 .stc.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);border:1px solid color-mix(in srgb,var(--danger) 24%,transparent);}
+.stc.info{color:var(--info-text);background:color-mix(in srgb,var(--info) 12%,transparent);border:1px solid color-mix(in srgb,var(--info) 22%,transparent);}
 .stc.unk{color:var(--muted);background:color-mix(in srgb,var(--muted) 10%,transparent);border:1px solid color-mix(in srgb,var(--muted) 18%,transparent);font-weight:500;}
 .pulse{font-size:0.88rem;color:var(--muted);margin:0 4px 14px;line-height:1.55;}
 .seg{display:inline-flex;gap:2px;padding:3px;background:var(--sunk);border-radius:999px;margin-bottom:14px;}
 .segb{font-size:0.78rem;font-weight:600;padding:8px 15px;border-radius:999px;color:var(--muted);min-height:38px;}
 .segb[aria-pressed="true"]{background:var(--glass-2);color:var(--ink);box-shadow:var(--shadow);}
 
-/* ---- pane innards ---- */
-.phd{padding:16px 18px 14px;border-bottom:1px solid var(--hair);}
-.pid{font-family:var(--serif);font-size:1.15rem;font-weight:600;}
-.pwhen{font-size:0.78rem;color:var(--muted);margin-top:4px;line-height:1.5;}
-.next{margin:14px 18px 2px;border-radius:var(--r-md);padding:13px 15px;
-  background:color-mix(in srgb,var(--warn) 11%,transparent);
-  border:1px solid color-mix(in srgb,var(--warn) 22%,transparent);}
-.next.go{background:color-mix(in srgb,var(--ok) 11%,transparent);border-color:color-mix(in srgb,var(--ok) 22%,transparent);}
-.nstep{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn-text);}
-.next.go .nstep{color:var(--ok-text);}
-.nsay{font-size:0.9rem;font-weight:600;margin-top:5px;}
-.nsub{font-size:0.78rem;color:var(--muted);margin-top:4px;}
-.kv{display:flex;justify-content:space-between;gap:12px;padding:10px 18px;font-size:0.82rem;}
-.kv+.kv{border-top:1px solid var(--hair);}
-.kvk{color:var(--muted);}
-.kvv{font-weight:600;text-align:right;}
-.pacts{display:flex;flex-wrap:wrap;gap:8px;padding:13px 18px;border-top:1px solid var(--hair);}
-.btn{font-size:0.8rem;font-weight:600;padding:10px 16px;border-radius:999px;min-height:40px;
-  border:1px solid var(--line);background:var(--glass);}
-.btn:hover{background:var(--glass-2);}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
-.btn.pri:hover{filter:brightness(1.06);background:var(--accent);}
-.quote{font-size:0.84rem;line-height:1.6;padding:0 18px 4px;}
-.backlink{display:none;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;
-  color:var(--accent-text);margin:0 0 14px;min-height:40px;}
+/* ---- sub-page header ---- */
+.crumb{display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;font-weight:600;
+  color:var(--accent-text);margin:0 0 8px;min-height:38px;padding:4px 6px 4px 0;}
+.subttl{font-family:var(--serif);font-size:1.28rem;font-weight:600;margin:0 4px 16px;
+  display:flex;align-items:center;gap:9px;}
+.hero{font-family:var(--serif);font-size:2rem;font-weight:600;font-variant-numeric:tabular-nums;}
+.herow{padding:18px 20px 16px;}
+.herosub{font-size:0.8rem;color:var(--muted);margin-top:5px;}
+
+/* ---- folds & editors ---- */
+.fold{padding:15px 18px 17px;background:var(--sunk);}
+.well{background:var(--glass);border:1px solid var(--hair);border-radius:var(--r-md);
+  padding:13px 15px;margin-bottom:10px;}
+.well:last-child{margin-bottom:0;}
+.wcap{font-size:0.66rem;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;
+  color:var(--muted);margin-bottom:9px;}
+.wrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;}
+.wrow+.wrow{border-top:1px solid var(--hair);margin-top:7px;padding-top:7px;}
+.stp{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;
+  overflow:hidden;background:var(--glass);}
+.stpb{width:38px;height:38px;font-size:1.05rem;color:var(--muted);}
+.stpb:hover{background:var(--glass-2);color:var(--ink);}
+.stpv{font-family:var(--serif);font-weight:600;padding:0 10px;min-width:72px;text-align:center;
+  font-variant-numeric:tabular-nums;}
+.consq{font-size:0.77rem;color:var(--muted);margin-top:9px;line-height:1.5;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;}
+.chip{display:inline-flex;align-items:center;font-size:0.78rem;font-weight:600;padding:7px 13px;
+  border-radius:999px;border:1px solid var(--line);background:var(--glass);min-height:36px;}
+.chip.onx{border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:var(--accent-text);
+  background:color-mix(in srgb,var(--accent) 10%,transparent);}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;}
+.ptile{aspect-ratio:4/3;border-radius:10px;position:relative;border:1px solid var(--hair);}
+.pmain{position:absolute;top:5px;left:5px;font-size:0.56rem;font-weight:700;
+  background:rgba(0,0,0,0.55);color:#fff;padding:2px 6px;border-radius:5px;letter-spacing:0.06em;}
+.fin{width:100%;padding:11px 14px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:var(--glass-2);color:var(--ink);font:inherit;font-size:0.87rem;outline:none;min-width:0;}
+.fin::placeholder{color:var(--muted);}
+.flbl{display:block;font-size:0.72rem;font-weight:600;color:var(--muted);margin:0 2px 5px;}
+.sw{width:44px;height:26px;border-radius:999px;background:color-mix(in srgb,var(--muted) 22%,transparent);
+  border:1px solid var(--line);position:relative;flex:0 0 auto;transition:background .15s ease;padding:0;}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);transition:left .15s ease;}
+.sw[aria-pressed="true"]{background:var(--ok);border-color:var(--ok);}
+.sw[aria-pressed="true"]::after{left:20px;}
+.code{font-family:var(--serif);font-size:1.9rem;font-weight:700;letter-spacing:0.14em;
+  font-variant-numeric:tabular-nums;}
+.fdot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
 
 /* ---- lanes ---- */
 .lanes{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -175,6 +199,46 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
 .lanescroll{overflow-x:auto;overflow-y:hidden;}
 .lanescroll>*{min-width:520px;}
 .dnum{flex:1 1 0;font-size:0.6rem;color:var(--muted);text-align:center;}
+
+/* ---- pane innards ---- */
+.phd{padding:16px 18px 14px;border-bottom:1px solid var(--hair);}
+.pid{font-family:var(--serif);font-size:1.15rem;font-weight:600;}
+.pwhen{font-size:0.78rem;color:var(--muted);margin-top:4px;line-height:1.5;}
+.next{margin:14px 18px 2px;border-radius:var(--r-md);padding:13px 15px;
+  background:color-mix(in srgb,var(--warn) 11%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn) 22%,transparent);}
+.next.go{background:color-mix(in srgb,var(--ok) 11%,transparent);border-color:color-mix(in srgb,var(--ok) 22%,transparent);}
+.nstep{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn-text);}
+.next.go .nstep{color:var(--ok-text);}
+.nsay{font-size:0.9rem;font-weight:600;margin-top:5px;}
+.nsub{font-size:0.78rem;color:var(--muted);margin-top:4px;line-height:1.5;}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:10px 18px;font-size:0.82rem;}
+.kv+.kv{border-top:1px solid var(--hair);}
+.kvk{color:var(--muted);}
+.kvv{font-weight:600;text-align:right;}
+.pacts{display:flex;flex-wrap:wrap;gap:8px;padding:13px 18px;border-top:1px solid var(--hair);}
+.btn{font-size:0.8rem;font-weight:600;padding:10px 16px;border-radius:999px;min-height:40px;
+  border:1px solid var(--line);background:var(--glass);}
+.btn:hover{background:var(--glass-2);}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+.btn.pri:hover{filter:brightness(1.06);background:var(--accent);}
+.quote{font-size:0.84rem;line-height:1.6;padding:0 18px 4px;}
+.backlink{display:none;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;
+  color:var(--accent-text);margin:0 0 14px;min-height:40px;}
+
+/* ---- chat ---- */
+.chatlog{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+.bub{max-width:76%;padding:11px 15px;border-radius:18px;font-size:0.88rem;line-height:1.55;}
+.bub.you{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:6px;}
+.bub.mac{align-self:flex-start;background:var(--glass-2);border:1px solid var(--hair);border-bottom-left-radius:6px;}
+.lookup{display:block;font-size:0.68rem;color:var(--muted);margin-top:7px;}
+.bub.you .lookup{color:color-mix(in srgb,var(--accent-ink) 65%,transparent);}
+.capline{align-self:center;font-size:0.7rem;font-weight:600;color:var(--muted);padding:4px 13px;
+  border:1px solid var(--hair);border-radius:999px;background:var(--glass);}
+.chatbar{display:flex;gap:9px;margin-top:6px;}
+.chatbar .fin{border-radius:999px;flex:1 1 auto;}
+.presence{display:flex;align-items:center;gap:8px;font-size:0.76rem;color:var(--muted);margin:0 4px 13px;}
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:0 0 auto;}
 
 /* ---- ask overlay ---- */
 .scrim{position:fixed;inset:0;background:rgba(10,14,18,0.42);backdrop-filter:blur(2px);
@@ -339,26 +403,75 @@ const ENQ = [
    msg:'Are those dates still available? Flexible either side if not.'},
 ];
 
+const MSGS = [
+  {id:'m1',name:'Wren Hollis',cot:'pimpernel',age:'20 min',state:'in residence',
+   preview:'What’s the wifi code?',unread:1,
+   thread:[{who:'them',text:'Hi! We’re all settled in — it’s lovely. Quick one: what’s the wifi code?'}]},
+];
+
+const EMAILS = {
+  in:[
+    {id:'em1',from:'Sarah Pemberton',subj:'Re: Your stay at Jollyboat',age:'2 hours ago',match:'b2',chain:2,
+     snip:'Perfect, thank you — one more thing, is there a travel cot we could borrow?',
+     body:['Perfect, thank you — the confirmation came through fine.','One more thing: is there a travel cot we could borrow? Our daughter will be 14 months by then. Happy to bring our own if not.','Sarah']},
+    {id:'em2',from:'Katie Orr',subj:'Cancellation list?',age:'yesterday',match:null,chain:0,
+     snip:'If anything comes free the week of the 22nd we’d take it like a shot…',
+     body:['Hello! We stayed at Jollyboat two summers ago and loved it.','If anything comes free the week of the 22nd we’d take it like a shot — any cottage. We’re flexible on dates either side too.','Katie']},
+    {id:'em3',from:'Airbnb',subj:'Reservation confirmed — HMKX42',age:'Monday',match:null,chain:0,
+     snip:'A guest has booked Pimpernel for 24–27 Aug…',
+     body:['A guest has booked Pimpernel for 24–27 Aug.','Payout of £312.40 will be released 24 hours after check-in.']},
+  ],
+  sent:[
+    {id:'es1',from:'To Wren Hollis',subj:'Your arrival details for Pimpernel',age:'19/08',match:'b1',chain:0,
+     snip:'Everything you need for Sunday — directions, the key safe, and…',
+     body:['Hello Wren — everything you need for Sunday is below.','Directions, the key safe and the house rules are all in your booking page; the code appears two days before you arrive.','George']},
+    {id:'es2',from:'To Sarah Pemberton',subj:'Your booking is confirmed',age:'14/08',match:'b2',chain:0,
+     snip:'Thank you — Jollyboat is yours for 28–31 Aug…',
+     body:['Thank you — Jollyboat is yours for 28–31 Aug.','Your deposit of £147.50 is in; the balance of £520.00 is due by 21 September.','George']},
+  ],
+};
+
 const DUTIES = [
-  {sev:'bad', text:'Laura arrives tomorrow with no directions', go:['today','b3']},
-  {sev:'warn',text:'Pimpernel key safe still on Dan’s code',   go:['keysafes',null]},
-  {sev:'warn',text:'Sarah’s balance — £520.00, due in 6 days',  go:['today','b2']},
+  {sev:'bad', text:'Laura arrives tomorrow with no directions', v:'today', r:'b3'},
+  {sev:'warn',text:'Pimpernel key safe still on Dan’s code',   v:'keysafes', ks:true},
+  {sev:'warn',text:'Sarah’s balance — £520.00, due in 6 days',  v:'today', r:'b2'},
+];
+
+/* Key safes — mutable, because rotating one WORKS in this demo. */
+const KS = {
+  pimpernel:{code:'7302',st:'due', line:'Priya Shah arrives 10 Sep · the safe still holds Dan’s code',
+    vis:'Not visible to anyone — no code confirmed for her stay',
+    hist:['7302 · set 09/08 for Dan Rowe','5518 · set 30/07 for the Hartleys']},
+  jollyboat:{code:'2946',st:'ok', line:'Sarah Pemberton · set 21/08',
+    vis:'Sarah sees it from 26 Aug (two days before check-in)',
+    hist:['2946 · set 21/08 for Sarah Pemberton','1873 · set 02/08 for the Colemans']},
+  '21a':{code:'8154',st:'none', line:'No upcoming booking',
+    vis:'Nothing due — the last code stays until the next stay',
+    hist:['8154 · set 02/08 for Tom Ackroyd']},
+};
+
+const MOD = [
+  {id:'r1',kind:'Review',who:'Hannah Price',cot:'jollyboat',stars:'★★★★★',
+   text:'A perfect week. The welcome book had everything, and watching the seals from the quay was magical.'},
+  {id:'p1',kind:'Photo',who:'Tom Ackroyd',cot:'21a',text:'Sunset from the courtyard — wants to join the guest gallery.'},
 ];
 
 const AREAS = [
   {id:'today',    label:'Today',     cnt:'3', hot:true,  ic:'<rect x="3" y="4.6" width="18" height="16" rx="3"/><path d="M3 9.4h18M8 2.6v4M16 2.6v4"/>'},
-  {id:'inbox',    label:'Inbox',     cnt:'4', ic:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 6.6l8 6 8-6"/>'},
+  {id:'inbox',    label:'Inbox',     cnt:'5', ic:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 6.6l8 6 8-6"/>'},
   {id:'money',    label:'Money',     cnt:'£1,190', ic:'<circle cx="12" cy="12" r="9"/><path d="M14.4 8.6a3.2 3.2 0 0 0-4.6.5c-1 1.4-.4 3 .6 3.9M9 12.4h4.6M9.6 15.6h4.6"/>'},
   {id:'cottages', label:'Cottages',  ph:true, ic:'<path d="M4 8.4V6.2a2 2 0 0 1 2-2h3.2l1.6 2.2H18a2 2 0 0 1 2 2v9.4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8.6 12.6h6.8"/>'},
   {id:'keysafes', label:'Key safes', cnt:'1', hot:true, ph:true, ic:'<circle cx="9" cy="12" r="4.2"/><path d="M13.2 12H21M18 12v3.2M15.4 12v2.4"/>'},
   {id:'settings', label:'Settings',  ph:true, ic:'<circle cx="12" cy="12" r="3"/><path d="M12 3.4v2.2M12 18.4v2.2M20.6 12h-2.2M5.6 12H3.4M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6M18.1 18.1l-1.6-1.6M7.5 7.5L5.9 5.9"/>'},
-  {id:'assistant',label:'Assistant', ic:'<path d="M12 3.6l1.9 4.5 4.5 1.9-4.5 1.9L12 16.4l-1.9-4.5L5.6 10l4.5-1.9z"/><path d="M18.4 15.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>'},
+  {id:'assistant',label:'AI chat',   ic:'<path d="M12 3.6l1.9 4.5 4.5 1.9-4.5 1.9L12 16.4l-1.9-4.5L5.6 10l4.5-1.9z"/><path d="M18.4 15.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>'},
 ];
 
 /* ============================================================ */
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const state = {view:'today', sel:null, folder:'enq'};
+const state = {view:'today', sub:null, sel:null, folder:'enq', mtab:'in', fold:null,
+  ksConfirm:null, rate:175, dep:25, minN:2};
+const CHAT = [];
 
 const ic = (d, sz) => `<svg width="${sz||19}" height="${sz||19}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const cap = (c) => `<span class="stc ${c[0]}">${esc(c[1])}</span>`;
@@ -389,7 +502,7 @@ function spine(){
     + (DUTIES.length>2?`<button class="dutymore" data-go="assistant" type="button">${DUTIES.length-2} more</button>`:'');
 }
 
-/* ---- rows ---- */
+/* ---- shared row shapes ---- */
 const bookRow = (b) => `
   <button class="row" data-rec="${b.id}" type="button"${state.sel===b.id?' aria-selected="true"':''}>
     <span class="lbl">${esc(b.name)}<span class="sub">${dotOf(b.cot)} ${esc(COT[b.cot].name)} · ${esc(b.when)}</span></span>
@@ -405,8 +518,23 @@ const grouped = (items, row) => {
   return gs.map((g) => `<div class="cap${/longest|attention/i.test(g)?' attn':''}">${esc(g)}</div>
     <div class="grp">${items.filter((i)=>i.group===g).map(row).join('')}</div>`).join('');
 };
+const navRow = (sub, l, s, rightHtml) => `
+  <button class="row" data-sub="${sub}" type="button"><span class="lbl">${l}${s?`<span class="sub">${s}</span>`:''}</span>
+    <span class="right">${rightHtml||''}<span class="chev">›</span></span></button>`;
+const swRow = (l, s, on) => `
+  <div class="row" style="cursor:default;"><span class="lbl">${esc(l)}${s?`<span class="sub">${esc(s)}</span>`:''}</span>
+    <button class="sw" type="button" data-sw="1" aria-pressed="${on?'true':'false'}" aria-label="${esc(l)}"></button></div>`;
+const subhd = (title) => `
+  <button class="crumb" data-go="${state.view}" type="button">‹ ${esc(AREAS.find((a)=>a.id===state.view).label)}</button>
+  <h2 class="subttl">${title}</h2>`;
+const stepper = (key, val, unit) => `
+  <span class="stp"><button class="stpb" data-step="${key}:-1" type="button" aria-label="Less">−</button>
+  <span class="stpv">${esc(val)}${unit||''}</span>
+  <button class="stpb" data-step="${key}:1" type="button" aria-label="More">+</button></span>`;
 
-/* ---- views ---- */
+/* ============================================================
+   AREA LANDINGS
+   ============================================================ */
 const VIEWS = {
   today: () => `
     ${grouped(BOOKINGS, bookRow)}
@@ -429,11 +557,25 @@ const VIEWS = {
     <div class="seg">
       <button class="segb" data-folder="enq" type="button" aria-pressed="${state.folder==='enq'}">Enquiries · 4</button>
       <button class="segb" data-folder="msg" type="button" aria-pressed="${state.folder==='msg'}">Messages · 1</button>
-      <button class="segb" data-folder="eml" type="button" aria-pressed="${state.folder==='eml'}">Email</button>
+      <button class="segb" data-folder="eml" type="button" aria-pressed="${state.folder==='eml'}">Email · 3</button>
     </div>
-    ${state.folder==='enq' ? grouped(ENQ, enqRow) : `
-      <div class="grp"><div class="row" style="cursor:default;"><span class="lbl">Nothing waiting here
-      <span class="sub">This folder is part of the same list — the pane serves it too.</span></span></div></div>`}`,
+    ${state.folder==='enq' ? grouped(ENQ, enqRow)
+    : state.folder==='msg' ? `
+      <div class="grp">${MSGS.map((m)=>`
+        <button class="row" data-rec="${m.id}" type="button"${state.sel===m.id?' aria-selected="true"':''}>
+          <span class="lbl">${esc(m.name)}<span class="sub">${dotOf(m.cot)} ${esc(COT[m.cot].name)} · ${esc(m.state)} · &ldquo;${esc(m.preview)}&rdquo;</span></span>
+          <span class="right"><span class="stc info">${m.unread} new</span><span class="chev">›</span></span>
+        </button>`).join('')}</div>`
+    : `
+      <div class="seg">
+        <button class="segb" data-mtab="in" type="button" aria-pressed="${state.mtab==='in'}">Inbox</button>
+        <button class="segb" data-mtab="sent" type="button" aria-pressed="${state.mtab==='sent'}">Sent</button>
+      </div>
+      <div class="grp">${EMAILS[state.mtab].map((e)=>`
+        <button class="row" data-rec="${e.id}" type="button"${state.sel===e.id?' aria-selected="true"':''}>
+          <span class="lbl">${esc(e.from)}<span class="sub">${esc(e.subj)} — ${esc(e.snip)}</span></span>
+          <span class="right"><span class="cnt">${esc(e.age)}</span><span class="chev">›</span></span>
+        </button>`).join('')}</div>`}`,
 
   money: () => `
     <p class="pulse">Two guests owe you £1,190.00 · £294.75 is yours to move out · one deposit to give back.</p>
@@ -445,52 +587,96 @@ const VIEWS = {
     </div>
     <div class="cap">The five answers</div>
     <div class="grp">
-      ${[['To collect','2 guests · Sarah £520.00 due in 6 days, Dan overdue','£1,190.00',null],
-         ['To move out','Landed in your Square balance, less what is ring-fenced','£294.75',null],
-         ['To give back','Cara’s deposit — she leaves today','£75.00',['warn','1 ready']],
-         ['The books','Tax year to date · direct bookings, card fees deducted','£18,420.00',null],
-         ['Recent','Last payment 2 hours ago — Wren Hollis, £468.00',null,['ok','✓ All settled']]]
-        .map(([l,s,m,c]) => `<button class="row" type="button"><span class="lbl">${esc(l)}<span class="sub">${esc(s)}</span></span>
-          <span class="right">${c?cap(c):''}${m?`<span class="money">${esc(m)}</span>`:''}<span class="chev">›</span></span></button>`).join('')}
+      ${navRow('collect','To collect','2 guests · Sarah £520.00 due in 6 days, Dan overdue','<span class="money">£1,190.00</span>')}
+      ${navRow('sweep','To move out','Landed in your Square balance, less what is ring-fenced','<span class="money">£294.75</span>')}
+      ${navRow('deposits','To give back','Cara’s deposit — she leaves today','<span class="stc warn">1 ready</span><span class="money">£75.00</span>')}
+      ${navRow('books','The books','Tax year to date · direct bookings, card fees deducted','<span class="money">£18,420.00</span>')}
+      ${navRow('recent','Recent','Last payment 2 hours ago — Wren Hollis, £468.00','<span class="stc ok">✓ All settled</span>')}
+    </div>
+    <div class="cap">More</div>
+    <div class="grp">
+      ${navRow('expenses','Expenses','£2,348.00 logged this tax year')}
+      ${navRow('pricing','Pricing coach','A gap worth offering, and September pacing')}
     </div>`,
 
   cottages: () => `
-    <div class="cap">Pimpernel</div>
+    <p class="pulse">Three cottages live on the site. Everything a guest reads about one is edited here.</p>
     <div class="grp">
-      ${[['Rates & fees','Nightly prices, deposit &amp; fee',null,'£175'],
-         ['Photos','Gallery images for this cottage',['ok','11 photos'],null],
-         ['Amenities','What the cottage has — guests see this',['ok','✓ 8 amenities'],null],
-         ['House rules','What guests agree to — pets, smoking, quiet hours',['ok','✓ 4 rules'],null],
-         ['Times & limits','Check-in/out, minimum nights, arrival days',['unk','in 16:00 / out 10:00'],null],
-         ['Key safe','Priya arrives 10 Sep · code is still Dan’s',['warn','Rotate now'],null]]
-        .map(([l,s,c,m]) => `<button class="row" type="button"><span class="lbl">${esc(l)}<span class="sub">${s}</span></span>
-          <span class="right">${c?cap(c):''}${m?`<span class="money">${esc(m)}</span>`:''}<span class="chev">›</span></span></button>`).join('')}
+      ${Object.keys(COT).map((k)=>`
+      <button class="row" data-sub="cot-${k}" type="button">
+        <span class="lbl">${dotOf(k)} ${esc(COT[k].name)}
+          <span class="sub">£175/night · 11 photos · 8 amenities · 4 house rules</span></span>
+        <span class="right"><span class="stc ok">✓ Complete</span><span class="chev">›</span></span>
+      </button>`).join('')}
+      <button class="row" data-toast="Names it, sets a rate, and it joins the site — nothing else is required to start" type="button">
+        <span class="lbl" style="color:var(--accent-text);">＋ Add accommodation</span></button>
     </div>`,
 
-  keysafes: () => `
-    <p class="pulse">One safe wants rotating before the next guest arrives.</p>
-    <div class="cap attn">Needs attention</div>
-    <div class="grp">
-      <button class="row" type="button"><span class="lbl">Pimpernel — rotate at changeover
-        <span class="sub">Priya arrives 10 Sep · the safe still holds Dan’s code</span></span>
-        <span class="right"><span class="stc warn">Rotate now</span><span class="chev">›</span></span></button>
-    </div>
-    <div class="cap">Set and confirmed</div>
-    <div class="grp">
-      <button class="row" type="button"><span class="lbl">Jollyboat<span class="sub">Sarah Pemberton · set 21/08 · visible to her from 26 Aug</span></span><span class="right"><span class="stc ok">✓ Code on the safe</span><span class="chev">›</span></span></button>
-      <button class="row" type="button"><span class="lbl">21A Westgate<span class="sub">No upcoming booking</span></span><span class="right"><span class="stc unk">Nothing due</span><span class="chev">›</span></span></button>
-    </div>`,
+  keysafes: () => {
+    const st = {due:['warn','Rotate now'], ok:['ok','✓ Code on the safe'], none:['unk','Nothing due']};
+    const order = Object.keys(KS).sort((a,b)=>(KS[a].st==='due'?0:1)-(KS[b].st==='due'?0:1));
+    const anyDue = order.some((k)=>KS[k].st==='due');
+    return `
+    <p class="pulse">${anyDue?'One safe wants rotating before the next guest arrives.':'Every safe carries the code its next guest will be shown.'}</p>
+    ${order.map((k)=>{
+      const r = KS[k], open = state.fold==='ks-'+k;
+      return `<div class="grp">
+      <button class="row" data-fold="ks-${k}" type="button" aria-expanded="${open}">
+        <span class="lbl">${dotOf(k)} ${esc(COT[k].name)}<span class="sub">${esc(r.line)}</span></span>
+        <span class="right">${cap(st[r.st])}<span class="chev">${open?'⌄':'›'}</span></span>
+      </button>
+      ${open?`<div class="fold">
+        ${state.ksConfirm===k?`
+        <div class="well"><div class="wcap">New code — not yet on the safe</div>
+          <div class="code">${esc(r.newCode)}</div>
+          <div class="consq">Turn the dials to ${esc(r.newCode)}, then confirm. Nothing is recorded — and nothing shown to the guest — until you do.</div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn pri" data-ksdone="${k}" type="button">I’ve set the safe</button>
+            <button class="btn" data-kscancel="1" type="button">Cancel</button>
+          </div></div>`
+        :`
+        <div class="well"><div class="wcap">Current code</div>
+          <div class="code">${esc(r.code)}</div>
+          <div class="consq">${esc(r.vis)}.</div>
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button class="btn pri" data-rotate="${k}" type="button">Rotate the code</button>
+          </div></div>`}
+        <div class="well"><div class="wcap">History — kept encrypted</div>
+          ${r.hist.map((h)=>`<div class="wrow" style="font-size:0.8rem;color:var(--muted);">${esc(h)}</div>`).join('')}
+        </div>
+      </div>`:''}
+      </div>`;}).join('')}`;
+  },
 
   settings: () => `
     <div class="cap">Running for you</div>
     <div class="grp">
-      <button class="row" type="button"><span class="lbl">System check<span class="sub">Daily jobs ran 5 hours ago · 3 calendar feeds fresh</span></span><span class="right"><span class="stc ok">✓ All normal</span><span class="chev">›</span></button>
-      <button class="row" type="button"><span class="lbl">To approve<span class="sub">Reviews and photos waiting on you</span></span><span class="right"><span class="stc warn">1 waiting</span><span class="chev">›</span></span></button>
+      ${navRow('system','System check','Daily jobs ran 5 hours ago · 3 calendar feeds fresh · backup encrypted Sunday','<span class="stc ok">✓ All normal</span>')}
+      ${navRow('approve','To approve','A review and a guest photo are waiting on you','<span class="stc warn">2 waiting</span>')}
     </div>
-    <div class="cap">More</div>
+    <div class="cap">The business</div>
     <div class="grp">
-      ${['Payments &amp; Square','Website content','Follow-ups','Search learning','Your account']
-        .map((l)=>`<button class="row" type="button"><span class="lbl">${l}</span><span class="chev">›</span></button>`).join('')}
+      ${navRow('payments','Payments &amp; Square','Deposit 25% · bank details set · webhook connected')}
+      ${navRow('content','Website content','Homepage images and wording')}
+      ${navRow('followups','Follow-ups','Enquiry nudges and the arrival-email review')}
+      ${navRow('learning','Search learning','1 dead end to teach · 2 guest questions','<span class="stc warn">1 to teach</span>')}
+      ${navRow('notifications','Notifications','What interrupts you, and quiet hours')}
+    </div>
+    <div class="cap">People &amp; records</div>
+    <div class="grp">
+      ${navRow('waitlist','Waitlist','1 person waiting on taken dates')}
+      ${navRow('guests','Guest accounts','Who can sign in to see their stays')}
+      ${navRow('chatanswers','Instant chat answers','Parking, wifi, the beach — answered on-device')}
+      ${navRow('activity','Activity log','Everything the app did, newest first')}
+      ${navRow('analytics','Analytics','Visitors, searches, and what they looked at')}
+    </div>
+    <div class="cap">System</div>
+    <div class="grp">
+      ${navRow('testcentre','Test centre','Seed a pretend business on staging; purge it after')}
+      <button class="row" data-toast="Opens /status — the outside-in health page, deliberately not routed through this app" type="button">
+        <span class="lbl">Status page<span class="sub">The outside-in check, when this app itself is misbehaving</span></span>
+        <span class="right"><span class="chev">↗</span></span></button>
+      ${navRow('account','Your account','Password, passkeys and step-up confirmation')}
     </div>`,
 
   more: () => `
@@ -502,9 +688,11 @@ const VIEWS = {
     </div>`,
 
   assistant: () => `
+    <div class="presence"><span class="pdot"></span>Your Mac is listening · heard 12 seconds ago</div>
+    ${CHAT.length===0?`
     <div class="grp" style="padding:20px 20px 18px;">
       <div style="font-family:var(--serif);font-size:1.18rem;font-weight:600;line-height:1.32;text-wrap:balance;">
-        Morning George — 1 arrival, £340.00 to collect, and three things want you.
+        Morning George — 1 arrival, £340.00 to collect, and ${DUTIES.length===1?'one thing wants':DUTIES.length+' things want'} you.
       </div>
       <div class="duties" style="margin-top:15px;">
         ${DUTIES.map((d,i)=>`<button class="duty ${d.sev}" data-duty="${i}" type="button"><span class="dot" style="background:var(--${d.sev==='bad'?'danger':'warn'})"></span>${esc(d.text)}</button>`).join('')}
@@ -512,10 +700,417 @@ const VIEWS = {
     </div>
     <div class="cap">Try asking</div>
     <div class="grp">
-      ${['Who owes me money?','How much can I move out?','Is Jollyboat free in September?','What did Priya ask about?']
-        .map((q)=>`<button class="row" data-ask="${esc(q)}" type="button"><span class="lbl">${esc(q)}</span><span class="chev">›</span></button>`).join('')}
+      ${['Who owes me money?','Is Jollyboat free in September?','What needs me today?']
+        .map((q)=>`<button class="row" data-say="${esc(q)}" type="button"><span class="lbl">${esc(q)}</span><span class="chev">›</span></button>`).join('')}
+    </div>`
+    :`<div class="chatlog">${CHAT.map((m)=> m.cap
+        ? `<div class="capline">${esc(m.cap)}</div>`
+        : `<div class="bub ${m.who}">${esc(m.text)}${m.used?`<span class="lookup">Checked: ${esc(m.used)}</span>`:''}</div>`).join('')}
+     </div>`}
+    <div class="chatbar">
+      <input class="fin" id="chatin" placeholder="Ask anything — it can look things up" autocomplete="off">
+      <button class="btn pri" data-send="1" type="button">Send</button>
     </div>`,
 };
+
+/* ============================================================
+   SUB-PAGES — every screen the real back office has, in the
+   new frame. Money's answers, the cottage editor, Manage's tail.
+   ============================================================ */
+const SUBS = {
+money: {
+  collect: () => `${subhd('To collect')}
+    <p class="pulse">£1,190.00 across two guests — one overdue, one inside the balance window.</p>
+    <div class="cap attn">Overdue</div>
+    <div class="grp">
+      <button class="row" data-rec="b5" type="button"><span class="lbl">Dan Rowe
+        <span class="sub">${dotOf('pimpernel')} Pimpernel · stay finished 12 Aug · chased twice, last 18/08</span></span>
+        <span class="right"><span class="money" style="color:var(--danger-text)">£670.00</span><span class="chev">›</span></span></button>
+    </div>
+    <div class="cap">Due now</div>
+    <div class="grp">
+      <button class="row" data-rec="b2" type="button"><span class="lbl">Sarah Pemberton
+        <span class="sub">${dotOf('jollyboat')} Jollyboat · due by 21/09 · £147.50 already in</span></span>
+        <span class="right"><span class="money">£520.00</span><span class="chev">›</span></span></button>
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">Nothing else — every other upcoming booking is paid up.</span>
+        <button class="btn pri" data-toast="2 requests sent — chasing £1,190.00. Each guest gets their own email with their own figure." type="button">Request both balances</button></div>
+    </div>`,
+
+  sweep: () => `${subhd('Move money out')}
+    <div class="grp"><div class="herow">
+      <div class="cap" style="margin:0 0 6px;">Yours to move now</div>
+      <div class="hero">£294.75</div>
+      <div class="herosub">Of the recent card payments Square has paid into the bank — the ring-fenced part stays behind.</div>
+    </div></div>
+    <div class="cap">The arithmetic</div>
+    <div class="grp">
+      <div class="kv"><span class="kvk">Landed in the bank</span><span class="kvv money">£368.44</span></div>
+      <div class="kv"><span class="kvk">Ring-fenced — Cara’s deposit, less its share of the fee</span><span class="kvv money">−£73.69</span></div>
+      <div class="kv"><span class="kvk">On its way — Wren’s £468.00, arrives Tuesday</span><span class="kvv"><span class="stc info">In transit</span></span></div>
+      <div class="kv"><span class="kvk">Square hasn’t said</span><span class="kvv"><span class="stc unk">Nothing unknown</span></span></div>
+    </div>
+    <div class="cap">Your balance — dated, not remembered</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">£2,000.00 on Tuesday
+        <span class="sub">Plus what Square has paid in since: about £2,340 now. An estimate, and labelled one.</span></span>
+        <button class="btn" data-toast="A typed balance is the truth about the account at that instant — there is no bank feed to ask" type="button">Correct it</button></div>
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">Recorded so the same money is never offered as movable twice.</span>
+        <span class="right"><button class="btn" data-toast="Checked Square — payouts and pending refunds refreshed" type="button">Check Square now</button>
+        <button class="btn pri" data-toast="Marked transferred — £294.75 leaves the movable figure" type="button">I’ve moved it out</button></span></div>
+    </div>`,
+
+  deposits: () => `${subhd('Deposits still held')}
+    <p class="pulse">What is fenced until it goes back — each row states its own case.</p>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Cara Nunn — ready to return
+        <span class="sub">${dotOf('jollyboat')} Jollyboat · leaves today · nothing reported broken</span></span>
+        <span class="right"><span class="money">£75.00</span>
+        <button class="btn pri" data-toast="Still you? A refund asks for your passkey first — then £75.00 goes back, 3–5 working days" type="button">Return it</button></span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Wren Hollis — still staying
+        <span class="sub">${dotOf('pimpernel')} Pimpernel · leaves 25 Aug</span></span>
+        <span class="right"><span class="stc unk">Leaves 25 Aug</span><span class="money">£50.00</span></span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Dan Rowe — kept
+        <span class="sub">${dotOf('pimpernel')} Pimpernel · retained 12/08 for damage · he was told why</span></span>
+        <span class="right"><span class="stc bad">Kept</span><span class="money">£75.00</span></span></div>
+    </div>`,
+
+  books: () => `${subhd('Income &amp; tax')}
+    <div class="grp"><div class="herow">
+      <div class="cap" style="margin:0 0 6px;">Net so far · tax year 2026–27</div>
+      <div class="hero">£18,420.00</div>
+      <div class="herosub">Direct bookings through this site, card fees deducted, logged expenses subtracted.</div>
+    </div></div>
+    <div class="cap">The arithmetic</div>
+    <div class="grp">
+      <div class="kv"><span class="kvk">Income received</span><span class="kvv money">£21,180.00</span></div>
+      <div class="kv"><span class="kvk">Card fees</span><span class="kvv money">−£412.00</span></div>
+      <div class="kv"><span class="kvk">Expenses logged</span><span class="kvv money">−£2,348.00</span></div>
+      <div class="kv"><span class="kvk">Net</span><span class="kvv money">£18,420.00</span></div>
+    </div>
+    <div class="cap">What this number doesn’t cover</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">Airbnb and Booking.com stays are paid out by the platform and never touch this ledger — neither that income nor their commission is counted. With few expenses logged, this is closer to a gross margin than a profit.</span></div>
+    </div>
+    <div class="cap">Exports</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">For your accountant<span class="sub">The same caveats print on both</span></span>
+        <span class="right"><button class="btn" data-toast="CSV written — every payment row, dated" type="button">CSV</button>
+        <button class="btn" data-toast="PDF written — the year on one sheet" type="button">PDF</button></span></div>
+    </div>`,
+
+  recent: () => `${subhd('Recent payments')}
+    <div class="grp">
+      ${[['ok','Wren Hollis','£468.00 · card · Pimpernel','2 hours ago','Completed'],
+         ['warn','Refund — Hannah Price','−£75.00 deposit return · Jollyboat','yesterday','Pending — Square hasn’t settled it yet'],
+         ['ok','Sarah Pemberton','£147.50 deposit · Jollyboat','14/08','Completed'],
+         ['ok','Tom Ackroyd','£480.00 · card · 21A Westgate','12/08','Completed'],
+         ['ok','Dan Rowe','£175.00 deposit · Pimpernel','02/08','Completed']]
+        .map(([t,n,d,w,st])=>`<div class="row" style="cursor:default;">
+          <span class="lbl" style="display:flex;align-items:center;gap:10px;"><span class="fdot" style="background:var(--${t==='ok'?'ok':'warn'})"></span>
+            <span>${esc(n)}<span class="sub">${esc(d)} · ${esc(st)}</span></span></span>
+          <span class="cnt">${esc(w)}</span></div>`).join('')}
+    </div>`,
+
+  expenses: () => `${subhd('Expenses')}
+    <p class="pulse">£2,348.00 logged this tax year — what the books subtract.</p>
+    <div class="grp">
+      ${[['Gas safety certificate','Maintenance · 12/08','£85.00'],
+         ['Changeover cleans — August','Cleaning · weekly','£480.00'],
+         ['Linen service','Cleaning · 08/08','£64.00'],
+         ['Replacement kettle — Jollyboat','Equipment · 02/08','£39.00']]
+        .map(([l,s,m])=>`<div class="row" style="cursor:default;"><span class="lbl">${esc(l)}<span class="sub">${esc(s)}</span></span>
+          <span class="money">${esc(m)}</span></div>`).join('')}
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">A record of money already spent — a future date is refused; a plan is not a fact.</span>
+        <button class="btn pri" data-toast="Amount, category, date — three fields and it joins the books" type="button">＋ Add expense</button></div>
+    </div>`,
+
+  pricing: () => `${subhd('Pricing coach')}
+    <div class="cap">Worth a look</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">3 free nights at Pimpernel, 26–29 Aug
+        <span class="sub">Between two stays and inside a week — the last-minute price is the only lever left. 20% off says £140/night.</span></span>
+        <button class="btn pri" data-toast="Offer saved as a dated override — £140/night for 26–29 Aug, undo in the assistant" type="button">Offer it</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">September is pacing at 34% of last year
+        <span class="sub">Last September filled 22 nights; 8 are held so far. Enough history to mean something.</span></span>
+        <button class="btn" data-toast="Opens the month against last year, with the model’s suggested rate range" type="button">Review</button></div>
+    </div>
+    <div class="cap">The model — learned from your own bookings</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">Seasonal demand, booking pace and achieved rates, recency-weighted. Thin months move less and get a range, not a false-precise figure. Every suggestion lands as a dated override the ordinary price model reads — never a parallel calculation.</span></div>
+    </div>`,
+},
+
+settings: {
+  system: () => `${subhd('System check')}
+    <div class="cap">Known without asking</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Daily jobs<span class="sub">Last ran 5 hours ago — pre-arrival, payment chasers, self-repair</span></span><span class="stc ok">✓ Running</span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Calendar feeds<span class="sub">Airbnb ×2, Booking.com ×1 — freshest 40 minutes ago</span></span><span class="stc ok">✓ 3 fresh</span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Weekly backup<span class="sub">Sunday · encrypted, or it does not leave — there is no plaintext path</span></span><span class="stc ok">✓ Encrypted</span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Migrations<span class="sub">All applied · latest 119</span></span><span class="stc ok">✓ Up to date</span></div>
+    </div>
+    <div class="cap">Overnight work</div>
+    <div class="grp">
+      ${swRow('Night shift','Your Mac drafts replies overnight; you approve them in the morning',true)}
+      <div class="row" style="cursor:default;"><span class="lbl">The Mac app<span class="sub">build-47 · signed · your Mac is on it</span></span>
+        <button class="btn" data-toast="Downloads the .dmg — built by GitHub on a real Mac, because it cannot be built anywhere else" type="button">Download</button></div>
+    </div>
+    <div class="cap">More tools</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Email me samples<span class="sub">All 38 templates, rendered with fixture data, [SAMPLE] in the subject</span></span>
+        <button class="btn" data-toast="38 samples on their way — every email the app can send" type="button">Send</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">The weekly emails<span class="sub">Real data, sent now instead of Monday</span></span>
+        <span class="right"><button class="btn" data-toast="Digest sent — the real one, with this week’s real figures" type="button">Digest</button>
+        <button class="btn" data-toast="Analytics sent" type="button">Analytics</button></span></div>
+    </div>`,
+
+  approve: () => `${subhd('To approve')}
+    <p class="pulse">Nothing a guest writes appears on the site until you say so.</p>
+    ${MOD.map((m)=>`
+    <div class="cap">${esc(m.kind)} — ${esc(m.who)} · ${esc(COT[m.cot].name)}</div>
+    <div class="grp">
+      ${m.stars?`<div class="row" style="cursor:default;"><span class="lbl" style="color:var(--accent-text);letter-spacing:0.1em;">${esc(m.stars)}</span></div>`:''}
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">&ldquo;${esc(m.text)}&rdquo;</span></div>
+      <div class="row" style="cursor:default;"><span></span><span class="right">
+        <button class="btn" data-toast="Declined — it never appears, and nothing is sent" type="button">Decline</button>
+        <button class="btn pri" data-toast="${esc(m.kind)} approved — live on the site now" type="button">Approve</button></span></div>
+    </div>`).join('')}`,
+
+  payments: () => `${subhd('Payments &amp; Square')}
+    <div class="cap">The schedule guests agree to</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Deposit<span class="sub">Of the stay total, asked at approval — the terms quote this figure</span></span>
+        ${stepper('dep', state.dep, '%')}</div>
+      <div class="row" style="cursor:default;"><span class="lbl">Balance window<span class="sub">Inside it, a new booking is asked for the whole stay</span></span>
+        <span class="stc unk">30 days before arrival</span></div>
+    </div>
+    <div class="cap">Rails</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Bank details<span class="sub">Shown to bank-transfer guests in chase emails and on their invoice</span></span><span class="stc ok">✓ Set</span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Automatic payment updates<span class="sub">Square tells the app about fees, refunds and payouts as they settle</span></span><span class="stc ok">✓ Connected</span></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Location<span class="sub">Which shop Square answers for — matters on multi-location accounts</span></span><span class="stc unk">Online CHB</span></div>
+    </div>`,
+
+  content: () => `${subhd('Website content')}
+    <div class="cap">Images</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Homepage &amp; galleries<span class="sub">12 images — the hero is the one visitors wait for</span></span>
+        <button class="btn" data-toast="Each image slot shows what is there now; replacing one bumps the cache for every visitor" type="button">Edit</button></div>
+    </div>
+    <div class="cap">Text &amp; wording</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Headlines, blurbs and the welcome<span class="sub">34 fields, saved one at a time — no publish step</span></span>
+        <button class="btn" data-toast="Every owner-editable sentence on the public site, grouped by page" type="button">Edit</button></div>
+    </div>`,
+
+  followups: () => `${subhd('Follow-ups')}
+    <div class="cap">Enquiries</div>
+    <div class="grp">
+      ${swRow('Nudge unanswered enquiries','A gentle reminder to guests who asked and went quiet',true)}
+      ${swRow('Rescue abandoned enquiries','Half-filled forms get one “still thinking about it?” email',true)}
+    </div>
+    <div class="cap">Arrivals</div>
+    <div class="grp">
+      ${swRow('Review arrival emails before they send','Each one waits for you — the duty escalates, nothing sends itself',false)}
+    </div>`,
+
+  learning: () => `${subhd('Search learning')}
+    <div class="cap attn">Dead ends to teach</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">&ldquo;linen change&rdquo;<span class="sub">Searched twice this week, answered nothing</span></span>
+        <button class="btn pri" data-toast="Taught — that phrasing now lands on the changeover checklist" type="button">Teach it</button></div>
+    </div>
+    <div class="cap">Guests asked these</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">&ldquo;Can we charge an EV?&rdquo;<span class="sub">Asked 3 times in chat · the on-device answerer had nothing</span></span>
+        <button class="btn pri" data-toast="Type the answer once and every future guest gets it instantly, on-device" type="button">Answer it</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">&ldquo;Is the quay walkable?&rdquo;<span class="sub">Asked twice</span></span>
+        <button class="btn" data-toast="Dismissed — it stops appearing here" type="button">Dismiss</button></div>
+    </div>
+    <div class="cap">Already taught</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">14 phrasings taught · 2 made literal · the model’s accuracy is gated in CI, so teaching can only add.</span></div>
+    </div>`,
+
+  notifications: () => `${subhd('Notifications')}
+    <div class="cap">What interrupts you</div>
+    <div class="grp">
+      ${swRow('Payments','A payment landing, a refund settling',true)}
+      ${swRow('Enquiries','New enquiries and waitlist matches',true)}
+      ${swRow('Guest chat','Messages from guests in residence',true)}
+      ${swRow('System','Feed trouble, failed sends — “urgent” ignores every mute',true)}
+    </div>
+    <div class="cap">Quiet hours</div>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">22:00 → 07:00<span class="sub">Wraps midnight. The activity log and email fallback still record everything.</span></span>
+        <button class="btn" data-toast="Two pickers — start and end" type="button">Change</button></div>
+    </div>`,
+
+  waitlist: () => `${subhd('Waitlist')}
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Katie Orr<span class="sub">Any cottage · 22–26 Aug · added 12/08 · those dates are taken</span></span>
+        <button class="btn" data-toast="If a cancellation frees her dates, she is emailed the moment the row is deleted — automatically" type="button">Details</button></div>
+      <div class="row" style="cursor:default;"><span class="sub" style="margin:0;">A cancellation that frees matching dates emails the list by itself — this screen is for reading, not chasing.</span></div>
+    </div>`,
+
+  guests: () => `${subhd('Guest accounts')}
+    <div class="grp">
+      ${[['Wren Hollis','3 stays · £1,404 lifetime · verified',1],['Sarah Pemberton','1 stay · £667.50 lifetime · verified',1],
+         ['Tom Ackroyd','2 stays · £940 lifetime · no account',0]]
+        .map(([n,s,acct])=>`<div class="row" style="cursor:default;"><span class="lbl">${esc(n)}<span class="sub">${esc(s)}</span></span>
+          ${acct?`<button class="btn" data-toast="A reset link goes to their own address — never a password over the phone" type="button">Reset password</button>`:'<span class="stc unk">No account</span>'}</div>`).join('')}
+    </div>`,
+
+  chatanswers: () => `${subhd('Instant chat answers')}
+    <p class="pulse">Typed guest questions are answered on-device before they ever ping you. These are the answers. Saves by itself.</p>
+    <div class="grp">
+      ${[['Parking','One off-street space per cottage; the quay car park is 4 minutes on foot.'],
+         ['Wifi','The code is in the welcome book, on the kitchen shelf.'],
+         ['The beach','Blakeney is quay and salt-marsh; the sand is at Wells, 15 minutes by car.']]
+        .map(([q,a])=>`<div class="row" style="cursor:default;"><span class="lbl">${esc(q)}<span class="sub">${esc(a)}</span></span>
+          <button class="btn" data-toast="Edits in place — the next guest who asks gets the new wording instantly" type="button">Edit</button></div>`).join('')}
+    </div>`,
+
+  activity: () => `${subhd('Activity log')}
+    <div class="grp">
+      ${[['ok','Payment received — Wren Hollis, £468.00','2 hours ago'],
+         ['ok','Arrival email sent — Wren Hollis','2 hours ago'],
+         ['warn','Refund pending — Hannah Price, £75.00','yesterday'],
+         ['ok','Enquiry received — Joel Adeyemi, Jollyboat','yesterday'],
+         ['ok','Calendar sync — Airbnb, Pimpernel, 1 change','yesterday'],
+         ['ok','Daily jobs completed','this morning, 05:12']]
+        .map(([t,l,w])=>`<div class="row" style="cursor:default;">
+          <span class="lbl" style="display:flex;align-items:center;gap:10px;"><span class="fdot" style="background:var(--${t==='ok'?'ok':'warn'})"></span>
+          <span style="font-weight:500;font-size:0.86rem;">${esc(l)}</span></span><span class="cnt">${esc(w)}</span></div>`).join('')}
+    </div>`,
+
+  analytics: () => `${subhd('Analytics')}
+    <div class="grp"><div class="herow">
+      <div class="cap" style="margin:0 0 6px;">Visitors this month</div>
+      <div class="hero">1,240</div>
+      <div class="herosub">Up from 980 last month — no cookies, counted on your own server.</div>
+    </div></div>
+    <div class="grp">
+      <div class="kv"><span class="kvk">Searches on the site</span><span class="kvv">89</span></div>
+      <div class="kv"><span class="kvk">Most-viewed cottage</span><span class="kvv">Jollyboat</span></div>
+      <div class="kv"><span class="kvk">Enquiry conversion</span><span class="kvv">4.1%</span></div>
+      <div class="kv"><span class="kvk">Busiest day</span><span class="kvv">Sunday evening</span></div>
+    </div>`,
+
+  testcentre: () => `${subhd('Test centre')}
+    <p class="pulse">A pretend business, end to end, on staging — six stays across the money states, enquiries, a chat, expenses.</p>
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">Set the stage<span class="sub">Priced with the real model, clash-checked, tagged for the purge</span></span>
+        <button class="btn pri" data-toast="Staged — six stays, three enquiries, a chat thread and a waitlist entry, all marked [CHB-TEST]" type="button">Seed</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Purge test data<span class="sub">Everything tagged [CHB-TEST] goes; real records are untouchable</span></span>
+        <button class="btn" data-toast="Purged — the stage is struck" type="button">Purge</button></div>
+    </div>`,
+
+  account: () => `${subhd('Your account')}
+    <div class="grp">
+      <div class="row" style="cursor:default;"><span class="lbl">george@cottageholidaysblakeney.co.uk<span class="sub">Signed in on 2 devices</span></span>
+        <button class="btn" data-toast="Every other session is signed out — this one stays" type="button">Sign out everywhere</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Password<span class="sub">Changed 14/03/2026</span></span>
+        <button class="btn" data-toast="Current password first, then the new one twice" type="button">Change</button></div>
+      <div class="row" style="cursor:default;"><span class="lbl">Passkeys<span class="sub">1 registered — this iPhone · also the step-up for refunds</span></span>
+        <button class="btn" data-toast="Face ID or a security key — the passkey also answers the “still you?” check before money leaves" type="button">Add</button></div>
+      ${swRow('Two-step sign-in','A code by email on any new device',true)}
+    </div>`,
+},
+};
+
+/* ---- the cottage editor: thirteen sections, one accordion ---- */
+function cottageEditor(k){
+  const c = COT[k]; if (!c) return '';
+  const wknd = (state.rate*1.15).toFixed(2);
+  const secs = [
+    ['rates','Rates &amp; fees','Nightly price, weekends, deposit',['unk','£'+state.rate+'/night'], () => `
+      <div class="well"><div class="wcap">Your price</div>
+        <div class="wrow"><span style="font-size:0.85rem;">A night for two</span>${stepper('rate','£'+state.rate)}</div>
+        <div class="consq">Weekends go to <strong>£${esc(wknd)}</strong> — Friday and Saturday carry +15%. Saved as you tap; the badge and every quote follow it.</div></div>
+      <div class="well"><div class="wcap">Deposit &amp; fee</div>
+        <div class="wrow"><span style="font-size:0.85rem;">Refundable deposit</span><span class="money">£75.00</span></div>
+        <div class="consq">Charged with the first payment, refunded after checkout.</div></div>`],
+    ['photos','Photos','The gallery guests scroll',['ok','11 photos'], () => `
+      <div class="pgrid">${[0,1,2,3,4,5].map((i)=>`<div class="ptile" style="background:color-mix(in srgb,${c.hue} ${34-i*4}%,var(--sunk))">${i===0?'<span class="pmain">MAIN</span>':''}</div>`).join('')}</div>
+      <div class="consq">First is the card photo. Drag to reorder; replacing one updates the site immediately.</div>
+      <div style="margin-top:10px;"><button class="btn" data-toast="Picks a file, resizes it on your device, uploads" type="button">＋ Add photo</button></div>`],
+    ['text','Text &amp; details','Name, subtitle, description',null, () => `
+      <label class="flbl" for="ct-name">Name</label><input class="fin" id="ct-name" value="${esc(c.name)}" style="margin-bottom:10px;">
+      <label class="flbl" for="ct-sub">Subtitle</label><input class="fin" id="ct-sub" value="A flint cottage two minutes from the quay" style="margin-bottom:12px;">
+      <button class="btn pri" data-toast="Saved — the site says it now" type="button">Save</button>`],
+    ['amen','Amenities','What the cottage has — guests see this while booking and while staying',['ok','✓ 8 amenities'], () => `
+      <div class="chips">${['Wifi','Dishwasher','Log burner','Off-street parking','Washing machine','Dog-free','Travel cot','Garden']
+        .map((a)=>`<span class="chip onx">${esc(a)}</span>`).join('')}
+        <button class="chip" data-toast="Type it once — the booking page and the guest’s stay screen both show it" type="button">＋ Add</button></div>`],
+    ['rules','House rules','What guests agree to — these ride the terms, the stay screen and the arrival email',['ok','✓ 4 rules'], () => `
+      ${['No dogs, sorry — it keeps the cottage right for allergic guests','No smoking anywhere','Quiet after 10pm — the lane carries sound','No fireworks or BBQs']
+        .map((r)=>`<div class="wrow"><span style="font-size:0.84rem;">${esc(r)}</span><button class="btn" style="min-height:32px;padding:5px 12px;" data-toast="Removed — everywhere at once" type="button">✕</button></div>`).join('')}
+      <div class="consq">Guests also see, from your settings: check-in from 16:00 · check out by 10:00 · no more than 4 guests. Stated once — don’t retype them here.</div>
+      <div style="margin-top:10px;"><button class="btn" data-toast="One sentence per rule — it appears in clause 3 of the terms too" type="button">＋ Add rule</button></div>`],
+    ['times','Times &amp; limits','The booking constraints',['unk','in 16:00 / out 10:00'], () => `
+      <div class="well"><div class="wcap">Times</div>
+        <div class="wrow"><span style="font-size:0.85rem;">Check-in from</span><span class="stc unk">16:00</span></div>
+        <div class="wrow"><span style="font-size:0.85rem;">Check out by</span><span class="stc unk">10:00</span></div></div>
+      <div class="well"><div class="wcap">Stay length</div>
+        <div class="wrow"><span style="font-size:0.85rem;">Minimum nights</span>${stepper('minN', state.minN)}</div>
+        <div class="consq">The picker crosses out any start the minimum forbids — and prices what it offers.</div></div>
+      <div class="well"><div class="wcap">Arrival days</div>
+        <div class="chips">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>`<span class="chip${[0,4,5].includes(i)?' onx':''}">${d}</span>`).join('')}</div></div>`],
+    ['seasons','Seasonal rates','Different prices for different weeks',['unk','2 seasons'], () => `
+      ${[['Summer peak','18 Jul – 31 Aug','£210'],['Christmas &amp; New Year','20 Dec – 03 Jan','£195']]
+        .map(([n,d,m])=>`<div class="wrow"><span style="font-size:0.85rem;"><strong>${n}</strong><span class="sub">${esc(d)} · end date inclusive</span></span>
+          <span class="right"><span class="money">${esc(m)}/night</span><button class="btn" style="min-height:32px;padding:5px 12px;" data-toast="Removed — those weeks fall back to the base rate" type="button">✕</button></span></div>`).join('')}
+      <div style="margin-top:10px;"><button class="btn" data-toast="Name, dates on the built-in calendar, a price per cottage — cards, not a grid" type="button">＋ Add season</button></div>`],
+    ['faq','FAQ','Answers shown while booking',['ok','6 answers'], () => `
+      ${[['Is there parking?','Yes — one off-street space, right outside.'],['Can we bring a dog?','No dogs, sorry — it keeps the cottage right for allergic guests.']]
+        .map(([q,a])=>`<div class="wrow"><span style="font-size:0.84rem;"><strong>${esc(q)}</strong><span class="sub">${esc(a)}</span></span></div>`).join('')}
+      <div class="consq">The chat answers from these instantly, on-device, before a question ever reaches you.</div>
+      <div style="margin-top:10px;"><button class="btn" data-toast="Question and answer — the assistant learns it the moment you save" type="button">＋ Add answer</button></div>`],
+    ['welcome','Welcome book','What guests read once they’re in',['ok','9 entries'], () => `
+      ${[['Wifi','BLAKENEY21 — router under the stairs'],['Heating','The dial in the hall; the log burner is laid for you'],['Bins','Collection Tuesday — black one week, green the next']]
+        .map(([t,b])=>`<div class="wrow"><span style="font-size:0.84rem;"><strong>${esc(t)}</strong><span class="sub">${esc(b)}</span></span></div>`).join('')}
+      <div style="margin-top:10px;"><button class="btn" data-toast="Unlocked to the guest once the balance is paid" type="button">＋ Add entry</button></div>`],
+    ['location','Location','The map pin and what’s nearby',['ok','Pin set ✓'], () => `
+      <div class="wrow"><span style="font-size:0.85rem;">Map pin<span class="sub">Blakeney quay is 4 minutes on foot — the guest’s directions start here</span></span>
+        <button class="btn" data-toast="Drops a pin on the map — or clear it, and the page says so honestly" type="button">Change</button></div>`],
+    ['card','Home page card','How it appears on the front page',null, () => `
+      <label class="flbl" for="ct-head">Card headline</label><input class="fin" id="ct-head" value="Sleeps 2 · by the quay" style="margin-bottom:12px;">
+      <div class="consq">The preview below the field is the real tile — what you type is what the front page shows.</div>
+      <div style="margin-top:10px;"><button class="btn pri" data-toast="Saved — the homepage card reads it now" type="button">Save</button></div>`],
+    ['arrival','Arrival &amp; directions','What travels in the arrival email',null, () => `
+      <label class="flbl" for="ct-dir">Directions</label>
+      <input class="fin" id="ct-dir" value="Through the village, left at the White Horse, second flint cottage" style="margin-bottom:12px;">
+      <div class="consq">The email composes itself from these facts — dates, the key safe, the house rules. If review-before-sending is on, each one waits for you.</div>
+      <div style="margin-top:10px;"><button class="btn pri" data-toast="Saved" type="button">Save</button></div>`],
+    ['notes','Private notes &amp; key safe','Never shown to guests — encrypted at rest',null, () => `
+      <div class="wrow"><span style="font-size:0.85rem;">Key safe keeper<span class="sub">Rotation duties, and the code revealed to each guest two days out</span></span>
+        <button class="sw" type="button" data-sw="1" aria-pressed="true" aria-label="Key safe keeper"></button></div>
+      <label class="flbl" for="ct-ops" style="margin-top:10px;">Ops notes</label>
+      <input class="fin" id="ct-ops" value="Stopcock under the sink · boiler reset behind the panel · cleaner: Mo 07700 900123" style="margin-bottom:12px;">
+      <div class="consq">These ride the offline day sheet, so a changeover morning with no signal still has the stopcock.</div>
+      <div style="margin-top:10px;"><button class="btn pri" data-toast="Saved — encrypted, and on the day sheet from tonight" type="button">Save</button></div>`],
+  ];
+  return `
+    <button class="crumb" data-go="cottages" type="button">‹ Cottages</button>
+    <h2 class="subttl">${dotOf(k)} ${esc(c.name)}</h2>
+    <div class="grp">
+      ${secs.map(([id,l,s,c2,body]) => {
+        const open = state.fold===id;
+        return `<button class="row" data-fold="${id}" type="button" aria-expanded="${open}">
+          <span class="lbl">${l}<span class="sub">${s}</span></span>
+          <span class="right">${c2?cap(c2):''}<span class="chev">${open?'⌄':'›'}</span></span></button>
+        ${open?`<div class="fold">${body()}</div>`:''}`;
+      }).join('')}
+    </div>`;
+}
+
+function viewBody(){
+  const v = state.view;
+  if (v==='cottages' && state.sub && state.sub.startsWith('cot-')) return cottageEditor(state.sub.slice(4));
+  if (state.sub && SUBS[v] && SUBS[v][state.sub]) return SUBS[v][state.sub]();
+  return VIEWS[v] ? VIEWS[v]() : '';
+}
 
 /* ---- the pane: ONE pane, every kind of record ---- */
 function paneFor(id){
@@ -530,14 +1125,20 @@ function paneFor(id){
     <div class="kv"><span class="kvk">Still to pay</span><span class="kvv money">${b.due?'£'+b.due.toFixed(2):'—'}</span></div>
     <div class="kv"><span class="kvk">Refundable deposit</span><span class="kvv">${esc(b.dep)}</span></div>
     <div class="kv"><span class="kvk">Guest details</span><span class="kvv"><span class="stc ok">${esc(b.reg)}</span></span></div>
+    <button class="row" data-fold="p-act" type="button" aria-expanded="${state.fold==='p-act'}" style="border-top:1px solid var(--hair);">
+      <span class="lbl" style="font-size:0.84rem;">Activity<span class="sub">Payments, emails and edits, newest first</span></span>
+      <span class="chev">${state.fold==='p-act'?'⌄':'›'}</span></button>
+    ${state.fold==='p-act'?`<div class="fold" style="padding:12px 18px;">
+      ${[['Payment received — '+b.paid,'14/08'],['Confirmation sent','14/08'],['Booking created','12/08']]
+        .map(([l,w])=>`<div class="wrow"><span style="font-size:0.8rem;color:var(--muted);">${esc(l)}</span><span class="cnt">${esc(w)}</span></div>`).join('')}
+    </div>`:''}
     <div class="pacts">
       <button class="btn pri" type="button" data-toast="${b.due?'Payment request sent to '+esc(b.name):'Arrival email sent to '+esc(b.name)}">${b.due?'Request payment':'Send arrival info'}</button>
       <button class="btn" type="button" data-toast="Composer would open here">Email</button>
       <button class="btn" type="button" data-toast="Edit · Move · Cancel">⋯</button>
     </div>`;
   const e = ENQ.find((x) => x.id === id);
-  if (!e) return '';
-  return `
+  if (e) return `
     <div class="phd"><div class="pid">${esc(e.name)}</div>
       <div class="pwhen">${dotOf(e.cot)} ${esc(COT[e.cot].name)} · ${esc(e.when)}</div></div>
     <div class="next${e.free?' go':''}"><div class="nstep">Can you say yes?</div>
@@ -554,6 +1155,39 @@ function paneFor(id){
               :`<button class="btn" type="button" data-toast="Edit the dates">Edit the dates</button>`}
       <button class="btn" type="button" data-toast="Draft written into the composer">✨ Draft reply</button>
     </div>`;
+  const m = MSGS.find((x) => x.id === id);
+  if (m) return `
+    <div class="phd"><div class="pid">${esc(m.name)}</div>
+      <div class="pwhen">${dotOf(m.cot)} ${esc(COT[m.cot].name)} · ${esc(m.state)} · <span class="stc ok" style="font-size:0.68rem;">Paid ✓</span></div></div>
+    <div style="padding:16px 18px 4px;"><div class="chatlog">
+      ${m.thread.map((t)=>`<div class="bub ${t.who==='them'?'mac':'you'}">${esc(t.text)}</div>`).join('')}
+    </div></div>
+    <div class="pacts" style="border-top:none;padding-top:4px;">
+      <input class="fin" id="replyin" placeholder="Reply to ${esc(m.name.split(' ')[0])}…" style="border-radius:999px;flex:1 1 auto;">
+      <button class="btn pri" data-reply="${esc(m.name.split(' ')[0])}" type="button">Send</button>
+    </div>`;
+  const em = [...EMAILS.in, ...EMAILS.sent].find((x) => x.id === id);
+  if (!em) return '';
+  const mb = em.match ? BOOKINGS.find((x)=>x.id===em.match) : null;
+  return `
+    <div class="phd"><div class="pid" style="font-size:1rem;">${esc(em.subj)}</div>
+      <div class="pwhen">${esc(em.from)} · ${esc(em.age)}</div></div>
+    ${mb?`<div class="kv" style="border-bottom:1px solid var(--hair);"><span class="kvk">Their booking</span>
+      <span class="kvv">${esc(COT[mb.cot].name)} · ${mb.due?`<span class="stc warn">£${mb.due.toFixed(2)} due</span>`:'<span class="stc ok">Paid ✓</span>'}</span></div>`
+    :`<div class="kv" style="border-bottom:1px solid var(--hair);"><span class="kvk">Their booking</span><span class="kvv"><span class="stc unk">No match</span></span></div>`}
+    <div style="padding:6px 0 2px;">${em.body.map((p)=>`<p class="quote" style="padding-top:6px;">${esc(p)}</p>`).join('')}</div>
+    ${em.chain?`<button class="row" data-fold="p-chain" type="button" aria-expanded="${state.fold==='p-chain'}" style="border-top:1px solid var(--hair);">
+      <span class="lbl" style="font-size:0.84rem;">Earlier in this conversation · ${em.chain} emails</span>
+      <span class="chev">${state.fold==='p-chain'?'⌄':'›'}</span></button>
+    ${state.fold==='p-chain'?`<div class="fold" style="padding:12px 18px;">
+      <div class="wrow"><span style="font-size:0.8rem;color:var(--muted);">Your booking is confirmed — 14/08</span></div>
+      <div class="wrow"><span style="font-size:0.8rem;color:var(--muted);">Enquiry acknowledgement — 12/08</span></div>
+    </div>`:''}`:''}
+    <div class="pacts">
+      <button class="btn pri" type="button" data-toast="Reply opens in the composer, addressed and threaded">Reply</button>
+      <button class="btn" type="button" data-toast="Draft written — availability checked, quote included">✨ Draft reply</button>
+      <button class="btn" type="button" data-toast="Archived">Archive</button>
+    </div>`;
 }
 
 /* ---- render ---- */
@@ -562,7 +1196,7 @@ function render(){
   const col = $('#col'), pane = $('#pane');
   col.innerHTML = `<button class="backlink" data-back="1" type="button">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>Back</button>`
-    + (VIEWS[state.view] ? VIEWS[state.view]() : '');
+    + viewBody();
   const html = state.sel ? paneFor(state.sel) : '';
   pane.hidden = !html;
   pane.innerHTML = html ? `<button class="backlink" data-back="1" type="button" style="margin:14px 0 0 18px;">
@@ -574,12 +1208,14 @@ function render(){
 
 /* ---- the ask overlay ---- */
 const ANSWERS = [
-  {q:'who owes me money', say:'£1,190.00 across 2 guests — Dan Rowe leading at £670.00', go:['money',null]},
-  {q:'how much can i move out', say:'£294.75 has landed and is yours to move', go:['money',null]},
-  {q:'is jollyboat free in september', say:'Free 12–16 and 20–24 Sep; the 5th–9th has just gone', go:['today',null]},
-  {q:'what did priya ask about', say:'Parking, and arriving late on the Thursday', go:['inbox','e1']},
-  {q:'who arrives today', say:'Wren Hollis at Pimpernel, from 4pm — paid in full', go:['today','b1']},
-  {q:'sarah balance', say:'£520.00 still to pay, due 21/09/2026', go:['today','b2']},
+  {q:'who owes me money', say:'£1,190.00 across 2 guests — Dan Rowe leading at £670.00', v:'money'},
+  {q:'how much can i move out', say:'£294.75 has landed and is yours to move', v:'money', s:'sweep'},
+  {q:'is jollyboat free in september', say:'Free 12–16 and 20–24 Sep; the 5th–9th has just gone', v:'today'},
+  {q:'what did priya ask about', say:'Parking, and arriving late on the Thursday', v:'inbox', r:'e1'},
+  {q:'who arrives today', say:'Wren Hollis at Pimpernel, from 4pm — paid in full', v:'today', r:'b1'},
+  {q:'sarah balance', say:'£520.00 still to pay, due 21/09/2026', v:'today', r:'b2'},
+  {q:'deposits to give back', say:'One — Cara’s £75.00, she leaves today', v:'money', s:'deposits'},
+  {q:'net profit this year', say:'£18,420.00 so far — fees and logged expenses out', v:'money', s:'books'},
 ];
 function askRender(){
   const q = $('#askinput').value.trim().toLowerCase();
@@ -595,6 +1231,30 @@ function askOpen(v){
   if (v){ $('#askinput').value=''; askRender(); $('#askinput').focus(); }
 }
 
+/* ---- the chat: send, and a grounded reply lands ---- */
+function chatReply(t){
+  const q = t.toLowerCase();
+  if (/owe|balance|money|collect/.test(q)) return ['Two guests owe £1,190.00 — Dan Rowe £670.00 (overdue, his stay is finished) and Sarah Pemberton £520.00, due 21/09. Want me to draft the chases?','money'];
+  if (/free|available|september|dates/.test(q)) return ['Jollyboat is free 12–16 and 20–24 September. The 5th–9th went yesterday — Joel Adeyemi asked about exactly those dates, so his enquiry needs the bad news.','availability'];
+  if (/today|arrive|need/.test(q)) return ['Wren Hollis arrives at Pimpernel today from 4pm — paid in full, directions sent. Cara Nunn leaves Jollyboat; her £75.00 deposit is ready to give back. Laura still has no directions for tomorrow.','today'];
+  return ['Checked the day sheet: 1 arrival (Wren, Pimpernel), 1 departure (Cara, Jollyboat), £340.00 to collect today. Ask me about money, dates or a guest by name.','today'];
+}
+function chatSend(text){
+  const t = (text||'').trim(); if (!t) return;
+  CHAT.push({who:'you', text:t});
+  CHAT.push({cap:'Asking your Mac…'});
+  render();
+  const m = $('#main'); m.scrollTop = m.scrollHeight;
+  setTimeout(() => {
+    CHAT.splice(CHAT.findIndex((x)=>x.cap), 1);
+    const [say, used] = chatReply(t);
+    CHAT.push({who:'mac', text:say, used});
+    render();
+    const m2 = $('#main'); m2.scrollTop = m2.scrollHeight;
+    const inp = $('#chatin'); if (inp) inp.focus();
+  }, 900);
+}
+
 /* ---- toast ---- */
 let toastT;
 function toast(msg){
@@ -604,28 +1264,62 @@ function toast(msg){
       +'background:var(--ink);color:var(--ground);padding:12px 20px;border-radius:999px;'
       +'font-size:0.85rem;font-weight:600;box-shadow:var(--shadow-lift);max-width:90vw;text-align:center;';
     document.body.appendChild(t); }
-  t.textContent = msg; t.style.opacity='1';
-  clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; }, 2200);
+  t.textContent = msg; t.style.transition=''; t.style.opacity='1';
+  clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; }, 2600);
 }
 
 /* ---- events ---- */
 document.addEventListener('click', (ev) => {
-  const el = ev.target instanceof Element ? ev.target.closest('[data-go],[data-rec],[data-back],[data-folder],[data-duty],[data-answer],[data-toast],[data-ask]') : null;
+  const el = ev.target instanceof Element
+    ? ev.target.closest('[data-go],[data-sub],[data-fold],[data-rec],[data-back],[data-folder],[data-mtab],[data-duty],[data-answer],[data-toast],[data-say],[data-send],[data-reply],[data-sw],[data-step],[data-rotate],[data-ksdone],[data-kscancel]')
+    : null;
   if (!el) return;
-  if (el.dataset.go)     { state.view = el.dataset.go; state.sel = null; render(); $('#main').scrollTop = 0; }
-  else if (el.dataset.rec)   { state.sel = el.dataset.rec; render(); }
-  else if (el.dataset.back)  { state.sel = null; render(); }
-  else if (el.dataset.folder){ state.folder = el.dataset.folder; state.sel = null; render(); }
-  else if (el.dataset.duty !== undefined){
-    const d = DUTIES[+el.dataset.duty];
-    state.view = d.go[0]; state.sel = d.go[1]; render(); $('#main').scrollTop = 0; askOpen(false);
+  const d = el.dataset;
+  if (d.go)          { state.view = d.go; state.sub = null; state.sel = null; state.fold = null; render(); $('#main').scrollTop = 0; }
+  else if (d.sub)    { state.sub = d.sub; state.sel = null; state.fold = null; render(); $('#main').scrollTop = 0; }
+  else if (d.fold)   { state.fold = state.fold===d.fold ? null : d.fold; render(); }
+  else if (d.rec)    { state.sel = d.rec; state.fold = null; render(); }
+  else if (d.back)   { state.sel = null; render(); }
+  else if (d.folder) { state.folder = d.folder; state.sel = null; render(); }
+  else if (d.mtab)   { state.mtab = d.mtab; state.sel = null; render(); }
+  else if (d.duty !== undefined){
+    const du = DUTIES[+d.duty];
+    state.view = du.v; state.sub = null; state.sel = du.r || null;
+    state.fold = du.ks ? 'ks-pimpernel' : null;
+    render(); $('#main').scrollTop = 0; askOpen(false);
   }
-  else if (el.dataset.answer !== undefined){
-    const a = ANSWERS[+el.dataset.answer];
-    state.view = a.go[0]; state.sel = a.go[1]; render(); askOpen(false);
+  else if (d.answer !== undefined){
+    const a = ANSWERS[+d.answer];
+    state.view = a.v; state.sub = a.s || null; state.sel = a.r || null; render(); askOpen(false);
   }
-  else if (el.dataset.ask)   { askOpen(true); $('#askinput').value = el.dataset.ask; askRender(); }
-  else if (el.dataset.toast) { toast(el.dataset.toast); }
+  else if (d.say)    { state.view='assistant'; state.sub=null; state.sel=null; render(); chatSend(d.say); }
+  else if (d.send !== undefined){ const inp = $('#chatin'); if (inp){ const t = inp.value; inp.value=''; chatSend(t); } }
+  else if (d.reply)  { const inp = $('#replyin'); if (inp && inp.value.trim()){ toast('Reply sent to '+d.reply); inp.value=''; } else { toast('Type a reply first'); } }
+  else if (d.sw !== undefined){ el.setAttribute('aria-pressed', el.getAttribute('aria-pressed')==='true' ? 'false' : 'true'); }
+  else if (d.step)   {
+    const [key, dir] = d.step.split(':');
+    const stepOf = {rate:5, dep:5, minN:1}, min = {rate:20, dep:5, minN:1}, max = {rate:2000, dep:95, minN:14};
+    state[key] = Math.min(max[key], Math.max(min[key], state[key] + stepOf[key]*(+dir)));
+    render();
+  }
+  else if (d.rotate) {
+    KS[d.rotate].newCode = String(Math.floor(1000 + Math.random()*9000));
+    state.ksConfirm = d.rotate; render();
+  }
+  else if (d.ksdone) {
+    const k = d.ksdone, r = KS[k];
+    r.code = r.newCode; r.st = 'ok';
+    r.line = 'Priya Shah · set today'; r.vis = 'Priya sees it from 8 Sep (two days before check-in)';
+    r.hist.unshift(r.newCode + ' · set today for Priya Shah');
+    state.ksConfirm = null;
+    const di = DUTIES.findIndex((x)=>x.ks);
+    if (di > -1) DUTIES.splice(di, 1);
+    const ksArea = AREAS.find((a)=>a.id==='keysafes'); delete ksArea.cnt; delete ksArea.hot;
+    spine(); render();
+    toast('Rotated — recorded, and Priya sees the new code from 8 Sep');
+  }
+  else if (d.kscancel !== undefined){ state.ksConfirm = null; render(); }
+  else if (d.toast)  { toast(d.toast); }
 });
 $('#askbtn').addEventListener('click', () => askOpen(true));
 $('#askclose').addEventListener('click', () => askOpen(false));
@@ -637,8 +1331,15 @@ $('#themeb').addEventListener('click', () => {
   document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
 });
 document.addEventListener('keydown', (ev) => {
+  if (ev.target instanceof Element && ev.target.id === 'chatin' && ev.key === 'Enter'){
+    const t = ev.target.value; ev.target.value=''; chatSend(t); return;
+  }
   if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k'){ ev.preventDefault(); askOpen(true); }
-  else if (ev.key === 'Escape'){ if ($('#askwrap').classList.contains('open')) askOpen(false); else if (state.sel){ state.sel=null; render(); } }
+  else if (ev.key === 'Escape'){
+    if ($('#askwrap').classList.contains('open')) askOpen(false);
+    else if (state.sel){ state.sel=null; render(); }
+    else if (state.sub){ state.sub=null; render(); }
+  }
 });
 // The spine condenses on scroll — how it earns its room on a small screen.
 const phone = () => matchMedia('(max-width:759px)').matches;

@@ -149,6 +149,108 @@ const ok = (cond, label, detail) => {
     }
     await p.close();
 
+    console.log('\n6. every page of the real back office exists here');
+    // The sub-pages: click each row that claims to go somewhere and assert the
+    // destination has substance AND a way back. "The element exists" is not the
+    // bar — the bar is that no row is a dead end.
+    p = await open(1440, 900);
+    const subsOf = async (area) => {
+        await p.click(`.rail [data-go="${area}"]`);
+        await p.waitForTimeout(120);
+        return p.evaluate(() => [...document.querySelectorAll('#col [data-sub]')].map((b) => b.dataset.sub));
+    };
+    for (const area of ['money', 'settings', 'cottages']) {
+        const subs = await subsOf(area);
+        ok(subs.length > 0, `${area} offers ${subs.length} sub-pages`);
+        for (const s of subs) {
+            await p.click(`.rail [data-go="${area}"]`);
+            await p.waitForTimeout(90);
+            await p.click(`#col [data-sub="${s}"]`);
+            await p.waitForTimeout(120);
+            const r = await p.evaluate(() => ({
+                n: document.getElementById('col').innerText.trim().length,
+                back: !!document.querySelector('#col .crumb'),
+            }));
+            ok(r.n > 80 && r.back, `  ${area} → ${s} renders, with a way back`, JSON.stringify(r));
+        }
+    }
+    // The cottage editor's sections open with real content in them.
+    await p.click('.rail [data-go="cottages"]');
+    await p.waitForTimeout(100);
+    await p.click('#col [data-sub="cot-pimpernel"]');
+    await p.waitForTimeout(120);
+    const secIds = await p.evaluate(() => [...document.querySelectorAll('#col [data-fold]')].map((b) => b.dataset.fold));
+    ok(secIds.length >= 12, `the cottage editor lists ${secIds.length} sections`);
+    let openedAll = true;
+    for (const id of secIds) {
+        await p.click(`#col [data-fold="${id}"]`);
+        await p.waitForTimeout(70);
+        // innerText excludes input VALUES, so a form-heavy section (Text &
+        // details is two inputs and a Save) under-measures — controls count.
+        const n = await p.evaluate(() => {
+            const f = document.querySelector('#col .fold');
+            return f ? f.innerText.trim().length + f.querySelectorAll('input,button,.chip,.ptile').length * 20 : 0;
+        });
+        if (n < 60) { openedAll = false; ok(false, `  section ${id} opens with content`, `${n} weighted chars`); }
+    }
+    ok(openedAll, '  every section opens with a real editor inside');
+    await p.close();
+
+    console.log('\n7. the demo WORKS — state changes when you act');
+    p = await open(1440, 900);
+    // Rotating a key safe clears its duty from the spine, everywhere.
+    const before = await p.evaluate(() => document.querySelectorAll('#duties .duty').length);
+    await p.click('.rail [data-go="keysafes"]');
+    await p.waitForTimeout(120);
+    await p.click('[data-fold="ks-pimpernel"]');
+    await p.waitForTimeout(120);
+    await p.click('[data-rotate="pimpernel"]');
+    await p.waitForTimeout(120);
+    ok(await p.evaluate(() => /not yet on the safe/i.test(document.getElementById('col').innerText)),
+        'rotating shows the new code and asks for the physical confirm');
+    await p.click('[data-ksdone="pimpernel"]');
+    await p.waitForTimeout(150);
+    const after = await p.evaluate(() => ({
+        duties: document.querySelectorAll('#duties .duty').length,
+        capOk: /Code on the safe/.test(document.getElementById('col').innerText),
+    }));
+    ok(after.duties === before - 1 && after.capOk,
+        `confirming clears the duty (${before} → ${after.duties}) and flips the capsule`, JSON.stringify(after));
+    // The chat answers, grounded in the same sample facts.
+    await p.click('.rail [data-go="assistant"]');
+    await p.waitForTimeout(120);
+    await p.fill('#chatin', 'who owes me money');
+    await p.click('[data-send]');
+    await p.waitForTimeout(1400);
+    ok(await p.evaluate(() => {
+        const t = document.getElementById('col').innerText;
+        return /£1,190\.00/.test(t) && /Checked: money/.test(t);
+    }), 'the chat answers with the figure and names what it checked');
+    // The email reader serves the same pane as everything else.
+    await p.click('.rail [data-go="inbox"]');
+    await p.waitForTimeout(120);
+    await p.click('[data-folder="eml"]');
+    await p.waitForTimeout(120);
+    await p.click('[data-rec="em1"]');
+    await p.waitForTimeout(150);
+    ok(await p.evaluate(() => {
+        const t = document.getElementById('pane').innerText;
+        return /travel cot/.test(t) && /£520\.00 due/.test(t);
+    }), 'an email opens in the pane with its guest-match verdict');
+    await p.click('[data-mtab="sent"]');
+    await p.waitForTimeout(120);
+    ok(await p.evaluate(() => /Your booking is confirmed/.test(document.getElementById('col').innerText)),
+        'the Sent tab is reachable — the affordance the real app once shipped without');
+    // A chat thread from a guest in residence.
+    await p.click('[data-folder="msg"]');
+    await p.waitForTimeout(120);
+    await p.click('[data-rec="m1"]');
+    await p.waitForTimeout(150);
+    ok(await p.evaluate(() => /wifi code/.test(document.getElementById('pane').innerText)
+        && !!document.getElementById('replyin')),
+        'a guest chat opens in the same pane, with a live reply box');
+    await p.close();
+
     console.log(errs.length ? `\nPAGE ERRORS:\n  ${errs.join('\n  ')}` : '\nno page errors');
     if (errs.length) fails += errs.length;
     await browser.close();
