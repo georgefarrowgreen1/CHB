@@ -9090,8 +9090,8 @@ function cmdkGreeting() {
 // The landing's line: the shared sentence, or the bare greeting on a day
 // with nothing in it — "Afternoon George." reads better than a greeting
 // followed by a dash and nothing.
-function cmdkDayLine() {
-    const d = chbDaySentence();
+function cmdkDayLine(pre) {
+    const d = pre || chbDaySentence();
     return d.bits.length ? d.greet + ' — ' + d.bits.join(' · ') : d.greet + '.';
 }
 // ── THE DAY, SAID ONCE ───────────────────────────────────────────────────
@@ -19877,7 +19877,7 @@ function renderNeedsYou() {
 // Today = chbDuties().length (the Home-badge number), Inbox = unseenEnquiries()
 // (the dock pip's number), Payments = chbOpsParts(chbDayTuples()).owed (the
 // ops line's figure), Key safes = the keysafe duties in the same list.
-let __chbSpineChips = 0; // how many duty chips the spine last rendered (gate hook)
+let __chbFrameHtml = '';
 function chbSpineEnsure() {
     let el = document.getElementById('day-spine');
     if (!el) {
@@ -19922,9 +19922,31 @@ function chbRailEnsure() {
             ${r.cnt ? `<span class="rail-cnt" id="rail-cnt-${r.cnt}" style="display:none;"></span>` : ''}
         </button>`,
     ).join('');
+    // The two navs must read as ONE vocabulary, so each row that has a dock
+    // twin CLONES the dock button's own <svg> — identity by construction; the
+    // literals above are the fallback, and the Cottages glyph has no twin.
+    el.querySelectorAll('.rail-row[data-view]').forEach((row) => {
+        const src = document.querySelector('.admin-dock-btn[data-view="' + row.getAttribute('data-view') + '"] svg');
+        const mine = row.querySelector('svg');
+        if (src && mine) {
+            const c = /** @type {SVGElement} */ (src.cloneNode(true));
+            c.setAttribute('aria-hidden', 'true');
+            mine.replaceWith(c);
+        }
+    });
     document.body.appendChild(el);
+    // The rail's boundary lives HERE, not in a media query: 1440 is not a
+    // canonical CSS breakpoint (the conventions ratchet), and below it the
+    // ≥1200 two-pane layouts already spend the width the rail would take —
+    // measured, a 1200px rail left the Inbox reading pane ~330px. The change
+    // listener keeps a live resize honest.
+    try {
+        matchMedia('(min-width: 1440px)').addEventListener('change', () => {
+            try { chbFrameSync(); } catch (e) {}
+        });
+    } catch (e) {}
 }
-function chbRailSync(duties) {
+function chbRailSync(duties, owed) {
     const rail = document.getElementById('admin-rail');
     if (!rail) return;
     // Current row MIRRORS the dock's own .current — nav() maintains that class
@@ -19954,21 +19976,30 @@ function chbRailSync(duties) {
     let enq = 0;
     try { enq = unseenEnquiries(); } catch (e) {}
     set('rail-cnt-inbox', enq > 0 ? String(enq) : '', enq > 0);
-    let owed = 0;
-    try { owed = chbOpsParts(chbDayTuples()).owed; } catch (e) {}
     set('rail-cnt-money', owed > 0.005 ? '£' + Math.round(owed).toLocaleString('en-GB') : '', false);
     const ks = duties.filter((d) => d.kind === 'keysafe');
     set('rail-cnt-keysafe', ks.length ? String(ks.length) : '', ks.some((d) => d.sev === 'danger'));
 }
 function chbFrameSync() {
     const owner = document.body.classList.contains('owner-mode');
+    // The rail's width boundary as a body CLASS (see chbRailEnsure) — CSS
+    // pairs it with .admin-screen so the owner's own public pages stay
+    // exactly what a guest sees.
+    try {
+        document.body.classList.toggle('rail-on', owner && matchMedia('(min-width: 1440px)').matches);
+    } catch (e) {}
+    // ONE derivation per sync: the day sentence (its tuple walk carries the
+    // owed figure the rail's Payments count needs) and the duty list, each
+    // computed once and passed down.
     let duties = [];
+    let day = null;
     if (owner) {
         try { duties = chbDuties(); } catch (e) {}
+        try { day = chbDaySentence(); } catch (e) {}
     }
     try {
         chbRailEnsure();
-        chbRailSync(duties);
+        chbRailSync(duties, day ? day.shape.owed : 0);
     } catch (e) {}
     const sp = chbSpineEnsure();
     const av = document.querySelector('.page-view.active');
@@ -19982,27 +20013,32 @@ function chbFrameSync() {
         !document.body.classList.contains('offline-snap');
     if (!on) {
         sp.hidden = true;
-        __chbSpineChips = 0;
         return;
     }
     if (sp.parentElement !== av || av.firstElementChild !== sp) av.insertBefore(sp, av.firstChild);
     let line = '';
-    try { line = cmdkDayLine(); } catch (e) {}
+    try { line = cmdkDayLine(day); } catch (e) {}
     // Labels are chbDuties' PLAIN TEXT, escaped here at the render boundary —
     // the needsYouItems contract; the go string is interpolated RAW because it
     // is attribute markup built by chbAttrs, exactly as the strip does it.
     const chips = duties
         .slice(0, 2)
         .map(
-            (d) => `<button type="button" class="spine-duty is-${d.sev}" ${d.go} title="${escapeHtml(d.label)}"><span class="spine-dot" aria-hidden="true"></span>${escapeHtml(d.label)}</button>`,
+            (d) => `<button type="button" class="spine-duty is-${d.sev}" ${d.go} title="${escapeHtml(d.label)}"><span class="spine-dot" aria-hidden="true"></span><span class="spine-lbl">${escapeHtml(d.label)}</span></button>`,
         )
         .join('');
     const more =
         duties.length > 2
             ? `<button type="button" class="spine-duty is-more" data-act="tryAccessBackOffice" title="Everything on Today">${duties.length - 2} more</button>`
             : '';
-    __chbSpineChips = Math.min(2, duties.length);
-    sp.innerHTML = `<span class="spine-day">${escapeHtml(line)}</span>${chips}${more}`;
+    const html = `<span class="spine-day">${escapeHtml(line)}</span>${chips}${more}`;
+    // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
+    // and an unconditional innerHTML would destroy keyboard focus (and any
+    // mid-press tap) on a chip every time data lands with nothing new to say.
+    if (html !== __chbFrameHtml) {
+        sp.innerHTML = html;
+        __chbFrameHtml = html;
+    }
     sp.hidden = false;
 }
 // The header's living second line: the date plus what today actually holds —

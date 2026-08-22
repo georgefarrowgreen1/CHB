@@ -2243,11 +2243,27 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   it carries NO heading element, because a11y §6 scopes the outline to
   `.page-view.active` and a heading here would sit above every view's own h1.
 - **THE RAIL** (`#admin-rail`, JS-built onto `<body>`) is the dock's six
-  destinations plus **Cottages** as a left column at **≥1200px only**, with live
-  state beside each. Below 1200 the header dock IS the folded rail (the canvas's
+  destinations plus **Cottages** as a left column at **≥1440px only**, with live
+  state beside each. Below that the header dock IS the folded rail (the canvas's
   own read: folded to icons, a rail just reinvents the dock), so the dock stays
   byte-identical there — every dock gate measures at 390 and none needed re-aiming
-  (verified before building). Every count is the surface's OWN derivation said
+  (verified before building). **The boundary is 1440, not 1200, and it is a BODY
+  CLASS (`rail-on`), not a media query**: at 1200–1439 the app's ≥1200 two-pane
+  layouts (the Inbox reading pane, the docked hub) already spend the width the
+  rail would take — the review measured the reading pane at ~330px under a
+  1200px rail — and 1440 is not one of the four canonical CSS breakpoints, so
+  chbFrameSync toggles `body.rail-on` from `matchMedia('(min-width: 1440px)')`
+  (change listener registered in chbRailEnsure) and the CSS keys on the class.
+  Every rail rule ALSO requires **`.admin-screen`** (nav() maintains it from
+  ADMIN_VIEWS): an owner browsing their own PUBLIC pages sees exactly what a
+  guest sees — unshifted, dock in the header — or "check my own site" stops
+  being a preview. The rail's glyphs are CLONED from the dock's own buttons at
+  build (identity by construction, never by comment; the literals are the
+  fallback and the Cottages glyph, which has no dock twin). The spine's chip
+  label lives in a child `.spine-lbl` span because text-overflow on the flex
+  chip itself renders no ellipsis, and the spine rewrites its innerHTML only
+  when the markup actually CHANGED — the sync rides refreshInboxBadge and every
+  nav, and an unconditional rewrite destroyed keyboard focus on the chips. Every count is the surface's OWN derivation said
   again, never a second one: Today = `chbDuties().length` (the Home-badge number),
   Inbox = `unseenEnquiries()` (the pip's number), Payments =
   `chbOpsParts(chbDayTuples()).owed` (the ops line's figure), Key safes = the

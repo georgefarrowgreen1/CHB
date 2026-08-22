@@ -123,7 +123,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.waitForTimeout(900);
     ok(await activeView() === 'view-backoffice', '“N more” lands on Today, where the full strip lives');
 
-    console.log('§3 the rail at ≥1200 — live state beside every destination');
+    console.log('§3 the rail at 1440 — live state beside every destination');
     await page.setViewportSize({ width: 1440, height: 950 });
     await page.waitForTimeout(400);
     await page.evaluate(async () => { await openAccounts(); });
@@ -167,14 +167,46 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         ok(await activeView() === view, `${view} routes from the rail`);
     }
 
-    console.log('§4 the handover is live at the one boundary');
+    console.log('§4 the handover is live at the one boundary — and the boundary is 1440');
     await page.setViewportSize({ width: 1000, height: 900 });
     await page.waitForTimeout(400);
-    ok(!(await painted('#admin-rail')), 'below 1200 the rail is gone');
+    ok(!(await painted('#admin-rail')), 'below the boundary the rail is gone');
     ok(await page.evaluate(() => [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.offsetParent !== null).length >= 4), 'and the header dock is back, byte-identical — the folded rail IS the dock');
+    // 1280 is ABOVE the app's 1200 two-pane breakpoint and must still keep the
+    // dock: at 1200–1439 the Inbox reading pane and the docked hub already
+    // spend the width the rail would take (measured: a 1200px rail left the
+    // reading pane ~330px). The rail earns its room at 1440.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);
-    ok(await painted('#admin-rail'), 'back over the boundary, the rail returns — pure CSS, nothing to leave stale');
+    ok(!(await painted('#admin-rail')), 'at 1280 — two-pane widths — the dock still holds; the rail would starve the panes it sits beside');
+    ok(await page.evaluate(() => [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.offsetParent !== null).length >= 4), 'and the dock is live there');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(400);
+    ok(await painted('#admin-rail'), 'at 1440 the rail returns — matchMedia drives the class, so a live resize cannot leave it stale');
+    // A signed-in admin has no customer-facing site — nav() bounces every
+    // public view to the back office — EXCEPT view-pay, which is deliberately
+    // let through (an admin settling on a guest's behalf, or testing a link on
+    // staging). That page is a GUEST page and must render as one: unshifted,
+    // no rail beside it. The .admin-screen half of the rail's CSS pair is what
+    // guards it. (The first draft of this check nav'd to view-experiences and
+    // silently measured the back office again — the redirect ate it.)
+    await page.evaluate(() => nav('view-pay'));
+    await page.waitForTimeout(500);
+    ok(await activeView() === 'view-pay', 'the pay page is the one customer view an admin reaches');
+    ok(!(await painted('#admin-rail')), 'and the rail stands down beside it — a guest page renders as a guest page');
+    // CENTRED, not left-anchored: a computed margin-left is the wrong probe —
+    // the base .container's `margin: 0 auto` resolves to 120px at 1440, so a
+    // threshold on the margin fails a perfectly centred page. The rail-shifted
+    // layout is LEFT-ANCHORED (left ≈ 244); a guest page is symmetric.
+    ok(await page.evaluate(() => {
+        const m = document.querySelector('main.container.page-view.active');
+        if (!m) return true;
+        const r = m.getBoundingClientRect();
+        return Math.abs(r.left - (window.innerWidth - r.width) / 2) < 3;
+    }), 'and the page sits centred — not left-anchored beside a rail that is not there');
+    await page.evaluate(async () => { await openAccounts(); });
+    await page.waitForTimeout(700);
+    ok(await painted('#admin-rail'), 'back on an admin screen, the rail is back');
 
     console.log('§5 the phone');
     await page.setViewportSize({ width: 390, height: 844 });

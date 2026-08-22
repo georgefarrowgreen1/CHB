@@ -70,18 +70,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { await openBookings(); });
   await page.waitForTimeout(1600);
 
-  console.log('§1 the key in the nav, the page behind it');
+  console.log('§1 the key in the dock, the page behind it');
   const dockKey = page.locator('.admin-dock-btn[data-view="view-keysafe"]');
-  ok(await dockKey.count() === 1, 'the dock carries a Key safes button (the sub-1200 nav)');
+  ok(await dockKey.count() === 1, 'the dock carries a Key safes button');
   ok((await dockKey.getAttribute('aria-label')) === 'Key safes', '…named, not just an icon');
-  // This suite runs at 1280, where THE RAIL is the live nav and the dock
-  // stands down (the frame — ui-test-railspine owns the handover). The way in
-  // at this width is the rail's own named row; clicking the hidden dock
-  // button timed out the moment the handover shipped, which was correct.
-  const railKey = page.locator('#admin-rail .rail-row[data-view="view-keysafe"]');
-  ok(await railKey.count() === 1, 'the rail carries the same destination at this width');
-  ok(/Key safes/.test((await railKey.textContent()) || ''), '…with its name written out beside the glyph');
-  await railKey.click();
+  await dockKey.click();
   await page.waitForTimeout(900);
   ok(await page.evaluate(() => document.getElementById('view-keysafe').classList.contains('active')), 'tapping it lands on the key safe page');
 

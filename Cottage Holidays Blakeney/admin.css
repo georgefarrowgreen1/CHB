@@ -6029,10 +6029,15 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   border-radius: var(--r-pill);
   min-height: 34px;
   max-width: 340px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
+}
+/* The ellipsis lives on a CHILD span — on the flex chip itself,
+   text-overflow renders nothing and long labels hard-clip mid-character. */
+.spine-lbl {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .spine-duty.is-danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
 .spine-duty.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
@@ -6064,39 +6069,48 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 #admin-rail {
   display: none;
 }
-@media (min-width: 1200px) {
-  body.owner-mode #admin-rail {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    position: fixed;
-    left: 14px;
-    top: calc(100px + var(--safe-t));
-    bottom: 18px;
-    width: 212px;
-    overflow-y: auto;
-    /* Below the header (1500) and the search pop-out (1430+); above content. */
-    z-index: 1200;
-    padding: 10px;
-    border-radius: var(--r-lg);
-    background: color-mix(in srgb, var(--text-light) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
-  }
-  /* The dock stands down — the rail carries the same destinations with more
-     said beside each. moveDockIndicator self-heals (offsetParent null hides
-     the pill) and nav() keeps maintaining .current, which the rail mirrors. */
-  body.owner-mode header .admin-dock-wrap {
-    display: none;
-  }
-  /* Content shifts beside the rail. width:auto (not the base 100%) so the
-     flex-column stretch sizes each main to the remaining room — 100% plus a
-     margin would overflow the viewport. Left-anchored ON PURPOSE: the
-     approved prototype is a rail plus a column, not a centred page. */
-  body.owner-mode main.container {
-    width: auto;
-    margin-left: 244px;
-    margin-right: 24px;
-  }
+/* The rail's boundary is body.rail-on, set by chbFrameSync from
+   matchMedia at the 1440px boundary — a CLASS, not a media query, for two reasons
+   that are one reason: 1440 is where the rail genuinely earns its room (at
+   1200–1439 the ≥1200 two-pane layouts — the Inbox reading pane, the docked
+   hub — already spend the width the rail would take, and the review measured
+   the reading pane at ~330px under a 1200px rail), and 1440 is not one of the
+   four canonical CSS breakpoints, so the boundary lives in ONE admin.js
+   constant instead of a stray media width the ratchet forbids. Scoped to
+   .admin-screen as well: an owner browsing their own PUBLIC pages must see
+   what a guest sees — unshifted, dock in the header — or "check my own site"
+   stops being a preview. */
+body.rail-on.admin-screen #admin-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: fixed;
+  left: 14px;
+  top: calc(100px + var(--safe-t));
+  bottom: 18px;
+  width: 212px;
+  overflow-y: auto;
+  /* Below the header (1500) and the search pop-out (1430+); above content. */
+  z-index: 1200;
+  padding: 10px;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--text-light) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
+}
+/* The dock stands down — the rail carries the same destinations with more
+   said beside each. moveDockIndicator self-heals (offsetParent null hides
+   the pill) and nav() keeps maintaining .current, which the rail mirrors. */
+body.rail-on.admin-screen header .admin-dock-wrap {
+  display: none;
+}
+/* Content shifts beside the rail. width:auto (not the base 100%) so the
+   flex-column stretch sizes each main to the remaining room — 100% plus a
+   margin would overflow the viewport. Left-anchored ON PURPOSE: the
+   approved prototype is a rail plus a column, not a centred page. */
+body.rail-on.admin-screen main.container {
+  width: auto;
+  margin-left: 244px;
+  margin-right: 24px;
 }
 .rail-row {
   display: flex;
@@ -6152,9 +6166,9 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
 /* The two standing dock trims apply to the rail's mirror rows too: search-first
    collapses Payments+Manage into ⌘K (Cottages is a Manage section, so it goes
    with them), and the offline day sheet trims the dead destinations. */
-body.owner-mode.search-first #admin-rail .rail-row[data-view='view-accounts'],
-body.owner-mode.search-first #admin-rail .rail-row[data-view='view-settings'],
-body.owner-mode.search-first #admin-rail .rail-row[data-rail='cottages'] {
+body.search-first #admin-rail .rail-row[data-view='view-accounts'],
+body.search-first #admin-rail .rail-row[data-view='view-settings'],
+body.search-first #admin-rail .rail-row[data-rail='cottages'] {
   display: none;
 }
 body.offline-snap #admin-rail .rail-row[data-view='view-inbox'],
