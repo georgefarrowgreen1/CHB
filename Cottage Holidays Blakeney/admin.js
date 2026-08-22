@@ -19792,11 +19792,14 @@ function needsYouExpand() {
     __nyExpanded = true;
     renderNeedsYou();
 }
+// The frame (day spine + rail counts) rides every duty refresh — this function
+// is THE "duties changed" moment (a dozen call sites), and its sync call sits
+// before the early returns, or a strip that empties would leave stale chips.
+// The call is a single bare line ON PURPOSE: test-webpush's badge check scans
+// a 700-char window from this function's name to setAppBadgeCount, and a
+// five-line comment inside the window pushed it past — the CI-only failure
+// this comment is standing where it can't repeat.
 function renderNeedsYou() {
-    // The frame (day spine + rail counts) rides every duty refresh — this
-    // function is THE "duties changed" moment (a dozen call sites), and the
-    // sync must run BEFORE the early returns below, or a strip that empties
-    // would leave stale chips and counts behind.
     try { chbFrameSync(); } catch (e) {}
     const wrap = document.getElementById('needs-you');
     const list = document.getElementById('needs-you-list');
