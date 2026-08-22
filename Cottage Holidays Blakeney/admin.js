@@ -9634,8 +9634,14 @@ function closeCmdK() {
 function cmdkBack() {
     closeCmdK();
     try {
+        // On rail screens the header (and its crown) is hidden — hand focus to
+        // the rail's own Ask pill instead, the control that opened the window.
         const crown = /** @type {any} */ (document.querySelector('body.owner-mode .logo'));
-        if (crown) crown.focus();
+        if (crown && crown.getClientRects().length > 0) crown.focus();
+        else {
+            const ask = /** @type {any} */ (document.getElementById('rail-ask'));
+            if (ask && ask.getClientRects().length > 0) ask.focus();
+        }
     } catch (e) {}
 }
 // ⌘K / Ctrl-K toggles the search page (owner only). Registered once on bundle load.
@@ -19917,14 +19923,34 @@ function chbRailEnsure() {
     const el = document.createElement('nav');
     el.id = 'admin-rail';
     el.setAttribute('aria-label', 'Back office');
-    el.innerHTML = CHB_RAIL_ROWS.map(
+    // The approved prototype's anatomy, whole: the brand at the top (the rail
+    // REPLACES the header on rail screens, so it carries the identity), the
+    // destinations with live state, then the Ask pill (the assistant — the
+    // crown's job, since the crown is hidden with the header) and the theme
+    // toggle (app.js's own toggleTheme, persistence included). Rows carry
+    // aria-label + title because the FOLDED rail hides the label spans, and a
+    // display:none label contributes nothing to the accessible name.
+    el.innerHTML = `
+        <div class="rail-brand"><img src="logo.svg" alt="" class="rail-mark">
+            <span class="rail-bname">Cottage Holidays<span class="rail-bsub">Blakeney</span></span></div>`
+        + CHB_RAIL_ROWS.map(
         (r) => `
-        <button type="button" class="rail-row" ${r.act}${r.view ? ` data-view="${r.view}"` : ''}${r.rail ? ` data-rail="${r.rail}"` : ''}>
+        <button type="button" class="rail-row" ${r.act}${r.view ? ` data-view="${r.view}"` : ''}${r.rail ? ` data-rail="${r.rail}"` : ''} aria-label="${r.label}" title="${r.label}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${r.ic}</svg>
             <span class="rail-lbl">${r.label}</span>
             ${r.cnt ? `<span class="rail-cnt" id="rail-cnt-${r.cnt}" style="display:none;"></span>` : ''}
         </button>`,
-    ).join('');
+    ).join('')
+        + `
+        <span class="rail-spacer"></span>
+        <button type="button" class="rail-ask" id="rail-ask" data-act="crownSheetToggle" aria-label="Ask anything" title="Ask anything">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+            <span class="rail-lbl">Ask anything…</span><span class="rail-kbd">⌘K</span>
+        </button>
+        <button type="button" class="rail-theme" data-act="toggleTheme" aria-label="Switch theme" title="Switch theme">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2M12 19.4v2M21.4 12h-2M4.6 12h-2M18.4 5.6l-1.4 1.4M7 17l-1.4 1.4M18.4 18.4L17 17M7 7L5.6 5.6"/></svg>
+            <span class="rail-lbl">Theme</span>
+        </button>`;
     // The two navs must read as ONE vocabulary, so each row that has a dock
     // twin CLONES the dock button's own <svg> — identity by construction; the
     // literals above are the fallback, and the Cottages glyph has no twin.
@@ -19938,15 +19964,36 @@ function chbRailEnsure() {
         }
     });
     document.body.appendChild(el);
-    // The rail's boundary lives HERE, not in a media query: 1440 is not a
-    // canonical CSS breakpoint (the conventions ratchet), and below it the
-    // ≥1200 two-pane layouts already spend the width the rail would take —
-    // measured, a 1200px rail left the Inbox reading pane ~330px. The change
-    // listener keeps a live resize honest.
+    // The rail's boundaries live HERE, not in media queries: neither 1200 nor
+    // 1440 for THIS chrome is expressible without a stray width (the CSS
+    // conventions ratchet), and the two-band behaviour is the prototype's own:
+    // FULL rail from 1440 (labels and counts earn their room), FOLDED to a
+    // 64px icon rail at 1200–1439 — where the ≥1200 two-pane layouts need the
+    // width back (measured: a 220px rail left the Inbox reading pane ~330px;
+    // the fold costs 92px and the panes keep ~530). Below 1200 the header
+    // dock is the folded rail, byte-identical to today. Change listeners on
+    // both boundaries keep a live resize honest.
     try {
         matchMedia('(min-width: 1440px)').addEventListener('change', () => {
             try { chbFrameSync(); } catch (e) {}
         });
+        matchMedia('(min-width: 1200px)').addEventListener('change', () => {
+            try { chbFrameSync(); } catch (e) {}
+        });
+    } catch (e) {}
+    // The spine condenses on scroll while it is the top of the page (rail
+    // screens have no header). HYSTERESIS is load-bearing, ported from the
+    // prototype: condensing shortens the document, which can clamp scrollTop
+    // and re-expand it — a dead zone wider than the reclaim settles it, and a
+    // page too short to reach 120px simply keeps the full spine.
+    try {
+        window.addEventListener('scroll', () => {
+            const sp = document.getElementById('day-spine');
+            if (!sp || sp.hidden || !document.body.classList.contains('rail-on')) return;
+            const y = window.scrollY;
+            if (y > 120) sp.classList.add('spine-cond');
+            else if (y < 40) sp.classList.remove('spine-cond');
+        }, { passive: true });
     } catch (e) {}
 }
 function chbRailSync(duties, owed) {
@@ -19985,11 +20032,14 @@ function chbRailSync(duties, owed) {
 }
 function chbFrameSync() {
     const owner = document.body.classList.contains('owner-mode');
-    // The rail's width boundary as a body CLASS (see chbRailEnsure) — CSS
-    // pairs it with .admin-screen so the owner's own public pages stay
-    // exactly what a guest sees.
+    // The rail's width boundaries as body CLASSES (see chbRailEnsure) — CSS
+    // pairs them with .admin-screen so the one customer view an admin can
+    // reach (view-pay) stays exactly what a guest sees.
     try {
-        document.body.classList.toggle('rail-on', owner && matchMedia('(min-width: 1440px)').matches);
+        const wide = matchMedia('(min-width: 1440px)').matches;
+        const mid = matchMedia('(min-width: 1200px)').matches;
+        document.body.classList.toggle('rail-on', owner && mid);
+        document.body.classList.toggle('rail-fold', owner && mid && !wide);
     } catch (e) {}
     // ONE derivation per sync: the day sentence (its tuple walk carries the
     // owed figure the rail's Payments count needs) and the duty list, each
@@ -20034,7 +20084,13 @@ function chbFrameSync() {
         duties.length > 2
             ? `<button type="button" class="spine-duty is-more" data-act="tryAccessBackOffice" title="Everything on Today">${duties.length - 2} more</button>`
             : '';
-    const html = `<span class="spine-day">${escapeHtml(line)}</span>${chips}${more}`;
+    // The condensed state (rail screens, scrolled) folds the chips away and
+    // says the count instead — the prototype's own anatomy. The pill routes to
+    // Today, where the full strip lives.
+    const cnt = duties.length
+        ? `<button type="button" class="spine-cnt" data-act="tryAccessBackOffice" title="${duties.length} thing${duties.length === 1 ? '' : 's'} still want${duties.length === 1 ? 's' : ''} you">${duties.length}</button>`
+        : '';
+    const html = `<span class="spine-day">${escapeHtml(line)}</span>${cnt}<span class="spine-duties">${chips}${more}</span>`;
     // Rewrite only on CHANGE: this sync rides refreshInboxBadge and every nav,
     // and an unconditional innerHTML would destroy keyboard focus (and any
     // mid-press tap) on a chip every time data lands with nothing new to say.
