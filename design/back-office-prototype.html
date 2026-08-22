@@ -1,0 +1,663 @@
+<title>Blakeney Back Office</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap">
+<style>
+/* ============================================================
+   Tokens — the app's own, lifted from app.css :root (dark) and
+   body.light-mode (light). Bare :root carries the COMPLETE light
+   palette; the two dark blocks redefine only tokens, so nothing
+   depends on a colour that lives inside a media query.
+   ============================================================ */
+:root{
+  --ground:#f5f1e9; --glass:rgba(255,255,255,0.78); --glass-2:rgba(255,255,255,0.92);
+  --line:rgba(28,46,58,0.12); --hair:rgba(28,46,58,0.08); --sunk:rgba(28,46,58,0.05);
+  --ink:#1b2a34; --muted:#52646e;
+  --accent:#c6885e; --accent-text:#965c35; --accent-ink:#1b1208;
+  --ok:#4caf50; --ok-text:#29712d; --warn:#ffa726; --warn-text:#9c5300;
+  --danger:#e57373; --danger-text:#bc2626; --info:#3884c5; --info-text:#316784;
+  --p-21a:#42a5f5; --p-jolly:#43a047; --p-pimp:#9c27b0;
+  --shadow:0 6px 18px rgba(30,54,72,0.06); --shadow-lift:0 12px 34px rgba(30,54,72,0.16);
+  --r-sm:12px; --r-md:16px; --r-lg:22px;
+  --serif:"Playfair Display",Georgia,serif;
+  --sans:"Montserrat","Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121316; --glass:rgba(255,255,255,0.038); --glass-2:rgba(255,255,255,0.07);
+    --line:rgba(255,255,255,0.08); --hair:rgba(255,255,255,0.055); --sunk:rgba(255,255,255,0.04);
+    --ink:#f4f5f7; --muted:#b4b8c6;
+    --accent:#d6a785; --accent-text:#d6a785; --accent-ink:#1b1208;
+    --ok-text:#81c784; --warn-text:#ffb74d; --danger-text:#ef9a9a; --info-text:#8bbfe4;
+    --shadow:0 6px 18px rgba(0,0,0,0.4); --shadow-lift:0 14px 40px rgba(0,0,0,0.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121316; --glass:rgba(255,255,255,0.038); --glass-2:rgba(255,255,255,0.07);
+  --line:rgba(255,255,255,0.08); --hair:rgba(255,255,255,0.055); --sunk:rgba(255,255,255,0.04);
+  --ink:#f4f5f7; --muted:#b4b8c6;
+  --accent:#d6a785; --accent-text:#d6a785; --accent-ink:#1b1208;
+  --ok-text:#81c784; --warn-text:#ffb74d; --danger-text:#ef9a9a; --info-text:#8bbfe4;
+  --shadow:0 6px 18px rgba(0,0,0,0.4); --shadow-lift:0 14px 40px rgba(0,0,0,0.6);
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  -webkit-font-smoothing:antialiased;overflow:hidden;}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;}}
+
+/* ---- shell ---- */
+.shell{display:flex;height:100%;}
+.rail{width:220px;flex:0 0 220px;background:var(--glass);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:22px 14px 16px;transition:width .18s ease,flex-basis .18s ease;}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px;}
+.bname{font-family:var(--serif);font-size:0.98rem;font-weight:600;line-height:1.15;white-space:nowrap;}
+.bsub{font-size:0.62rem;letter-spacing:0.13em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+.navs{display:flex;flex-direction:column;gap:2px;}
+.nav{display:flex;align-items:center;gap:11px;padding:10px;border-radius:var(--r-sm);
+  font-size:0.87rem;font-weight:500;text-align:left;width:100%;min-height:44px;position:relative;}
+.nav svg{flex:0 0 auto;color:var(--muted);}
+.nav:hover{background:var(--glass-2);}
+.nav[aria-current="page"]{background:var(--glass-2);font-weight:600;box-shadow:var(--shadow);}
+.nav[aria-current="page"] svg{color:var(--accent-text);}
+.cnt{margin-left:auto;font-size:0.72rem;font-weight:600;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap;}
+.cnt.hot{color:var(--danger-text);}
+.spacer{flex:1 1 auto;}
+.ask{display:flex;align-items:center;gap:9px;width:100%;padding:11px 12px;border-radius:999px;
+  border:1px solid var(--line);background:var(--glass);color:var(--muted);font-size:0.82rem;
+  text-align:left;min-height:44px;}
+.ask:hover{background:var(--glass-2);}
+.kbd{margin-left:auto;font-size:0.66rem;border:1px solid var(--hair);border-radius:5px;padding:1px 5px;}
+.themeb{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;
+  padding:9px;border-radius:999px;font-size:0.74rem;color:var(--muted);min-height:38px;}
+.themeb:hover{background:var(--glass-2);}
+
+/* ---- spine ---- */
+.main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;}
+.spine{padding:20px 30px 16px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--ground) 88%,var(--ink));
+  flex:0 0 auto;position:sticky;top:0;z-index:5;transition:padding .18s ease;
+  backdrop-filter:blur(10px);}
+.daysent{font-family:var(--serif);font-size:1.34rem;font-weight:600;line-height:1.28;
+  text-wrap:balance;margin:0;}
+.dayops{font-size:0.85rem;color:var(--muted);margin-top:5px;}
+.duties{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px;}
+.duty{display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;
+  padding:7px 13px 7px 11px;border-radius:999px;min-height:34px;}
+.duty:hover{filter:brightness(1.06);}
+.duty.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);border:1px solid color-mix(in srgb,var(--danger) 24%,transparent);}
+.duty.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);border:1px solid color-mix(in srgb,var(--warn) 24%,transparent);}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+.nav.moreph{display:none;}
+.dutymore{display:none;align-items:center;font-size:0.73rem;font-weight:600;padding:7px 12px;border-radius:999px;color:var(--muted);background:color-mix(in srgb,var(--muted) 9%,transparent);border:1px solid color-mix(in srgb,var(--muted) 17%,transparent);min-height:34px;}
+.spine.cond{padding:11px 30px;display:flex;align-items:center;gap:14px;}
+.spine.cond .daysent{font-size:0.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;}
+.spine.cond .dayops,.spine.cond .duties{display:none;}
+.condn{display:none;font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:999px;
+  color:var(--danger-text);background:color-mix(in srgb,var(--danger) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--danger) 26%,transparent);flex:0 0 auto;}
+.spine.cond .condn{display:inline-flex;}
+
+/* ---- body + pane ---- */
+.work{flex:1 1 auto;display:flex;gap:22px;padding:24px 30px 30px;min-height:0;}
+.col{flex:1 1 auto;min-width:0;max-width:1080px;}
+.col.split{max-width:640px;}
+.pane{flex:0 0 380px;align-self:flex-start;background:var(--glass);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden;}
+.cap{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--muted);margin:0 4px 8px;}
+.cap.attn{color:var(--danger-text);}
+.cap+.grp{margin-bottom:18px;}
+.grp{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);
+  overflow:hidden;box-shadow:var(--shadow);margin-bottom:18px;}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  min-height:50px;padding:13px 18px;text-align:left;}
+.row+.row{border-top:1px solid var(--hair);}
+.row:hover{background:var(--glass-2);}
+.row[aria-selected="true"]{background:var(--glass-2);box-shadow:inset 3px 0 0 var(--accent);}
+.lbl{font-weight:600;font-size:0.95rem;min-width:0;}
+.sub{display:block;font-weight:400;font-size:0.78rem;color:var(--muted);margin-top:2px;}
+.right{display:flex;align-items:center;gap:10px;flex:0 0 auto;}
+.money{font-family:var(--serif);font-size:1.05rem;font-weight:600;font-variant-numeric:tabular-nums;}
+.chev{color:var(--muted);}
+.stc{display:inline-flex;align-items:center;gap:6px;font-size:0.76rem;font-weight:600;
+  padding:4px 11px;border-radius:999px;white-space:nowrap;}
+.stc.ok{color:var(--ok-text);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 24%,transparent);}
+.stc.warn{color:var(--warn-text);background:color-mix(in srgb,var(--warn) 13%,transparent);border:1px solid color-mix(in srgb,var(--warn) 24%,transparent);}
+.stc.bad{color:var(--danger-text);background:color-mix(in srgb,var(--danger) 13%,transparent);border:1px solid color-mix(in srgb,var(--danger) 24%,transparent);}
+.stc.unk{color:var(--muted);background:color-mix(in srgb,var(--muted) 10%,transparent);border:1px solid color-mix(in srgb,var(--muted) 18%,transparent);font-weight:500;}
+.pulse{font-size:0.88rem;color:var(--muted);margin:0 4px 14px;line-height:1.55;}
+.seg{display:inline-flex;gap:2px;padding:3px;background:var(--sunk);border-radius:999px;margin-bottom:14px;}
+.segb{font-size:0.78rem;font-weight:600;padding:8px 15px;border-radius:999px;color:var(--muted);min-height:38px;}
+.segb[aria-pressed="true"]{background:var(--glass-2);color:var(--ink);box-shadow:var(--shadow);}
+
+/* ---- pane innards ---- */
+.phd{padding:16px 18px 14px;border-bottom:1px solid var(--hair);}
+.pid{font-family:var(--serif);font-size:1.15rem;font-weight:600;}
+.pwhen{font-size:0.78rem;color:var(--muted);margin-top:4px;line-height:1.5;}
+.next{margin:14px 18px 2px;border-radius:var(--r-md);padding:13px 15px;
+  background:color-mix(in srgb,var(--warn) 11%,transparent);
+  border:1px solid color-mix(in srgb,var(--warn) 22%,transparent);}
+.next.go{background:color-mix(in srgb,var(--ok) 11%,transparent);border-color:color-mix(in srgb,var(--ok) 22%,transparent);}
+.nstep{font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn-text);}
+.next.go .nstep{color:var(--ok-text);}
+.nsay{font-size:0.9rem;font-weight:600;margin-top:5px;}
+.nsub{font-size:0.78rem;color:var(--muted);margin-top:4px;}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:10px 18px;font-size:0.82rem;}
+.kv+.kv{border-top:1px solid var(--hair);}
+.kvk{color:var(--muted);}
+.kvv{font-weight:600;text-align:right;}
+.pacts{display:flex;flex-wrap:wrap;gap:8px;padding:13px 18px;border-top:1px solid var(--hair);}
+.btn{font-size:0.8rem;font-weight:600;padding:10px 16px;border-radius:999px;min-height:40px;
+  border:1px solid var(--line);background:var(--glass);}
+.btn:hover{background:var(--glass-2);}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
+.btn.pri:hover{filter:brightness(1.06);background:var(--accent);}
+.quote{font-size:0.84rem;line-height:1.6;padding:0 18px 4px;}
+.backlink{display:none;align-items:center;gap:6px;font-size:0.82rem;font-weight:600;
+  color:var(--accent-text);margin:0 0 14px;min-height:40px;}
+
+/* ---- lanes ---- */
+.lanes{background:var(--glass);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:14px 16px 16px;box-shadow:var(--shadow);}
+.lhd{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:11px;}
+.lmo{font-family:var(--serif);font-size:0.95rem;font-weight:600;}
+.lane{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+.llbl{width:96px;flex:0 0 auto;font-size:0.74rem;font-weight:600;color:var(--muted);
+  display:flex;align-items:center;gap:6px;}
+.track{flex:1 1 auto;height:26px;border-radius:7px;background:var(--sunk);position:relative;overflow:hidden;}
+.bar{position:absolute;top:3px;height:20px;border-radius:5px;display:flex;align-items:center;
+  padding:0 8px;font-size:0.68rem;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;}
+.bar.ext{background:color-mix(in srgb,var(--muted) 26%,transparent);color:var(--ink);}
+.days{display:flex;margin-left:105px;margin-top:2px;}
+.lanescroll{overflow-x:auto;overflow-y:hidden;}
+.lanescroll>*{min-width:520px;}
+.dnum{flex:1 1 0;font-size:0.6rem;color:var(--muted);text-align:center;}
+
+/* ---- ask overlay ---- */
+.scrim{position:fixed;inset:0;background:rgba(10,14,18,0.42);backdrop-filter:blur(2px);
+  display:none;z-index:40;}
+.scrim.open{display:block;}
+.askwrap{position:fixed;top:14vh;left:50%;transform:translateX(-50%);width:min(560px,92vw);
+  z-index:41;display:none;}
+.askwrap.open{display:block;}
+.askbox{background:var(--ground);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lift);overflow:hidden;}
+.askfield{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--hair);}
+.askfield input{flex:1 1 auto;background:none;border:none;color:var(--ink);font-family:var(--sans);
+  font-size:1rem;outline:none;min-width:0;}
+.askfield input::placeholder{color:var(--muted);}
+.asklist{max-height:52vh;overflow-y:auto;padding:8px;}
+.askrow{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+  padding:11px 12px;border-radius:var(--r-md);text-align:left;min-height:44px;}
+.askrow:hover,.askrow.on{background:var(--glass-2);}
+.asknone{padding:22px 14px;text-align:center;color:var(--muted);font-size:0.88rem;}
+.askfoot{padding:10px 18px;border-top:1px solid var(--hair);font-size:0.72rem;color:var(--muted);}
+
+/* ---- phone dock ---- */
+.dock{display:none;}
+
+/* ============================================================
+   The app's own breakpoints. Resizing this window walks the
+   whole story: rail folds at 1200, pane goes at 1120, the rail
+   becomes a bottom dock at 760.
+   ============================================================ */
+@media (max-width:1199px){
+  .rail{width:64px;flex-basis:64px;padding:20px 9px 14px;align-items:center;}
+  .brand div,.nav span:not(.cnt),.ask span:not(.kbd),.kbd,.themeb span{display:none;}
+  .brand{padding:0 0 18px;justify-content:center;}
+  .navs{width:100%;}
+  .nav{justify-content:center;padding:11px 0;}
+  .cnt{position:absolute;top:6px;right:11px;margin:0;width:7px;height:7px;border-radius:50%;
+    background:var(--muted);font-size:0;color:transparent;overflow:hidden;}
+  .cnt.hot{background:var(--danger);}
+  .ask{justify-content:center;padding:11px 0;}
+  .themeb{padding:9px 0;}
+}
+@media (max-width:1119px){
+  .pane{display:none;}
+  .col.split{max-width:1080px;}
+  body.record .col{display:none;}
+  body.record .pane{display:block;flex:1 1 auto;max-width:640px;align-self:stretch;}
+  body.record .backlink{display:inline-flex;}
+}
+@media (max-width:759px){
+  .shell{flex-direction:column;}
+  .rail{width:100%;flex:0 0 auto;flex-basis:auto;flex-direction:row;order:2;
+    border-right:none;border-top:1px solid var(--line);padding:9px 6px calc(9px + env(safe-area-inset-bottom));
+    justify-content:space-around;}
+  .brand,.spacer,.themeb{display:none;}
+  .navs{flex-direction:row;justify-content:space-around;width:100%;gap:0;}
+  .nav{flex-direction:column;gap:4px;font-size:0.6rem;padding:7px 4px;min-height:52px;}
+  .nav span:not(.cnt){display:block;}
+  .nav[aria-current="page"]{background:none;box-shadow:none;color:var(--accent-text);}
+  .nav[aria-current="page"] svg{color:var(--accent-text);}
+  .cnt{top:3px;right:calc(50% - 16px);}
+  .nav.hideph{display:none;}
+  .nav.moreph{display:flex;}
+  .ask{display:none;}
+  .main{order:1;min-height:0;}
+  .spine{padding:16px 16px 13px;}
+  .daysent{font-size:1.06rem;}
+  .work{padding:16px 16px 22px;}
+  .duty{font-size:0.73rem;}
+  .duty.overflow{display:none;}
+  .dutymore{display:inline-flex;}
+  .askwrap{top:0;left:0;transform:none;width:100%;height:100%;}
+  .askbox{height:100%;border-radius:0;border:none;display:flex;flex-direction:column;}
+  .asklist{max-height:none;flex:1 1 auto;}
+}
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Back office">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 17l2.4-8.4 4 3.6L12 4l2.6 8.2 4-3.6L21 17z" fill="var(--accent)"/><path d="M3 17h18" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <div>
+        <div class="bname">Cottage Holidays</div>
+        <div class="bsub">Blakeney</div>
+      </div>
+    </div>
+    <div class="navs" id="navs"></div>
+    <div class="spacer"></div>
+    <button class="ask" id="askbtn" type="button">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <span>Ask anything…</span><span class="kbd">⌘K</span>
+    </button>
+    <button class="themeb" id="themeb" type="button" aria-label="Switch theme">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2M12 19.4v2M21.4 12h-2M4.6 12h-2M18.4 5.6l-1.4 1.4M7 17l-1.4 1.4M18.4 18.4L17 17M7 7L5.6 5.6"/></svg>
+      <span>Theme</span>
+    </button>
+  </nav>
+
+  <div class="main" id="main">
+    <header class="spine" id="spine">
+      <h1 class="daysent" id="daysent"></h1>
+      <span class="condn" id="condn"></span>
+      <p class="dayops" id="dayops"></p>
+      <div class="duties" id="duties"></div>
+    </header>
+    <div class="work" id="work">
+      <div class="col" id="col"></div>
+      <aside class="pane" id="pane" hidden></aside>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="askwrap" id="askwrap" role="dialog" aria-modal="true" aria-label="Ask anything">
+  <div class="askbox">
+    <div class="askfield">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input id="askinput" placeholder="Ask anything…" autocomplete="off">
+      <button class="btn" id="askclose" type="button">Close</button>
+    </div>
+    <div class="asklist" id="asklist"></div>
+    <div class="askfoot">Sample data — this is a prototype of the layout, not your live account.</div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Sample data. Realistic so the interactions have something to
+   be about; not the live account.
+   ============================================================ */
+const COT = {pimpernel:{name:'Pimpernel',hue:'var(--p-pimp)'},jollyboat:{name:'Jollyboat',hue:'var(--p-jolly)'},'21a':{name:'21A Westgate',hue:'var(--p-21a)'}};
+
+const BOOKINGS = [
+  {id:'b1',name:'Wren Hollis',cot:'pimpernel',when:'today → 25 Aug',full:'Sun 22 → Tue 25 Aug · 3 nights · 2 adults',
+   cap:['ok','Paid ✓'],paid:'£468.00',due:0,dep:'£50.00 held',step:'Step 5 of 6 · Arrival',
+   next:'Arrival details sent — nothing owed',go:true,group:'Upcoming',reg:'All recorded ✓'},
+  {id:'b2',name:'Sarah Pemberton',cot:'jollyboat',when:'28 Aug → 31 Aug',full:'Fri 28 → Mon 31 Aug · 3 nights · 2 adults',
+   cap:['warn','£520.00 due'],paid:'£147.50',due:520,dep:'£50.00 held',step:'Step 4 of 6 · Balance',
+   next:'Ask for the balance — £520.00',sub:'Due by 21/09/2026 · £147.50 already in',group:'Upcoming',reg:'All recorded ✓'},
+  {id:'b3',name:'Laura Mtungwazi',cot:'pimpernel',when:'tomorrow → 26 Aug',full:'Mon 23 → Wed 26 Aug · 3 nights · 4 guests',
+   cap:['bad','No directions'],paid:'£525.00',due:0,dep:'£75.00 held',step:'Step 5 of 6 · Arrival',
+   next:'Send the arrival email — she travels tomorrow',sub:'Nothing has gone yet',group:'Upcoming',reg:'All recorded ✓'},
+  {id:'b4',name:'Tom Ackroyd',cot:'21a',when:'2 Sep → 6 Sep',full:'Wed 2 → Sun 6 Sep · 4 nights · 2 adults',
+   cap:['ok','Paid ✓'],paid:'£480.00',due:0,dep:'£50.00 held',step:'Step 4 of 6 · Balance',
+   next:'Nothing to do — paid in full',go:true,group:'Upcoming',reg:'All recorded ✓'},
+  {id:'b5',name:'Dan Rowe',cot:'pimpernel',when:'9 Aug → 12 Aug',full:'Sun 9 → Wed 12 Aug · 3 nights · 2 adults',
+   cap:['bad','£670.00 overdue'],paid:'£175.00',due:670,dep:'£75.00 kept',step:'Step 4 of 6 · Balance',
+   next:'Chase the balance — £670.00, stay finished',sub:'Chased twice · last 18/08',group:'Past',reg:'All recorded ✓'},
+];
+
+const ENQ = [
+  {id:'e1',name:'Priya Shah',cot:'jollyboat',when:'10–13 Sep · 2 adults',age:'3 days ago',
+   cap:['bad','3 days'],free:true,quote:'£468.00',first:'£147.50',group:'Waiting longest',
+   msg:'Hi — is there parking, and can we arrive late on the Thursday? We’d be driving up from Bristol.'},
+  {id:'e2',name:'Marcus Bell',cot:'pimpernel',when:'4–8 Oct · 4 guests',age:'yesterday',
+   cap:['warn','Dates free'],free:true,quote:'£742.00',first:'£235.50',group:'Waiting on you',
+   msg:'Do you allow late check-out on the Sunday? We have a long drive home.'},
+  {id:'e3',name:'Ana Ferreira',cot:'21a',when:'12–15 Sep · 2 adults',age:'today',
+   cap:['warn','Dates free'],free:true,quote:'£396.00',first:'£124.00',group:'Waiting on you',
+   msg:'Is the cottage walkable to the quay? We won’t have a car.'},
+  {id:'e4',name:'Joel Adeyemi',cot:'jollyboat',when:'5–9 Sep · 2 adults',age:'today',
+   cap:['bad','Just taken'],free:false,group:'Waiting on you',
+   msg:'Are those dates still available? Flexible either side if not.'},
+];
+
+const DUTIES = [
+  {sev:'bad', text:'Laura arrives tomorrow with no directions', go:['today','b3']},
+  {sev:'warn',text:'Pimpernel key safe still on Dan’s code',   go:['keysafes',null]},
+  {sev:'warn',text:'Sarah’s balance — £520.00, due in 6 days',  go:['today','b2']},
+];
+
+const AREAS = [
+  {id:'today',    label:'Today',     cnt:'3', hot:true,  ic:'<rect x="3" y="4.6" width="18" height="16" rx="3"/><path d="M3 9.4h18M8 2.6v4M16 2.6v4"/>'},
+  {id:'inbox',    label:'Inbox',     cnt:'4', ic:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 6.6l8 6 8-6"/>'},
+  {id:'money',    label:'Money',     cnt:'£1,190', ic:'<circle cx="12" cy="12" r="9"/><path d="M14.4 8.6a3.2 3.2 0 0 0-4.6.5c-1 1.4-.4 3 .6 3.9M9 12.4h4.6M9.6 15.6h4.6"/>'},
+  {id:'cottages', label:'Cottages',  ph:true, ic:'<path d="M4 8.4V6.2a2 2 0 0 1 2-2h3.2l1.6 2.2H18a2 2 0 0 1 2 2v9.4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8.6 12.6h6.8"/>'},
+  {id:'keysafes', label:'Key safes', cnt:'1', hot:true, ph:true, ic:'<circle cx="9" cy="12" r="4.2"/><path d="M13.2 12H21M18 12v3.2M15.4 12v2.4"/>'},
+  {id:'settings', label:'Settings',  ph:true, ic:'<circle cx="12" cy="12" r="3"/><path d="M12 3.4v2.2M12 18.4v2.2M20.6 12h-2.2M5.6 12H3.4M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6M18.1 18.1l-1.6-1.6M7.5 7.5L5.9 5.9"/>'},
+  {id:'assistant',label:'Assistant', ic:'<path d="M12 3.6l1.9 4.5 4.5 1.9-4.5 1.9L12 16.4l-1.9-4.5L5.6 10l4.5-1.9z"/><path d="M18.4 15.6l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>'},
+];
+
+/* ============================================================ */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const state = {view:'today', sel:null, folder:'enq'};
+
+const ic = (d, sz) => `<svg width="${sz||19}" height="${sz||19}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const cap = (c) => `<span class="stc ${c[0]}">${esc(c[1])}</span>`;
+const dotOf = (k) => `<span class="dot" style="background:${COT[k].hue}"></span>`;
+
+/* ---- the rail ---- */
+function rail(){
+  $('#navs').innerHTML = AREAS.map((a) => `
+    <button class="nav${a.ph?' hideph':''}" data-go="${a.id}" type="button"${state.view===a.id?' aria-current="page"':''}>
+      ${ic(a.ic)}<span>${esc(a.label)}</span>
+      ${a.cnt?`<span class="cnt${a.hot?' hot':''}">${esc(a.cnt)}</span>`:''}
+    </button>`).join('')
+    + `<button class="nav moreph" data-go="more" type="button"${state.view==='more'?' aria-current="page"':''}>
+        ${ic('<circle cx="5.5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor"/>')}<span>More</span>
+        <span class="cnt hot">1</span></button>`;
+}
+
+/* ---- the spine: one composition, every screen ---- */
+function spine(){
+  $('#daysent').textContent = 'Morning George — Wren arrives today, Cara leaves.';
+  $('#dayops').textContent  = '1 arrival · 1 departure · 2 staying · £340.00 to collect';
+  $('#condn').textContent   = String(DUTIES.length);
+  $('#condn').title = DUTIES.length + ' things still want you';
+  $('#duties').innerHTML = DUTIES.map((d,i) => `
+    <button class="duty ${d.sev}${i>1?' overflow':''}" data-duty="${i}" type="button">
+      <span class="dot" style="background:var(--${d.sev==='bad'?'danger':'warn'})"></span>${esc(d.text)}
+    </button>`).join('')
+    + (DUTIES.length>2?`<button class="dutymore" data-go="assistant" type="button">${DUTIES.length-2} more</button>`:'');
+}
+
+/* ---- rows ---- */
+const bookRow = (b) => `
+  <button class="row" data-rec="${b.id}" type="button"${state.sel===b.id?' aria-selected="true"':''}>
+    <span class="lbl">${esc(b.name)}<span class="sub">${dotOf(b.cot)} ${esc(COT[b.cot].name)} · ${esc(b.when)}</span></span>
+    <span class="right">${cap(b.cap)}<span class="chev">›</span></span>
+  </button>`;
+const enqRow = (e) => `
+  <button class="row" data-rec="${e.id}" type="button"${state.sel===e.id?' aria-selected="true"':''}>
+    <span class="lbl">${esc(e.name)}<span class="sub">${dotOf(e.cot)} ${esc(COT[e.cot].name)} · ${esc(e.when)} · ${esc(e.age)}</span></span>
+    <span class="right">${cap(e.cap)}<span class="chev">›</span></span>
+  </button>`;
+const grouped = (items, row) => {
+  const gs = [...new Set(items.map((i) => i.group))];
+  return gs.map((g) => `<div class="cap${/longest|attention/i.test(g)?' attn':''}">${esc(g)}</div>
+    <div class="grp">${items.filter((i)=>i.group===g).map(row).join('')}</div>`).join('');
+};
+
+/* ---- views ---- */
+const VIEWS = {
+  today: () => `
+    ${grouped(BOOKINGS, bookRow)}
+    <div class="lanes">
+      <div class="lhd"><span class="lmo">August 2026</span><span style="font-size:0.78rem;color:var(--muted);">‹&nbsp; Today &nbsp;›</span></div>
+      <div class="lanescroll"><div>
+      ${[['pimpernel',[[2,26,'Dan Rowe'],[31,30,'Wren Hollis'],[74,24,'Airbnb',1]]],
+         ['jollyboat',[[0,33,'Cara Nunn'],[46,22,'Sarah P.']]],
+         ['21a',[[12,29,'Tom Ackroyd'],[62,18,'Blocked',1]]]].map(([k,bars]) => `
+        <div class="lane">
+          <span class="llbl">${dotOf(k)}${esc(COT[k].name)}</span>
+          <span class="track">${bars.map(([l,w,t,ext]) =>
+            `<span class="bar${ext?' ext':''}" style="left:${l}%;width:${w}%;${ext?'':'background:'+COT[k].hue}">${esc(t)}</span>`).join('')}</span>
+        </div>`).join('')}
+      <div class="days">${[17,18,19,20,21,22,23,24,25,26,27,28].map((d)=>`<span class="dnum">${d}</span>`).join('')}</div>
+      </div></div>
+    </div>`,
+
+  inbox: () => `
+    <div class="seg">
+      <button class="segb" data-folder="enq" type="button" aria-pressed="${state.folder==='enq'}">Enquiries · 4</button>
+      <button class="segb" data-folder="msg" type="button" aria-pressed="${state.folder==='msg'}">Messages · 1</button>
+      <button class="segb" data-folder="eml" type="button" aria-pressed="${state.folder==='eml'}">Email</button>
+    </div>
+    ${state.folder==='enq' ? grouped(ENQ, enqRow) : `
+      <div class="grp"><div class="row" style="cursor:default;"><span class="lbl">Nothing waiting here
+      <span class="sub">This folder is part of the same list — the pane serves it too.</span></span></div></div>`}`,
+
+  money: () => `
+    <p class="pulse">Two guests owe you £1,190.00 · £294.75 is yours to move out · one deposit to give back.</p>
+    <div class="cap attn">Needs attention</div>
+    <div class="grp">
+      <button class="row" data-rec="b5" type="button"><span class="lbl">Dan Rowe is overdue
+        <span class="sub">Pimpernel · stay finished 12 Aug · chased twice</span></span>
+        <span class="right"><span class="money" style="color:var(--danger-text)">£670.00</span><span class="chev">›</span></span></button>
+    </div>
+    <div class="cap">The five answers</div>
+    <div class="grp">
+      ${[['To collect','2 guests · Sarah £520.00 due in 6 days, Dan overdue','£1,190.00',null],
+         ['To move out','Landed in your Square balance, less what is ring-fenced','£294.75',null],
+         ['To give back','Cara’s deposit — she leaves today','£75.00',['warn','1 ready']],
+         ['The books','Tax year to date · direct bookings, card fees deducted','£18,420.00',null],
+         ['Recent','Last payment 2 hours ago — Wren Hollis, £468.00',null,['ok','✓ All settled']]]
+        .map(([l,s,m,c]) => `<button class="row" type="button"><span class="lbl">${esc(l)}<span class="sub">${esc(s)}</span></span>
+          <span class="right">${c?cap(c):''}${m?`<span class="money">${esc(m)}</span>`:''}<span class="chev">›</span></span></button>`).join('')}
+    </div>`,
+
+  cottages: () => `
+    <div class="cap">Pimpernel</div>
+    <div class="grp">
+      ${[['Rates & fees','Nightly prices, deposit &amp; fee',null,'£175'],
+         ['Photos','Gallery images for this cottage',['ok','11 photos'],null],
+         ['Amenities','What the cottage has — guests see this',['ok','✓ 8 amenities'],null],
+         ['House rules','What guests agree to — pets, smoking, quiet hours',['ok','✓ 4 rules'],null],
+         ['Times & limits','Check-in/out, minimum nights, arrival days',['unk','in 16:00 / out 10:00'],null],
+         ['Key safe','Priya arrives 10 Sep · code is still Dan’s',['warn','Rotate now'],null]]
+        .map(([l,s,c,m]) => `<button class="row" type="button"><span class="lbl">${esc(l)}<span class="sub">${s}</span></span>
+          <span class="right">${c?cap(c):''}${m?`<span class="money">${esc(m)}</span>`:''}<span class="chev">›</span></span></button>`).join('')}
+    </div>`,
+
+  keysafes: () => `
+    <p class="pulse">One safe wants rotating before the next guest arrives.</p>
+    <div class="cap attn">Needs attention</div>
+    <div class="grp">
+      <button class="row" type="button"><span class="lbl">Pimpernel — rotate at changeover
+        <span class="sub">Priya arrives 10 Sep · the safe still holds Dan’s code</span></span>
+        <span class="right"><span class="stc warn">Rotate now</span><span class="chev">›</span></span></button>
+    </div>
+    <div class="cap">Set and confirmed</div>
+    <div class="grp">
+      <button class="row" type="button"><span class="lbl">Jollyboat<span class="sub">Sarah Pemberton · set 21/08 · visible to her from 26 Aug</span></span><span class="right"><span class="stc ok">✓ Code on the safe</span><span class="chev">›</span></span></button>
+      <button class="row" type="button"><span class="lbl">21A Westgate<span class="sub">No upcoming booking</span></span><span class="right"><span class="stc unk">Nothing due</span><span class="chev">›</span></span></button>
+    </div>`,
+
+  settings: () => `
+    <div class="cap">Running for you</div>
+    <div class="grp">
+      <button class="row" type="button"><span class="lbl">System check<span class="sub">Daily jobs ran 5 hours ago · 3 calendar feeds fresh</span></span><span class="right"><span class="stc ok">✓ All normal</span><span class="chev">›</span></button>
+      <button class="row" type="button"><span class="lbl">To approve<span class="sub">Reviews and photos waiting on you</span></span><span class="right"><span class="stc warn">1 waiting</span><span class="chev">›</span></span></button>
+    </div>
+    <div class="cap">More</div>
+    <div class="grp">
+      ${['Payments &amp; Square','Website content','Follow-ups','Search learning','Your account']
+        .map((l)=>`<button class="row" type="button"><span class="lbl">${l}</span><span class="chev">›</span></button>`).join('')}
+    </div>`,
+
+  more: () => `
+    <div class="cap">Everything else</div>
+    <div class="grp">
+      ${AREAS.filter((a)=>a.ph).map((a)=>`<button class="row" data-go="${a.id}" type="button">
+        <span class="lbl">${esc(a.label)}</span>
+        <span class="right">${a.cnt?`<span class="stc ${a.hot?'warn':'unk'}">${esc(a.cnt)} waiting</span>`:''}<span class="chev">›</span></span></button>`).join('')}
+    </div>`,
+
+  assistant: () => `
+    <div class="grp" style="padding:20px 20px 18px;">
+      <div style="font-family:var(--serif);font-size:1.18rem;font-weight:600;line-height:1.32;text-wrap:balance;">
+        Morning George — 1 arrival, £340.00 to collect, and three things want you.
+      </div>
+      <div class="duties" style="margin-top:15px;">
+        ${DUTIES.map((d,i)=>`<button class="duty ${d.sev}" data-duty="${i}" type="button"><span class="dot" style="background:var(--${d.sev==='bad'?'danger':'warn'})"></span>${esc(d.text)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="cap">Try asking</div>
+    <div class="grp">
+      ${['Who owes me money?','How much can I move out?','Is Jollyboat free in September?','What did Priya ask about?']
+        .map((q)=>`<button class="row" data-ask="${esc(q)}" type="button"><span class="lbl">${esc(q)}</span><span class="chev">›</span></button>`).join('')}
+    </div>`,
+};
+
+/* ---- the pane: ONE pane, every kind of record ---- */
+function paneFor(id){
+  const b = BOOKINGS.find((x) => x.id === id);
+  if (b) return `
+    <div class="phd"><div class="pid">${esc(b.name)}</div>
+      <div class="pwhen">${dotOf(b.cot)} ${esc(COT[b.cot].name)} · ${esc(b.full)}<br>in 15:00 / out 10:00</div></div>
+    <div class="next${b.go?' go':''}"><div class="nstep">${esc(b.step)}</div>
+      <div class="nsay">${esc(b.next)}</div>${b.sub?`<div class="nsub">${esc(b.sub)}</div>`:''}</div>
+    <div style="padding:14px 18px 0;"><div class="cap">Money</div></div>
+    <div class="kv"><span class="kvk">Received so far</span><span class="kvv money">${esc(b.paid)}</span></div>
+    <div class="kv"><span class="kvk">Still to pay</span><span class="kvv money">${b.due?'£'+b.due.toFixed(2):'—'}</span></div>
+    <div class="kv"><span class="kvk">Refundable deposit</span><span class="kvv">${esc(b.dep)}</span></div>
+    <div class="kv"><span class="kvk">Guest details</span><span class="kvv"><span class="stc ok">${esc(b.reg)}</span></span></div>
+    <div class="pacts">
+      <button class="btn pri" type="button" data-toast="${b.due?'Payment request sent to '+esc(b.name):'Arrival email sent to '+esc(b.name)}">${b.due?'Request payment':'Send arrival info'}</button>
+      <button class="btn" type="button" data-toast="Composer would open here">Email</button>
+      <button class="btn" type="button" data-toast="Edit · Move · Cancel">⋯</button>
+    </div>`;
+  const e = ENQ.find((x) => x.id === id);
+  if (!e) return '';
+  return `
+    <div class="phd"><div class="pid">${esc(e.name)}</div>
+      <div class="pwhen">${dotOf(e.cot)} ${esc(COT[e.cot].name)} · ${esc(e.when)}</div></div>
+    <div class="next${e.free?' go':''}"><div class="nstep">Can you say yes?</div>
+      <div class="nsay">${e.free?'Those dates are free':'Those dates have just gone'}</div>
+      <div class="nsub">${e.free
+        ? 'Approving requests the deposit by card — <strong>'+esc(e.first)+'</strong> of '+esc(e.quote)+'.'
+        : 'Taken by another stay. 12–16 Sep and 20–24 Sep are free.'}</div></div>
+    <div style="padding:13px 0 0;"><div class="cap" style="margin-left:18px;">What they asked</div>
+      <p class="quote">&ldquo;${esc(e.msg)}&rdquo;</p></div>
+    ${e.free?`<div class="kv"><span class="kvk">Quote</span><span class="kvv money">${esc(e.quote)}</span></div>
+    <div class="kv"><span class="kvk">First payment</span><span class="kvv money">${esc(e.first)}</span></div>`:''}
+    <div class="pacts">
+      ${e.free?`<button class="btn pri" type="button" data-toast="Approved — ${esc(e.name)} becomes a booking">Approve</button>`
+              :`<button class="btn" type="button" data-toast="Edit the dates">Edit the dates</button>`}
+      <button class="btn" type="button" data-toast="Draft written into the composer">✨ Draft reply</button>
+    </div>`;
+}
+
+/* ---- render ---- */
+function render(){
+  rail();
+  const col = $('#col'), pane = $('#pane');
+  col.innerHTML = `<button class="backlink" data-back="1" type="button">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>Back</button>`
+    + (VIEWS[state.view] ? VIEWS[state.view]() : '');
+  const html = state.sel ? paneFor(state.sel) : '';
+  pane.hidden = !html;
+  pane.innerHTML = html ? `<button class="backlink" data-back="1" type="button" style="margin:14px 0 0 18px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg>Back</button>${html}` : '';
+  col.classList.toggle('split', !!html);
+  document.body.classList.toggle('record', !!html);
+  condense();
+}
+
+/* ---- the ask overlay ---- */
+const ANSWERS = [
+  {q:'who owes me money', say:'£1,190.00 across 2 guests — Dan Rowe leading at £670.00', go:['money',null]},
+  {q:'how much can i move out', say:'£294.75 has landed and is yours to move', go:['money',null]},
+  {q:'is jollyboat free in september', say:'Free 12–16 and 20–24 Sep; the 5th–9th has just gone', go:['today',null]},
+  {q:'what did priya ask about', say:'Parking, and arriving late on the Thursday', go:['inbox','e1']},
+  {q:'who arrives today', say:'Wren Hollis at Pimpernel, from 4pm — paid in full', go:['today','b1']},
+  {q:'sarah balance', say:'£520.00 still to pay, due 21/09/2026', go:['today','b2']},
+];
+function askRender(){
+  const q = $('#askinput').value.trim().toLowerCase();
+  const hits = q ? ANSWERS.filter((a) => a.q.includes(q) || q.split(' ').some((w) => w.length>2 && a.q.includes(w))) : ANSWERS;
+  $('#asklist').innerHTML = hits.length
+    ? hits.map((a,i) => `<button class="askrow${i===0&&q?' on':''}" data-answer="${ANSWERS.indexOf(a)}" type="button">
+        <span class="lbl">${esc(a.say)}<span class="sub">${esc(a.q)}</span></span><span class="chev">›</span></button>`).join('')
+    : `<div class="asknone">Nothing to show for &ldquo;${esc(q)}&rdquo; — try a guest&rsquo;s name, or “who owes me money”.</div>`;
+}
+function askOpen(v){
+  $('#scrim').classList.toggle('open', v);
+  $('#askwrap').classList.toggle('open', v);
+  if (v){ $('#askinput').value=''; askRender(); $('#askinput').focus(); }
+}
+
+/* ---- toast ---- */
+let toastT;
+function toast(msg){
+  let t = $('#toast');
+  if (!t){ t = document.createElement('div'); t.id='toast';
+    t.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:60;'
+      +'background:var(--ink);color:var(--ground);padding:12px 20px;border-radius:999px;'
+      +'font-size:0.85rem;font-weight:600;box-shadow:var(--shadow-lift);max-width:90vw;text-align:center;';
+    document.body.appendChild(t); }
+  t.textContent = msg; t.style.opacity='1';
+  clearTimeout(toastT); toastT = setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; }, 2200);
+}
+
+/* ---- events ---- */
+document.addEventListener('click', (ev) => {
+  const el = ev.target instanceof Element ? ev.target.closest('[data-go],[data-rec],[data-back],[data-folder],[data-duty],[data-answer],[data-toast],[data-ask]') : null;
+  if (!el) return;
+  if (el.dataset.go)     { state.view = el.dataset.go; state.sel = null; render(); $('#main').scrollTop = 0; }
+  else if (el.dataset.rec)   { state.sel = el.dataset.rec; render(); }
+  else if (el.dataset.back)  { state.sel = null; render(); }
+  else if (el.dataset.folder){ state.folder = el.dataset.folder; state.sel = null; render(); }
+  else if (el.dataset.duty !== undefined){
+    const d = DUTIES[+el.dataset.duty];
+    state.view = d.go[0]; state.sel = d.go[1]; render(); $('#main').scrollTop = 0; askOpen(false);
+  }
+  else if (el.dataset.answer !== undefined){
+    const a = ANSWERS[+el.dataset.answer];
+    state.view = a.go[0]; state.sel = a.go[1]; render(); askOpen(false);
+  }
+  else if (el.dataset.ask)   { askOpen(true); $('#askinput').value = el.dataset.ask; askRender(); }
+  else if (el.dataset.toast) { toast(el.dataset.toast); }
+});
+$('#askbtn').addEventListener('click', () => askOpen(true));
+$('#askclose').addEventListener('click', () => askOpen(false));
+$('#scrim').addEventListener('click', () => askOpen(false));
+$('#askinput').addEventListener('input', askRender);
+$('#themeb').addEventListener('click', () => {
+  const now = document.documentElement.getAttribute('data-theme');
+  const dark = now ? now === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+});
+document.addEventListener('keydown', (ev) => {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k'){ ev.preventDefault(); askOpen(true); }
+  else if (ev.key === 'Escape'){ if ($('#askwrap').classList.contains('open')) askOpen(false); else if (state.sel){ state.sel=null; render(); } }
+});
+// The spine condenses on scroll — how it earns its room on a small screen.
+const phone = () => matchMedia('(max-width:759px)').matches;
+// HYSTERESIS, and it is load-bearing. The spine is part of the scrolled
+// content, so condensing it shortens scrollHeight by the ~86px it gives back —
+// which on a page with less overflow than that clamps scrollTop, fires another
+// scroll, and expands it again. Measured oscillating at 1440x620. A dead zone
+// wider than the reclaim settles it: a page too short to reach 120px simply
+// keeps the full spine, which is the right answer there anyway.
+const CONDENSE_AT = 120, EXPAND_AT = 40;
+function condense(){
+  const s = $('#spine');
+  if (phone()){ s.classList.toggle('cond', state.view !== 'today'); return; }
+  const top = $('#main').scrollTop;
+  if (top > CONDENSE_AT) s.classList.add('cond');
+  else if (top < EXPAND_AT) s.classList.remove('cond');
+}
+$('#main').addEventListener('scroll', condense, {passive:true});
+addEventListener('resize', condense);
+
+spine(); render();
+</script>

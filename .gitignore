@@ -30,8 +30,9 @@ Cottage Holidays Blakeney/layout-shots/
 # PHPStan result cache (CI-persisted, never committed)
 Cottage Holidays Blakeney/.phpstan-cache/
 
-# The seeded design canvas is a BUILD ARTIFACT (~2.3MB — it embeds the whole
-# canvas editor). The source is design/*.dc.html + canvas.json + build.mjs, and
-# the published Artifact is the canonical copy; re-seed from the source.
-design/*.html
-!design/*.dc.html
+# The seeded design CANVAS is a build artifact (~2.4MB — it embeds the whole
+# canvas editor); the source is design/*.dc.html + canvas.json + build.mjs and
+# the published Artifact is the canonical copy. Ignore it BY NAME: a blanket
+# design/*.html also swallowed back-office-prototype.html, which is 44KB of
+# hand-written source and must be tracked.
+design/chb-back-office-redesign.html
