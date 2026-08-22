@@ -130,6 +130,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.waitForTimeout(700);
     ok(await painted('#admin-rail'), 'the rail is painted at 1440');
     ok(await page.evaluate(() => [...document.querySelectorAll('.admin-dock-btn')].every((b) => b.offsetParent === null)), 'and the header dock stands down — one nav at a time');
+    ok(!(await painted('header')), 'the HEADER stands down with it — the prototype has no top bar on rail screens');
+    ok(await painted('#admin-rail .rail-brand'), 'so the rail carries the brand');
+    await page.click('#rail-ask');
+    await page.waitForTimeout(600);
+    ok(await page.evaluate(() => { const c = document.getElementById('cmdk'); return !!c && c.classList.contains('open'); }), 'the Ask pill opens the assistant — the hidden crown’s job, handed over');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    ok(await page.evaluate(() => { const c = document.getElementById('cmdk'); return !c || !c.classList.contains('open'); }), 'Escape closes it');
+    ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'rail-ask'), 'and focus comes back to the Ask pill, since the crown is not on screen');
+    const themed = await page.evaluate(() => {
+        const before = document.body.classList.contains('light-mode');
+        const t = document.querySelector('#admin-rail .rail-theme');
+        if (t) /** @type {HTMLElement} */ (t).click();
+        const after = document.body.classList.contains('light-mode');
+        if (t) /** @type {HTMLElement} */ (t).click();
+        return before !== after;
+    });
+    ok(themed, 'the theme row really flips the theme (and back)');
     const rows = await page.evaluate(() => [...document.querySelectorAll('#admin-rail .rail-row')].map((r) => (r.querySelector('.rail-lbl') || {}).textContent || ''));
     ok(rows.length === 7 && rows.join('|') === 'Today|Inbox|AI chat|Payments|Cottages|Key safes|Manage', `seven destinations (${rows.join(' · ')})`);
     ok(await page.evaluate(() => { const r = document.querySelector('#admin-rail .rail-row[data-view="view-accounts"]'); return !!r && r.getAttribute('aria-current') === 'page'; }), 'Payments is current while Payments is open');
@@ -172,17 +190,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.waitForTimeout(400);
     ok(!(await painted('#admin-rail')), 'below the boundary the rail is gone');
     ok(await page.evaluate(() => [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.offsetParent !== null).length >= 4), 'and the header dock is back, byte-identical — the folded rail IS the dock');
-    // 1280 is ABOVE the app's 1200 two-pane breakpoint and must still keep the
-    // dock: at 1200–1439 the Inbox reading pane and the docked hub already
-    // spend the width the rail would take (measured: a 1200px rail left the
-    // reading pane ~330px). The rail earns its room at 1440.
+    // 1280 is the prototype's FOLD: an icon rail, because the ≥1200 two-pane
+    // layouts need the width back (measured: a 220px rail left the Inbox
+    // reading pane ~330px; the 64px fold leaves ~530). Labels hide, so the
+    // accessible names must ride aria-label — asserted here because a
+    // display:none label contributes nothing to name computation.
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);
-    ok(!(await painted('#admin-rail')), 'at 1280 — two-pane widths — the dock still holds; the rail would starve the panes it sits beside');
-    ok(await page.evaluate(() => [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.offsetParent !== null).length >= 4), 'and the dock is live there');
+    const fold = await page.evaluate(() => {
+        const r = document.getElementById('admin-rail');
+        const b = r ? r.getBoundingClientRect() : { width: 0 };
+        return {
+            painted: !!r && r.getClientRects().length > 0,
+            width: Math.round(b.width),
+            labelsHidden: [...document.querySelectorAll('#admin-rail .rail-row .rail-lbl')].every((l) => l.getClientRects().length === 0),
+            named: [...document.querySelectorAll('#admin-rail .rail-row')].every((x) => (x.getAttribute('aria-label') || '').length > 0),
+            dockGone: [...document.querySelectorAll('.admin-dock-btn')].every((x) => x.offsetParent === null),
+        };
+    });
+    ok(fold.painted && fold.width < 100, `at 1280 the rail FOLDS to icons (${fold.width}px) — the prototype's own answer to the two-pane widths`);
+    ok(fold.labelsHidden && fold.named, 'folded, the labels hide but every row keeps its accessible name');
+    ok(fold.dockGone, 'and the dock stays down — one nav at a time');
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.waitForTimeout(400);
-    ok(await painted('#admin-rail'), 'at 1440 the rail returns — matchMedia drives the class, so a live resize cannot leave it stale');
+    ok(await page.evaluate(() => { const r = document.getElementById('admin-rail'); return !!r && r.getBoundingClientRect().width > 180; }), 'at 1440 it unfolds to labels and counts — matchMedia drives the classes, a live resize cannot leave them stale');
     // A signed-in admin has no customer-facing site — nav() bounces every
     // public view to the back office — EXCEPT view-pay, which is deliberately
     // let through (an admin settling on a guest's behalf, or testing a link on
@@ -194,6 +225,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await page.waitForTimeout(500);
     ok(await activeView() === 'view-pay', 'the pay page is the one customer view an admin reaches');
     ok(!(await painted('#admin-rail')), 'and the rail stands down beside it — a guest page renders as a guest page');
+    ok(await painted('header'), 'with the header back above it, exactly as a guest gets it');
     // CENTRED, not left-anchored: a computed margin-left is the wrong probe —
     // the base .container's `margin: 0 auto` resolves to 120px at 1440, so a
     // threshold on the margin fails a perfectly centred page. The rail-shifted
@@ -216,6 +248,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(!(await painted('#admin-rail')), 'no rail at 390');
     ok(await painted('#day-spine'), 'the spine is there');
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'and the page never scrolls sideways');
+
+    console.log('§7 the spine condenses on scroll — the prototype’s head, hysteresis and all');
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.waitForTimeout(300);
+    await page.evaluate(async () => { await openArea(); });
+    await page.waitForTimeout(800);
+    const tall = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    ok(tall > 200, `the Manage index overflows enough to scroll (${tall}px)`);
+    await page.evaluate(() => window.scrollTo(0, 300));
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.getElementById('day-spine').classList.contains('spine-cond')), 'scrolled past 120, the spine condenses to one line + the count');
+    ok(await page.evaluate(() => { const c = document.querySelector('#day-spine .spine-cnt'); return !!c && c.getClientRects().length > 0; }), 'and the count pill is painted in its place');
+    // No flapping: hold the scroll and sample twice — the hysteresis dead zone
+    // is what stops condense→reclaim→expand oscillation (measured in the
+    // prototype at 1440×620 before the dead zone existed).
+    await page.waitForTimeout(350);
+    const stable = await page.evaluate(() => document.getElementById('day-spine').classList.contains('spine-cond'));
+    ok(stable, 'and it HOLDS — no condense/expand flap');
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(300);
+    ok(await page.evaluate(() => !document.getElementById('day-spine').classList.contains('spine-cond')), 'back under 40, it expands again');
+    await page.setViewportSize({ width: 1440, height: 950 });
+    await page.waitForTimeout(300);
+    await page.evaluate(async () => { await openAccounts(); });
+    await page.waitForTimeout(500);
 
     console.log('§6 the floors the 390px a11y sweep can never see at 1440');
     await page.setViewportSize({ width: 1440, height: 950 });

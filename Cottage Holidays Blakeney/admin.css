@@ -6053,6 +6053,73 @@ body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   flex: 0 0 auto;
   background: currentColor;
 }
+.spine-duties {
+  display: contents;
+}
+/* The condensed count pill — hidden until the spine condenses. */
+.spine-cnt {
+  display: none;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  color: var(--danger-text);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 26%, transparent);
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+/* On rail screens the spine IS the page's head (no header above it): the
+   prototype's serif scale, sticky, condensing on scroll to one line + the
+   count. The ground is stated (the page shows through a transparent sticky). */
+body.rail-on.admin-screen #day-spine {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 0 18px;
+  padding: 16px 0 14px;
+  background: color-mix(in srgb, var(--dark-grey) 88%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+/* The container's top padding moves INTO the spine on views that carry one —
+   with it on the container, content scrolled visibly through the 18px strip
+   ABOVE the sticky spine (measured on the build's own screenshot: a ghost of
+   the page's capsules riding over the day sentence). Views without a spine
+   (Today, the AI chat) keep the container's own padding. */
+body.rail-on.admin-screen main.container:has(> #day-spine:not([hidden])) {
+  padding-top: 0;
+}
+body.rail-on.admin-screen #day-spine {
+  padding-top: calc(18px + var(--safe-t));
+}
+/* Full state: the sentence owns its line and the chips sit UNDER it — the
+   prototype's stacked anatomy, not a crowded single row. */
+body.rail-on.admin-screen .spine-day {
+  font-size: 1.3rem;
+  line-height: 1.28;
+  text-wrap: balance;
+  flex: 1 1 100%;
+}
+body.rail-on.admin-screen #day-spine.spine-cond {
+  padding: 10px 0;
+  flex-wrap: nowrap;
+}
+body.rail-on.admin-screen #day-spine.spine-cond .spine-day {
+  font-size: 0.98rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
+  display: none;
+}
+body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
+  display: inline-flex;
+}
 @media (max-width: 640px) {
   #day-spine { margin-bottom: 14px; padding-bottom: 12px; }
   .spine-day { font-size: 0.95rem; }
@@ -6086,31 +6153,178 @@ body.rail-on.admin-screen #admin-rail {
   gap: 2px;
   position: fixed;
   left: 14px;
-  top: calc(100px + var(--safe-t));
-  bottom: 18px;
-  width: 212px;
+  top: calc(14px + var(--safe-t));
+  bottom: 14px;
+  width: 220px;
   overflow-y: auto;
-  /* Below the header (1500) and the search pop-out (1430+); above content. */
+  /* Below the search pop-out (1430+) and the modals (2000+); above content. */
   z-index: 1200;
-  padding: 10px;
+  padding: 16px 12px 12px;
   border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--text-light) 4%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent);
 }
-/* The dock stands down — the rail carries the same destinations with more
-   said beside each. moveDockIndicator self-heals (offsetParent null hides
-   the pill) and nav() keeps maintaining .current, which the rail mirrors. */
-body.rail-on.admin-screen header .admin-dock-wrap {
+/* THE HEADER STANDS DOWN WITH THE DOCK on rail screens — the prototype has
+   no top bar at all: the rail carries the brand and the Ask pill carries the
+   assistant (the crown's job). Scoped to .admin-screen, so view-pay — the one
+   customer view an admin can reach — keeps the header a guest would see. */
+body.rail-on.admin-screen header {
   display: none;
 }
-/* Content shifts beside the rail. width:auto (not the base 100%) so the
-   flex-column stretch sizes each main to the remaining room — 100% plus a
-   margin would overflow the viewport. Left-anchored ON PURPOSE: the
-   approved prototype is a rail plus a column, not a centred page. */
+/* Content sits beside the rail and starts at the top — there is no fixed bar
+   left to clear, the sticky spine is the page's own head. width:auto (not the
+   base 100%) so the flex-column stretch sizes each main to the remaining
+   room. Left-anchored ON PURPOSE: a rail plus a column, not a centred page. */
 body.rail-on.admin-screen main.container {
   width: auto;
-  margin-left: 244px;
+  margin-left: 252px;
   margin-right: 24px;
+  padding-top: calc(18px + var(--safe-t));
+}
+/* ---- The brand: the rail replaces the header, so it says who this is. */
+.rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 16px;
+}
+.rail-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+.rail-bname {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-light);
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.rail-bsub {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.rail-spacer {
+  flex: 1 1 auto;
+}
+/* ---- The Ask pill: the assistant's way in while the crown is hidden. */
+.rail-ask {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--text-light) 14%, transparent);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-muted);
+  font: 500 0.82rem var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.rail-ask svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.rail-ask:hover {
+  background: var(--btn-hover);
+}
+.rail-kbd {
+  margin-left: auto;
+  font-size: 0.64rem;
+  border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.rail-theme {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 8px;
+  padding: 8px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--text-muted);
+  font: 500 0.74rem var(--font-sans);
+  cursor: pointer;
+}
+.rail-theme svg {
+  width: 15px;
+  height: 15px;
+}
+.rail-theme:hover {
+  background: var(--btn-hover);
+}
+/* ---- THE FOLD (1200–1439, body.rail-fold): the prototype's own icon rail.
+   Labels, counts, brand words and the kbd hint go; a hot count survives as a
+   pip. Every control keeps its accessible name via aria-label, because a
+   display:none label contributes nothing to name computation. */
+body.rail-fold.admin-screen #admin-rail {
+  width: 64px;
+  padding: 14px 8px 10px;
+  align-items: center;
+}
+body.rail-fold.admin-screen #admin-rail .rail-lbl,
+body.rail-fold.admin-screen #admin-rail .rail-kbd,
+body.rail-fold.admin-screen #admin-rail .rail-bname {
+  display: none;
+}
+body.rail-fold.admin-screen #admin-rail .rail-brand {
+  padding: 0 0 14px;
+  justify-content: center;
+}
+body.rail-fold.admin-screen #admin-rail .rail-row,
+body.rail-fold.admin-screen #admin-rail .rail-ask,
+body.rail-fold.admin-screen #admin-rail .rail-theme {
+  justify-content: center;
+  padding: 11px 0;
+  width: 100%;
+}
+body.rail-fold.admin-screen #admin-rail .rail-row {
+  position: relative;
+}
+body.rail-fold.admin-screen #admin-rail .rail-cnt {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--text-muted);
+  font-size: 0;
+  color: transparent;
+  overflow: hidden;
+}
+body.rail-fold.admin-screen #admin-rail .rail-cnt.is-hot {
+  background: var(--danger);
+}
+body.rail-fold.admin-screen main.container {
+  margin-left: 96px;
+}
+/* The AI chat's pill bar sticks at 64px to sit under the condensed header —
+   which does not exist on rail screens, so it floated down over the page's
+   own rows and INTERCEPTED their taps (ui-test-nightshift caught the handoff
+   row's Continue swallowed at 1280). With no header, it hugs the top. */
+body.rail-on.admin-screen .ac-hd {
+  top: calc(10px + var(--safe-t));
 }
 .rail-row {
   display: flex;

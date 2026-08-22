@@ -2243,17 +2243,18 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   it carries NO heading element, because a11y §6 scopes the outline to
   `.page-view.active` and a heading here would sit above every view's own h1.
 - **THE RAIL** (`#admin-rail`, JS-built onto `<body>`) is the dock's six
-  destinations plus **Cottages** as a left column at **≥1440px only**, with live
-  state beside each. Below that the header dock IS the folded rail (the canvas's
-  own read: folded to icons, a rail just reinvents the dock), so the dock stays
-  byte-identical there — every dock gate measures at 390 and none needed re-aiming
-  (verified before building). **The boundary is 1440, not 1200, and it is a BODY
-  CLASS (`rail-on`), not a media query**: at 1200–1439 the app's ≥1200 two-pane
-  layouts (the Inbox reading pane, the docked hub) already spend the width the
-  rail would take — the review measured the reading pane at ~330px under a
-  1200px rail — and 1440 is not one of the four canonical CSS breakpoints, so
-  chbFrameSync toggles `body.rail-on` from `matchMedia('(min-width: 1440px)')`
-  (change listener registered in chbRailEnsure) and the CSS keys on the class.
+  destinations plus **Cottages** as a left column from **1200px** — FULL (labels,
+  counts, brand, Ask pill, theme) at ≥1440, FOLDED to a 64px icon rail at
+  1200–1439 (where the ≥1200 two-pane layouts need the width back: the review
+  measured the Inbox reading pane at ~330px beside a 220px rail; the fold costs
+  92px and the panes keep ~530). Below 1200 the header dock IS the folded rail
+  (the canvas's own read), byte-identical to before — every dock gate measures
+  at 390. **The boundaries are BODY CLASSES, not media queries**: neither
+  boundary for this chrome is expressible without a stray width, so
+  chbFrameSync toggles `body.rail-on` (≥1200) and `body.rail-fold` (1200–1439)
+  from matchMedia (change listeners registered in chbRailEnsure) and the CSS
+  keys on the classes — full rail with labels+counts from 1440, the icon fold
+  below it.
   Every rail rule ALSO requires **`.admin-screen`** (nav() maintains it from
   ADMIN_VIEWS): an owner browsing their own PUBLIC pages sees exactly what a
   guest sees — unshifted, dock in the header — or "check my own site" stops
@@ -2274,15 +2275,32 @@ pieces of chrome AROUND the screens, none to the screens; both live in
   (getClientRects, the property-is-not-the-pixel rule), which needs the
   `chbFrameSync()` calls in settingsOpen/settingsShowIndex — settingsOpen doesn't
   nav() when Manage is already up, so the nav() hook alone misses the drill-in.
-  The rail sits UNDER the fixed header (same `calc(100px + var(--safe-t))`
-  clearance the containers use) so the header — crown, condensed title — is
-  untouched; content shifts with `width: auto` + margins (the base `.container`
-  is `width: 100%`, and 100% plus a margin overflows; `width: auto` lets the
-  body's flex-stretch size it), LEFT-ANCHORED on purpose — the approved prototype
-  is a rail plus a column, not a centred page. `search-first` and `offline-snap`
-  trim the rail's mirror rows exactly as they trim the dock (Cottages goes with
-  Manage in both). The current icon takes `--accent-text`, not `--accent` — the
-  cmdk tile lesson, 2.70:1 under the 3:1 non-text bar.
+  **THE HEADER STANDS DOWN WITH THE DOCK on rail screens** (the owner asked for
+  the demo replicated whole): the prototype has no top bar — the rail carries
+  the BRAND at its head, the **Ask pill** (`#rail-ask`, `crownSheetToggle` — the
+  hidden crown's job; `cmdkBack` hands focus back to it when the crown isn't
+  painted) and a **theme row** (app.js's own `toggleTheme`, persistence
+  included). Content starts at the top; the SPINE is the page's head there —
+  sticky, the demo's serif scale (1.3rem), condensing on scroll to one line + a
+  count pill (hysteresis 120/40, the prototype's own lesson: condensing
+  shortens the document, which clamps scrollTop and re-expands it without a
+  dead zone wider than the reclaim). The container's top padding moves INTO
+  the spine via `:has(> #day-spine:not([hidden]))` — on the container, content
+  scrolled visibly through the strip above the sticky spine (screenshot-
+  caught); spineless rail views (Today, AI chat) keep the container's padding.
+  **THE FOLD (1200–1439, `body.rail-fold`)** is the prototype's own icon rail:
+  64px, labels/counts/brand-words hidden, hot counts surviving as pips —
+  every control keeps its name via `aria-label`, because a display:none label
+  contributes NOTHING to accessible-name computation. Content shifts with
+  `width: auto` + margins (the base `.container` is `width: 100%`, and 100%
+  plus a margin overflows; `width: auto` lets the body's flex-stretch size
+  it), LEFT-ANCHORED on purpose — a rail plus a column, not a centred page.
+  `search-first` and `offline-snap` trim the rail's mirror rows exactly as
+  they trim the dock (Cottages goes with Manage in both). The current icon
+  takes `--accent-text`, not `--accent` — the cmdk tile lesson, 2.70:1 under
+  the 3:1 non-text bar. NB ui-test-keysafe (1280) enters the page by the
+  RAIL's row now — the dock click it was written with meets a display:none
+  control at that width and times out.
 - **Sync sites** (all guarded try/catch, and `chbFrameSync` is deliberately NOT a
   facade stub — the nav()/refreshInboxBadge hooks check `__ADMIN_LOADED` first so
   a guest navigation can never pull the admin bundle): the head of
