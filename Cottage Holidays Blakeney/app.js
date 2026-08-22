@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 572;
+const ADMIN_BUNDLE_V = 573;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 231;
+const ADMIN_CSS_V = 232;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2254,6 +2254,13 @@ function nav(viewId, anchorId = null) {
             t.textContent = label;
             t.classList.toggle('has-title', !!label);
         }
+    } catch (e) {}
+
+    // The frame (day spine + rail) follows every view change. NOT a stub —
+    // the __ADMIN_LOADED guard keeps guest navs from pulling the bundle.
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
     } catch (e) {}
 
     // The cottage page's sticky booking bar lives on <body> (so its position:fixed
@@ -16730,6 +16737,12 @@ function refreshInboxBadge() {
         today.textContent = n;
         today.style.display = n > 0 ? 'flex' : 'none';
     }
+    // The rail's Inbox count is this number said in its own slot — refresh it
+    // wherever the pips refresh, so the two can never disagree.
+    try {
+        const w = /** @type {any} */ (window);
+        if (w.__ADMIN_LOADED && typeof w.chbFrameSync === 'function') w.chbFrameSync();
+    } catch (e) {}
     // Pending enquiries is the FALLBACK count, used only until the back office is
     // loaded. Once it is, admin.js sets the badge from chbDuties() — the real
     // "needs you" number, which also counts balances to chase, deposits to return
@@ -18305,7 +18318,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hrreach1';
+    const BUILD = 'frameone';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
