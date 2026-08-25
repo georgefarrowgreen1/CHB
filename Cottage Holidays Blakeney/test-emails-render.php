@@ -69,6 +69,7 @@ function prop_display($k) {
 }
 function occupancy_limits($k = null) { return ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2]; } // arity mirrors db.php's (0-arg) — see rate_limit above
 function content_value($k, $d = null) {
+    if ($k === 'images-bandprop') { return $GLOBALS['__photo_fixture'] ?? null; } // §11's gallery
     $c = [
         'host-name' => 'George', 'contact-phone' => '01263 000000',
         'bacs-details' => "Cottage Holidays Blakeney\nSort code: 00-00-00\nAccount: 12345678",
@@ -443,10 +444,15 @@ function em_ratio(string $a, string $b): float
 // only legible relative to the ground it ACTUALLY sits on — the first version of
 // this measured everything against white and reported the tinted panels as fine.
 // The root is the shell's own outer ground.
-function em_scan(string $html): array
+// $inkMap/$bgMap: the DARK pass — class => override colour, built from
+// email_dark_palette() (the same definition the shell's media block ships), so
+// the palette measured IS the palette served. A class override beats the inline
+// value exactly as the !important media rule does in a dark client; an ink with
+// no mapped class keeps its inline value, which is also what the CSS does.
+function em_scan(string $html, array $inkMap = [], array $bgMap = [], string $root = '#F7F4EE'): array
 {
     $out = [];
-    $bg = ['#ECE5D7'];
+    $bg = [$root];
     $depth = 0;
     preg_match_all('#<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>#', $html, $tags, PREG_SET_ORDER);
     $void = ['br' => 1, 'img' => 1, 'meta' => 1, 'link' => 1, 'hr' => 1, 'input' => 1];
@@ -464,19 +470,36 @@ function em_scan(string $html): array
         if (preg_match('/style\s*=\s*"([^"]*)"/i', $attrs, $m)) {
             $style = $m[1];
         }
+        $classes = [];
+        if (($inkMap !== [] || $bgMap !== []) && preg_match('/class\s*=\s*"([^"]*)"/i', $attrs, $m)) {
+            $classes = preg_split('/\s+/', trim($m[1])) ?: [];
+        }
         $here = end($bg);
         if (preg_match('/background(?:-color)?\s*:\s*(#[0-9A-Fa-f]{3,6})\b/i', $style, $m)) {
             $here = $m[1];
         } elseif (preg_match('/bgcolor\s*=\s*"(#[0-9A-Fa-f]{3,6})"/i', $attrs, $m)) {
             $here = $m[1];
         }
+        foreach ($classes as $c) {
+            if (isset($bgMap[$c])) {
+                $here = $bgMap[$c];
+            }
+        }
         if (preg_match('/(?<!-)\bcolor\s*:\s*(#[0-9A-Fa-f]{3,6})\b/i', $style, $m)) {
+            $ink = $m[1];
+            $overridden = false;
+            foreach ($classes as $c) {
+                if (isset($inkMap[$c])) {
+                    $ink = $inkMap[$c];
+                    $overridden = true;
+                }
+            }
             $fs = preg_match('/font-size\s*:\s*([\d.]+)px/i', $style, $f) ? (float) $f[1] : 15.0;
             $fw = 400;
             if (preg_match('/font-weight\s*:\s*(\d+|bold)/i', $style, $w)) {
                 $fw = $w[1] === 'bold' ? 700 : (int) $w[1];
             }
-            $out[] = ['ink' => $m[1], 'bg' => $here, 'size' => $fs, 'weight' => $fw, 'tag' => $tag];
+            $out[] = ['ink' => $ink, 'bg' => $here, 'size' => $fs, 'weight' => $fw, 'tag' => $tag, 'dark' => $overridden];
         }
         if (!$selfClose) {
             $bg[] = $here;
@@ -509,16 +532,83 @@ if (count($below) > 12) {
     echo "        … and " . (count($below) - 12) . " more\n";
 }
 
+// ── AND THE DARK TWIN, MEASURED THE SAME WAY ────────────────────────────────
+// email_dark_palette() is the single definition — the shell BUILDS its
+// prefers-color-scheme block from it — so the gate reads the palette rather
+// than parsing CSS: the palette measured is byte-for-byte the palette served.
+// The scan applies each class override over the inline value exactly as the
+// !important media rule does in a dark client; unmapped inks (the button's
+// #3A2E1E on the accent fill, the dark status chips) keep their light values,
+// which is also what the CSS does.
+$dInk = [];
+$dBg = [];
+$dRoot = '#171310';
+foreach (email_dark_palette() as $sel => $props) {
+    foreach (preg_split('/\s*,\s*/', (string) $sel) ?: [] as $s) {
+        $s = trim($s);
+        if ($s === 'body' && isset($props['background'])) {
+            $dRoot = $props['background'];
+        }
+        // Simple class selectors only — descendant rules here are border-colour
+        // (not measured) and would mis-key on the class token anyway.
+        if ($s === '' || $s[0] !== '.' || strpos($s, ' ') !== false) {
+            continue;
+        }
+        $cls = substr($s, 1);
+        if (isset($props['color'])) {
+            $dInk[$cls] = $props['color'];
+        }
+        if (isset($props['background'])) {
+            $dBg[$cls] = $props['background'];
+        }
+    }
+}
+$dNodes = 0;
+$dHooked = 0;
+$dBelow = [];
+foreach ($RENDERED as $name => $m) {
+    foreach (em_scan((string) $m['html'], $dInk, $dBg, $dRoot) as $n) {
+        $dNodes++;
+        if (!empty($n['dark'])) {
+            $dHooked++;
+        }
+        $r = em_ratio($n['ink'], $n['bg']);
+        $large = $n['size'] >= 24 || ($n['size'] >= 18.66 && $n['weight'] >= 700);
+        if ($r < ($large ? 3.0 : 4.5)) {
+            $dBelow[] = sprintf('%s (dark): %s on %s at %spx = %.2f:1', $name, $n['ink'], $n['bg'], $n['size'], $r);
+        }
+    }
+}
+chk("the dark scan measured the same documents ($dNodes nodes)", $dNodes >= 250);
+// The vacuity guard for the HOOK INJECTION: if email_dark_hooks() ever stops
+// classing the inks, every node keeps its light value and the dark pass would
+// silently measure light-on-dark-ground nonsense — or worse, nothing at all.
+chk("…and the hook classes are actually landing ($dHooked dark-mapped nodes)", $dHooked >= 200);
+chk('no dark-mode text sits below WCAG AA', $dBelow === []);
+foreach (array_slice($dBelow, 0, 12) as $b) {
+    echo "        $b\n";
+}
+// And the media block the shell ships really is built from that palette — the
+// one wiring step between the definition and the inbox.
+$shellProbe = email_shell('probe', '<p style="color:#57524A;">probe</p>');
+chk('the shipped shell carries the dark media block',
+    strpos($shellProbe, '@media (prefers-color-scheme: dark)') !== false
+    && strpos($shellProbe, '.em-ink{color:#F0E9DC !important;}') !== false);
+chk('…and declares both colour schemes to the client',
+    strpos($shellProbe, 'content="light dark"') !== false);
+
 // The two tokens are the ONE definition each, so they are asserted directly as
 // well — a repointed call site is worthless if the token itself drifts.
+// (The outer ground is #F7F4EE since the modern pass — lighter than the old
+// linen, so these floors only got easier; the tinted panel stays #FAF6EC.)
 chk('email_muted_ink clears AA on all three grounds',
     em_ratio(email_muted_ink(), '#FFFFFF') >= 4.5
     && em_ratio(email_muted_ink(), '#FAF6EC') >= 4.5
-    && em_ratio(email_muted_ink(), '#ECE5D7') >= 4.5);
+    && em_ratio(email_muted_ink(), '#F7F4EE') >= 4.5);
 chk('email_accent_ink clears AA on all three grounds',
     em_ratio(email_accent_ink(), '#FFFFFF') >= 4.5
     && em_ratio(email_accent_ink(), '#FAF6EC') >= 4.5
-    && em_ratio(email_accent_ink(), '#ECE5D7') >= 4.5);
+    && em_ratio(email_accent_ink(), '#F7F4EE') >= 4.5);
 // And the accent stays a FILL: the button's own ink has to clear it. This is the
 // half that makes the ink/fill split coherent rather than just two more colours.
 chk('the accent works as a button fill under its own ink',
@@ -739,15 +829,15 @@ chk('§7 both button urls reach the html', strpos($erH, 'pay=ERTOK') !== false &
 // email_btn's VML arm carries arcsize; email_btn2's cell carries its outline —
 // exactly one of each, so first-filled/rest-outlined holds by construction.
 chk('§7 exactly one FILLED button (email_btn)', substr_count($erH, 'arcsize') === 1);
-chk('§7 exactly one OUTLINED button (email_btn2)', substr_count($erH, 'border:1px solid #D9CFB8') === 1);
-chk('§7 the first attached is the filled one', strpos($erH, 'pay=ERTOK') < strpos($erH, 'border:1px solid #D9CFB8'));
+chk('§7 exactly one OUTLINED button (email_btn2)', substr_count($erH, 'border:1.5px solid #D8C2A2') === 1);
+chk('§7 the first attached is the filled one', strpos($erH, 'pay=ERTOK') < strpos($erH, 'border:1.5px solid #D8C2A2'));
 chk('§7 the buttons land after the owner\'s words', strpos($erH, 'pay=ERTOK') > strpos($erH, 'lovely to hear from you'));
 $erT = (string) $erB['text'];
 chk('§7 the text half carries each as label + URL', strpos($erT, 'Pay the balance: https://example.test/index.html?pay=ERTOK&b=9') !== false
     && strpos($erT, 'View your invoice: https://example.test/invoice.php?b=9&token=ERINV') !== false);
 $erNone = build_enquiry_reply_email($ENQ, 'About your stay', $replyBody, 'booking', []);
 chk('§7 no actions -> no button markup at all (the markers above measure BUTTONS)',
-    strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], '#D9CFB8') === false);
+    strpos((string) $erNone['html'], 'arcsize') === false && strpos((string) $erNone['html'], '#D8C2A2') === false);
 
 // ── §8 THE ARRIVAL EMAIL'S REVIEWED MESSAGE ────────────────────────────────
 // When review mode is on the owner edits the email's opening MESSAGE and the
@@ -918,6 +1008,34 @@ chk('§10 a reviewed message and the rules coexist',
     strpos($hrBoth['html'], 'left the milk in the fridge') !== false
     && strpos($hrBoth['html'], 'No smoking indoors') !== false
     && strpos($hrBoth['html'], 'everything you need for') === false);
+
+// ── §11 THE PHOTO BAND — the cottage's face, and every refusal ──────────────
+// email_photo_band is pure; email_prop_photo is the IO half (gallery lookup +
+// GD downscale + inline). The harness's mailer copy lives in the system temp
+// dir, so __DIR__ resolves there — a real 1px JPEG under $tmpDir/uploads/
+// drives the REAL resize-and-encode path with no network and no host state.
+echo "\n== \u{00A7}11 the photo band ==\n";
+$tmpDir = dirname($tmp);
+@mkdir($tmpDir . '/uploads');
+$px = imagecreatetruecolor(8, 6);
+imagefill($px, 0, 0, imagecolorallocate($px, 160, 180, 190));
+imagejpeg($px, $tmpDir . '/uploads/chb-band-fixture.jpg', 80);
+imagedestroy($px);
+$GLOBALS['__photo_fixture'] = json_encode(['uploads/chb-band-fixture.jpg']);
+$bandUri = email_prop_photo('bandprop');
+chk('§11 a local gallery image comes back inlined', strpos((string) $bandUri, 'data:image/jpeg;base64,') === 0);
+$bandRow = email_photo_band($bandUri, 'Jollyboat');
+chk('§11 …and the band renders it full-bleed with the name as alt',
+    strpos($bandRow, 'alt="Jollyboat"') !== false && strpos($bandRow, 'width="600"') !== false);
+chk('§11 no image -> no band, never a broken img', email_photo_band('', 'x') === '');
+$GLOBALS['__photo_fixture'] = json_encode(['https://cdn.example/remote.jpg']);
+chk('§11 a REMOTE gallery url is refused (not ours to fetch at send time)', email_prop_photo('bandprop') === '');
+$GLOBALS['__photo_fixture'] = json_encode(['uploads/does-not-exist.jpg']);
+chk('§11 a dead file is a quiet absence', email_prop_photo('bandprop') === '');
+$GLOBALS['__photo_fixture'] = json_encode(['uploads/../config.php']);
+chk('§11 a traversal path is refused', email_prop_photo('bandprop') === '');
+chk('§11 no gallery at all is a quiet absence', email_prop_photo('nosuchprop') === '');
+@unlink($tmpDir . '/uploads/chb-band-fixture.jpg');
 
 @unlink($tmp);
 echo "\n== Summary ==\n";

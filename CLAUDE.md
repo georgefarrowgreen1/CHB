@@ -327,6 +327,66 @@ table and looked like a different product from the confirmation that follows the
   bookings.php** — break-tested. The wiring is gated in **test-integration §23**, which
   posts the real `email_preview` both ways and reproduces the reported defect exactly
   ("greets the guest exactly once (2)") when the branch is off.
+- **THE MODERN PASS (the invoice's rules, applied to the inbox — approved demo,
+  "Build it").** ONE restyle of the shell + block helpers with the same helper API, so
+  all 38 templates carried at once and no composer changed. The anatomy: the centred
+  crown-over-brand masthead (~210px before the message) became ONE header line — 24px
+  crown + the serif name, the serif's only survivor; `email_crown_header` keeps its
+  name/signature — a 3px cottage-accent rule tops the card (`email_h`'s `$accent` is
+  accepted-and-ignored now: the swatch square said the accent twice), labels are
+  sentence-case 600 (`email_rows`/`email_amount`/the address block; the three stray
+  uppercase sites converted with them), money is grotesque 40px tight tabular between a
+  hairline and a 2px `#D9CFB8` rule (`email_amount`, plus the confirmation's hand-rolled
+  priceBox — its serif Total went grotesque too), the tinted panels went to hairlines
+  EXCEPT `email_note` — deliberately the ONE shout an email keeps — and buttons are
+  full-width radius-12 (`email_btn` 52px filled; `email_btn2` 48px outlined `#D8C2A2`
+  with `email_accent_ink()` — §7's outlined-button markers re-aimed to the new border
+  literal, and test-payrail's amount-block check to the sentence-case/40px pair).
+  Ground `#ECE5D7` → `#F7F4EE` (lighter — every ink floor got easier); hairlines
+  `#EFE9DD`, card border `#EAE3D5`.
+- **THE DARK TWIN IS ONE DEFINITION** (`email_dark_palette()`): the shell BUILDS its
+  `@media (prefers-color-scheme: dark)` block from it and test-emails-render §2's dark
+  pass READS it, so the palette served and the palette measured cannot drift. The class
+  hooks are INJECTED AT THE CHOKE POINT — `email_dark_hooks()` runs over the finished
+  document inside email_shell, mapping every inline ink/fill with a dark twin to its
+  `em-*` class (the pdfSafe rule: a sanitiser you have to remember is one the next
+  composer forgets). Unmapped inks (the button's `#3A2E1E` on the accent fill, the dark
+  status chips) keep their light values ON PURPOSE — they already work on both grounds.
+  Apple Mail honours the block fully; Gmail ignores everyone's preferences and
+  self-transforms regardless (no opt-out exists — the values chosen also survive that
+  transform). Break-tested three ways: hooks neutered → the ≥200 dark-mapped vacuity
+  floor fires; one bad dark value → the dark AA sweep; media block dropped → the shell
+  probe. **The dark pass found a real ink on its first run**: the magic-link email's
+  URL grey `#6b6b6b` — off-token, so no twin existed — measured 3.10:1 on the dark
+  card. `email_muted_ink()` now; the general rule is the §1b one — an ink outside the
+  token set is invisible to every palette that ships.
+- **THE PHOTO BAND** (`email_photo_band` pure + `email_prop_photo` IO): the
+  confirmation and arrival emails carry the cottage's FIRST gallery image, GD-downscaled
+  to 560w JPEG and INLINED as a data URI (the crown's own rationale — default
+  image-blocking cannot strip it), refused over ~66KB of base64 against Gmail's 102KB
+  clip. Local `uploads/` only (a remote gallery URL is not ours to fetch at send time),
+  traversal refused, and every refusal — no gallery, no GD, unreadable file — returns
+  `''`: no band, never a broken img. Resolved by `arrival_email_payload` for the pure
+  composer (the house-rules pattern) AND backfilled `??`-style in `send_arrival_email`,
+  because the owner's sample sender hands a bare payload and the preview must show the
+  band too. §11 drives the REAL GD path with a fixture JPEG written into the harness's
+  own temp dir (where the spliced mailer's `__DIR__` resolves).
+- **PREHEADERS FINISH THE THOUGHT.** Most restated the subject (several passed
+  `$subject` in verbatim); the money family now carries the figure + what it does + the
+  deadline ("£175.43 secures your dates — pay securely by card in two taps"), the
+  receipt says what remains, the refunds say the 3–5 working days. Keep them PLAIN
+  TEXT — email_shell escapes its first argument, so an entity prints literally in the
+  inbox (test-payrail already sweeps for exactly that).
+- **THE STARS COME TO THE INBOX**: the review ask carries five ★ links →
+  `?review=<prop>&stars=N`; `maybeOpenReviewLink` (app.js) polls for the card's OWN
+  `gb2Star` button and fires the same prefill My Stays' star-tap performs — armed on
+  BOTH auth branches, because the boot runs it before the session restore lands
+  (measured: the currentGuest-only version never fired in the gate). A star glyph is
+  still TEXT to a renderer: it takes `email_accent_ink()`, not the accent fill — §2 and
+  §5 both refused `#C79A64` at 2.55:1 the moment it was tried. Gated in
+  ui-test-yourstay (the deep link opens the real form prefilled, break-tested; NB the
+  harness's own second `openGuestArea()` re-renders the cards and wipes what the deep
+  link opened — the check passes `noopen`, which no real arrival needs).
 
 ## A refund asks whether it is still you (the step-up)
 

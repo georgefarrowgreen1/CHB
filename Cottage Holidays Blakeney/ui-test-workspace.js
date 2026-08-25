@@ -303,7 +303,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     };
   });
   ok(bd2.open && bd2.admin && bd2.lifted && bd2.z > bd2.gz, `the picker opens in admin mode ABOVE the dialog (${bd2.z} > ${bd2.gz})`);
-  ok(bd2.crossed >= 3, `…with the chosen cottage's stays shaded (${bd2.crossed} crossed nights)`);
+  // COUNT ACROSS TWO MONTHS, never one: First Guest starts at d(5), so from the
+  // ~25th its nights straddle the month boundary and the single-grid count read
+  // 2-of-3 (failed on main, 25 Aug — the same green-on-the-19th trap the pinned
+  // range below already documents). The stay always sits inside this month +
+  // next, so the sum is date-proof.
+  const bdNext = await page.evaluate(() => {
+    dpChangeMonth(1);
+    return document.querySelectorAll('#dp-grid .dp-booked').length;
+  });
+  await page.evaluate(() => dpChangeMonth(-1));
+  ok(bd2.crossed + bdNext >= 3, `…with the chosen cottage's stays shaded (${bd2.crossed}+${bdNext} crossed nights over two months)`);
   // Escape closes the PICKER and the form survives underneath.
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);

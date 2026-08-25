@@ -52,8 +52,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ], seasons: {}, occupancy: {} });
       return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, mine: {}, value: null });
     });
-    await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
-    if (guest) { await page.evaluate(() => openGuestArea()); }
+    await page.goto(`${base}/index.html${(opts && opts.q) || ''}`, { waitUntil: 'networkidle' });
+    // noopen: a deep-link case (?review=…) navigates ITSELF off the restored
+    // session — a second openGuestArea here re-renders the cards and wipes
+    // what the deep link just opened, which no real arrival does.
+    if (guest && !(opts && opts.noopen)) { await page.evaluate(() => openGuestArea()); }
     await page.waitForTimeout(700);
     return page;
   };
@@ -793,6 +796,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     [mk('jollyboat', d(-6), d(-3), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))], { completed: 2 });
   const ord2 = await page.evaluate(() => (document.querySelector('.gb2-ord') || {}).textContent || '');
   ok(/This would be your third stay with us/.test(ord2), `the ordinal speaks the server's own count (${ord2})`);
+  await page.close();
+
+  // ?review=<prop>&stars=N — the email's tap-a-star row. The link must land on
+  // My Bookings with the REAL review form open and the rating already set: the
+  // same gb2Star prefill the on-page star-tap performs, fired from the inbox.
+  // (The arm poll retries while the cards render, so give it a beat.)
+  page = await openPage({ name: 'Star Guest', email: 'star@x.co' },
+    [mk('jollyboat', d(-6), d(-3), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))],
+    { q: '?review=jollyboat&stars=4', noopen: true });
+  await page.waitForTimeout(900);
+  const starLink = await page.evaluate(() => ({
+    view: (document.querySelector('.page-view.active') || {}).id || '',
+    open: (document.getElementById('grf-jollyboat') || { style: {} }).style.display,
+    stars: (document.getElementById('grf-stars-jollyboat') || {}).value || '',
+    lit: document.querySelectorAll('.gb2-stars .gb2-star.is-on').length,
+  }));
+  ok(starLink.open === 'block' && starLink.stars === '4' && starLink.lit === 4,
+    `the email's star link opens the form with the rating prefilled (${starLink.stars} stars, ${starLink.lit} lit, on ${starLink.view})`);
   await page.close();
 
   // 28) AN ARCHIVED COTTAGE'S BOOKING STILL RENDERS (reported live: the Annex
