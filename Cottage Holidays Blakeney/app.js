@@ -6306,6 +6306,28 @@ function maybeOpenReviewLink() {
         } else {
             openGuestArea();
         }
+        // ?stars=N (the email's tap-a-star row) fires the SAME gb2Star prefill
+        // as My Stays' own star-tap. Armed on BOTH branches: this runs before
+        // the session restore lands, so the signed-in card can appear a moment
+        // later — poll briefly for the button and give up silently.
+        const pk = usp.get('review') || '';
+        const st = parseInt(usp.get('stars') || '', 10);
+        if (pk && st >= 1 && st <= 5) {
+            let tries = 0;
+            const arm = () => {
+                const btn = Array.from(document.querySelectorAll('[data-act="gb2Star"]')).find((b) => {
+                    try {
+                        const a = JSON.parse(/** @type {HTMLElement} */ (b).dataset.args || '[]');
+                        return a[0] === pk && a[1] === st;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+                if (btn) gb2Star(pk, st, btn);
+                else if (++tries < 24) setTimeout(arm, 250);
+            };
+            setTimeout(arm, 250);
+        }
         return true;
     } catch (e) {
         return false;
@@ -18318,7 +18340,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pillsit';
+    const BUILD = 'emailui1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

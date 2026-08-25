@@ -1841,10 +1841,11 @@ chk('a receipt with money owing dates it and offers the link',
     && strpos($eRcM['html'], 'Pay the rest now') !== false);
 // NB target the AMOUNT BLOCK, not the words: email_h() renders the same phrase as
 // the page heading, so 'Payment received' alone passed with the figure block
-// deleted (break-tested). The uppercase label style is email_amount's own, and the
-// serif 34px figure beside it is what "headline" actually means here.
+// deleted (break-tested). The sentence-case 600 label + the 40px grotesque figure
+// are email_amount's own anatomy (the modern pass — the invoice's figure rules),
+// and that pair is what "headline" actually means here.
 chk('...and the figure is the headline, not a clause',
-    preg_match('/text-transform:uppercase;color:' . preg_quote(email_muted_ink(), '/') . ';">Payment received<\/div>[\s\S]{0,200}font-size:34px[\s\S]{0,120}£175\.43/', $eRcM['html']) === 1);
+    preg_match('/font-weight:600;color:' . preg_quote(email_muted_ink(), '/') . ';">Payment received<\/div>[\s\S]{0,220}font-size:40px[\s\S]{0,160}£175\.43/', $eRcM['html']) === 1);
 chk('...labelled for the state it is in (a slice is not its stage)',
     strpos(payment_receipt_body(['partial' => true] + $eRc)['html'], '>Part payment received<') !== false
     && strpos(payment_receipt_body(['automatic' => true] + $eRc)['html'], '>Collected<') !== false);
