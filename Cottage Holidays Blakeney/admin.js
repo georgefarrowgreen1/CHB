@@ -11265,7 +11265,7 @@ function gbHost(id) {
     return b;
 }
 function gbSyncNote(id) {
-    const ta = document.getElementById('gb-note-' + id);
+    const ta = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('gb-note-' + id));
     if (ta && __gbDraft && String(__gbDraft.id) === String(id)) __gbDraft.note = ta.value;
 }
 function gbSetStar(id, n) {
