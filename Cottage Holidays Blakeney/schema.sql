@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     pre_arrival_ready_at DATETIME    NULL,
     terms_accepted_at  DATETIME      NULL,
     no_dogs_at         DATETIME      NULL,           -- guest confirmed no dog (carried from the enquiry)
+    guest_checked_out_at DATETIME    NULL,           -- the guest's own "we've left" tap (migration-120)
     terms_version      VARCHAR(20)   NULL,
     -- Refundable damage deposit taken as a Square card HOLD (see migration-damage-hold.sql)
     hold_payment_id    VARCHAR(64)   NULL,

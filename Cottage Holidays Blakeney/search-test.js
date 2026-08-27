@@ -2328,6 +2328,28 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const laterPlan = ctx.chbOwedLater();
         check('…the quiet owed-later line holds it instead', laterPlan.n === 1 && Math.abs(laterPlan.total - 300) < 0.005, `${laterPlan.n} · ${laterPlan.total}`);
 
+        // A3) THE CHECK-OUT TAP BRINGS THE DEPOSIT DUTY FORWARD. Two identical
+        // checkout-day stays with held deposits, the clock pinned to 9am (before
+        // the 10:00 checkout hour, so the time-aware gate says "still in"): the
+        // guest who tapped "we've left" is a duty NOW, labelled guest-declared
+        // with the tap's own time; the untapped one is left alone until the
+        // hour — additive only, nothing ever WAITS on a guest tapping.
+        vm.runInContext(`__realUkNowMinutes = ukNowMinutes; ukNowMinutes = () => 9 * 60;
+            Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]); enquiries=[];
+            dbBookings.jollyboat=[
+              {id:76,dbId:76,name:'Tapped Out',email:'to@x.co',checkIn:'${dFut(-3)}',checkOut:'${ctx.todayDashed()}',checkOutTime:'10:00',adults:2,children:0,payment:'paid',depositPaid:400,holdStatus:'charged',damagesDeposit:50,holdAmount:50,guestCheckedOutAt:'${ctx.todayDashed()} 08:41:00',
+               agreedPrice:{total:400,perNight:380,nights:3,txnFee:20,damagesDeposit:50}},
+              {id:77,dbId:77,name:'Still In',email:'si@x.co',checkIn:'${dFut(-3)}',checkOut:'${ctx.todayDashed()}',checkOutTime:'10:00',adults:2,children:0,payment:'paid',depositPaid:400,holdStatus:'charged',damagesDeposit:50,holdAmount:50,
+               agreedPrice:{total:400,perNight:380,nights:3,txnFee:20,damagesDeposit:50}}];`, ctx);
+        const depTap = ctx.chbDuties().filter((d) => d.kind === 'deposit');
+        check('the guest\'s own "we\'ve left" tap brings the deposit duty forward of the checkout hour',
+            depTap.length === 1 && /Tapped Out/.test(depTap[0].label), depTap.map((d) => d.label).join(' | '));
+        check('…saying so as guest-declared, with the tap\'s own time',
+            /Left 8:41am ✓ \(guest-declared\)/.test(depTap[0] ? depTap[0].sub : ''), depTap[0] && depTap[0].sub);
+        check('…while an untapped guest still in the cottage is left alone until the checkout hour',
+            !depTap.some((d) => /Still In/.test(d.label)));
+        vm.runInContext('ukNowMinutes = __realUkNowMinutes;', ctx);
+
         // A4) THE GUEST REGISTER IS A DUTY. It is treated as one at booking level —
         // bookingFlow has a stage for it, the hub's next-action card asks for it — and
         // chbDuties had no branch, so for a guest arriving TOMORROW who had never
