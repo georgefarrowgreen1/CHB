@@ -592,6 +592,57 @@ tap instead of the checkout hour.
   guest-declared; the untapped twin left alone — break-tested by reverting the
   OR).
 
+## The Guest Book (migration-121) — private guest ratings
+
+**Asked for as "can we rate customers Like on Airbnb. Cleanliness. Rules
+communication etc" (approved v2 demo, "Build it").** One row per booking in
+`guest_ratings` (PK booking_id): overall 1–5 + three marks (clean/rules/comms ∈
+''|good|poor) + note ≤500 + rated_at. PRIVATE and OWNER-ONLY, absolutely: never
+in a guest payload (§31 searches the RAW my-bookings text for the markers, not
+the parsed shape), never in the night brief or world sheet.
+- **`rate_guest` (bookings.php)**: re-rate REPLACES (INSERT…ON DUPLICATE KEY),
+  overall 0 DELETES (`removed: true`) — un-rating is a first-class act, not a
+  1-star. Marks and note length refused in words; un-migrated → the
+  run-the-migrations sentence. Rows ride `bookings_admin_payload` best-effort
+  as `gr_*` (one grouped query, try/catch — a missing table never blanks the
+  booking list), mapped to `b.guestRating` in mapBookingFromApi.
+- **`chbGuestBookFor(rec)` is the ONE aggregation** (admin.js): strong identity
+  via chbCustomerKey — a name-only key (`b:` prefix) returns null so two John
+  Smiths never share a book, but a name-only stay's OWN rating still lists
+  (identity governs MERGING, not whether one stay's rating exists — the
+  search-test worst-first case pins this). **LATEST SPEAKS, HISTORY WHISPERS**:
+  the newest rated stay is the verdict, older ones are a muted "usually" line.
+- **THE PAUSE IS ONE SHARP RULE**: latest overall ≤2 OR rules === 'poor' —
+  cleanliness/comms poor earn a pill, never a pause (a mess is money, the £75
+  deposit's job; rule-breaking is the relationship). The enquiry hub renders
+  `.gb-pause` ("Worth a pause: … Approving is still one tap — this is a memory,
+  not a rule") ABOVE the grid, and **INFORMS, NEVER DECIDES**: the Approve
+  button renders byte-identically, gate-pinned so this cannot erode into an
+  auto-decline.
+- **The rating moment is the deposit decision**: returnDeposit/keepDeposit
+  success opens the hub's rating fold (`__bhubOpenFolds.add('rating')`) — an
+  offer at the natural moment, never a nag. The card (`hubGuestBookCard`,
+  PAST stays only) states the record's own facts (deposit state, the check-out
+  tap, paid state via bookingDue) beside the stars, so the owner rates against
+  the record, not memory. `gbSyncNote` reads the textarea BEFORE any re-render
+  (the bank-details trap). Stars are TEXT → `--accent-text` (the a11y rule).
+- Surfaces: booking-hub intel fold + enquiry intel (other-stays only — the
+  current booking's own rating is the card, not intel), directory row `· ★N`,
+  and a search family (`CHB_GUESTBOOK_Q`, 0b9 before CHB_WAITLIST_Q — "who are
+  my best guests" / "guests i rated poorly", worst detection flips the sort).
+  NB fixture names must not contain the family's own query words ("Rated Rita"
+  was intercepted by the name-match tier; "Norah Neat" is the shape).
+- Gates: **test-integration §31** (guest 401, validation in words, dated write,
+  replace, remove, the raw-payload absence, gr_* on the admin GET),
+  **search-test** guest-book block (latest-speaks, both pause halves, clean-poor
+  never pauses, name-only null, answer + worst-first, directory sub), and
+  **ui-test-hub §A3b** (the card on a past stay only, star+mark+note through the
+  REAL post shape, the pause row + Approve-unchanged, 5★ quiet). NB A3b's
+  restore stands the enquiry hub down via renderInbox's own empty branch —
+  `__enqHubId` is script-scoped (the currentGuest rule) and leaving it set made
+  section J auto-dock the wrong enquiry while the stale hidden `.bhub-next`
+  shadowed section B's selector.
+
 ## The overnight queue — "Ready for you" (migration-115)
 
 **Asked for as "built this, give the option of a turn off/on toggle in settings"**,

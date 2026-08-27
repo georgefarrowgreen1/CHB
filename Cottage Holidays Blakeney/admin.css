@@ -6498,3 +6498,131 @@ body.offline-snap #admin-rail .rail-row[data-view='view-settings'],
 body.offline-snap #admin-rail .rail-row[data-rail='cottages'] {
   display: none;
 }
+
+/* ============================================================
+   THE GUEST BOOK (migration-121) — the owner's private rating of a stay.
+   Stars-as-state take --accent-text, not the accent fill: a star glyph is
+   still TEXT to a renderer (the review email's own lesson — the fill measures
+   2.55:1 as ink). The pause is the warn pair on its own tint; Good/Poor marks
+   wear the ok/warn text tokens the status system already measures.
+   ============================================================ */
+.gb-starline {
+  color: var(--accent-text);
+  letter-spacing: 2px;
+  font-size: 0.92rem;
+}
+.gb-record {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-light) 4%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 6px 0 10px;
+  line-height: 1.6;
+}
+.gb-record strong {
+  color: var(--text-light);
+  font-weight: 600;
+}
+.gb-stars {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.gb-star {
+  font-size: 1.6rem;
+  line-height: 1.2;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 5px;
+  min-width: 32px;
+  min-height: 40px;
+  color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+}
+.gb-star.on {
+  color: var(--accent-text);
+}
+.gb-more {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--accent-text);
+  padding: 8px 2px;
+  min-height: 32px;
+}
+.gb-cat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.82rem;
+  color: var(--text-light);
+}
+.gb-cat:last-of-type {
+  border-bottom: 0;
+}
+.gb-seg {
+  display: flex;
+  gap: 6px;
+}
+.gb-seg .gb-on-good {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border-color: var(--ok-text);
+  color: var(--ok-text);
+}
+.gb-seg .gb-on-poor {
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: var(--warn-text);
+  color: var(--warn-text);
+}
+.gb-sum {
+  margin-top: 8px;
+}
+.gb-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+.gb-pill {
+  font-size: 0.66rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.gb-pill.is-good {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ok-text) 60%, transparent);
+  color: var(--ok-text);
+}
+.gb-pill.is-poor {
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn-text) 60%, transparent);
+  color: var(--warn-text);
+}
+.gb-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 5px;
+  line-height: 1.6;
+}
+.gb-pause {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn-text) 55%, transparent);
+  border-radius: var(--r-lg);
+  color: var(--warn-text);
+  font-size: 0.82rem;
+  line-height: 1.65;
+  padding: 11px 15px;
+  margin: 0 0 12px;
+}
+.gb-pause strong {
+  font-weight: 700;
+}
