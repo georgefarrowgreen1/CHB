@@ -4013,6 +4013,47 @@ it_check('§30 a fresh second tap is a graceful "already" with the ORIGINAL time
     ($r['json']['ok'] ?? false) === true && ($r['json']['already'] ?? false) === true
     && ($r['json']['at'] ?? '') === $coAt && $coActs() === 1, $r['raw']);
 
+// ── §31 The Guest Book — owner-only in every direction ──────────────────────
+// The write validated, re-rate a REPLACE, delete a real delete — and the two
+// absences asserted rather than assumed: a GUEST session cannot write, and the
+// guest's own my-bookings payload never carries a byte of the rating.
+echo "\n== \u{00A7}31 the guest book ==\n";
+$gbNote = 'Spotless stay; GBNOTE-MARKER left the beds stripped.';
+$r = http($coJar, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 5]);
+it_check('§31 a guest session cannot write to the book', $r['code'] === 401, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 7]);
+it_check('§31 overall is 1–5, refused in words', $r['code'] === 400 && strpos((string) ($r['json']['error'] ?? ''), '1 to 5') !== false, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 4, 'clean' => 'meh']);
+it_check('§31 a category mark is good, poor, or unset — nothing else', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 4, 'note' => str_repeat('x', 501)]);
+it_check('§31 the note is capped', $r['code'] === 400, $r['raw']);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 5, 'clean' => 'good', 'rules' => 'good', 'note' => $gbNote]);
+it_check('§31 the owner writes the rating, dated', ($r['json']['ok'] ?? false) === true && ($r['json']['at'] ?? '') !== '', $r['raw']);
+$row = $rootDb->query("SELECT * FROM guest_ratings WHERE booking_id = $coId")->fetch();
+it_check('§31 …stored as written', $row && (int) $row['overall'] === 5 && $row['clean'] === 'good' && strpos((string) $row['note'], 'GBNOTE-MARKER') !== false);
+// Re-rate REPLACES — one row per stay, nothing accumulates behind your back.
+http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 2, 'rules' => 'poor', 'note' => 'GBNOTE-MARKER second thoughts']);
+$gbCount = (int) $rootDb->query("SELECT COUNT(*) FROM guest_ratings WHERE booking_id = $coId")->fetchColumn();
+$row = $rootDb->query("SELECT * FROM guest_ratings WHERE booking_id = $coId")->fetch();
+it_check('§31 re-rating replaces the one row', $gbCount === 1 && (int) $row['overall'] === 2 && $row['rules'] === 'poor');
+// THE STRIP: the guest's own payload never carries the book. Raw-text search,
+// so a renamed field can't dodge it — neither the marker text nor any gr_ key.
+$r = http($coJar, 'GET', '/my-bookings.php');
+it_check('§31 the guest payload carries not a byte of it',
+    strpos($r['raw'], 'GBNOTE-MARKER') === false && strpos($r['raw'], 'gr_overall') === false && strpos($r['raw'], 'guest_ratings') === false, substr($r['raw'], 0, 200));
+// …while the OWNER'S payload does (the surfaces read gr_* off the admin list).
+$r = http($admin, 'GET', '/bookings.php');
+$gbMine = null;
+foreach (($r['json']['bookings'] ?? []) as $bk) {
+    if ((int) $bk['id'] === $coId) { $gbMine = $bk; }
+}
+it_check('§31 the owner\'s payload carries it as gr_*', $gbMine && (int) ($gbMine['gr_overall'] ?? 0) === 2 && ($gbMine['gr_rules'] ?? '') === 'poor');
+// Deleting really deletes.
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'rate_guest', 'id' => $coId, 'overall' => 0]);
+it_check('§31 overall 0 removes the rating outright',
+    ($r['json']['removed'] ?? false) === true
+    && (int) $rootDb->query("SELECT COUNT(*) FROM guest_ratings WHERE booking_id = $coId")->fetchColumn() === 0, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

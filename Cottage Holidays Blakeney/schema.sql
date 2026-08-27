@@ -213,6 +213,19 @@ CREATE TABLE IF NOT EXISTS guest_registrations (
     KEY idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- The Guest Book (migration-121): the owner's PRIVATE rating of a stay.
+-- One row per booking (re-rate = replace); marks are 'good' | 'poor' | ''.
+-- Never joined into any guest-facing payload — asserted in integration §31.
+CREATE TABLE IF NOT EXISTS guest_ratings (
+    booking_id INT          NOT NULL PRIMARY KEY,
+    overall    TINYINT      NOT NULL,
+    clean      VARCHAR(8)   NOT NULL DEFAULT '',
+    rules      VARCHAR(8)   NOT NULL DEFAULT '',
+    comms      VARCHAR(8)   NOT NULL DEFAULT '',
+    note       TEXT         NULL,
+    rated_at   DATETIME     NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- The op ledger (migration-109): exactly-once for replayed offline writes.
 -- A client-generated op_id rides each queued write; the first success stores
 -- its JSON response here and a replay of the same id is answered from it.

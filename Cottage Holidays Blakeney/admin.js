@@ -563,6 +563,9 @@ const CHB_RATING_Q = /(average|overall|my|our) (rating|review score|star rating)
 const CHB_EXPENSE_Q = /\b(spent|spend|spending|expenses?|outgoings)\b.{0,32}\b(this|last|year|month|total|on)\b|how much (did|have) (i|we) spen|total (expenses?|costs?|spend)|\bcosts? this (year|month)\b/;
 const CHB_PLAN_Q = /who('s| is) on (a )?(payment plan|instalments?|installments?)|payment plans? (running|active|due)|next (instalment|installment|collection)|automatic payments? (running|due|coming)|\binstalments? due\b/;
 const CHB_LAPSED_Q = /\blapsed\b|(stayed|came|visited).{0,26}(hasn't|haven't|not|never).{0,16}(book|back|return)|(hasn't|haven't).{0,12}(rebooked|come back|returned|booked again)|win.?back|past guests? who/;
+// The guest book's own questions — deliberately narrow so CHB_RATING_Q (the
+// SITE's review reputation) keeps everything about "my rating/reviews".
+const CHB_GUESTBOOK_Q = /\b(best|worst|favourite) guests?\b|guests? (i|we)('ve| have)? rated|rated (a )?guest|\bguest book\b|guests? rated (poorly|badly|low|well)/;
 // NB bare "who's waiting" is the ENQUIRIES ground (golden-pinned) — this only
 // fires on the list's own name or a space/dates/cancellation object.
 const CHB_WAITLIST_Q = /\bwait.?list\b|waiting list|who('s| is) waiting for (a |the )?(space|dates|cancellation|cottage)/;
@@ -2141,7 +2144,7 @@ function cmdkSourceCustomers() {
         id: c.key,
         _customer: true,
         label: c.name || '(no name)',
-        sub: `${c.stays.length} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''}`,
+        sub: `${c.stays.length} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''}${(() => { const g = gbLatestForCustomer(c); return g ? ` · ★${g.overall}` : ''; })()}`,
         kw: `customer repeat guest ${c.email} ${c.phone} ${c.props.map(propName).join(' ')}`,
         actions: [
             { key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latestId != null && typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } },
@@ -4866,6 +4869,28 @@ function cmdkIntent(q) {
                 sub: `${c.stays.length} stay${c.stays.length === 1 ? '' : 's'} · ${gbp(c.revenue)} lifetime · last ${fmtDate(c.last)}`,
                 actions: c.latestId != null ? [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } }] : undefined,
                 run: () => openCustomer(c.key),
+            })));
+        }
+        // The guest book: who you'd welcome back with open arms, and who earns
+        // a pause. Answers, never actions — the book informs and nothing more.
+        if (CHB_GUESTBOOK_Q.test(q) && typeof chbCustomers === 'function') {
+            const worst = /worst|poorly|badly|low|pause/.test(q);
+            const rated = chbCustomers()
+                .map((c) => ({ c, g: gbLatestForCustomer(c) }))
+                .filter((x) => x.g)
+                .sort((a, z) => (worst ? a.g.overall - z.g.overall : z.g.overall - a.g.overall));
+            if (!rated.length)
+                return [{ type: 'figure', id: 'gbook', label: 'Nothing in the guest book yet', sub: 'Rate a stay from its booking page — the fold under Guest details — and it shows here', run: () => {} }];
+            const fives = rated.filter((x) => x.g.overall >= 5).length;
+            const head = { type: 'figure', id: 'gbook',
+                label: `${rated.length} guest${rated.length === 1 ? '' : 's'} in the book${fives ? ` — ${fives} at 5★` : ''}`,
+                sub: worst ? 'Lowest rated first — a memory, never a blacklist' : 'Best first · your private ratings, latest stay each',
+                run: () => {} };
+            return [head].concat(rated.slice(0, 6).map((x) => ({
+                type: 'guest', id: 'gbook-' + x.c.key, _customer: true,
+                label: `${x.c.name || '(no name)'} — ${gbStars(x.g.overall)}`,
+                sub: `${x.c.stays.length} stay${x.c.stays.length === 1 ? '' : 's'} · ${gbp(x.c.revenue)} lifetime${x.c.last ? ' · last ' + fmtDate(x.c.last) : ''}`,
+                run: () => openCustomer(x.c.key),
             })));
         }
         if (CHB_WAITLIST_Q.test(q) && Array.isArray(__wlCache)) {
@@ -11051,7 +11076,17 @@ function chbGuestIntel(propKey, b) {
         if (prevStay && prevStay.checkIn) out.lastStay = new Date(prevStay.checkIn + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     }
     out.mentions = chbGuestMentions(b);
-    return (out.stays >= 2 || out.mentions.length) ? out : null;
+    // The guest book: their PAST stays' ratings, excluding this booking's own
+    // (the hub's rate card already states that one where it exists).
+    out.gb = null;
+    try {
+        const gb = chbGuestBookFor(b);
+        if (gb) {
+            const others = gb.all.filter((r) => r.bookingId !== b.id);
+            if (others.length) out.gb = { latest: others[0], all: others, pause: false };
+        }
+    } catch (e) {}
+    return (out.stays >= 2 || out.mentions.length || out.gb) ? out : null;
 }
 // History rows that MENTION this guest, from the already-built in-memory
 // corpus index. Strong-first matching: an email row must match the guest's
@@ -11083,6 +11118,217 @@ function chbGuestMentions(b) {
 }
 // The card's mention rows re-open their source record via the same per-type
 // handlers search results use (chbHistoryRow → cmdkServerItem).
+// ============================================================
+//  THE GUEST BOOK (migration-121) — the owner's PRIVATE rating of a stay
+//  (approved demo, second pass). A memory, not a score: it informs, never
+//  decides — no read path gates anything on it, and the never-decides rule is
+//  pinned in the gates (a 1★ guest's Approve renders identically). Strong
+//  identity only, through chbCustomerKey — two John Smiths never share a
+//  reputation, and a name-only booking carries no rating at all.
+// ============================================================
+function gbStars(n) {
+    n = Math.max(0, Math.min(5, parseInt(n, 10) || 0));
+    return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
+}
+function gbWhen(at) {
+    const d = new Date(String(at || '').replace(' ', 'T'));
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+}
+// Every RATED stay for this person (by strong identity), latest first. The
+// latest speaks, the history whispers: `latest` is the card's voice, `all`
+// feeds the "usually ★★★★★" line. `pause` is the ONE sharp rule — overall ≤2,
+// or House rules marked poor — the two signals that predict trouble; a poor
+// cleanliness or communication mark stays a visible pill and nothing more.
+function chbGuestBookFor(rec) {
+    let key = '';
+    try { key = chbCustomerKey(rec); } catch (e) {}
+    if (!key || key.slice(0, 2) === 'b:') return null;
+    const rated = [];
+    Object.keys(dbBookings || {}).forEach((k) =>
+        (dbBookings[k] || []).forEach((b) => {
+            if (!b.guestRating) return;
+            try { if (chbCustomerKey(b) !== key) return; } catch (e) { return; }
+            rated.push(Object.assign({ checkOut: b.checkOut || '', bookingId: b.id }, b.guestRating));
+        }));
+    if (!rated.length) return null;
+    rated.sort((a, z) => String(z.checkOut).localeCompare(String(a.checkOut)));
+    const latest = rated[0];
+    return {
+        latest,
+        all: rated,
+        pause: latest.overall <= 2 || latest.rules === 'poor',
+    };
+}
+// The latest rated stay for a DIRECTORY customer (its stays carry {id, pk}).
+function gbLatestForCustomer(cust) {
+    let best = null;
+    try {
+        (cust.stays || []).forEach((s) => {
+            const b = findBookingById(s.id);
+            if (b && b.guestRating && (!best || String(b.checkOut || '').localeCompare(String(best.checkOut || '')) > 0)) {
+                best = { overall: b.guestRating.overall, checkOut: b.checkOut };
+            }
+        });
+    } catch (e) {}
+    return best;
+}
+function gbPauseWhy(latest) {
+    const rulesPoor = latest.rules === 'poor';
+    return latest.overall <= 2
+        ? `you rated their last stay ${gbStars(latest.overall).slice(0, latest.overall)}${rulesPoor ? ' with house rules marked poor' : ''}.`
+        : `house rules were marked poor on their last stay (${latest.overall}★ overall).`;
+}
+// The rating + history + pills + note, rendered wherever a guest announces
+// themselves (the enquiry hub's fold, the booking hub's intel card).
+function gbSummaryHtml(gb) {
+    if (!gb) return '';
+    const l = gb.latest;
+    const hist = gb.all.length > 1
+        ? `<div class="bhub-mut" style="font-size:0.74rem;">usually ${gbStars(Math.round(gb.all.reduce((s, r) => s + r.overall, 0) / gb.all.length)).replace(/☆+$/, '')} — ${gb.all.slice(1).map((r) => r.overall + '★').join(', ')} on the earlier ${gb.all.length === 2 ? 'stay' : 'stays'}</div>`
+        : '';
+    const pills = ['clean', 'rules', 'comms'].filter((c) => l[c])
+        .map((c) => `<span class="gb-pill ${l[c] === 'poor' ? 'is-poor' : 'is-good'}">${{ clean: 'Cleanliness', rules: 'House rules', comms: 'Communication' }[c]}${l[c] === 'poor' ? ' — poor' : ' ✓'}</span>`)
+        .join('');
+    return `<div class="gb-sum">
+            <div><span class="gb-starline">${gbStars(l.overall)}</span> <span class="bhub-mut" style="font-size:0.74rem;">your rating${gbWhen(l.at) ? ' · ' + escapeHtml(gbWhen(l.at)) : ''}</span></div>
+            ${hist}
+            ${pills ? `<div class="gb-pills">${pills}</div>` : ''}
+            ${l.note ? `<div class="gb-note">“${escapeHtml(l.note)}”</div>` : ''}
+        </div>`;
+}
+// ---- The hub's rate card (past stays): record line + stars + detail fold ----
+let __gbDraft = null;
+function gbDraftFor(b) {
+    if (!__gbDraft || __gbDraft.id !== b.id) {
+        const r = b.guestRating;
+        __gbDraft = {
+            id: b.id, overall: r ? r.overall : 0,
+            clean: r ? r.clean : '', rules: r ? r.rules : '', comms: r ? r.comms : '',
+            note: r ? r.note : '',
+            detail: !!(r && (r.clean || r.rules || r.comms || r.note)),
+        };
+    }
+    return __gbDraft;
+}
+// The stay's own record beside the ask — you rate against the RECORD, not
+// memory. Context only: no mark is ever pre-filled from it, because a
+// judgement the app invented is the one thing this book must never contain.
+function gbRecordFacts(propKey, b) {
+    const facts = [];
+    try {
+        const dh = damageHeld(propKey, b);
+        if (b.holdStatus === 'kept') facts.push('deposit kept');
+        else if ((b.damagesReturned || 0) > 0.005) facts.push(dh.held > 0.005 ? 'deposit part-returned' : 'deposit returned in full');
+        else if (dh.held > 0.005) facts.push('deposit still held');
+    } catch (e) {}
+    if (b.guestCheckedOutAt) facts.push(`left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'early'} ✓ (guest-declared)`);
+    try {
+        const due = bookingDue(propKey, b);
+        facts.push(due.balance <= 0.005 ? 'paid in full ✓' : `${gbp(due.balance)} still owed`);
+    } catch (e) {}
+    return facts;
+}
+function hubGuestBookCard(propKey, b) {
+    const d = gbDraftFor(b);
+    const r = b.guestRating;
+    const facts = gbRecordFacts(propKey, b);
+    const seg = (cat, label) => `<div class="gb-cat"><span>${label}</span><span class="gb-seg">
+            <button class="btn-sm ${d[cat] === 'good' ? 'gb-on-good' : ''}" ${chbAttrs('gbMark', String(b.id), cat, 'good')}>Good</button>
+            <button class="btn-sm ${d[cat] === 'poor' ? 'gb-on-poor' : ''}" ${chbAttrs('gbMark', String(b.id), cat, 'poor')}>Poor</button>
+        </span></div>`;
+    const fold = `
+        ${facts.length ? `<div class="gb-record"><strong>This stay's record:</strong> ${facts.map(escapeHtml).join(' · ')}</div>` : ''}
+        <div class="gb-stars" role="radiogroup" aria-label="Rate this stay (private)">
+            ${[1, 2, 3, 4, 5].map((n) => `<button class="gb-star ${n <= d.overall ? 'on' : ''}" ${chbAttrs('gbSetStar', String(b.id), n)} aria-label="${n} star${n === 1 ? '' : 's'}">★</button>`).join('')}
+        </div>
+        <button class="gb-more" ${chbAttrs('gbDetail', String(b.id))}>${d.detail ? 'Hide detail ‹' : 'Add detail — categories & a note ›'}</button>
+        ${d.detail ? `
+            ${seg('clean', 'Cleanliness')}${seg('rules', 'House rules')}${seg('comms', 'Communication')}
+            <textarea id="gb-note-${b.id}" class="input-glass" rows="2" maxlength="500" aria-label="A note to your future self (private)" placeholder="A note to your future self — factual and professional." style="margin:8px 0 0;resize:vertical;font-size:0.86rem;">${escapeHtml(d.note)}</textarea>
+            <div class="bhub-mut" style="font-size:0.7rem;margin-top:4px;">Keep it factual — like any record about a person, a guest can ask what's held about them.</div>` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:9px;">
+            ${r ? `<button class="btn-sm btn-edit" ${chbAttrs('gbRemove', String(b.id))}>Remove</button>` : ''}
+            <button class="btn-sm btn-edit" ${chbAttrs('gbSave', String(b.id))}>Save to the guest book</button>
+        </div>`;
+    return bhubFoldGrp('rating', 'Guest book', r && gbWhen(r.at) ? 'your rating · ' + gbWhen(r.at) : 'private — only you ever see it',
+        r ? `<span class="gb-starline">${gbStars(r.overall)}</span>` : '<span class="bhub-sum-val bhub-mut">Not rated</span>',
+        fold);
+}
+function gbHost(id) {
+    const b = findBookingById(id);
+    const loc = b && findBookingLocation(id);
+    const host = document.getElementById('gb-card-host');
+    if (b && loc && host) {
+        __bhubOpenFolds.add('rating');
+        host.innerHTML = hubGuestBookCard(loc.propKey, b);
+    }
+    return b;
+}
+function gbSyncNote(id) {
+    const ta = document.getElementById('gb-note-' + id);
+    if (ta && __gbDraft && String(__gbDraft.id) === String(id)) __gbDraft.note = ta.value;
+}
+function gbSetStar(id, n) {
+    gbSyncNote(id);
+    const b = findBookingById(id);
+    if (b) gbDraftFor(b).overall = n;
+    gbHost(id);
+}
+function gbMark(id, cat, val) {
+    gbSyncNote(id);
+    const b = findBookingById(id);
+    if (b) {
+        const d = gbDraftFor(b);
+        d[cat] = d[cat] === val ? '' : val;
+    }
+    gbHost(id);
+}
+function gbDetail(id) {
+    gbSyncNote(id);
+    const b = findBookingById(id);
+    if (b) {
+        const d = gbDraftFor(b);
+        d.detail = !d.detail;
+    }
+    gbHost(id);
+}
+async function gbSave(id) {
+    gbSyncNote(id);
+    const b = findBookingById(id);
+    if (!b) return;
+    const d = gbDraftFor(b);
+    if (!(d.overall >= 1)) {
+        glassAlert('Tap a star first — or Remove to clear an old rating.');
+        return;
+    }
+    try {
+        const r = await apiPost('bookings.php', {
+            action: 'rate_guest', id: b.dbId,
+            overall: d.overall, clean: d.clean, rules: d.rules, comms: d.comms, note: d.note.trim(),
+        });
+        b.guestRating = { overall: d.overall, clean: d.clean, rules: d.rules, comms: d.comms, note: d.note.trim(), at: (r && r.at) || '' };
+        __gbDraft = null;
+        toast('In the guest book — private, and attached to this guest wherever they book next.');
+    } catch (e) {
+        glassAlert((e && e.message) || 'Could not save the rating just now.');
+    }
+    gbHost(id);
+}
+async function gbRemove(id) {
+    const b = findBookingById(id);
+    if (!b || !b.guestRating) return;
+    if (!(await glassConfirm('Remove this rating from the guest book? Deleting really deletes it.'))) return;
+    try {
+        await apiPost('bookings.php', { action: 'rate_guest', id: b.dbId, overall: 0 });
+        b.guestRating = null;
+        __gbDraft = null;
+        toast('Removed from the guest book.');
+    } catch (e) {
+        glassAlert((e && e.message) || 'Could not remove the rating just now.');
+    }
+    gbHost(id);
+}
+
 let __hubIntelMentions = [];
 function hubIntelOpen(i) {
     const d = __hubIntelMentions[+i];
@@ -11106,6 +11352,7 @@ function hubIntelCardHtml(intel) {
     return bhubFoldGrp('intel', 'Knows your guest', '', `<span class="bhub-sum-val">${sum}</span>`, `
             ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
             ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
+            ${gbSummaryHtml(intel.gb)}
             <div id="hub-intel-mentions">${hubIntelMentionRowsHtml(intel.mentions)}</div>`,
         ' id="hub-intel-card"');
 }
@@ -11545,7 +11792,11 @@ function renderBookingHub() {
             b.email ? `<button class="bhub-icbtn" ${chbAttrs('openBookingEmail', String(b.id))} aria-label="Email ${escapeHtml(b.name || 'the guest')}">${BHUB_IC_MAIL}</button>` : ''
         }</div>`
         : '';
-    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${intelCard}${guestCard}${emailsCard}${historyCard}${noteCard}</div>${sticky}`;
+    // The Guest Book card — past stays only (you rate a stay once it's over),
+    // in its own host node so the star/mark handlers can re-render just the
+    // card without re-docking the whole hub mid-interaction.
+    const ratingCard = past ? `<div id="gb-card-host">${hubGuestBookCard(propKey, b)}</div>` : '';
+    el.innerHTML = `${header}${attnHtml}<div class="bhub-grid">${intelCard}${guestCard}${ratingCard}${emailsCard}${historyCard}${noteCard}</div>${sticky}`;
 }
 // (hubChipsHtml — the header's five-fact status-chip row — is REMOVED: the
 // iOS restyle states those facts as label+value rows in the Guest card, where
@@ -16074,6 +16325,11 @@ async function returnDeposit(bookingId) {
         } else {
             toast('Deposit return issued.');
         }
+        // The rating moment: you've just inspected the cottage, so the hub's
+        // re-render opens the Guest book fold while it's fresh. An offer, not
+        // a nag — nothing follows up if it's ignored.
+        __gbDraft = null;
+        __bhubOpenFolds.add('rating');
         afterPaymentChange(bookingId);
     } catch (e) {
         // A SERVER VERDICT IS NOT A TRANSPORT FAILURE, and the screen must stop
@@ -18624,6 +18880,10 @@ async function keepDeposit(bookingId) {
     try {
         const res = await apiPost('bookings.php', { action: 'keep_deposit', id: booking.dbId });
         toast(`Deposit kept — ${gbp(res.kept)}.`);
+        // Keeping a deposit is the strongest rating moment of all — the fold
+        // opens on the re-render (an offer, never a nag; see returnDeposit).
+        __gbDraft = null;
+        __bhubOpenFolds.add('rating');
         afterPaymentChange(bookingId);
     } catch (e) {
         glassAlert("Couldn't keep the deposit: " + e.message);
@@ -27360,10 +27620,22 @@ function renderEnquiryHub() {
     // ---- A returning guest announces themselves; a first-timer says nothing
     // (the exception rule — an empty dossier is noise). ----
     const prior = (e && e.priorStays) || 0;
-    const intelGrp = prior >= 1
+    // The guest book pays off HERE — the moment they ask to come back. Strong
+    // identity from the enquiry's own email/phone; a name-only enquiry finds
+    // nothing (the false-merge guard).
+    let gb = null;
+    try { gb = chbGuestBookFor(e); } catch (err) {}
+    const intelGrp = prior >= 1 || gb
         ? bhubFoldGrp('eintel', 'Knows your guest', '',
-              `<span class="bhub-sum-val">Returning · ${prior} stay${prior === 1 ? '' : 's'}</span>`,
-              `<div style="padding-top:2px;">${repeatGuestBadge(e)}</div>`)
+              `<span class="bhub-sum-val">${gb ? `<span class="gb-starline">${gbStars(gb.latest.overall)}</span>` : `Returning · ${prior} stay${prior === 1 ? '' : 's'}`}</span>`,
+              `<div style="padding-top:2px;">${repeatGuestBadge(e)}${gbSummaryHtml(gb)}</div>`)
+        : '';
+    // THE PAUSE — one sharp rule (overall ≤2★, or House rules marked poor),
+    // quoting why, VISIBLE unexpanded. It informs, never decides: the Approve
+    // button below renders identically, which the gate pins so this can never
+    // erode into an auto-decline.
+    const gbPauseRow = gb && gb.pause
+        ? `<div class="gb-pause"><strong>Worth a pause:</strong> ${escapeHtml(gbPauseWhy(gb.latest))} Approving is still one tap — this is a memory, not a rule.</div>`
         : '';
     // ---- Guest details — same exception summary as the booking page. ----
     const kvDot = (okBit) => `<span class="bhub-chip-dot ${okBit ? 'is-ok' : 'is-bad'}" aria-hidden="true"></span>`;
@@ -27413,6 +27685,7 @@ function renderEnquiryHub() {
             ${stateCard}
         </div>
         ${attnHtml}
+        ${gbPauseRow}
         <div class="bhub-grid">${msgCard}${quoteGrp}${intelGrp}${factsGrp}</div>
         ${sticky}`;
 }

@@ -530,6 +530,28 @@ function bookings_admin_payload()
         unset($bk);
     } catch (\Throwable $e) {
     }
+    // The Guest Book (owner-only payload — this function is only ever served
+    // behind require_admin). Attached as gr_* fields; best-effort so a
+    // pre-migration install just carries no ratings.
+    try {
+        $gr = [];
+        foreach (db()->query('SELECT * FROM guest_ratings') as $r) {
+            $gr[(int) $r['booking_id']] = $r;
+        }
+        foreach ($rows as &$bk) {
+            $r = $gr[(int) $bk['id']] ?? null;
+            if ($r) {
+                $bk['gr_overall'] = (int) $r['overall'];
+                $bk['gr_clean'] = $r['clean'];
+                $bk['gr_rules'] = $r['rules'];
+                $bk['gr_comms'] = $r['comms'];
+                $bk['gr_note'] = $r['note'];
+                $bk['gr_rated_at'] = $r['rated_at'];
+            }
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
     return ['bookings' => $rows];
 }
 
@@ -1881,6 +1903,53 @@ if ($action === 'record_square_payment') {
         'meta' => ['square_payment_id' => $sqId, 'amount' => $amount],
     ]);
     json_out(['ok' => true, 'recorded' => 1, 'amount' => $amount, 'paid' => $paid]);
+}
+
+// THE GUEST BOOK (migration-121): the owner's PRIVATE rating of a stay.
+// Owner-only in every direction — nothing guest-reachable joins the table, and
+// integration §31 asserts the absence in the guest payload rather than assuming
+// it. One row per booking: re-rating replaces, overall 0 deletes (a rating
+// really can be taken back). It informs, never decides: no read path anywhere
+// gates an action on this value.
+if ($action === 'rate_guest') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    $overall = (int) ($in['overall'] ?? 0);
+    $markOk = fn($v) => in_array((string) $v, ['', 'good', 'poor'], true);
+    $clean = (string) ($in['clean'] ?? '');
+    $rules = (string) ($in['rules'] ?? '');
+    $comms = (string) ($in['comms'] ?? '');
+    if (!$markOk($clean) || !$markOk($rules) || !$markOk($comms)) {
+        json_out(['error' => 'A category mark is good, poor, or left unset.'], 400);
+    }
+    $note = trim((string) ($in['note'] ?? ''));
+    if (mb_strlen($note) > 500) {
+        json_out(['error' => 'Keep the note under 500 characters.'], 400);
+    }
+    try {
+        if ($overall === 0) {
+            db()->prepare('DELETE FROM guest_ratings WHERE booking_id = ?')->execute([$id]);
+            json_out(['ok' => true, 'removed' => true]);
+        }
+        if ($overall < 1 || $overall > 5) {
+            json_out(['error' => 'The rating is 1 to 5 stars.'], 400);
+        }
+        db()->prepare(
+            'INSERT INTO guest_ratings (booking_id, overall, clean, rules, comms, note, rated_at)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE overall = VALUES(overall), clean = VALUES(clean),
+                 rules = VALUES(rules), comms = VALUES(comms), note = VALUES(note), rated_at = NOW()',
+        )->execute([$id, $overall, $clean, $rules, $comms, $note]);
+        $at = (string) db()->query('SELECT rated_at FROM guest_ratings WHERE booking_id = ' . $id)->fetchColumn();
+        json_out(['ok' => true, 'at' => $at]);
+    } catch (\Throwable $e) {
+        // Pre-migration installs have no table; say so rather than a bare 500.
+        json_out(['error' => 'Could not save the rating — run the migrations (Manage → System check).'], 500);
+    }
 }
 
 if ($action === 'confirm_return_settled') {

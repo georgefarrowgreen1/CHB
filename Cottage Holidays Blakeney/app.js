@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 576;
+const ADMIN_BUNDLE_V = 577;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 235;
+const ADMIN_CSS_V = 236;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1828,6 +1828,19 @@ function mapBookingFromApi(row) {
         // The guest's own "we've left" tap (migration-120). '' = never tapped —
         // a SIGNAL the surfaces may add, never a state anything depends on.
         guestCheckedOutAt: row.guest_checked_out_at || '',
+        // The Guest Book (migration-121) — the owner's PRIVATE rating of this
+        // stay. Only the ADMIN payload carries gr_* (my-bookings never joins the
+        // table), so on the guest side this is always null by construction.
+        guestRating: row.gr_overall
+            ? {
+                  overall: parseInt(row.gr_overall, 10) || 0,
+                  clean: row.gr_clean || '',
+                  rules: row.gr_rules || '',
+                  comms: row.gr_comms || '',
+                  note: row.gr_note || '',
+                  at: row.gr_rated_at || '',
+              }
+            : null,
         // Guest register (UK hotel-records duty): status + count + the token form
         // link (owner opens it to view/edit the actual party). No PII here.
         regSubmitted: !!row.reg_submitted,
@@ -18389,7 +18402,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'checkout1';
+    const BUILD = 'gbook001';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

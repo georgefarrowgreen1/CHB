@@ -890,6 +890,53 @@ if (typeof ctx.cmdkIntent === 'function') {
         const lead = (q) => { const b = vm.runInContext(`cmdkBuildResults(${JSON.stringify(q)})`, ctx); return (b.results || [])[0] || {}; };
         check('pipeline: a repeat guest LEADS with the unified customer', lead('Sarah Wingate')._customer === true);
         check('pipeline: two same-name PEOPLE disambiguate (not merged)', !lead('John Smith')._customer && /bookings match that name/.test(lead('John Smith').label || ''));
+
+        // ---- The Guest Book (migration-121): the aggregation rules + the answer.
+        // The latest speaks and the history whispers; identity is STRONG only;
+        // the pause fires on ≤2★ or rules-poor and on nothing else.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[
+              {id:301,dbId:301,name:'Norah Neat',email:'rita@x.co',checkIn:'2025-05-10',checkOut:'2025-05-13',adults:2,children:0,payment:'paid',
+               guestRating:{overall:5,clean:'good',rules:'',comms:'',note:'lovely first stay',at:'2025-05-14 10:00:00'}},
+              {id:302,dbId:302,name:'Norah Neat',email:'rita@x.co',checkIn:'2026-06-01',checkOut:'2026-06-04',adults:2,children:0,payment:'paid',
+               guestRating:{overall:2,clean:'',rules:'',comms:'',note:'left it in a state',at:'2026-06-05 09:00:00'}},
+              {id:303,dbId:303,name:'Rules Roy',email:'roy@x.co',checkIn:'2026-06-10',checkOut:'2026-06-13',adults:2,children:0,payment:'paid',
+               guestRating:{overall:4,clean:'',rules:'poor',comms:'',note:'smoked on the patio',at:'2026-06-14 09:00:00'}},
+              {id:304,dbId:304,name:'Untidy Una',email:'una@x.co',checkIn:'2026-06-20',checkOut:'2026-06-23',adults:2,children:0,payment:'paid',
+               guestRating:{overall:4,clean:'poor',rules:'',comms:'',note:'',at:'2026-06-24 09:00:00'}},
+              {id:305,dbId:305,name:'Nameless Nell',checkIn:'2026-07-01',checkOut:'2026-07-04',adults:2,children:0,payment:'paid',
+               guestRating:{overall:1,clean:'',rules:'',comms:'',note:'',at:'2026-07-05 09:00:00'}}];
+            window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1;`, ctx);
+        const gbRita = vm.runInContext("chbGuestBookFor({email:'rita@x.co',name:'Norah Neat'})", ctx);
+        check('guest book: the LATEST stay speaks (2★ leads a 5★ history)',
+            !!gbRita && gbRita.latest.overall === 2 && gbRita.all.length === 2 && gbRita.all[1].overall === 5,
+            JSON.stringify(gbRita && gbRita.all.map((r) => r.overall)));
+        check('guest book: ≤2★ raises the pause', !!gbRita && gbRita.pause === true);
+        check('guest book: rules-poor pauses even at 4★ overall',
+            vm.runInContext("chbGuestBookFor({email:'roy@x.co'})", ctx).pause === true);
+        check('guest book: a poor CLEANLINESS mark alone never pauses (a pill, not a banner)',
+            vm.runInContext("chbGuestBookFor({email:'una@x.co'})", ctx).pause === false);
+        check('guest book: a name-only booking carries no rating at all (strong identity)',
+            vm.runInContext("chbGuestBookFor({name:'Nameless Nell'})", ctx) === null);
+        // The answer: best first for "best", worst first for "rated poorly" —
+        // and it is answers only (rows route to the customer, no action fires).
+        const gbBest = vm.runInContext("cmdkBuildResults('who are my best guests').results", ctx);
+        check('search answers "who are my best guests", best first',
+            /guests? in the book/.test((gbBest[0] || {}).label || '') && /Norah Neat|Rules Roy|Untidy Una/.test((gbBest[1] || {}).label || '')
+            && /★★★★/.test((gbBest[1] || {}).label || ''),
+            (gbBest[0] || {}).label + ' | ' + (gbBest[1] || {}).label);
+        // NB a name-only guest's own single-stay rating IS listed (strong
+        // identity governs MERGING, not whether one stay's rating exists) —
+        // so the 1★ Nell legitimately leads the worst-first ordering.
+        const gbWorst = vm.runInContext("cmdkBuildResults('guests i rated poorly').results", ctx);
+        check('…and "rated poorly" leads with the lowest',
+            /Nameless Nell/.test((gbWorst[1] || {}).label || '') && /★☆☆☆☆/.test((gbWorst[1] || {}).label || '')
+            && /Norah Neat/.test((gbWorst[2] || {}).label || '') && /★★☆☆☆/.test((gbWorst[2] || {}).label || ''),
+            (gbWorst[1] || {}).label + ' | ' + (gbWorst[2] || {}).label);
+        // The directory row whispers the star too.
+        const gbRows = vm.runInContext('cmdkSourceCustomers()', ctx);
+        const ritaRow = gbRows.find((r2) => /Norah Neat/.test(r2.label));
+        check('the directory row carries the latest star', !!ritaRow && /· ★2/.test(ritaRow.sub), ritaRow && ritaRow.sub);
         // Audit fix: the DIRECT insight regex no longer false-answers a cottage
         // FEATURE question (the NLU fallback is separately veto-gated once Darkstar
         // loads — see §20). Tests cmdkIntent so it's independent of the model.

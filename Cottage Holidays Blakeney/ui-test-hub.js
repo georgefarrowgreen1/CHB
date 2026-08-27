@@ -564,6 +564,113 @@ let approveWill409 = false;
   ok(planInEdit === 'none', `the plan fields hide in EDIT mode (${planInEdit})`);
   await page.evaluate(() => closeModal());
 
+  // ---------- A3b. THE GUEST BOOK (migration-121) ----------
+  // The rate card is a fold on PAST stays only; saving posts the validated
+  // write; the summary flips to the stars; an upcoming stay carries no card at
+  // all. Then the payoff: an enquiry whose guest's last stay was rated ≤2★ (or
+  // rules-poor) raises the amber pause — and the Approve button renders
+  // IDENTICALLY, the never-decides rule pinned where it could erode.
+  console.log('A3b. the guest book');
+  const gbPosts = [];
+  await page.route('**/bookings.php', (route) => {
+    let body = {};
+    try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+    if (body.action === 'rate_guest') {
+      gbPosts.push(body);
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, at: '2026-08-27 10:00:00' }) });
+    }
+    return route.fallback();
+  });
+  await page.evaluate(() => showDetails('21a', findBookingById('b3')));
+  await page.waitForTimeout(450);
+  const gb1 = await page.evaluate(() => ({
+    host: !!document.getElementById('gb-card-host'),
+    sum: (document.querySelector('#gb-card-host .bhub-fold-grp') || {}).textContent || '',
+  }));
+  ok(gb1.host && /Not rated/.test(gb1.sum), 'a past stay carries the Guest book fold, honestly unrated');
+  // Open the fold, rate 4★, mark House rules poor, save.
+  await page.evaluate(() => bhubFoldToggle('rating'));
+  await page.waitForTimeout(200);
+  await page.click('#gb-card-host .gb-star[aria-label="4 stars"]');
+  await page.waitForTimeout(200);
+  await page.evaluate(() => { const b2 = document.querySelector('#gb-card-host .gb-more'); if (b2) b2.click(); });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    const seg = document.querySelectorAll('#gb-card-host .gb-cat')[1]; // House rules
+    if (seg) seg.querySelectorAll('.gb-seg button')[1].click(); // Poor
+  });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => {
+    const ta = document.querySelector('#gb-card-host textarea');
+    if (ta) ta.value = 'Smoked on the patio.';
+    const btns = document.querySelectorAll('#gb-card-host button');
+    btns[btns.length - 1].click(); // Save to the guest book
+  });
+  await page.waitForTimeout(400);
+  const gb2 = await page.evaluate(() => ({
+    sum: (document.querySelector('#gb-card-host .bhub-fold-grp') || {}).textContent || '',
+  }));
+  ok(gbPosts.length === 1 && gbPosts[0].overall === 4 && gbPosts[0].rules === 'poor' && /patio/.test(gbPosts[0].note || ''),
+    `Save posts the validated write (${gbPosts[0] && gbPosts[0].overall}★, rules ${gbPosts[0] && gbPosts[0].rules})`);
+  ok(/★★★★☆/.test(gb2.sum), 'the summary flips to the stars');
+  // An UPCOMING stay: no card at all — you rate a stay once it's over.
+  await page.evaluate(() => showDetails('21a', findBookingById('b1')));
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => !document.getElementById('gb-card-host')), 'an upcoming stay carries no Guest book card');
+  // THE PAYOFF + THE PAUSE. Wire e7's email onto b3 and rate the stay 2★:
+  // the enquiry hub shows the rating and the amber pause; Approve stays a
+  // normal, enabled button. At 5★ the pause stands down.
+  await page.evaluate(() => {
+    const e = (enquiries || []).find((x) => String(x.id).replace('e', '') === '7');
+    const b2 = findBookingById('b3');
+    b2.email = e.email = 'gbook@x.co';
+    b2.guestRating = { overall: 2, clean: '', rules: '', comms: '', note: 'Left it in a state.', at: '2026-08-01 10:00:00' };
+    try { window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1; } catch (err) {}
+    return openEnquiryHub('e7');
+  });
+  await page.waitForTimeout(450);
+  const gb3 = await page.evaluate(() => ({
+    pause: (document.querySelector('.gb-pause') || {}).textContent || '',
+    stars: (document.querySelector('.gb-starline') || {}).textContent || '',
+    note: (document.querySelector('.gb-note') || {}).textContent || '',
+    approve: (() => { const b2 = document.querySelector('[data-act="approveEnquiry"]'); return b2 ? !b2.disabled : false; })(),
+  }));
+  ok(/Worth a pause/.test(gb3.pause) && /a memory, not a rule/.test(gb3.pause), `a 2★ last stay raises the pause (${gb3.pause.slice(0, 44).trim()}…)`);
+  ok(/★★☆☆☆/.test(gb3.stars) && /Left it in a state/.test(gb3.note), 'the enquiry shows your rating and your note');
+  ok(gb3.approve, 'NEVER DECIDES: Approve renders enabled exactly as for anyone else');
+  await page.evaluate(() => {
+    const b2 = findBookingById('b3');
+    b2.guestRating = { overall: 5, clean: 'good', rules: '', comms: '', note: '', at: '2026-08-01 10:00:00' };
+    try { window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1; } catch (err) {}
+    return openEnquiryHub('e7');
+  });
+  await page.waitForTimeout(400);
+  ok(await page.evaluate(() => !document.querySelector('.gb-pause') && /★★★★★/.test((document.querySelector('.gb-starline') || {}).textContent || '')),
+    'a 5★ guest reads as a quiet memory — no pause');
+  // Restore the FIXTURES' OWN values for the sections that follow (b3 =
+  // past@gmail.com, e7 = beta@gmail.com — deliberately distinct emails).
+  await page.evaluate(() => {
+    const e = (enquiries || []).find((x) => String(x.id).replace('e', '') === '7');
+    const b2 = findBookingById('b3');
+    delete b2.guestRating;
+    b2.email = 'past@gmail.com';
+    if (e) e.email = 'beta@gmail.com';
+    try { window.__chbDataGen = (Number(window.__chbDataGen) || 0) + 1; } catch (err) {}
+    // Stand the enquiry hub DOWN the app's own way: renderInbox's empty branch
+    // nulls __enqHubId (script-scoped — unreachable directly, the currentGuest
+    // rule) and clears #enquiry-hub-content. Without this, (a) the stale
+    // '.bhub-next' shadows the booking hub's in section B's document-wide
+    // selector (hidden views keep content; textContent reads pass through
+    // hidden), and (b) section J's auto-dock keeps e7 instead of picking the
+    // first row (Enq Alpha), whose message its checks read.
+    const saved = enquiries.splice(0, enquiries.length);
+    renderInbox();
+    enquiries.push(...saved);
+    renderInbox();
+  });
+  await page.unroute('**/bookings.php');
+
   // ---------- A4. payment plan at ADD time ----------
   console.log('A4. payment plan in the Add Booking flow');
   await page.evaluate(() => window.openAddBooking());
