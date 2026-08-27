@@ -459,6 +459,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await new Promise((r) => setTimeout(r, 300));
     const nf = {
       rows: document.querySelectorAll('#notify-prefs-body .acr-row .chb-switch input').length,
+      // Compare against the registry's OWN length, not a hand-count — a new
+      // category (checkout joined for the check-out tap) must not fail a
+      // literal that only ever described the list at one moment.
+      cats: (typeof NOTIFY_CATS !== 'undefined' && NOTIFY_CATS.length) || 0,
       quiet: document.querySelectorAll('#notify-prefs-body select.acw-pill').length,
     };
     settingsOpen('sms');
@@ -476,7 +480,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { fu, nf, sms, pay, away };
   });
   ok(p1.fu.ids && p1.fu.well, 'Follow-up emails: the REAL toggles wear the switch, in a well');
-  ok(p1.nf.rows === 4 && p1.nf.quiet === 2, `Notifications: the four categories are switch rows + quiet-hour pills (${p1.nf.rows}/${p1.nf.quiet})`);
+  ok(p1.nf.rows === p1.nf.cats && p1.nf.cats >= 4 && p1.nf.quiet === 2, `Notifications: every category is a switch row + quiet-hour pills (${p1.nf.rows}/${p1.nf.cats}/${p1.nf.quiet})`);
   ok(p1.sms.sw && p1.sms.wells === 2 && p1.sms.token === 'password', `Text messages: switch + two wells, the token stays write-only (${p1.sms.wells})`);
   ok(p1.pay.bumped === '26', `Payments: the deposit stepper bumps the input only — Save stays the write (${p1.pay.bumped})`);
   ok(p1.pay.twofa, 'Security: two-step sign-in is the switch on the real toggle');
