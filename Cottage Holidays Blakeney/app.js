@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 575;
+const ADMIN_BUNDLE_V = 576;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1825,6 +1825,9 @@ function mapBookingFromApi(row) {
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
         damagesReturned: parseFloat(row.damages_returned) || 0,
+        // The guest's own "we've left" tap (migration-120). '' = never tapped —
+        // a SIGNAL the surfaces may add, never a state anything depends on.
+        guestCheckedOutAt: row.guest_checked_out_at || '',
         // Guest register (UK hotel-records duty): status + count + the token form
         // link (owner opens it to view/edit the actual party). No PII here.
         regSubmitted: !!row.reg_submitted,
@@ -4448,6 +4451,7 @@ async function renderGuestBookings() {
                             <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
                             <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
                         </div>
+                        ${guestCheckoutBlockHtml(b, meta)}
                     </div>`);
         } else if (upcoming && !preArrivalShown && b.checkIn > todayStr) {
             // Soonest FUTURE stay (not in residence): the anticipation + planning
@@ -4691,6 +4695,51 @@ function guestDoorCodeHeroHtml(b) {
             </div>`;
     }
     return '';
+}
+// THE CHECK-OUT TAP: last morning only, asks first, guest-declared — a signal,
+// never a claim the cottage is empty. The server enforces the window again.
+function guestCheckoutTapTime(at) {
+    const m = /\b(\d{2}):(\d{2})/.exec(String(at) || '');
+    if (!m) return '';
+    let h = parseInt(m[1], 10);
+    const mins = m[2];
+    const half = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    return h + (mins === '00' ? '' : ':' + mins) + half;
+}
+function guestCheckoutBlockHtml(b, meta) {
+    if (!b || b.checkOut !== todayDashed()) return '';
+    const host = (typeof siteContent === 'object' && siteContent && siteContent['host-name']) || 'the owner';
+    if (b.guestCheckedOutAt) {
+        const t = guestCheckoutTapTime(b.guestCheckedOutAt);
+        return `<div class="hub-checkout is-done" role="status">
+                <div class="hub-co-tick" aria-hidden="true">✓</div>
+                <div class="hub-co-t1">Safe travels home — ${escapeHtml(host)} knows</div>
+                <div class="hub-co-t2">Checked out${t ? ' at ' + escapeHtml(t) : ''}. Thank you for staying with us.</div>
+            </div>`;
+    }
+    return `<div class="hub-checkout">
+            <button class="btn-primary hub-co-btn" ${chbAttrs('guestCheckoutTap', b.dbId)}>We've left the cottage</button>
+            <div class="hub-co-sub">One tap lets ${escapeHtml(host)} know ${escapeHtml((meta && meta.name) || 'the cottage')} is ready for its changeover.</div>
+        </div>`;
+}
+async function guestCheckoutTap(dbId) {
+    const host = (typeof siteContent === 'object' && siteContent && siteContent['host-name']) || 'the owner';
+    const okd = await glassConfirm(
+        `Have you left the cottage? We'll let ${host} know it's ready for its changeover — and if you tap this by mistake, just say so in the chat.`,
+        "Yes — we've left",
+    );
+    if (!okd) return;
+    try {
+        // Deterministic op id: a retry or second tap replays the stored success.
+        await apiPost('guest-checkout.php', {
+            action: 'left', booking_id: dbId, op_id: 'gco-' + dbId + '-' + todayDashed(),
+        });
+        // The refetch is the record — my-bookings now carries the stamp.
+        renderGuestBookings();
+    } catch (e) {
+        glassAlert((e && e.message) || "We couldn't send that just now — please try again, or message us.");
+    }
 }
 // The stay card's payline fold + the past-stays disclosure + the star-tap
 // review opener (tab 3/4 of the approved demo). The fold decides VISIBILITY,
@@ -18340,7 +18389,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'emailui1';
+    const BUILD = 'checkout1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

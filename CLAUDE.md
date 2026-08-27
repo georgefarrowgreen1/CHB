@@ -541,6 +541,57 @@ it at the last minute, so the ESCALATING DUTY is what stops it being forgotten.
   (the escalation both ways, the notification route, the read-only subject, the
   send path) — break-tested on the severity and the send branch.
 
+## The check-out tap (migration-120)
+
+**Asked for as "a check-out button that lets us know when the guest has left"
+(approved demo, "Build it").** On the LAST MORNING only, the in-residence hub
+carries "We've left the cottage": one tap records `guest_checked_out_at` and
+tells the owner the changeover can start — a push ("Jollyboat is yours again —
+Sarah tapped \"we've left\" at 9:41 — 19 minutes before checkout"), the hub
+when-line gaining `left 9:41 ✓`, and the deposit-return duty arriving at the
+tap instead of the checkout hour.
+- **A SIGNAL, NEVER A CLAIM.** What is recorded and told is that the GUEST
+  TAPPED — every surface says "left 9:41 ✓ (guest-declared)", never that the
+  cottage is empty or inspected. And NOTHING depends on it: the duty gate is
+  `hasCheckedOut(b) || b.guestCheckedOutAt` — additive only, so an untapped
+  stay renders and behaves byte-for-byte as before (break-tested both ways).
+- **THE WRITE HAS ITS OWN DOOR** (`guest-checkout.php`, posture `guest`) —
+  my-bookings.php stays read-only (its 405 is a tested decision). The server
+  re-enforces the window BOTH ways (before the last morning: "the button
+  hasn't unlocked"; after the stay: "already ended", so a late tap never
+  re-notifies), ownership is the session guest's own email (plain equality —
+  the migration-112 collation rule), and the tap rides the op ledger with a
+  DETERMINISTIC id (`gco-<id>-<date>`) so a poor-signal retry replays the
+  stored success. The UPDATE is COALESCE (two devices racing keep the FIRST
+  time, and the time TOLD is re-read so it is the time KEPT); a fresh second
+  tap answers `already` with the original time — a guest doing the right thing
+  twice must never read an error. The already/replay branches exit BEFORE the
+  tell, which is what §30's one-activity-row checks measure.
+- **THE CLIENT TRUSTS THE REFETCH AS THE RECORD**: `guestCheckoutTap` posts
+  then calls `renderGuestBookings()`, which re-reads my-bookings (now carrying
+  the stamp). A local cache patch was written first and DELETED — the refetch
+  overwrites it, so it could only ever disagree (the ui gate caught exactly
+  that: tick rendered from the stub's unstamped row = empty).
+- **The push is a normal owner alert**: category `checkout` (joined
+  NOTIFY_CATS, so it is mutable; notify_should_push treats an unknown key as
+  allowed, so older prefs need no migration), per-booking tag, deep link
+  `?open=booking-<id>`, email fallback. Best-effort in a try — the record
+  stands whatever happens to the notification.
+- **The button's whole life is one window**: it renders only when
+  `b.checkOut === todayDashed()`, and after the checkout HOUR the in-residence
+  card itself stands down (isInResidence is time-aware) — so the ui gate pins
+  the clock to 08:30 with `page.clock.setFixedTime`, and search-test's duty
+  case pins `ukNowMinutes` in the vm rather than writing a 23:59 fixture (the
+  documented one-minute-a-day trap).
+- Gates: **test-integration §30** (ownership, the window both ways, the tap +
+  ONE activity row, op-ledger replay and the graceful already — both leaving
+  the alert count at one), **ui-test-yourstay §34** (the button's window, the
+  ask-first confirm, backing out sends nothing, the deterministic op id, the
+  tick from the refetch, the mid-stay ABSENCE — break-tested by deleting the
+  day gate), and **search-test A3** (the duty arrives at the tap, labelled
+  guest-declared; the untapped twin left alone — break-tested by reverting the
+  OR).
+
 ## The overnight queue — "Ready for you" (migration-115)
 
 **Asked for as "built this, give the option of a turn off/on toggle in settings"**,

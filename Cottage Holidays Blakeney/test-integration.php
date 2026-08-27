@@ -3952,6 +3952,67 @@ it_check('…and with a slot free it holds the wait as before (' . round($elapse
     ($r['json']['ok'] ?? false) === true && $elapsed2 >= 1.5, 'elapsed=' . round($elapsed2, 2));
 $slotDb = null;
 
+// ── §30 The check-out tap — the guest's own "we've left", through the real door ──
+// guest-checkout.php in every direction: ownership, the last-morning window
+// both ways, exactly-once (op-ledger replay AND a fresh second tap), and that
+// the owner is told ONCE — the activity row is the observable half of the tell,
+// written beside alert_owner in the same try.
+echo "\n== \u{00A7}30 the check-out tap ==\n";
+$coToday = date('Y-m-d');
+$coYest = date('Y-m-d', strtotime('-1 day'));
+$coTom = date('Y-m-d', strtotime('+1 day'));
+$coIn = date('Y-m-d', strtotime('-3 days'));
+// Three stays on one guest email: leaving TODAY (the live one), leaving
+// tomorrow (button locked), left yesterday (moot).
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Tap Guest','tapguest@gmail.com','$coIn','$coToday',2,0,'paid',400,400,400,0,3)");
+$coId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Tap Guest','tapguest@gmail.com','$coYest','$coTom',2,0,'paid',400,400,400,0,2)");
+$coTomId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Tap Guest','tapguest@gmail.com','2026-01-02','$coYest',2,0,'paid',400,400,400,0,2)");
+$coPastId = (int) $rootDb->lastInsertId();
+// Sign the guest in the real way (register → unverified → magic link, the §19 recipe).
+$coJar = [];
+http($coJar, 'POST', '/auth.php', ['action' => 'guest_register', 'name' => 'Tap Guest', 'email' => 'tapguest@gmail.com',
+    'password' => 'longenough1', 'address' => '1 Tap Lane', 'postcode' => 'NR25 7AB']);
+$coGid = (int) $rootDb->query("SELECT id FROM guests WHERE email = 'tapguest@gmail.com'")->fetchColumn();
+$coTs = time();
+$coTok = substr(hash_hmac('sha256', 'login:' . $coGid . ':' . $coTs, $SECRET), 0, 32);
+http($coJar, 'POST', '/auth.php', ['action' => 'guest_magic_consume', 'guest_id' => $coGid, 'ts' => $coTs, 'token' => $coTok]);
+// No session at all → 401 before anything is looked at.
+$anon = [];
+$r = http($anon, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-anon-000001']);
+it_check('§30 no session → 401', $r['code'] === 401, $r['raw']);
+// Another guest's session cannot tap someone else's stay.
+$r = http($gj2, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-wrong-000001']);
+it_check('§30 someone else\'s booking → 404, nothing recorded', $r['code'] === 404
+    && $rootDb->query("SELECT guest_checked_out_at FROM bookings WHERE id = $coId")->fetchColumn() === null, $r['raw']);
+// The window, both ways — a stale tab cannot check out on the wrong day.
+$r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coTomId, 'op_id' => 'gco-early-000001']);
+it_check('§30 before the last morning → 409, the button hasn\'t unlocked',
+    $r['code'] === 409 && strpos((string) ($r['json']['error'] ?? ''), 'last morning') !== false, $r['raw']);
+$r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coPastId, 'op_id' => 'gco-late-0000001']);
+it_check('§30 after the stay → 409, already ended', $r['code'] === 409
+    && strpos((string) ($r['json']['error'] ?? ''), 'already ended') !== false, $r['raw']);
+// The real tap: recorded, timestamped, and the owner told once (the activity
+// row is written in the same breath as alert_owner).
+$r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-' . $coId . '-' . $coToday]);
+$coAt = (string) ($r['json']['at'] ?? '');
+it_check('§30 the last-morning tap records and answers the time', ($r['json']['ok'] ?? false) === true && $coAt !== ''
+    && (string) $rootDb->query("SELECT guest_checked_out_at FROM bookings WHERE id = $coId")->fetchColumn() === $coAt, $r['raw']);
+$coActs = fn() => (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'guest.checkout' AND entity_id = '$coId'")->fetchColumn();
+it_check('§30 …and the owner is told (one activity row beside the alert)', $coActs() === 1);
+// Exactly-once, both shapes: the SAME op id replays the stored answer, and a
+// FRESH second tap is answered gracefully with the original time — neither
+// re-notifies (the already/replay branches exit before the tell).
+$r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-' . $coId . '-' . $coToday]);
+it_check('§30 a poor-signal retry replays the stored success (same time, no second alert)',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['at'] ?? '') === $coAt
+    && ($r['json']['replayed'] ?? false) === true && $coActs() === 1, $r['raw']);
+$r = http($coJar, 'POST', '/guest-checkout.php', ['action' => 'left', 'booking_id' => $coId, 'op_id' => 'gco-fresh-000002']);
+it_check('§30 a fresh second tap is a graceful "already" with the ORIGINAL time, still one alert',
+    ($r['json']['ok'] ?? false) === true && ($r['json']['already'] ?? false) === true
+    && ($r['json']['at'] ?? '') === $coAt && $coActs() === 1, $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

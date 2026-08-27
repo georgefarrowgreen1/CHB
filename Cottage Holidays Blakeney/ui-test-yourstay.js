@@ -1009,6 +1009,91 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `…and their icons sit at the same height inside — the reported 3px lift (${pill && JSON.stringify(pill.map((r) => r.icon))})`);
   await pillPage.close();
 
+  // 34) THE CHECK-OUT TAP. The button exists on the LAST MORNING only (clock
+  // pinned 08:30 — after the checkout hour the in-residence card itself stands
+  // down, so the button's whole life is that window); it asks first; the tick
+  // renders after the confirmed tap; and a mid-stay card renders EXACTLY as
+  // today — no block at all, because nothing depends on this feature.
+  console.log('\n34. The check-out tap');
+  const coAt = new Date(); coAt.setHours(8, 30, 0, 0);
+  let coPage = await openPage({ name: 'Tap Guest', email: 'tap@x.co' },
+    [mk('jollyboat', d(-2), d(0), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))],
+    { at: coAt });
+  const coPosts = [];
+  let coTapped = false;
+  await coPage.route('**/guest-checkout.php*', (route) => {
+    let body = {};
+    try { body = JSON.parse(route.request().postData() || '{}'); } catch (e) {}
+    coPosts.push(body);
+    coTapped = true;
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, at: d(0) + ' 08:31:00' }) });
+  });
+  // The app trusts the REFETCH as the record — after the tap, my-bookings
+  // answers with the stamped row, exactly as the real server does.
+  await coPage.route('**/my-bookings.php*', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, enquiries: [], completed_stays: 0,
+      bookings: [Object.assign(mk('jollyboat', d(-2), d(0), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+        coTapped ? { guest_checked_out_at: d(0) + ' 08:31:00' } : {})] }),
+  }));
+  const co1 = await coPage.evaluate(() => ({
+    block: !!document.querySelector('.my-stay-hub .hub-checkout'),
+    btn: (document.querySelector('.hub-co-btn') || {}).textContent || '',
+    tick: !!document.querySelector('.hub-checkout.is-done'),
+  }));
+  ok(co1.block && /We've left the cottage/.test(co1.btn) && !co1.tick,
+    `the last morning carries the button (${co1.btn.trim()})`);
+  // The tap ASKS first — and "Not yet" sends nothing.
+  await coPage.click('.hub-co-btn');
+  await coPage.waitForTimeout(300);
+  const coAsk = await coPage.evaluate(() => ({
+    open: document.getElementById('glass-dialog').classList.contains('open'),
+    msg: (document.getElementById('glass-dialog-msg') || {}).textContent || '',
+    ok: (document.getElementById('glass-dialog-ok') || {}).textContent || '',
+  }));
+  ok(coAsk.open && /Have you left the cottage\?/.test(coAsk.msg) && /we've left/i.test(coAsk.ok),
+    `it asks first and names the consequence (${coAsk.ok.trim()})`);
+  await coPage.click('#glass-dialog-cancel');
+  await coPage.waitForTimeout(250);
+  ok(coPosts.length === 0, 'backing out sends nothing');
+  // The real tap: confirm → the write → the tick state replaces the button.
+  await coPage.click('.hub-co-btn');
+  await coPage.waitForTimeout(250);
+  await coPage.click('#glass-dialog-ok');
+  await coPage.waitForTimeout(600);
+  const co2 = await coPage.evaluate(() => ({
+    tick: !!document.querySelector('.hub-checkout.is-done'),
+    words: (document.querySelector('.hub-checkout.is-done') || {}).textContent || '',
+    btn: !!document.querySelector('.hub-co-btn'),
+  }));
+  ok(coPosts.length === 1 && coPosts[0].action === 'left' && /^gco-\d+-\d{4}-\d{2}-\d{2}$/.test(coPosts[0].op_id || ''),
+    `the confirmed tap posts once with the deterministic op id (${coPosts[0] && coPosts[0].op_id})`);
+  ok(co2.tick && !co2.btn && /Safe travels home/.test(co2.words) && /8:31am/.test(co2.words),
+    `…and the tick replaces the button with the recorded time (${co2.words.trim().slice(0, 60)})`);
+  await coPage.close();
+  // Mid-stay: NO block at all — an untapped, un-final morning renders exactly
+  // as it did before this feature existed.
+  coPage = await openPage({ name: 'Mid Stay', email: 'mid@x.co' },
+    [mk('jollyboat', d(-1), d(3), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced))],
+    { at: coAt });
+  ok(await coPage.evaluate(() => !document.querySelector('.hub-checkout')),
+    'a mid-stay card carries no check-out block at all');
+  await coPage.close();
+  // Already tapped (the payload says so): the tick renders directly, no button.
+  coPage = await openPage({ name: 'Done Guest', email: 'done@x.co' },
+    [Object.assign(mk('jollyboat', d(-2), d(0), Object.assign({ payment: 'paid', deposit_paid: 400 }, priced)),
+      { guest_checked_out_at: d(0) + ' 07:55:00' })],
+    { at: coAt });
+  const co3 = await coPage.evaluate(() => ({
+    tick: !!document.querySelector('.hub-checkout.is-done'),
+    btn: !!document.querySelector('.hub-co-btn'),
+    words: (document.querySelector('.hub-checkout.is-done') || {}).textContent || '',
+  }));
+  ok(co3.tick && !co3.btn && /7:55am/.test(co3.words),
+    `a stay already tapped renders the tick straight from the payload (${co3.words.trim().slice(0, 50)})`);
+  await coPage.close();
+
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
   await done(fails);
 })();

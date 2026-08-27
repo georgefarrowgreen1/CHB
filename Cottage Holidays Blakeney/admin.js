@@ -11356,7 +11356,7 @@ function renderBookingHub() {
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${past ? ' · past stay' : ''}</div>
+                    <div class="bhub-sub">${escapeHtml(fmtStayRange(b.checkIn, b.checkOut))} · ${nights} night${nights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''}${b.checkInTime || b.checkOutTime ? ` · <span class="bhub-nowrap">in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</span>` : ''}${b.guestCheckedOutAt ? ` · <span class="bhub-nowrap" title="The guest tapped “we've left” — guest-declared, not inspected">left ${escapeHtml(guestCheckoutTapTime(b.guestCheckedOutAt) || 'early')} ✓</span>` : past ? ' · past stay' : ''}</div>
                     ${changeover}
                 </div>
                 ${editMenu}
@@ -17327,6 +17327,7 @@ const NOTIFY_CATS = [
     ['money', 'Payments and money'],
     ['enquiries', 'New enquiries'],
     ['messages', 'Guest messages'],
+    ['checkout', 'Guest check-outs'],
     ['system', 'Site and system notices'],
 ];
 function notifyPrefs() {
@@ -19413,11 +19414,17 @@ function chbDuties() {
             // hub's own banner, and never a duty. Measured: Payments said two to
             // return, Today said one, the assistant said none. damageHeld is the
             // one definition of what is actually held.
-            if (damageHeld(k, b).held > 0.005 && hasCheckedOut(b)) {
+            // THE TAP BRINGS THE DUTY FORWARD: a guest who pressed "we've left"
+            // at 9:41 makes the deposit returnable at 9:41, not at the checkout
+            // hour. Additive only — an untapped stay keeps the time-aware gate,
+            // so nothing ever WAITS on a guest tapping.
+            if (damageHeld(k, b).held > 0.005 && (hasCheckedOut(b) || b.guestCheckedOutAt)) {
                 out.push({
                     kind: 'deposit', sev: 'warn', ic: 'deposit',
                     label: `Return ${b.name || 'the guest'}’s damages deposit`,
-                    sub: `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
+                    sub: !hasCheckedOut(b) && b.guestCheckedOutAt
+                        ? `Left ${guestCheckoutTapTime(b.guestCheckedOutAt) || 'this morning'} ✓ (guest-declared) · ${pname(k)}`
+                        : `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
                     act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
                     board: 'money', scope: 'money',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
