@@ -654,6 +654,14 @@ body.guest-app:not(.owner-mode) .chat-fab {
 body.guest-app:not(.owner-mode):has(#chat-widget.open) #guest-msg-fab {
   display: none;
 }
+/* And on the privacy policy — the one page whose PROSE runs full-width to the
+   edge, so the bubble sat on the line-ends of text being read (found in the
+   audit's screenshot pass). A legal document being readable beats a chat
+   shortcut this one view; every other view keeps the pill. Same :has mechanism
+   as the chat rule above, keyed on the ACTIVE view. */
+body.guest-app:not(.owner-mode):has(#view-privacy.page-view.active) #guest-msg-fab {
+  display: none;
+}
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
    just belt-and-braces — visibility never depends on the animation running. */
