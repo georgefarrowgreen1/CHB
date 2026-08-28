@@ -408,7 +408,15 @@ body.light-mode {
   /* .prop-tag's stacked-context margin-bottom:12px lifted it 6px above the chip beside
      it (centres 523 vs 529) — this row's `gap` is the spacing. */
   margin-bottom: 0;
-}.bk-row-name {
+}
+/* A wide Payments & balances row has 3 flex items (tag + pay pill + "Arrives Nd"),
+   and space-between floated the pay pill to the dead centre — margin-right:auto on
+   the tag groups both chips on the right rail. Desktop only; below 900 the row
+   wraps and the verified phone layout is left untouched. */
+@media (min-width: 900px) {
+  #money-panel .bk-row-top .prop-tag { margin-right: auto; }
+}
+.bk-row-name {
   font-size: 1rem;
   line-height: 1.3;
   white-space: nowrap;
@@ -5142,6 +5150,19 @@ body.rail-on.admin-screen #money-overview .bhub-fold-grp,
 body.rail-on.admin-screen #money-overview .bhub-grpcap,
 body.rail-on.admin-screen #money-overview > .glass-panel,
 body.rail-on.admin-screen #money-overview .mo-pulse {
+  margin-left: 0;
+}
+/* The "More" caption + group sit just OUTSIDE #money-overview, so the rail rule
+   above never reached them: they stayed centred while the answers went flush-left.
+   Same regime as the answers — centred on the 640 column, flush-left on rail. */
+#accounts-index > .bhub-grpcap,
+#accounts-index > .settings-group {
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+body.rail-on.admin-screen #accounts-index > .bhub-grpcap,
+body.rail-on.admin-screen #accounts-index > .settings-group {
   margin-left: 0;
 }
 .mo-row { background: none; border: none; font: inherit; width: 100%; cursor: pointer; text-align: left; }
