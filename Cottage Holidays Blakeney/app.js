@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 579;
+const ADMIN_BUNDLE_V = 580;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3447,7 +3447,7 @@ async function saveGuestProfile() {
         return;
     }
     if (!isUkPostcode(postcode)) {
-        show('Please enter a valid UK postcode.', false);
+        show('Please enter a valid UK postcode. Outside the UK? Message us and we can help.', false);
         return;
     }
     try {
@@ -3688,7 +3688,7 @@ async function guestRegister() {
         return;
     }
     if (!isUkPostcode(postcode)) {
-        showErr('Please enter a valid UK postcode.');
+        showErr('Please enter a valid UK postcode. Outside the UK? Message us and we can help.');
         return;
     }
     if (password.length < 4) {
@@ -5293,23 +5293,22 @@ function payDoneNextRender(res, rem) {
     const rows = [
         payJourneyRow('done', payState.kind === 'deposit' ? 'Your dates are confirmed' : 'Payment received', 'A receipt is on its way to your inbox', ''),
     ];
-    if (rem > 0.005) {
-        // THE JOURNEY'S OWN VOCABULARY, or the promise before and after the payment are
-        // two documents. `rem` is the remainder of THIS ASK, so on a part-paid DEPOSIT
-        // it is the rest of the deposit — calling it "Balance" misnames it AND deletes
-        // the real balance the journey had just shown. jCtx still holds it, so say both.
-        const ctx = payState.jCtx;
-        const depPart = ctx && ctx.kind === 'deposit';
-        rows.push(
-            apo && apo.ok
-                ? payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, '')
-                : depPart
-                  ? payJourneyRow('dim', `Rest of your deposit ${gbp(rem)}`, 'Still to pay — any time from your booking page', '')
-                  : payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''),
-        );
-        // …and the stay's own balance, which a deposit ask never covered.
-        if (depPart && Number(ctx.rest || 0) > 0.005) {
+    // Gate each row on the FACT it states, not on `rem`: a whole DEPOSIT pays
+    // rem=0, so `if (rem>0.005)` deleted the balance, its date and the arranged
+    // row the journey had just shown. jCtx still holds the stay balance.
+    const ctx = payState.jCtx;
+    const dep = ctx && ctx.kind === 'deposit';
+    if (apo && apo.ok) {
+        rows.push(payJourneyRow('dim', 'The rest is arranged', apo.monthly ? `${gbp(apo.per)} monthly from ${fmtDate(apo.next)} — an email before each one` : `${gbp(apo.per)} collected automatically on ${fmtDate(apo.due)}`, ''));
+    } else {
+        if (dep && rem > 0.005) {
+            rows.push(payJourneyRow('dim', `Rest of your deposit ${gbp(rem)}`, 'Still to pay — any time from your booking page', ''));
+        }
+        // The stay balance still to come — jCtx on a deposit ask, else `rem`.
+        if (dep && Number(ctx.rest || 0) > 0.005) {
             rows.push(payJourneyRow('dim', `Balance ${gbp(ctx.rest)}`, ctx.due ? `Due by ${fmtDate(ctx.due)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
+        } else if (!dep && rem > 0.005) {
+            rows.push(payJourneyRow('dim', `Balance ${gbp(rem)}`, payState.jDue ? `Due by ${fmtDate(payState.jDue)} — we'll email a reminder` : "We'll email a reminder before your stay", ''));
         }
     }
     rows.push(payJourneyRow('dim', 'Arrival details a week before', 'Directions, entry and everything you need', ''));
@@ -12487,6 +12486,14 @@ function enquireContinue() {
         setEnqMsg('review', ruleErr);
         return;
     }
+    // The taken-dates check, same as enqFirstProblem runs at Send — a seeded range
+    // (hero search / a restored draft) can cross a booking, and without this the
+    // guest filled the whole form before the clash surfaced at the last rung.
+    const takenRanges = /** @type {Array<{start:string,end:string}>} */ (propertyAvailability[activeFrontProperty] || []);
+    if (takenRanges.some((r) => r.start < co && r.end > ci)) {
+        setEnqMsg('review', 'Sorry, those dates have just been taken — please choose different dates.');
+        return;
+    }
     const adults = Math.max(
         1,
         parseInt((document.getElementById('enq-adults') || {}).value, 10) || 0,
@@ -12741,14 +12748,37 @@ function availChipHtml(gapStart, tomorrow) {
         ? `<span class="avail-chip now"><span class="dot"></span>Available from tomorrow</span>`
         : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(gapStart)}</span>`;
 }
+// First date in a free gap that is a permitted arrival day AND leaves minNights,
+// so the chip/late-strip never offer a check-in the enquiry form then refuses.
+// No arrival rule → the gap's start; none fits → null (try the next gap).
+function firstArrivalInGap(gap, minN, arrivalDays) {
+    if (!Array.isArray(arrivalDays) || arrivalDays.length === 0) return gap.start;
+    const s = dpParse(gap.start);
+    const latest = gap.nights - Math.max(1, minN);
+    for (let off = 0; off <= latest; off++) {
+        const d = new Date(s.getFullYear(), s.getMonth(), s.getDate() + off);
+        if (arrivalDays.includes(d.getDay())) return formatDashed(d);
+    }
+    return null;
+}
 function renderCardAvailability() {
     if (!publicAllAvailability) return;
     const tomorrow = ukShiftDays(todayDashed(), 1);
     liveCottageKeys().forEach((k) => {
         if (!(k in publicAllAvailability)) return;
-        const minN = Math.max(1, (propertyRates[k] && propertyRates[k].minNights) || 1);
+        const rules = propertyRates[k] || {};
+        const minN = Math.max(1, rules.minNights || 1);
+        const arrivalDays = Array.isArray(rules.arrivalDays) ? rules.arrivalDays : [];
         const gaps = freeGaps(publicAllAvailability[k], AVAIL_SCAN_DAYS, minN);
-        const html = availChipHtml(gaps.length ? gaps[0].start : '', tomorrow);
+        let firstStart = '';
+        for (const g of gaps) {
+            const s = firstArrivalInGap(g, minN, arrivalDays);
+            if (s) {
+                firstStart = s;
+                break;
+            }
+        }
+        const html = availChipHtml(firstStart, tomorrow);
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = html;
@@ -12764,25 +12794,34 @@ function renderLateAvailability() {
         el.innerHTML = '';
         return;
     }
-    let best = null;
+    let best = /** @type {{k:string, g:{start:string,nights:number}, rules:any}|null} */ (null);
     liveCottageKeys().forEach((k) => {
         if (!(k in publicAllAvailability)) return;
-        const minN = Math.max(2, (propertyRates[k] && propertyRates[k].minNights) || 1);
+        const rules = propertyRates[k] || {};
+        const minN = Math.max(2, rules.minNights || 1);
+        const arrivalDays = Array.isArray(rules.arrivalDays) ? rules.arrivalDays : [];
         const g = freeGaps(publicAllAvailability[k], 14, minN)[0];
+        if (!g) return;
+        // Offer a permitted arrival day only; keep the offered start for the gap maths.
+        const start = firstArrivalInGap(g, minN, arrivalDays);
+        if (!start) return;
+        const offered = { start, nights: g.nights - Math.round((dpParse(start).getTime() - dpParse(g.start).getTime()) / 864e5) };
         if (
-            g &&
-            (!best ||
-                g.start < best.g.start ||
-                (g.start === best.g.start && g.nights > best.g.nights))
+            !best ||
+            offered.start < best.g.start ||
+            (offered.start === best.g.start && offered.nights > best.g.nights)
         )
-            best = { k, g };
+            best = { k, g: offered, rules };
     });
     if (!best) {
         el.innerHTML = '';
         return;
     }
     const name = (propertyMeta[best.k] && propertyMeta[best.k].name) || best.k;
-    const nights = Math.min(best.g.nights, 7);
+    // Clamp to the cottage's MAXIMUM stay too, or the seeded stay is one the form
+    // then refuses ("maximum stay of N nights").
+    const maxN = Math.max(0, parseInt(best.rules.maxNights, 10) || 0);
+    const nights = Math.min(best.g.nights, 7, maxN > 0 ? maxN : 7);
     const co = formatDashed(
         new Date(
             dpParse(best.g.start).getFullYear(),
@@ -16157,7 +16196,7 @@ function enqFirstProblem(propKey) {
         return { msg: 'Please give an email address or phone number so we can reply.', focus: 'enq-email' };
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))
         return { msg: 'That email address doesn’t look right — please check it.', focus: 'enq-email' };
-    if (!isUkPostcode(postcode)) return { msg: 'Please enter a valid UK postcode.' };
+    if (!isUkPostcode(postcode)) return { msg: 'Please enter a valid UK postcode. Outside the UK? Message us and we can help.' };
     if (!message)
         return { msg: 'Please tell us a little about your party before sending your enquiry.', focus: 'enq-message' };
     if (checkOut <= checkIn) return { msg: 'Your check-out date must be after your check-in date.' };
@@ -16201,7 +16240,7 @@ function enqLiveSync() {
         el.textContent = prob.msg;
         return;
     }
-    let line = 'No payment now — we usually reply within a few hours to confirm availability.';
+    let line = 'No payment now — George usually replies the same day to confirm availability.';
     const ci = dpVal('enq-checkin');
     const co = dpVal('enq-checkout');
     if (ci && co && co > ci) {
@@ -16617,6 +16656,17 @@ async function submitEnquiry(propKey) {
                 ? 'A call to confirm your dates & price, and how to pay'
                 : 'An email confirming your dates & price, with a secure payment link';
         }
+        // The "Then" row must match step 1: an in-window stay pays in full.
+        const thenEl = document.getElementById('enq-sched-then');
+        if (thenEl) {
+            try {
+                const p = priceBreakdown(propKey, 2, 0, checkIn, checkOut);
+                const inWindow = p && p.rentalTotal > 0 && enqDepositDue(p, checkIn).inWindow;
+                thenEl.textContent = inWindow
+                    ? 'Pay in full and the cottage is yours — we’ll look after the rest'
+                    : 'Pay the deposit and the cottage is yours — we’ll look after the rest';
+            } catch (e) {}
+        }
         // If this email already has an account, show "sign in" instead of "create".
         const exists = !!(enqResp && enqResp.account_exists);
         const newBlk = document.getElementById('enq-acct-new');
@@ -16654,7 +16704,7 @@ async function submitEnquiry(propKey) {
         closeEnquireModal();
     } catch (e) {}
     enquireDraftClear();
-    toast('Enquiry sent — we usually reply within a few hours to confirm availability.');
+    toast('Enquiry sent — George usually replies the same day to confirm availability.');
     // Signed-in guests land on My Stays where the new enquiry card is waiting —
     // a real confirmation surface instead of a toast over the cottage page.
     if (currentGuest) {
@@ -18411,7 +18461,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'calfix1';
+    const BUILD = 'guestfx1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
