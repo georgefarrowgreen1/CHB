@@ -37,10 +37,12 @@ function wl_send($row)
         return ['ok' => false, 'error' => 'no mailer'];
     }
     $name = wl_prop_name($row['prop_key']);
-    // Dates read DD/MM/YYYY like every other guest email (raw ISO leaked here).
+    // Guest emails SPEAK their dates (email_date → "Sun 6 Sep 2026"): this is prose
+    // read once and acted on, the case the house rule reserves the weekday form for,
+    // not a stacked schedule column. uk_date's DD/MM here also risked a US misread.
     $prettyDates =
         $row['check_in'] && $row['check_out']
-            ? ' for ' . uk_date($row['check_in']) . ' to ' . uk_date($row['check_out'])
+            ? ' for ' . email_date($row['check_in']) . ' to ' . email_date($row['check_out'])
             : '';
     $guest = $row['name'] ?: 'there';
     $text =

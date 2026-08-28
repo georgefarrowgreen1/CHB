@@ -641,6 +641,10 @@ function autopay_send_receipt($b, $sqId, $rental, $damages, $paidSoFar = null)
             'total' => $total,
             'paid_so_far' => $paid,
             'balance' => round(max(0, $total - $paid), 2),
+            // A monthly plan collects a SLICE, not the whole balance — so this
+            // instalment must not read "Balance collected" over "Remaining balance
+            // £Y". partial is true whenever money is still to come after this one.
+            'partial' => !($total > 0 && $paid >= $total - 0.001),
             // The date the plan is working towards. NB no 'pay_url' on this path,
             // deliberately: the rest is collected automatically, so a "pay the
             // rest now" button beside "nothing to do" would contradict it.

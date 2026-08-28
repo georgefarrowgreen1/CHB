@@ -466,6 +466,10 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             'total' => $total,
             'damages_deposit' => $deposit,
             'payment' => $b['payment'],
+            // The guest's rail (payment_rail reads this): a cash/BACS guest's
+            // re-sent confirmation must offer bank details, not a Square card
+            // link. Omitting it left the rail guard reading '' → 'card' always.
+            'payment_method' => $b['payment_method'] ?? '',
             'ref' => $ref,
             // The booking's own id, so the confirmation can sign a pay link and
             // the owner copy can link straight to the hub. Without it both

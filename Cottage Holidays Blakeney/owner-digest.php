@@ -260,7 +260,10 @@ $m = owner_digest_body([
 
 $res = send_owner($subject, $text, $html);
 
-if (!empty($res['ok']) || $res === true) {
+// Stamp on delivered OR queued: a failed morning send that queued to the outbox
+// must still suppress a same-day resend (a noon cron or deploy ping), or the
+// queued copy drains AND the resend delivers — the owner gets the digest twice.
+if (!empty($res['ok']) || $res === true || !empty($res['queued'])) {
     // Record the send so we don't repeat today (store as JSON so content_value reads it back).
     try {
         db()

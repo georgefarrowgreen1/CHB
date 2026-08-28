@@ -100,6 +100,16 @@ function uk_date($iso)
     $t = strtotime((string) $iso);
     return $t ? date('d/m/Y', $t) : (string) $iso;
 }
+// wl_send SPEAKS its dates now (email_date), like every other guest email — this
+// stub mirrors the real "Sun 6 Sep 2026" shape closely enough for the assertions.
+function email_date($iso, $withYear = true)
+{
+    $t = strtotime((string) $iso);
+    if (!$t) {
+        return (string) $iso;
+    }
+    return $withYear ? date('D j M Y', $t) : date('D j M', $t);
+}
 // email_shell / email_h / email_p / email_btn / prop_display / site_base_url are
 // deliberately NOT defined: wl_send guards on function_exists for all of them, so
 // leaving them out drives the plain-text fallback as well as the branded path.
@@ -125,8 +135,13 @@ function wl_sent($i = 0)
     global $WL_SENT;
     return $WL_SENT[$i] ?? ['to' => '', 'subject' => '', 'text' => '', 'html' => null];
 }
+// The freed range must be in the FUTURE (waitlist_notify_freed refuses a past
+// range — a past booking's deletion is not a space that opened). Derived from
+// today, never a fixed literal, so the gate is verified every day it runs.
+$WL_FROM = date('Y-m-d', strtotime('+30 days'));
+$WL_TO = date('Y-m-d', strtotime('+34 days'));
 $WAITING = [
-    ['id' => 1, 'prop_key' => 'jollyboat', 'name' => 'Ada Bell', 'email' => 'ada@example.test', 'check_in' => '2026-08-10', 'check_out' => '2026-08-14'],
+    ['id' => 1, 'prop_key' => 'jollyboat', 'name' => 'Ada Bell', 'email' => 'ada@example.test', 'check_in' => $WL_FROM, 'check_out' => $WL_TO],
     ['id' => 2, 'prop_key' => 'jollyboat', 'name' => 'Ben Cole', 'email' => 'ben@example.test', 'check_in' => null, 'check_out' => null],
 ];
 
@@ -147,11 +162,11 @@ echo "\n-- a freeing needs a cottage AND a range --\n";
 wl_reset(['rows' => $WAITING]);
 chk('no dates at all → nobody is emailed', waitlist_notify_freed('jollyboat', '', '') === 0 && !$WL_SENT);
 wl_reset(['rows' => $WAITING]);
-chk('...nor with only a start', waitlist_notify_freed('jollyboat', '2026-08-10', '') === 0 && !$WL_SENT);
+chk('...nor with only a start', waitlist_notify_freed('jollyboat', $WL_FROM, '') === 0 && !$WL_SENT);
 wl_reset(['rows' => $WAITING]);
-chk('...nor with only an end', waitlist_notify_freed('jollyboat', '', '2026-08-14') === 0 && !$WL_SENT);
+chk('...nor with only an end', waitlist_notify_freed('jollyboat', '', $WL_TO) === 0 && !$WL_SENT);
 wl_reset(['rows' => $WAITING]);
-chk('...nor with no cottage', waitlist_notify_freed('', '2026-08-10', '2026-08-14') === 0 && !$WL_SENT);
+chk('...nor with no cottage', waitlist_notify_freed('', $WL_FROM, $WL_TO) === 0 && !$WL_SENT);
 // The refusal is BEFORE the read, not after it — a query that runs and is then
 // discarded is one edit from being acted on.
 chk('...and it refuses before it even asks the database', !$WL_QUERIES);
@@ -170,11 +185,11 @@ chk('no 1970/9999 catch-all range is left in the query',
 // ============================================================
 echo "\n-- still booked → say nothing --\n";
 wl_reset(['rows' => $WAITING, 'clash' => true]);
-chk('a range another booking still covers emails nobody', waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14') === 0);
+chk('a range another booking still covers emails nobody', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 0);
 chk('...and nothing is marked notified', !$WL_UPDATES);
 chk('...and it asks BEFORE reading the waitlist', !$WL_QUERIES);
 wl_reset(['rows' => $WAITING]);
-chk('a genuinely free range does email', waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14') === 2 && count($WL_SENT) === 2);
+chk('a genuinely free range does email', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 2 && count($WL_SENT) === 2);
 
 // ============================================================
 //  3. A SOFT MAIL FAILURE MUST NOT BURN THE RE-INVITE.
@@ -185,13 +200,13 @@ chk('a genuinely free range does email', waitlist_notify_freed('jollyboat', '202
 // ============================================================
 echo "\n-- a send that did not go leaves the entry to retry --\n";
 wl_reset(['rows' => $WAITING, 'send' => false]);
-$n = waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14');
+$n = waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 chk('a failed send counts nobody as told', $n === 0);
 chk('...and marks nobody, so a later run tries again', !$WL_UPDATES);
 chk('...though it really did try', count($WL_SENT) === 2);
 // Half and half: one address the mailer refuses outright must not stop the other.
 wl_reset(['rows' => [$WAITING[0], ['id' => 3, 'prop_key' => 'jollyboat', 'name' => 'No Address', 'email' => '']]]);
-chk('an entry with no email is skipped, not fatal', waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14') === 1);
+chk('an entry with no email is skipped, not fatal', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 1);
 chk('...and only the one that went is marked', $WL_UPDATES === [1]);
 
 // ============================================================
@@ -202,7 +217,7 @@ chk('...and only the one that went is marked', $WL_UPDATES === [1]);
 // ============================================================
 echo "\n-- who the query asks for --\n";
 wl_reset(['rows' => $WAITING]);
-waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14');
+waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 $sel = null;
 foreach ($WL_QUERIES as $q) {
     if (stripos($q['sql'], 'FROM waitlist') !== false) {
@@ -211,7 +226,7 @@ foreach ($WL_QUERIES as $q) {
     }
 }
 chk('the waitlist is read for this cottage', $sel && $sel['args'][0] === 'jollyboat');
-chk('...with the freed range bound as given', $sel && $sel['args'][1] === '2026-08-14' && $sel['args'][2] === '2026-08-10');
+chk('...with the freed range bound as given', $sel && $sel['args'][1] === $WL_TO && $sel['args'][2] === $WL_FROM);
 chk('...end-exclusive, like every other overlap here', $sel && strpos($sel['sql'], 'check_in < ? AND check_out > ?') !== false);
 chk('...and only entries never told before', $sel && strpos($sel['sql'], 'notified_at IS NULL') !== false);
 chk('an open-dated entry still matches', $sel && strpos($sel['sql'], 'check_in IS NULL OR check_out IS NULL') !== false);
@@ -225,7 +240,7 @@ echo "\n-- a broken read is silent, not fatal --\n";
 wl_reset(['rows' => $WAITING, 'throws' => true]);
 $threw = false;
 try {
-    $n = waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14');
+    $n = waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 } catch (\Throwable $e) {
     $threw = true;
 }
@@ -233,20 +248,21 @@ chk('a failing query does not escape into the caller', !$threw);
 chk('...and reports nobody told', $n === 0);
 
 // ============================================================
-//  6. THE EMAIL ITSELF. Dates read DD/MM/YYYY like every other guest email —
-//     raw ISO leaked here once — and the cottage is named, not keyed.
+//  6. THE EMAIL ITSELF. Dates are SPOKEN like every other guest email (a
+//     read-once prose date, not a stacked schedule column) — raw ISO leaked
+//     here once — and the cottage is named, not keyed.
 // ============================================================
 echo "\n-- what the guest actually reads --\n";
 wl_reset(['rows' => [$WAITING[0]]]);
-waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14');
+waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 $mail = wl_sent(0);
 chk('the guest is greeted by name', strpos($mail['text'], 'Hi Ada Bell') !== false);
 chk('the cottage is named, not keyed', strpos($mail['subject'], 'Jollyboat') !== false && strpos($mail['subject'], 'jollyboat') === false);
-chk('dates read DD/MM/YYYY', strpos($mail['text'], '10/08/2026 to 14/08/2026') !== false);
-chk('...and never raw ISO', strpos($mail['text'], '2026-08-10') === false);
+chk('dates are spoken, not DD/MM/YYYY', strpos($mail['text'], email_date($WL_FROM)) !== false && strpos($mail['text'], '/') === false);
+chk('...and never raw ISO', strpos($mail['text'], $WL_FROM) === false);
 // An open-dated entry has no range to quote, so it must not print an empty one.
 wl_reset(['rows' => [$WAITING[1]]]);
-waitlist_notify_freed('jollyboat', '2026-08-10', '2026-08-14');
+waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 $open = (string) wl_sent(0)['text'];
 chk('an open-dated guest is told about the cottage, without dangling dates',
     strpos($open, 'Jollyboat.') !== false && strpos($open, ' for  ') === false);
