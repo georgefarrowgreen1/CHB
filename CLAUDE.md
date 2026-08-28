@@ -1421,6 +1421,25 @@ the click is guarded).
   must stay `auto` — a `margin: 2px 0 0` shorthand silently un-centred it, caught on
   the screenshot). Income & tax's folds stay LEFT-aligned — the headline and year
   select above them are, and centring only the folds made two columns of one page.
+  **THE "More" GROUP SITS OUTSIDE `#money-overview`, so the RAIL rule can't reach it**
+  (found in the audit's screenshot pass): on rail screens `body.rail-on.admin-screen
+  #money-overview …` left-aligns the answers to the title's edge, but the More caption +
+  group are siblings of `#money-overview` and carried inline `margin:auto`, so they
+  stayed CENTRED while the answers went flush-left — two starting lines on one page. The
+  inline margins are gone and `#accounts-index > .bhub-grpcap`/`.settings-group` follow
+  the same regime (centred on the 640 column, `margin-left:0` on rail). The general
+  trap: a rail rule scoped to a container never reaches a sibling, and an inline
+  auto-margin can't be overridden by it.
+- **A WIDE `.bk-row-top` WITH TWO STATUS CHIPS FLOATS THE FIRST ONE TO THE CENTRE.**
+  The Payments & balances rows (`#money-panel`) carry a pay pill AND an "Arrives in Nd"
+  chip, i.e. THREE flex items under `justify-content: space-between` — which spreads them
+  left/centre/right, stranding the pay pill mid-row with empty gaps either side (the
+  Alexandrina row below, with one chip, looked correct and made it obvious). `#money-panel
+  .bk-row-top .prop-tag { margin-right: auto }` at ≥900px groups both chips on the right
+  rail; below 900 the row wraps (the arrival chip to a second line) and the verified phone
+  layout is left untouched, so the fix is desktop-scoped. Found in the audit's visual pass,
+  not by a geometric gate — space-between spreading N>2 items is legible-but-wrong, which
+  layout-test (overflow/clipping only) cannot see.
 - **`#money-overview .bhub-kv-label` is sentence case at reading size** — these rows
   name GUESTS, and the reference cards' 84px uppercase column rendered "PAID UP ·
   BALANCE" as a label. The landing's booking rows are `.mo-row` `<button>`s (full UA
