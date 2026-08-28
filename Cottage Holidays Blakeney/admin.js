@@ -10075,7 +10075,11 @@ function inboxSubline() {
     const el = document.getElementById('inbox-subline');
     if (!el) return;
     const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
-    const enq = typeof unseenEnquiries === 'function' ? unseenEnquiries() : chip('ifold-count-enq');
+    // Count ALL pending enquiries, matching the Enquiries verdict capsule beside
+    // it — a SEEN but unanswered enquiry still needs a reply, so counting only
+    // UNSEEN ones let the subline say "nothing needs a reply" above an amber
+    // "2 waiting" capsule for the same two enquiries.
+    const enq = Array.isArray(enquiries) ? enquiries.length : (typeof unseenEnquiries === 'function' ? unseenEnquiries() : chip('ifold-count-enq'));
     const msg = chip('ifold-count-msg');
     const mbx = chip('ifold-count-mbx');
     const parts = [];
@@ -10758,7 +10762,15 @@ async function openBookingHub(bookingId, quiet) {
                 if (!mentions.length) return;
                 const holder = document.getElementById('hub-intel-mentions');
                 if (holder) { __hubIntelMentions = mentions; holder.innerHTML = hubIntelMentionRowsHtml(mentions); }
-                else renderBookingHub();
+                else {
+                    // A full repaint rebuilds the note textareas from stored values, so
+                    // capture whatever the owner is mid-typing FIRST (the bank-details
+                    // trap): the private booking note and the guest-book draft.
+                    const noteEl = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('bk-notes-' + (fresh.id != null ? fresh.id : bookingId)));
+                    if (noteEl && typeof noteEl.value === 'string') fresh.notes = noteEl.value;
+                    try { gbSyncNote(fresh.id != null ? fresh.id : bookingId); } catch (e) {}
+                    renderBookingHub();
+                }
             }).catch(() => {});
         }
     } catch (e) {}
@@ -13153,6 +13165,13 @@ async function mcCollect(id, stamp, log, cap) {
         if (pr.status === 'answered' && pr.msg) {
             if (live) { live.remove(); live = null; }
             cap.remove();
+            // Dedupe by id: chat_poll's collected fallback can return a message
+            // renderMacChat's thread fetch already painted (or a different ask's
+            // answer in the same convo), so a blind append double-painted it on the
+            // losing device. The store is exactly-once; this keeps the view honest.
+            if (pr.msg.id != null && __mcState && (__mcState.msgs || []).some((m) => m && m.id === pr.msg.id)) {
+                return 'done';
+            }
             let mIx;
             if (__mcState) {
                 __mcState.msgs = (__mcState.msgs || []).concat([pr.msg]);
@@ -16640,7 +16659,11 @@ function renderMoneyOverview() {
                     priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
                 const gt = displayGrand(pG, ps, b.holdStatus, b);
                 receivedUpcoming += gt.paid || 0;
-                if (!ps.fullyPaid) {
+                // Deposit-folded frame (gt), not rental (ps): the donut and its
+                // "collected of due" caption must agree with the To-collect group,
+                // which uses bookingDue — an uncollected refundable deposit is money
+                // still to collect.
+                if (!gt.fullyPaid) {
                     owedUpcoming += gt.balance || 0;
                     owedCount++;
                 }
@@ -16991,8 +17014,12 @@ function renderMoneyPanel() {
         return (a.b.checkIn || '').localeCompare(b.b.checkIn || '');
     });
     // Banner + donut use the SAME deposit-folded figures the rows show
-    // (displayGrand), so the headline always equals the sum of its rows.
-    const owed = rows.filter((r) => !r.ps.fullyPaid);
+    // (displayGrand), so the headline always equals the sum of its rows — which
+    // means the OWED filter must be deposit-folded too (gt.fullyPaid), not the
+    // rental-frame ps.fullyPaid: a cash guest with the £75 refundable deposit
+    // uncollected reads ps.fullyPaid=true / gt.balance=£75, so the old filter
+    // printed "All upcoming bookings are paid in full" above a "£75 due" row.
+    const owed = rows.filter((r) => !r.gt.fullyPaid);
     const owedTotal = owed.reduce((s, r) => s + (r.gt.balance || 0), 0);
     const receivedTotal = rows.reduce((s, r) => s + (r.gt.paid || 0), 0);
     const collectedPct =
@@ -21591,7 +21618,16 @@ async function odsPay(i) {
         payload.payment_date = d;
         payload.payment_method = (vals.method || '').trim();
     }
-    const res = await queueOrPost('bookings.php', payload, 'Payment — ' + (r.nm || 'guest'));
+    // queueOrPost RETHROWS an answered refusal (an expired session, a validation
+    // error); the data-act dispatcher swallows a handler's rejection silently, so
+    // without this catch the capture vanished with no toast, alert or queue entry.
+    let res;
+    try {
+        res = await queueOrPost('bookings.php', payload, 'Payment — ' + (r.nm || 'guest'));
+    } catch (e) {
+        glassAlert("Couldn't record that payment: " + ((e && e.message) || 'please try again') + '. Nothing was saved.');
+        return;
+    }
     if (__odsQueued.indexOf(r.dbId) === -1) __odsQueued.push(r.dbId);
     renderOfflineDaySheet();
     toast(res && res.queued
@@ -21787,15 +21823,22 @@ async function odsExpense() {
         glassAlert('Enter an amount greater than zero.');
         return;
     }
-    const res = await queueOrPost('expenses.php', {
-        action: 'add',
-        date: /^\d{4}-\d{2}-\d{2}$/.test(vals.date || '') ? vals.date : todayDashed(),
-        category: vals.cat || 'General',
-        amount,
-        prop: vals.prop || '',
-        description: String(vals.desc || '').slice(0, 200),
-        recurring: 0,
-    }, 'Expense — ' + (vals.cat || 'General'));
+    let res;
+    try {
+        res = await queueOrPost('expenses.php', {
+            action: 'add',
+            date: /^\d{4}-\d{2}-\d{2}$/.test(vals.date || '') ? vals.date : todayDashed(),
+            category: vals.cat || 'General',
+            amount,
+            prop: vals.prop || '',
+            description: String(vals.desc || '').slice(0, 200),
+            recurring: 0,
+        }, 'Expense — ' + (vals.cat || 'General'));
+    } catch (e) {
+        // An answered refusal would otherwise vanish (see odsPay).
+        glassAlert("Couldn't save that expense: " + ((e && e.message) || 'please try again') + '. Nothing was saved.');
+        return;
+    }
     try { odsQueueRefresh(); } catch (e) {} // the sheet's tray, current at once
     toast(res && res.queued
         ? 'Saved on this phone — it posts itself when the signal returns.'
@@ -21826,17 +21869,25 @@ async function odsEnquiry() {
         glassAlert('A name and both dates are needed — the rest can wait.');
         return;
     }
-    const res = await queueOrPost('enquiries.php', {
-        action: 'submit',
-        prop_key: vals.prop,
-        name: String(vals.name).trim(),
-        phone: String(vals.phone || '').trim(),
-        check_in: vals.ci,
-        check_out: vals.co,
-        adults: Math.max(1, parseInt(vals.adults, 10) || 2),
-        children: 0,
-        message: 'Taken by phone' + (String(vals.phone || '').trim() ? ' (' + String(vals.phone).trim() + ')' : ''),
-    }, 'Enquiry — ' + String(vals.name).trim());
+    let res;
+    try {
+        res = await queueOrPost('enquiries.php', {
+            action: 'submit',
+            prop_key: vals.prop,
+            name: String(vals.name).trim(),
+            phone: String(vals.phone || '').trim(),
+            check_in: vals.ci,
+            check_out: vals.co,
+            adults: Math.max(1, parseInt(vals.adults, 10) || 2),
+            children: 0,
+            message: 'Taken by phone' + (String(vals.phone || '').trim() ? ' (' + String(vals.phone).trim() + ')' : ''),
+        }, 'Enquiry — ' + String(vals.name).trim());
+    } catch (e) {
+        // A clash-refused phone enquiry (dates taken while offline) would otherwise
+        // vanish silently — surface it so the owner knows nothing was saved.
+        glassAlert("Couldn't save that enquiry: " + ((e && e.message) || 'please try again') + '. Nothing was saved.');
+        return;
+    }
     try { odsQueueRefresh(); } catch (e) {} // the sheet's tray, current at once
     toast(res && res.queued
         ? 'Saved on this phone — it lands in your inbox when the signal returns.'
@@ -26354,7 +26405,18 @@ async function tlBlockTap(id) {
     );
     if (!ok) return;
     try {
-        await apiPost('ical-import.php', { action: 'delete_block', id: Number(id) });
+        // A split segment carries the real server id on `realId` and its own span
+        // on segFrom/segTo; free just that span (the server re-inserts the rest).
+        // An unsplit block posts no range and is freed whole. Number(bl.id) would
+        // be NaN for a synthetic '55-1' id, which the server rejected — so always
+        // send the numeric realId.
+        const realId = Number(bl.realId != null ? bl.realId : bl.id);
+        const payload = { action: 'delete_block', id: realId };
+        if (bl.split && bl.segFrom && bl.segTo) {
+            payload.from = bl.segFrom;
+            payload.to = bl.segTo;
+        }
+        await apiPost('ical-import.php', payload);
         toast('Dates freed — back on sale.');
         await loadData();
         renderCalendar();
@@ -26680,8 +26742,11 @@ function renderCalendar() {
             (dbBookings[k] || []).forEach((b) => {
                 if (!b.checkIn || !b.checkOut || b.checkOut <= dates[0] || b.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(b.checkIn, b.checkOut);
-                const ps = paymentSummary(k, b);
-                const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
+                // Deposit-folded frame (bookingDue), not rental (paymentSummary):
+                // an uncollected refundable deposit is still to collect, so a bar
+                // must not paint green over an amber "£75 due" list row a screen down.
+                const gt = bookingDue(k, b);
+                const pay = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
                 // On a bar wide enough to fit it, ride the stay length along —
                 // "Bob · 3n" answers the next question without opening the hub.
                 const nights = Math.max(1, Math.round((dpParse(b.checkOut) - dpParse(b.checkIn)) / 864e5));
@@ -27182,7 +27247,10 @@ async function openEnquiryHub(enqId) {
         const alreadyHere = prev && prev.id === 'view-enquiry-hub';
         nav('view-enquiry-hub');
         if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: e.id });
-        chbNavRemember('enquiry-' + e.id);
+        // Store the NUMERIC dbId, not the client id ('e77'): chbOpenTarget's parser
+        // needs digits after the dash, so 'enquiry-e77' never restored (the booking
+        // twin already stores dbId for exactly this reason).
+        chbNavRemember('enquiry-' + (e && e.dbId != null ? e.dbId : e.id));
         window.scrollTo({ top: 0 });
         // The condensed bar names the record (the booking hub's rule).
         try {
@@ -27533,11 +27601,20 @@ function renderEnquiryHub() {
     // enquiry), rail honesty with Square off, and now the FIGURE: the plan's
     // deposit plus the refundable deposit the first payment carries, the same
     // fold hubDepositAsk makes on the booking side.
-    const inWindow = (() => { try { return bookingInBalanceWindow(e); } catch (err) { return false; } })();
+    // The plan derivations read the BOOKING fields (depositPctOverride /
+    // balanceDueDate), which an enquiry never has — it stores planPct / planDue.
+    // Without this shim the green card + first-payment figure + due date quoted
+    // the site-standard 25%/30-day while the fold two rows down (enquiryHasPlan,
+    // which reads planPct) and the actual approval used the plan the owner set.
+    const ePlan = Object.assign({}, e, {
+        depositPctOverride: e.planPct != null ? e.planPct : e.depositPctOverride,
+        balanceDueDate: e.planDue != null ? e.planDue : e.balanceDueDate,
+    });
+    const inWindow = (() => { try { return bookingInBalanceWindow(ePlan); } catch (err) { return false; } })();
     let askFig = null;
     if (total != null) {
         try {
-            askFig = inWindow ? Math.round((total + dmg) * 100) / 100 : Math.round((bookingPlanDeposit(e, total) + dmg) * 100) / 100;
+            askFig = inWindow ? Math.round((total + dmg) * 100) / 100 : Math.round((bookingPlanDeposit(ePlan, total) + dmg) * 100) / 100;
         } catch (err) {}
     }
     const apprAsk = () => {
@@ -27608,7 +27685,7 @@ function renderEnquiryHub() {
             <button class="bhub-actlink" ${chbAttrs('setEnquiryPlan', String(e.id))}>${enquiryHasPlan(e) ? 'Change payment plan' : 'Set a payment plan'}</button>
         </div>`;
     const quoteSub = askFig != null && !inWindow
-        ? `${gbp(askFig)} deposit on approval, balance by ${fmtDate(bookingPlanDueDate(e) || ukShiftDays(e.checkIn, -(paymentTerms.balanceDays || 30)))}`
+        ? `${gbp(askFig)} deposit on approval, balance by ${fmtDate(bookingPlanDueDate(ePlan) || ukShiftDays(e.checkIn, -(paymentTerms.balanceDays || 30)))}`
         : askFig != null
           ? 'the full amount is due on approval'
           : '';
@@ -28832,6 +28909,10 @@ async function declineEnquiry(enqId) {
     try {
         await apiPost('enquiries.php', { action: 'decline', id: dbId });
         if (__enqHubId === enqId) __enqHubId = null;
+        // Invalidate the Declined-drawer cache so a later open re-fetches — it was
+        // fetched once and only ever filtered, so declines made after the drawer's
+        // first open were invisible in the very place built to recover them.
+        __declinedEnq = null;
         await loadData();
         // Standalone hub screen for the declined enquiry → back to the Inbox
         // (the wide pane re-selects the next enquiry via renderInbox()).

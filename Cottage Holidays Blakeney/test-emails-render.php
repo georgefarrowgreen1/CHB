@@ -164,6 +164,11 @@ $B = [
     'agreed_nights' => 3, 'agreed_nightly' => 390, 'agreed_booking_fee' => 75,
     'agreed_txn_pct' => 3, 'agreed_txn_fee' => 11.7, 'price_override' => null,
     'balance_due_date' => date('Y-m-d', strtotime('+16 days')), 'deposit_pct_override' => null, 'deposit_amount_override' => null,
+    // guest_reg_url makes the confirmation render its "Add your guest details"
+    // button so §2's contrast sweep actually meets it — without it (the old
+    // fixture) the button never rendered and a white-on-accent 3.30:1 label could
+    // ship unseen. The reg button needs only this key.
+    'guest_reg_url' => site_base_url() . 'index.html?reg=REGTOK',
     'approve_url' => site_base_url() . 'enquiry-action.php?a=approve&id=7&t=tok',
     'decline_url' => site_base_url() . 'enquiry-action.php?a=decline&id=7&t=tok',
     'status' => 'COMPLETED', 'notes' => '', 'created_at' => date('Y-m-d H:i:s'),

@@ -167,16 +167,21 @@ function ownerchat_convos($cap = 24)
 function ownerchat_file_ask(array $msg, $convoIn)
 {
     night_asks_sweep();
-    // ONE CONVERSATION, ONE ASK IN FLIGHT: a second send supersedes the
-    // first — the Mac must never answer a question the owner has already
-    // moved past (the search supersede rule, applied to chat).
+    // ONE CONVERSATION, ONE ASK IN FLIGHT: a second send supersedes the first —
+    // the Mac must never answer a question the owner has already moved past. But
+    // scope it to THIS conversation (entity_id = $cv): since the rail (migration-119)
+    // there are concurrent conversations, and a global expire killed another
+    // conversation's in-flight answer, discarding its streamed words with a false
+    // "may be asleep". Compute $cv FIRST so the supersede can be scoped.
+    $stored = null; // before the try — PHPStan cannot infer never from json_out
+    $cv = 0;
     try {
-        db()->exec("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'ownerchat'");
+        $cv = ownerchat_cur_convo($convoIn);
+        $sup = db()->prepare("UPDATE night_asks SET status = 'expired' WHERE status = 'open' AND kind = 'ownerchat' AND entity_id = ?");
+        $sup->execute([$cv]);
     } catch (\Throwable $e) {
         json_out(['error' => 'The ask channel is not set up on this install yet (run the migrations).', 'code' => 'night_no_table'], 503);
     }
-    $stored = null; // before the try — PHPStan cannot infer never from json_out
-    $cv = ownerchat_cur_convo($convoIn);
     try {
         ownerchat_adopt();
         $stored = ownerchat_append($msg, $cv); // one sanitiser owns the shape, img/file included
@@ -253,8 +258,19 @@ function ownerchat_file_ask(array $msg, $convoIn)
     // entity_id carries the CONVERSATION, so the poll and the stop append
     // the answer into the convo the question was asked in — never into
     // whichever one a device happens to be looking at when it lands.
-    $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
-    $st->execute(['ownerchat', $cv, '', mb_substr((string) $msg['text'], 0, 500), json_encode($payload)]);
+    // Guarded like the writes above it: the owner's words are already stored
+    // (ownerchat_append), so an unguarded failure here 500s AND the natural retry
+    // appends the turn a second time. On failure, remove the just-stored row so
+    // the retry starts clean.
+    try {
+        $st = db()->prepare('INSERT INTO night_asks (kind, entity_id, prop_key, question, options, created_at) VALUES (?,?,?,?,?, NOW())');
+        $st->execute(['ownerchat', $cv, '', mb_substr((string) $msg['text'], 0, 500), json_encode($payload)]);
+    } catch (\Throwable $e) {
+        if (is_array($stored) && isset($stored['id'])) {
+            try { db()->prepare('DELETE FROM ownerchat_msgs WHERE id = ?')->execute([(int) $stored['id']]); } catch (\Throwable $e2) {}
+        }
+        json_out(['error' => "Couldn't send that just now — please try again.", 'code' => 'night_ask_failed'], 503);
+    }
     // CAPTURED BEFORE THE WARM HINT: content_set_scalar is its own INSERT
     // on the same connection, so a lastInsertId read after it answers for
     // the CONTENT row (0, under ON DUPLICATE) — measured in CI as every
@@ -1568,6 +1584,18 @@ route_actions([
                 if (is_array($pl['memories'] ?? null) && $pl['memories']) {
                     // Strings on the wire — the Mac's grounding line takes texts.
                     $one['ownerchat']['memories'] = night_ownerchat_memory_texts(night_ownerchat_memories($pl['memories']));
+                }
+                // The rolling-summary handshake: the Mac gates the whole SUM
+                // protocol on `dropped` (>0 = the convo was trimmed) and grounds on
+                // `summary`. ownerchat_file_ask stores both into the ask options —
+                // copy them through here or the feature is inert on the wire (a
+                // long conversation loses its head while the site holds a summary
+                // it never hands over).
+                if (isset($pl['dropped'])) {
+                    $one['ownerchat']['dropped'] = (int) $pl['dropped'];
+                }
+                if (isset($pl['summary'])) {
+                    $one['ownerchat']['summary'] = night_str($pl['summary']);
                 }
             } elseif ($a['kind'] === 'chat') {
                 // The conversation, composed by the same withholding rules as

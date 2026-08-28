@@ -240,14 +240,28 @@ function my_bookings_payload(string $email, bool $preview = false): array
     }
 
     // Also return PENDING enquiries (submitted, not yet confirmed) so the account
-    // can show them as cards in the same layout.
-    $eq = db()->prepare(
-        'SELECT e.*, p.name AS property_name, p.address AS property_address
-         FROM enquiries e JOIN properties p ON p.prop_key = e.prop_key
-         WHERE e.email = ?
-         ORDER BY e.check_in ASC',
-    );
-    $eq->execute([$email]);
+    // can show them as cards in the same layout. DECLINED ones are excluded
+    // (declined_at IS NULL, the owner list's own filter): a soft-deleted enquiry
+    // was rendering on the guest's account as "Awaiting confirmation" forever, and
+    // since an admin edit is decline+resubmit it also left TWO pending cards for
+    // one request. Guarded for pre-migration installs without the column.
+    try {
+        $eq = db()->prepare(
+            'SELECT e.*, p.name AS property_name, p.address AS property_address
+             FROM enquiries e JOIN properties p ON p.prop_key = e.prop_key
+             WHERE e.email = ? AND e.declined_at IS NULL
+             ORDER BY e.check_in ASC',
+        );
+        $eq->execute([$email]);
+    } catch (\Throwable $e) {
+        $eq = db()->prepare(
+            'SELECT e.*, p.name AS property_name, p.address AS property_address
+             FROM enquiries e JOIN properties p ON p.prop_key = e.prop_key
+             WHERE e.email = ?
+             ORDER BY e.check_in ASC',
+        );
+        $eq->execute([$email]);
+    }
 
     // Loyalty: completed stays (check-out in the past). Counted from the rows we
     // already have — no extra query.

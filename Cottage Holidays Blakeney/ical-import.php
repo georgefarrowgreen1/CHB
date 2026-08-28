@@ -308,6 +308,22 @@ if ($action === 'save_feeds') {
                    ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
         )
         ->execute([feeds_key($prop), $val]);
+    // Clear blocks whose source is no longer configured. sync_property only ever
+    // DELETEs sources still in the feed list, and delete_block refuses non-owner
+    // rows ("they clear when that booking does" — which now never happens), so a
+    // removed feed used to orphan its blocks forever: the dates stayed refused
+    // with no way to reclaim them. A kept source's blocks are left for the next
+    // sync to refresh; 'owner' blocks are never touched here.
+    try {
+        $keptSources = array_values(array_unique(array_map(fn($f) => $f['source'], $feeds)));
+        $keptSources[] = 'owner';
+        $ph = implode(',', array_fill(0, count($keptSources), '?'));
+        db()
+            ->prepare("DELETE FROM ical_blocks WHERE prop_key = ? AND source NOT IN ($ph)")
+            ->execute(array_merge([$prop], $keptSources));
+    } catch (\Throwable $e) {
+        /* table not migrated yet — nothing to clean */
+    }
     json_out(['ok' => true]);
 }
 
@@ -351,13 +367,21 @@ if ($action === 'add_block') {
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'The end date must be after the start date'], 400);
     }
+    // Serialise the check-and-insert under the same lock add/update/approval hold,
+    // or a block could land over a booking whose row was still in flight on another
+    // device (the clash check passing against an uncommitted booking).
+    if (!book_lock($prop)) {
+        json_out(['error' => 'The calendar is busy for this cottage — please try again in a moment.'], 409);
+    }
     if (dates_clash($prop, $checkIn, $checkOut)) {
+        book_unlock($prop);
         json_out(['error' => 'Those dates overlap an existing booking or block.'], 409);
     }
     $uid = 'owner-' . bin2hex(random_bytes(8));
     db()
         ->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
         ->execute([$prop, 'owner', $uid, $checkIn, $checkOut]);
+    book_unlock($prop);
     // Blocks never left a record before — worth one regardless, and it is
     // where an AI-chat card's block says so (via_label's closed whitelist).
     log_activity('booking', 'block.add', 'Dates blocked — ' . $prop . ' ' . $checkIn . ' → ' . $checkOut . via_label($in), ['prop_key' => $prop]);
@@ -374,10 +398,31 @@ if ($action === 'delete_block') {
     if ($id <= 0) {
         json_out(['error' => 'A block id is required'], 400);
     }
-    $del = db()->prepare("DELETE FROM ical_blocks WHERE id = ? AND source = 'owner'");
-    $del->execute([$id]);
-    if ($del->rowCount() < 1) {
+    // A block partially covered by a booking is shown as SEGMENTS on the timeline
+    // (suppressBlocksUnderLocalBookings), so the tap may mean "free just this
+    // segment". When a from/to range is given, free only that span: delete the row
+    // and re-insert the parts outside it — without this, freeing one segment
+    // deleted the whole block and put the un-named remainder back on sale, and the
+    // synthetic-id second segment freed nothing at all.
+    $from = clean($in['from'] ?? '');
+    $to = clean($in['to'] ?? '');
+    $ranged = preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) && $to > $from;
+    $row = db()->prepare("SELECT prop_key, check_in, check_out FROM ical_blocks WHERE id = ? AND source = 'owner'");
+    $row->execute([$id]);
+    $blk = $row->fetch();
+    if (!$blk) {
         json_out(['error' => "Those dates are held by a connected calendar, so they can't be freed here — they clear when that booking does."], 409);
+    }
+    db()->prepare("DELETE FROM ical_blocks WHERE id = ? AND source = 'owner'")->execute([$id]);
+    if ($ranged) {
+        // Re-insert the held remainder either side of the freed span.
+        $ins = db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
+        if ((string) $blk['check_in'] < $from) {
+            $ins->execute([$blk['prop_key'], 'owner', 'owner-' . bin2hex(random_bytes(8)), $blk['check_in'], $from]);
+        }
+        if ($to < (string) $blk['check_out']) {
+            $ins->execute([$blk['prop_key'], 'owner', 'owner-' . bin2hex(random_bytes(8)), $to, $blk['check_out']]);
+        }
     }
     log_activity('booking', 'block.removed', 'Blocked dates freed', ['entity' => 'block', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);

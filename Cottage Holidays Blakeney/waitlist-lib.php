@@ -37,10 +37,12 @@ function wl_send($row)
         return ['ok' => false, 'error' => 'no mailer'];
     }
     $name = wl_prop_name($row['prop_key']);
-    // Dates read DD/MM/YYYY like every other guest email (raw ISO leaked here).
+    // Guest emails SPEAK their dates (email_date → "Sun 6 Sep 2026"): this is prose
+    // read once and acted on, the case the house rule reserves the weekday form for,
+    // not a stacked schedule column. uk_date's DD/MM here also risked a US misread.
     $prettyDates =
         $row['check_in'] && $row['check_out']
-            ? ' for ' . uk_date($row['check_in']) . ' to ' . uk_date($row['check_out'])
+            ? ' for ' . email_date($row['check_in']) . ' to ' . email_date($row['check_out'])
             : '';
     $guest = $row['name'] ?: 'there';
     $text =
@@ -78,6 +80,15 @@ function waitlist_notify_freed($prop, $from, $to)
     // freeing — that is about what the guest asked to hear about, not about
     // whether anything was freed.
     if (!$prop || !$from || !$to) {
+        return 0;
+    }
+    // A PAST range is not a space that opened. bookings.php's delete/cancel pass a
+    // booking's raw dates with no future check (unlike the ical caller, which skips
+    // $co <= today), so deleting a past junk/no-show booking used to email every
+    // open-dated entry "a space has just opened" — a falsehood, and it burns their
+    // one-shot notified_at. Inherit the ical caller's future-only rule here so
+    // every caller is covered.
+    if ($to <= date('Y-m-d')) {
         return 0;
     }
     // Don't fire "a space has opened" if the range is still covered by another

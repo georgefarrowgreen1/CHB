@@ -877,12 +877,24 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
     $results = smtp_send_batch($msgs);
     // Owner alerts are one-shots with no stamp-on-success pass behind them —
     // queue each failed copy so "Payment received" survives a relay blip.
+    $firstQueued = false;
     foreach ($results as $i => $r) {
         if (empty($r['ok']) && email_queueable($r) && isset($msgs[$i])) {
             email_outbox_add('owner-alert', $msgs[$i]['to'], $msgs[$i]['name'], $msgs[$i]['subject'], $msgs[$i]['text'], $msgs[$i]['html'], $msgs[$i]['attachments'] ?? [], $msgs[$i]['reply_to'] ?? null, $msgs[$i]['message_id'] ?? null, [], $r['error'] ?? '');
+            if ($i === 0) {
+                $firstQueued = true;
+            }
         }
     }
-    return $results[0] ?? ['ok' => false, 'error' => 'No owner email'];
+    // Report whether the first copy was queued, so a caller that stamps a
+    // once-per-day key (the weekly digests) can stamp on delivered-OR-queued and
+    // not resend the same day: a failed morning send that queued would otherwise
+    // be resent by a same-day cron/deploy ping and then also drained — two copies.
+    $out = $results[0] ?? ['ok' => false, 'error' => 'No owner email'];
+    if ($firstQueued) {
+        $out['queued'] = true;
+    }
+    return $out;
 }
 
 /** Encode a display name safely for a header (handles non-ASCII). */
@@ -2402,8 +2414,12 @@ function send_booking_emails($b)
         // check-in minus the window), so this can never quote a different day
         // from the chaser that follows it.
         $dueByLine = '';
+        $dueByHtml = '';
         if ($balNow > 0.001 && !empty($b['balance_due_date'])) {
             $dueByLine = ' — due by ' . email_date((string) $b['balance_due_date']);
+            // The HTML twin of $dueByLine for the priceBox's balance row (email_date
+            // returns a formatted weekday date, not user input, so it needs no escape).
+            $dueByHtml = '<br><span style="font-size:12px;font-weight:400;color:' . email_muted_ink() . ';">due by ' . email_date((string) $b['balance_due_date']) . '</span>';
         }
         if ($paidNow > 0) {
             $body .= "\nPaid so far: " . $money($paidNow) . "\n";
@@ -2440,10 +2456,14 @@ function send_booking_emails($b)
             square_enabled() &&
             function_exists('pay_token')
         ) {
+            // House accent + ink, NOT the per-cottage accent: a button carries
+            // WORDS, and the cottage colour measured below AA at 15px (e.g. dark
+            // ink on Pimpernel's purple, 2.10:1). The cottage colour stays a FILL
+            // where it is one (the shell's bar, email_h's swatch). Same rule the
+            // enquiry nudges follow.
             $payCta = email_btn(
                 site_base_url() . 'index.html?pay=' . pay_token((int) $b['id']) . '&b=' . (int) $b['id'],
                 'Pay the balance',
-                $accent,
             );
         }
         $payCta .= email_btn2($stayUrl, 'View my booking');
@@ -2492,14 +2512,22 @@ function send_booking_emails($b)
             // inside it — as a label/value pair one sentence wrapped 2+2 lines on a
             // phone and read as a label beside a value)
             // Payment state — shown only once a payment is recorded, so a re-sent
-            // confirmation reflects the deposit/balance.
+            // confirmation reflects the deposit/balance. The due-by DATE rides the
+            // balance row here too, not only in the plain-text half: a guest who
+            // reads the HTML (nearly all) was shown a balance with no deadline.
             ($paidNow > 0
                 ? '<tr><td colspan="2" style="border-top:1px solid #EFE9DD;font-size:0;line-height:0;">&nbsp;</td></tr>' .
                     $pr('Paid so far', '<span style="color:#2E7D32;font-weight:600;">' . $money($paidNow) . '</span>') .
                     ($balNow > 0.001
-                        ? $pr('<strong>Balance remaining</strong>', '<strong>' . $money($balNow) . '</strong>')
+                        ? $pr(
+                            '<strong>Balance remaining</strong>',
+                            '<strong>' . $money($balNow) . '</strong>' . $dueByHtml,
+                        )
                         : $pr('<strong style="color:#2E7D32;">Paid in full</strong>', '<strong style="color:#2E7D32;">&#10003;</strong>'))
-                : '') .
+                : ($balNow > 0.001
+                    ? '<tr><td colspan="2" style="border-top:1px solid #EFE9DD;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+                        $pr('<strong>Balance</strong>', '<strong>' . $money($balNow) . '</strong>' . $dueByHtml)
+                    : '')) .
             '</table></td></tr></table>';
         $inner =
             email_h($b['prop_name'], $accent) .
@@ -2529,7 +2557,7 @@ function send_booking_emails($b)
             // bookingOwnerArranged rule).
             $payCta .
             (!empty($b['invoice_url']) ? email_btn2($b['invoice_url'], 'View your invoice') : '') .
-            (!empty($b['guest_reg_url']) ? email_p('<strong>Before you arrive:</strong> UK law asks us to record the name &amp; nationality of everyone staying who is 16 or over. Please add your guest details — it only takes a minute.', true) . email_btn($b['guest_reg_url'], 'Add your guest details', $accent, '#ffffff') : '') .
+            (!empty($b['guest_reg_url']) ? email_p('<strong>Before you arrive:</strong> UK law asks us to record the name &amp; nationality of everyone staying who is 16 or over. Please add your guest details — it only takes a minute.', true) . email_btn($b['guest_reg_url'], 'Add your guest details') : '') .
             ($depAmt > 0
                 ? email_footnote(
                     'The ' . $money($depAmt) .
@@ -2617,7 +2645,7 @@ function send_booking_emails($b)
                     email_esc((string) $b['prop_name']) . '</strong>.',
             ) .
             email_rows($oRows) .
-            ($hubUrl !== '' ? email_btn($hubUrl, 'Open the booking', $accent) : '');
+            ($hubUrl !== '' ? email_btn($hubUrl, 'Open the booking') : '');
         $oHtml = email_shell(
             $b['name'] . ' — ' . $b['prop_name'] . ', ' . email_date($b['check_in'], false),
             $oInner,
@@ -3073,7 +3101,11 @@ function payment_request_body($b, $payUrl, $accent, $bacs)
     // the subject said twice. A deposit ask has no due-by (its money is due now).
     $html = email_shell(
         $money($f['chargedNow']) . ($what === 'deposit' ? ' secures your dates' : ' settles your stay') .
-            ($askDeadline !== '' ? ' — ' . lcfirst($askDeadline) : ' — pay securely by card in two taps'),
+            ($askDeadline !== ''
+                ? ' — ' . lcfirst($askDeadline)
+                // The card phrasing only on the card rail — a BACS body carries
+                // bank details and no card link, so the preview must not promise one.
+                : ($rail === 'card' ? ' — pay securely by card in two taps' : ' — how to pay is inside')),
         $inner,
         $accent,
     );
@@ -3297,14 +3329,23 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
     $days = max(0, (int) floor((strtotime($b['check_in'] . ' UTC') - strtotime(date('Y-m-d') . ' UTC')) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
     $rail = payment_rail($b);
+    // A reminder chases whichever stage was asked for — usually the balance, but
+    // the abandoned-deposit recovery pass reminds a DEPOSIT. Reading the kind here
+    // (not hard-wiring 'balance') keeps the subject, wording, facts and deadline
+    // coherent: a deposit reminder must say "deposit", quote the deposit facts,
+    // and carry NO "Due by <balance date>" — its own money is due now.
+    $kind = ($b['kind'] ?? 'balance') === 'deposit' ? 'deposit' : 'balance';
+    $noun = $kind === 'deposit' ? 'deposit' : 'balance';
     // The SAME facts the request stated, so the chase cannot quote a smaller sum
     // than the one the card will take — including in the CTA, which used to name
     // the rental half while the deposit sentence beneath added the rest.
-    $f = payment_money_facts($b, 'balance');
+    $f = payment_money_facts($b, $kind);
     $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay ' . $money($f['chargedNow']));
     // The SAME deadline treatment the request now gets — this is the email that
-    // chases it, so it is the last email that should leave the date unstated.
-    $dueBy = substr((string) ($b['balance_due_date'] ?? ''), 0, 10);
+    // chases it, so it is the last email that should leave the date unstated. A
+    // DEPOSIT reminder carries no deadline: its own money is due now, and the
+    // balance date would misstate when this payment is wanted.
+    $dueBy = $kind === 'balance' ? substr((string) ($b['balance_due_date'] ?? ''), 0, 10) : '';
     $askDeadline = $dueBy !== '' ? 'Due by ' . email_date($dueBy) : '';
     // And the SAME panel, for the same reason: three figures that have to reconcile
     // are read as rows, not as a sentence. One composer's worth of rows would be
@@ -3321,10 +3362,10 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
         '<strong>' . $esc($money($f['chargedNow'])) . '</strong>',
     ];
 
-    $subject = "Reminder: balance due for {$prop}";
+    $subject = "Reminder: {$noun} due for {$prop}";
     $text =
         "Hello {$name},\n\n" .
-        "Just a friendly reminder that the balance for your stay at {$prop} is still outstanding, " .
+        "Just a friendly reminder that the {$noun} for your stay at {$prop} is still outstanding, " .
         "and your arrival is {$when} (" . email_date($b['check_in']) . ").\n\n" .
         ($askDeadline !== '' ? $askDeadline . ".\n\n" : '') .
         $cta['text'] .
@@ -3339,7 +3380,7 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', a friendly reminder that the balance for your stay at <strong style="color:#2A2622;">' .
+                ', a friendly reminder that the ' . $esc($noun) . ' for your stay at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong> is still outstanding, and your arrival is <strong style="color:#2A2622;">' .
                 $esc($when) .
@@ -3361,7 +3402,11 @@ function payment_reminder_body($b, $payUrl, $accent, $bacs)
         email_p('Cottage Holidays Blakeney', true);
     $html = email_shell(
         $money($f['chargedNow']) . ' settles your stay' .
-            ($askDeadline !== '' ? ' — ' . lcfirst($askDeadline) : '') . ' · two taps by card',
+            ($askDeadline !== '' ? ' — ' . lcfirst($askDeadline) : '') .
+            // Only promise "by card" on the card rail — a BACS guest's body
+            // deliberately carries bank details and no card link, so the inbox
+            // preview must not contradict it.
+            ($rail === 'card' ? ' · two taps by card' : ''),
         $inner,
         $accent,
     );
@@ -3944,7 +3989,10 @@ function payment_receipt_body($b)
     // in an inbox beside nothing the guest did, so the line that identifies it
     // has to work before it is opened.
     $auto = !empty($b['automatic']);
-    $subject = $auto ? "Balance collected — {$prop}" : "Payment received — {$prop}";
+    // An automatic INSTALMENT collects a slice, not the whole balance — so it must
+    // not claim "Balance collected" over its own "Remaining balance £Y" row.
+    $autoPartial = $auto && !empty($b['partial']);
+    $subject = $auto ? ($autoPartial ? "Payment collected — {$prop}" : "Balance collected — {$prop}") : "Payment received — {$prop}";
     // Three states, not two: a part payment can settle the whole RENTAL while
     // the refundable deposit it displaced is still to take (a slice typed at
     // the max bound). "Remaining balance: £0.00 — we'll be in touch about
@@ -3976,7 +4024,9 @@ function payment_receipt_body($b)
     $text =
         "Hello {$name},\n\n" .
         ($auto
-            ? "As arranged, we've now collected your {$what} of " . $money($paidNow) . " for {$prop}. Nothing was needed from you.\n"
+            ? ($autoPartial
+                ? "As arranged, we've now collected " . $money($paidNow) . " towards your {$what} for {$prop}. Nothing was needed from you.\n"
+                : "As arranged, we've now collected your {$what} of " . $money($paidNow) . " for {$prop}. Nothing was needed from you.\n")
             : ($partial
                 ? "Thank you — we've received your payment of " . $money($paidNow) . " towards your {$what} for {$prop}.\n"
                 : "Thank you — we've received your {$what} payment of " . $money($paidNow) . " for {$prop}.\n")) .
@@ -3994,7 +4044,7 @@ function payment_receipt_body($b)
         "\n" .
         'Cottage Holidays Blakeney';
     $inner =
-        email_h($auto ? 'Balance collected' : 'Payment received') .
+        email_h($auto ? ($autoPartial ? 'Payment collected' : 'Balance collected') : 'Payment received') .
         email_p(
             'Hello ' .
                 $esc($name) .
@@ -4005,7 +4055,9 @@ function payment_receipt_body($b)
                 // months ago, and an unrecognised charge is what a chargeback is
                 // made of.
                 (!empty($b['automatic'])
-                    ? 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
+                    ? ($autoPartial
+                        ? 'as arranged, we\'ve now collected <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.'
+                        : 'as arranged, we\'ve now collected your ' . $what . ' of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>. Nothing was needed from you.')
                     : ($partial
                         ? 'thank you — we\'ve received your payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> towards your ' . $what . ' for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.'
                         : 'thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#2A2622;">' . $money($paidNow) . '</strong> for <strong style="color:#2A2622;">' . $esc($prop) . '</strong>.')),

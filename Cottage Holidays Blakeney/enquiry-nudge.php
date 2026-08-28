@@ -69,7 +69,7 @@ foreach ($rows as $e) {
     $m = enquiry_nudge_body(
         $name,
         $propName,
-        uk_date($e['check_in']) . ' to ' . uk_date($e['check_out']),
+        email_date($e['check_in']) . ' to ' . email_date($e['check_out']),
         $link,
         prop_display($e['prop_key'])['accent'],
         $datesGone,
@@ -149,7 +149,7 @@ foreach ($drafts as $d) {
         // The BARE span; enquiry_rescue_body() adds the " for " when there is one.
         // NB ltrim($dates, ' for ') was tried and is a landmine: ltrim takes a CHARACTER
         // list, so it eats any leading space/f/o/r and only happened to work here.
-        $dates = $d['check_in'] && $d['check_out'] ? uk_date($d['check_in']) . ' to ' . uk_date($d['check_out']) : '';
+        $dates = $d['check_in'] && $d['check_out'] ? email_date($d['check_in']) . ' to ' . email_date($d['check_out']) : '';
         // Composed by enquiry_rescue_body() in mailer.php — previewable, gated.
         $m = enquiry_rescue_body($name, $propName, $dates, $link, prop_display($d['prop_key'])['accent']);
         [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];

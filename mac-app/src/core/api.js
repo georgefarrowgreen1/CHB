@@ -493,15 +493,25 @@ function makeApi(deps) {
     // so the two ways of keeping it warm cannot hold two timers.
     function armIdleStop() {
         clearTimeout(askIdleStop);
-        askIdleStop = setTimeout(async function () {
+        const tryStop = async function () {
             try {
                 if (!running && !sweeping && !chatBusy && startedModel) {
                     await runner.stop();
                     startedModel = '';
                     askLog.push({ at: nightMod.hhmm(), say: 'stopped the model server — ten quiet minutes', level: 'info' });
+                } else if (startedModel && (sweeping || chatBusy || running)) {
+                    // The 10-minute timer almost always fires MID-SWEEP (main.js
+                    // sweeps every 2s and long-polls up to 20s), so the engine would
+                    // otherwise sit resident all day — the empty-sweep path never
+                    // re-arms. Retry on a SHORT delay to catch the next idle window,
+                    // rather than waiting another full ten minutes.
+                    clearTimeout(askIdleStop);
+                    askIdleStop = setTimeout(tryStop, 30 * 1000);
+                    if (askIdleStop.unref) { askIdleStop.unref(); }
                 }
             } catch (e) { /* leaving it running is the safe failure */ }
-        }, 10 * 60 * 1000);
+        };
+        askIdleStop = setTimeout(tryStop, 10 * 60 * 1000);
         if (askIdleStop.unref) { askIdleStop.unref(); }
     }
 
@@ -752,8 +762,12 @@ function makeApi(deps) {
         // would deduplicate — but the log would read as though it had worked
         // twice, which is a lie about a thing nobody watched.
         async runNow(onProgress, openingNote) {
-            if (running) {
-                return { ok: false, say: 'It is already working.' };
+            // Guard on the chat/engine being busy too, not just `running`: a night
+            // job whose model differs from the chat's loaded one calls runner.stop()
+            // and kills the engine MID-STREAM of an in-flight ownerchat answer.
+            // chatSend already refuses while running; extend the courtesy in reverse.
+            if (running || sweeping || chatBusy) {
+                return { ok: false, say: 'The chat or engine is busy — try again in a moment.' };
             }
             running = true;
             try {
@@ -916,9 +930,14 @@ function makeApi(deps) {
                                 if (e2.t === 'think') { think += e2.s || ''; }
                                 if (e2.t === 'tok') { round += e2.s || ''; }
                                 // TOOL rounds never paint; ACT and SUM lines
-                                // being typed are protocol lines too — the
-                                // words before them stream, the lines never do.
-                                const show = /^\s*TOOL/.test(round) ? '' : round.split(/\n[ \t]*(?:ACT|SUM)\b/)[0];
+                                // being typed are protocol lines too — the words
+                                // before them stream, the lines never do. Cut at
+                                // the FIRST protocol line wherever it sits, so a
+                                // round that OPENS with an ACT/SUM line (no leading
+                                // newline) no longer streams its raw JSON to the
+                                // phone before the final answer replaces it.
+                                const cut = round.search(/(?:^|\n)[ \t]*(?:TOOL|ACT|SUM)\b/);
+                                const show = cut === -1 ? round : round.slice(0, cut);
                                 const tms = now().getTime();
                                 if (postPartial && (show || think) && tms - lastPost >= 1500) {
                                     lastPost = tms;
@@ -954,9 +973,14 @@ function makeApi(deps) {
                             // dropped — the words stand, next turn asks again.
                             const sp = chatToolsMod.chatSumCall(res.answer);
                             const env = {
-                                // A reply that was ONLY its SUM line keeps the
-                                // raw words — the site refuses a wordless answer.
-                                text: sp.text || res.answer,
+                                // A reply that was ONLY its SUM line keeps the raw
+                                // words; an ACT-only reply strips to '' (chatActCall
+                                // runs inside chatLoop), so give the envelope words
+                                // when an act is present — otherwise the site's
+                                // "a web-chat answer needs its words" refusal loops
+                                // the ask through the sweep until it expires and the
+                                // proposal is lost ("your Mac may be asleep").
+                                text: sp.text || res.answer || (res.act ? 'I’ve lined up an action for you to confirm below.' : ''),
                                 think: res.think.slice(0, chatMod.CHAT_THINK_CHARS),
                                 used: res.used,
                                 ms: res.ms,

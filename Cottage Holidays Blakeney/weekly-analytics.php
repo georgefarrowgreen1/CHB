@@ -97,7 +97,9 @@ $m = weekly_analytics_body([
 
 $res = send_owner($subject, $text, $html);
 
-if (!empty($res['ok']) || $res === true) {
+// Stamp on delivered OR queued (see owner-digest.php): a queued copy must
+// suppress a same-day resend, or it delivers twice.
+if (!empty($res['ok']) || $res === true || !empty($res['queued'])) {
     try {
         db()
             ->prepare(
