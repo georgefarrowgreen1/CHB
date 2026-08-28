@@ -204,6 +204,31 @@ const { boot, ok } = require('./ui-test-lib');
         `…and a ${hostile.long}-character screen name does not shrink the crown (${hostile.before}px → ${hostile.after}px)`);
     check(hostile.clipped, '…because the TITLE takes the squeeze and ellipsises instead');
 
+    // H) The Messages pill stands down on the PRIVACY page — the one view whose
+    //    prose runs full-width to the edge, so the fixed bubble sat on the
+    //    line-ends of text being read (audit screenshot pass). Measured on the
+    //    PAINT (getClientRects — the property is not the pixel), and BOTH ways
+    //    so the fix can never erode into "always hidden".
+    const fab = await page.evaluate(async () => {
+        const painted = () => {
+            const el = document.getElementById('guest-msg-fab');
+            return !!el && el.getClientRects().length > 0;
+        };
+        nav('view-main');
+        await new Promise((r) => setTimeout(r, 150));
+        const onHome = painted();
+        nav('view-privacy');
+        await new Promise((r) => setTimeout(r, 150));
+        const onPrivacy = painted();
+        nav('view-main');
+        await new Promise((r) => setTimeout(r, 150));
+        const backHome = painted();
+        return { onHome, onPrivacy, backHome };
+    });
+    check(fab.onHome, 'the Messages pill paints on the home page');
+    check(!fab.onPrivacy, 'the pill stands down on the privacy policy — the bubble must not sit on reading text');
+    check(fab.backHome, 'and it returns the moment the guest navigates away');
+
     console.log(fails ? `\n  ${fails} TOP-MENU CHECK(S) FAILED ❌` : '\n  TOP-MENU SUITE PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
