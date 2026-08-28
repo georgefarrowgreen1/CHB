@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 580;
+const ADMIN_BUNDLE_V = 581;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10065,8 +10065,12 @@ function findBookingById(bookingId) {
 }
 
 function findBookingLocation(bookingId) {
+    // Accept BOTH id forms like findBookingById: a notification tap / reload /
+    // search row passes the numeric dbId, and matching only the client id ('b42')
+    // gave loc=null → wrong cottage in the hub and "paid in full £0.00" in search.
+    const want = String(bookingId);
     for (const propKey of Object.keys(dbBookings)) {
-        const idx = dbBookings[propKey].findIndex((b) => b.id === bookingId);
+        const idx = dbBookings[propKey].findIndex((b) => String(b.id) === want || String(b.dbId) === want);
         if (idx !== -1) return { propKey, idx };
     }
     return null;
@@ -10596,9 +10600,14 @@ async function chatPoll() {
     const loggedIn = !!currentGuest;
     const token = chatGetToken();
     if (!loggedIn && !token) return; // anon visitor hasn't started a thread yet
+    // If the local thread moved on during the request (a send set a fresher sig),
+    // this poll's snapshot is stale — discard it rather than repaint without the
+    // just-sent message. The next tick reconciles.
+    const sigAtFire = __chatSig;
     try {
         const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
         const r = await apiPost('messages.php', payload);
+        if (__chatSig !== sigAtFire) return;
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
         if (sig !== __chatSig) {
@@ -11665,8 +11674,12 @@ async function adminThreadPoll() {
         return;
     }
     if (document.hidden) return; // don't poll a backgrounded tab
+    // Snapshot the thread and bail if the owner switched during the request — a
+    // slow response for thread A must not repaint thread B with A's messages.
+    const polledThread = __msgThreadId;
     try {
-        const r = await apiPost('messages.php', { action: 'thread', thread_id: __msgThreadId });
+        const r = await apiPost('messages.php', { action: 'thread', thread_id: polledThread });
+        if (polledThread !== __msgThreadId) return;
         const msgs = r.messages || [];
         const sig = adminMsgSig(msgs);
         if (sig !== __msgThreadSig) {
@@ -18461,7 +18474,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'guestfx1';
+    const BUILD = 'adfix5';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
