@@ -499,6 +499,16 @@ try {
     );
     $ps->execute([$id]);
     foreach ($ps->fetchAll() as $r) {
+        // A charge-upfront KEPT deposit is written by keep_deposit as a 'kept-…'
+        // damages row, but its money is already stated on the carrying first
+        // payment row (folded in via $carried below) and its retention is stated
+        // by the deposit-status chip — so listing it here too double-counts the
+        // £75, pushing the Payments rows above the total under a "Paid in full"
+        // header. Skip it; the legacy captured-hold damages row (a real Square id)
+        // still lists, because there it is the ONLY record of that money.
+        if ((string) $r['kind'] === 'damages' && strncmp((string) $r['square_payment_id'], 'kept-', 5) === 0) {
+            continue;
+        }
         $isRefund = in_array((string) $r['kind'], ['refund', 'damages_return'], true);
         $amount = round((float) $r['amount'], 2);
         $note = '';

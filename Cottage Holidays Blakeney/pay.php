@@ -592,8 +592,14 @@ if ($action === 'charge') {
 
     $newPaid = round(min($total, $nowPaid + $amountDue), 2);
     $newStatus = $newPaid >= $total - 0.001 ? 'paid' : ($newPaid > 0 ? 'deposit' : 'unpaid');
+    // Set payment_date only when it is not already recorded. This card charge is
+    // dated by its own payments ledger row (accounts.php allocates card money by
+    // those dates); payment_date is the ONLY date the manual cash/bank remainder
+    // carries, so overwriting it here moved earlier manual income into this
+    // charge's tax year and MTD quarter (a March bank transfer reported in a May
+    // charge's year). COALESCE preserves the earliest recorded date.
     db()
-        ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
+        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=COALESCE(NULLIF(payment_date,''), ?) WHERE id=?")
         ->execute([$newStatus, $newPaid, 'Square card', date('Y-m-d'), $bookingId]);
 
     book_unlock($b['prop_key']);

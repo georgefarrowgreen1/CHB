@@ -302,9 +302,16 @@ try {
     // the correct floor, and a return can only ever offset ITS OWN booking's capture.
     // Allocation is to the CAPTURE date, because retaining the money is the taxable
     // event (netting on the return's date could also push it into another tax year).
+    // Two eras write the damages row with DIFFERENT semantics, and the netting
+    // must respect that. Legacy hold_capture writes the GROSS capture, so the
+    // returns net off it (captured − returned). keep_deposit (charge-upfront)
+    // writes a 'kept-…' row that is ALREADY net of prior returns — so subtracting
+    // this booking's returns a second time under-reports the kept income by the
+    // returned amount (a £75 charged, £25 returned, £50 kept read £25). A kept-…
+    // row is therefore counted at face value and its booking's returns ignored.
     $keptRows = db()
         ->query(
-            "SELECT booking_id, DATE(created_at) d, kind, amount FROM payments
+            "SELECT booking_id, DATE(created_at) d, kind, amount, square_payment_id sid FROM payments
               WHERE (kind = 'damages' AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED'))
                  OR (kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')))
               ORDER BY created_at",
@@ -314,10 +321,13 @@ try {
     foreach ($keptRows as $kr) {
         $bid = (int) $kr['booking_id'];
         if (!isset($perBooking[$bid])) {
-            $perBooking[$bid] = ['captures' => [], 'returned' => 0.0];
+            $perBooking[$bid] = ['captures' => [], 'returned' => 0.0, 'net' => false];
         }
         if ($kr['kind'] === 'damages') {
             $perBooking[$bid]['captures'][] = [$kr['d'], (float) $kr['amount']];
+            if (strncmp((string) $kr['sid'], 'kept-', 5) === 0) {
+                $perBooking[$bid]['net'] = true; // already net of returns — don't re-subtract
+            }
         } else {
             $perBooking[$bid]['returned'] += (float) $kr['amount'];
         }
@@ -325,7 +335,9 @@ try {
     $keptByDay = [];
     foreach ($perBooking as $p) {
         $captured = array_sum(array_map(fn($c) => $c[1], $p['captures']));
-        $kept = round(max(0.0, $captured - $p['returned']), 2);
+        $kept = $p['net']
+            ? round(max(0.0, $captured), 2)
+            : round(max(0.0, $captured - $p['returned']), 2);
         if ($kept <= 0.005) {
             continue; // fully returned, or (charge-upfront) never captured as income
         }

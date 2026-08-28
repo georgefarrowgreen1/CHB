@@ -252,9 +252,12 @@ $newStatus = derive_payment_status($total, $paid);
 // recorded payment date to the event date — desyncing the owner's records from
 // when the money really arrived, and overwriting a manually recorded method
 // (e.g. bank transfer) with 'Square card'.
+// payment_date is preserved when already set (COALESCE): it is the only date the
+// manual cash/bank remainder carries, and a later reconciliation must not drag
+// earlier manual income into this event's tax year (the pay.php fix, mirrored).
 if ($newStatus !== ($b['payment'] ?? '') || abs($paid - (float) $b['deposit_paid']) > 0.001) {
     db()
-        ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
+        ->prepare("UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=" . ($paid > 0 ? "COALESCE(NULLIF(payment_date,''), ?)" : "?") . " WHERE id=?")
         ->execute([$newStatus, $paid, $paid > 0 ? 'Square card' : '', $paid > 0 ? date('Y-m-d') : null, $bookingId]);
 }
 
