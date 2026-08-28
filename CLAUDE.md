@@ -2347,12 +2347,18 @@ up — nothing needs a reply" directly above a list with a row in it.
   the tokens put it. **Container opacity is the blunt instrument to distrust here: it
   dims text that was already muted, and no token audit can see it because the token is
   unchanged.**
-- **`--text-muted` MEASURES 4.34:1 IN DARK MODE on `.glass-panel`, and that is
-  PRE-EXISTING** — checked before "fixing" it: **215** existing elements use that exact
-  colour on that exact ground and measure the identical ratio. So new muted text here is
-  consistent with the app, and special-casing two elements would be wrong. a11y-test
-  gates the status tints and `--accent-text`, not this one; fixing it means nudging one
-  token across 215 elements and belongs in its own PR.
+- **`--text-muted` CLEARS AA IN BOTH THEMES NOW — the 4.34:1 figure that stood here is
+  STALE.** This entry used to record dark `--text-muted` at 4.34:1 on `.glass-panel`
+  (215 elements) with "fixing it belongs in its own PR" — written BEFORE the a11y
+  token sweep, and never updated when that sweep landed. Re-measured (Aug 2026) by
+  sampling the PAINT beside real muted text in a browser: dark 7.74–9.55:1, light
+  5.45–6.16:1, and the registered admin dark grounds read 6.58–9.39 by arithmetic.
+  Its claim that "a11y-test gates the status tints and `--accent-text`, not this one"
+  is also obsolete: `--text-muted` is in a11y-test's `TEXT_TOKENS` and §1 sweeps it
+  against every registered surface of both themes on every CI run. Nothing to fix —
+  the standing lesson is that a measured-number claim in these notes goes stale the
+  moment the token moves, so date the measurement or point at the gate that keeps it
+  true.
 - **THE TWO PILLS ARE A PAIR, ON ONE LINE, AND THE COTTAGE NAME SURVIVES.** Reported from
   a phone; two causes, both measured at 390px. `.prop-tag` is an inline-block pill built
   for a STACKED context and carries `margin-bottom: 12px`, which inside this centred flex
