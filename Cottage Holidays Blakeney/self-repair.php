@@ -99,7 +99,15 @@ try {
 // fewer photo. Only clearly-local entries are candidates; anything else
 // (external URLs, unexpected shapes) is left alone.
 try {
-    $props = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
+    // A transiently-unreadable uploads/ (permissions blip, unmounted volume, a
+    // deploy mid-mirror) makes is_file() answer false for EVERY local image —
+    // so without a floor one bad run would strip every cottage's gallery
+    // references irreversibly. Skip the whole pass unless the directory is
+    // there and readable, and (below) never drop every local reference in one go.
+    $uploadsOk = is_dir(__DIR__ . '/uploads') && is_readable(__DIR__ . '/uploads');
+    $props = $uploadsOk
+        ? db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN)
+        : [];
     foreach ($props as $prop) {
         $key = 'images-' . $prop;
         $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
@@ -114,6 +122,8 @@ try {
         }
         $kept = [];
         $dropped = 0;
+        $localSeen = 0;
+        $localMissing = 0;
         foreach ($list as $url) {
             if (!is_string($url)) {
                 continue; // malformed entry — drop (renderers expect strings)
@@ -122,12 +132,19 @@ try {
             $path = preg_replace('~^https?://[^/]+/~i', '', trim($url));
             $path = strtok($path, '?');
             if (strpos($path, 'uploads/') === 0 && strpos($path, '..') === false) {
+                $localSeen++;
                 if (!is_file(__DIR__ . '/' . $path)) {
+                    $localMissing++;
                     $dropped++;
                     continue; // file is gone — drop the dead reference
                 }
             }
             $kept[] = $url;
+        }
+        // Guard: if EVERY local reference reads as missing, distrust the probe
+        // (a dir-level blip, not genuine deletions) and leave the key untouched.
+        if ($localSeen > 0 && $localMissing === $localSeen) {
+            continue;
         }
         if (count($kept) !== count($list)) {
             db()

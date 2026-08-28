@@ -933,6 +933,17 @@ $k25 = $keptOf(2025);
 $k26 = $keptOf(2026);
 it_check('net kept sits in the capture year, not the return year', abs($k25 - 150.0) < 0.005 && abs($k26) < 0.005, "2025=$k25 2026=$k26");
 
+// (h) CHARGE-UPFRONT partial-return-then-keep. keep_deposit writes a 'kept-…'
+// damages row that is ALREADY net of the return (£75 collected, £25 returned →
+// a £50 kept- row), so accounts.php must NOT subtract the £25 return a second
+// time. The legacy cases above use a gross 'damages' row where the netting IS
+// correct — this case is the one the double-netting under-reported (£50 → £25).
+$rootDb->exec("DELETE FROM payments");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES (9008,'damages_return',25.00,'COMPLETED','sq_h_ret','2026-06-05 10:00:00')");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES (9008,'damages',50.00,'COMPLETED','kept-abc123def456','2026-06-10 10:00:00')");
+$kH = $keptOf(2026);
+it_check('a kept- net row is counted at face value, not double-netted (£50, not £25)', abs($kH - 50.0) < 0.005, 'kept=' . $kH);
+
 // ---- 15. THE CALENDAR CANNOT BE DOUBLE-BOOKED -----------------------------
 // The one guarantee this business cannot trade away, and until now the one with
 // no test at all: every clash guard lived in code nothing exercised. The client

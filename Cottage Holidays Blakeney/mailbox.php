@@ -28,9 +28,18 @@ require_once __DIR__ . '/mailbox-read.php';
 require_admin();
 
 // The attachment download is a plain GET link (an <a download> can't POST);
-// everything else stays JSON-POST. GETs never mutate, so CSRF isn't needed.
+// everything else stays JSON-POST. require_admin() only checks the CSRF token
+// on non-GET methods, so a mutating action reachable by GET would ride the
+// SameSite=Lax session cookie with no token — genuine CSRF (send mail from the
+// business mailbox, delete a message). Only 'attachment' legitimately needs
+// GET; every other action MUST arrive by POST so the header check applies.
 $in = $_SERVER['REQUEST_METHOD'] === 'GET' ? $_GET : body();
 $action = $in['action'] ?? '';
+
+$MBX_MUTATING = ['send', 'delete', 'mark_unread'];
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && in_array($action, $MBX_MUTATING, true)) {
+    json_out(['error' => 'This action must be sent as a POST.'], 405);
+}
 
 // ---- helpers ---------------------------------------------------------------
 

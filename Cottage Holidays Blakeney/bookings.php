@@ -301,9 +301,13 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
     $status = derive_payment_status($total, $paid);
     // Do NOT restamp payment_date on a refund — accounts.php allocates the WHOLE
     // booking's income to the year of payment_date, so moving it to the refund date
-    // would shift all its income into the wrong UK tax year. Keep the recorded date
-    // unless the paid figure actually INCREASED (never on a refund) or hit zero.
-    $newDate = $paid <= 0 ? null : ($paid > $prior + 0.001 ? date('Y-m-d') : ($b['payment_date'] ?? date('Y-m-d')));
+    // would shift all its income into the wrong UK tax year. And do NOT advance it
+    // on an increase either: card money is dated by its own ledger row, while
+    // payment_date is the only date the manual cash/bank remainder carries, so
+    // advancing it moved earlier manual income forward (the pay.php fix, mirrored).
+    // Stamp today only when no date is recorded yet; keep an existing one; null at zero.
+    $existingDate = trim((string) ($b['payment_date'] ?? ''));
+    $newDate = $paid <= 0 ? null : ($existingDate !== '' ? $existingDate : date('Y-m-d'));
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_date=? WHERE id=?')
         ->execute([$status, $paid, $newDate, $bookingId]);
@@ -1874,18 +1878,46 @@ if ($action === 'record_square_payment') {
     // reader cannot know that, and 0 is the right answer if it ever did.
     $paid = 0.0;
     try {
+        // A guest's FIRST payment bundles the refundable deposit into one Square
+        // charge (pay.php charges rental + deposit and records only the rental in
+        // the ledger, tracking the deposit on hold_*). If pay.php died before its
+        // writes, this recovery is that same charge — so the ledger row must be
+        // the RENTAL portion and the deposit must land on hold_* as 'charged', or
+        // the deposit reads £0 collected, never joins Deposits-to-return, and
+        // cannot be returned. Signature of the bundle: no deposit taken yet
+        // (hold_status 'none'), a deposit is due, and the gross exceeds it with a
+        // positive rental remainder. A plain later balance orphan fails this and
+        // records whole, unchanged.
+        $rateRow = get_rate($b['prop_key']);
+        $depDue = round((float) booking_damages_due($b, $rateRow ?: null), 2);
+        $bundled = ($b['hold_status'] ?? 'none') === 'none'
+            && empty($b['hold_payment_id'])
+            && $depDue > 0.005
+            && $amount > $depDue + 0.005;
+        $ledgerAmount = $bundled ? round($amount - $depDue, 2) : $amount;
         db()
             ->prepare(
                 'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, fee, guest_name, prop_key, created_at)
                  VALUES (?,?,?,?,?,?,?,?,NOW())',
             )
-            ->execute([$id, $sqId, booking_payment_kind($b), $amount, 'COMPLETED', $fee, $b['name'], $b['prop_key']]);
+            ->execute([$id, $sqId, booking_payment_kind($b), $ledgerAmount, 'COMPLETED', $fee, $b['name'], $b['prop_key']]);
+        if ($bundled) {
+            db()
+                ->prepare('UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ? WHERE id = ?')
+                ->execute([$sqId, 'charged', $depDue, $id]);
+            $b['hold_status'] = 'charged';
+            $b['hold_payment_id'] = $sqId;
+            $b['hold_amount'] = $depDue;
+        }
         // The headline figure is re-derived from the ledger through the shared
         // helper rather than added to — the one-definition rule, and the reason
-        // this cannot drift from what every other screen reports.
+        // this cannot drift from what every other screen reports. The cap carries
+        // the deposit headroom (total + agreed_booking_fee) so a bundled deposit
+        // riding above the rental total isn't clamped away.
         $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+        $cap = $total > 0 ? round($total + ($bundled ? $depDue : 0), 2) : 0;
         $paid = round(booking_paid_so_far(['id' => $id, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
-        $paid = $total > 0 ? min($total, $paid) : $paid;
+        $paid = $cap > 0 ? min($cap, $paid) : $paid;
         db()
             ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ? WHERE id = ?')
             ->execute([$paid, $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid'), $id]);
@@ -2259,12 +2291,23 @@ if ($action === 'cancel') {
     // line has to stand on its own — the booking it points at will not exist.
     $hs = $b['hold_status'] ?? 'none';
     if ($hs === 'charged' && !empty($b['hold_payment_id'])) {
-        $dep = round(max(0, damages_collected($b) - damages_returned($id)), 2);
+        // Serialise, then RE-READ the deposit state under the lock — the same
+        // discipline return_deposit/keep_deposit follow. Computing $dep from the
+        // row read at the top of this action (before any lock) let a concurrent
+        // return_deposit on another device commit its £75 damages_return row in
+        // the gap, so cancel refunded the same deposit a second time (the refund
+        // idempotency key includes refunded-so-far, so the two keys differ by
+        // design and Square issues both — £150 out for a £75 deposit). Reading
+        // damages_returned() under the lock nets out that committed return.
+        book_lock($b['prop_key'] ?? '');
+        $bNow = booking_by_id($id) ?: $b;
+        $hsNow = $bNow['hold_status'] ?? 'none';
+        $dep = $hsNow === 'charged'
+            ? round(max(0, damages_collected($bNow) - damages_returned($id)), 2)
+            : 0.0;
         if ($dep > 0) {
             if (square_enabled()) {
-                book_lock($b['prop_key'] ?? '');
-                $depRr = record_square_refund($id, $b['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $b['name'], $b['prop_key']);
-                book_unlock($b['prop_key'] ?? '');
+                $depRr = record_square_refund($id, $bNow['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $bNow['name'], $bNow['prop_key']);
                 if (!empty($depRr['ok'])) {
                     $depositRefunded = $dep;
                 }
@@ -2273,6 +2316,7 @@ if ($action === 'cancel') {
                 $depositOwed = $dep;
             }
         }
+        book_unlock($b['prop_key'] ?? '');
     }
     if (square_enabled()) {
         if ($hs === 'authorized' && !empty($b['hold_payment_id'])) {
