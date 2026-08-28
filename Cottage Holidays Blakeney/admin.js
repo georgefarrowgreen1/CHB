@@ -26354,7 +26354,18 @@ async function tlBlockTap(id) {
     );
     if (!ok) return;
     try {
-        await apiPost('ical-import.php', { action: 'delete_block', id: Number(id) });
+        // A split segment carries the real server id on `realId` and its own span
+        // on segFrom/segTo; free just that span (the server re-inserts the rest).
+        // An unsplit block posts no range and is freed whole. Number(bl.id) would
+        // be NaN for a synthetic '55-1' id, which the server rejected — so always
+        // send the numeric realId.
+        const realId = Number(bl.realId != null ? bl.realId : bl.id);
+        const payload = { action: 'delete_block', id: realId };
+        if (bl.split && bl.segFrom && bl.segTo) {
+            payload.from = bl.segFrom;
+            payload.to = bl.segTo;
+        }
+        await apiPost('ical-import.php', payload);
         toast('Dates freed — back on sale.');
         await loadData();
         renderCalendar();

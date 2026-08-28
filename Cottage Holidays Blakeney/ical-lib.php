@@ -121,9 +121,23 @@ function parse_ical($text)
 }
 
 // Normalise an iCal date/datetime value to YYYY-MM-DD.
+// A UTC DATE-TIME (…THHMMSSZ) must be converted to the quay's own clock before
+// the date is taken, or a checkout at 00:00 local (23:00Z the previous day in
+// summer) is stored a night early and that final night reads FREE — a
+// double-booking window. Airbnb/Vrbo/Booking use all-day VALUE=DATE and are
+// unaffected; this bites a channel-manager or personal feed emitting a UTC time.
 function ical_date($v)
 {
     $v = trim($v);
+    if (preg_match('/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/', $v, $m)) {
+        try {
+            $dt = new DateTime("{$m[1]}-{$m[2]}-{$m[3]}T{$m[4]}:{$m[5]}:{$m[6]}Z");
+            $dt->setTimezone(new DateTimeZone('Europe/London'));
+            return $dt->format('Y-m-d');
+        } catch (\Throwable $e) {
+            /* fall through to the plain date extraction */
+        }
+    }
     if (preg_match('/(\d{4})(\d{2})(\d{2})/', $v, $m)) {
         return $m[1] . '-' . $m[2] . '-' . $m[3];
     }

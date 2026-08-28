@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 578;
+const ADMIN_BUNDLE_V = 579;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -10008,11 +10008,16 @@ function suppressBlocksUnderLocalBookings() {
                 out.push(bl); // untouched
                 return;
             }
-            // A split keeps the block's identity on every piece (the timeline reads
-            // source/guestName off it) with its own id suffix, so nothing keyed on id
-            // collapses two segments into one.
+            // A split keeps the block's identity on every piece (timeline reads
+            // source/guestName off it) with its own id suffix. `realId`/`segFrom`/
+            // `segTo` let tlBlockTap free only this segment's span rather than the
+            // whole row (and stop the synthetic id reaching the server as NaN).
             parts.forEach((p, i) => out.push(Object.assign({}, bl, {
                 id: i === 0 ? bl.id : String(bl.id) + '-' + i,
+                realId: bl.id,
+                segFrom: p.a,
+                segTo: p.b,
+                split: parts.length > 1,
                 checkIn: p.a,
                 checkOut: p.b,
             })));
@@ -13847,7 +13852,11 @@ function dpNextBookedStart(from) {
 }
 // True if staying nights [start, end) would include any booked night.
 function rangeCrossesBooked(start, end) {
-    const ranges = propertyAvailability[activeFrontProperty] || [];
+    // The picker's OWN cottage (dpPropKey), not the page's: in 'fields' mode the
+    // picker carries its own cottage select, so activeFrontProperty judged the
+    // range against the wrong calendar. This reader was the straggler of that move.
+    const pk = typeof dpPropKey === 'function' ? dpPropKey() : activeFrontProperty;
+    const ranges = propertyAvailability[pk] || [];
     return ranges.some((r) => r.start < end && r.end > start);
 }
 // A free check-in night only truly opens a bookable stay when the cottage's
@@ -18402,7 +18411,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'gbook002';
+    const BUILD = 'calfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

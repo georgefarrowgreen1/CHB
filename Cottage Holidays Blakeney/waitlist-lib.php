@@ -80,6 +80,15 @@ function waitlist_notify_freed($prop, $from, $to)
     if (!$prop || !$from || !$to) {
         return 0;
     }
+    // A PAST range is not a space that opened. bookings.php's delete/cancel pass a
+    // booking's raw dates with no future check (unlike the ical caller, which skips
+    // $co <= today), so deleting a past junk/no-show booking used to email every
+    // open-dated entry "a space has just opened" — a falsehood, and it burns their
+    // one-shot notified_at. Inherit the ical caller's future-only rule here so
+    // every caller is covered.
+    if ($to <= date('Y-m-d')) {
+        return 0;
+    }
     // Don't fire "a space has opened" if the range is still covered by another
     // booking or an OTA block — protects callers (bookings delete/cancel) that
     // don't pre-check, so guests aren't emailed a falsehood (and burned).

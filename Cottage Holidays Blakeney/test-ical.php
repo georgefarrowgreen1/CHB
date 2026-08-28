@@ -83,6 +83,15 @@ $f = parse_ical($folded);
 ick('a folded line is rejoined before parsing', ($f[0]['uid'] ?? '') === 'long-uid-that-wasfolded-across-lines', (string) ($f[0]['uid'] ?? ''));
 ick('a date-TIME value still yields the calendar date', ($f[0]['start'] ?? '') === '2026-07-01' && ($f[0]['end'] ?? '') === '2026-07-05');
 
+// A UTC DATE-TIME whose time is late enough that its UTC date TRAILS the local
+// one (summer, ≥23:00Z) must convert to the quay's clock, or the checkout-day
+// block ends a night early and that final night reads FREE — a double-booking
+// window. DTEND 20260814T230000Z = 15 Aug 00:00 BST, so the block ends 2026-08-15.
+$bst = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:utc-dt\r\nDTSTART:20260810T230000Z\r\nDTEND:20260814T230000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+$bf = parse_ical($bst);
+ick('a UTC DATE-TIME converts to the London date, not the UTC one (no lost final night)',
+    ($bf[0]['end'] ?? '') === '2026-08-15', 'end=' . ($bf[0]['end'] ?? ''));
+
 // Anything half-formed is dropped rather than guessed at — a half-read event
 // would block or free the wrong dates.
 $partial = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:no-dates\r\nEND:VEVENT\r\n"

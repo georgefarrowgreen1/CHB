@@ -46,13 +46,32 @@ function clash_message($propKey, $checkIn, $checkOut, $ignoreId = null)
             ').';
     }
     // Imported iCal blocks (Airbnb/Vrbo) — table may not exist on older installs.
+    // Exclude the booking's OWN re-imported mirror: the site exports its bookings
+    // to the platforms, which re-import them and export them back, so a two-way
+    // sync stores each of our bookings as an ical_blocks row at the same dates.
+    // Without excluding it, editing a synced booking (even a phone-number fix that
+    // changes no dates) false-clashed against its own mirror — training reflexive
+    // override, which then skips every check. The mirror sits at the ignored
+    // booking's dates, so a block exactly matching them is skipped.
     try {
+        $mirrorFrom = '';
+        $mirrorTo = '';
+        if ($ignoreId) {
+            $mq = db()->prepare('SELECT check_in, check_out FROM bookings WHERE id = ?');
+            $mq->execute([$ignoreId]);
+            if ($mrow = $mq->fetch()) {
+                $mirrorFrom = (string) $mrow['check_in'];
+                $mirrorTo = (string) $mrow['check_out'];
+            }
+        }
         $s2 = db()->prepare(
             'SELECT source, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?',
         );
         $s2->execute([$propKey, $checkOut, $checkIn]);
-        $b = $s2->fetch();
-        if ($b) {
+        foreach ($s2->fetchAll() as $b) {
+            if ((string) $b['check_in'] === $mirrorFrom && (string) $b['check_out'] === $mirrorTo && $mirrorFrom !== '') {
+                continue; // this block is a mirror of the booking being edited
+            }
             return 'These dates are blocked by a ' .
                 ucfirst($b['source']) .
                 ' booking (' .
@@ -846,7 +865,11 @@ if ($action === 'update') {
     if (!book_lock($propKey)) {
         json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
     }
-    if (empty($in['override_clash'])) {
+    // Only worth a clash check when the dates or cottage actually change — an edit
+    // that leaves the stay where it is (a phone-number or note fix) cannot create
+    // a new overlap, so running it there only produced false "Save anyway?" asks.
+    $datesMoved = $propKey !== $b['prop_key'] || $checkIn !== $b['check_in'] || $checkOut !== $b['check_out'];
+    if (empty($in['override_clash']) && $datesMoved) {
         $clashMsg = clash_message($propKey, $checkIn, $checkOut, $id);
         if ($clashMsg) {
             json_out(['clash' => true, 'message' => $clashMsg]);

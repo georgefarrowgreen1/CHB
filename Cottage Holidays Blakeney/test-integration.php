@@ -1022,6 +1022,18 @@ $r = $upd($baseId, $dd(300), $dd(304));
 it_check('shortening a booking within its OWN dates is not a self-clash', $r['code'] === 200 && empty($r['json']['clash']), $r['raw']);
 $r = $upd($baseId, $dd(300), $dd(305)); // put it back
 
+// (h2) A two-way platform sync re-imports our own bookings as ical_blocks, so a
+// booking has a MIRROR of itself at its own dates. Editing that booking must not
+// false-clash against its own mirror — a phone-number fix (no date change) must
+// not even run the clash check, and re-saving the same dates must ignore the
+// mirror. Left unfixed this trained reflexive override, which skips every check.
+$rootDb->exec("INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES ('$propKey','airbnb','mirror-base','" . $dd(300) . "','" . $dd(305) . "')");
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $baseId, 'prop_key' => $propKey, 'name' => 'Base Stay', 'email' => '', 'phone' => '07700900999', 'check_in' => $dd(300), 'check_out' => $dd(305), 'adults' => 2, 'children' => 0]);
+it_check('a no-date-change edit of a mirrored booking does not false-clash', $r['code'] === 200 && empty($r['json']['clash']), $r['raw']);
+$r = $upd($baseId, $dd(300), $dd(305));
+it_check('re-saving a mirrored booking\'s own dates ignores its mirror block', $r['code'] === 200 && empty($r['json']['clash']), $r['raw']);
+$rootDb->exec("DELETE FROM ical_blocks WHERE uid = 'mirror-base'");
+
 // (i) The GUEST side. An enquiry for taken dates never reaches the owner.
 $r = http($guest, 'POST', '/enquiries.php', [
     'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Late Enquirer',
