@@ -498,6 +498,25 @@ function booking_autopay_state($b, $today = null)
         }
         return ['armed', 'Scheduled — £' . number_format($agreedAmt, 2) . ' monthly, next on ' . uk_date($next !== '' ? $next : $agreedDue) . '.'];
     }
+    // A SINGLE COLLECTION IS SPENT ONCE IT HAS RUN. The monthly branch above
+    // knows it is finished because each collection advances autopay_next_at; a
+    // single collection has no such marker — next_at is NULL before AND after —
+    // so the only thing standing it down was "nothing is owed", i.e. the money
+    // still being paid. Give it back and the consent read live again: the
+    // collector re-selects the row every night (COALESCE(next_at, due) <= today
+    // stays true once due has passed), the outstanding matched the agreed
+    // amount exactly, and the card was charged AGAIN the night after the owner
+    // deliberately refunded it — with no advance notice, the pre-debit window
+    // having closed with the due date. autopay_collected_for (migration-122) is
+    // the missing marker: the day this consent was collected FOR. Comparing it
+    // to the agreed day means a genuinely re-planned booking is live again by
+    // construction, while a refund cannot resurrect a spent agreement. 'stale'
+    // is the honest state — the client already offers to re-arm from it, which
+    // is exactly the right affordance: collecting again needs asking again.
+    $collectedFor = substr((string) ($b['autopay_collected_for'] ?? ''), 0, 10);
+    if ($collectedFor !== '' && $collectedFor === $agreedDue) {
+        return ['stale', 'That payment was already collected — ask them again if more is owed.'];
+    }
     if (abs($charge - $agreedAmt) > 0.005) {
         return ['stale', 'The amount has changed since they agreed — ask them again.'];
     }

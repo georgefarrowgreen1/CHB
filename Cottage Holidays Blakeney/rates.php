@@ -47,7 +47,18 @@ function rates_public_payload()
     if (empty($_SESSION['admin_id'])) {
         $rows = array_values(array_filter($rows, fn($r) => empty($r['unlisted'])));
     }
-    // Seasonal rates (table may not exist yet — then no seasons key is sent)
+    // Seasonal rates (table may not exist yet — then no seasons key is sent).
+    // KEYED TO THE ROWS WE ARE ACTUALLY SENDING. The filter above removes an
+    // unlisted cottage from `properties`, but this query reads every season for
+    // every cottage — so an anonymous visitor was handed seasons keyed by the
+    // private cottage's prop_key, publishing its existence, its season labels
+    // ("Christmas week") and its nightly rates on a screen that never shows the
+    // cottage. Restricting to the visible keys makes the two halves of the
+    // payload state the same thing.
+    $visible = [];
+    foreach ($rows as $r2) {
+        $visible[(string) ($r2['prop_key'] ?? '')] = true;
+    }
     $seasons = [];
     try {
         foreach (
@@ -58,6 +69,9 @@ function rates_public_payload()
                 ->fetchAll()
             as $s
         ) {
+            if (!isset($visible[(string) $s['prop_key']])) {
+                continue; // an unlisted cottage's rates are not public
+            }
             $s['couple_rate'] = (float) $s['couple_rate'];
             $seasons[$s['prop_key']][] = $s;
         }

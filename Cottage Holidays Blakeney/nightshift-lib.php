@@ -1553,7 +1553,35 @@ function night_tool_money(array $owed, array $deposits, array $names)
             'ref' => (int) ($r['id'] ?? 0),
         ];
     }
-    return ['due_now' => $now, 'due_later' => $later, 'deposits_to_return' => $dep];
+    // THE TRUTHFUL TOTALS, beside the capped rows. The row lists are trimmed to
+    // NIGHT_TOOL_ROWS_MAX because a chat answer is not an export — but a COUNT
+    // or a SUM taken over a trimmed list is not a short list, it is a WRONG
+    // NUMBER, and the grounding pack states both as facts the model then quotes
+    // to the owner. Counted over everything the gather returned; the rows stay
+    // capped, and night_world reads these rather than recounting what it was
+    // handed. (The tool answer carries them too, harmlessly — the same fact.)
+    $nowN = 0;
+    $nowSum = 0.0;
+    $depN = 0;
+    foreach ($owed as $r) {
+        if (is_array($r) && !empty($r['due_now'])) {
+            $nowN++;
+            $nowSum += (float) ($r['still_to_pay'] ?? $r['balance'] ?? 0);
+        }
+    }
+    foreach ($deposits as $r) {
+        if (is_array($r)) {
+            $depN++;
+        }
+    }
+    return [
+        'due_now' => $now,
+        'due_later' => $later,
+        'deposits_to_return' => $dep,
+        'due_now_n' => $nowN,
+        'due_now_sum' => round($nowSum, 2),
+        'deposits_n' => $depN,
+    ];
 }
 
 // PERFORMANCE: this month against last, from DIRECT bookings — and the frame
@@ -2209,9 +2237,22 @@ function night_world(array $fleet, array $today, array $money)
         $cots[] = $one;
     }
     $dueRows = $cut($money['due_now'] ?? []);
+    // Count and sum from the TOTALS night_tool_money carries, not from the rows
+    // it was handed: those are already trimmed to NIGHT_TOOL_ROWS_MAX, so
+    // recounting them told the model "12 guests owe £X" whenever more than
+    // twelve did — a figure short by however many were cut, stated as fact in
+    // the pack that rides every ask. Falls back to counting the rows when the
+    // totals are absent (an older caller), which is exactly the old behaviour.
     $dueTotal = 0.0;
-    foreach ((is_array($money['due_now'] ?? null) ? $money['due_now'] : []) as $r) {
-        $dueTotal += (float) str_replace(['£', ','], '', (string) ($r['still_to_pay'] ?? '0'));
+    $dueCount = 0;
+    if (isset($money['due_now_n'], $money['due_now_sum'])) {
+        $dueCount = (int) $money['due_now_n'];
+        $dueTotal = (float) $money['due_now_sum'];
+    } else {
+        foreach ((is_array($money['due_now'] ?? null) ? $money['due_now'] : []) as $r) {
+            $dueCount++;
+            $dueTotal += (float) str_replace(['£', ','], '', (string) ($r['still_to_pay'] ?? '0'));
+        }
     }
     return [
         'cottages' => $cots,
@@ -2223,10 +2264,12 @@ function night_world(array $fleet, array $today, array $money)
             'enquiries_waiting' => (int) ($today['enquiries_waiting'] ?? 0),
         ],
         'money' => [
-            'due_now_count' => count(is_array($money['due_now'] ?? null) ? $money['due_now'] : []),
+            'due_now_count' => $dueCount,
             'due_now_total' => night_money($dueTotal),
             'due_now' => $dueRows,
-            'deposits_to_return' => count(is_array($money['deposits_to_return'] ?? null) ? $money['deposits_to_return'] : []),
+            'deposits_to_return' => isset($money['deposits_n'])
+                ? (int) $money['deposits_n']
+                : count(is_array($money['deposits_to_return'] ?? null) ? $money['deposits_to_return'] : []),
         ],
     ];
 }

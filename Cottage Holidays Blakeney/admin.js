@@ -20776,8 +20776,19 @@ function chbSnapUpFromStores() {
         });
     });
     up.sort((a, z) => a.ci.localeCompare(z.ci));
-    return up.slice(0, 5);
+    // THE COUNT IS OF ALL OF THEM, the list is the next five. Taking the count
+    // AFTER the slice made the sheet say "5 upcoming" to a business with
+    // twelve — a full-looking list that is silently a page one (the no-silent-
+    // caps rule). The total rides as a plain number so the snapshot stays
+    // JSON-safe; a sheet written by an older build simply has no total, and the
+    // renderer then says only what it can stand behind.
+    const out = up.slice(0, 5);
+    __chbSnapUpTotal = up.length;
+    return out;
 }
+// Set by the line above and read by chbSnapWrite/chbDaySnapshot in the same
+// breath — the total belongs to the list that was just built.
+let __chbSnapUpTotal = 0;
 // THE ADAPTER — one question ("what is the day?"), two sources. Live stores
 // when they hold anything; the saved snapshot when they don't. Consumers key
 // off `source`, so "from the saved sheet" is stated once, not per-surface.
@@ -21174,7 +21185,8 @@ function chbSnapWrite() {
         // must not throw away data the offline morning needs. The key safe
         // mirror rides the same way (last-seen when this session hasn't
         // loaded it) — the offline duty and capture need it at the door.
-        chbSnapStore({ at: Date.now(), day: today, rows, up: chbSnapUpFromStores(), ops, cots, coast: prev.coast || null, ks: __keysafe || prev.ks || null });
+        const upRows = chbSnapUpFromStores();
+        chbSnapStore({ at: Date.now(), day: today, rows, up: upRows, upN: __chbSnapUpTotal, ops, cots, coast: prev.coast || null, ks: __keysafe || prev.ks || null });
     } catch (e) {}
 }
 // The coast joins the snapshot ASYNC (never waited on; a failed fetch leaves
@@ -21239,7 +21251,7 @@ function renderOfflineDaySheet() {
     const day = chbDayRows();
     const snap = chbSnapRead();
     const s = day.source === 'live'
-        ? Object.assign({}, snap || {}, { at: day.at, day: todayDashed(), rows: day.rows, up: chbSnapUpFromStores(), __live: true })
+        ? Object.assign({}, snap || {}, (() => { const u = chbSnapUpFromStores(); return { at: day.at, day: todayDashed(), rows: day.rows, up: u, upN: __chbSnapUpTotal, __live: true }; })())
         : snap;
     const host = document.getElementById('view-backoffice');
     if (!s || !host) return false;
@@ -21341,7 +21353,7 @@ function renderOfflineDaySheet() {
         + sec('Tomorrow', 'tomorrow')
         + (!(groups.leave.length + groups.arrive.length + groups.staying.length + groups.tomorrow.length)
             ? '<p class="ods-empty">No arrivals or departures today or tomorrow.</p>' : '')
-        + odsUpcomingHtml(s.up || [])
+        + odsUpcomingHtml(s.up || [], s.upN)
         + (opsKeys.length
             ? '<h2 class="bo-sec-title">Cottage notes</h2>'
               + opsKeys.map((pk) => '<details class="ods-ops"><summary>' + e((s.cots || {})[pk] || pk) + '</summary><pre class="ods-pre">' + e(s.ops[pk]) + '</pre></details>').join('')
@@ -21452,11 +21464,21 @@ function odsTimelineHtml(rows) {
 // The online Bookings list's first cards, display-only — a quiet day's sheet
 // collapsed to "nothing today" while online showed a screen of upcoming stays
 // (owner screenshot). Same row anatomy, same paid/balance chip.
-function odsUpcomingHtml(up) {
+function odsUpcomingHtml(up, total) {
     if (!(up || []).length) return '';
     const e = escapeHtml;
+    // SAY WHICH IT IS. The list is the next five; the count is of all of them,
+    // and when the sheet is showing fewer than it has, it says so rather than
+    // reading like the whole book. A sheet written before the total was carried
+    // has none, and then the honest line is "the next N" — true either way.
+    const n = Number(total) || 0;
+    const line = n > up.length
+        ? 'The next ' + up.length + ' of ' + n + ' upcoming — the rest are on Bookings when you are back online'
+        : n > 0
+          ? n + ' upcoming'
+          : 'The next ' + up.length;
     return '<h1 class="bo-sec-title" style="margin-top:18px;">Bookings</h1>'
-        + '<div class="ods-opsline">' + up.length + ' upcoming</div>'
+        + '<div class="ods-opsline">' + e(line) + '</div>'
         + up.map((u) => '<div class="ny-row ods-row ny-ok"><span class="ny-main">'
             + '<span class="prop-tag tag-' + e(u.pk) + '">' + e(u.cot) + '</span>'
             + '<span class="ny-label">' + e(u.nm) + '</span>'
@@ -21585,9 +21607,17 @@ async function odsPay(i) {
     // version; chbSnapRead checks only age) — a bare .toFixed threw on the
     // exact no-signal morning this capture exists for. Number-guarded instead.
     const rtot = Number(r.rtot) || 0;
+    // PREFILL WHAT HAS ALREADY BEEN RECEIVED, exactly as the online twin does
+    // (recordPayment: `booking.depositPaid > 0 ? min(depositPaid, total) : ''`).
+    // This field is an ABSOLUTE "received so far" that set_payment writes
+    // straight over deposit_paid, and it was prefilled with the rental TOTAL —
+    // so on the no-signal morning this capture exists for, a part-paid booking
+    // was one tap on "Record it" from being recorded as paid in full, money the
+    // guest never handed over. The snapshot already carries rpaid beside rtot.
+    const rpaid = Math.min(Number(r.rpaid) || 0, rtot);
     const askDep = r.holdNone && r.dmg > 0.005;
     const fields = [
-        { id: 'amount', label: 'Rental received so far (£)', type: 'text', value: rtot.toFixed(2) },
+        { id: 'amount', label: 'Rental received so far (£)', type: 'text', value: rpaid > 0 ? rpaid.toFixed(2) : '' },
         { id: 'method', label: 'How they paid', type: 'select', options: [
             { value: 'Cash', label: 'Cash' }, { value: 'Bank transfer', label: 'Bank transfer' }, { value: 'Cheque', label: 'Cheque' },
         ] },
@@ -27610,7 +27640,19 @@ async function draftEnquiryOnMac(enquiryId) {
     }
     const now = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('enq-email-body'));
     if (!now) return; // the composer was closed while the Mac worked
-    if (now.value === before) {
+    // The COMPOSER MAY HOLD A DIFFERENT RECORD NOW. #enq-email-body is one
+    // shared node re-filled per enquiry, so "the text is unchanged" is not
+    // enough: open enquiry A, tap ✨, switch to B while the Mac thinks, and both
+    // bodies read '' — so A's reply was laid silently into B's composer, one tap
+    // from being sent to the wrong guest. draftChatOnMac's own guard (its
+    // comment: "guest A's draft must never be laid silently into guest B's box")
+    // is this same check on the thread; this is its enquiry twin.
+    const stillMine =
+        __composeTarget &&
+        __composeTarget.kind === 'enquiry' &&
+        __composeTarget.enq &&
+        String(__composeTarget.enq.id) === String(e.id);
+    if (stillMine && now.value === before) {
         now.value = text;
         now.focus();
         try { now.setSelectionRange(0, 0); now.scrollTop = 0; } catch (err) {}
@@ -28471,6 +28513,23 @@ function draftComposeReply() {
 function openEnquiryEmail(enqId) {
     const enq = enqId && typeof enqId === 'object' ? enqId : enquiries.find((e) => e.id === enqId);
     if (!enq) return;
+    // UNDO THE ARRIVAL-REVIEW DRESSING, exactly as openBookingEmail does. The
+    // two openers SHARE one modal, and the arrival review re-dresses it (title
+    // "Arrival email", the send controls hidden, a read-only subject, the
+    // booking's facts panel filled). Only the booking opener took the dressing
+    // back off, so reviewing an arrival and then replying to an ENQUIRY opened a
+    // composer titled "Arrival email", with the reply tools gone, a subject that
+    // could not be edited, and another guest's address still on screen.
+    const t0 = document.getElementById('enq-email-title');
+    if (t0) t0.textContent = 'Email guest';
+    const c0 = /** @type {HTMLElement|null} */ (document.getElementById('enq-email-ctl'));
+    if (c0) c0.style.display = '';
+    const fh0 = document.getElementById('arv-facts-host');
+    if (fh0) fh0.innerHTML = '';
+    const a0 = /** @type {HTMLElement|null} */ (document.getElementById('etpl-acts'));
+    if (a0) a0.style.display = '';
+    const s0 = /** @type {HTMLInputElement|null} */ (document.getElementById('enq-email-subject'));
+    if (s0) s0.readOnly = false;
     if (!enq.email) {
         glassAlert('This enquiry has no email address.');
         return;
@@ -30031,9 +30090,18 @@ async function mailboxOpen(uid) {
     }
     const pane = dock || mbxSlotFor('uid', uid);
     if (!pane) return;
+    // THE READING PANE IS ONE SHARED NODE, so a slow IMAP read must re-check
+    // that it is still THIS email's turn before painting. Open a big email,
+    // open another while it loads, and the first response painted itself over
+    // the second — the owner reading an email they had moved on from, with the
+    // list still highlighting the one they chose. The accordion path (below
+    // 1200px) writes into its own per-uid slot, so only the dock can go stale;
+    // __mbxSelUid is the selection this function already sets on entry.
+    const stillOpen = () => !dock || __mbxSelUid === uid;
     pane.innerHTML = `<div style="padding:8px 2px;"><span class="skel-bar w45" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w85" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w65" style="display:block;"></span></div>`;
     try {
         const m = await apiPost('mailbox.php', { action: 'read', uid });
+        if (!stillOpen()) return;
         const local = __mbxMessages.find((x) => x.uid === uid);
         if (local) local.seen = true;
         __mbxLastOpen = m;
@@ -30071,6 +30139,7 @@ async function mailboxOpen(uid) {
             <div id="mbx-compose"></div>
         </section>`;
     } catch (e) {
+        if (!stillOpen()) return; // a failure for an email the owner left must not shout over the one they are reading
         pane.innerHTML = `<div class="accounts-empty">${mbxEsc(e.message)}</div>`;
     }
 }

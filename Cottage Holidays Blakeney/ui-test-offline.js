@@ -215,16 +215,26 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(await page.evaluate(() => !!document.getElementById('offline-daysheet')), 'the day sheet is up again');
   const gdSet = (id, v) => page.evaluate(([i2, v2]) => { const el = document.getElementById('gdf-' + i2); if (el) { el.value = v2; el.dispatchEvent(new Event('input')); } }, [id, v]);
 
-  // (a) record Marcus's payment — full settlement, cash
+  // (a) record Marcus's payment. He is part-paid — £150 of £440 — and the box
+  // is an ABSOLUTE "received so far" that set_payment writes over deposit_paid.
+  // THE DEFAULT MUST BE WHAT HE HAS ALREADY PAID, exactly as the online
+  // recorder prefills it: it used to be prefilled with the rental TOTAL, so on
+  // the no-signal morning this capture exists for, one tap on "Record it"
+  // recorded £440 and marked him paid in full — money he never handed over.
   const preOps = posts.length;
   await page.locator('#offline-daysheet button', { hasText: 'Record a payment' }).first().click();
   await page.waitForTimeout(400);
+  ok(await page.evaluate(() => (document.getElementById('gdf-amount') || {}).value === '150.00'),
+    'the amount box opens on what he has ALREADY paid (£150.00), never the £440 total');
   await page.locator('#glass-dialog-ok').click();
   await page.waitForTimeout(1200);
   const payTry = posts.filter((p2) => p2.__f === 'bookings.php' && p2.action === 'set_payment');
   ok(payTry.length === 1, 'the tap TRIED — the request landed even though the reply died');
   ok(!!payTry[0].op_id && /^op-/.test(payTry[0].op_id), 'and it carried an op id from birth');
-  ok(payTry[0].payment === 'paid' && payTry[0].payment_method === 'Cash', 'the payload mirrors the online recorder (paid in full, cash)');
+  ok(payTry[0].payment === 'deposit' && payTry[0].payment_method === 'Cash',
+    'accepting the default records him STILL PART-PAID (deposit, cash) — it cannot settle a stay by itself');
+  ok(Math.abs(parseFloat(payTry[0].deposit) - 150) < 0.005,
+    'and the figure sent is the £150 already received, not the £440 total');
   ok(await page.evaluate(() => (document.getElementById('offline-daysheet') || {}).textContent.includes('Recorded · waiting to sync')), 'the row says recorded-not-synced, honestly');
 
   // (b) decide Hannah's deposit — saved on the phone, NOT queued for auto-replay
@@ -1039,6 +1049,26 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     const t = sheet ? sheet.textContent : '';
     return /Bookings/.test(t) && /upcoming/.test(t) && /Zara Outofrange/.test(t);
   }), 'the sheet carries the online Bookings list\'s upcoming cards — a quiet day no longer looks empty');
+  // NO SILENT CAP. The list is the next FIVE; the count used to be taken AFTER
+  // that slice, so a business with more than five always read "5 upcoming" — a
+  // page one that looked like the whole book. This fixture has only three
+  // future stays, so the cap never bites here: the renderer is driven directly
+  // with both shapes, which is what actually distinguishes the two branches.
+  const capLines = await page.evaluate(() => {
+    const row = { pk: '21a', cot: '21A', nm: 'A Guest', ci: '2026-09-01', co: '2026-09-04', party: '2 adults', paid: true };
+    const five = [row, row, row, row, row];
+    return {
+      capped: odsUpcomingHtml(five, 12),
+      exact: odsUpcomingHtml([row, row, row], 3),
+      legacy: odsUpcomingHtml(five, undefined), // a sheet written before the total was carried
+    };
+  });
+  ok(/The next 5 of 12 upcoming/.test(capLines.capped) && !/>5 upcoming</.test(capLines.capped),
+    'a capped list says it is showing five OF twelve, never "5 upcoming"');
+  ok(/3 upcoming/.test(capLines.exact) && !/The next/.test(capLines.exact),
+    '…while a list that really is all of them just states the number');
+  ok(/The next 5/.test(capLines.legacy) && !/ of /.test(capLines.legacy),
+    '…and an older sheet with no total says only what it can stand behind');
   ok(await page.evaluate(() => {
     const chip = Array.from(document.querySelectorAll('.ods-row .bhub-chip')).find((c) => /Paid|Balance due/.test(c.textContent));
     return !!chip;

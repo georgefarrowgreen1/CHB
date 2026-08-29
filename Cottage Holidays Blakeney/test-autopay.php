@@ -832,6 +832,28 @@ chk('a moved due date is stale, as it always was', booking_autopay_state(mpbk(['
 chk('a completed plan raised in price is STALE, never armed',
     booking_autopay_state(mpbk(['deposit_paid' => 700.0, 'agreed_total' => 800.0, 'autopay_next_at' => null]), $TODAY)[0] === 'stale');
 chk('...and cannot charge', booking_autopay_may_charge(mpbk(['deposit_paid' => 700.0, 'agreed_total' => 800.0, 'autopay_next_at' => null]), $TODAY) === false);
+// THE SINGLE-COLLECTION TWIN of the case above, and the one it did not have.
+// A single collection has no next_at to advance — it is NULL before AND after —
+// so the only thing standing a spent consent down was "nothing is owed". Give
+// the money back and the outstanding matched the agreed amount again exactly:
+// 'armed', and the collector (which re-selects the row every night once the due
+// date has passed) charged the card AGAIN the night after the owner refunded
+// it. autopay_collected_for is the marker; these four pin both directions.
+$apSpent = ['autopay_collected_for' => '2026-08-03']; // collected FOR the agreed day
+chk('a spent single consent whose money was refunded is STALE, never armed',
+    booking_autopay_state(apbk($apSpent + ['deposit_paid' => 100.0]), $TODAY)[0] === 'stale');
+chk('...and cannot charge', booking_autopay_may_charge(apbk($apSpent + ['deposit_paid' => 100.0]), $TODAY) === false);
+chk('...and says so in the owner\'s words, offering to ask again',
+    strpos(booking_autopay_state(apbk($apSpent + ['deposit_paid' => 100.0]), $TODAY)[1], 'already collected') !== false);
+// The marker is a DATE, not a flag (the autopay_notified_at precedent): a plan
+// the owner genuinely moves on is a NEW agreed day, so the consent is live
+// again by construction rather than needing the marker cleared by hand.
+chk('a consent collected for an OLDER day is live again once the plan really moves',
+    booking_autopay_state(apbk(['autopay_collected_for' => '2026-07-01', 'deposit_paid' => 100.0]), $TODAY)[0] === 'armed');
+// And an untouched consent is unaffected — the marker is NULL on every row that
+// has never collected, which is every existing booking.
+chk('a never-collected consent is armed exactly as before',
+    booking_autopay_state(apbk(['deposit_paid' => 100.0]), $TODAY)[0] === 'armed');
 // What a collection may TAKE, decided in one place.
 $take = booking_autopay_collect_amount(mpbk(), '2026-09-28');
 chk('a mid-plan collection takes the agreed ceiling', abs($take['charge'] - 175.0) < 0.005 && $take['final'] === false);

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 583;
+const ADMIN_BUNDLE_V = 584;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -11259,6 +11259,20 @@ async function maybeRestoreView(entry) {
     } catch (e) {}
     const saved = entry === undefined ? __chbNavAtLoad : entry;
     if (!saved || !saved.t || !saved.at) return false;
+    // THE DAY SHEET IS THE DESTINATION OFFLINE — never restore over it. A
+    // no-signal reload puts the sheet up, and the remembered screen walked the
+    // owner off it onto a view whose data never loaded (an Inbox reading "All
+    // caught up" over nothing, its dock button already hidden). The memory is
+    // KEPT and honoured the moment the signal returns.
+    try {
+        if (
+            document.body.classList.contains('offline-snap') ||
+            navigator.onLine === false ||
+            (typeof __chbNetOff !== 'undefined' && __chbNetOff)
+        ) {
+            return false;
+        }
+    } catch (e) {}
     if (Date.now() - Number(saved.at) > CHB_NAV_TTL_MS) {
         chbNavForget();
         return false;
@@ -18346,7 +18360,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bugswp2';
+    const BUILD = 'bugswp3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

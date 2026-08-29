@@ -2106,9 +2106,18 @@ if ($action === 'return_deposit') {
         );
         $status = 'MANUAL';
     }
-    // New model (and a fully-returned legacy captured hold): once the whole
-    // deposit is handed back, mark it settled.
-    if (in_array($b['hold_status'] ?? '', ['charged', 'captured'], true) && $held - $amount <= 0.001) {
+    // New model, a fully-returned legacy captured hold, AND the cash rail: once
+    // the whole deposit is handed back, mark it settled.
+    // 'none' belongs here for the same reason the other two do. A deposit
+    // collected in cash (recorded through set_payment's "collected too") stayed
+    // 'none' for ever, so nothing downstream could tell a returned deposit from
+    // one still held: invoice_deposit_status fell through every branch to
+    // "Charged with your first payment and refunded after your stay" — a
+    // promise of a FUTURE refund, printed on the very page that lists the dated
+    // refund row above it — and displayGrand kept the money in the stay total.
+    // $held is already rail-agnostic (damages_collected handles 'none'), so the
+    // only thing that was rail-specific was this stamp.
+    if (in_array($b['hold_status'] ?? '', ['charged', 'captured', 'none'], true) && $held - $amount <= 0.001) {
         try {
             db()
                 ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')
@@ -2314,6 +2323,31 @@ if ($action === 'cancel') {
             }
             if ($depositRefunded <= 0) {
                 $depositOwed = $dep;
+            }
+        }
+        book_unlock($b['prop_key'] ?? '');
+    } elseif ($hs === 'none') {
+        // THE CASH RAIL OWES THE MONEY TOO. The block above settles a deposit
+        // that Square is holding; a deposit collected in CASH or by transfer
+        // (recorded through set_payment's "I also collected the damages
+        // deposit" — hold_status stays 'none' and there is no hold_payment_id)
+        // fell through it entirely. So the reauth step-up correctly asked to
+        // confirm the refund, the owner confirmed, nothing was returned, no
+        // warning was raised, and the DELETE below destroyed the only record
+        // that the money was ever taken: gone from the ring fence, from
+        // "Deposits to return" and from the duty list, with the owner told only
+        // "Booking cancelled" — the exact harm the comment above describes,
+        // implemented for one rail and not the other. There is nothing to
+        // refund automatically (no card, no payment id), so the honest outcome
+        // is the SAME one a failed card refund gets: report it and log it, so
+        // it lands in Needs attention and the weekly digest as an obligation
+        // that outlives the booking. Read under the lock like its twin.
+        book_lock($b['prop_key'] ?? '');
+        $bNowCash = booking_by_id($id) ?: $b;
+        if (($bNowCash['hold_status'] ?? 'none') === 'none') {
+            $depCash = round(max(0, damages_collected($bNowCash) - damages_returned($id)), 2);
+            if ($depCash > 0.005) {
+                $depositOwed = $depCash;
             }
         }
         book_unlock($b['prop_key'] ?? '');

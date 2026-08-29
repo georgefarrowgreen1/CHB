@@ -1087,6 +1087,43 @@ nsk('the world sheet SLIMS: lists cut to ' . NIGHT_WORLD_LIST_MAX . ', a nameles
     && $wld['today']['enquiries_waiting'] === 2, json_encode($wld['money']));
 nsk('…and NO contact detail or ref survives into the pack — names and figures only',
     strpos(json_encode($wld), '@') === false && strpos(json_encode($wld), '"ref"') === false, json_encode($wld));
+// THE COUNT AND THE TOTAL ARE OF EVERYONE, not of the rows that fitted.
+// night_tool_money trims its row lists to NIGHT_TOOL_ROWS_MAX (a chat answer is
+// not an export) and night_world used to COUNT AND SUM whatever it was handed —
+// so with more than twelve guests owing, the pack that rides EVERY ask told the
+// model "12 owe £X", short by however many were cut, and the model quoted it.
+// The tool now carries the true totals; the pack reads those.
+$manyOwed = [];
+for ($i = 1; $i <= 15; $i++) {
+    $manyOwed[] = ['name' => 'Guest ' . $i, 'prop_key' => 'jollyboat', 'due_now' => true, 'still_to_pay' => 100.0,
+        'check_in' => '2026-09-0' . (($i % 9) + 1), 'check_out' => '2026-09-10', 'id' => $i];
+}
+$manyDeps = [];
+for ($i = 1; $i <= 14; $i++) {
+    $manyDeps[] = ['name' => 'Left ' . $i, 'prop_key' => 'jollyboat', 'check_out' => '2026-08-01', 'dep' => 75.0, 'id' => 500 + $i];
+}
+$mTool = night_tool_money($manyOwed, $manyDeps, ['jollyboat' => 'Jollyboat']);
+nsk('the money TOOL still trims its rows to ' . NIGHT_TOOL_ROWS_MAX . ' (a chat answer, not an export)',
+    count($mTool['due_now']) === NIGHT_TOOL_ROWS_MAX && count($mTool['deposits_to_return']) === NIGHT_TOOL_ROWS_MAX);
+nsk('…but carries the TRUE count and sum beside them (15 owing, £1500.00)',
+    $mTool['due_now_n'] === 15 && abs($mTool['due_now_sum'] - 1500.0) < 0.005 && $mTool['deposits_n'] === 14,
+    json_encode(['n' => $mTool['due_now_n'], 'sum' => $mTool['due_now_sum'], 'dep' => $mTool['deposits_n']]));
+$wldMany = night_world([['cottage' => 'Jollyboat', 'sleeps' => '2 adults', 'nightly' => '£130.00 a night']], $wldToday, $mTool);
+nsk('…and the GROUNDING PACK states all fifteen and the whole £1,500.00, not the twelve that fitted',
+    $wldMany['money']['due_now_count'] === 15
+    && $wldMany['money']['due_now_total'] === '£1,500.00'
+    && $wldMany['money']['deposits_to_return'] === 14,
+    json_encode($wldMany['money']));
+nsk('…while the ROWS it carries stay slim (' . NIGHT_WORLD_LIST_MAX . ') — the tools are how you go deep',
+    count($wldMany['money']['due_now']) === NIGHT_WORLD_LIST_MAX);
+// An older caller with no totals falls back to counting its rows — the exact
+// pre-fix behaviour, so nothing regresses on a payload built the old way.
+$legacyMoney = ['due_now' => [['guest' => 'A', 'still_to_pay' => '£10.00'], ['guest' => 'B', 'still_to_pay' => '£5.00']],
+    'due_later' => [], 'deposits_to_return' => [['guest' => 'C']]];
+$wldLegacy = night_world([['cottage' => 'Jollyboat', 'sleeps' => '2', 'nightly' => '£130.00 a night']], $wldToday, $legacyMoney);
+nsk('a payload with no totals still counts its own rows, exactly as before',
+    $wldLegacy['money']['due_now_count'] === 2 && $wldLegacy['money']['due_now_total'] === '£15.00'
+    && $wldLegacy['money']['deposits_to_return'] === 1, json_encode($wldLegacy['money']));
 // A memory is DATED now ({t, at}); legacy plain strings are ADOPTED with an
 // empty date — unknown is honest, an invented date would defeat the
 // staleness question — and the MODEL only ever sees the texts.

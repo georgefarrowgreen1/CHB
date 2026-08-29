@@ -55,6 +55,29 @@ if ($prop === '') {
     json_out(['ranges' => []]);
 }
 
+// THE SAME RULE AS ?all=1 ABOVE, which was fixed for this and left its twin
+// behind: an unlisted cottage must not exist on the public site, and naming it
+// directly was the way round the fix — an anonymous
+// availability.php?prop=<private key> returned its whole forward occupancy
+// calendar, every arrival and departure date, for a cottage the site never
+// shows. Answers with an EMPTY range set, exactly as an unknown prop does, so
+// the response cannot be used to tell a private cottage from a nonexistent one.
+// Admin-aware, so every owner-side caller keeps seeing everything, and tolerant
+// of a pre-migration install with no `unlisted` column (fail open there, as the
+// ?all=1 fallback does).
+if (empty($_SESSION['admin_id'])) {
+    try {
+        $chk = db()->prepare('SELECT unlisted FROM properties WHERE prop_key = ?');
+        $chk->execute([$prop]);
+        $row = $chk->fetch();
+        if ($row && !empty($row['unlisted'])) {
+            json_out(['ranges' => []]);
+        }
+    } catch (\Throwable $e) {
+        /* no `unlisted` column on this install — behave exactly as before */
+    }
+}
+
 $ranges = [];
 
 // Confirmed bookings on this site

@@ -568,9 +568,16 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
     $gate = substr((string) ($b['autopay_next_at'] ?? ''), 0, 10) ?: substr((string) ($b['autopay_due'] ?? ''), 0, 10);
     $nextAt = booking_autopay_next_after($b, $gate !== '' ? $gate : $today);
     try {
+        // autopay_collected_for (migration-122) records the DAY this collection
+        // was FOR — the marker a single collection otherwise has none of, since
+        // its autopay_next_at is NULL before and after. Without it, giving the
+        // money back re-armed the spent consent and the card was charged again
+        // the next night. Written in the same statement as the rest of the
+        // outcome: a collection whose marker did not land is the state this
+        // exists to prevent.
         db()
-            ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_attempts = 0 WHERE id = ?')
-            ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $nextAt, $bookingId]);
+            ->prepare('UPDATE bookings SET deposit_paid = ?, payment = ?, autopay_last_try = ?, autopay_last_error = NULL, autopay_next_at = ?, autopay_collected_for = ?, autopay_attempts = 0 WHERE id = ?')
+            ->execute([$total > 0 ? min($total, $paid) : $paid, $status, $today, $nextAt, $gate !== '' ? $gate : $today, $bookingId]);
     } catch (\Throwable $e) {
         // migration-108 not applied — keep the pre-instalment write so a single
         // collection still records exactly as it always did. NB the column is
