@@ -6983,6 +6983,79 @@ must keep doing:
 - **gbp() renders £— for non-finite input** — the honest refusal that turns
   the whole response-shape-drift class (£NaN toasts) into a visible dash.
 
+## The round-3 sweep (lifecycle / staleness / caps / privacy / migrations)
+
+Six more class lenses, each candidate put to three adversarial skeptics before it
+earned a fix — 14 confirmed, 1 refuted (PR #1208). The rules it set:
+- **A CONSENT THAT HAS BEEN SPENT NEEDS ITS OWN MARKER, and it is a DATE.** A
+  single autopay collection has no `autopay_next_at` to advance — NULL before AND
+  after — so the only thing standing the plan down was "nothing is owed", and
+  REFUNDING that collection made the outstanding match the agreed amount again
+  exactly: 'armed', and the collector (which re-selects the row every night once
+  the due date has passed) charged the card AGAIN the night after the owner
+  deliberately refunded it, with no advance notice — the pre-debit window having
+  closed with the due date. `autopay_collected_for` (migration-122) is the marker
+  the MONTHLY branch always had. Dated, not a flag, for `autopay_notified_at`'s
+  own reason: a plan the owner genuinely moves on is a NEW agreed day, so the
+  consent is live again BY CONSTRUCTION, where a flag would have to be
+  remembered-to-be-cleared at every site that can move the date.
+- **THE CASH RAIL KEEPS FALLING THROUGH CARD-GATED BLOCKS.** Two of this round's
+  three money bugs were one shape: a deposit collected in cash (hold_status
+  'none', no hold_payment_id) meeting a block written `if ($hs === 'charged' &&
+  …)`. CANCEL skipped it entirely, so the obligation was destroyed with the row —
+  no refund, no `deposit.owed` warn, the owner told only "Booking cancelled",
+  which is verbatim the harm the comment ABOVE that block describes. And
+  return_deposit's settle stamp excluded it, so a returned cash deposit was never
+  marked settled and the invoice went on promising a refund that had already
+  happened, on the page listing it. `damages_collected` and the `$held`
+  derivation were rail-agnostic all along — only the WRITES were card-shaped. Any
+  new deposit branch: ask what 'none' does before shipping it.
+- **"FIXED FOR ONE ROUTE, LEFT FOR ITS NEIGHBOURS" IS A PATTERN HERE, not an
+  accident.** availability.php's `?all=1` was fixed so an unlisted cottage stays
+  off the public site, with a comment saying so — and the `?prop=` route directly
+  below it, which answers the same question about ONE cottage, was left returning
+  its whole forward calendar to anyone who named the key. rates.php had the twin:
+  `properties` filtered for anonymous callers, `seasons` not, so the private
+  cottage's key, season labels and nightly rates shipped anyway. When a privacy
+  or authorisation fix lands, sweep every OTHER route that answers the same
+  question — including the one that answers it about a single row.
+- **`migrate.php?force=1` REDOES SCHEMA, NEVER DATA.** force exists to repair a
+  wrongly-baselined database, and its safety argument is that the DDL is
+  idempotent — which says nothing about the DATA backfills two migrations carry.
+  Re-running them re-verified every guest account that had since registered and
+  NOT proved its address (silently undoing migration-111's whole control) and
+  reset each original cottage's refundable deposit to £75 over the owner's own
+  figure. `migration_stmt_is_schema` decides, and it is an ALLOWLIST
+  (CREATE/ALTER/DROP/RENAME/TRUNCATE TABLE): anything unrecognised counts as DATA
+  and is skipped, because skipping leaves the database as it was while running
+  one wrongly overwrites live values.
+- **A COUNT OR A SUM OVER A CAPPED LIST IS A WRONG NUMBER, not a short list.**
+  Two shipped: the day sheet counted "5 upcoming" AFTER slicing to five, and the
+  AI chat's grounding pack — which rides EVERY ask and which the model quotes as
+  fact — counted and totalled money owed over rows already trimmed to 12. The
+  rows stay capped (a chat answer is not an export); the TOTALS are carried
+  beside them from the full set. Cap the list, never the arithmetic.
+- **A SHARED COMPOSER OR PANE MUST RE-CHECK WHOSE TURN IT IS.** Three of this
+  round's async bugs were one node serving many records: `draftEnquiryOnMac` laid
+  the Mac's draft into whatever enquiry was open when it landed (its sibling
+  `draftChatOnMac` has exactly this guard, with a comment about not putting guest
+  A's draft in guest B's box); `mailboxOpen` painted a slow IMAP read into the
+  shared reading pane with no re-check; and `openEnquiryEmail` never undid the
+  arrival-review DRESSING of the shared modal, which only `openBookingEmail`
+  took back off. The stamp-guard rule generalises: whatever an async write
+  targets, check the target still belongs to the request that started it.
+- **THE DAY SHEET IS THE DESTINATION OFFLINE.** `maybeRestoreView` had no offline
+  guard, so a no-signal reload put the sheet up and then walked the owner off it
+  onto a remembered screen whose data never loaded — an Inbox reading "All caught
+  up" over nothing, its dock button already hidden by the trim. The memory is
+  KEPT and honoured when the signal returns.
+- **AND A GATE CAN ENCODE THE DEFECT.** ui-test-offline asserted that accepting
+  the offline payment capture's default marked the guest PAID IN FULL — which was
+  the bug (the box is an absolute "received so far" and was prefilled with the
+  rental TOTAL, so one tap on the no-signal morning recorded money never handed
+  over). It had to be re-aimed, not extended. When a fix makes an existing check
+  fail, read the check before believing the code.
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a
