@@ -556,7 +556,10 @@ function autopay_record_success($b, $payment, $rental, $damages, $today)
     // The paid figure comes from the shared helper — read ABOVE, before the ledger
     // row for this collection existed (see $prior).
     $paid = round($prior + $rental, 2);
-    $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+    // Strict-null, not ?: — a £0 price override is a real price (a comped stay);
+    // ?: read it as unset and fell back to agreed_total (booking_amount_due's
+    // own comment documents the predicate; these sites sat outside that fix).
+    $total = round((($b['price_override'] ?? null) !== null && $b['price_override'] !== '') ? (float) $b['price_override'] : (float) ($b['agreed_total'] ?? 0), 2);
     $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
     // A MONTHLY plan advances to its next scheduled date (NULL once done) and
     // gets a fresh set of tries — each instalment earns its own three. Derived
@@ -627,7 +630,10 @@ function autopay_send_receipt($b, $sqId, $rental, $damages, $paidSoFar = null)
         $paid = $paidSoFar !== null
             ? round((float) $paidSoFar, 2)
             : round(booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
-        $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+        // Strict-null, not ?: — a £0 price override is a real price (a comped stay);
+    // ?: read it as unset and fell back to agreed_total (booking_amount_due's
+    // own comment documents the predicate; these sites sat outside that fix).
+    $total = round((($b['price_override'] ?? null) !== null && $b['price_override'] !== '') ? (float) $b['price_override'] : (float) ($b['agreed_total'] ?? 0), 2);
         $paid = $total > 0 ? min($total, $paid) : $paid;
         $prop = function_exists('prop_display') ? (prop_display((string) $b['prop_key'])['name'] ?? '') : '';
         $receipt = send_payment_receipt([

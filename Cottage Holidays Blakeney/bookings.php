@@ -869,6 +869,19 @@ if ($action === 'update') {
     if (!book_lock($propKey)) {
         json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
     }
+    // RE-READ UNDER THE LOCK. The $b above was fetched before book_lock, and the
+    // wait itself widens the staleness window: pay.php's charge holds this same
+    // lock for its whole Square round trip, so an edit that blocks here acquires
+    // the lock the instant the charge lands — and the write below preserves
+    // deposit_paid/payment/method/date as ABSOLUTE values off $b. Writing the
+    // pre-lock copy regresses the payment that just arrived (the booking reads
+    // unpaid, payments-due chases money already taken; a set_payment cash record
+    // in the window is lost outright). pay.php re-reads under the lock for
+    // exactly this reason; this is the edit path adopting the same discipline.
+    $bNow = booking_by_id($id);
+    if ($bNow) {
+        $b = $bNow;
+    }
     // Only worth a clash check when the dates or cottage actually change — an edit
     // that leaves the stay where it is (a phone-number or note fix) cannot create
     // a new overlap, so running it there only produced false "Save anyway?" asks.
@@ -1117,6 +1130,19 @@ if ($action === 'set_payment') {
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
     }
+    // SERIALISE AGAINST THE CHARGE, then re-read. This action derives an absolute
+    // deposit_paid off $b and writes it back; without the lock a pay.php charge
+    // landing between the read and the write is silently regressed to the pre-
+    // charge figure (op_claim covers a REPLAY of this op, not a different request
+    // interleaving). The lock makes the read-derive-write atomic against pay.php,
+    // which holds the same lock for its whole Square round trip.
+    if (!book_lock($b['prop_key'] ?? '')) {
+        json_out(['error' => 'The calendar is busy with another payment for this cottage — please try again in a moment.'], 409);
+    }
+    $bNow = booking_by_id($id);
+    if ($bNow) {
+        $b = $bNow;
+    }
     // Honour a manual price override as the total (matches reconcile_booking_payment,
     // pay.php and the JS) so a part-payment against an overridden price reconciles to
     // the same figure everywhere instead of the un-overridden agreed_total.
@@ -1172,6 +1198,7 @@ if ($action === 'set_payment') {
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
         ->execute([$status, $dep, $method, $date ?: null, $id]);
+    book_unlock($b['prop_key'] ?? '');
     // When money came in (recorded amount went UP), log it as a clear payment
     // event ("a deposit/payment has been made") rather than a vague status change.
     if ($dep > $prevDep + 0.001) {
@@ -1528,81 +1555,14 @@ if ($action === 'pay_link') {
     json_out(['ok' => true, 'url' => $url, 'kind' => booking_payment_kind($b)]);
 }
 
-// ---- Refundable damage deposit as a Square card HOLD (authorise/capture/release) ----
-// Return the secure "place your card hold" link (to copy/share), like pay_link.
-if ($action === 'hold_link') {
-    if (!square_enabled()) {
-        json_out(['error' => 'Square payments are not switched on yet.'], 400);
-    }
-    $id = (int) ($in['id'] ?? 0);
-    $b = booking_by_id($id);
-    if (!$b) {
-        json_out(['error' => 'Booking not found'], 404);
-    }
-    $url = site_base_url() . 'index.html?hold=' . pay_token($id) . '&b=' . $id;
-    json_out(['ok' => true, 'url' => $url]);
-}
+// ---- LEGACY card-HOLD era: link + request are RETIRED ----
+// hold_link and hold_request (mint/email a NEW "place your card hold" link) had
+// no caller anywhere in the client — the charge-upfront model replaced the hold
+// era for new bookings long ago, and only capture/release (still called, for
+// in-flight legacy holds) remain below. Removing the initiators closes a dead
+// token-minting surface; existing ?hold= tokens and the pay screen's legacy
+// branch are untouched.
 
-// Email the guest the "place your refundable card hold" link.
-if ($action === 'hold_request') {
-    if (!square_enabled()) {
-        json_out(['error' => 'Square payments are not switched on yet.'], 400);
-    }
-    $id = (int) ($in['id'] ?? 0);
-    $b = booking_by_id($id);
-    if (!$b) {
-        json_out(['error' => 'Booking not found'], 404);
-    }
-    if (empty($b['email'])) {
-        json_out(['error' => 'This booking has no guest email on file.'], 400);
-    }
-    // Block the LEGACY hold flow on new-model rows too: 'charged' means the
-    // deposit was already collected with the first payment (a second hold
-    // would overwrite hold_payment_id and orphan the refund), and
-    // 'returned'/'kept' mean the deposit is already settled after the stay.
-    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured', 'charged', 'returned', 'kept'], true)) {
-        json_out(['error' => 'The damages deposit for this booking is already collected or settled.'], 409);
-    }
-    require_once __DIR__ . '/mailer.php';
-    $rate = get_rate($b['prop_key']);
-    $amt = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-    // Fall back to a live calc ONLY for legacy rows with no snapshot — a modern row
-    // with a deliberately-waived (£0) deposit must stay £0 (see pay.php).
-    if (($b['agreed_total'] ?? null) === null && $rate) {
-        $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-        $amt = round((float) $p['damagesDeposit'], 2);
-    }
-    if ($amt <= 0) {
-        json_out(['error' => 'This booking has no damage deposit set.'], 400);
-    }
-    $url = site_base_url() . 'index.html?hold=' . pay_token($id) . '&b=' . $id;
-    $res = send_hold_request(
-        [
-            'name' => $b['name'],
-            'email' => $b['email'],
-            'prop_key' => $b['prop_key'],
-            'prop_name' => $rate['name'] ?? $b['prop_key'],
-            'check_in' => $b['check_in'],
-            'check_out' => $b['check_out'],
-            'amount' => $amt,
-        ],
-        $url,
-    );
-    if (!empty($res['ok'])) {
-        try {
-            db()
-                ->prepare('UPDATE bookings SET hold_requested_at = NOW() WHERE id = ?')
-                ->execute([$id]);
-        } catch (\Throwable $e) {
-        }
-        json_out(['ok' => true, 'amount' => $amt]);
-    }
-    json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
-}
-
-// Capture the hold (keep the money — used when there IS damage). Square's
-// CompletePayment captures the full authorised amount; refund any excess via the
-// normal refund flow if the damage was less than the full deposit.
 if ($action === 'hold_capture') {
     if (!square_enabled()) {
         json_out(['error' => 'Square payments are not switched on yet.'], 400);
@@ -1941,7 +1901,10 @@ if ($action === 'record_square_payment') {
         // this cannot drift from what every other screen reports. The cap carries
         // the deposit headroom (total + agreed_booking_fee) so a bundled deposit
         // riding above the rental total isn't clamped away.
-        $total = round((float) ($b['price_override'] ?? 0) ?: (float) ($b['agreed_total'] ?? 0), 2);
+        // Strict-null, not ?: — a £0 price override is a real price (a comped
+        // stay), and ?: read it as "no override" and fell back to agreed_total.
+        // Same predicate booking_amount_due uses; this site sat outside the fix.
+        $total = round((($b['price_override'] ?? null) !== null && $b['price_override'] !== '') ? (float) $b['price_override'] : (float) ($b['agreed_total'] ?? 0), 2);
         $cap = $total > 0 ? round($total + ($bundled ? $depDue : 0), 2) : 0;
         $paid = round(booking_paid_so_far(['id' => $id, 'deposit_paid' => (float) ($b['deposit_paid'] ?? 0)]), 2);
         $paid = $cap > 0 ? min($cap, $paid) : $paid;
@@ -2243,6 +2206,16 @@ if ($action === 'keep_deposit') {
 // Cancel a booking: optional refund (per chosen amount), email the guest, then
 // free the dates by deleting it (the ledger rows are kept for the record).
 if ($action === 'cancel') {
+    // EXACTLY-ONCE. A cancellation can issue a REAL Square refund, and its only
+    // terminal marker used to be the row DELETE — which landed after the slow
+    // SMTP send, seconds past a client timeout. A hand retry then re-ran the
+    // whole action: the cap still had headroom, and record_square_refund's key
+    // deliberately includes refunded-so-far, so the retry minted a DIFFERENT
+    // key and Square paid the refund AGAIN. The op ledger answers a repeat from
+    // the stored response instead (concurrent repeats serialise on its per-op
+    // lock), and the DELETE now precedes the email so the terminal state lands
+    // before the slowest step rather than after it.
+    $opTok = op_claim($in);
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) {
@@ -2353,6 +2326,14 @@ if ($action === 'cancel') {
             }
         }
     }
+    // The DELETE is the terminal marker, so it goes BEFORE the email: the send
+    // is seconds of SMTP, and a retry arriving mid-send used to find the row
+    // still there and run the whole cancellation (refund included) again. The
+    // email composes purely from the $b already in memory, and it was already
+    // best-effort — a failed send never blocked the cancellation.
+    db()
+        ->prepare('DELETE FROM bookings WHERE id = ?')
+        ->execute([$id]);
     $emailResult = null;
     if (!empty($b['email'])) {
         try {
@@ -2375,9 +2356,6 @@ if ($action === 'cancel') {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
         }
     }
-    db()
-        ->prepare('DELETE FROM bookings WHERE id = ?')
-        ->execute([$id]);
     try {
         require_once __DIR__ . '/waitlist.php';
         waitlist_notify_freed($b['prop_key'] ?? '', $b['check_in'] ?? '', $b['check_out'] ?? '');
@@ -2407,7 +2385,7 @@ if ($action === 'cancel') {
             ],
         );
     }
-    json_out([
+    json_out(op_finish($opTok, [
         'ok' => true,
         'refunded' => $refundedByCard,
         // The refundable damage deposit is returned on its OWN Square payment here —
@@ -2418,7 +2396,7 @@ if ($action === 'cancel') {
         'deposit_owed' => $depositOwed,
         'manual_refund' => $refundAmount > $refundedByCard + 0.001,
         'email' => $emailResult,
-    ]);
+    ]));
 }
 
 // Per-booking log of emails sent to the guest (Bookings page → each booking).

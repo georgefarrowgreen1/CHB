@@ -76,14 +76,21 @@ foreach ($rows as $e) {
     );
     [$subject, $text, $html] = [$m['subject'], $m['text'], $m['html']];
     try {
+        // Claim-first (the payments-due posture): stamp-after-send let two
+        // overlapping runs nudge the same guest twice. A soft send failure
+        // un-claims so the one-and-only nudge is never silently burned.
+        $claim = db()->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ? AND nudge_sent_at IS NULL');
+        $claim->execute([(int) $e['id']]);
+        if ($claim->rowCount() !== 1) {
+            continue; // an overlapping run owns this enquiry
+        }
         // smtp_send returns ok:false on a soft failure (server down / mail off)
-        // WITHOUT throwing — only mark the nudge sent if it actually went, else
-        // the guest's one-and-only nudge is silently burned.
+        // WITHOUT throwing.
         $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text, $html) : ['ok' => false];
+        if (empty($r['ok'])) {
+            db()->prepare('UPDATE enquiries SET nudge_sent_at = NULL WHERE id = ?')->execute([(int) $e['id']]);
+        }
         if (!empty($r['ok'])) {
-            db()
-                ->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ?')
-                ->execute([(int) $e['id']]);
             $sent++;
             log_activity('comms', 'enquiry.nudge', 'Enquiry follow-up emailed — ' . ($e['name'] ?: $e['email']), [
                 'actor' => 'cron',

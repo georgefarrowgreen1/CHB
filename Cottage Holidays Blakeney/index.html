@@ -1236,23 +1236,9 @@
         </div>
     </div>
 
-    <!-- ================= TRIP PLANNER (curated, tide-aware) ================= -->
-    <div id="trip-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Plan your days" data-act="backdropClose" data-close="closeTripModal">
-        <div class="modal-box glass-panel" style="max-width:560px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">
-                <h2 class="section-title" style="font-size:1.4rem;margin:0;">Plan your North Norfolk days</h2>
-                <button class="reviews-modal-close" data-act="closeTripModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Tell us what you're into and we'll sketch a tide-aware itinerary for your stay.</p>
-            <div class="trip-interests" id="trip-interests"></div>
-            <div style="display:flex;align-items:center;gap:10px;margin:14px 0;flex-wrap:wrap;">
-                <label style="font-size:0.85rem;color:var(--text-muted);" for="trip-days">Days</label>
-                <select id="trip-days" class="input-glass field-sm" style="width:80px;margin:0;"></select>
-                <button class="btn-glass" data-act="runTripPlan" style="margin-left:auto;">Plan my days</button>
-            </div>
-            <div id="trip-result"></div>
-        </div>
-    </div>
+    <!-- The trip-planner modal is REMOVED — its opener was lost in an earlier
+         refactor and the whole feature shipped unreachable for months (see the
+         matching note in app.js). -->
 
     <!-- ================= GUEST PHOTO LIGHTBOX ================= -->
     <div id="photo-lightbox" class="photo-lightbox" data-act="backdropClose" data-close="closePhotoLightbox" data-close-in="pl-close">
@@ -1994,7 +1980,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=926"></script>
+    <script defer src="app.js?v=927"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

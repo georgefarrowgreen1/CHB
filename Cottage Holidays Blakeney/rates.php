@@ -135,8 +135,14 @@ if (($in['action'] ?? '') === 'seasons_save') {
         }
         $cleaned[] = [$propKey, mb_substr($label, 0, 100), $start, $end, $rate];
     }
-    // Replace-all for this property (simple + predictable)
+    // Replace-all for this property (simple + predictable) — in ONE transaction,
+    // because this table decides PRICE: a failure between the bare DELETE and
+    // the last INSERT left the cottage with no or partial seasons, durably, and
+    // every quote until the next save priced peak dates at the base rate. The
+    // iCal sync's DELETE+INSERT got a transaction for the availability twin of
+    // this; the price twin was still bare.
     try {
+        db()->beginTransaction();
         db()
             ->prepare('DELETE FROM rate_seasons WHERE prop_key = ?')
             ->execute([$propKey]);
@@ -148,7 +154,12 @@ if (($in['action'] ?? '') === 'seasons_save') {
                 $ins->execute($row);
             }
         }
+        db()->commit();
     } catch (\Throwable $e) {
+        try {
+            db()->rollBack();
+        } catch (\Throwable $e2) {
+        }
         json_out(['error' => 'Seasonal rates table missing — run migration-seasons.sql in phpMyAdmin first'], 500);
     }
     log_activity('rates', 'rates.seasons_save', 'Seasonal rates updated (' . count($cleaned) . ')' . via_label($in), ['prop_key' => $propKey]);

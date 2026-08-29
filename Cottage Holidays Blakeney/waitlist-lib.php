@@ -117,18 +117,31 @@ function waitlist_notify_freed($prop, $from, $to)
         }
         $n = 0;
         foreach ($rows as $w) {
+            // CLAIM BEFORE SENDING. This runs from three concurrent triggers (the
+            // iCal sync — fired from every back-office load on every device — plus
+            // cancel/delete and the daily cron), and two overlapping runs both
+            // SELECTed the same un-notified rows before either stamped: the guest
+            // was told twice that a space opened. The guarded stamp arbitrates
+            // (rowCount 1 owns the row); a FAILED send un-claims below so a soft
+            // mail failure is still retried by a later run — the trade left is a
+            // process dying mid-SMTP losing one notify, which is rarer than the
+            // by-construction overlap this closes.
+            $claim = db()->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ? AND notified_at IS NULL');
+            $claim->execute([$w['id']]);
+            if ($claim->rowCount() !== 1) {
+                continue; // another trigger owns this row
+            }
             $r = ['ok' => false];
             try {
                 $r = wl_send($w);
             } catch (\Throwable $e) {
             }
-            // Only mark as notified on a REAL send — a soft mail failure leaves the
-            // entry so a later run retries it (dates that freed up aren't silently lost).
             if (!empty($r['ok'])) {
-                db()
-                    ->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ?')
-                    ->execute([$w['id']]);
                 $n++;
+            } else {
+                db()
+                    ->prepare('UPDATE waitlist SET notified_at = NULL WHERE id = ?')
+                    ->execute([$w['id']]);
             }
         }
         return $n;

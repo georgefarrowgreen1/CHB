@@ -3903,12 +3903,13 @@ async function chbCoastFetch(iso) {
     __chbCoast = { tide, weather, at: Date.now(), day: iso };
     return __chbCoast;
 }
-// A TIDE TIME ARRIVES IN UTC (…T06:41+0000) AND MUST BE READ ON THE LOCAL CLOCK.
+// A TIDE TIME ARRIVES IN UTC (…T06:41+0000) AND MUST BE READ ON THE QUAY'S CLOCK.
 // Both owner-side readers took a character SLICE of the ISO string, which states
-// UTC verbatim — so all through BST the owner's answer ran an hour early and
-// disagreed with the guest page showing the same tide from the same payload
-// (renderTides, renderInStayTides and the trip planner all parse it properly).
+// UTC verbatim — so all through BST the owner's answer ran an hour early.
 // Measured: 2026-08-14T06:41+0000 sliced to "06:41" where the coast reads 07:41.
+// The guest renderers (renderTides, renderInStayTides) had the MIRROR defect —
+// parsed fine, then formatted on the DEVICE clock — and now share the same
+// Europe/London rule via app.js's ukClockHm.
 function chbTideClock(t) {
     const s = String(t || '');
     if (!s) return '';
@@ -3926,8 +3927,13 @@ function chbCoastRow(q, iso, data) {
     const bits = [];
     let lead = '';
     if (wantTide && data.tide && Array.isArray(data.tide.extremes)) {
-        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
-        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => chbTideClock(x.time)).filter(Boolean);
+        // Only the ASKED day's extremes: the fetch window can carry a next-
+        // morning extreme in its tail (and a stale cache the old UTC-anchored
+        // window), and printing everything under "today"'s name misattributed
+        // it. Judged on the LONDON date of the instant, like the times.
+        const onDay = (x) => ukDateOfInstant(x.time) === iso;
+        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '') && onDay(x)).map((x) => chbTideClock(x.time)).filter(Boolean);
+        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '') && onDay(x)).map((x) => chbTideClock(x.time)).filter(Boolean);
         if (hi.length) lead = `High water ${hi.join(' and ')} ${dayName}`;
         if (lo.length) bits.push(`low ${lo.join(' and ')}`);
     }
@@ -14670,10 +14676,10 @@ async function loadCalendarSync() {
         try {
             data = await apiPost('ical-import.php', { action: 'list', prop: key });
         } catch (e) {
-            html += `<p style="color:var(--danger);">${label}: ${escapeHtml(e.message)}</p>`;
+            html += `<p style="color:var(--danger);">${escapeHtml(label)}: ${escapeHtml(e.message)}</p>`;
             continue;
         }
-        html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${label}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
+        html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${escapeHtml(label)}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
     }
     box.innerHTML = html;
 }
@@ -16276,7 +16282,7 @@ function renderDepositsDue() {
             ({ propKey, b, dh }) => `
                 <div class="money-row glass-panel due-soon">
                     <div class="money-row-head">
-                        <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
+                        <div><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span>
                             <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
                             <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
@@ -16392,13 +16398,19 @@ async function cancelBooking(bookingId) {
     )
         return;
     try {
+        // Deterministic op id over the payload (the saveModal discipline): a hand
+        // retry of the SAME cancellation is answered from the op ledger instead of
+        // issuing the Square refund a second time; a changed refund figure mints a
+        // fresh id and is a new request on purpose.
+        const cancelBody = {
+            action: 'cancel',
+            id: booking.dbId,
+            refund_amount: refund,
+            reason: reason.trim(),
+        };
+        cancelBody.op_id = chbOpFor(['cancel', cancelBody]);
         const r = await chbWithReauth(refund > 0 ? 'refunding ' + gbp(refund) : 'cancelling with a refund', () =>
-            apiPost('bookings.php', {
-                action: 'cancel',
-                id: booking.dbId,
-                refund_amount: refund,
-                reason: reason.trim(),
-            }));
+            apiPost('bookings.php', cancelBody));
         // MONEY STILL OWED IS NOT A TOAST. The booking row has just been deleted,
         // and it was the only record that this deposit is owed — so it is gone
         // from the ring fence, from "Deposits to return" and from the duty list.
@@ -21569,9 +21581,13 @@ let __odsQueued = [];
 async function odsPay(i) {
     const r = __odsRows[Number(i)];
     if (!r || !r.dbId) return;
+    // A snapshot written by an older build can lack rtot (the shape carries no
+    // version; chbSnapRead checks only age) — a bare .toFixed threw on the
+    // exact no-signal morning this capture exists for. Number-guarded instead.
+    const rtot = Number(r.rtot) || 0;
     const askDep = r.holdNone && r.dmg > 0.005;
     const fields = [
-        { id: 'amount', label: 'Rental received so far (£)', type: 'text', value: String(r.rtot.toFixed(2)) },
+        { id: 'amount', label: 'Rental received so far (£)', type: 'text', value: rtot.toFixed(2) },
         { id: 'method', label: 'How they paid', type: 'select', options: [
             { value: 'Cash', label: 'Cash' }, { value: 'Bank transfer', label: 'Bank transfer' }, { value: 'Cheque', label: 'Cheque' },
         ] },
@@ -21584,7 +21600,7 @@ async function odsPay(i) {
         ], value: 'no' });
     }
     const vals = await glassForm(
-        'Record a payment from ' + (r.nm || 'the guest') + '.\nRental total ' + gbp(r.rtot)
+        'Record a payment from ' + (r.nm || 'the guest') + '.\nRental total ' + gbp(rtot)
             + (askDep ? ' + ' + gbp(r.dmg) + ' refundable damages deposit' : '')
             + ' — enter the rental received so far. It saves to this phone and posts when the signal returns.',
         fields,
@@ -21592,10 +21608,10 @@ async function odsPay(i) {
     );
     if (vals === null) return;
     let dep = Math.max(0, parseFloat(vals.amount) || 0);
-    if (dep > r.rtot) dep = r.rtot;
+    if (dep > rtot) dep = rtot;
     let status;
     if (dep <= 0.001) status = 'unpaid';
-    else if (dep >= r.rtot - 0.001) status = 'paid';
+    else if (dep >= rtot - 0.001) status = 'paid';
     else status = 'deposit';
     // Same silent discard as recordPayment (see its note) — the day sheet's
     // capture offers the deposit too, and the server honours it only on 'paid'.
@@ -22971,7 +22987,7 @@ function reviewRowHtml(r) {
         .concat(
             Object.keys(propertyMeta).map(
                 (k) =>
-                    `<option value="${k}" ${r.prop === k ? 'selected' : ''}>${propertyMeta[k].name}</option>`,
+                    `<option value="${k}" ${r.prop === k ? 'selected' : ''}>${escapeHtml(propertyMeta[k].name)}</option>`,
             ),
         )
         .join('');
@@ -26119,7 +26135,7 @@ async function renderActivityLog() {
                             const sev = ev.severity === 'warn' || ev.severity === 'action' ? ev.severity : '';
                             const propTag =
                                 ev.prop_key && propertyMeta[ev.prop_key]
-                                    ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>`
+                                    ? `<span class="prop-tag tag-${ev.prop_key}">${escapeHtml(propertyMeta[ev.prop_key].short)}</span>`
                                     : '';
                             const badge =
                                 sev === 'action'
@@ -26132,12 +26148,20 @@ async function renderActivityLog() {
                                     ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>`
                                     : '';
                             const detail = ev.detail ? `<span>${escapeHtml(ev.detail)}</span>` : '';
+                            // The orphan-payment warn's own remedy — the "one tap"
+                            // its wording promises. Closed registry: only the
+                            // square_orphan kind, with both pieces present, ever
+                            // renders a control from log data.
+                            const act =
+                                ev.act && ev.act.kind === 'square_orphan' && ev.act.booking && ev.act.payment
+                                    ? `<div style="margin-top:6px;"><button type="button" class="btn-sm" ${chbAttrs('recordSquareOrphan', String(ev.act.booking), String(ev.act.payment))}>Record it on the booking</button></div>`
+                                    : '';
                             return `
                     <div class="act-row act-log-row${sev ? ' act-row--' + sev : ''}">
                         <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.other}</svg></span>
                         <div class="act-body">
                             <div class="act-line1">${propTag}<span class="act-label">${escapeHtml(ev.label)}</span>${badge}</div>
-                            <div class="act-line2">${detail}${actor}<span class="act-when">${timeAgoLabel(ev.at)}</span></div>
+                            <div class="act-line2">${detail}${actor}<span class="act-when">${timeAgoLabel(ev.at)}</span></div>${act}
                         </div>
                     </div>`;
                         })
@@ -26147,6 +26171,29 @@ async function renderActivityLog() {
 function activityLogFilter(cat) {
     activityLogState.category = cat;
     renderActivityLog();
+}
+// The orphan-sweep flag's "one tap": record the Square payment the sweep found
+// against its booking. The SERVER re-verifies everything (payment COMPLETED at
+// Square, its own reference naming this booking, GBP, under the booking lock,
+// INSERT IGNORE on the unique id) — this is only the affordance.
+async function recordSquareOrphan(bookingId, paymentId) {
+    const okGo = await glassConfirm(
+        'Record this Square payment against the booking?\n\nSquare is checked first — only a completed payment whose own reference names this booking is recorded.',
+        'Record it',
+    );
+    if (!okGo) return;
+    try {
+        const r = await apiPost('bookings.php', {
+            action: 'record_square_payment',
+            id: Number(bookingId),
+            square_payment_id: String(paymentId),
+        });
+        toast(r.note ? String(r.note) : 'Recorded ' + gbp(r.amount) + ' on the ledger ✓');
+        loadData().catch(() => {});
+        renderActivityLog();
+    } catch (e) {
+        await glassAlert("Couldn't record it — " + (e && e.message ? e.message : 'something went wrong.'));
+    }
 }
 function activityLogSearch(v) {
     activityLogState.q = v;

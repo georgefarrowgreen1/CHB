@@ -229,6 +229,20 @@ const { boot, ok } = require('./ui-test-lib');
     check(!fab.onPrivacy, 'the pill stands down on the privacy policy — the bubble must not sit on reading text');
     check(fab.backHome, 'and it returns the moment the guest navigates away');
 
+    // I) ?open=stay — the guest emails' "Open my booking" button. It used to be
+    //    swallowed by the admin-only gate in maybeHandleNotificationOpen, so
+    //    every guest who tapped it (including the arrival-day guest going for
+    //    their entry details) landed on the bare homepage. Signed out, the
+    //    honest destination is the sign-in; the URL is tidied either way.
+    await page.goto(t.base + '/index.html?open=stay', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1600);
+    const stay = await page.evaluate(() => ({
+        authOpen: !!document.querySelector('#guest-auth-modal.open'),
+        urlClean: !window.location.search.includes('open=stay'),
+    }));
+    check(stay.authOpen, '?open=stay lands a signed-out guest on the sign-in, not the bare homepage');
+    check(stay.urlClean, '…and the URL is tidied so a refresh does not repeat it');
+
     console.log(fails ? `\n  ${fails} TOP-MENU CHECK(S) FAILED ❌` : '\n  TOP-MENU SUITE PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

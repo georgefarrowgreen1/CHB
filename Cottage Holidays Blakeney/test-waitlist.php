@@ -33,7 +33,8 @@ function chk($name, $cond)
 // check can ask what was actually asked of the database, not just what came back.
 $WL_QUERIES = [];
 $WL_ROWS = [];       // what the waitlist SELECT returns
-$WL_UPDATES = [];    // ids marked notified
+$WL_UPDATES = [];    // [kind, id] — 'claim' (marked) / 'unclaim' (put back)
+$WL_CLAIM_TAKEN = []; // ids a simulated concurrent trigger already claimed
 $WL_SENT = [];       // recipients smtp_send was called for
 $WL_SEND_OK = true;  // does the mail go?
 $WL_CLASH = false;   // is the freed range still covered?
@@ -46,17 +47,32 @@ class WlStmt
     {
         $this->sql = $sql;
     }
+    private $lastArgs = [];
     public function execute($args = [])
     {
         global $WL_QUERIES, $WL_UPDATES, $WL_DB_THROWS;
         if ($WL_DB_THROWS) {
             throw new RuntimeException('database is down');
         }
+        $this->lastArgs = $args;
         $WL_QUERIES[] = ['sql' => $this->sql, 'args' => $args];
         if (stripos($this->sql, 'UPDATE waitlist') !== false) {
-            $WL_UPDATES[] = $args[0] ?? null;
+            // The lib claims (NOW()) before sending and un-claims (NULL) on a
+            // failed send — record WHICH, so checks assert the FINAL state.
+            $kind = stripos($this->sql, 'SET notified_at = NULL') !== false ? 'unclaim' : 'claim';
+            $WL_UPDATES[] = [$kind, $args[0] ?? null];
         }
         return true;
+    }
+    // The claim's arbitration: rowCount 1 = this run owns the row; ids in
+    // $WL_CLAIM_TAKEN simulate a concurrent trigger having claimed first.
+    public function rowCount()
+    {
+        global $WL_CLAIM_TAKEN;
+        if (stripos($this->sql, 'UPDATE waitlist') !== false && stripos($this->sql, 'SET notified_at = NULL') === false) {
+            return in_array($this->lastArgs[0] ?? null, $WL_CLAIM_TAKEN ?? [], true) ? 0 : 1;
+        }
+        return 1;
     }
     public function fetchAll()
     {
@@ -116,9 +132,21 @@ function email_date($iso, $withYear = true)
 
 require_once __DIR__ . '/waitlist-lib.php';
 
+// The FINAL notified state: claimed and not subsequently un-claimed.
+function wl_marked()
+{
+    global $WL_UPDATES;
+    $m = [];
+    foreach ($WL_UPDATES as [$kind, $id]) {
+        if ($kind === 'claim') { $m[$id] = true; }
+        else { unset($m[$id]); }
+    }
+    return array_keys($m);
+}
 function wl_reset(array $o = [])
 {
-    global $WL_QUERIES, $WL_ROWS, $WL_UPDATES, $WL_SENT, $WL_SEND_OK, $WL_CLASH, $WL_DB_THROWS;
+    global $WL_QUERIES, $WL_ROWS, $WL_UPDATES, $WL_SENT, $WL_SEND_OK, $WL_CLASH, $WL_DB_THROWS, $WL_CLAIM_TAKEN;
+    $WL_CLAIM_TAKEN = $o['taken'] ?? [];
     $WL_QUERIES = [];
     $WL_UPDATES = [];
     $WL_SENT = [];
@@ -186,10 +214,17 @@ chk('no 1970/9999 catch-all range is left in the query',
 echo "\n-- still booked → say nothing --\n";
 wl_reset(['rows' => $WAITING, 'clash' => true]);
 chk('a range another booking still covers emails nobody', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 0);
-chk('...and nothing is marked notified', !$WL_UPDATES);
+chk('...and nothing is marked notified', wl_marked() === []);
 chk('...and it asks BEFORE reading the waitlist', !$WL_QUERIES);
 wl_reset(['rows' => $WAITING]);
 chk('a genuinely free range does email', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 2 && count($WL_SENT) === 2);
+
+// CONCURRENT TRIGGERS ARBITRATE ON THE CLAIM. Three things fire this notify
+// (the per-device iCal sync, cancel/delete, the cron) — a row a concurrent run
+// has already claimed (rowCount 0) is SKIPPED, never emailed twice.
+wl_reset(['rows' => $WAITING, 'taken' => [1]]);
+chk('a row a concurrent trigger claimed first is skipped, not re-emailed',
+    waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 1 && count($WL_SENT) === 1 && ($WL_SENT[0]['to'] ?? '') !== ($WAITING[0]['email'] ?? '-'));
 
 // ============================================================
 //  3. A SOFT MAIL FAILURE MUST NOT BURN THE RE-INVITE.
@@ -202,12 +237,12 @@ echo "\n-- a send that did not go leaves the entry to retry --\n";
 wl_reset(['rows' => $WAITING, 'send' => false]);
 $n = waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO);
 chk('a failed send counts nobody as told', $n === 0);
-chk('...and marks nobody, so a later run tries again', !$WL_UPDATES);
+chk('...and ENDS with nobody marked (claim then un-claim), so a later run tries again', wl_marked() === [] && count($WL_UPDATES) === 4);
 chk('...though it really did try', count($WL_SENT) === 2);
 // Half and half: one address the mailer refuses outright must not stop the other.
 wl_reset(['rows' => [$WAITING[0], ['id' => 3, 'prop_key' => 'jollyboat', 'name' => 'No Address', 'email' => '']]]);
 chk('an entry with no email is skipped, not fatal', waitlist_notify_freed('jollyboat', $WL_FROM, $WL_TO) === 1);
-chk('...and only the one that went is marked', $WL_UPDATES === [1]);
+chk('...and only the one that went is marked', wl_marked() === [1]);
 
 // ============================================================
 //  4. WHO MATCHES. An entry with no dates asked to hear about ANYTHING at that

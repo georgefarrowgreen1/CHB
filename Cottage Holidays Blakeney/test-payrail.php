@@ -618,7 +618,9 @@ chk('…and carries a code, so a caller can tell "already went" from "failed"',
 // glassAlert said the opposite, requestPayment toasted "£NaN", and the bulk report counted
 // it. send_arrival had always used 500; the others match it now.
 chk('every send reports a mail failure with a failing status, not a 200',
-    preg_match_all("/Email failed to send'\], 500\)/", $bkS2) === 3
+    // 2 sites now, was 3: the legacy hold_request initiator (one of the three
+    // 500 conversions) is RETIRED — it had no caller anywhere in the client.
+    preg_match_all("/Email failed to send'\], 500\)/", $bkS2) === 2
     && preg_match_all("/Email failed to send'\], 200\)/", $bkS2) === 0
     // Single-quoted: in a double-quoted PHP string `\\$reason` is a backslash followed by
     // an INTERPOLATED variable, so the pattern silently became "…=> , 'email' => …".
@@ -2112,6 +2114,29 @@ foreach (['pre-arrival.php', 'waitlist-lib.php', 'payments-due.php', 'autopay-li
     chk("$obF keeps its own stamp-on-success retry (no outbox — double-retry rule)",
         strpos($src, 'smtp_send_reliable') === false && strpos($src, 'email_outbox_add') === false);
 }
+
+// ---- The calendar invite never states midnight -----------------------------
+// build_booking_ics used `?? '15:00'`, but the time columns are NOT NULL
+// DEFAULT — the value a cleared form field actually stores is '' (never null),
+// and strtotime('2026-09-06 ') parses to MIDNIGHT: the guest's .ics said the
+// stay begins at 00:00 (the email_time('') defect, in the attachment of the
+// same email). Now ?:-guarded; both directions asserted.
+echo "\n== The .ics never states midnight ==\n";
+$icsB = ['ref' => 'CHB-ICS1', 'prop_name' => 'Jollyboat', 'address' => '1 Quay St',
+    'check_in' => '2026-09-06', 'check_out' => '2026-09-11',
+    'check_in_time' => '', 'check_out_time' => ''];
+$ics = build_booking_ics($icsB);
+chk('an EMPTY check-in time falls back to 15:00, never midnight',
+    strpos($ics, 'DTSTART:') !== false && strpos($ics, 'T000000Z') === false && strpos($ics, 'Check-in from 15:00') !== false);
+chk('…and the empty check-out time to 10:00', strpos($ics, 'check-out by 10:00') !== false);
+$ics2 = build_booking_ics($icsB + [] );
+$icsB['check_in_time'] = '16:30';
+$icsB['check_out_time'] = '09:30';
+$ics3 = build_booking_ics($icsB);
+chk('a REAL time is honoured (16:30 → DTSTART carries it, DESC states it)',
+    strpos($ics3, 'Check-in from 16:30') !== false
+    // 2026-09-06 is BST, so 16:30 London = 15:30Z in the DTSTART.
+    && strpos($ics3, 'DTSTART:20260906T153000Z') !== false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

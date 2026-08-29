@@ -36,7 +36,10 @@ function ca_overlap($aIn, $aOut, $bIn, $bOut)
     return $aIn < $bOut && $bIn < $aOut;
 }
 
-$today = gmdate('Y-m-d');
+// UK clock, like every sibling job (db.php pins the TZ) — gmdate() was the
+// previous day for the 00:00–01:00 BST hour, so a nightly run re-admitted
+// stays that ended yesterday and re-logged their finished conflicts as fresh.
+$today = date('Y-m-d');
 $conflicts = [];
 
 try {

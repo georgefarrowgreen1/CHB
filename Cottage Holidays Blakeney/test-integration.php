@@ -4077,6 +4077,93 @@ it_check('§31 overall 0 removes the rating outright',
     ($r['json']['removed'] ?? false) === true
     && (int) $rootDb->query("SELECT COUNT(*) FROM guest_ratings WHERE booking_id = $coId")->fetchColumn() === 0, $r['raw']);
 
+// ── §32 races the sweep closed: the edit that regressed money, the cancel
+//     that refunded twice, and the orphan flag's one tap ────────────────────
+echo "\n== \u{00A7}32 write races ==\n";
+
+// (a) An edit that BLOCKS on the booking lock while a payment lands must write
+// the post-payment money back, not its pre-lock snapshot. Reproduced for real:
+// hold the prop's book_lock on a second connection, fire the edit in a child
+// process (it parks at book_lock AFTER its first read), land the "charge" via
+// SQL, release the lock, and assert the edit's write kept the money. Reverting
+// the under-lock re-read in bookings.php `update` fails the last check.
+$rIn = date('Y-m-d', strtotime('+40 days'));
+$rOut = date('Y-m-d', strtotime('+43 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Race Guest','','$rIn','$rOut',2,0,'unpaid',0,400,400,0,3)");
+$raceId = (int) $rootDb->lastInsertId();
+$lockName = 'chb_book_' . preg_replace('/[^a-z0-9_]/i', '', $propKey);
+$slot2 = new PDO("mysql:host=$DB_HOST;port=$DB_PORT;dbname=$DB_NAME;charset=utf8mb4", $DB_USER, $DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$st = $slot2->prepare('SELECT GET_LOCK(?, 0)');
+$st->execute([$lockName]);
+it_check('§32a the booking lock can be held on a second connection', (int) $st->fetchColumn() === 1);
+$raceCookie = implode('; ', array_map(fn($k) => "$k={$admin[$k]}", array_keys($admin)));
+$racePayload = json_encode(['action' => 'update', 'id' => $raceId, 'notes' => 'phone-number-style edit while a charge lands']);
+$raceScript = sys_get_temp_dir() . '/chb-it-race-' . getmypid() . '.php';
+file_put_contents($raceScript, '<?php $o = ["http" => ["method" => "POST", "header" => "Content-Type: application/json\r\nAccept: application/json\r\nCookie: ' . $raceCookie . '\r\nX-CSRF-Token: ' . ($admin['csrf'] ?? '') . '", "content" => ' . var_export($racePayload, true) . ', "timeout" => 40, "ignore_errors" => true]]; echo file_get_contents(' . var_export($BASE . '/bookings.php', true) . ', false, stream_context_create($o));');
+$rp = [];
+$raceProc = proc_open('exec php ' . escapeshellarg($raceScript), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rp);
+// Wait until the edit is genuinely PARKED at book_lock (i.e. past its pre-lock
+// read) — visible as a waiting GET_LOCK in the processlist — then land the
+// charge and let it through. A time-based sleep alone would let a slow child
+// start after the charge, which passes either way and proves nothing.
+$parked = false;
+for ($i = 0; $i < 100; $i++) {
+    // Probe the WAIT STATE, not the query text: db.php uses real server-side
+    // prepares, so processlist info shows `GET_LOCK(?, 30)` with no lock name —
+    // and a text probe's own literal matched itself on iteration 0, letting the
+    // charge land before the child had read (both code variants then pass and
+    // the break-test proves nothing — measured). A session blocked in GET_LOCK
+    // sits in state 'User lock', which nothing else in this suite does.
+    $n = (int) $rootDb->query("SELECT COUNT(*) FROM information_schema.processlist WHERE state = 'User lock'")->fetchColumn();
+    if ($n > 0) { $parked = true; break; }
+    usleep(100000);
+}
+it_check('§32a the edit parks at the lock (past its first read)', $parked);
+// The full shape a real pay.php charge writes (payment_date included — the
+// update path validates it whenever money is present on the fresh row).
+$rootDb->exec("UPDATE bookings SET deposit_paid = 225, payment = 'deposit', payment_date = CURDATE(), payment_method = 'Square card' WHERE id = $raceId");
+$slot2->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
+$raceOut = stream_get_contents($rp[1]);
+proc_close($raceProc);
+@unlink($raceScript);
+$raceJson = json_decode((string) $raceOut, true);
+it_check('§32a the parked edit completes ok', ($raceJson['ok'] ?? ($raceJson['success'] ?? false)) || isset($raceJson['booking']) || ($raceJson['updated'] ?? false) || (is_array($raceJson) && !isset($raceJson['error'])), substr((string) $raceOut, 0, 200));
+$raceRow = $rootDb->query("SELECT deposit_paid, payment, notes FROM bookings WHERE id = $raceId")->fetch();
+it_check('§32a …and the money that landed while it waited SURVIVES the write (£225, deposit)',
+    round((float) $raceRow['deposit_paid'], 2) === 225.00 && $raceRow['payment'] === 'deposit',
+    'deposit_paid=' . $raceRow['deposit_paid'] . ' payment=' . $raceRow['payment']);
+it_check('§32a …while the edit itself applied', strpos((string) $raceRow['notes'], 'phone-number-style') !== false);
+$slot2 = null;
+
+// (b) Cancel is exactly-once: a retry with the same op_id is answered from the
+// ledger (replayed), never re-run — the re-run is what re-issued a Square
+// refund with a fresh idempotency key. Refund 0 keeps Square out of the test;
+// the mechanism under test is the claim.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Cancel Twice','','$rIn','$rOut',2,0,'unpaid',0,400,400,0,3)");
+$cxId = (int) $rootDb->lastInsertId();
+$cxOp = ['action' => 'cancel', 'id' => $cxId, 'refund_amount' => 0, 'reason' => 'it-replay', 'op_id' => 'it-cancel-rp-' . $cxId];
+$r1 = http($admin, 'POST', '/bookings.php', $cxOp);
+it_check('§32b cancel runs once (row deleted)',
+    ($r1['json']['ok'] ?? false) === true && (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE id = $cxId")->fetchColumn() === 0, $r1['raw']);
+$r2 = http($admin, 'POST', '/bookings.php', $cxOp);
+it_check('§32b the retry is ANSWERED, not re-run (replayed, no 404, no second cancellation)',
+    $r2['code'] === 200 && ($r2['json']['ok'] ?? false) === true && ($r2['json']['replayed'] ?? false) === true, $r2['raw']);
+
+// (c) The orphan-payment flag carries its one tap: the activity list attaches
+// the closed `act` for exactly the selfrepair.square_orphan event, nothing else.
+$rootDb->prepare("INSERT INTO activity_log (category, action, summary, actor, severity, prop_key, entity, entity_id, meta) VALUES ('payment','selfrepair.square_orphan','Self-repair: £90.00 was taken at Square','cron','warn',?, 'booking', ?, ?)")
+    ->execute([$propKey, (string) $raceId, json_encode(['square_payment_id' => 'SQ_IT_ORPHAN_1', 'amount' => 90.0, 'currency' => 'GBP'])]);
+$r = http($admin, 'POST', '/activity-log.php', ['action' => 'list', 'category' => 'all', 'q' => 'taken at Square', 'limit' => 50]);
+$orRow = null;
+foreach (($r['json']['events'] ?? []) as $ev) {
+    if (($ev['act']['kind'] ?? '') === 'square_orphan') { $orRow = $ev; }
+}
+it_check('§32c the orphan flag row carries its act (booking + payment id)',
+    $orRow && (int) $orRow['act']['booking'] === $raceId && $orRow['act']['payment'] === 'SQ_IT_ORPHAN_1', substr($r['raw'], 0, 200));
+$actCount = 0;
+foreach (($r['json']['events'] ?? []) as $ev) { if (isset($ev['act'])) { $actCount++; } }
+it_check('§32c …and NO other row grows an action from log data', $actCount === 1, 'actCount=' . $actCount);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

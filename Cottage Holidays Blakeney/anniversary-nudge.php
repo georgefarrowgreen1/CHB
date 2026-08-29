@@ -88,9 +88,17 @@ foreach ($rows as $b) {
     $checkIn = strtotime($b['check_in']);
     $booked = strtotime($b['booked'] ?: $b['check_in']);
     $lead = max(7, min(300, (int) round(($checkIn - $booked) / 86400)));
-    $target = strtotime('+1 year', $checkIn) - ($lead + 14) * 86400;
+    // DAY arithmetic on noon anchors, never ± N*86400 seconds from a local
+    // midnight: the lead span (21–314 days) straddles a DST change for most
+    // bookings, which put $target at 23:00/01:00 and slipped the whole window a
+    // day late (13 send days instead of 14). Noon absorbs the shifted hour and
+    // the comparison happens on date strings.
+    $annDate = date('Y-m-d', strtotime('+1 year', $checkIn));
+    $targetDate = date('Y-m-d', strtotime($annDate . ' 12:00:00 -' . ($lead + 14) . ' days'));
+    $windowEnd = date('Y-m-d', strtotime($targetDate . ' 12:00:00 +13 days'));
+    $todayStr = date('Y-m-d', $today);
     // A ~2-week send window so a missed cron day never skips anyone.
-    if ($today < $target || $today > $target + 13 * 86400) {
+    if ($todayStr < $targetDate || $todayStr > $windowEnd) {
         continue; // not this guest's moment yet (or already past it)
     }
     $emailKey = strtolower($b['email']);
