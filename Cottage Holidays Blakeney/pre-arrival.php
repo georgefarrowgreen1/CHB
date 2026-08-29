@@ -66,17 +66,20 @@ $results = [];
 $readied = 0;
 foreach ($due as $b) {
     if ($review) {
-        // Stamp ONCE — COALESCE, so a booking that has been waiting for two
-        // days doesn't re-notify on every daily pass. The duty carries the
-        // escalation; the push is the first word, not a drumbeat.
-        $already = !empty($b['pre_arrival_ready_at']);
-        if (!$already) {
-            try {
-                db()
-                    ->prepare('UPDATE bookings SET pre_arrival_ready_at = COALESCE(pre_arrival_ready_at, NOW()) WHERE id = ?')
-                    ->execute([(int) $b['id']]);
-            } catch (\Throwable $e) {
-            }
+        // Stamp ONCE — a GUARDED claim now, not COALESCE + a row-snapshot test:
+        // two overlapping runs both read the stamp as NULL and both notified.
+        // rowCount decides who really readied it, so the push fires exactly once
+        // per booking whatever the run timing. The duty carries the escalation;
+        // the push is the first word, not a drumbeat.
+        $claimed = false;
+        try {
+            $claim = db()->prepare('UPDATE bookings SET pre_arrival_ready_at = NOW() WHERE id = ? AND pre_arrival_ready_at IS NULL');
+            $claim->execute([(int) $b['id']]);
+            $claimed = $claim->rowCount() === 1;
+        } catch (\Throwable $e) {
+        }
+        $already = !$claimed;
+        if ($claimed) {
             $who = trim((string) ($b['name'] ?? '')) ?: 'your guest';
             alert_owner(
                 'Arrival email ready to review',
@@ -105,7 +108,26 @@ foreach ($due as $b) {
         ];
         continue;
     }
+    // CLAIM BEFORE SENDING (the payments-due posture): two overlapping runs both
+    // SELECTed this booking un-stamped and both emailed the guest their arrival
+    // details. The claim arbitrates; a failed send un-claims below so the due
+    // window re-fires tomorrow — "a failed send keeps the wait" is unchanged.
+    // send_arrival_for_booking's own success stamp then just re-writes NOW().
+    try {
+        $claim = db()->prepare('UPDATE bookings SET pre_arrival_sent = NOW() WHERE id = ? AND pre_arrival_sent IS NULL');
+        $claim->execute([(int) $b['id']]);
+        if ($claim->rowCount() !== 1) {
+            continue; // an overlapping run owns this guest
+        }
+    } catch (\Throwable $e) {
+    }
     $res = send_arrival_for_booking($b);
+    if (empty($res['ok'])) {
+        try {
+            db()->prepare('UPDATE bookings SET pre_arrival_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
+        } catch (\Throwable $e) {
+        }
+    }
     // Optional SMS nudge to check the arrival email (never puts key codes in a
     // text). Only when the email actually SENT — otherwise the booking re-enters
     // the due window and the guest would get a daily text pointing at an email
@@ -159,6 +181,17 @@ if ($toAsk) {
     $base = site_base_url();
     $googleUrl = trim(content_value('google-review-url')); // owner-set, optional
     foreach ($toAsk as $b) {
+        // Claim-first (the payments-due posture): stamp-after-send let two
+        // overlapping runs both ask the same guest for a review. A clean send
+        // failure un-claims so a later run retries.
+        try {
+            $claim = db()->prepare('UPDATE bookings SET review_request_sent = NOW() WHERE id = ? AND review_request_sent IS NULL');
+            $claim->execute([(int) $b['id']]);
+            if ($claim->rowCount() !== 1) {
+                continue;
+            }
+        } catch (\Throwable $e) {
+        }
         $res = send_review_request_email([
             'name' => $b['name'],
             'email' => $b['email'],
@@ -167,13 +200,13 @@ if ($toAsk) {
             'reviewUrl' => $base . 'index.html?review=' . rawurlencode($b['prop_key']),
             'googleUrl' => $googleUrl,
         ]);
-        if (!empty($res['ok'])) {
+        if (empty($res['ok'])) {
             try {
-                db()
-                    ->prepare('UPDATE bookings SET review_request_sent = NOW() WHERE id = ?')
-                    ->execute([(int) $b['id']]);
+                db()->prepare('UPDATE bookings SET review_request_sent = NULL WHERE id = ?')->execute([(int) $b['id']]);
             } catch (\Throwable $e) {
             }
+        }
+        if (!empty($res['ok'])) {
             // Visible in the per-booking email log.
             log_activity('comms', 'email.review', 'Review request emailed — ' . ($b['name'] ?? ''), [
                 'actor' => 'cron',

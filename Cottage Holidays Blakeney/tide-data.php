@@ -22,7 +22,7 @@ if (!function_exists('tide_extremes')) {
             return ['ok' => false, 'reason' => 'no_key'];
         }
 
-        $start = is_string($start) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) ? $start : gmdate('Y-m-d');
+        $start = is_string($start) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) ? $start : date('Y-m-d');
         $days = max(1, min(14, (int) $days));
         $cacheKey = "tides-$start-$days";
 
@@ -41,8 +41,15 @@ if (!function_exists('tide_extremes')) {
             /* table not migrated yet — fetch live */
         }
 
-        $startUnix = strtotime($start . ' 00:00:00 UTC');
-        $length = $days * 86400;
+        // Anchor the window at EUROPE/LONDON midnight, not UTC: during BST a
+        // UTC-anchored day ran 01:00→01:00 UK, so an extreme in the first hour
+        // of the asked day was never fetched and one from the next morning rode
+        // in its place. The end is the London midnight after the last day (a
+        // DST-straddling window is 23/25h — computed, not ±86400s).
+        $startUnix = strtotime($start . ' 00:00:00 Europe/London');
+        $endUnix = strtotime($start . ' 12:00:00 Europe/London +' . $days . ' days');
+        $endUnix = strtotime(date('Y-m-d', $endUnix) . ' 00:00:00 Europe/London');
+        $length = max(86400, $endUnix - $startUnix);
         $url =
             'https://www.worldtides.info/api/v3?extremes' .
             '&lat=' .

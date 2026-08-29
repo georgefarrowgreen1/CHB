@@ -8,8 +8,6 @@
 //  Actions (POST JSON):
 //   register_begin   (guest must be logged in)  -> creation options
 //   register_finish  (guest)                    -> store the new credential
-//   login_begin                                 -> request options (usernameless)
-//   login_finish                                -> verify + start guest session
 //   list             (guest)                    -> their registered passkeys
 //   delete           (guest)                    -> remove one passkey
 // ============================================================
@@ -97,7 +95,7 @@ $action = $in['action'] ?? '';
 // itself resists guessing, but unlimited login_finish attempts and unlimited
 // challenge minting are free load + probing surface. Authenticated actions
 // (register/list/delete) are already gated by their sessions.
-if (in_array($action, ['login_begin', 'login_finish', 'admin_login_begin', 'admin_login_finish'], true)) {
+if (in_array($action, ['admin_login_begin', 'admin_login_finish'], true)) {
     rate_limit('passkey-login', 20, 10);
 }
 $wa = new_webauthn($rpName, $rpId);
@@ -151,57 +149,10 @@ if ($action === 'register_finish') {
     json_out(['ok' => true]);
 }
 
-// ---------------- LOGIN (usernameless) ----------------
-if ($action === 'login_begin') {
-    // Usernameless: allow any registered credential (empty allowlist).
-    $args = $wa->getGetArgs([], 30, true, true, true, true, false);
-    $_SESSION['pk_login_challenge'] = b64url_encode($wa->getChallenge()->getBinaryString());
-    json_out(['options' => normalize_args($args)]);
-}
-
-if ($action === 'login_finish') {
-    if (empty($_SESSION['pk_login_challenge'])) {
-        json_out(['error' => 'No login in progress'], 400);
-    }
-    $challenge = b64url_decode($_SESSION['pk_login_challenge']);
-
-    $credId = $in['id'] ?? ''; // base64url credential id returned by the browser
-    $row = db()->prepare('SELECT p.*, g.name, g.email, g.phone FROM guest_passkeys p
-                          JOIN guests g ON g.id = p.guest_id WHERE p.credential_id = ?');
-    $row->execute([$credId]);
-    $cred = $row->fetch();
-    if (!$cred) {
-        json_out(['error' => 'Passkey not recognised'], 401);
-    }
-
-    try {
-        $clientDataJSON = b64url_decode($in['clientDataJSON'] ?? '');
-        $authenticatorData = b64url_decode($in['authenticatorData'] ?? '');
-        $signature = b64url_decode($in['signature'] ?? '');
-        // Pass null as the previous counter to SKIP the signature-counter check.
-        // Synced passkeys (iCloud Keychain, Google Password Manager) always report
-        // a counter of 0 across devices, so a strict increasing-counter check
-        // wrongly rejects logins from a second device. Skipping it is the correct,
-        // recommended behaviour for multi-device passkeys.
-        $data = $wa->processGet($clientDataJSON, $authenticatorData, $signature, $cred['public_key'], $challenge, null);
-    } catch (\Throwable $e) {
-        json_out(['error' => 'Passkey verification failed: ' . $e->getMessage()], 401);
-    }
-
-    // Record the authenticator's reported counter (informational) + last used.
-    $newCount = is_object($data) && isset($data->signCount) ? (int) $data->signCount : (int) $cred['sign_count'];
-    db()
-        ->prepare('UPDATE guest_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
-        ->execute([$newCount, $cred['id']]);
-    session_regenerate_id(true); // new session id on login — prevents session fixation
-    $_SESSION['guest_id'] = (int) $cred['guest_id'];
-    unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
-    unset($_SESSION['pk_login_challenge']);
-    json_out([
-        'ok' => true,
-        'guest' => ['name' => $cred['name'], 'email' => $cred['email'], 'phone' => $cred['phone']],
-    ]);
-}
+// The usernameless login_begin/login_finish pair is REMOVED — superseded by
+// any_login_begin/any_login_finish (the mode-choosing pair the client has used
+// since it shipped), it had no caller and was pure unauthenticated
+// session-minting surface. An unknown action falls through to the 400 below.
 
 // ---------------- MANAGE ----------------
 if ($action === 'list') {

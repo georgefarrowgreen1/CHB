@@ -311,7 +311,10 @@ function payouts_disputes_open(array $disputes)
 // empty rather than pre-filled with a guess.
 function payouts_balance_estimate($stored, array $payouts, array $refunds, $nowTs, $maxAgeDays = 30)
 {
-    if (!is_array($stored) || !isset($stored['amount'], $stored['at'])) {
+    if (!is_array($stored) || !isset($stored['amount'], $stored['at']) || !is_numeric($stored['amount'])) {
+        // A corrupted stored amount must REFUSE (field starts empty), never
+        // (float)-coerce to £0 and roll a confident wrong estimate forward —
+        // the same owner-written-JSON discipline the sweep-moved read follows.
         return null;
     }
     $at = (int) $stored['at'];

@@ -158,7 +158,7 @@ chk('booking_price: no snapshot and no rate → null', booking_price(null, $bLiv
 // or, if the new call genuinely is a guarded legacy fallback, re-audit the file
 // and update the expected count here in the same PR.
 $allowedDirectCalls = [
-    'bookings.php' => 3, // snapshot_fields() + confirmation-email fallback + hold-request deposit fallback
+    'bookings.php' => 2, // snapshot_fields() + confirmation-email fallback (the hold-request initiator, and its fallback, are retired — no caller)
     'pay.php' => 0, // NONE left. The TOTAL's fallback moved inside
     // booking_amount_due (stage-1: one ask derivation, not two copies), and the
     // damages-deposit fallback moved inside booking_damages_amount so the guest's

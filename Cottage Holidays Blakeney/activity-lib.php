@@ -176,7 +176,7 @@ function activity_logged_events($limit = 200)
                     $detail = (string) $m['detail'];
                 }
             }
-            $out[] = [
+            $row = [
                 'type' => $r['category'] ?: 'other',
                 'label' => $r['summary'] ?: $r['action'],
                 'detail' => $detail,
@@ -185,6 +185,19 @@ function activity_logged_events($limit = 200)
                 'actor' => $r['actor'] ?: 'system',
                 'severity' => $r['severity'] ?? 'info',
             ];
+            // The orphan-payment flag carries its own remedy: the one tap that
+            // records the Square payment against the booking. CLOSED by event
+            // key (the MC_ACTS posture) — no other log row ever grows an action
+            // from stored data, and both pieces must be present and sane.
+            if (($r['action'] ?? '') === 'selfrepair.square_orphan') {
+                $m2 = json_decode((string) ($r['meta'] ?? ''), true);
+                $sq = is_array($m2) ? trim((string) ($m2['square_payment_id'] ?? '')) : '';
+                $bid = (int) ($r['entity_id'] ?? 0);
+                if ($sq !== '' && $bid > 0) {
+                    $row['act'] = ['kind' => 'square_orphan', 'booking' => $bid, 'payment' => $sq];
+                }
+            }
+            $out[] = $row;
         }
     } catch (\Throwable $e) {
         // table not migrated yet → no logged actions

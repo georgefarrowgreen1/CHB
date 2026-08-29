@@ -771,6 +771,24 @@ function email_outbox_drain($max = 10)
             ->prepare('SELECT * FROM email_outbox WHERE sent_at IS NULL AND gave_up_at IS NULL AND next_try_at <= NOW() ORDER BY id LIMIT ' . max(1, (int) $max));
         $rows->execute();
         foreach ($rows->fetchAll() as $row) {
+            // CLAIM THE ROW BEFORE SENDING. The static $draining flag above is
+            // per-process; the kick fires from ordinary traffic at exactly the
+            // moment the relay recovers, which is exactly when self-repair's
+            // daily drain is walking the same backlog — two processes SELECTing
+            // the same un-stamped row both sent it (a guest holding two booking
+            // confirmations). Pushing next_try_at forward under the SELECT's own
+            // conditions is the arbitration: rowCount 1 owns the row, 0 means
+            // another process got there first. A process that dies mid-send
+            // leaves the row to retry when the pushed next_try_at arrives —
+            // at-least-once is kept, concurrent double-delivery is not.
+            $claim = db()->prepare(
+                'UPDATE email_outbox SET next_try_at = DATE_ADD(NOW(), INTERVAL 10 MINUTE)
+                 WHERE id = ? AND sent_at IS NULL AND gave_up_at IS NULL AND next_try_at <= NOW()',
+            );
+            $claim->execute([(int) $row['id']]);
+            if ($claim->rowCount() !== 1) {
+                continue; // claimed by a concurrent drain
+            }
             $atts = [];
             if (!empty($row['attachments'])) {
                 $parsed = json_decode((string) $row['attachments'], true);
@@ -919,8 +937,15 @@ function build_booking_ics($b)
     if (empty($b['check_in']) || empty($b['check_out'])) {
         return '';
     }
-    $ci = $b['check_in'] . ' ' . ($b['check_in_time'] ?? '15:00');
-    $co = $b['check_out'] . ' ' . ($b['check_out_time'] ?? '10:00');
+    // ?: not ?? — the columns are NOT NULL DEFAULT, so the value that actually
+    // occurs when the form's time field is cleared is '' (never null), and
+    // strtotime('2026-09-06 ') parses happily to MIDNIGHT: the guest's calendar
+    // invite said the stay begins at 00:00. The email_time('') lesson, in the
+    // attachment of the same email.
+    $ciT = ($b['check_in_time'] ?? '') ?: '15:00';
+    $coT = ($b['check_out_time'] ?? '') ?: '10:00';
+    $ci = $b['check_in'] . ' ' . $ciT;
+    $co = $b['check_out'] . ' ' . $coT;
     $fmt = function ($s) {
         $t = strtotime($s);
         return $t ? gmdate('Ymd\THis\Z', $t) : '';
@@ -936,15 +961,7 @@ function build_booking_ics($b)
     };
     $summary = $esc('Stay at ' . ($b['prop_name'] ?? 'your cottage'));
     $loc = $esc($b['address'] ?? '');
-    $desc = $esc(
-        'Booking ref ' .
-            ($b['ref'] ?? '') .
-            '. Check-in from ' .
-            ($b['check_in_time'] ?? '15:00') .
-            ', check-out by ' .
-            ($b['check_out_time'] ?? '10:00') .
-            '.',
-    );
+    $desc = $esc('Booking ref ' . ($b['ref'] ?? '') . '. Check-in from ' . $ciT . ', check-out by ' . $coT . '.');
     $lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -2540,8 +2557,10 @@ function send_booking_emails($b)
             '</div>' .
             email_p('Dear ' . $esc(first_name($b['name'], 'Guest')) . ', good news — your stay is confirmed. Here are the details:') .
             email_rows([
-                ['Arrive', '<strong>' . email_date($b['check_in']) . '</strong> &middot; from ' . email_time($b['check_in_time'])],
-                ['Leave', '<strong>' . email_date($b['check_out']) . '</strong> &middot; by ' . email_time($b['check_out_time'])],
+                // email_time('') is '' — a cleared time field must not leave a
+                // dangling "· from " on the row, so the fragment is conditional.
+                ['Arrive', '<strong>' . email_date($b['check_in']) . '</strong>' . (email_time($b['check_in_time']) !== '' ? ' &middot; from ' . email_time($b['check_in_time']) : '')],
+                ['Leave', '<strong>' . email_date($b['check_out']) . '</strong>' . (email_time($b['check_out_time']) !== '' ? ' &middot; by ' . email_time($b['check_out_time']) : '')],
                 ['Party', $esc($party)],
                 ['Payment', '<span style="color:' . $paymentColor . ';font-weight:600;">' . $paymentLabel . '</span>'],
             ]) .
@@ -2633,8 +2652,8 @@ function send_booking_emails($b)
                 '<a href="tel:' . email_esc(preg_replace('/[^0-9+]/', '', $oGuestPhone)) . '" style="color:#2E2A25;">' . email_esc($oGuestPhone) . '</a>',
             ];
         }
-        $oRows[] = ['Arrive', '<strong>' . email_esc(email_date($b['check_in'])) . '</strong> &middot; ' . email_esc(email_time($b['check_in_time']))];
-        $oRows[] = ['Leave', '<strong>' . email_esc(email_date($b['check_out'])) . '</strong> &middot; ' . email_esc(email_time($b['check_out_time']))];
+        $oRows[] = ['Arrive', '<strong>' . email_esc(email_date($b['check_in'])) . '</strong>' . (email_time($b['check_in_time']) !== '' ? ' &middot; ' . email_esc(email_time($b['check_in_time'])) : '')];
+        $oRows[] = ['Leave', '<strong>' . email_esc(email_date($b['check_out'])) . '</strong>' . (email_time($b['check_out_time']) !== '' ? ' &middot; ' . email_esc(email_time($b['check_out_time'])) : '')];
         $oRows[] = ['Stay', email_esc($nightsTxt)];
         $oRows[] = ['Guests', email_esc($party)];
         $oRows[] = ['Total', '<strong>' . email_esc($ownerTotal . ($ownerDep > 0 ? ' incl. deposit' : '')) . '</strong>'];

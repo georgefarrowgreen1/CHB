@@ -73,9 +73,16 @@ foreach ($due as $b) {
     // retried next run; only an ambiguous post-payload failure (the server may
     // have delivered it) keeps the claim.
     try {
-        db()
-            ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
-            ->execute([(int) $b['id']]);
+        // Guarded + rowCount-gated so the claim really ARBITRATES: two
+        // overlapping runs (scheduled cron + a manual fire) both stamped the
+        // unconditional version and both sent. rowCount 0 = the other run owns
+        // this guest; skip.
+        $claim = db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ? AND balance_requested_at IS NULL');
+        $claim->execute([(int) $b['id']]);
+        if ($claim->rowCount() !== 1) {
+            $skipped++;
+            continue;
+        }
     } catch (\Throwable $e) {
     }
     // 'balance' asks for everything still outstanding (covers guests who never
@@ -166,10 +173,15 @@ foreach ($toRemind as $b) {
     }
     // Stamp-before-send, same reasoning as the request pass above: a duplicate
     // reminder is worse than one skipped 3-day cycle. Clean failures un-stamp.
+    // The guard is RECENCY, not IS NULL — reminders legitimately re-stamp each
+    // cycle (days apart), so "already stamped within the hour" can only mean an
+    // overlapping run owns this guest; skip.
     try {
-        db()
-            ->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')
-            ->execute([(int) $b['id']]);
+        $claim = db()->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ? AND (balance_reminded_at IS NULL OR balance_reminded_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))');
+        $claim->execute([(int) $b['id']]);
+        if ($claim->rowCount() !== 1) {
+            continue;
+        }
     } catch (\Throwable $e) {
     }
     $res = request_booking_payment($b, 'balance', true); // reminder = true
@@ -235,10 +247,14 @@ try {
 foreach ($toRecover as $b) {
     // Stamp-before-send (same reasoning as the passes above: a duplicate
     // money-chaser is worse than a missed cycle). Clean failures un-stamp.
+    // Recency-guarded like the balance reminder: a stamp within the hour can
+    // only be an overlapping run — skip; the real cycles are days apart.
     try {
-        db()
-            ->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')
-            ->execute([(int) $b['id']]);
+        $claim = db()->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ? AND (deposit_reminded_at IS NULL OR deposit_reminded_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))');
+        $claim->execute([(int) $b['id']]);
+        if ($claim->rowCount() !== 1) {
+            continue;
+        }
     } catch (\Throwable $e) {
     }
     $res = request_booking_payment($b, 'deposit', true); // reminder = true

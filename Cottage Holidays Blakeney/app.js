@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 582;
+const ADMIN_BUNDLE_V = 583;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -226,11 +226,6 @@ chbAct('mobileNavLink', function (el, event) {
     if (typeof toggleMobileMenu === 'function') toggleMobileMenu();
     nav(el.dataset.view);
 });
-// Open the back office and initialise it (was `nav('view-backoffice'); initBackOffice();`).
-chbAct('navBackoffice', function () {
-    nav('view-backoffice');
-    if (typeof initBackOffice === 'function') initBackOffice();
-});
 // Backdrop close: dismiss only when the click is on the overlay itself (or an
 // opt-in close element via data-close-in), never a click INSIDE the dialog.
 chbAct('backdropClose', function (el, event) {
@@ -368,11 +363,6 @@ chbAct('openInboxEmail', function () {
 chbAct('openAccomThenSec', function (el) {
     settingsOpen('accom');
     settingsOpenAccom(el.dataset.arg);
-});
-// Owed-KPI chase button inside a clickable row: don't let the row's own click fire.
-chbAct('stopAccountsPayments', function (el, event) {
-    event.stopPropagation();
-    accountsOpen('payments');
 });
 // Booking-hub ⋯ menu toggle: bhubMenuToggle reads ev.currentTarget (the button),
 // which delegation can't provide (currentTarget is document), so hand it a shim
@@ -3279,8 +3269,6 @@ function bookingRef(id) {
 }
 
 function setGuestUI() {
-    const acct = document.getElementById('footer-account');
-    if (acct) acct.innerText = currentGuest ? 'My Stays' : 'Sign in';
     const btn = document.getElementById('account-btn');
     if (btn) {
         btn.classList.toggle('logged-in', !!currentGuest);
@@ -4937,11 +4925,12 @@ async function renderInStayTides() {
         highs = [];
     data.extremes.forEach((e) => {
         if (!e.time) return;
-        const d = new Date(e.time);
-        if (isNaN(d)) return;
-        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        if (ds !== today) return;
-        const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        // The QUAY'S clock and calendar, not the device's (ukClockHm) — a guest
+        // opening their stay from abroad read shifted tide times, and the
+        // "today" filter itself moved with the device's date.
+        const ds = ukDateOfInstant(e.time);
+        if (!ds || ds !== today) return;
+        const hm = ukClockHm(e.time);
         if (/low/i.test(e.type)) lows.push(hm);
         else if (/high/i.test(e.type)) highs.push(hm);
     });
@@ -8606,11 +8595,9 @@ async function renderTides() {
         }
         body.innerHTML = next
             .map((e) => {
-                const d = new Date(e.t);
-                const hh = String(d.getHours()).padStart(2, '0'),
-                    mm = String(d.getMinutes()).padStart(2, '0');
                 const label = /high/i.test(e.type) ? 'High tide' : 'Low tide';
-                return `<div style="display:flex;justify-content:space-between;gap:12px;"><span>${label}</span><span style="color:var(--text-muted);">${hh}:${mm}</span></div>`;
+                // The quay's clock, not the device's (ukClockHm).
+                return `<div style="display:flex;justify-content:space-between;gap:12px;"><span>${label}</span><span style="color:var(--text-muted);">${ukClockHm(e.t)}</span></div>`;
             })
             .join('');
         card.style.display = '';
@@ -8705,159 +8692,11 @@ function closePhotoLightbox() {
     document.body.style.overflow = '';
 }
 
-// ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
-// switch to a 'tripplan.php' LLM endpoint without changing the UI/markup. ----
-const TRIP_PLAN_SOURCE = 'curated';
-const DEFAULT_TRIP_ACTIVITIES = [
-    {
-        name: 'Blakeney Point seal trip',
-        blurb: 'Boat trip from Morston Quay to the seal colony — book ahead in season.',
-        tags: ['seals', 'kids'],
-        tide: 'high',
-    },
-    {
-        name: 'Walk out to Blakeney Point',
-        blurb: 'A long shingle walk to the seals and the old lifeboat house (~4 miles round trip).',
-        tags: ['walk'],
-        tide: 'low',
-    },
-    {
-        name: 'Crabbing off Blakeney Quay',
-        blurb: 'Drop a line off the quay when the tide is in — a classic with kids.',
-        tags: ['kids', 'seals'],
-        tide: 'high',
-    },
-    {
-        name: 'Cley Marshes nature reserve',
-        blurb: 'Norfolk Wildlife Trust reserve with birdwatching hides and a café.',
-        tags: ['walk', 'kids'],
-        tide: 'any',
-    },
-    {
-        name: 'Saltmarsh walk to Morston',
-        blurb: 'Follow the Norfolk Coast Path across the marshes.',
-        tags: ['walk'],
-        tide: 'low',
-    },
-    {
-        name: 'Wells-next-the-Sea beach',
-        blurb: 'Wide sandy beach, colourful beach huts and pinewoods.',
-        tags: ['beach', 'kids'],
-        tide: 'any',
-    },
-    {
-        name: 'Holkham beach & estate',
-        blurb: 'Vast nature-reserve beach backed by woodland.',
-        tags: ['beach', 'walk'],
-        tide: 'any',
-    },
-    {
-        name: 'Wiveton Hall Café & farm shop',
-        blurb: 'Fruit picking and lunch with a view over the marshes.',
-        tags: ['foodie', 'kids'],
-        tide: 'any',
-    },
-    {
-        name: 'Blakeney pubs & seafood',
-        blurb: 'Local crab, fish and a pint in the village.',
-        tags: ['foodie'],
-        tide: 'any',
-    },
-    {
-        name: 'Cromer pier & crab',
-        blurb: 'Victorian pier and the famous Cromer crab.',
-        tags: ['foodie', 'kids'],
-        tide: 'any',
-    },
-    {
-        name: 'Cosy day in',
-        blurb: 'Wood-burner, a good book and the rain on the window.',
-        tags: ['rainy'],
-        tide: 'any',
-    },
-    {
-        name: 'Muckleburgh Collection',
-        blurb: 'Military vehicle museum near Weybourne — a great rainy-day option.',
-        tags: ['rainy', 'kids'],
-        tide: 'any',
-    },
-];
-function tripActivities() {
-    const c = siteContent['trip-activities'];
-    return Array.isArray(c) && c.length ? c : DEFAULT_TRIP_ACTIVITIES;
-}
-function closeTripModal() {
-    const m = document.getElementById('trip-modal');
-    if (m) m.classList.remove('open');
-}
-function runTripPlan() {
-    const interests = Array.from(document.querySelectorAll('#trip-interests .trip-chip.on')).map(
-        (b) => b.getAttribute('data-int'),
-    );
-    const days = Math.max(
-        1,
-        Math.min(7, parseInt((document.getElementById('trip-days') || {}).value, 10) || 3),
-    );
-    const plan = generateTripPlan({ interests, days });
-    const res = document.getElementById('trip-result');
-    if (!res) return;
-    if (!plan.length) {
-        res.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Pick an interest or two and tap “Plan my days”.</p>`;
-        return;
-    }
-    res.innerHTML =
-        plan
-            .map(
-                (items, di) => `
-                <div class="mo-card" style="margin-top:12px;">
-                    <div class="mo-card-title">Day ${di + 1}</div>
-                    ${items.map((it) => `<div style="margin-top:8px;"><strong>${escapeHtml(it.name)}</strong><span style="color:var(--accent-text);font-size:0.8rem;">${escapeHtml(it.tide)}</span><br><span style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(it.blurb)}</span></div>`).join('')}
-                </div>`,
-            )
-            .join('') +
-        `<p style="font-size:0.72rem;color:var(--text-muted);margin:10px 0 0;">A loose suggestion — check seasons/opening times. Tide notes use live Blakeney tide data when available.</p>`;
-}
-// Generation seam: curated now; a future AI source can replace this body.
-function generateTripPlan(prefs) {
-    if (TRIP_PLAN_SOURCE === 'curated') return curatedTripPlan(prefs);
-    return curatedTripPlan(prefs);
-}
-function curatedTripPlan({ interests, days }) {
-    const pool = tripActivities();
-    let matched =
-        interests && interests.length
-            ? pool.filter((a) => (a.tags || []).some((t) => interests.includes(t)))
-            : pool.slice();
-    if (!matched.length) matched = pool.slice();
-    matched = matched.slice().sort(() => Math.random() - 0.5);
-    const tideNote = (a) => {
-        if (!a.tide || a.tide === 'any') return '';
-        const want = a.tide === 'high' ? 'high' : 'low';
-        if (__tideData && __tideData.ok && Array.isArray(__tideData.extremes)) {
-            const ex = __tideData.extremes
-                .map((e) => ({ t: new Date(e.time), type: e.type }))
-                .filter((e) => new RegExp(want, 'i').test(e.type) && e.t.getTime() >= Date.now())
-                .sort((a, b) => a.t - b.t);
-            if (ex.length) {
-                const d = ex[0].t;
-                return ` · best near ${want} tide (~${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')})`;
-            }
-        }
-        return a.tide === 'high' ? ' · best around high tide' : ' · best around low tide';
-    };
-    const perDay = 2,
-        plan = [];
-    let i = 0;
-    for (let d = 0; d < days && i < matched.length; d++) {
-        const items = [];
-        for (let n = 0; n < perDay && i < matched.length; n++, i++) {
-            const a = matched[i];
-            items.push({ name: a.name, blurb: a.blurb, tide: tideNote(a) });
-        }
-        plan.push(items);
-    }
-    return plan;
-}
+// The trip planner ('Plan your North Norfolk days') is REMOVED — its opener
+// (openTripModal) was lost in an earlier refactor, so the whole feature had
+// shipped unreachable for months: modal markup and planner code every guest
+// downloaded with no button anywhere to open it. Guests plan through the
+// Experiences page (tide widget included); resurrect from git if ever wanted.
 // ---- House rules: derived from each cottage's own settings ----
 // ONE derivation, read by BOTH surfaces — the cottage page's list (below) and
 // the House rules sheet on the guest's own stay. The auto lines come from the
@@ -9537,7 +9376,12 @@ function gbp(n) {
     if (!__gbpFmt) {
         __gbpFmt = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return '£' + __gbpFmt.format(Number(n));
+    // Refuse to print "£NaN" — the amplifier of the whole response-shape-drift
+    // class (a site reading res.amount that isn't there). "£—" is honest about
+    // an unknown figure where £0.00 would be a claim and NaN reads as broken.
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '£—';
+    return '£' + __gbpFmt.format(v);
 }
 
 // Total / deposit-paid / balance for a booking, using the agreed (locked) price.
@@ -11488,7 +11332,22 @@ async function maybeHandleNotificationOpen() {
     try {
         target = new URLSearchParams(window.location.search).get('open') || '';
     } catch (e) {}
-    if (!target || !isAuthenticated) return;
+    if (!target) return;
+    // ?open=stay is the GUEST route — the confirmation and arrival emails'
+    // "Open my booking" button. It must be handled BEFORE the admin gate below,
+    // or every guest who tapped it landed on the bare homepage (including the
+    // arrival-day guest going for their entry details). openGuestArea settles
+    // the session itself: signed in → My Stays, signed out → the sign-in.
+    if (target === 'stay') {
+        try {
+            history.replaceState(null, '', window.location.pathname);
+        } catch (e) {}
+        try {
+            await openGuestArea();
+        } catch (e) {}
+        return;
+    }
+    if (!isAuthenticated) return;
     try {
         history.replaceState(null, '', window.location.pathname);
     } catch (e) {}
@@ -13145,6 +13004,20 @@ function ukShiftDays(iso, days) {
     d.setUTCDate(d.getUTCDate() + (Number(days) || 0));
     return d.toISOString().slice(0, 10);
 }
+// A timestamped INSTANT (a tide extreme arrives as UTC) read on the QUAY'S
+// clock, never the visitor's device — a guest planning from Berlin must see
+// Blakeney's 07:41, not their own 08:41. ukClockHm is the time as HH:MM,
+// ukDateOfInstant the London calendar date (en-CA = YYYY-MM-DD).
+function ukClockHm(t) {
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' });
+}
+function ukDateOfInstant(t) {
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+}
 
 // ============ Custom glass date-range picker (customer booking) ============
 // ===================================================================
@@ -13591,7 +13464,6 @@ const MODAL_CLOSERS = {
     // hiding the element via the generic fallback below.
     'messages-modal': closeMessagesModal,
     'waitlist-modal': closeWaitlistModal,
-    'trip-modal': closeTripModal,
     // Admin email composer — the stub loads the bundle if it isn't in yet.
     'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
 };
@@ -18474,7 +18346,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'fabfix1';
+    const BUILD = 'bugswp2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
