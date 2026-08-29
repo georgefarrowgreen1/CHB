@@ -6924,6 +6924,65 @@ enabled cases, the duty guard and the reveal guard each break-tested in isolatio
   `LIKE` searches and `SELECT LOWER(email)` projections — neither can use the index
   anyway, so forbidding them would fail on correct code.
 
+## The round-2 bug sweep (bug-CLASS lenses), and the postures it set
+
+Hunted along classes rather than subsystems (clock/TZ, escaping, NaN money,
+races, PHP type traps, wiring) — 26 confirmed fixes, PR #1206. What future code
+must keep doing:
+- **A write that preserves absolutes RE-READS UNDER THE LOCK.** bookings.php
+  `update` read $b before book_lock and wrote deposit_paid/payment back from
+  that snapshot — and the lock WAIT widened the window (an edit blocking on a
+  pay.php charge landed its stale write the instant the charge finished; the
+  cash twin via set_payment, which had NO lock, was lost outright). Both
+  re-read now. Gated by **test-integration §32a**, which reproduces the
+  interleaving for real: hold the prop's book_lock on a second connection, fire
+  the edit in a child process, wait for it to PARK (probe the processlist for
+  `state = 'User lock'` — NB a text probe's own query literal matched ITSELF on
+  iteration 0, and db.php's real server-side prepares mean `info` shows only
+  `GET_LOCK(?, 30)` anyway; the wait STATE is the honest signal), land the
+  charge, release, assert the money survived. Break-tested both ways.
+- **AN ACTION THAT MOVES MONEY OUT RIDES THE OP LEDGER, and its terminal
+  marker lands BEFORE its slowest step.** `cancel`'s only terminal state was
+  the row DELETE, placed after the SMTP send — a timeout retry re-ran the
+  whole action and record_square_refund's key deliberately differs once money
+  has been refunded, so Square paid the typed refund TWICE. op_claim + client
+  chbOpFor stamp + DELETE moved above the email. §32b gates the replay.
+- **EVERY GUEST-EMAILING AUTOMATION CLAIMS BEFORE IT SENDS**, with rowCount as
+  the arbitration and an un-claim on a CLEAN failure (failed-send-keeps-the-
+  wait unchanged). The overlap is by construction, not bad luck: the outbox
+  kick fires from ordinary traffic at exactly the moment self-repair walks the
+  same backlog, and waitlist_notify_freed has three concurrent triggers (the
+  per-device iCal sync among them). A `static $draining` flag is per-process
+  and guards nothing across FPM workers. Stamps that legitimately re-fire
+  (reminders) claim on RECENCY, not IS NULL. New cron sender = same posture.
+- **The tide window anchors at Europe/London midnight and every tide time is
+  rendered on the QUAY'S clock** (`ukClockHm`/`ukDateOfInstant` in app.js —
+  the guest renders formatted on the visitor's device; a Berlin guest read
+  every tide an hour off). chbCoastRow also filters extremes to the asked
+  London day. The sibling traps fixed with it: anniversary-nudge's ±N*86400s
+  window slipped a day across DST (noon-anchored day arithmetic now) and
+  conflict-audit's `gmdate` today re-logged finished conflicts for the
+  00:00–01:00 BST hour.
+- **`?:` vs `??` on NOT-NULL-DEFAULT columns**: the value a cleared form field
+  stores is `''`, never null — `?? '15:00'` was a dead branch and
+  `strtotime('2026-09-06 ')` is MIDNIGHT, so the confirmation's .ics told the
+  guest their stay begins at 00:00 (gated in test-payrail). The same conflation
+  the other way: a £0 price override (a comped stay) read as "no price"
+  through `?:` at three sites outside booking_amount_due's documented
+  one-predicate fix.
+- **The trip planner is REMOVED, not lost**: its opener vanished in an old
+  refactor and the whole feature (modal + planner code every guest downloaded)
+  shipped unreachable for months. Deliberate now — resurrect from git if ever
+  wanted. Same sweep wired the two genuine lost affordances instead:
+  `?open=stay` (the guest emails' "Open my booking" button routed to the
+  homepage — it opens My Stays/sign-in now, ui-test-topmenu §I) and the
+  orphan-payment flag's "one tap" (activity-log rows carry a CLOSED `act` for
+  exactly `selfrepair.square_orphan` → "Record it on the booking" →
+  record_square_payment, §32c gates that no other row grows an action from
+  log data).
+- **gbp() renders £— for non-finite input** — the honest refusal that turns
+  the whole response-shape-drift class (£NaN toasts) into a visible dash.
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a
