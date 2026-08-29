@@ -4164,6 +4164,102 @@ $actCount = 0;
 foreach (($r['json']['events'] ?? []) as $ev) { if (isset($ev['act'])) { $actCount++; } }
 it_check('§32c …and NO other row grows an action from log data', $actCount === 1, 'actCount=' . $actCount);
 
+// ── §33 the CASH rail's damages deposit has the same lifecycle as the card's ──
+// Both halves were card-only. A deposit collected in cash (hold_status stays
+// 'none', no hold_payment_id) fell through cancel's settle block entirely — so
+// the obligation was destroyed with the row — and through return_deposit's
+// settle stamp — so nothing downstream could tell a returned deposit from one
+// still held.
+echo "\n== \u{00A7}33 the cash rail's damages deposit ==\n";
+$cshIn = date('Y-m-d', strtotime('-6 days'));
+$cshOut = date('Y-m-d', strtotime('-2 days')); // checked out, so a return is allowed
+// Rental 300 + a £60 damages deposit collected IN CASH: paid 360 against a 300
+// rental, hold_status 'none' — exactly what set_payment's "collected too" writes.
+$mkCash = function ($name) use ($rootDb, $propKey, $cshIn, $cshOut) {
+    $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, payment_method, payment_date, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status, hold_amount) VALUES ('$propKey','$name','','$cshIn','$cshOut',2,0,'paid',360,'Cash',CURDATE(),300,300,0,4,60,'none',0)");
+    return (int) $rootDb->lastInsertId();
+};
+
+// (a) RETURNING a cash deposit marks it settled, so every reader can tell.
+$cshId = $mkCash('Cash Return');
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $cshId]);
+it_check('§33a a cash deposit returns ok', ($r['json']['ok'] ?? false) === true, $r['raw']);
+$cshRow = $rootDb->query("SELECT hold_status, hold_settled_at FROM bookings WHERE id = $cshId")->fetch();
+it_check('§33a …and is MARKED settled — the stamp was card-only, so the invoice went on promising a refund that had already happened',
+    $cshRow['hold_status'] === 'returned' && !empty($cshRow['hold_settled_at']),
+    'hold_status=' . $cshRow['hold_status'] . ' settled=' . var_export($cshRow['hold_settled_at'], true));
+// A second return is refused, exactly as on the card rail.
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $cshId]);
+it_check('§33a …and cannot be returned twice', $r['code'] === 409, $r['raw']);
+
+// (b) CANCELLING with a cash deposit still held reports it as owed and logs it,
+// because the row that recorded it is about to be deleted.
+$cshId2 = $mkCash('Cash Cancel');
+it_reauth($admin);
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $cshId2, 'refund_amount' => 0, 'reason' => 'it-cash', 'op_id' => 'it-cash-cxl-' . $cshId2]);
+it_check('§33b cancelling reports the cash deposit as STILL OWED (£60), not silence',
+    ($r['json']['ok'] ?? false) === true && abs((float) ($r['json']['deposit_owed'] ?? 0) - 60.0) < 0.005, $r['raw']);
+$owedLog = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'deposit.owed' AND entity_id = '$cshId2'")->fetchColumn();
+it_check('§33b …and logs it as a warn, so it outlives the booking in Needs attention', $owedLog === 1, 'rows=' . $owedLog);
+it_check('§33b …and the booking really is gone', (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE id = $cshId2")->fetchColumn() === 0);
+
+// (c) A booking with NO deposit cancels silently, as before — the warn must
+// name a real obligation, never fire on every cancellation.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, agreed_booking_fee, hold_status, hold_amount) VALUES ('$propKey','No Dep','','$cshIn','$cshOut',2,0,'paid',300,300,300,0,4,0,'none',0)");
+$noDepId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $noDepId, 'refund_amount' => 0, 'reason' => 'it-nodep', 'op_id' => 'it-nodep-cxl-' . $noDepId]);
+it_check('§33c a booking with no deposit cancels with nothing owed and no warn',
+    ($r['json']['ok'] ?? false) === true
+    && (float) ($r['json']['deposit_owed'] ?? 0) === 0.0
+    && (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action = 'deposit.owed' AND entity_id = '$noDepId'")->fetchColumn() === 0, $r['raw']);
+
+// ── §34 an UNLISTED cottage does not exist on the public site — every route ──
+// ?all=1 was fixed for this once; the two routes beside it were not. A private
+// cottage's rates rode the anonymous rates payload under `seasons` (keyed by
+// its own prop_key), and naming it directly at availability.php?prop= returned
+// its whole forward occupancy calendar.
+echo "\n== \u{00A7}34 an unlisted cottage stays private on every route ==\n";
+$r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Secret Annexe', 'couple_rate' => 210]);
+$secretKey = (string) ($r['json']['prop_key'] ?? ($r['json']['property']['prop_key'] ?? ''));
+it_check('§34 a cottage can be created for the test', $secretKey !== '', $r['raw']);
+$rootDb->exec("UPDATE properties SET unlisted = 1 WHERE prop_key = " . $rootDb->quote($secretKey));
+// It has a season (a rate the public must not read) and a stay (dates the
+// public must not read).
+$rootDb->exec("INSERT INTO rate_seasons (prop_key, label, start_date, end_date, couple_rate) VALUES (" . $rootDb->quote($secretKey) . ",'Secret Christmas','2026-12-20','2026-12-28',495)");
+$secIn = date('Y-m-d', strtotime('+12 days'));
+$secOut = date('Y-m-d', strtotime('+15 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES (" . $rootDb->quote($secretKey) . ",'Private Guest','','$secIn','$secOut',2,0,'paid',400,400,400,0,3)");
+
+$anon2 = [];
+$r = http($anon2, 'GET', '/rates.php');
+$anonRaw = $r['raw'];
+$anonProps = array_column($r['json']['properties'] ?? [], 'prop_key');
+it_check('§34 the anonymous rates payload omits the cottage itself', !in_array($secretKey, $anonProps, true), implode(',', $anonProps));
+it_check('§34 …and omits its SEASONS — the key, the label and the nightly rate were all published',
+    !isset(($r['json']['seasons'] ?? [])[$secretKey]) && strpos($anonRaw, 'Secret Christmas') === false && strpos($anonRaw, $secretKey) === false,
+    substr($anonRaw, 0, 300));
+// The owner still sees everything — the filter is a public-visitor rule, not a
+// deletion (the ?all=1 branch's own posture).
+$r = http($admin, 'GET', '/rates.php');
+it_check('§34 …while the OWNER still receives it, seasons and all',
+    in_array($secretKey, array_column($r['json']['properties'] ?? [], 'prop_key'), true)
+    && isset(($r['json']['seasons'] ?? [])[$secretKey]), substr($r['raw'], 0, 200));
+
+// availability.php, both routes.
+$r = http($anon2, 'GET', '/availability.php?all=1');
+it_check('§34 ?all=1 still withholds it (the fix that was already here)', !isset(($r['json']['props'] ?? [])[$secretKey]), substr($r['raw'], 0, 200));
+$r = http($anon2, 'GET', '/availability.php?prop=' . rawurlencode($secretKey));
+it_check('§34 …and naming it DIRECTLY no longer returns its calendar',
+    ($r['json']['ranges'] ?? null) === [] && strpos($r['raw'], $secIn) === false, substr($r['raw'], 0, 200));
+// An admin asking the same question still gets the dates, and a LISTED cottage
+// is unaffected — the rule must not blank the public site.
+$r = http($admin, 'GET', '/availability.php?prop=' . rawurlencode($secretKey));
+it_check('§34 …but the owner still gets them', count($r['json']['ranges'] ?? []) === 1, substr($r['raw'], 0, 200));
+$r = http($anon2, 'GET', '/availability.php?prop=' . rawurlencode($propKey));
+it_check('§34 a LISTED cottage answers anonymous callers exactly as before', is_array($r['json']['ranges'] ?? null), substr($r['raw'], 0, 200));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

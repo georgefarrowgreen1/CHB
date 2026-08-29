@@ -87,6 +87,41 @@ check('legacy files first, in byte order', array_slice($names, 0, 3) === ['migra
 check('numeric migrations after all legacy, in numeric order', array_slice($names, 3) === ['migration-100-new-table.sql', 'migration-101-add-col.sql']);
 check('numeric order is numeric, not lexical (110 > 20)', array_map('basename', migration_sort(['/x/migration-110-b.sql', '/x/migration-20-a.sql'])) === ['migration-20-a.sql', 'migration-110-b.sql']);
 
+// ---- A force=1 RE-RUN redoes schema, never data ---------------------------
+// force exists to repair a wrongly-baselined database (tables marked applied
+// that were never created), and its safety argument is that the DDL is
+// idempotent. Two migrations carry DATA backfills that are not: re-running
+// migration-111's `UPDATE guests SET email_verified_at = NOW() WHERE
+// email_verified_at IS NULL` re-verifies every account that has since
+// registered and not proved its address, and migration-damages-deposit's
+// `UPDATE properties SET booking_fee = 75` resets each original cottage's
+// deposit over whatever the owner has set since. migration_stmt_is_schema is
+// the classifier that decides; an ALLOWLIST, so anything unrecognised counts as
+// data and a re-run leaves it alone.
+check('ALTER is schema — a re-run may redo it', migration_stmt_is_schema('ALTER TABLE bookings ADD COLUMN x DATE NULL') === true);
+check('CREATE TABLE is schema', migration_stmt_is_schema('CREATE TABLE IF NOT EXISTS t (id INT)') === true);
+check('CREATE INDEX is schema, leading whitespace and all', migration_stmt_is_schema("  \n CREATE INDEX i ON t (c)") === true);
+check('a leading -- comment does not hide the verb', migration_stmt_is_schema("-- why\nALTER TABLE t ADD COLUMN y INT") === true);
+check('the guest-verification backfill is DATA — never redone on a re-run',
+    migration_stmt_is_schema('UPDATE guests SET email_verified_at = NOW() WHERE email_verified_at IS NULL') === false);
+check('the damages-deposit backfill is DATA — the owner\'s figure survives a re-run',
+    migration_stmt_is_schema("UPDATE properties SET booking_fee = 75 WHERE prop_key IN ('21a','jollyboat','pimpernel')") === false);
+check('INSERT is data', migration_stmt_is_schema('INSERT INTO t VALUES (1)') === false);
+check('DELETE is data', migration_stmt_is_schema('DELETE FROM t WHERE id = 1') === false);
+// The conservative direction: an unrecognised shape is DATA, so a re-run skips
+// it rather than guessing. (A genuinely new DDL verb simply needs adding here,
+// which is a deliberate act; the failure mode of the reverse is overwriting
+// live values.)
+check('an unrecognised statement counts as data, not schema', migration_stmt_is_schema('REPLACE INTO t VALUES (1)') === false);
+// The two real files are still classified as expected, read from disk.
+$m111 = array_filter(array_map('trim', split_sql(__DIR__ . '/migration-111-guest-email-verified.sql')), fn($s) => $s !== '');
+// NB check() takes exactly (name, cond) here — no detail argument (the
+// three-ok() lesson: PHPStan analyses every test file as one set, so calling it
+// with a third would re-type this helper against every other call site).
+check('migration-111 really carries both a schema statement and a data one',
+    count(array_filter($m111, 'migration_stmt_is_schema')) >= 1
+    && count(array_filter($m111, fn($s) => !migration_stmt_is_schema($s))) >= 1);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

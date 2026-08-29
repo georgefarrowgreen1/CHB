@@ -50,13 +50,17 @@ db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at DATETIME NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-$applied = [];
-if (!$force) {
-    $st = db()->query('SELECT filename FROM schema_migrations');
-    foreach ($st->fetchAll() as $r) {
-        $applied[$r['filename']] = true;
+// The ledger is ALWAYS read, even under force. Without force it decides what
+// runs at all; WITH force it decides which files are re-runs, which is what
+// makes the data-backfill rule below possible.
+$ledger = [];
+try {
+    foreach (db()->query('SELECT filename FROM schema_migrations')->fetchAll() as $r) {
+        $ledger[$r['filename']] = true;
     }
+} catch (\Throwable $e) {
 }
+$applied = $force ? [] : $ledger;
 
 $files = migration_sort(glob(__DIR__ . '/migration-*.sql'));
 
@@ -154,6 +158,19 @@ function split_sql($path)
 }
 
 // MySQL errors that simply mean "this change is already in place".
+// Is this statement pure SCHEMA — safe to re-apply to a database that already
+// has it? Used only to decide what a force=1 RE-RUN redoes (see the loop
+// below). Deliberately an ALLOWLIST of the DDL these migrations actually use,
+// so anything unrecognised — an UPDATE, an INSERT, a DELETE, or some future
+// shape nobody thought about — counts as DATA and is skipped on a re-run. The
+// conservative direction: skipping a statement on a re-run leaves the database
+// exactly as it was, while running one wrongly can overwrite live values.
+function migration_stmt_is_schema($stmt)
+{
+    // Strip leading comments/whitespace so the first WORD is the verb.
+    $s = trim(preg_replace('/^\s*(--[^\n]*\n|\/\*.*?\*\/|\s)+/s', '', (string) $stmt));
+    return (bool) preg_match('/^(CREATE|ALTER|DROP|RENAME|TRUNCATE\s+TABLE)\b/i', $s);
+}
 function is_idempotent_error($msg)
 {
     $m = strtolower($msg);
@@ -209,7 +226,26 @@ do {
         $hardError = null;
         $ran = 0;
         $skipped = 0;
+        // A RE-RUN REDOES SCHEMA, NEVER DATA. force=1 exists to repair a
+        // wrongly-baselined database — to make sure the TABLES and COLUMNS are
+        // really there — and its safety argument is that the DDL is idempotent
+        // (CREATE TABLE IF NOT EXISTS, guarded ADD COLUMN). That argument does
+        // not cover the DATA backfills two migrations carry, and re-running
+        // those on a live database is destructive in a way nothing announces:
+        // migration-111's `UPDATE guests SET email_verified_at = NOW() WHERE
+        // email_verified_at IS NULL` re-verifies every account that has since
+        // registered and NOT proved its address — silently undoing the control
+        // that migration exists to impose — and migration-damages-deposit's
+        // `UPDATE properties SET booking_fee = 75` resets each original
+        // cottage's refundable deposit to £75 over whatever the owner has since
+        // set. A backfill is for the moment its migration FIRST runs; on a file
+        // the ledger already records, it is skipped and counted as such.
+        $isRerun = $force && isset($ledger[$name]);
         foreach (split_sql($path) as $stmt) {
+            if ($isRerun && !migration_stmt_is_schema($stmt)) {
+                $skipped++;
+                continue;
+            }
             try {
                 db()->exec($stmt);
                 $ran++;

@@ -365,6 +365,39 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   });
   ok(boxState.disabled === false && boxState.busy === null, 'a non-button control is never disabled — only buttons self-lock');
 
+  // ---- OFFLINE, THE DAY SHEET WINS -----------------------------------------
+  // A no-signal reload puts the day sheet up — that is the whole offline mode —
+  // and the remembered screen used to be restored straight over it, landing the
+  // owner on a view whose data never loaded (an Inbox reading "All caught up"
+  // over nothing) with the dock already trimmed. maybeRestoreView must decline
+  // while the sheet owns the screen, and must KEEP the memory for the moment
+  // the connection returns.
+  const offlineRestore = await page.evaluate(async () => {
+    const before = sessionStorage.getItem('chb-nav');
+    document.body.classList.add('offline-snap');
+    let took = null;
+    try {
+      took = await maybeRestoreView({ t: 'inbox:email', at: Date.now() });
+    } catch (e) {
+      took = 'threw:' + e.message;
+    }
+    const after = sessionStorage.getItem('chb-nav');
+    document.body.classList.remove('offline-snap');
+    return { took, kept: after === before && !!after };
+  });
+  ok(offlineRestore.took === false, 'with the day sheet up, the remembered screen is NOT restored over it');
+  ok(offlineRestore.kept, '…and the memory is kept, so it still works once the signal returns');
+  // The same call with the sheet down still restores — the guard is about
+  // being offline, not a way of switching the feature off.
+  const onlineRestore = await page.evaluate(async () => {
+    try {
+      return await maybeRestoreView({ t: 'inbox:email', at: Date.now() });
+    } catch (e) {
+      return 'threw:' + e.message;
+    }
+  });
+  ok(onlineRestore === true, '…while online the very same target still restores');
+
   console.log(fails ? `RESUME TEST FAILED ❌ (${fails})` : 'RESUME TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

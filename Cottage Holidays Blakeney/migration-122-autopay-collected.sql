@@ -1,0 +1,32 @@
+-- migration-122-autopay-collected.sql — the due date a consent was actually
+-- COLLECTED FOR, so a spent single-collection consent cannot re-arm itself.
+--
+--   autopay_collected_for  the autopay_due (single) or autopay_next_at (monthly)
+--                          date the last SUCCESSFUL collection was made for.
+--                          NULL = nothing has ever been collected on this
+--                          consent, which is every existing row.
+--
+-- Why this exists. A MONTHLY plan already knows when it is finished: each
+-- collection advances autopay_next_at, and an empty next date means zero
+-- collections left (pricing.php says so, and its comment records the defect
+-- that taught it). A SINGLE collection has no such marker — autopay_next_at is
+-- NULL both BEFORE and AFTER it runs — so the only thing standing the plan down
+-- was "nothing is owed", i.e. the money still being paid. Give the money back
+-- and the consent read as live again: the collector's own SQL re-selects the
+-- row every night (COALESCE(next_at, due) <= today is permanently true once due
+-- has passed), booking_autopay_state saw the outstanding balance match the
+-- agreed amount exactly, returned 'armed', and the card was charged again — the
+-- night after the owner deliberately refunded it, with no advance notice, since
+-- the pre-debit notice window closed when the due date passed.
+--
+-- Deliberately the DATE and not a boolean, for the reason autopay_notified_at is
+-- (migration-107): if the owner genuinely moves the plan on, the day this was
+-- collected for is no longer the agreed day, so the consent is live again by
+-- construction — where a flag would have to be remembered-to-be-cleared at
+-- every site that can move the date.
+--
+-- Guarded plain ADD COLUMN: migrate.php treats a duplicate-column error as
+-- already-applied (do NOT wrap it in information_schema + PREPARE — the no-op
+-- branch leaves an open cursor that kills the NEXT migration, see CLAUDE.md).
+
+ALTER TABLE bookings ADD COLUMN autopay_collected_for DATE NULL;
