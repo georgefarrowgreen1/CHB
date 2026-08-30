@@ -79,9 +79,20 @@ const SURFACES = {
 
 // Read a token block out of app.css. `:root` is the DARK theme (the default);
 // `body.light-mode` overrides it. Tokens absent from the light block inherit.
+//
+// NB the selector must be found as a SELECTOR — followed by `{`, and not
+// inside a comment. A bare indexOf finds the first literal occurrence, so a
+// comment that merely NAMES the selector (a token block explaining that it is
+// deliberately not retuned for light mode) is matched instead, the wrong block
+// is read, the light tokens come back empty, and EVERY light-theme check then
+// silently measures the dark values and fails. Measured; it is the third time
+// a scan in this codebase has read its own explanation.
 function tokens(css, selector) {
-    const i = css.indexOf(selector);
-    if (i < 0) return {};
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+    const re = new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{');
+    const hit = re.exec(bare);
+    if (!hit) return {};
+    const i = hit.index;
     const open = css.indexOf('{', i);
     let depth = 0, end = open;
     for (let j = open; j < css.length; j++) {
@@ -184,8 +195,13 @@ for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
 // deliberate: the hue is stated once and the knot borrows it. So this reads WHOLE
 // declarations and resolves them, rather than the hex-only reader §1 uses.
 function tokensAny(css, selector) {
-    const i = css.indexOf(selector);
-    if (i < 0) return {};
+    // Same selector-not-comment rule as tokens() above — this one reads
+    // app.css as well (appLightAll), so fixing only the other leaves it open.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length));
+    const re = new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{');
+    const hit = re.exec(bare);
+    if (!hit) return {};
+    const i = hit.index;
     const open = css.indexOf('{', i);
     let depth = 0, end = open;
     for (let j = open; j < css.length; j++) {

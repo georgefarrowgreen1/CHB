@@ -142,6 +142,13 @@ textarea:focus-visible,
      fails WCAG contrast; every accent-filled control uses this dark ink. */
   --accent-ink: #1b1208;
   --accent-soft: rgba(214, 167, 133, 0.55);
+  /* ON THE BASEMAP — deliberately NOT retuned for light mode, which is why
+     they exist: tiles are a light ground in EITHER theme, so a control on
+     them has a constant background and a theme-aware ink would vanish.
+     10.4:1 on the 94% white control, 4.9:1 on the attribution strip. */
+  --map-ink: #3a2e1e;
+  --map-sub: #6b6257;
+  --map-ground: #ecebe7;
   /* Radius scale — use these for new components: sm = small controls,
                md = cards/fields, lg = nested/mid cards, panel = top-level surfaces
                (the header's curvature — panels, cards, modals, galleries),
@@ -2467,11 +2474,16 @@ a.card {
 .prop-map {
   width: 100%;
   height: 340px;
-  border-radius: 18px;
+  /* --r-lg not 18px: .cottages-map already used the token, so the two maps
+     had different radii — the tile config's two-copies drift again. And
+     --shadow-panel replaces a raw rgba(0,0,0,.35), the DARK weight, painted
+     in light mode too where it slabbed under a pale map. */
+  border-radius: var(--r-lg);
   overflow: hidden;
   border: 1px solid var(--glass-border);
-  background: var(--dark-grey);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Tiles are light in either theme; a dark placeholder flashed on load. */
+  background: var(--map-ground);
+  box-shadow: var(--shadow-panel);
 }
 .prop-map.is-empty {
   display: none;
@@ -2496,7 +2508,8 @@ a.card {
   border-radius: 50%;
   background: #1a191b;
   border: 3px solid #fff;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  /* Warm and lighter: 0.5 black cast a grey halo on a pale basemap. */
+  box-shadow: 0 4px 14px rgba(58, 46, 30, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10954,45 +10967,52 @@ body.light-mode .datepicker-pop {
   }
 }
 
-/* ----- Liquid-glass zoom buttons on the cottage maps ----- */
+/* ----- Zoom buttons on the cottage maps -----
+   Not theme-aware on purpose (see --map-ink): the basemap is light in either
+   theme. These were dark liquid glass with white glyphs — right for the dark
+   UI they were drawn in, a heavy slab on a pale map in both. */
 .leaflet-bar,
 .leaflet-control-zoom {
   border: none !important;
   border-radius: var(--r-sm) !important;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+  box-shadow:
+    0 1px 2px rgba(58, 46, 30, 0.08),
+    0 4px 14px rgba(58, 46, 30, 0.16) !important;
 }
 .leaflet-control-zoom a {
-  background: rgba(26, 25, 27, 0.55) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
   backdrop-filter: blur(14px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: var(--map-ink) !important;
+  border: none !important;
   width: 34px !important;
   height: 34px !important;
-  line-height: 32px !important;
+  line-height: 34px !important;
   font-size: 1.15rem !important;
   transition:
     background 0.25s var(--fluid-bezier),
     color 0.25s var(--fluid-bezier);
 }
+.leaflet-control-zoom a + a {
+  border-top: 1px solid rgba(58, 46, 30, 0.1) !important;
+}
 .leaflet-control-zoom a:hover {
-  background: rgba(26, 25, 27, 0.78) !important;
-  color: #fff !important;
+  background: #fff !important;
+  color: var(--map-ink) !important;
 }
 .leaflet-control-zoom a:active {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(58, 46, 30, 0.08) !important;
 }
 .leaflet-control-zoom-in {
-  border-bottom: none !important;
-  border-radius: var(--r-sm) 12px 0 0 !important;
+  border-radius: var(--r-sm) var(--r-sm) 0 0 !important;
 }
 .leaflet-control-zoom-out {
-  border-radius: 0 0 12px 12px !important;
+  border-radius: 0 0 var(--r-sm) var(--r-sm) !important;
 }
 .leaflet-control-zoom a.leaflet-disabled {
-  color: rgba(255, 255, 255, 0.35) !important;
-  background: rgba(26, 25, 27, 0.4) !important;
+  color: rgba(58, 46, 30, 0.3) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
 }
 /* Shrink the map attribution so it isn't oversized */
 .leaflet-control-attribution,
@@ -11001,8 +11021,10 @@ body.light-mode .datepicker-pop {
   line-height: 1.5 !important;
 }
 .leaflet-control-attribution {
-  padding: 0 5px !important;
-  background: rgba(255, 255, 255, 0.75) !important;
+  padding: 1px 6px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-radius: var(--r-sm) 0 0 0 !important;
+  color: var(--map-sub) !important;
 }
 @media (max-width: 640px) {
   .admin-dock {
