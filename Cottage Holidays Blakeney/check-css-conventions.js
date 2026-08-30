@@ -147,6 +147,39 @@ try {
 let failed = 0;
 const nudges = [];
 
+// ---- STRUCTURE: a stylesheet that does not close is a stylesheet that stops --
+// Not a ratchet — a hard invariant, and the one CSS defect class this codebase
+// has actually shipped twice. An edit that eats an `@media` opener or leaves a
+// comment half-closed does not fail loudly: the parser swallows everything up
+// to the next brace it likes and rules SECTIONS AWAY silently stop applying
+// (measured once as the admin rail no longer hiding at 390px). Both times the
+// whole local gauntlet stayed green, because every other gate reads the file as
+// TEXT — sizes it, greps it — and text does not care whether it parses.
+// Comments are stripped BEFORE the braces are counted, or a `{` inside prose
+// reads as a rule and the check cries wolf on correct code.
+console.log('\n== CSS structure (hard invariant, not a ratchet) ==');
+for (const f of FILES) {
+    const src = fs.readFileSync(path.join(DIR, f), 'utf8');
+    const opens = (src.match(/\/\*/g) || []).length;
+    const closes = (src.match(/\*\//g) || []).length;
+    const bare = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    const braceOpen = (bare.match(/\{/g) || []).length;
+    const braceClose = (bare.match(/\}/g) || []).length;
+    const strayEnd = bare.includes('*/');
+    const problems = [];
+    if (opens !== closes) problems.push(`${opens} /* vs ${closes} */`);
+    if (strayEnd) problems.push('a */ outside any comment (a comment closed early)');
+    if (braceOpen !== braceClose) problems.push(`${braceOpen} { vs ${braceClose} }`);
+    if (problems.length) {
+        failed++;
+        console.log(`  ✗ ${f} — does not parse cleanly: ${problems.join('; ')}.`);
+        console.log('      Rules after the break silently stop applying. Delete or replace a');
+        console.log('      rule by matching the WHOLE rule, never by slicing to the next brace.');
+    } else {
+        console.log(`  ✓ ${f} — comments and braces balance (${braceOpen} rules)`);
+    }
+}
+
 console.log('\n== CSS conventions (ratchet) ==');
 for (const f of FILES) {
     for (const { key, label, fix } of DIMS) {
