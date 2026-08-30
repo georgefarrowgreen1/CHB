@@ -85,6 +85,15 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node check-css-conventions.js
 
+      # The basemap: one definition, a tile host the CSP actually permits, and a
+      # zoom the provider actually serves. Every way a map breaks is SILENT — a
+      # blocked host paints an empty box, a zoom past the ceiling answers 400 per
+      # tile, and CARTO's unkeyed watermark arrived with a 200 — so none of it is
+      # reachable by watching for errors.
+      - name: Basemap tiles (one definition, CSP-permitted host, served zoom)
+        working-directory: "Cottage Holidays Blakeney"
+        run: node test-maptiles.js
+
       # The GIT half of the deploy checklist: if a PR changes a cached asset,
       # its cache-buster (?v= / BUILD / ADMIN_*_V / CACHE) must change too.
       # `node bump.js <stamp>` applies the whole chain in one go. (smoke-test

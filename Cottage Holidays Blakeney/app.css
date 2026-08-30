@@ -2476,6 +2476,15 @@ a.card {
 .prop-map.is-empty {
   display: none;
 }
+/* OSM's standard style is tuned for a white page and shouted on this cream one.
+   Scoped to the TILE PANE, so the pin and controls keep their own colour. 0.55
+   was chosen by LOOKING at three: 0.72 still read busy, 0.40 washed the channel
+   and saltmarsh to the houses' grey — a real loss on a coastal village. Labels
+   are ink, so saturation never costs legibility. */
+.prop-map .leaflet-tile-pane,
+.cottages-map .leaflet-tile-pane {
+  filter: saturate(0.55) brightness(1.03);
+}
 /* Modern map pin (Google-style dark circle) */
 .prop-pin {
   background: transparent;

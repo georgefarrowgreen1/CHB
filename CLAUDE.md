@@ -7056,6 +7056,73 @@ earned a fix — 14 confirmed, 1 refuted (PR #1208). The rules it set:
   over). It had to be re-aimed, not extended. When a fix makes an existing check
   fail, read the check before believing the code.
 
+## The maps: a third party defaced them and nothing noticed
+
+**Reported from a phone**: "Where you'll be" on the Pimpernel page showing
+`API KEY REQUIRED / carto.com/basemaps/apikey` painted diagonally across
+Blakeney. Both maps were affected — the cottage page's and the desktop
+cottages-list pane — so every guest checking where they'd be staying saw a
+defaced map.
+- **THE FAILURE MODE IS THE POINT: CARTO ANSWERS 200.** They did not start
+  403ing unkeyed traffic, they started *drawing the words on the tile* — so
+  there is no error, no failed request and no console warning anywhere for the
+  app to notice. Verified it is not a rate limit and not one style: `voyager`,
+  `light_all` and `dark_all` all deface, at every zoom. **A dependency can
+  degrade its OUTPUT while its status stays green**, and nothing that watches
+  for errors will ever see it. This is the general lesson; the map is just
+  where it landed.
+- **The replacement is OSM's own tiles, and TWO details are load-bearing**,
+  both measured rather than assumed. The `{s}` subdomain is not decoration:
+  the CSP allows `https://*.tile.openstreetmap.org`, and **a CSP wildcard
+  matches subdomains but never the apex** — the same rule `csp-lib.php`'s own
+  tests pin — so the obvious-looking bare `tile.openstreetmap.org` would be
+  blocked and paint an empty box with no error. And `maxZoom` is **19**,
+  because OSM answers **400** above it; the old prop-map copy said 20, so a
+  guest pinching to full zoom would have got blank tiles.
+- **`MAP_TILES` is the URL stated ONCE.** The two maps each carried their own
+  copy and had already drifted — maxZoom 20 against 19 — which is how the
+  zoom trap above was sitting there before the provider change.
+- **What is NOT as good, said plainly**: OSM standard serves no `@2x` tiles,
+  so on a retina phone the map is a touch softer than the CARTO layer was.
+  Legible beats defaced. Restoring Voyager needs a CARTO account and key,
+  which is the owner's to create — and the key would then need adding to the
+  URL *and* the host is already CSP-allowed, so it is a small change.
+- **The tiles are CALMED, and the value was chosen by LOOKING.** OSM's style
+  is tuned for a white page and shouted against this cream one. `saturate(0.55)
+  brightness(1.03)` on **`.leaflet-tile-pane` only**, so the accent pin and the
+  zoom control keep their own colour — a filter on the whole map takes the pin
+  with it. Three strengths were rendered and compared: 0.72 still read busy and
+  0.40 washed the channel and the saltmarsh to the same grey as the houses,
+  which is a real loss on a coastal village where the water is half of why
+  anyone opens the map. Labels are ink, so saturation never costs legibility.
+- **`test-maptiles.js`** (18 checks, CI-wired, deploy-excluded) gates what is
+  cheaply checkable: one URL literal, both call sites reading the const, the
+  host permitted by the SHIPPED `img-src`, and the zoom inside the provider's
+  ceiling. Deliberately **no network** — a suite that fetches live tiles fails
+  for reasons that are nothing to do with this codebase, the call `test-ical.php`
+  already makes about Airbnb's feed. Break-tested four ways; the apex-host one
+  is the one that matters, since that is the silent blank map.
+- **NB the gate's own CSP parse read a COMMENT.** Anchoring on the header's
+  NAME matched the prose four lines above the policy explaining when to switch
+  it to Report-Only, so `img-src` came back empty — the same shape as a negative
+  source scan matching its own explanation. It anchors on the `Header ... set`
+  DIRECTIVE now, and **the vacuity guard is what caught it**: a parse that finds
+  nothing must fail, not pass.
+
+**AND A BROKEN STYLESHEET PASSED THE WHOLE LOCAL GAUNTLET.** Trimming the
+comment above left a `*/` closing early with four stray lines after it — invalid
+CSS that silently kills every rule following the break. `check-css-conventions`,
+`perf-budget`, smoke-test and typecheck were all GREEN, because every one of
+them reads a stylesheet as TEXT — sizes it, greps it — and text does not care
+whether it parses. CLAUDE.md already records this class biting once (an
+index-based edit ate an `@media` opener and the admin rail stopped hiding at
+390px, four sections from the edit) and still nothing checked it.
+`check-css-conventions.js` now opens with a **hard structural invariant** — not
+a ratchet — asserting comments and braces balance in all three stylesheets, with
+comments stripped BEFORE the braces are counted (a `{` inside prose otherwise
+reads as a rule and the check cries wolf on correct code). Break-tested against
+both real shapes: the half-closed comment and the eaten `@media` opener.
+
 ## Deploy integrity
 - **A PARTIAL UPLOAD OF AN APP WHOSE FILES REFERENCE EACH OTHER IS A BROKEN APP.**
   `lftp mirror -R` can finish with files un-uploaded and still exit 0 — which is how a

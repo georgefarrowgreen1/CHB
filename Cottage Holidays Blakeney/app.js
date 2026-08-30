@@ -8727,6 +8727,18 @@ function renderHouseRules(propKey) {
         .join('');
 }
 
+// The basemap, stated ONCE (the two maps had copies and drifted: maxZoom 20 vs
+// 19). CARTO is gone — it now DEFACES every unkeyed tile on every style while
+// still answering 200. {s} is load-bearing: the CSP allows only
+// *.tile.openstreetmap.org and a wildcard never matches the apex, so the bare
+// host paints blank. maxZoom 19 = OSM's ceiling (400 above). See CLAUDE.md.
+const MAP_TILES = {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    maxZoom: 19,
+    attribution: '© OpenStreetMap',
+};
+
 // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
 let __propMap = null;
 async function renderLocationMap(propKey) {
@@ -8753,10 +8765,10 @@ async function renderLocationMap(propKey) {
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 20,
-        subdomains: 'abcd',
-        attribution: '© OpenStreetMap, © CARTO',
+    L.tileLayer(MAP_TILES.url, {
+        maxZoom: MAP_TILES.maxZoom,
+        subdomains: MAP_TILES.subdomains,
+        attribution: MAP_TILES.attribution,
     }).addTo(map);
     map.setView([geo.lat, geo.lng], 15);
     const pin = L.divIcon({
@@ -8830,10 +8842,10 @@ async function renderCottagesMap() {
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
     map.attributionControl.setPrefix('');
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '© OpenStreetMap, © CARTO',
+    L.tileLayer(MAP_TILES.url, {
+        maxZoom: MAP_TILES.maxZoom,
+        subdomains: MAP_TILES.subdomains,
+        attribution: MAP_TILES.attribution,
     }).addTo(map);
 
     // Overlap handling: the cottages are all in one village and pins can land on
@@ -18360,7 +18372,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bugswp3';
+    const BUILD = 'maptil1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
