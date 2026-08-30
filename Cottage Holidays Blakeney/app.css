@@ -2488,15 +2488,12 @@ a.card {
 .prop-map.is-empty {
   display: none;
 }
-/* OSM's standard style is tuned for a white page and shouted on this cream one.
-   Scoped to the TILE PANE, so the pin and controls keep their own colour. 0.55
-   was chosen by LOOKING at three: 0.72 still read busy, 0.40 washed the channel
-   and saltmarsh to the houses' grey — a real loss on a coastal village. Labels
-   are ink, so saturation never costs legibility. */
-.prop-map .leaflet-tile-pane,
-.cottages-map .leaflet-tile-pane {
-  filter: saturate(0.55) brightness(1.03);
-}
+/* NO tile filter, deliberately. One existed to calm OSM's standard style, which
+   is tuned for a white page and shouted on this cream one. Positron is already
+   restrained, so the same 0.55 only SUBTRACTED — rendered side by side, it
+   washed Blakeney Cut and the saltmarsh to nearly the page colour, losing the
+   water on a coastal village's map for no gain. If the basemap ever changes
+   again, judge this by looking rather than carrying the number over. */
 /* Modern map pin (Google-style dark circle) */
 .prop-pin {
   background: transparent;

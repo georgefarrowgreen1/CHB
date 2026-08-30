@@ -8728,15 +8728,19 @@ function renderHouseRules(propKey) {
 }
 
 // The basemap, stated ONCE (the two maps had copies and drifted: maxZoom 20 vs
-// 19). CARTO is gone — it now DEFACES every unkeyed tile on every style while
-// still answering 200. {s} is load-bearing: the CSP allows only
-// *.tile.openstreetmap.org and a wildcard never matches the apex, so the bare
-// host paints blank. maxZoom 19 = OSM's ceiling (400 above). See CLAUDE.md.
+// 19). CARTO Positron, KEYED — unkeyed, the CDN defaces every tile with "API
+// KEY REQUIRED" while still answering 200, so the key is what makes the map
+// exist. The parameter is `key`: `api_key` is the obvious guess and is silently
+// IGNORED (measured — a bogus key and no key return byte-identical watermarked
+// tiles, so a wrong param name looks exactly like a wrong key and neither
+// errors). {r} is back for retina; maxZoom 20 is CARTO's raster ceiling.
+// The key is PUBLIC by design — it rides every tile URL a browser requests, so
+// it cannot be secret; domain-restrict it in the CARTO console instead.
 const MAP_TILES = {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: 'abc',
-    maxZoom: 19,
-    attribution: '© OpenStreetMap',
+    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=cb1_2kkq_1_5878c5591eaecdaf1d9ecf18',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    attribution: '© OpenStreetMap, © CARTO',
 };
 
 // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
@@ -18372,7 +18376,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mapchr1';
+    const BUILD = 'carto1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

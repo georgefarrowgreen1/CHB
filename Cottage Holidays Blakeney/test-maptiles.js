@@ -103,15 +103,36 @@ ok('the wildcard matcher refuses a suffix-spoof', !cspAllows('eviltile.openstree
 
 console.log('\n== The zoom we ask for is one the provider serves ==');
 
-// OSM standard answers 400 above 19 — measured. Asking for more shows a guest
-// blank tiles at full pinch, which reads as the map being broken.
-const MAX_BY_HOST = { 'tile.openstreetmap.org': 19 };
+// Measured per provider, because the failure is silent either way: OSM answers
+// 400 above 19, and CARTO over-zooms to 22 but documents 20 as its raster max.
+// Asking past a ceiling shows a guest blank tiles at full pinch, which reads as
+// the map being broken. A provider not listed here fails the check ON PURPOSE —
+// changing basemap means measuring the new one, not inheriting an old number.
+const MAX_BY_HOST = {
+    'tile.openstreetmap.org': 19,
+    'basemaps.cartocdn.com': 20,
+};
 const maxZoom = parseInt((app.match(/const MAP_TILES = \{[\s\S]*?maxZoom: (\d+)/) || [, '0'])[1], 10);
 ok('a maxZoom is declared', maxZoom > 0);
 const baseHost = host.replace(/^[a-z]\./, '');
 const known = MAX_BY_HOST[baseHost];
 ok('the tile host is one whose ceiling this gate knows (add it when changing provider)', typeof known === 'number');
 ok('maxZoom is within what the provider serves', typeof known === 'number' && maxZoom <= known);
+
+// A keyed provider must actually carry its key, and carry it under the name
+// that provider honours. Both failures here are SILENT: CARTO answers 200 and
+// serves a watermarked tile when the key is missing, when it is wrong, AND
+// when the parameter is named `api_key` — which is the obvious guess and is
+// ignored outright (measured: a bogus key and no key return byte-identical
+// tiles). So neither a dropped key nor a plausible-looking wrong parameter
+// would show up as an error anywhere; only this check stands between them and
+// "API KEY REQUIRED" painted across every guest's map again.
+if (/cartocdn\.com/.test(tileUrl)) {
+    console.log('\n== The keyed provider carries a key ==');
+    const keyed = /[?&]key=[^&'"\s]{8,}/.test(tileUrl);
+    ok('the CARTO URL carries a non-empty ?key=', keyed);
+    ok('and NOT api_key=, which CARTO silently ignores', !/[?&]api_key=/.test(tileUrl));
+}
 
 console.log('\n== Attribution ==');
 

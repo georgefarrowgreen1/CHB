@@ -7071,7 +7071,27 @@ defaced map.
   degrade its OUTPUT while its status stays green**, and nothing that watches
   for errors will ever see it. This is the general lesson; the map is just
   where it landed.
-- **The replacement is OSM's own tiles, and TWO details are load-bearing**,
+- **RESOLVED: CARTO Positron, keyed** (owner created a free CARTO account and
+  supplied the key). The site is back on the look it had, minus the watermark,
+  and better: Positron rather than Voyager, and `{r}` restores the `@2x` retina
+  tiles OSM could not serve. **The parameter is `key`, and testing it was the
+  whole point**: `api_key` — the obvious guess, and what older CARTO docs
+  use — is **silently ignored**, so a bogus key, a wrong parameter name and no
+  key at all all return byte-identical watermarked tiles at 200. A wrong param
+  is indistinguishable from a wrong key, and neither errors. Verified by
+  HASHING: a real key returns a different tile, a deliberately bogus one falls
+  back to the watermark. `maxZoom` is 20 (CARTO over-zooms past its raster
+  ceiling rather than 404ing, so nothing tells you when you overshoot).
+  **The key is PUBLIC by design** — it rides every tile URL the browser
+  requests, so it cannot be secret; CARTO's own domain allowlist is the
+  protection, and the console is where to set it. Free tier is 5M tile
+  requests/month, which a three-cottage site will not approach.
+  **AND THE FILTER WAS REMOVED, by looking.** The `saturate(0.55)` existed to
+  calm OSM's loudness; carried onto Positron it only SUBTRACTED — rendered side
+  by side it washed Blakeney Cut and the saltmarsh to nearly the page colour,
+  losing the water on a coastal village's map. A treatment tuned for one
+  basemap is not a property of the app; re-judge it whenever the tiles change.
+- **The interim was OSM's own tiles, and TWO details were load-bearing**,
   both measured rather than assumed. The `{s}` subdomain is not decoration:
   the CSP allows `https://*.tile.openstreetmap.org`, and **a CSP wildcard
   matches subdomains but never the apex** — the same rule `csp-lib.php`'s own
