@@ -1277,11 +1277,14 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .dp-day.dp-empty {
   cursor: default;
 }
+/* A PAST DAY IS GONE, NOT BOOKED, and must not wear the booked mark. This
+   carried line-through, byte-identical to .dp-booked, so on the 31st every cell
+   was struck under "Crossed-out dates aren't available" — read as fully booked
+   (≈half the month by the 15th). The distinction .dp-out was made for. */
 .dp-day.dp-disabled {
   color: var(--text-muted);
   opacity: 0.3;
   cursor: not-allowed;
-  text-decoration: line-through;
 }
 /* 0.7rem = 11.2px, matching .ac-price and clearing the 10px floor. */
 /* The stay total inside the hint's sentence: weight, not size. Tabular so it does not

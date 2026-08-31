@@ -1675,6 +1675,131 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   await page.evaluate(() => { try { closeEnquireModal(); } catch (e) {} });
   await page.waitForTimeout(150);
 
+  // ---------------------------------------------------------------------------
+  console.log('\n§22 It opens where the choices are, and the past is not the booked mark');
+  // Found by LOOKING at the enquiry flow on the last day of a month: the picker
+  // seeded from today's month unconditionally, so every visible cell was struck
+  // under a legend reading "Crossed-out dates aren't available". A guest reads
+  // that as fully booked. Two separate faults — where it opens, and the mark the
+  // past wears — plus a legend that spoke with nothing to explain.
+  {
+    const open = await page.evaluate(async () => {
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      set('enq-checkin', ''); set('enq-checkout', '');
+      dpState.start = null; dpState.end = null;
+      openDatePicker();
+      await new Promise((r) => setTimeout(r, 300));
+      const cells = Array.from(document.querySelectorAll('#date-picker .dp-day'));
+      const strikeOf = (el) => getComputedStyle(el).textDecorationLine.indexOf('line-through') !== -1;
+      return {
+        pickable: cells.filter((c) => c.getAttribute('data-act') === 'dpPick').length,
+        past: cells.filter((c) => c.classList.contains('dp-disabled')).length,
+        pastStruck: cells.filter((c) => c.classList.contains('dp-disabled') && strikeOf(c)).length,
+        booked: cells.filter((c) => c.classList.contains('dp-booked')).length,
+        bookedStruck: cells.filter((c) => c.classList.contains('dp-booked') && strikeOf(c)).length,
+        legend: ((document.getElementById('dp-legend') || {}).innerText || '').trim(),
+        prevEnabled: !(document.querySelector('.dp-nav-btn[data-arg="-1"]') || {}).disabled,
+        skippedAhead: !!(dpState.view && (dpState.view.getFullYear() !== new Date().getFullYear() || dpState.view.getMonth() !== new Date().getMonth())),
+      };
+    });
+    // The headline: it must never open on a month with nothing to choose from.
+    ok(open.pickable >= 7, `opens on a month offering a real choice (${open.pickable} pickable)`);
+    // A PAST DAY IS GONE, NOT BOOKED. Both wore line-through, so the two refusals
+    // were indistinguishable — the exact conflation .dp-out was created to avoid.
+    ok(open.pastStruck === 0, `a past day is dimmed, never struck (${open.pastStruck} struck of ${open.past})`);
+    // …and the booked mark must survive that change, or the fix eats the feature.
+    ok(open.booked === 0 || open.bookedStruck === open.booked,
+      `a booked night still strikes (${open.bookedStruck}/${open.booked})`);
+    // The legend describes a mark; with no mark it says nothing.
+    ok(open.booked > 0 ? /Crossed-out/.test(open.legend) : open.legend === '',
+      `the legend speaks only when something is crossed (${JSON.stringify(open.legend)})`);
+    // Nothing is taken away. NB the assertion has to be conditional: when the
+    // picker legitimately opens on THIS month, \u2039 is disabled by dpMonthFloor and
+    // that is correct — the first draft asserted it flatly and failed on a fixture
+    // where nothing had been skipped.
+    ok(!open.skippedAhead || open.prevEnabled,
+      open.skippedAhead ? 'having skipped ahead, \u2039 still reaches this month' : 'opened on this month, so \u2039 is correctly closed');
+    await page.evaluate(() => { try { closeDatePicker(); } catch (e) {} });
+    await page.waitForTimeout(150);
+
+    // A HOSTILE FIXTURE, because the suite's own month satisfies both remaining
+    // rules by luck: it has bookings (so the legend shows either way) and it IS
+    // this month (so the old seed gives the same answer). Break-tested against
+    // both reverts, each of which passed until this block existed — the vacuity
+    // trap this file has been caught by before.
+    const hostile = await page.evaluate(async () => {
+      const pk = dpPropKey();
+      const keep = propertyAvailability[pk];
+      const pad = (n) => String(n).padStart(2, '0');
+      const t = new Date();
+      // Book THIS month out entirely, and the next one, leaving the third clear.
+      const from = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-01`;
+      const to = new Date(t.getFullYear(), t.getMonth() + 2, 1);
+      propertyAvailability[pk] = [{ start: from, end: `${to.getFullYear()}-${pad(to.getMonth() + 1)}-01` }];
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      set('enq-checkin', ''); set('enq-checkout', '');
+      dpState.start = null; dpState.end = null;
+      openDatePicker();
+      await new Promise((r) => setTimeout(r, 300));
+      const view = dpState.view;
+      const monthsAhead = (view.getFullYear() - t.getFullYear()) * 12 + (view.getMonth() - t.getMonth());
+      const cells = Array.from(document.querySelectorAll('#date-picker .dp-day'));
+      const out = {
+        monthsAhead,
+        legendOnClearMonth: ((document.getElementById('dp-legend') || {}).innerText || '').trim(),
+        crossedOnClearMonth: cells.filter((c) => c.classList.contains('dp-booked')).length,
+      };
+      propertyAvailability[pk] = keep;
+      try { closeDatePicker(); } catch (e) {}
+      return out;
+    });
+    // With this month and the next fully booked it must walk past BOTH. Reverting
+    // the seed to dpToday0 leaves it on month 0, which fails here.
+    ok(hostile.monthsAhead >= 2,
+      `skips months with nothing free (opened ${hostile.monthsAhead} month(s) ahead)`);
+    // …and having landed somewhere with nothing crossed, the legend is silent.
+    // Reverting the legend to unconditional fails here.
+    ok(hostile.crossedOnClearMonth === 0 && hostile.legendOnClearMonth === '',
+      `a clear month carries no legend (${hostile.crossedOnClearMonth} crossed, ${JSON.stringify(hostile.legendOnClearMonth)})`);
+
+    // AND THE THRESHOLD ITSELF IS PINNED, because "a week of choices" is the
+    // design decision here and the block above does not discriminate it: with two
+    // whole months booked, a one-night rule and a seven-night rule both skip. This
+    // leaves EXACTLY ONE free night in this month — the shape that made the first
+    // attempt wrong, where the picker opened on thirty dead cells and one live one.
+    const thin = await page.evaluate(async () => {
+      const pk = dpPropKey();
+      const keep = propertyAvailability[pk];
+      const pad = (n) => String(n).padStart(2, '0');
+      const t = new Date();
+      const days = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+      const iso = (d) => `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(d)}`;
+      // A THREE-NIGHT HOLE, not a one-night one. The first version freed a single
+      // night, which yields ZERO pickable arrivals under a 2-night minimum
+      // (dpCheckinFits needs the following night too) — so both rules skipped and
+      // the check could not tell them apart. Three nights leaves a couple of
+      // legitimate arrivals: more than none, far fewer than a week.
+      const gap = days - 4;
+      propertyAvailability[pk] = [
+        { start: iso(1), end: iso(gap) },
+        { start: iso(gap + 3), end: `${t.getFullYear()}-${pad(t.getMonth() + 2)}-01` },
+      ];
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      set('enq-checkin', ''); set('enq-checkout', '');
+      dpState.start = null; dpState.end = null;
+      openDatePicker();
+      await new Promise((r) => setTimeout(r, 300));
+      const view = dpState.view;
+      const out = { monthsAhead: (view.getFullYear() - t.getFullYear()) * 12 + (view.getMonth() - t.getMonth()) };
+      propertyAvailability[pk] = keep;
+      try { closeDatePicker(); } catch (e) {}
+      return out;
+    });
+    ok(thin.monthsAhead >= 1,
+      `one free night is not a choice — moves on anyway (${thin.monthsAhead} ahead)`);
+    await page.waitForTimeout(150);
+  }
+
   console.log(fails ? `\n  DATEPICKER SUITE FAILED ❌ (${fails})` : '\n  DATEPICKER SUITE PASSED ✅');
   await done(fails);
 })();

@@ -13908,13 +13908,47 @@ function dpSpokenEnd(str) {
     return d.toLocaleDateString('en-GB', /** @type {Intl.DateTimeFormatOptions} */ (o));
 }
 
+// OPEN ON A MONTH THAT HAS SOMETHING TO OFFER. It seeded from today's month
+// unconditionally, so late in a month it opened on a grid mostly or entirely
+// past and the guest had to know to tap › to find the next month wide open.
+// Capped at a year; falls back to this month, the old behaviour.
+function dpFirstOpenMonth() {
+    // The SAME minimum the renderer applies (renderDatePicker's gRules), so the
+    // month this opens on and the cells it then offers cannot disagree.
+    const r = propertyRates[dpPropKey()] || defaultRates[dpPropKey()] || {};
+    const minN = Math.max(1, parseInt(r.minNights, 10) || 1);
+    const t = dpToday0();
+    const pickable = (m) => {
+        const first = new Date(t.getFullYear(), t.getMonth() + m, 1);
+        const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+        let n = 0;
+        for (let d = 1; d <= days; d++) {
+            const day = new Date(first.getFullYear(), first.getMonth(), d);
+            if (day < t || isBookedNight(formatDashed(day))) continue;
+            if (dpCheckinFits(day, minN)) n++;
+        }
+        return n;
+    };
+    // A WEEK OF CHOICES, not merely one. "Does this month contain a bookable
+    // night" was the first rule tried and is the wrong question: on the 31st the
+    // 31st qualifies, so it still opened on thirty dead cells and one live one.
+    let firstAny = -1;
+    for (let m = 0; m < 12; m++) {
+        const n = pickable(m);
+        if (n >= 7) return new Date(t.getFullYear(), t.getMonth() + m, 1);
+        if (n > 0 && firstAny < 0) firstAny = m;
+    }
+    // Nowhere has a week free: the first month with anything, else this month.
+    return new Date(t.getFullYear(), t.getMonth() + (firstAny < 0 ? 0 : firstAny), 1);
+}
 function openDatePicker() {
     dpMode = 'enquiry';
     loadAvailability(activeFrontProperty); // refresh booked dates (repaints when it lands)
     // Seed from any existing values
     dpState.start = document.getElementById('enq-checkin').value || null;
     dpState.end = document.getElementById('enq-checkout').value || null;
-    const seed = dpParse(dpState.start) || dpToday0();
+    // A date already chosen wins — the guest is coming back to edit it.
+    const seed = dpParse(dpState.start) || dpFirstOpenMonth();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
@@ -14101,13 +14135,14 @@ function renderDatePicker() {
     // A prop-less admin FIELD target (seasons) shades nothing, so a legend about
     // crossed dates would describe nothing on screen — say nothing instead. One
     // that names a cottage (the block dialog) crosses like the booking modal.
-    if (legend)
-        legend.innerText =
-            dpMode === 'admin' && dpTarget && !dpProp
-                ? ''
-                : dpMode === 'enquiry'
-                  ? 'Crossed-out dates aren’t available'
-                  : 'Crossed-out dates are already booked — you can still pick them';
+    // The WORDS are chosen here; whether to say them at all is decided once the
+    // grid exists (see dpLegendSync at the foot of this function).
+    const legendText =
+        dpMode === 'admin' && dpTarget && !dpProp
+            ? ''
+            : dpMode === 'enquiry'
+              ? 'Crossed-out dates aren\u2019t available'
+              : 'Crossed-out dates are already booked \u2014 you can still pick them';
     // Dim "Clear dates" when there's nothing selected to clear.
     const clearBtn = document.getElementById('dp-clear');
     if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
@@ -14356,6 +14391,12 @@ function renderDatePicker() {
     // always "no", which is how the first version silently dropped focus on every pick.
     const hadFocus = !!(document.activeElement && grid.contains(document.activeElement));
     grid.innerHTML = cells;
+    // …AND THE LEGEND ONLY SPEAKS WHEN THERE IS A CROSS TO EXPLAIN. It stated the
+    // rule on every month, so a completely free month carried "Crossed-out dates
+    // aren't available" with nothing crossed out — a caption about a mark that is
+    // not on screen, which sends the reader hunting for one. Read from the cells
+    // just built, so it cannot disagree with what is painted.
+    if (legend) legend.innerText = cells.indexOf('dp-booked') === -1 ? '' : legendText;
     // Consume the pick-motion flags (set by dpPick): the pop and the wave run
     // on THIS render only, never on a month page or a price repaint.
     grid.classList.toggle('dp-anim', !!dpState.animPick);
@@ -18420,7 +18461,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'revanim2';
+    const BUILD = 'dpopen1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
