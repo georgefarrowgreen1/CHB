@@ -6861,7 +6861,7 @@ function guestReviewForm(propKey) {
         )
         .join('')}</div>`;
     return `
-            <div class="gb2-review">
+            <div class="gb2-review${existing ? ' is-record' : ''}">
                 ${note}
                 ${note ? '' : `<div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>`}
                 ${starRow}
@@ -6903,6 +6903,15 @@ function revSettleStars(propKey) {
     on.forEach((s, i) => s.style.setProperty('--rvd', (i * 0.07).toFixed(2) + 's'));
     row.classList.add('is-settling');
     setTimeout(() => row.classList.remove('is-settling'), 500 + on.length * 70);
+    // The card renders AS a record (so the state survives later re-renders), so
+    // the fresh node already carries the class and the border would snap. Strip,
+    // flush, re-add: the transition gets a start value and the invitation fades.
+    const card = row.closest('.gb2-review');
+    if (card && card.classList.contains('is-record')) {
+        card.classList.remove('is-record');
+        void (/** @type {HTMLElement} */ (card)).offsetHeight;
+        card.classList.add('is-record');
+    }
 }
 async function submitGuestReview(propKey) {
     const stars = parseInt((document.getElementById('grf-stars-' + propKey) || {}).value) || 5;
@@ -18411,7 +18420,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'revanim1';
+    const BUILD = 'revanim2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

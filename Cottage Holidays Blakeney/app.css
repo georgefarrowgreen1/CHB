@@ -8591,11 +8591,34 @@ body.light-mode .feed-dot-bad {
 /* THE STARS TAKE A BOW on submit. Deliberately NOT the pay screen's tick and
    green beat — that grammar is earned by money moving, and --ok is the money
    vocabulary, so a green ✓ would read as "transaction complete" for a gift.
-   The rating is the subject, so the rating moves: payPop on --spring (a
-   completed date cell's own pop) rippling near-to-far on the dpWave stagger. */
+   The rating is the subject, so the rating moves, rippling near-to-far on the
+   date picker's own dpWave stagger.
+   NB NOT payPop, the first build: it opens at scale(0.5) because it means
+   "this APPEARED", and on a star already on screen that reads as a flinch.
+   The curve has to say "acknowledged", not "arrived". */
+@keyframes revBow {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.32); }
+  100% { transform: scale(1); }
+}
 .gb2-stars.is-settling .gb2-star.is-on {
-  animation: payPop 0.42s var(--spring) both;
+  animation: revBow 0.42s var(--spring) both;
   animation-delay: var(--rvd, 0s);
+}
+/* THE FORM BECOMES A RECORD. A dashed border invites you to fill something in;
+   once the rating is given that invitation is spent, so it fades and the block
+   goes quiet — the state change said with no words, this card's whole direction. */
+.gb2-review {
+  transition: border-color 0.5s var(--fluid-bezier);
+}
+.gb2-review.is-record {
+  border-color: transparent;
+  padding-bottom: 4px;
+}
+/* The stars NOT given recede so the eye lands on the rating, but stay present:
+   a rating is out of five and that has to remain legible. */
+.gb2-review.is-record .gb2-star:not(.is-on) {
+  opacity: 0.26;
 }
 /* The composer folds before the repaint: the words leave, the rating stays. */
 .gb2-fold-out {
