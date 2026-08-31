@@ -8576,10 +8576,17 @@ body.light-mode .feed-dot-bad {
   min-height: 44px;
   padding: 4px;
   font-size: 1.3rem;
-  color: var(--accent);
+  /* A ★ is TEXT, so --accent-text not the fill — the Guest Book's stars and the
+     review email's ★ links follow the same rule. Light mode is where it bites. */
+  color: var(--accent-text);
   background: none;
   border: none;
   cursor: pointer;
+  opacity: 0.55; /* unchosen sit back, so the chosen read as the answer */
+  transition: opacity 0.15s var(--fluid-bezier);
+}
+.gb2-star.is-on {
+  opacity: 1;
 }
 .gb2-star:focus-visible {
   outline: 2px solid var(--accent-text);

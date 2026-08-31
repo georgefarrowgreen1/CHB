@@ -470,17 +470,45 @@ else {
 // status='pending' and `set_status` can DECLINE one, so "will appear on our site
 // shortly" guaranteed a publication the site does not — and the toast on the very
 // next tap already said "submitted for approval", so one screen made two claims.
+//
+// The fresh form used to carry "We read every review before it goes on the site"
+// beside Submit, and this asserted it. That line was REMOVED at the owner's ask:
+// the composer is a rating and a box, and a caveat beside the button is chrome on
+// a two-field form. The moderation fact is not lost — it is stated at the moment
+// it becomes true, in the PENDING note below ("goes on the site once we've read
+// it"), which is checked here too. What must stay true of the fresh form is the
+// original concern, and it is asserted directly: it promises no publication.
 {
     const review = (mine) => vm.runInContext(
         `myGuestReviews = ${JSON.stringify(mine)}; guestReviewForm('jollyboat')`, ctx);
     const fresh = review({});
     check('no review yet → no promise that it will be published', !/appear on our site/i.test(fresh));
-    check('…it says it is read first', /read every review before it goes on the site/i.test(fresh));
+    check('…nor any other claim about what happens to it', !/\bshortly\b|\bwill be published\b|\bgoes live\b/i.test(fresh));
+    check('the button is just "Submit"', />\s*Submit\s*</.test(fresh) && !/Submit review/i.test(fresh));
     const pending = review({ jollyboat: { stars: 5, text: 'Lovely', status: 'pending' } });
     check('a pending review says where it IS, not just thank you', /goes on the site once we/i.test(pending));
     check('…and names the cottage it was about', /Thanks for your review of /i.test(pending));
     check('an approved one still says it is live',
         /live on our home page/i.test(review({ jollyboat: { stars: 5, text: 'Lovely', status: 'approved' } })));
+
+    // THE RATING IS ASKED ONCE. The card used to render a tappable star row AND a
+    // <select> of ★ strings in the composer beneath it — two controls for one
+    // question, which could disagree until a tap synced them.
+    // NB anchor on the BUTTON's class, not the prefix: the wrapper is
+    // `class="gb2-stars"`, so a bare /gb2-star/ counts it too and reports 6.
+    const stars = (s) => (s.match(/class="gb2-star(?:"| )/g) || []).length;
+    check('exactly one five-star control on a fresh form', stars(fresh) === 5);
+    check('…and it is not a <select>', !/<select[^>]*grf-stars/.test(fresh));
+    check('the rating rides a hidden input under the id the select had',
+        /<input type="hidden" id="grf-stars-jollyboat"/.test(fresh));
+
+    // AND IT MUST RENDER FOR AN EDIT. The old star row was gated on there being no
+    // review yet, so removing the select without moving the row into the composer
+    // would leave "Edit your review" with no way to change the rating at all.
+    const edit = review({ jollyboat: { stars: 3, text: 'Lovely', status: 'pending' } });
+    check('an existing review still gets a rating control', stars(edit) === 5);
+    check('…pre-filled to what they gave', (edit.match(/★/g) || []).length === 3);
+    check('…and the hidden input agrees', /id="grf-stars-jollyboat" value="3"/.test(edit));
     vm.runInContext('myGuestReviews = {}', ctx);
 }
 

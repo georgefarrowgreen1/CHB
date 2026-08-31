@@ -4384,13 +4384,9 @@ async function renderGuestBookings() {
                 ${nextOrd ? `<p class="gb2-ord">This would be your ${nextOrd} stay with us.</p>` : ''}
             </div>`
             : '';
-        const starsCard = showReview && !myGuestReviews[propKey]
-            ? `<div class="gb2-review">
-                <div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>
-                <div class="gb2-stars" role="group" aria-label="Rate your stay">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="gb2-star" aria-label="${n} star${n === 1 ? '' : 's'}" ${chbAttrs('gb2Star', String(propKey), n, CHB_SELF)}>☆</button>`).join('')}</div>
-                <p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>
-            </div>`
-            : '';
+        // The star row lives inside guestReviewForm now (one rating control, in
+        // the block whose words it explains), so this slot is empty.
+        const starsCard = '';
         const __card = `
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
@@ -4407,7 +4403,7 @@ async function renderGuestBookings() {
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
                     ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
-                    ${starsCard}
+                    ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
                         <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}>Add to calendar</button>
@@ -4418,7 +4414,6 @@ async function renderGuestBookings() {
                         ${showReview && myGuestReviews[propKey] ? guestReviewButton(propKey) : ''}
                         ${showPhoto ? guestPhotoButton(propKey) : ''}
                     </div>
-                    ${showReview ? guestReviewForm(propKey) : ''}
                 </div>`;
         (upcoming ? upcomingCards : pastCards).push(__card);
 
@@ -6850,22 +6845,32 @@ function guestReviewForm(propKey) {
     // DECLINE one — and the toast on the next tap said "submitted for approval",
     // so one screen made two claims. (A JS comment, not an HTML one: a comment in
     // this template would ship, quoting the wrong sentence back at the guest.)
-    const stars = existing ? existing.stars : 5;
-    const starOpts = [5, 4, 3, 2, 1]
+    // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
+    // tappable star row — two controls for one question, able to disagree until a
+    // tap synced them. The row is the ONE control now and lives HERE, with the
+    // words it explains, not in a card above the actions row. Its value rides a
+    // hidden input keeping the select's id, so gb2Star and submitGuestReview read
+    // what they always read. It must render for an EDIT too: the old row was gated
+    // on there being no review, so moving it here is what stops "Edit your review"
+    // having no rating control at all (gated, break-tested).
+    const stars = existing ? Math.max(0, Math.min(5, parseInt(existing.stars, 10) || 0)) : 0;
+    const starRow = `<div class="gb2-stars" role="group" aria-label="Rate your stay">${[1, 2, 3, 4, 5]
         .map(
             (n) =>
-                `<option value="${n}" ${stars === n ? 'selected' : ''}>${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`,
+                `<button type="button" class="gb2-star${n <= stars ? ' is-on' : ''}" aria-label="${n} star${n === 1 ? '' : 's'}" ${chbAttrs('gb2Star', String(propKey), n, CHB_SELF)}>${n <= stars ? '★' : '☆'}</button>`,
         )
-        .join('');
+        .join('')}</div>`;
     return `
-            <div style="margin-top:14px;">
+            <div class="gb2-review">
                 ${note}
-                <div id="grf-${propKey}" style="display:none;margin-top:4px;">
-                    <select id="grf-stars-${propKey}" class="input-glass field-sm" style="margin-bottom:10px;">${starOpts}</select>
+                ${existing ? '' : `<div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>`}
+                ${starRow}
+                <input type="hidden" id="grf-stars-${propKey}" value="${stars}">
+                ${existing ? '' : `<p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>`}
+                <div id="grf-${propKey}" style="display:none;margin-top:10px;">
                     <textarea id="grf-text-${propKey}" rows="3" maxlength="1000" class="input-glass field-sm" placeholder="How was your stay at ${escapeHtml(meta.name)}?">${existing ? escapeHtml(existing.text) : ''}</textarea>
-                    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
-                        <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit review</button>
-                        <span style="font-size:0.72rem;color:var(--text-muted);">We read every review before it goes on the site.</span>
+                    <div style="margin-top:10px;">
+                        <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit</button>
                     </div>
                 </div>
             </div>`;
@@ -18376,7 +18381,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'carto1';
+    const BUILD = 'revfrm1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
