@@ -6879,6 +6879,31 @@ function toggleGuestReview(propKey) {
     const f = document.getElementById('grf-' + propKey);
     if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
 }
+// Collapse the textarea + Submit before the repaint. Resolves either way — a
+// missing node or reduced motion returns at once: a save never waits on motion.
+function revFoldComposer(propKey) {
+    const f = document.getElementById('grf-' + propKey);
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!f || still || !f.offsetHeight) return Promise.resolve();
+    return new Promise((res) => {
+        f.style.height = f.offsetHeight + 'px';
+        void f.offsetHeight; // flush, or the transition has no start value
+        f.classList.add('gb2-fold-out');
+        f.style.height = '0px';
+        setTimeout(res, 280);
+    });
+}
+// One-shot ripple over the chosen stars; the class is removed so a later
+// re-render never replays it.
+function revSettleStars(propKey) {
+    const inp = document.getElementById('grf-stars-' + propKey);
+    const row = inp && inp.parentElement ? inp.parentElement.querySelector('.gb2-stars') : null;
+    if (!row) return;
+    const on = /** @type {HTMLElement[]} */ (Array.from(row.querySelectorAll('.gb2-star.is-on')));
+    on.forEach((s, i) => s.style.setProperty('--rvd', (i * 0.07).toFixed(2) + 's'));
+    row.classList.add('is-settling');
+    setTimeout(() => row.classList.remove('is-settling'), 500 + on.length * 70);
+}
 async function submitGuestReview(propKey) {
     const stars = parseInt((document.getElementById('grf-stars-' + propKey) || {}).value) || 5;
     const text = ((document.getElementById('grf-text-' + propKey) || {}).value || '').trim();
@@ -6890,7 +6915,11 @@ async function submitGuestReview(propKey) {
         await apiPost('reviews.php', { action: 'submit', prop_key: propKey, stars, text });
         // No "…for approval" — the last mention of moderation a guest met.
         toast('Thanks! Your review has been submitted.');
+        // Fold the words away, repaint, then let the stars bow — the card
+        // becomes a record of what they gave instead of snapping to a summary.
+        await revFoldComposer(propKey);
         await renderGuestBookings(); // repaint with the new pending state
+        revSettleStars(propKey);
     } catch (e) {
         glassAlert("Couldn't submit your review: " + e.message);
     }
@@ -18382,7 +18411,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'revtst1';
+    const BUILD = 'revanim1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

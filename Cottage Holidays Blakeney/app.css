@@ -8588,6 +8588,31 @@ body.light-mode .feed-dot-bad {
 .gb2-star.is-on {
   opacity: 1;
 }
+/* THE STARS TAKE A BOW on submit. Deliberately NOT the pay screen's tick and
+   green beat — that grammar is earned by money moving, and --ok is the money
+   vocabulary, so a green ✓ would read as "transaction complete" for a gift.
+   The rating is the subject, so the rating moves: payPop on --spring (a
+   completed date cell's own pop) rippling near-to-far on the dpWave stagger. */
+.gb2-stars.is-settling .gb2-star.is-on {
+  animation: payPop 0.42s var(--spring) both;
+  animation-delay: var(--rvd, 0s);
+}
+/* The composer folds before the repaint: the words leave, the rating stays. */
+.gb2-fold-out {
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    height 0.26s var(--fluid-bezier),
+    opacity 0.18s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gb2-stars.is-settling .gb2-star.is-on {
+    animation: none;
+  }
+  .gb2-fold-out {
+    transition: none;
+  }
+}
 .gb2-star:focus-visible {
   outline: 2px solid var(--accent-text);
   outline-offset: 1px;
