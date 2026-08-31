@@ -4384,13 +4384,9 @@ async function renderGuestBookings() {
                 ${nextOrd ? `<p class="gb2-ord">This would be your ${nextOrd} stay with us.</p>` : ''}
             </div>`
             : '';
-        const starsCard = showReview && !myGuestReviews[propKey]
-            ? `<div class="gb2-review">
-                <div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>
-                <div class="gb2-stars" role="group" aria-label="Rate your stay">${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="gb2-star" aria-label="${n} star${n === 1 ? '' : 's'}" ${chbAttrs('gb2Star', String(propKey), n, CHB_SELF)}>☆</button>`).join('')}</div>
-                <p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>
-            </div>`
-            : '';
+        // The star row lives inside guestReviewForm now (one rating control, in
+        // the block whose words it explains), so this slot is empty.
+        const starsCard = '';
         const __card = `
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
@@ -4407,7 +4403,7 @@ async function renderGuestBookings() {
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
                     ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
-                    ${starsCard}
+                    ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
                         <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}>Add to calendar</button>
@@ -4418,7 +4414,6 @@ async function renderGuestBookings() {
                         ${showReview && myGuestReviews[propKey] ? guestReviewButton(propKey) : ''}
                         ${showPhoto ? guestPhotoButton(propKey) : ''}
                     </div>
-                    ${showReview ? guestReviewForm(propKey) : ''}
                 </div>`;
         (upcoming ? upcomingCards : pastCards).push(__card);
 
@@ -6836,36 +6831,46 @@ async function submitGuestPhoto() {
 function guestReviewForm(propKey) {
     const existing = myGuestReviews[propKey];
     const meta = propertyMeta[propKey] || { name: propKey };
-    let note = '';
-    if (existing && existing.status === 'approved')
-        note = `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`;
-    // A PENDING REVIEW SAYS WHERE IT IS. This read "Thank you for staying with
-    // us!" — an answer to a question nobody asked, at the one moment the guest is
-    // wondering what became of the review they wrote. Its sibling above names
-    // where an approved one went; this one now does too.
-    else if (existing && existing.status === 'pending')
-        note = `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thanks for your review of ${escapeHtml(meta.name)} — it goes on the site once we&rsquo;ve read it.</div>`;
-    // The line beside Submit says what the site DOES. It promised the review would
-    // appear "shortly", but reviews.php writes status='pending' and set_status can
-    // DECLINE one — and the toast on the next tap said "submitted for approval",
-    // so one screen made two claims. (A JS comment, not an HTML one: a comment in
-    // this template would ship, quoting the wrong sentence back at the guest.)
-    const stars = existing ? existing.stars : 5;
-    const starOpts = [5, 4, 3, 2, 1]
+    // ONLY AN APPROVED REVIEW GETS A NOTE. A PENDING one used to carry "it goes
+    // on the site once we've read it"; removed at the owner's ask, along with the
+    // "we read every review" line beside Submit — the composer is a rating and a
+    // box, and the moderation is the site's business, not the guest's homework.
+    // The guest is not left without acknowledgement: the toast on submit already
+    // confirms it, and their stars stand filled in the card afterwards.
+    // NB nothing here may promise PUBLICATION — reviews.php writes
+    // status='pending' and set_status can DECLINE one, so a form that says a
+    // review "will appear shortly" guarantees what the site does not (smoke-test
+    // asserts the absence). A JS comment, not an HTML one: a comment inside this
+    // template would ship, quoting the wrong sentence back at the guest.
+    const note = existing && existing.status === 'approved'
+        ? `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
+        : '';
+    // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
+    // tappable star row — two controls for one question, able to disagree until a
+    // tap synced them. The row is the ONE control now and lives HERE, with the
+    // words it explains, not in a card above the actions row. Its value rides a
+    // hidden input keeping the select's id, so gb2Star and submitGuestReview read
+    // what they always read. It must render for an EDIT too: the old row was gated
+    // on there being no review, so moving it here is what stops "Edit your review"
+    // having no rating control at all (gated, break-tested).
+    const stars = existing ? Math.max(0, Math.min(5, parseInt(existing.stars, 10) || 0)) : 0;
+    const starRow = `<div class="gb2-stars" role="group" aria-label="Rate your stay">${[1, 2, 3, 4, 5]
         .map(
             (n) =>
-                `<option value="${n}" ${stars === n ? 'selected' : ''}>${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`,
+                `<button type="button" class="gb2-star${n <= stars ? ' is-on' : ''}" aria-label="${n} star${n === 1 ? '' : 's'}" ${chbAttrs('gb2Star', String(propKey), n, CHB_SELF)}>${n <= stars ? '★' : '☆'}</button>`,
         )
-        .join('');
+        .join('')}</div>`;
     return `
-            <div style="margin-top:14px;">
+            <div class="gb2-review${existing ? ' is-record' : ''}">
                 ${note}
-                <div id="grf-${propKey}" style="display:none;margin-top:4px;">
-                    <select id="grf-stars-${propKey}" class="input-glass field-sm" style="margin-bottom:10px;">${starOpts}</select>
+                ${note ? '' : `<div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>`}
+                ${starRow}
+                <input type="hidden" id="grf-stars-${propKey}" value="${stars}">
+                ${existing ? '' : `<p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>`}
+                <div id="grf-${propKey}" style="display:none;margin-top:10px;">
                     <textarea id="grf-text-${propKey}" rows="3" maxlength="1000" class="input-glass field-sm" placeholder="How was your stay at ${escapeHtml(meta.name)}?">${existing ? escapeHtml(existing.text) : ''}</textarea>
-                    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
-                        <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit review</button>
-                        <span style="font-size:0.72rem;color:var(--text-muted);">We read every review before it goes on the site.</span>
+                    <div style="margin-top:10px;">
+                        <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit</button>
                     </div>
                 </div>
             </div>`;
@@ -6873,6 +6878,40 @@ function guestReviewForm(propKey) {
 function toggleGuestReview(propKey) {
     const f = document.getElementById('grf-' + propKey);
     if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+// Collapse the textarea + Submit before the repaint. Resolves either way — a
+// missing node or reduced motion returns at once: a save never waits on motion.
+function revFoldComposer(propKey) {
+    const f = document.getElementById('grf-' + propKey);
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!f || still || !f.offsetHeight) return Promise.resolve();
+    return new Promise((res) => {
+        f.style.height = f.offsetHeight + 'px';
+        void f.offsetHeight; // flush, or the transition has no start value
+        f.classList.add('gb2-fold-out');
+        f.style.height = '0px';
+        setTimeout(res, 280);
+    });
+}
+// One-shot ripple over the chosen stars; the class is removed so a later
+// re-render never replays it.
+function revSettleStars(propKey) {
+    const inp = document.getElementById('grf-stars-' + propKey);
+    const row = inp && inp.parentElement ? inp.parentElement.querySelector('.gb2-stars') : null;
+    if (!row) return;
+    const on = /** @type {HTMLElement[]} */ (Array.from(row.querySelectorAll('.gb2-star.is-on')));
+    on.forEach((s, i) => s.style.setProperty('--rvd', (i * 0.07).toFixed(2) + 's'));
+    row.classList.add('is-settling');
+    setTimeout(() => row.classList.remove('is-settling'), 500 + on.length * 70);
+    // The card renders AS a record (so the state survives later re-renders), so
+    // the fresh node already carries the class and the border would snap. Strip,
+    // flush, re-add: the transition gets a start value and the invitation fades.
+    const card = row.closest('.gb2-review');
+    if (card && card.classList.contains('is-record')) {
+        card.classList.remove('is-record');
+        void (/** @type {HTMLElement} */ (card)).offsetHeight;
+        card.classList.add('is-record');
+    }
 }
 async function submitGuestReview(propKey) {
     const stars = parseInt((document.getElementById('grf-stars-' + propKey) || {}).value) || 5;
@@ -6883,8 +6922,13 @@ async function submitGuestReview(propKey) {
     }
     try {
         await apiPost('reviews.php', { action: 'submit', prop_key: propKey, stars, text });
-        toast('Thanks! Your review has been submitted for approval.');
+        // No "…for approval" — the last mention of moderation a guest met.
+        toast('Thanks! Your review has been submitted.');
+        // Fold the words away, repaint, then let the stars bow — the card
+        // becomes a record of what they gave instead of snapping to a summary.
+        await revFoldComposer(propKey);
         await renderGuestBookings(); // repaint with the new pending state
+        revSettleStars(propKey);
     } catch (e) {
         glassAlert("Couldn't submit your review: " + e.message);
     }
@@ -18376,7 +18420,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'carto1';
+    const BUILD = 'revanim2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
