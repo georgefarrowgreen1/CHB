@@ -64,329 +64,238 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 
 ## The emails are a design system, and mailer.php is it
 
-Twenty-one templates, one look. Every one is composed from the helpers at the top of
+Thirty-eight templates, one look, every one composed from the helpers at the top of
 `mailer.php` — never hand-rolled table markup, which is how the enquiry reply and the
-owner's new-enquiry notification each ended up with their own 13px/14px label-value
-table and looked like a different product from the confirmation that follows them.
+owner's new-enquiry notification each grew their own label-value table and looked like a
+different product from the confirmation that follows them.
+
 - **Blocks**: `email_shell` (document + preheader + footer), `email_crown_header`,
   `email_h`, `email_p`, `email_note` (tinted callout), `email_rows` (label + right-rail
-  value, the house summary), `email_money_rows` (sentence-case tinted money panel),
-  `email_amount` (the one big figure), `email_ownernote`, `email_footnote` (12px prose),
-  `email_address_block`, `email_btn` (primary, VML-safe) and `email_btn2` (outlined
-  secondary, same 44px target).
+  value), `email_money_rows`, `email_amount` (the one big figure), `email_ownernote`,
+  `email_footnote`, `email_address_block`, `email_btn` (primary, VML-safe), `email_btn2`
+  (outlined, same 44px target), `email_photo_band`.
 - **ESCAPING IS ASYMMETRIC AND IT BITES.** `email_h`, `email_btn`, `email_amount`'s
-  LABEL, `email_ownernote` and **`email_shell`'s PREHEADER** all run `email_esc()` on
-  what you give them — so passing `&mdash;` or a pre-escaped name prints the entity
-  literally in the inbox. `email_p`, `email_note`, `email_rows`, `email_money_rows` and
-  `email_footnote` expect PRE-ESCAPED HTML. The preheader one shipped: the enquiry
-  acknowledgement's inbox preview read "We&rsquo;ll confirm your dates". test-payrail
-  sweeps every `email_shell` call for an entity in its first argument.
-- **DATES ARE SPOKEN, TIMES LOSE THEIR DEAD :00.** `email_date('2026-09-06')` →
-  "Sun 6 Sep 2026" (`, false` drops the year, for subjects); `email_time('15:00')` →
-  "3pm", `'10:30'` → "10:30am". This is a deliberate DEPARTURE from the DD/MM/YYYY house
-  rule, which governs SCREENS: a screen date is scanned against other dates, an email
-  date is read once and acted on, so it names the weekday. **The exception is a SCHEDULE
-  COLUMN** — the instalment offer's and the failure email's payment tables keep
+  LABEL, `email_ownernote` and **`email_shell`'s PREHEADER** run `email_esc()` on what
+  you give them, so a pre-escaped name or an `&mdash;` prints the entity literally in the
+  inbox. `email_p`, `email_note`, `email_rows`, `email_money_rows` and `email_footnote`
+  expect PRE-ESCAPED HTML. The preheader one shipped ("We&rsquo;ll confirm your dates" in
+  the inbox preview); test-payrail sweeps every `email_shell` call's first argument.
+- **DATES ARE SPOKEN, TIMES LOSE THEIR DEAD :00.** `email_date('2026-09-06')` → "Sun 6
+  Sep 2026" (`, false` drops the year for subjects); `email_time('15:00')` → "3pm". A
+  deliberate DEPARTURE from the DD/MM/YYYY house rule, which governs SCREENS: a screen
+  date is scanned against other dates, an email date is read once and acted on, so it
+  names the weekday. **The exception is a SCHEDULE COLUMN** — payment tables keep
   `uk_date()`, because four dates stacked in one column are compared to each other and
-  DD/MM/YYYY is fixed-width. The retry date therefore exists in both forms (`$retry`
-  spoken for the sentence, `$retryNum` numeric for the row). NB `email_time('')` returns
-  `''`: `strtotime('2000-01-01 ')` parses happily to midnight, so an unset check-in time
-  rendered "from 12am" — a stated fact, wrong, and its gate caught it.
-- **A MONEY EMAIL LEADS WITH THE FIGURE, THEN THE BUTTON, THEN THE ARITHMETIC.** The
-  ask, the reminder and the receipt share `payment_money_facts()` (one derivation) but
-  each renders its own row set, because a reminder has no "still to come" — the balance
-  IS the remainder. The three now reconcile: £175.43 to pay (100.43 deposit + 75
-  refundable), £476.70 stay total, £301.27 remaining, and the receipt's rental rail
-  £100.43 of £401.70 against the same £301.27.
+  DD/MM/YYYY is fixed-width (hence `$retry` spoken and `$retryNum` numeric). NB
+  `email_time('')` returns `''`: `strtotime('2000-01-01 ')` parses to midnight, so an
+  unset check-in time rendered "from 12am" — a stated fact, wrong.
+- **A MONEY EMAIL LEADS WITH THE FIGURE, THEN THE BUTTON, THEN THE ARITHMETIC.** The ask,
+  the reminder and the receipt share `payment_money_facts()` (one derivation) but each
+  renders its own row set, because a reminder has no "still to come" — the balance IS the
+  remainder. The three reconcile.
 - **A DEADLINE SITS BESIDE ITS OWN FIGURE.** `payment_plan_line()` answers a different
-  question (when the REMAINDER is wanted), and on a balance ask there is no remainder —
-  so it returns `''` and the one email whose whole job is "settle by then" named no date
-  at all. A balance ask and its reminder carry `Due by <spoken date>` in the amount
-  block; a DEPOSIT ask must NOT, because its own money is due now.
-- **THE COMPOSERS THAT ARE PURE MUST STAY PURE.** `payment_request_body`,
-  `payment_reminder_body`, `payment_receipt_body`, `autopay_notice_body`,
-  `autopay_failure_body`, `owner_payment_notice_body` and
-  `send_cancellation_email_body` take everything they need as arguments (accent, bank
-  details, and now `host_name`) so test-payrail drives the REAL composer with no DB and
-  no SMTP. A `content_value()` call inside one breaks the whole gate — that is why
-  `email_host_name()` is resolved by the SENDER and passed down.
-- **`content_value($key)` TAKES ONE ARGUMENT** and already returns `''` for a missing
-  key. A second "default" is accepted at runtime and silently ignored, so only PHPStan
-  catches it — which it did, in the two helpers added here.
+  question (when the REMAINDER is wanted), so on a balance ask it returns `''` and the one
+  email whose job is "settle by then" named no date at all. A balance ask and its reminder
+  carry `Due by <spoken date>` in the amount block; a DEPOSIT ask must NOT, its money
+  being due now.
+- **THE PURE COMPOSERS MUST STAY PURE.** `payment_request_body`, `payment_reminder_body`,
+  `payment_receipt_body`, `autopay_notice_body`, `autopay_failure_body`,
+  `owner_payment_notice_body`, `send_cancellation_email_body`, `arrival_email_body` take
+  everything as arguments (accent, bank details, host name, house rules) so test-payrail
+  drives the REAL composer with no DB and no SMTP. **A `content_value()` call inside one
+  breaks the whole gate** — which is why `email_host_name()` is resolved by the SENDER and
+  passed down. NB `content_value($key)` takes ONE argument and already returns `''`; a
+  second "default" is accepted at runtime and silently ignored, so only PHPStan catches it.
 - **"Reason:" is a form field, not a sentence.** The refund, cancellation and
   deposit-return emails printed the owner's private note under a bold "Reason:", making
-  the SITE appear to justify itself to the guest in the register of a rejection letter.
-  `email_ownernote($who, $text)` attributes it ("A note from George") and returns `''`
-  for an empty note. Every refund now states **3–5 working days** rather than "a few".
-- **What was found DEAD or WRONG on the way through** (all fixed, all gated):
-  the confirmation's pay-balance link is guarded on `$b['id']` and **neither real caller
-  passed one**, so it could never render (the enquiry PREVIEW still omits it on purpose —
-  no booking exists there and a token signed for a guessed id is worse than no button);
-  the owner's payment notice could only answer "is that the lot?" by the ABSENCE of "now
-  paid in full", while `pay.php` held the figure in the same closure; the receipt told
-  the guest "we'll be in touch about settling it" with no date and no link, and said it
-  even on the AUTOMATIC path where nothing is needed from them; and **`email-samples.php`
-  — the owner's own preview screen — handed the money composers a BOOKING ROW where they
-  expect a DERIVED payload**, so it showed the card taking £119.18 where the live path
-  takes £175.43. The live path was correct throughout; only the preview lied.
-- **A NEGATIVE SOURCE SCAN MUST NOT SEE ITS OWN EXPLANATION.** Two gates here assert an
-  absence ("no `pay_url` on the autopay receipt", "no longer says 'a few working days'")
-  and BOTH first failed against the comment stating exactly that, three lines above the
-  code they guard. test-payrail strips `//` lines before any such assertion.
-- **INK vs FILL, in the emails too — and `test-emails-render.php` is the gate.** The
-  screens learned this once (`--accent-text` exists because the rose-gold measures
-  2.60–2.96:1 and fails AA as WORDS while being fine as a button or a rule) and the fix
-  stopped at the edge of the browser. Measured on the rendered HTML of all 21 templates,
-  **sixteen ink/ground/size combinations sat below AA** — the worst `email_amount`'s
-  34px figure at **2.00:1**, i.e. the one number a refund email exists to state, and an
-  **unsubscribe link at 2.12:1**, the one element in a marketing email with a legal
-  expectation attached. Two tokens now: **`email_muted_ink()`** `#655D50` (6.49 white /
-  6.02 tinted panel / 5.18 outer ground) replacing FOUR near-identical failing inks
-  (`#8E877A #9A927F #A0987F #A79E8A`, 2.12–3.56:1) that differed by a few hex points and
-  served no hierarchy the size and letter-spacing weren't already carrying; and
-  **`email_accent_ink()`** `#8A5A2B` (5.87 / 5.44 / 4.68) for the accent as TEXT — a
-  figure, a link, a status word. `#C79A64` stays the FILL. A shade past the mark, not on
-  it, the same discipline the screen tokens follow.
-  Found in the same pass: the confirmation's HTML half **re-derived the payment colour**
-  twelve lines below the text half's correct derivation, using the greens and ambers from
-  the dark UPCOMING chip — right on `#22321f`, and then used as text on a WHITE row at
-  2.23:1 for the word "Unpaid". Two definitions of one fact, and the shadow was the wrong
-  one. Deleted; the outer derivation is still in scope.
-- **`test-emails-render.php` — every composer runs, and no colour is illegible.**
-  test-payrail drives the ten PURE composers hard; the other eighteen could only be
-  proved to PARSE, so a fatal in `send_hold_request` or `send_refund_email` would have
-  shipped and a guest would have been the one to find out. It splices a capture into
-  BOTH `smtp_send` and `smtp_send_batch` (send_owner posts through the batch one — patch
-  only the first and every owner email renders as "nothing captured"), stubs the db.php
-  helpers, and lets `db()` THROW: a composer that grows a `content_value()` call fails
-  loudly rather than quietly needing a database. Four sections: §0 every `test-*.php` is
-  stripped from BOTH deploy passes (production AND staging — `test-auth-posture.php`'s
-  header demands dev files be excluded and then filters `test-*` out of its own registry,
-  so the class the rule was written for was the class nothing checked); §1 all 21 render
-  with a subject, a text half and a full HTML document, plus a coverage check that no
-  composer in mailer.php is left unreached; §2 contrast by arithmetic on the rendered
-  output, walking a background stack because an ink is only legible against the ground it
-  ACTUALLY sits on (measuring everything against white reported the tinted panels as
-  fine); and the preview-registry check below. Vacuity-guarded at ≥250 coloured nodes.
-- **THE OWNER CAN PREVIEW EVERY EMAIL, and a gate keeps that true.**
-  `email-samples.php` had drifted to 13 of the 19 real senders — omitting BOTH
-  automatic-payment emails (the newest, most complex money emails, and the two where a
-  wrong figure is least recoverable), the enquiry acknowledgement, and the owner's own
-  new-enquiry notification. It looked decided and was accidental, which is what a
-  registry does when nothing checks it. NB the coverage check's exclusion list is written
-  out IN FULL and must not be derived from §1's: deriving it was vacuous, because §1
-  legitimately excludes the two autopay senders (thin wrappers over their pure builders)
-  and those were exactly the previews that were missing.
-- **EVERY EMAIL TYPE THE APP CAN SEND IS SENDABLE AS A SAMPLE — and §4 PROVES it, it
-  does not assert it.** email-samples.php is now 21 entries (the enquiry reply and the
-  waitlist "a space has opened" were the two callable senders with no way in;
-  `wl_send($row)` needed no extraction, it simply had no caller). §4 drives the REAL
-  `chb_send_sample_emails('all')` through the capture harness — the file already guards
-  its route with `basename($_SERVER['SCRIPT_NAME'])`, so including it defines the
-  function and does nothing else, and only its requires need stripping (at ANY
-  indentation: it re-requires mailer.php from INSIDE the function body, and an anchored
-  `^require_once` missed it, so the real mailer clashed with the capture copy).
-  **What §4 does NOT prove** — break-tested: a non-numeric total in a fixture still
-  sends happily, so a WRONG FIGURE passes. It guards the affordance; test-payrail owns
-  the arithmetic. And the `[SAMPLE] ` prefix is applied by **smtp_TRANSMIT**, downstream
-  of the smtp_send this harness splices, so the captured subjects genuinely cannot show
-  it — asserting it on them would measure the harness, so both halves of the real
-  mechanism are checked instead (the sender sets the global, the transport prepends it,
-  and it is unset afterwards so a real send is never marked).
-  **THE TWO WEEKLY EMAILS NOW HAVE A BUTTON** (Manage → System check → More tools).
-  Both `owner-digest.php` and `weekly-analytics.php` have supported `?force=1` since
-  they were written — their own headers say so — and nothing in the back office ever
-  asked, so seeing your own digest meant waiting for Monday. `sendWeeklyEmailNow(which,
-  btn)` POSTs with the flag in the QUERY (the script reads `$_GET['force']`; the POST is
-  what makes `require_admin()` enforce the CSRF token). These send the REAL email with
-  REAL data, which beats a fixture. **The enquiry nudge deliberately gets NO button**
-  despite also supporting `?force=1`: it emails GUESTS, so forcing it is live marketing
-  to real enquirers, not a sample, and it does not belong beside "Email me samples".
-  **AND THE RETIRED INKS ARE RATCHETED ACROSS EVERY COMPOSING FILE** (§5). §2 measures
-  the RENDERED output, which is the strongest check available, but it can only see the
-  21 templates mailer.php builds — so the weekly digest and weekly analytics were still
-  setting `#8E877A` as TEXT (3.56:1) after that ink was retired, and the chat
-  notification's "View the photo" link was `#B07A3F` (3.68:1). Seven sites, all fixed.
-  §5 discovers every file that reaches for the design system's blocks and forbids a
-  retired ink used as `color:` — narrow on purpose, because the same hexes are still
-  correct as FILLS (email_shell's accent bar, email_h's swatch) and forbidding the value
-  outright would fail on correct code and get worked around.
-  **NB the gate's own scratch files live in the SYSTEM TEMP DIR, not beside the app.**
-  They were written into the app directory at first, and an aborted run left one behind
-  where `test-auth-posture.php` failed it as an unregistered web-reachable endpoint.
-  Moving them out means the copied email-samples.php needs its `__DIR__` pinned to the
-  real app path, or the waitlist sample's `require __DIR__ . '/waitlist-lib.php'`
-  resolves to `/tmp` — which the gate itself caught.
-  **AND THE THIRTEEN THAT COMPOSED INLINE NOW HAVE BUILDERS TOO.** They lived in a route
-  or a cron script, so nothing could preview or render them: a fatal in one shipped and
-  the owner found out by NOT being told about a review. Each has a pure builder in
-  mailer.php taking its facts as arguments — `owner_mail_test_body`, `admin_code_body`,
-  `backup_report_body`, `guest_chat_body`, `guest_message_body`, `enquiry_nudge_body`,
-  `enquiry_rescue_body`, and the five plain notes `owner_note_review` / `_lead` /
-  `_experience` / `_chat_new` / `_chat_reply` / `_push_fallback`. email-samples.php is 34
-  entries and §1 renders all 34.
-  **THEIR LOOK WAS NEVER THE PROBLEM — an earlier note here said these four "have no HTML
-  half at all", and that was wrong about what SHIPS.** `send_owner()` wraps a plain-text
-  caller in `owner_alert_text_html()`, so they have carried the house shell all along;
-  what they lacked was a function a sample could call without the route. A plain builder
-  therefore returns `['subject','text']` only, and the gate drives it THROUGH send_owner
-  so §2 measures the document that shell produces.
-  **AND RENDERING THEM FOUND A REAL DEFECT IN THREE GUEST EMAILS.** The two enquiry
-  nudges and the abandoned-enquiry rescue were the only templates handing a PER-COTTAGE
-  accent to `email_btn`, with `'#ffffff'` as the ink: measured on Jollyboat's green,
-  **3.30:1** at 15px, and even the design system's dark `#3A2E1E` only reaches **4.00**.
-  A button carries WORDS, so it takes the house accent+ink pair every other template
-  uses; the cottage colour stays where it is a FILL (the shell's bar, `email_h`'s
-  swatch). Nothing could see this because nothing rendered these three.
-  **A CONSOLIDATION MOVES A VACUITY GUARD.** §5's "found the files that compose emails"
-  floor was **8** and is now **4** — that drop IS the win, thirteen compositions leaving
-  their routes — so the guard also asserts `mailer.php` BY NAME, since a bare count would
-  pass on four files that happened not to include the real one.
-  **AND NOW EVERY ONE OF THEM.** The last four were the weekly owner digest, the weekly
-  analytics, the mailbox reply and — which the note above MISSED — the **newsletter**, the
-  one email that goes to a whole list. email-samples.php is 38 entries and §1 renders all
-  38; the composer-discovery floor is 8 → 4 → **2**, its end state (mailer.php, plus
-  waitlist-lib.php whose `wl_send` is already a plain callable taking a row).
-  The two weeklies compose at SCRIPT level from a dozen live figures each, which is why
-  they outlasted the thirteen — the payload IS the work. `owner_digest_body($d)` and
-  `weekly_analytics_body($d)` take it; the four pure FORMATTERS (`$money`, `$nameOf`,
-  `$pretty`, `$accentOf`) moved INTO the builder, since they format rather than query,
-  while everything touching the database stayed in the cron script. `?force=1` still sends
-  the real weekly email with real data, which is the better check of the FIGURES; a sample
-  is how you check the TEMPLATE.
-  **AND RENDERING THE DIGEST FOUND A 1.73:1 INK.** Its needs-attention rows set the status
-  amber and red straight into 13px `color:` — **`#ffb74d` at 1.73:1** on white and
-  `#e57373` at 2.99 — on the one email that exists to say something has gone wrong. The
-  ink/fill split again: both are fine as FILLS. **`email_warn_ink()`** `#8A5000` (6.51
-  white / 6.09 tinted / 5.67 outer) and **`email_alert_ink()`** `#A3291C` (7.26 / 6.80 /
-  6.33) join the two existing ink tokens, measured on all three grounds.
-  **§5 COULD NOT SEE IT, AND NOW CAN.** The retired-ink scan matches `color:<hex>`
-  ADJACENTLY, and the digest wrote `';…color:' . ($sev === 'action' ? '#e57373' :
-  '#ffb74d') . ';…'` — the hex is a separate string literal, so §5 reported "no retired
-  ink" while a 1.73:1 amber shipped. **§2's measurement of the RENDERED output is what
-  caught it**; §5 now also matches the CONCATENATED form (a short window after `color:`
-  closes its own quote, so a FILL stays out of scope), break-tested against that exact
-  shape. General rule: a source scan sees what it was written to see — the rendered
-  measurement is the one that cannot be dodged by how the string was assembled.
-  **NB PHPStan caught two payload keys the template never asked for.** The extraction
-  passed `siteUrl` and `depositsDue` into `owner_digest_body`, both referencing variables
-  that do not exist in owner-digest.php at all — mine, not pre-existing, and invisible to
-  every other gate because an undefined variable there is just an empty string.
-- **THE CROWN IS 144px NOW, AND MUST NOT BE QUANTISED.** Stored at 240×240, displayed at
-  72 — so 144 is 2× for retina and all the `<img>` can ask for: 14,026 base64 bytes to
-  8,864, every email ~5KB lighter (18.9KB → 13.8KB average) for no visible change. A
-  64-colour palette reaches 2,476 bytes and the per-pixel arithmetic calls it fine (five
-  pixels of 5,184 differ by >8/255 composited on the header) — **it still BANDS**, the
-  gradient becoming visible stripes, because banding is a STRUCTURED artifact a mean
-  per-pixel delta underweights. Octree at 128 and 256 bands identically and is barely
-  smaller. The arithmetic passed and looking at it did not, which is the whole reason to
-  look. The data URI itself stays: an inlined image cannot be stripped by the image
-  blocking most clients apply by default.
-- **AN EDIT THAT CHANGES NOTHING THE GUEST WOULD NOTICE MUST NOT ASK.**
-  `offerUpdatedConfirmationEmail` (which already existed, correctly, and re-sends via a
-  preview — the arrival email is separately handled by clearing `pre_arrival_sent` so the
-  cron re-sends) fired after EVERY save, so correcting a phone-number typo raised a dialog
-  asking whether to re-send the guest their whole booking confirmation. `bookings.php`'s
-  update tail now returns **`material`** — dates, cottage, party or price, i.e. what the
-  confirmation actually STATES — derived server-side because the client no longer holds
-  the old row. An ask that appears for nothing teaches the owner to dismiss the one that
-  counts.
-- **A GATE THAT SCANS FOR A PHRASE PRESENT IN BOTH HALVES IS VACUOUS.** Three of the new
-  checks passed with the HTML half deleted, because the plain-text half carried the same
-  sentence — and one passed with the whole amount block gone, because `email_h()` renders
-  the same words as the heading. Assert the halves separately, and target the BLOCK
-  (`email_amount`'s uppercase label + its 34px serif figure) rather than the words.
-- **NOBODY IS GREETED TWICE, AND §9 IS THE SWEEP THAT KEEPS IT TRUE.** The
-  double-greeting defect was found once (the enquiry drafter, §6) and fixed once, and
-  then shipped TWICE MORE on surfaces nobody thought to re-check — reported from a phone
-  as "Hello Laura," above "Hello Laura — everything you need for Pimpernel is below."
-  **`build_enquiry_reply_email` owns the greeting** (it must: an owner typing a bare
-  message still gets one), so anything that FILLS its body must not greet. Three things
-  were: (1) the arrival REVIEW screen's preview went through that builder at all — the
-  SEND had always routed to `send_arrival` and only the preview had not, so "this is
-  exactly what your guest will receive" was showing the enquiry-reply shell ("About your
-  booking", purple bar, its own greeting) over a message that already greets; (2)
-  **`chbDraftBookingReply`** opened with `Hello <first>,` — the enquiry drafter's own
-  lesson, unlearned by its sibling; (3) nothing held the STARTER reply library to the
-  rule its own comment states. Fixes: `arrival_email_body()` + `arrival_email_payload()`
-  split out of `send_arrival_email`/`send_arrival_for_booking` so the preview builds the
-  REAL email from the REAL payload (`email_preview` takes `arrival: true`; admin.js sends
-  it, and sends no saved-reply buttons with it — the arrival template has no place for
-  them); the booking drafter de-greeted; the starters gated.
-- **§9 COUNTS GREETINGS BY NAME OVER EVERY RENDERED TEMPLATE**, in each half separately,
-  discovering the name FROM the greeting rather than from a list — so a new fixture is
-  covered the day it is added, and an email that greets a guest AND the owner still
-  passes honestly. Two things it had to get right: a tag becomes a **SPACE**, never
-  nothing (a bare `strip_tags` welds `…below.<br>Hello Wren` into one word and hides the
-  SECOND greeting — the break-test found 1 of 2 until this was fixed, i.e. the counter
-  was blind to exactly the defect it exists to catch), and entities are decoded (an
-  `O&#039;Brien` is a different name in each half). Vacuity-guarded at ≥20 name-in-half
-  hits; it sweeps 46.
-- **A HELPER-ONLY GATE MISSES THE ROUTE, again.** test-emails-render drives
-  `arrival_email_body` and passes **with the whole `arrival` branch deleted from
-  bookings.php** — break-tested. The wiring is gated in **test-integration §23**, which
-  posts the real `email_preview` both ways and reproduces the reported defect exactly
-  ("greets the guest exactly once (2)") when the branch is off.
-- **THE MODERN PASS (the invoice's rules, applied to the inbox — approved demo,
-  "Build it").** ONE restyle of the shell + block helpers with the same helper API, so
-  all 38 templates carried at once and no composer changed. The anatomy: the centred
-  crown-over-brand masthead (~210px before the message) became ONE header line — 24px
-  crown + the serif name, the serif's only survivor; `email_crown_header` keeps its
-  name/signature — a 3px cottage-accent rule tops the card (`email_h`'s `$accent` is
-  accepted-and-ignored now: the swatch square said the accent twice), labels are
-  sentence-case 600 (`email_rows`/`email_amount`/the address block; the three stray
-  uppercase sites converted with them), money is grotesque 40px tight tabular between a
-  hairline and a 2px `#D9CFB8` rule (`email_amount`, plus the confirmation's hand-rolled
-  priceBox — its serif Total went grotesque too), the tinted panels went to hairlines
-  EXCEPT `email_note` — deliberately the ONE shout an email keeps — and buttons are
-  full-width radius-12 (`email_btn` 52px filled; `email_btn2` 48px outlined `#D8C2A2`
-  with `email_accent_ink()` — §7's outlined-button markers re-aimed to the new border
-  literal, and test-payrail's amount-block check to the sentence-case/40px pair).
-  Ground `#ECE5D7` → `#F7F4EE` (lighter — every ink floor got easier); hairlines
-  `#EFE9DD`, card border `#EAE3D5`.
+  the SITE appear to justify itself in the register of a rejection letter.
+  `email_ownernote($who, $text)` attributes it and returns `''` when empty. Refunds state
+  **3–5 working days**, never "a few".
+- **PREHEADERS FINISH THE THOUGHT** rather than restating the subject: the money family
+  carries the figure + what it does + the deadline, the receipt says what remains, the
+  refunds say the working days. Plain text only (the shell escapes them).
+
+### Ink, and the gate that measures the rendered document
+
+**INK vs FILL applies in the inbox too.** The screens learned it once (`--accent-text`
+exists because the rose-gold fails AA as WORDS while being fine as a button or a rule) and
+the fix stopped at the edge of the browser: measured across the rendered templates,
+**sixteen ink/ground/size combinations sat below AA** — the worst `email_amount`'s figure
+at **2.00:1**, i.e. the one number a refund email exists to state, and an **unsubscribe
+link at 2.12:1**, the one element in a marketing email with a legal expectation attached.
+Four ink tokens now, each measured on all three grounds (white / tinted panel / outer):
+- `email_muted_ink()` **#655D50** (6.49 / 6.02 / 5.18) — replaced FOUR near-identical
+  failing greys that differed by a few hex points and served no hierarchy the size and
+  letter-spacing weren't already carrying.
+- `email_accent_ink()` **#8A5A2B** (5.87 / 5.44 / 4.68) — the accent as TEXT: a figure, a
+  link, a status word, a ★ glyph. `#C79A64` stays the FILL.
+- `email_warn_ink()` **#8A5000** (6.51 / 6.09 / 5.67) and `email_alert_ink()` **#A3291C**
+  (7.26 / 6.80 / 6.33) — the digest's needs-attention rows had set amber and red straight
+  into 13px `color:` (**#ffb74d at 1.73:1**), on the one email that exists to say
+  something has gone wrong. Both are fine as FILLS.
+A shade past the mark, never on it — the discipline the screen tokens follow.
+
+**`test-emails-render.php` — every composer runs, and no colour is illegible.** It
+splices a capture into BOTH `smtp_send` and `smtp_send_batch` (send_owner posts through
+the batch one — patch only the first and every owner email renders as "nothing
+captured"), stubs the db.php helpers, and lets `db()` THROW, so a composer that grows a
+`content_value()` call fails loudly rather than quietly needing a database. Sections:
+- **§0** every `test-*.php` is stripped from BOTH deploy passes (production AND staging).
+- **§1** all 38 render with a subject, a text half and a full HTML document, plus a
+  coverage check that no composer in mailer.php is left unreached.
+- **§2** contrast by arithmetic on the rendered output, **walking a background stack**
+  because an ink is only legible against the ground it ACTUALLY sits on (measuring
+  everything against white reported the tinted panels as fine). Vacuity-guarded at ≥250
+  coloured nodes. Runs a DARK pass too.
+- **§4** drives the REAL `chb_send_sample_emails('all')` through the harness. What it
+  does NOT prove, break-tested: a non-numeric total still sends, so a WRONG FIGURE
+  passes — it guards the affordance, test-payrail owns the arithmetic. The `[SAMPLE]`
+  prefix is applied by smtp_TRANSMIT, downstream of the spliced smtp_send, so asserting
+  it on captured subjects would measure the harness; both halves of the real mechanism
+  are checked instead.
+- **§5** ratchets the RETIRED inks across every file that composes email. §2 measures the
+  rendered output, the strongest check available, but only sees what mailer.php builds —
+  so the weeklies were still setting a retired `#8E877A` as TEXT afterwards. Narrow on
+  purpose: it forbids a retired ink as `color:` only, because the same hexes stay correct
+  as FILLS and a blanket ban would fail on correct code and get worked around.
+- **§9** counts greetings BY NAME over every rendered template, in each half separately,
+  discovering the name FROM the greeting rather than a list.
+- **§11** drives the REAL GD path for the photo band with a fixture JPEG.
+
+### The lessons the gates themselves taught
+
+- **A NEGATIVE SOURCE SCAN MUST NOT SEE ITS OWN EXPLANATION.** Two gates assert an
+  absence and both first failed against the comment stating exactly that, three lines
+  above the code they guard. test-payrail strips `//` lines before any such assertion.
+- **A SOURCE SCAN SEES WHAT IT WAS WRITTEN TO SEE.** §5 matched `color:<hex>` ADJACENTLY,
+  and the digest wrote `'…color:' . ($sev === 'action' ? '#e57373' : '#ffb74d') . '…'` —
+  a separate string literal, so §5 reported "no retired ink" while a 1.73:1 amber
+  shipped. **§2's measurement of the RENDERED output is what caught it.** §5 now also
+  matches the concatenated form. General rule: the rendered measurement is the one that
+  cannot be dodged by how the string was assembled.
+- **A GATE THAT SCANS FOR A PHRASE PRESENT IN BOTH HALVES IS VACUOUS.** Three checks
+  passed with the HTML half deleted because the text half carried the same sentence, and
+  one passed with the whole amount block gone because `email_h()` renders the same words.
+  Assert the halves separately, and target the BLOCK rather than the words.
+- **A HELPER-ONLY GATE MISSES THE ROUTE.** test-emails-render drives `arrival_email_body`
+  and passes with the whole `arrival` branch deleted from bookings.php. The wiring is
+  gated in **test-integration §23**, which posts the real `email_preview` both ways.
+  Whenever a pure builder gains a field, gate the ROUTE that fills it.
+- **§9's counter needed two things to work**: a tag becomes a **SPACE**, never nothing (a
+  bare `strip_tags` welds `…below.<br>Hello Wren` into one word and hides the SECOND
+  greeting — the break-test found 1 of 2 until fixed, i.e. the counter was blind to
+  exactly its own defect), and entities are decoded. Vacuity-guarded at ≥20 hits; it
+  sweeps 46.
+- **A VACUITY GUARD MOVES WITH A CONSOLIDATION.** §5's composing-files floor went 8 → 4 →
+  **2** (its end state: mailer.php + waitlist-lib.php) as compositions left their routes.
+  The drop IS the win, so the guard also asserts `mailer.php` BY NAME — a bare count would
+  pass on two files that happened not to include the real one.
+- **The gate's scratch files live in the SYSTEM TEMP DIR**, or an aborted run leaves one
+  beside the app where `test-auth-posture.php` fails it as an unregistered endpoint. The
+  copied email-samples.php therefore needs its `__DIR__` pinned to the real app path.
+- **PHPStan caught two payload keys the template never asked for** — variables that do not
+  exist in owner-digest.php at all, invisible to every other gate because an undefined
+  variable there is just an empty string.
+
+### The previews, and what rendering them found
+
+**THE OWNER CAN PREVIEW EVERY EMAIL, and a gate keeps that true.** `email-samples.php`
+had drifted to 13 of 19 senders — omitting BOTH automatic-payment emails (the newest and
+most complex money emails, where a wrong figure is least recoverable), the enquiry
+acknowledgement and the owner's own new-enquiry notification. It looked decided and was
+accidental, which is what a registry does when nothing checks it. It is **38 entries**
+now and §1 renders all 38. NB the coverage check's exclusion list is written out IN FULL
+and must not be derived from §1's — deriving it was vacuous, because §1 legitimately
+excludes the two autopay senders and those were exactly the previews that were missing.
+
+Thirteen templates that composed inline in a route or cron script now have pure builders
+in mailer.php taking their facts as arguments (`owner_mail_test_body`, `admin_code_body`,
+`backup_report_body`, `guest_chat_body`, `guest_message_body`, `enquiry_nudge_body`,
+`enquiry_rescue_body`, and the plain `owner_note_*` notes). **Their look was never the
+problem** — `send_owner()` wraps a plain-text caller in `owner_alert_text_html()`, so
+they always carried the house shell; what they lacked was a function a sample could call
+without the route. A plain builder returns `['subject','text']` only and the gate drives
+it THROUGH send_owner, so §2 measures the document that shell produces. The two weeklies
+outlasted the rest because they compose from a dozen live figures — the payload IS the
+work; `owner_digest_body($d)` / `weekly_analytics_body($d)` take it, the four pure
+FORMATTERS moved into the builder, everything touching the database stayed in the cron.
+
+**RENDERING THEM FOUND A REAL DEFECT IN THREE GUEST EMAILS**: the two enquiry nudges and
+the abandoned-enquiry rescue were the only templates handing a PER-COTTAGE accent to
+`email_btn` with `'#ffffff'` as the ink — **3.30:1** on Jollyboat's green. A button carries
+WORDS, so it takes the house accent+ink pair; the cottage colour stays where it is a FILL.
+Nothing could see this because nothing rendered these three.
+
+**THE TWO WEEKLY EMAILS HAVE A BUTTON** (Manage → System check → More tools).
+`owner-digest.php` and `weekly-analytics.php` have supported `?force=1` since they were
+written — their own headers say so — and nothing in the back office ever asked, so
+seeing your own digest meant waiting for Monday. `sendWeeklyEmailNow` POSTs with the flag in the
+QUERY (the script reads `$_GET['force']`; the POST is what makes `require_admin()`
+enforce CSRF). These send the REAL email with REAL data, which beats a fixture. **The
+enquiry nudge deliberately gets NO button** despite supporting the flag: it emails
+GUESTS, so forcing it is live marketing, not a sample.
+
+### The look
+
+- **THE MODERN PASS** (the invoice's rules applied to the inbox; approved demo). ONE
+  restyle of the shell + block helpers with the same helper API, so all 38 templates
+  carried at once and no composer changed. The centred crown-over-brand masthead (~210px
+  before the message) became ONE header line — 24px crown + the serif name, the serif's
+  only survivor; a 3px cottage-accent rule tops the card (`email_h`'s `$accent` is
+  accepted-and-ignored now — the swatch said the accent twice); labels are sentence-case
+  600; money is grotesque 40px tight tabular between a hairline and a 2px rule; tinted
+  panels went to hairlines EXCEPT `email_note`, deliberately the ONE shout an email
+  keeps; buttons are full-width radius-12. Ground `#ECE5D7` → `#F7F4EE`, which made every
+  ink floor easier.
 - **THE DARK TWIN IS ONE DEFINITION** (`email_dark_palette()`): the shell BUILDS its
-  `@media (prefers-color-scheme: dark)` block from it and test-emails-render §2's dark
-  pass READS it, so the palette served and the palette measured cannot drift. The class
-  hooks are INJECTED AT THE CHOKE POINT — `email_dark_hooks()` runs over the finished
-  document inside email_shell, mapping every inline ink/fill with a dark twin to its
-  `em-*` class (the pdfSafe rule: a sanitiser you have to remember is one the next
-  composer forgets). Unmapped inks (the button's `#3A2E1E` on the accent fill, the dark
-  status chips) keep their light values ON PURPOSE — they already work on both grounds.
-  Apple Mail honours the block fully; Gmail ignores everyone's preferences and
-  self-transforms regardless (no opt-out exists — the values chosen also survive that
-  transform). Break-tested three ways: hooks neutered → the ≥200 dark-mapped vacuity
-  floor fires; one bad dark value → the dark AA sweep; media block dropped → the shell
-  probe. **The dark pass found a real ink on its first run**: the magic-link email's
-  URL grey `#6b6b6b` — off-token, so no twin existed — measured 3.10:1 on the dark
-  card. `email_muted_ink()` now; the general rule is the §1b one — an ink outside the
-  token set is invisible to every palette that ships.
-- **THE PHOTO BAND** (`email_photo_band` pure + `email_prop_photo` IO): the
-  confirmation and arrival emails carry the cottage's FIRST gallery image, GD-downscaled
-  to 560w JPEG and INLINED as a data URI (the crown's own rationale — default
-  image-blocking cannot strip it), refused over ~66KB of base64 against Gmail's 102KB
-  clip. Local `uploads/` only (a remote gallery URL is not ours to fetch at send time),
-  traversal refused, and every refusal — no gallery, no GD, unreadable file — returns
-  `''`: no band, never a broken img. Resolved by `arrival_email_payload` for the pure
-  composer (the house-rules pattern) AND backfilled `??`-style in `send_arrival_email`,
-  because the owner's sample sender hands a bare payload and the preview must show the
-  band too. §11 drives the REAL GD path with a fixture JPEG written into the harness's
-  own temp dir (where the spliced mailer's `__DIR__` resolves).
-- **PREHEADERS FINISH THE THOUGHT.** Most restated the subject (several passed
-  `$subject` in verbatim); the money family now carries the figure + what it does + the
-  deadline ("£175.43 secures your dates — pay securely by card in two taps"), the
-  receipt says what remains, the refunds say the 3–5 working days. Keep them PLAIN
-  TEXT — email_shell escapes its first argument, so an entity prints literally in the
-  inbox (test-payrail already sweeps for exactly that).
+  `@media (prefers-color-scheme: dark)` block from it and §2's dark pass READS it, so the
+  palette served and the palette measured cannot drift. Class hooks are INJECTED AT THE
+  CHOKE POINT (`email_dark_hooks()` over the finished document inside email_shell) — the
+  pdfSafe rule: a sanitiser you have to remember is one the next composer forgets.
+  Unmapped inks keep their light values ON PURPOSE, already working on both grounds.
+  Apple Mail honours the block; Gmail ignores everyone's preferences and self-transforms
+  regardless (no opt-out exists; the chosen values survive that transform too).
+  Break-tested three ways. **The dark pass found a real ink on its first run** — the
+  magic-link email's off-token `#6b6b6b` at 3.10:1 on the dark card. The general rule: an
+  ink outside the token set is invisible to every palette that ships.
+- **THE PHOTO BAND** (`email_photo_band` pure + `email_prop_photo` IO): the confirmation
+  and arrival emails carry the cottage's FIRST gallery image, GD-downscaled to 560w and
+  INLINED as a data URI (the crown's rationale — default image-blocking cannot strip it),
+  refused over ~66KB of base64 against Gmail's 102KB clip. Local `uploads/` only (a remote
+  gallery URL is not ours to fetch at send time), traversal refused, and **every refusal
+  returns `''`** — no band, never a broken img.
+- **THE CROWN IS 144px AND MUST NOT BE QUANTISED.** Stored 240×240, displayed 72, so 144
+  is all a retina `<img>` can ask for: 14,026 base64 bytes → 8,864, every email ~5KB
+  lighter for no visible change. A 64-colour palette reaches 2,476 bytes and the
+  per-pixel arithmetic calls it fine — **it still BANDS**, because banding is a STRUCTURED
+  artifact a mean per-pixel delta underweights. The arithmetic passed and looking at it
+  did not, which is the whole reason to look.
 - **THE STARS COME TO THE INBOX**: the review ask carries five ★ links →
-  `?review=<prop>&stars=N`; `maybeOpenReviewLink` (app.js) polls for the card's OWN
-  `gb2Star` button and fires the same prefill My Stays' star-tap performs — armed on
-  BOTH auth branches, because the boot runs it before the session restore lands
-  (measured: the currentGuest-only version never fired in the gate). A star glyph is
-  still TEXT to a renderer: it takes `email_accent_ink()`, not the accent fill — §2 and
-  §5 both refused `#C79A64` at 2.55:1 the moment it was tried. Gated in
-  ui-test-yourstay (the deep link opens the real form prefilled, break-tested; NB the
-  harness's own second `openGuestArea()` re-renders the cards and wipes what the deep
-  link opened — the check passes `noopen`, which no real arrival needs).
+  `?review=<prop>&stars=N`; `maybeOpenReviewLink` polls for the card's own `gb2Star`
+  button and fires the same prefill My Stays' star-tap performs — armed on BOTH auth
+  branches, because the boot runs it before the session restore lands. A star glyph is
+  TEXT to a renderer, so it takes `email_accent_ink()`, not the fill.
+
+### And one rule about asking
+
+**AN EDIT THAT CHANGES NOTHING THE GUEST WOULD NOTICE MUST NOT ASK.**
+`offerUpdatedConfirmationEmail` fired after EVERY save, so correcting a phone-number typo
+raised a dialog asking whether to re-send the whole confirmation. `bookings.php`'s update
+tail returns **`material`** — dates, cottage, party or price, i.e. what the confirmation
+actually STATES — derived server-side because the client no longer holds the old row. An
+ask that appears for nothing teaches the owner to dismiss the one that counts.
+
+**NOBODY IS GREETED TWICE.** `build_enquiry_reply_email` OWNS the greeting (it must: an
+owner typing a bare message still gets one), so anything that FILLS its body must not
+greet. The defect was found once and then shipped TWICE MORE on surfaces nobody
+re-checked — reported from a phone as "Hello Laura," above "Hello Laura — everything you
+need for Pimpernel is below." The three: the arrival REVIEW preview went through that
+builder at all (the SEND had always routed to `send_arrival`), `chbDraftBookingReply`
+opened with its own `Hello <first>,`, and nothing held the STARTER reply library to the
+rule its own comment states. `arrival_email_body()` + `arrival_email_payload()` were split
+out of `send_arrival_email` / `send_arrival_for_booking` so the preview builds the REAL
+email from the REAL payload. The waitlist's own `wl_send($row)` needed no extraction —
+it simply had no caller.
 
 ## A refund asks whether it is still you (the step-up)
 
@@ -711,646 +620,353 @@ produces anything — with no producer the feature is invisible, which is the po
   489600 → 496000, admin.css 58700 → 59400, admin-views.html 22000 → 22600. app.js
   stayed within its budget, which is the one that had to.
 
-## The producer — `mac-app/` (Cottage Holidays Blakeney AI), and the READ half of the queue
+## The producer — `mac-app/` (Cottage Holidays Blakeney AI), and the READ half
 
-**Asked for as "build it as shown"**, after the replica. The overnight queue's
-receiving half shipped first (above); this is the machine that fills it. It lives in
-`mac-app/` at the REPO ROOT, outside `Cottage Holidays Blakeney`, so the deploy
-(which mirrors that folder only) never touches it. Its own README covers building,
-signing and what is real; what matters HERE is the site half and the rules.
-- **`nightshift.php` gained `brief`** — the mirror of ingest, same secret, same
-  setting, and the SMALLEST read that lets a producer draft without inventing
-  anything. `night_brief_enquiry()` (pure, gated) is the shape: waiting enquiries,
-  each carrying **the site's own quote already formatted** and **the site's own
-  clash answer**, plus that cottage's published Q&A and the host name. No email, no
-  phone, no address, no postcode — a drafted reply needs none of them, and §26
-  asserts the raw payload never contains them either.
-- **THE FIGURES TRAVEL WITH THE BRIEF, and that is what makes "it never states
-  money" enforceable rather than hoped for.** The producer is quoting, not
-  calculating. `dates_free` is `true`/`false`/**null**, and null means *say nothing
-  about availability* — a failed clash check must never become a cheerful yes
-  (break-tested).
-- **ONE SWITCH CLOSES BOTH DIRECTIONS.** `night-shift` off refuses the brief as
-  well as ingest; a readable door behind an unwritable queue would be the worst of
-  both.
-- **The app's own line is `mac-app/src/core/guard.js`** — a draft that quotes a
-  figure the site did not give, claims availability the site could not confirm,
-  contains a link, claims something is already done, or opens with a greeting (the
-  reply template adds one) is **dropped and named in the night log**, never
-  repaired. Repairing it would be the app writing text of its own. Its regexes
-  needed real work: the first free-claim pattern refused a correct reply about
-  TAKEN dates because it contained "…what else is open for you", and the taken
-  pattern missed "has already **been** taken" — both found by its own suite.
-- **The ref is deterministic per enquiry per night**, so a lost reply to a POST is
-  logged as UNCERTAIN rather than failed: tomorrow's identical ref settles it, and
-  re-drafting with a fresh ref is the duplicate this avoids.
-- Gates: `test-nightshift.php` §9–§12 (the brief's shape, its caps, first names —
-  break-tested four ways), **test-integration §26** (16 checks through the real
-  endpoints: the switch both ways, the secret, the site's own quote and calendar
-  answer, the withheld contact details, the cap — break-tested three ways), plus
-  the app's own `mac-app/test/core-test.js` (184 checks, zero dependencies, wired
-  into CI's `checks` job) and `mac-app/test/ui-test.js` (the window in a browser
-  against a fake bridge; wired into browser-core, and the ci.yml path filter now
-  includes `mac-app/` or a change there would skip both browser jobs).
-- NB the ui-test resolves playwright **relative to this file**, from the website's
-  node_modules — an absolute path worked here and would have silently skipped in CI.
-- **THE CHAT (mac-app) IS NOT THE BUSINESS CHANNEL, AND ITS TOOLS ARE READS.** The
-  Chat screen (`chat.js` pure module, `chatSend` in api.js) is the owner talking to
-  their own model — deliberately NO guard (the only reader is the owner) and no route
-  to the site for its WORDS. It can LOOK THINGS UP: four read-only tools
-  (`chattools.js` — today / bookings / availability+price / enquiries) against
-  `nightshift.php`'s `chat_tool` action, same device key, same `night-shift` switch,
-  figures formatted server-side (`night_tool_*` in nightshift-lib.php — the brief's
-  grounding rule; names travel, contact details never). The protocol is a `TOOL {json}`
-  line, parsed forgivingly, whitelisted strictly; a fumbled call gets ONE
-  GBNF-grammar-constrained retry (`chatToolGrammar` → engine.js's `grammar`
-  passthrough), lookups cap at 3, every latch is one-way so the loop always ends at a
-  sentence. Tool turns are EPHEMERAL — chats.json stores the owner's words and the
-  final answer only — and the reply carries `used` so the window says what was
-  checked. Unpaired = no tools taught, no site call. Gated by core-test §30/§31
-  (loop, retry, cap, ephemerality, unpaired — grammar wiring break-tested),
-  test-nightshift §24 (composers, PII absence, no guessed quote) and
-  test-integration §26c (the real door both ways, taken/free, no contact details).
-  **THE CHAT IS GROWN UP (v2).** Streaming (engine.js `chatStream` — SSE via the
-  injectable `ssePost`, abort = a DECISION returning ok+stopped+the partial; the
-  night jobs stay non-streaming on purpose), a per-send AbortController behind
-  `chatStop`, and live events to the window over `deps.push` → `chat-ev` (start /
-  round / think / tok / tool / tool_done / done — the payload rides tool_done for
-  THIS session's chip, never the disk). chats.json is a **v2 store** (`chatStore`
-  — titled thread list, cap 24, v1 array ADOPTED; ids carry a counter beside the
-  clock or same-ms mints collide — measured). **Thinking is real or absent**:
-  reasoning models' `<think>` blocks split by `chatThinkSplit` + the stateful
-  `chatThinkStream` (tags cut across chunks are held back), stored on the msg
-  (`think`, capped) for the fold, and NEVER sent back in history (reasoning
-  models degrade on their own old thinking). A stop BEFORE any answer stores no
-  assistant msg — the question stays askable. The renderer got markdown
-  (escape-FIRST, small subset), the conversations rail, the TOOL-round holdback
-  (a streaming tool call never paints), think folds (open live, closed at rest),
-  lookup chips, Copy/Regenerate/edit, starter chips. Gated by core-test §32
-  (store/split/splitter/stream/abort/events/stop-both-ways/regen/truncate/
-  threads) and the mac ui-test's grown-up block (held-open send driving real
-  events; the holdback and escape-first each break-tested).
-  **v3 — ROOM TO THINK, and the FIFTH TOOL.** Reported live: "the AI can't see
-  cottage data" — the plumbing was fine (verified against production), the gap was
-  that all four tools assumed the model knew what the cottages WERE. `cottages`
-  (night_tool_cottages) hands over the fleet: names, occupancy, base rate FRAMED
-  ("seasons and weekends move it"), published Q&A capped at NIGHT_TOOL_FACTS_MAX.
-  The chat also knows its limits out loud: a CONTEXT METER measured from llama.cpp's
-  `/props` n_ctx + each reply's own usage (engine `props()`; ctx 0 = no meter, never
-  a guess), and TRIM HONESTY — `dropped` rides the done event and the window says
-  "your oldest N messages no longer travel" the first time it grows (persisted by
-  renderChat, or the reload wiped the warning — measured). Per-thread standing
-  INSTRUCTION (`instr`, owner-typed or absent, joins the system content, empty
-  clears), EXPORT as Markdown (`chatExportMd` pure; main.js owns the save dialog),
-  rail SEARCH (renderer-only), and ATTACH a text file (main's open dialog; pure
-  `chatAttachProblem` refuses empty/NUL/over-CHAT_ATTACH_CHARS in a sentence —
-  never silently cut; `chatAttachMsg` fences it into the USER turn so the trim
-  can never separate a question from its file; the msg keeps `file` for the chip).
-  NB the rail's export/delete marks live INSIDE the row button — their handlers
-  must run before the row's or the row swallows the click (measured). Gated by
-  core-test §33, test-nightshift §24's cottage checks, test-integration §26c, and
-  the ui-test's room-to-think block.
-  **THE WEB CHAT — the owner's Mac from anywhere** (its own page now:
-  **view-aichat**, "AI chat", the spark glyph in the admin dock — 6 buttons;
-  `openAiChat`/`renderMacChat`/`mcSend` in admin.js, ask kind `ownerchat`;
-  the Manage row stays as a second way in. The rename is DISPLAY-ONLY: the
-  internal ids — the `mac-chat` thread key, the ask kind — keep their names,
-  the rename discipline. The approved iOS-26 anatomy: presence in the page's
-  own bar, a welcome CARD with three starters, the round trip narrated as
-  CAPSULES in the log (waiting → picked up → the warn states), a FLOATING
-  glass composer above --safe-b shown only while the view is active, and
-  Clear behind the … sheet with New conversation + the standing instruction.
-  NB nav()'s view hook owns the render — openAiChat calling it too ran two
-  renders concurrently and orphaned the presence node mid-swap, measured). The ask channel is
-  the meeting point, so there is NO tunnel, no open port, no new credential —
-  the Mac only ever dials out. chat_send appends to the ONE shared thread
-  (internal key `mac-chat`, `night_ownerchat_thread` sanitises, cap 40) and files
-  the ask (options = `night_ownerchat_payload`: newest 16 turns + the standing
-  instruction — the Mac composes its own system line, the site hands over FACTS);
-  a second send SUPERSEDES the first (one conversation, one ask in flight). The
-  Mac's sweep handles the kind whole, before the model pick (jobs.runAskSweep →
-  the injected `ownerChat` handler = the LOCAL chat's own chatEngineUp/chatLoop,
-  extracted for exactly this; chatBusy taken so the two chats share the engine,
-  `skip` leaves the ask for the next sweep seconds away). The answer is a JSON
-  ENVELOPE ({text, think, used, ms, tps} — `night_ownerchat_answer_problem` at
-  the door, its own caps because think rides inside); partials stream via
-  `ask_partial` onto the OPEN row (throttled ~1.5s, TOOL holdback applied Mac-side
-  so a lookup being typed never paints on the phone), and `chat_poll` long-polls
-  (≤20s, 250ms grain) returning partial/answered/expired — the APPEND IS CLAIMED
-  ('answered'→'collected' guarded UPDATE), so two devices polling one ask store
-  ONE message. Presence is honest (`night_mac_presence` — listening / last heard /
-  asleep) and expiry says so in a sentence. CONNECTIVITY: both pre-existing holds
-  (asks, ask_status) moved from sleep(1) to 250ms grain — with the Mac's 2s
-  re-arm the channel is effectively instant end to end. Gated by test-nightshift
-  §25 (pure), test-integration §27b (round trip, claim-once, supersede, the
-  switch), core-test §34 (the sweep through the REAL chat core, busy-skip — an
-  instant fake proved nothing, the send must be held — and the partial holdback,
-  break-tested) and ui-test-nightshift §9 (the screen: presence, partial paint,
-  markdown-inert settle, asleep/expired honesty; escape break-tested).
-  **THE BAR IS A PILL** (owner-shown photos): the strip lost its own spark logo —
-  the dock's mark and the condensed header carry the page's identity — and slimmed
-  to a 999px pill of presence + the ⋯; an sr-only `<h1>` keeps the outline.
-  **ATTACHMENTS (📎 on the composer).** A DOCUMENT (.txt/.md/.csv/.json, 6000
-  chars) is read on the phone and FENCED into the message — `mcAttachMsg`, byte-
-  for-byte the Mac chat's own `chatAttachMsg` shape — so it rides the existing ask
-  payload with no new endpoint; the bubble collapses the fence to a `.mc-fchip`
-  named chip (`file` on the msg; the STORED text keeps the whole fence — the honest
-  record of what the model saw), and PDFs/Word are refused BY NAME, never
-  half-read. **The payload's NEWEST turn travels WHOLE** (`NIGHT_OWNERCHAT_LAST_
-  TURN_CHARS` = TEXT_MAX) — the 1500-char history cap would hand the model half a
-  file and let it answer confidently about the half it saw; history keeps 1500.
-  A PHOTO rides `chat_send` as a ≤1280px JPEG data URI (the odsPhotoData
-  re-encode): stored by `chat_photo_store` (db.php — the deposit-evidence contract:
-  magic bytes, 2MB, random name), the thread carries only the MINTED ref
-  (`night_chat_ref_ok`, the ONE shape `chat_file` will serve back — a device key
-  must never become a way to read arbitrary uploads/), self-repair prunes chat
-  photos at 7 days, and a photo that will not store REFUSES the whole send in a
-  sentence (quietly dropping it would let the Mac answer about a picture it never
-  saw). `img`/`file` SURVIVE the thread sanitiser — chat_poll re-writes the thread
-  through it, so a dropped field would erase the photo the moment the Mac replied —
-  and the payload carries `img` ONLY on the final turn (an old photo must never
-  resurface under a new question). VISION: `models.projectorFor` pairs a model with
-  ITS OWN `mmproj-*.gguf` by name tokens (quant stripped — a gemma projector on a
-  qwen model is garbage in), downloading a vision model fetches its projector
-  alongside, the runner launches `--mmproj`, and whether the engine can SEE is
-  MEASURED (`props().modalities.vision === true`, never guessed). Three honest
-  outcomes, no fourth: vision → the image joins the newest turn as OpenAI content
-  parts (engine cleanMsgs accepts a valid parts array; half a multimodal message is
-  not a smaller message); text-only → the model NEVER meets the photo and the
-  answer says so (a bluffed description is the failure this exists to prevent);
-  fetch failed → said plainly. Gated: test-nightshift §25 (ref shape, sanitiser
-  round trip, whole-last-turn, ref-on-final-turn-only), test-integration §27b (a
-  pinned real JPEG stored and served back byte-for-byte; the switch closes the
-  photo door), core-test (pairing, --mmproj, parts, the three outcomes),
-  ui-test §9 (chip arm/disarm via real setInputFiles, fenced send, collapsed
-  bubble, junk refs never reaching src). NB `'\u0000'` must be the ESCAPE in the
-  attach validator's source — a literal NUL byte turns admin.js into "binary file
-  matches" for every grep.
-  **SEND BECOMES STOP (■).** `mcSend` is a SYNC wrapper (send, or `mcStop` when
-  busy) over `mcSendRun` — load-bearing, not style: the data-act dispatcher
-  DISABLES a button for the life of a returned promise, so the old async mcSend
-  had the one control a Stop needs dead for the whole round trip. mcSendRun's
-  finally is STAMP-GUARDED (`stamp === __mcStamp`) — a stopped flight's cleanup
-  must never clear a NEWER send's busy flag. Three layers, one decision: the
-  stamp kills the poll at once; `chat_stop` claims the open ask (guarded UPDATE,
-  and the partial is read AFTER the claim so ask_partial cannot grow it
-  underneath) — words already streamed are KEPT in the thread marked `stopped`
-  (the sign-off rides the MESSAGE, so every device's reload says the same; a stop
-  before any words stores NOTHING and the question stays askable), and an answer
-  that BEAT the stop is reported `raced` and collected honestly, never hidden;
-  the Mac learns through `ask_partial`'s own reply — `held: false` (a fact the
-  site always computed and the Mac used to discard) aborts the generation through
-  the local Stop's signal path within ~1.5s, freeing the engine, and the aborted
-  remainder is never posted (`{skip:true}`). A NETWORK BLIP on a partial must
-  never read as a stop — held defaults true on any non-ok. Gated at every layer,
-  incl. core-test's abort-mid-stream and ui-test's live-■-mid-partial.
-  **TIER 1 — THE WHOLE-BUSINESS READS** (`money` / `performance` / `expenses`
-  join the five tools). money's due-now split uses `booking_within_balance_window`
-  — the payask's OWN derivation, so the chat and the hub cannot disagree — plus
-  the deposits ready to return; every stay row carries **`ref`** (the booking id;
-  an id is not a contact detail) so an action can point EXACTLY at a booking;
-  performance is direct-bookings-only and its `frame` SAYS so; expenses is the
-  tax year with the Income & tax screen's own caveat. No email or phone ever
-  travels (gated by absence in the raw payload).
-  **TIER 2 — THE MODEL PROPOSES, THE PHONE DISPOSES** (`ACT {json}` beside TOOL;
-  `CHAT_ACTS` mac-side, `NIGHT_ACT_KINDS` site-side: block_dates, price_override,
-  request_payment, add_booking, send_enquiry_reply). The ACT protocol is taught
-  to the WEB chat only — the local screen never learns it (gated), so a local
-  reply can never carry a card nothing will render. The ACT line is STRIPPED
-  from the words (and held back from streamed partials) and rides the envelope
-  as DATA. **Three independent doors**, and all three are load-bearing: the
-  ANSWER door (`night_act_resolve` — closed whitelist with refunds/cancel refused
-  BY NAME so their absence is a tested decision; cottage resolved against the
-  live list exactly as the availability tool resolves one; the past not
-  proposable; rate £20–£2000; request_payment/send_enquiry_reply refs must EXIST),
-  the thread SANITISER (`night_act_problem` re-validates on every pass — a
-  hand-edited content row can never mint a card), and the phone's CLOSED registry
-  (`MC_ACTS` — an unknown kind renders no card at all). The card fires NOTHING on
-  render (gated by collecting every request); Confirm executes from the ADMIN
-  SESSION through the endpoints the back office already trusts — and **a card may
-  NEVER send an override flag**: a clash or occupancy warning comes back in the
-  server's sentence and the card stays live, because a deliberate overlap needs
-  the form's own informed confirm, never a model's proposal riding through one.
-  The VERDICT is thread state (`chat_act_done` — decided ONCE, index verified
-  against the act's own kind so a rotated thread 409s to a refresh rather than
-  marking the wrong card; a card confirmed on one phone is inert on every device
-  and reload). A DEAD proposal (booking gone, enquiry answered, already settled)
-  says why instead of offering a dead button. `__mcState.msgs` is kept in step
-  with every append (send, poll, stop) because a card is ADDRESSED BY INDEX.
-  **DATE SEMANTICS DIFFER PER ACTION ON PURPOSE**: block/price speak first-night/
-  last-night INCLUSIVE (what "block the 24th to the 27th" means; the client
-  converts to the exclusive checkout at exec — `ukShiftDays(to, 1)`), while
-  add_booking speaks the house's own `check_in`/`check_out` (guest-speak "the
-  12th to the 15th" IS arrive/leave — inclusive from/to there would be the
-  off-by-one trap). request_payment goes THROUGH the kept email preview
-  (`requestPayment` returns sent; backing out keeps the card live);
-  price_override rides `cmdkApplyPriceOverride` (undo recorded);
-  send_enquiry_reply opens `enqReplyDraft` (open-then-draft, the load-bearing
-  order) and its done state claims only "Reply opened" — sending stays in the
-  composer.
-  **THE RETRY NET**: a fumbled ACT line gets ONE re-ask constrained by
-  `chatActGrammar` (cool 0.2 decode, the corrected line only) — the TOOL
-  protocol's own net, because a 4B model fumbling a bracket should cost a beat,
-  not the card. Still bad after that, or the send was stopped → dropped and
-  NAMED, never repaired; the words always stand. Gated through the REAL loop
-  (constrained + cool + card saved; the double-fumble dropping).
-  **THE GROUNDING PACK — the model arrives already knowing.** Every ownerchat
-  ask carries a WORLD SHEET (fleet / today / money), composed fresh at
-  chat_send from `night_gather_today`/`_money` — the SAME gatherers the
-  today/money tools read, extracted so a lookup and the pack can never
-  disagree about one day. `night_world` slims hard (lists cut to
-  NIGHT_WORLD_LIST_MAX, names + formatted figures only — no contact detail
-  and no `ref` survives into the pack, gated by absence): the pack rides
-  every ask and pays context for it; the tools stay the way to go deep.
-  BEST-EFFORT: a failed gather never blocks the send — the model just looks
-  things up, yesterday's behaviour. Mac-side, `chatGroundText` is the ONE
-  place facts become prompt text (labelled live-and-trusted, joined before
-  the instruction), so the first generation starts grounded and a tool round
-  is depth, not a prerequisite. **MEMORY is the owner's, only ever**:
-  `mac-chat-memory` (INTERNAL, classified in db.php), capped 12×200, edited
-  under the ⋯ sheet (glassForm gained a `textarea` type — collected via
-  el.value like any input), labelled "the owner asked you to remember" — the
-  app never adds a line, because memory the model invented is the failure
-  this shape prevents.
-  **MEMORIES v2 — dated, proposable, and ONE BRAIN.** A memory is `{t, at}`
-  now (`night_ownerchat_memories` adopts legacy strings with at='' — unknown
-  is honest, an invented date defeats the staleness question; the MODEL only
-  ever sees texts via `night_ownerchat_memory_texts`). The SERVER dates:
-  chat_memory_save keeps the date of any line whose text stood and stamps
-  only new lines today, so retyping never re-dates; the ⋯ editor whispers
-  about lines over six months old. The `remember` ACT lets the model PROPOSE
-  a line ("want me to keep that?") — the invariant holds because the card's
-  confirm is what makes it a line, and Already-remembered / a full list (12)
-  are sentences, never dead buttons. AND THE MEMORIES TRAVEL: the night
-  BRIEF carries them so guard.buildPrompt binds every overnight reply draft
-  ("STANDING PROMISES … must NEVER contradict" — this closed a real gap: a
-  promise taught to the chat was invisible to the drafter), and the asks
-  POLL carries them so the Mac's LOCAL chat grounds on the same facts
-  (api.js `chatSiteMemories`, updated on every ok poll INCLUDING to empty —
-  a pruned list must be forgotten, not remembered stale; site.js's mappers
-  are strings-only, because String({bad:1}) is '[object Object]' and the
-  fixture caught it). Gated: test-nightshift (dated sanitiser, texts, the
-  remember act), test-integration §27b (dated save/resave semantics, poll +
-  brief carriage, the act through the answer door), core-test (buildPrompt
-  binding, brief/poll mappers, local-chat parity both ways through the real
-  api), ui-test-nightshift (the card, the full-list sentence, the editor's
-  staleness whisper).
-  **THE ROW ERA (migration-118).** The conversation lives in
-  `ownerchat_msgs` now, not the mac-chat blob: every message has an ID, so a
-  card is addressed EXACTLY (`chat_act_done` takes `id`, kind still
-  verified, and the decide is a GUARDED `WHERE act_done IS NULL` update —
-  two devices deciding at once store one verdict); appends are rows, so two
-  devices cannot lose-update each other; and the 40-message cap became a
-  DISPLAY window over history self-repair prunes at 90 days. The `mac-chat`
-  key SURVIVES carrying the instruction; its old msgs are ADOPTED into rows
-  on the first read (`ownerchat_adopt`, best-effort, blob then keeps instr
-  only). Every row still passes `night_ownerchat_thread`'s sanitiser both
-  ways (`ownerchat_row_to_msg` / `ownerchat_append`) — the table changed
-  WHERE messages live, never what may live in one. Pre-migration: reads fall
-  back to the blob; chat_send REFUSES with the run-the-migrations sentence
-  (storing into a blob the reads no longer consult would vanish the
-  message). NB **`content_set_scalar` json_encodes its value**, so a column
-  holds JSON of a JSON string — a test reading `content.item_value` decodes
-  TWICE (the adoption gate hit this; content_json does the same round trip).
-  **THE RAIL (migration-118 → 119).** `ownerchat_msgs.convo` names each row's
-  CONVERSATION: "New conversation" opens beside the old ones (acNewChat is no
-  longer destructive — acClearChat is, one convo, behind the confirm), the
-  `.mc-rail` chips list them (titled by the FIRST question's first line;
-  hidden below two — nothing to switch between), and the ask carries the convo
-  as **entity_id** so poll/stop append the answer into the conversation the
-  question was asked in, never whichever one a device is looking at. A
-  brand-new convo has no rows, so the client synthesises its chip. Gated by
-  test-integration §27b's convo block + ui-test-nightshift §9's rail block.
-  **WHAT THE CARD DID IS ATTRIBUTED** (`via_label($in)` in db.php — CLOSED
-  whitelist, only `'ai-chat'` earns " · via AI chat"; junk earns nothing).
-  Wired where the cards execute: bookings add + request_payment, rates
-  seasons_save (cmdkApplyPriceOverride's optional `via` — the APPLY only, an
-  undo is the owner's own tap), and ical add_block, which now logs at all
-  (blocks left no record before). Gated in §27b both ways; the two send-path
-  wirings are pinned at source there.
-  **THE COAST TOOL AND THE CAPABILITY THREE.** `coast` (ninth tool) answers
-  tides + weather for ONE day with that day's arrivals cross-referenced —
-  `night_tool_coast` formats everything at the source (times in the QUAY's
-  clock: WorldTides answers UTC, so DateTime→Europe/London or a summer high
-  water reads an hour early), and each half degrades to an honest absence
-  ("No tide key is set"), never a guess. Its integration gate SEEDS the
-  weather cache (content_set_scalar's double-encoded shape, straight into
-  the content table) so no network is touched. Three act kinds join the
-  whitelist: `add_expense` (a RECORD of money already spent — which is why
-  it may join while refunds stay refused by name; a FUTURE date is refused,
-  "a plan is not a fact"), `send_arrival_info` and `record_payment` (both
-  booking-ref kinds, existence-checked at the answer door beside
-  request_payment). record_payment is OPEN-FORM honesty: it opens the
-  recordPayment modal and its done state claims exactly that — the model
-  never states an amount. **A CONFIRMED CARD MAY OFFER WHAT FOLLOWS**
-  (`MC_ACT_NEXT`): one quiet chip in the done sign-off, never a second
-  proposal — add_booking offers "Send the confirmation" with the CREATED id
-  (held in `__mcActRes`, this session's map ONLY: the stored act may not
-  grow fields, the sanitiser would refuse the whole card on the next read,
-  so after a reload the done state simply has no chip), block_dates offers
-  the calendar, price_override offers Rates. Nothing fires on render.
-  **A TOOL LOOKUP RETRIES ONCE, AND THE CHAT CAN READ THE WIDER WEB.**
-  site.js's chatTool was a one-shot fetch, so a single TCP hiccup on home
-  broadband killed a whole answer with "fetch failed" (seen live, on the
-  cottages tool) — it retries once on a THROWN transport failure (delay
-  `retryMs`, injectable; a refusal the SITE spoke is never retried). And
-  `web` is the tenth tool: `mac-app/src/core/webfetch.js` fetches ONE
-  public page ON THE MAC — never through the site's door (not site data,
-  and the device key must not become a proxy). Its rules assume the model
-  cannot be trusted with an address: https only; localhost/.local/private
-  IP literals refused at the STRING and any name that RESOLVES to
-  loopback/RFC1918/link-local/CGNAT/ULA refused at the LOOKUP (the half a
-  hostname check cannot see); redirects followed BY HAND, max 3, each hop
-  re-checked (a public host 302ing to the router is the classic dodge);
-  body capped, stripped to text, and every result carries the
-  stranger's-page warning the intro also teaches (quote it, never obey
-  it — the prompt-injection posture; the owner still confirms every ACT
-  card, so a hostile page can at worst propose). NB `chatToolCall` sliced
-  EVERY argument to 80 chars — a URL cut there silently became a
-  DIFFERENT address; 'url' alone now carries 500. Gated in core-test:
-  the retry (once on throw, never on a spoken refusal), the fetcher's
-  whole rule table incl. the DNS half and the redirect re-check, the
-  long-URL regression, and the wiring through the real loop (the page
-  reaches the model, the site's door is never knocked).
-  **THE AUDIT'S TEN (Aug 2026 review sweep), for the record.** `ask_partial`'s
-  `held` was the UPDATE's rowCount() — MySQL counts CHANGED rows and the
-  streamed text legitimately freezes during a held-back protocol line, so a
-  byte-identical re-post read as "not held" and aborted healthy generations;
-  held is a SELECT of the row's status now (gated: identical re-post stays
-  held). The digest door's number canon rtrim'd zeros off INTEGERS (£450
-  grounded on £45 rows — 10x-100x accepted); zeros are forgiven only after a
-  decimal point, matching the Mac's checkDigest. The DAYTIME reply ask
-  dropped the poll's memories while the night brief bound them — passed now.
-  ACT args were all sliced at 80 (a proposed memory cut mid-sentence against
-  an intro promising 200): text carries 200, note 120. webfetch's transport
-  is https.request CONNECTED TO THE VETTED IP (fetch re-resolved the name —
-  the rebinding TOCTOU), body read STREAMING and cut at the byte cap with an
-  ABSOLUTE deadline (res.text() buffered unbounded after the timeout cleared
-  at headers; a trickling server wedged chatBusy for ever). The Keychain
-  write rides `security -i` STDIN, never argv (the key was in the process
-  list; a key with quote/backslash chars — no real one — keeps the argv
-  path rather than corrupt the store). The tray's Run-now goes through the
-  runNow() WRAPPER (calling api.runNow direct skipped the power assertion
-  and the window refresh). night_tool_problem's unknown-tool correction is
-  DERIVED from NIGHT_TOOLS (the hand list stopped at five and taught the
-  model the newer four don't exist). askLog's dead second slice(-20) is
-  gone (it starved state()'s slice(-40)). And updater.js's comment claimed
-  a same-host asset check the code never performed — the comment now states
-  the real rule (https only; same-host would refuse every GitHub release).
-  **THE PHONE-SIDE TEN (round 2 of the same sweep).** A refused chat_send
-  now speaks the SERVER'S sentence (the catch swallowed 409/503/400 into
-  "Could not reach the site" — the owner checked WiFi for a switch that was
-  off) and takes the optimistic bubble DOWN with the words back in the box.
-  `mcCollect` is the ONE collect loop (mcSendRun + mcResume), budgeted on
-  ELAPSED TIME never iterations (45 iterations died in ~70s mid-stream —
-  chat_poll returns whenever the partial grows); `renderMacChat` stamp-guards
-  its own chat_thread fetch (a stale response repainted the wrong convo) and
-  fires **`mcResume`** when `__mcBusy` — nav-away-and-back used to strand
-  busy forever with the answer stored but never collected. The act cards'
-  bookingDue calls passed `findBookingLocation(act.booking)` — an OBJECT
-  where a prop-key string goes, and always null anyway (client ids vs the
-  act's numeric id), so a no-locked-price booking read "already settled"
-  over real money; the key now comes off the booking actually found.
-  `chat_memory_save` gained **ADD-ONE mode** and the remember card uses it —
-  replace semantics from a stale phone mirror silently deleted lines another
-  device had added (dup → `already: true`, full list → 409 sentence).
-  `acNewChat` refuses to guess with no state (a derived number landed inside
-  an existing conversation). `draftChatOnMac` re-checks the THREAD after its
-  await (guest A's draft could land in guest B's box — mtDraftOffer's own
-  guard, now on both paths). And messages.php files NO draft ask for a
-  photo-only guest message — the pipeline can't see the image, so the Mac
-  drafted confidently against an empty message. All gated (ui-test-nightshift
-  round-2 block, integration §27b add-one + photo-only).
-  **CHAT CONTINUITY — the two chats stay two, and meet on purpose.** The
-  local Mac chat is offline-first and private (its words never reach the
-  site on their own); the web chat is the shared record. Two bridges, both
-  owner-initiated, neither granting the device key any new power:
-  "SEND TO MY PHONE" (the ⇗ on a local rail row → api.chatSendToPhone →
-  site.importChat → nightshift `chat_import`): the thread becomes a NEW web
-  conversation — roles mapped you/mac, THINK NEVER TRAVELS, last 40 msgs,
-  every message through the ownerchat sanitiser at the append, exactly-once
-  by ref (`imp-<thread id>`; the ledger is the internal key
-  `mac-chat-imports`, capped newest-60 — an ancient re-send importing twice
-  is the safe direction). Refusals are `night_chat_import_problem` (pure,
-  gated): ref shape, 1–40 msgs, who ∈ you|mac, no wordless message.
-  "ON YOUR PHONE" (the rail's opener row → api.webChat → `chat_mirror`):
-  the web rail READ-ONLY in the Mac window — no new data class (the Mac
-  reads these turns whenever it answers an ask) and deliberately NO write:
-  replying stays on the phone, where the admin session and the action
-  cards live; the composer disables with a read-only placeholder. Both
-  doors: device key + the one night-shift switch; pre-migration → the
-  run-the-migrations sentence. Gated: test-nightshift §20b (validator),
-  test-integration §27b continuity block (round trip, exactly-once, bad
-  who, mirror, 401 both, switch closes both), core-test (thread mapping +
-  think-absence + ref + already + mirror pass-through), mac ui-test (the ⇗
-  through the bridge, the read-only view, back re-arms the composer — NB
-  the phview row joins `.crow`, so rail-count checks exclude `.phview`).
-  **THE SECURITY PASS (Aug 2026), for the record.** The web tool could be an
-  UNCONFIRMED exfil channel — a prompt-injection page or hostile guest
-  message could steer a SECOND fetch to attacker.example with guest names +
-  balances in the query string (a fetch is not an ACT, so no owner confirm).
-  Closed: the web tool may fetch ONLY a host the OWNER named this
-  conversation (`webOwnerHosts`/`webHostAllowed` over the user turns; a
-  subdomain of a named host passes, the reverse never; a redirect WITHIN an
-  owner-named site is the site's choice, re-checked only for SSRF). The
-  device-key long-poll doors (`asks`/`chat_poll`/`ask_status`) each held an
-  FPM worker up to 25s with only a request-COUNT limit — a key holder could
-  drain the pool; a MySQL-advisory concurrency cap (`night_poll_slot`,
-  8 slots, the book_lock mechanism) now makes a door answer its snapshot NOW
-  when every slot is busy rather than hold. And `chat_mirror`'s comment
-  claimed false parity — it IS a wider read (every convo title + one convo's
-  full messages) than the ask channel; the comment now states the honest
-  blast radius of a compromised key (owner's own chat history, never guest
-  PII beyond `brief`). Gated: core-test (the exfil guard both ways),
-  test-integration §29 (the cap held on a second connection, proven by
-  timing). Confirmed NOT problems: CSRF on every admin door, night_require_key
-  fails closed on a corrupt row, chat_import strips act/img/think, the
-  pinned-IP transport closes the rebinding TOCTOU incl. cloud-metadata IPs.
-  **THE WELCOME OPENS THE DAY LIKE A COLLEAGUE.** mcDayHtml (the AI chat's
-  empty-state card) greeted only when a DUTY was outstanding — a day with an
-  arrival but nothing owed showed the generic hello. It now greets with the
+The overnight queue's receiving half shipped first (above); this is the machine
+that fills it. It lives in `mac-app/` at the REPO ROOT, outside `Cottage Holidays
+Blakeney`, so the deploy (which mirrors that folder only) never touches it. Its
+README covers building and signing; what matters HERE is the site half and the
+rules. Gates throughout: `test-nightshift.php` (pure), `test-integration` §26–§29
+(real endpoints), `mac-app/test/core-test.js` + `ui-test.js` (CI's checks +
+browser-core jobs — ci.yml's path filter includes `mac-app/` or both browser jobs
+skip). NB the mac ui-test resolves playwright RELATIVE to itself, from the
+website's node_modules; an absolute path works locally and silently skips in CI.
+
+**THE NAMES, so they can be grepped.** Site side, all in `nightshift.php` /
+`nightshift-lib.php`: actions `brief` / `chat_tool` / `chat_send` / `chat_say` /
+`chat_poll` / `chat_stop` / `chat_thread` / `chat_import` / `chat_mirror` /
+`chat_photo_store` / `chat_file` / `chat_act_done` / `chat_memory_save` /
+`chat_clear` / `ask_partial` / `asks` / `ask_status` / `handoff_put`; validators
+`night_ownerchat_thread` / `night_ownerchat_payload` / `night_ownerchat_answer_problem`
+/ `night_ownerchat_memories` / `night_ownerchat_memory_texts` / `night_ownerchat_sums` /
+`night_act_problem` / `night_act_resolve` / `night_chat_ref_ok` /
+`night_chat_import_problem` / `night_tool_problem` / `night_mac_presence` /
+`night_world` / `night_tool_coast` and the other `night_tool_*`; row helpers `ownerchat_adopt` / `ownerchat_append` /
+`ownerchat_row_to_msg` / `ownerchat_file_ask`; caps `NIGHT_ACT_KINDS` /
+`NIGHT_TOOLS` / `NIGHT_WORLD_LIST_MAX` / `NIGHT_TOOL_LIST_MAX` / `NIGHT_HANDOFF_FRESH`
+/ `NIGHT_OWNERCHAT_LAST_TURN_CHARS` / `night_poll_slot`. Internal content keys:
+`mac-chat` (the instruction survives here after the row migration), `mac-chat-memory`,
+`mac-chat-sum`, `mac-chat-imports`, `chat-handoff`, `night-shift`,
+`nightshift-app-url`. Mac side: `chat.js` / `chattools.js` / `engine.js` / `guard.js` /
+`webfetch.js` / `bench.js` in `src/core`, with `chatStore` / `chatStream` / `chatStop` /
+`chatLoop` / `chatToolGrammar` / `chatActGrammar` / `chatGroundText` /
+`chatAttachProblem` / `chatExportMd` / `chatSiteMemories` / `chatContinue` /
+`webOwnerHosts`, api.js's `chatSend` / `chatSendToPhone` / `webChat` / `benchModel`, the injectable `ssePost` / `retryMs`, and `CHAT_ACTS`. Phone side
+(admin.js): `openAiChat` / `renderMacChat` / `mcSend` / `mcSendRun` / `mcStop` /
+`mcCollect` / `mcResume` / `mcAttachMsg` / `mcDayHtml` / `acNewChat` / `acClearChat`,
+with `MC_ACTS` / `MC_ACT_NEXT` and the `__mcBusy` / `__mcStamp` / `__mcState.msgs` /
+`__mcActRes` state.
+
+**THE GROUNDING RULE, which everything else hangs off.** The producer QUOTES, it
+never calculates. Every figure travels pre-formatted from the site
+(`night_tool_*`, `night_brief_*` in nightshift-lib.php); `dates_free` is
+true/false/**null**, and null means say nothing about availability — a failed
+clash check must never become a cheerful yes. **No email, phone, address or
+postcode ever travels**, asserted by ABSENCE in the raw payload.
+
+**ONE SWITCH CLOSES BOTH DIRECTIONS.** `night-shift` off refuses the brief and
+the chat doors as well as ingest — a readable door behind an unwritable queue is
+the worst of both. Pre-migration reads fall back; writes REFUSE with the
+run-the-migrations sentence rather than storing where reads no longer look.
+
+**The app's own line is `mac-app/src/core/guard.js`** — a draft that quotes a
+figure the site did not give, claims availability it could not confirm, contains
+a link, claims something is already done, or opens with a greeting (the template
+adds one) is **dropped and named in the night log, never repaired**. Repairing it
+would be the app writing text of its own. The ref is deterministic per enquiry
+per night, so a lost POST is logged UNCERTAIN and tomorrow's identical ref
+settles it.
+
+### The two chats stay two, and meet on purpose
+
+The LOCAL Mac chat is offline-first and private — its words never reach the site
+on their own, so it has no guard (the only reader is the owner). The WEB chat
+(`view-aichat`, ask kind `ownerchat`) is the shared record. The **ACT protocol is
+taught to the web chat ONLY** (gated), so a local reply can never carry a card
+nothing will render.
+
+- **The ask channel is the meeting point** — no tunnel, no open port, no new
+  credential; the Mac only ever dials out. `chat_send`/`chat_say` share
+  `ownerchat_file_ask` (one supersede, one payload, one grounding) or a
+  conversation would mean different things by which keyboard was used.
+- **The append is CLAIMED** ('answered'→'collected' guarded UPDATE), so two
+  devices polling one ask store ONE message. Partials stream via `ask_partial`;
+  `chat_poll` long-polls (≤20s, 250ms grain).
+- **Messages are ROWS** (`ownerchat_msgs`, migration-118/119), so a card is
+  addressed by ID and two devices cannot lose-update each other. `convo` names
+  the conversation and rides the ask as **entity_id**, so the answer lands where
+  it was asked, not where a device happens to be looking. Every row passes
+  `night_ownerchat_thread`'s sanitiser both ways — the table changed WHERE
+  messages live, never what may live in one.
+- **Two bridges, both owner-initiated**: `chat_import` (⇗ "send to my phone" —
+  a local thread becomes a NEW web convo; THINK never travels; exactly-once by
+  ref) and `chat_mirror` (the web rail read-only in the Mac window). `chat_say`
+  makes the mirror's composer live: the Mac appends the OWNER's words to a web
+  convo so a handed-off conversation has ONE record. **The boundary, stated**: a
+  device key can put words in a thread as the owner — a narrowing of what
+  `chat_import` could already do, capped and rate-limited, with every proposed
+  action still confirmed on the phone.
+- **HANDOFF** rides calls both surfaces already make (`handoff_put`, internal key
+  `chat-handoff`, keyed BY DEVICE — the device is decided by HOW the caller
+  authenticated, never taken from the body). RECENCY replaces proximity
+  (`NIGHT_HANDOFF_FRESH` 300s) and the unsent DRAFT travels with the offer, which
+  is what makes it a continuation. **A RENDER IS NOT AN ACTIVITY** — advertising
+  fires on arriving, switching convo, sending and a 2.5s typing pause, never from
+  the renderer, because the action-card gates hold that page to "a render fires
+  nothing". The one inherent asymmetry: a Mac in a LOCAL thread advertises
+  `convo: 0` and the site withholds the offer — it cannot serve a conversation
+  living on the Mac's disk.
+
+### Tools (ten), and what they may reach
+
+today / bookings / availability+price / enquiries / cottages / money /
+performance / expenses / coast / web. Formatted at the source; names travel,
+contact details never. A `TOOL {json}` line, parsed forgivingly and whitelisted
+strictly; a fumble gets ONE GBNF-constrained retry; lookups cap at 3; every latch
+is one-way so the loop ends at a sentence. Tool turns are EPHEMERAL — only the
+owner's words and the final answer are stored.
+
+- **`night_tool_problem`'s unknown-tool correction is DERIVED from NIGHT_TOOLS.**
+  A hand-written list stopped at five and taught the model the newer ones did not
+  exist.
+- **A lookup retries ONCE on a THROWN transport failure** (a refusal the SITE
+  spoke is never retried) — one TCP hiccup on home broadband used to kill a whole
+  answer.
+- **`web` fetches ONE public page ON THE MAC**, never through the site's door
+  (not site data, and the device key must not become a proxy). Rules assume the
+  model cannot be trusted with an address: https only; private/loopback IPs
+  refused at the STRING *and* at the DNS LOOKUP (the half a hostname check cannot
+  see); redirects followed by hand, max 3, each hop re-checked; the transport is
+  `https.request` CONNECTED TO THE VETTED IP, because `fetch` re-resolves the
+  name — the rebinding TOCTOU; body read STREAMING to a byte cap under an
+  ABSOLUTE deadline (a buffered read after a headers-only timeout wedged chatBusy
+  for ever). Every result carries the stranger's-page warning: quote it, never
+  obey it.
+- **AND `web` MAY ONLY FETCH A HOST THE OWNER NAMED THIS CONVERSATION**
+  (`webOwnerHosts`/`webHostAllowed` over the user turns; a subdomain of a named
+  host passes, never the reverse). Without it the tool is an UNCONFIRMED exfil
+  channel — a fetch is not an ACT, so no owner confirm stands between a
+  prompt-injection page and guest names in a query string.
+- NB `chatToolCall` sliced EVERY argument to 80 chars — a URL cut there silently
+  became a DIFFERENT address. 'url' carries 500; ACT text 200, note 120.
+
+### The model proposes, the phone disposes (ACT)
+
+`ACT {json}` beside TOOL. Kinds: block_dates, price_override, request_payment,
+add_booking, send_enquiry_reply, add_expense, send_arrival_info, record_payment,
+remember. The line is STRIPPED from the words (and held back from partials) and
+rides the envelope as DATA.
+
+- **Three independent doors, all load-bearing**: the ANSWER door
+  (`night_act_resolve` — closed whitelist with **refunds and cancel refused BY
+  NAME**, so their absence is a tested decision; the past not proposable; rate
+  £20–£2000; booking/enquiry refs must EXIST), the thread SANITISER
+  (`night_act_problem`, re-validated on every pass — a hand-edited content row
+  can never mint a card), and the phone's CLOSED registry (`MC_ACTS` — an unknown
+  kind renders no card).
+- **The card fires NOTHING on render** (gated by collecting every request), and
+  **may NEVER send an override flag**: a clash comes back as the server's
+  sentence and the card stays live, because a deliberate overlap needs the form's
+  own informed confirm, not a model's proposal riding through one.
+- **The verdict is decided ONCE** (`chat_act_done`, guarded `WHERE act_done IS
+  NULL`, kind verified against the act's own) — confirmed on one phone, inert on
+  every device and reload. A DEAD proposal says why instead of offering a dead
+  button.
+- **DATE SEMANTICS DIFFER PER ACTION ON PURPOSE**: block/price speak
+  first-night/last-night INCLUSIVE (the client converts to the exclusive checkout
+  at exec), while add_booking speaks `check_in`/`check_out`, because guest-speak
+  "the 12th to the 15th" IS arrive/leave — inclusive there would be the
+  off-by-one.
+- **`add_expense` may join while refunds stay refused** because it RECORDS money
+  already spent; a FUTURE date is refused ("a plan is not a fact").
+  `record_payment` opens the modal and claims exactly that — the model never
+  states an amount.
+- **A confirmed card may offer what FOLLOWS** (`MC_ACT_NEXT`) — one quiet chip,
+  never a second proposal. It lives in `__mcActRes`, this session's map only: the
+  stored act may not grow fields or the sanitiser refuses the whole card next
+  read, so after a reload the done state simply has no chip.
+- **A fumbled ACT line gets ONE re-ask** constrained by `chatActGrammar` (cool
+  0.2, the corrected line only). Still bad, or the send was stopped → dropped and
+  NAMED. The words always stand.
+- **What the card did is ATTRIBUTED** (`via_label($in)` in db.php — CLOSED
+  whitelist, only `'ai-chat'` earns " · via AI chat").
+
+### Grounding, memory and the summary
+
+- **Every ownerchat ask carries a WORLD SHEET** (fleet / today / money), composed
+  at chat_send from `night_gather_today`/`_money` — the SAME gatherers the tools
+  read, so a lookup and the pack cannot disagree about one day. `night_world`
+  slims hard: names and formatted figures only, **no contact detail and no `ref`**
+  (gated by absence). The pack rides EVERY ask and pays context for it; the tools
+  stay the way to go deep. Best-effort — a failed gather never blocks the send.
+  Mac-side `chatGroundText` is the ONE place facts become prompt text.
+- **A COUNT OR SUM OVER A CAPPED LIST IS A WRONG NUMBER.** The pack's rows are
+  capped (NIGHT_WORLD_LIST_MAX) but its totals are carried from the FULL set.
+- **MEMORY is the owner's, only ever** (`mac-chat-memory`, internal, 12×200). The
+  app never adds a line; the `remember` ACT lets the model PROPOSE one, and the
+  card's confirm is what makes it a line. Memories are `{t, at}` — the SERVER
+  dates them, keeping the date of any line whose text stood, so retyping never
+  re-dates; legacy strings adopt with `at: ''` because unknown is honest and an
+  invented date defeats the staleness question. `chat_memory_save` has an
+  **ADD-ONE mode** (the remember card uses it) — replace semantics from a stale
+  phone mirror silently deleted lines another device had added.
+- **AND THE MEMORIES TRAVEL**: the night BRIEF carries them so `guard.buildPrompt`
+  binds every overnight draft (a promise taught to the chat was invisible to the
+  drafter), and the asks POLL carries them so the LOCAL chat grounds on the same
+  facts — updated on every ok poll INCLUDING to empty, because a pruned list must
+  be forgotten, not remembered stale.
+- **THE ROLLING SUMMARY, only once the trim is REAL.** Past the 16-turn payload
+  cap, chat_send adds `dropped` and the Mac teaches the SUM protocol (one
+  `SUM {...}` line per reply, stripped like ACT, capped 600, stored per convo in
+  `mac-chat-sum` and handed back as `summary`). A fully-visible thread sends and
+  is asked for NEITHER — a summary of what is already in the payload is paid-for
+  context saying nothing new. A reply that was ONLY its SUM line keeps the raw
+  words; the site refuses a wordless answer.
+
+### Streaming, stopping, attachments, vision
+
+- **Thinking is real or absent**: `<think>` blocks split by `chatThinkSplit` +
+  the stateful `chatThinkStream` (tags cut across chunks are held back), stored
+  on the msg for the fold and **NEVER sent back in history** (reasoning models
+  degrade on their own old thinking).
+- **SEND BECOMES STOP.** `mcSend` is a SYNC wrapper over `mcSendRun` — load-
+  bearing, because the data-act dispatcher DISABLES a button for the life of a
+  returned promise, which would kill the one control a Stop needs. The finally is
+  STAMP-GUARDED so a stopped flight never clears a NEWER send's busy flag. Three
+  layers: the stamp kills the poll; `chat_stop` claims the ask (partial read
+  AFTER the claim so ask_partial cannot grow it underneath) and words already
+  streamed are KEPT marked `stopped`; the Mac learns through `ask_partial`'s
+  `held: false` and aborts locally. **A network blip must never read as a stop —
+  `held` defaults true on any non-ok**, and `held` is a SELECT of the row's
+  status, not the UPDATE's rowCount (MySQL counts CHANGED rows, and streamed text
+  legitimately freezes during a held-back protocol line, so a byte-identical
+  re-post read as "not held" and aborted healthy generations).
+- **A stop before any words stores NOTHING** and the question stays askable. An
+  answer that BEAT the stop is reported `raced` and collected honestly.
+- **`mcCollect` is the ONE collect loop**, budgeted on ELAPSED TIME never
+  iterations (chat_poll returns whenever the partial grows). `renderMacChat`
+  stamp-guards its own fetch and fires `mcResume` when busy — nav-away-and-back
+  used to strand busy forever with the answer stored and never collected.
+- **A refused send speaks the SERVER'S sentence** and takes the optimistic bubble
+  down with the words back in the box (the catch used to swallow 409/503/400 into
+  "Could not reach the site", so the owner checked WiFi for a switch that was off).
+- **Attachments**: a document is fenced into the USER turn (`chatAttachMsg` /
+  `mcAttachMsg`, byte-identical shapes) so the trim can never separate a question
+  from its file; PDFs/Word refused BY NAME, never half-read. **The payload's
+  NEWEST turn travels WHOLE** — the history cap would hand the model half a file
+  and let it answer confidently about the half it saw.
+- **A photo** rides `chat_send` as a ≤1280px JPEG, stored by `chat_photo_store`
+  (the deposit-evidence contract: magic bytes, 2MB, random name); the thread
+  carries only the MINTED ref — the ONE shape `chat_file` will serve back, so a
+  device key never becomes a way to read arbitrary uploads. `img`/`file` must
+  SURVIVE the thread sanitiser or the photo is erased the moment the Mac replies,
+  and `img` rides the FINAL turn only (an old photo must never resurface under a
+  new question). A photo that will not store REFUSES the whole send.
+- **VISION has three honest outcomes and no fourth**: the engine can see
+  (`props().modalities.vision === true`, MEASURED never guessed) → the image
+  joins the newest turn as content parts; text-only → the model never meets the
+  photo and the answer says so; fetch failed → said plainly. `models.projectorFor`
+  pairs a model with ITS OWN `mmproj-*.gguf` by name tokens (a gemma projector on
+  a qwen model is garbage in).
+- NB the attach validator's source must contain the six-character ESCAPE
+  SEQUENCE (backslash, u, 0000) — never the byte it denotes. A literal NUL
+  turns the file into "binary file matches" for every grep. Writing this very
+  note put one into CLAUDE.md, so it is easier to do than it sounds.
+
+### Doors, limits and the things that bit
+
+- **The device-key long-poll doors** (`asks`/`chat_poll`/`ask_status`) each held
+  an FPM worker up to 25s with only a request-COUNT limit, so a key holder could
+  drain the pool. A MySQL-advisory concurrency cap (`night_poll_slot`, 8 slots,
+  the book_lock mechanism) makes a door answer its snapshot NOW rather than hold.
+- **`chat_mirror` is a WIDER read than the ask channel** (every convo title + one
+  convo's messages) — the honest blast radius of a compromised key is the owner's
+  own chat history, never guest PII beyond `brief`.
+- Confirmed NOT problems, so they need not be re-audited: CSRF on every admin
+  door, `night_require_key` failing closed on a corrupt row, `chat_import`
+  stripping act/img/think, the pinned-IP transport closing rebinding incl.
+  cloud-metadata IPs.
+- **`content_set_scalar` json_encodes its value**, so a column holds JSON of a
+  JSON string — a test reading `content.item_value` decodes TWICE.
+- The digest door's number canon forgives trailing zeros only AFTER a decimal
+  point; rtrimming them off INTEGERS grounded £450 on £45 rows.
+- The Keychain write rides `security -i` STDIN, never argv (the key was in the
+  process list).
+- The tray's Run-now goes through the `runNow()` WRAPPER — calling `api.runNow`
+  direct skipped the power assertion and the window refresh.
+- `draftChatOnMac` / `draftEnquiryOnMac` re-check the THREAD after their await,
+  or guest A's draft lands in guest B's box. messages.php files NO draft ask for
+  a photo-only guest message — the pipeline cannot see the image, so the Mac
+  drafted confidently against an empty message.
+- The act cards' `bookingDue` key comes off the booking actually found; passing
+  `findBookingLocation(act.booking)` handed an OBJECT where a prop-key string
+  goes and was always null anyway, so real money read "already settled".
+
+### The day card, the bench, and the look
+
+- **The welcome opens the day like a colleague.** `mcDayHtml` greets with the
   day's SHAPE whenever there is one ("Morning George — 1 arrival · £340 to
-  collect · nothing else needs you"), host's first name included, duties
-  folded in as tappable rows beneath; only a genuinely empty day (no
-  movement, no money, no duty) stays silent. The shape is chbOpsParts over a
-  new `chbDayTuples` — the Today ops line's own tuple-building extracted, so
-  the greeting and the ops line cannot disagree (deposit-aware, owner-arranged
-  money never volunteered). Gated by ui-test-nightshift's day-card block
-  (quiet/active/duty; chbDayTuples stubbed the way chbDuties is — dbBookings is
-  a const, not on window).
-  **HANDOFF — "you were just doing this over there."** Apple's version needs
-  Bluetooth and iCloud; ours needs neither, because the SITE is a rendezvous
-  both surfaces already talk to constantly. Each advertises what it is doing
-  (`handoff_put`, internal key `chat-handoff`, a map keyed BY DEVICE — the
-  claimed device is decided by HOW the caller authenticated, never taken from
-  the body) and the other reads it on a call it was making anyway: the Mac's
-  `asks` poll, the phone's `chat_thread`. So continuity costs no new traffic
-  and no new channel. Proximity has no analogue; **RECENCY is the honest
-  substitute** (`NIGHT_HANDOFF_FRESH` 300s — older than that is not "what you
-  were just doing"). The offer is ONE quiet dismissible row, and **the unsent
-  DRAFT travels with it** — the half-typed sentence is waiting in the composer
-  on the other side, which is the detail that makes it a continuation.
-  **A RENDER IS NOT AN ACTIVITY**: advertising fires on ARRIVING at the page,
-  switching conversation, sending, and a 2.5s typing PAUSE — never from the
-  renderer, because the action-card gates hold that page to "a render fires
-  nothing" and they are right to.
-  **DIVERGENCE IS ANSWERED BY MAKING THE SERVER THE RECORD.** `chat_say` lets
-  the Mac append the OWNER's words to a web conversation and files the ask its
-  own sweep answers seconds later — so a handed-off conversation has ONE
-  record and the reply lands on every device, instead of two copies drifting.
-  The mirror's composer is therefore LIVE now (it was read-only when it was
-  only a viewer); the cards it proposes are still confirmed on the phone,
-  which is the one thing that surface cannot do. `chat_send` and `chat_say`
-  share `ownerchat_file_ask` — one supersede, one payload, one grounding — or
-  a conversation would mean different things by which keyboard was used.
-  **THE BOUNDARY, STATED**: chat_say lets a device key put words in the thread
-  as the owner, which `chat_import` could already do for a whole conversation
-  — a narrowing, not a new class: one turn, an EXISTING convo only, capped and
-  rate-limited, every proposed action still confirmed on the phone.
-  **THE ONE ASYMMETRY, and it is inherent**: a Mac sitting in a LOCAL thread
-  advertises `convo: 0` and the site withholds that offer — it cannot serve a
-  conversation that lives on the Mac's own disk. Sending it over first is the
-  ⇗ (a deliberate tap); after that it is a web conversation and handoff is
-  ambient both ways. Gated: test-nightshift §20c (the validator, incl. the
-  recency gate both sides of the line and the local-thread withholding),
-  test-integration's handoff block (advertise → the Mac hears it on its own
-  poll → chat_say → ONE record → supersede still holds → 401/404/400/409),
-  core-test (advertise, the offer forgotten when the site stops making it,
-  the trimmed continuation), mac ui-test (the row, Continue carrying the
-  draft, a send going through chatContinue) and ui-test-nightshift (the same
-  from the phone, including that a taken-up offer never returns).
-  **AND THEN IT WAS LOOKED AT (the handoff UI pass).** Screenshotting both
-  surfaces found four things no gate could: the capsule was a filled accent
-  slab with an uppercase CONTINUE, LOUDER than the conversation it sits above
-  — it is a hairline row now, a device mark, the title quoted, the draft
-  beneath, and a quiet `Continue ›`; the `⇠` glyph painted as a broken-looking
-  dashed arrow (a real phone/laptop SVG instead, and the two surfaces now
-  share one anatomy); the mirror's dashed accent paragraph read as an ERROR
-  message (a serif title + one muted line under a hairline — a PLACE, not a
-  warning); and **the Mac's own subtitle had become a LIE** — "nothing here
-  reaches the website or a guest" is true of a local thread and false of a
-  handed-off one, so `#chatSub` is rewritten per mode (the rail's "read-only"
-  sub went the same way). Two more from the day card: `chbSayN(2)` is "a
-  couple", which read as "a couple things need you" — the documented trap,
-  hit — and the tail COUNTED rows the owner could already see, so it now
-  renders only when there are none ("nothing else needs you"). The rail's
-  three hover marks moved from three fixed `right:` values into a spaced set,
-  because a fourth would have collided.
-  **ONE ASSISTANT — the day is composed ONCE.** The search landing greeted
-  with a bare "Good afternoon." over boards, while the AI chat's card carried
-  the day's shape; two sentences about one afternoon, from the SAME
-  derivations. `chbDaySentence()` is that sentence — greeting + host's first
-  name + chbOpsParts over chbDayTuples — and both surfaces read it
-  (`cmdkDayLine()` adds the landing's full stop on a quiet day; the chat adds
-  its own duty tail). chbNow() throughout, so a pinned clock moves both.
-  **ONE CHIP**: `.mc-schip` takes `.cmdk-chip`'s own spec (glass-hover ground,
-  --r-pill, the sub type step, the accent hover border), widened to a
-  full-width row because a starter is a sentence, still at the 44px floor —
-  three shapes for "tap this to go on" became one. **ONE VOICE**: the pop-out's
-  field says "Ask anything…", the chat's words.
-  **TWO OF THE SIX DID NOT SURVIVE CONTACT, and that is the record.** The
-  demo's "answer frame" would have labelled the chat's answer ANSWER — but it
-  is the only thing on that screen, so the label distinguishes it from nothing,
-  and promoting the model's prose into a verdict card means PARSING a figure
-  out of its words, which is the grounding rule inverted. The "state
-  vocabulary" would have given the knot a worded capsule — but `CHB_MSTATE_LABEL`
-  was deliberately REMOVED (the knot carries state as COLOUR with a hover
-  title), so that is a considered decision, not a drift. And "rows become
-  actionable" was already true: a brief row RUNS its duty on tap; only the
-  board cards look inert, and a chip repeating the row's own tap is noise.
-  **THE BENCH HAS A BUTTON** (Library → Bench beside every GGUF row): the core
-  moved to `mac-app/src/core/bench.js` (benchRun/benchScore/benchVerdict;
-  test/chat-bench.js is the thin CLI re-exporting it) so `api.benchModel`
-  drives the same cases in-app — chatBusy taken, verdict in words into the
-  row's `.benchout` slot. Gated by the mac ui-test's Library block.
-  **THE ROLLING SUMMARY (webchat only, and only once the trim is REAL).**
-  When chat_send finds the convo past the 16-turn payload cap it adds
-  `dropped` to the ask, and the Mac then teaches the SUM protocol — one
-  `SUM {"text":"..."}` line ending each reply, a condensed memory of the
-  whole conversation. Protocol like ACT: stripped from the words, held back
-  from partials (the same split regex), carried in the envelope as data
-  (`sum`, validated in night_ownerchat_answer_problem, cap 600); the site
-  stores it per conversation (`mac-chat-sum` internal key, map convo→text,
-  sanitised by `night_ownerchat_sums` — freshest FIRST because the cap
-  keeps the head) keyed by the ask's entity_id, and the NEXT ask hands it
-  back as `summary`, which chatGroundText grounds as the model's OWN
-  earlier notes. A fully-visible thread sends and is asked for NEITHER — a
-  summary of what is already in the payload is paid-for context saying
-  nothing new (env.sum is also gated on dropped>0 Mac-side, so a stray SUM
-  line never travels). chat_clear forgets the convo's summary with its
-  rows. A reply that was ONLY its SUM line keeps the raw words — the site
-  refuses a wordless answer. Gated: test-nightshift (sums sanitiser +
-  envelope), test-integration §27b (the full round trip on 20 seeded
-  filler rows: dropped count, store, hand-back, overlong refusal,
-  clear-forgets), core-test §34s (through the REAL handler both ways).
-  **THE CHAT BENCH** (`mac-app/test/chat-bench.js`) — model swaps become
-  measurements: ~24 committed business questions run against the REAL engine
-  (`node test/chat-bench.js <model>`), framed byte-for-byte as the ownerchat
-  handler frames (tools + acts intros + chatGroundText over a fixed world),
-  scored on GROUNDING (answered from the sheet / right lookup / right
-  proposal), PROTOCOL (every TOOL/ACT line parsed) and HONESTY (refuse-cases
-  refused, and a PROPOSED act on a refuse-case fails hardest). Verdict
-  thresholds: protocol ≥90%, honesty ≥95%, grounding ≥75% → safe; failures
-  NAMED ("it bluffs", "it fumbles the protocol"). Deliberately a HAND TOOL,
-  never CI (CI has no model — the exact gap it closes for a human);
-  core-test gates the SCORER with fixtures and the case shapes, and the
-  runner exits 0 with a sentence when no engine answers.
-- **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check, under the Overnight
-  work card): the SOURCE link always exists, and a **Download** button appears only
-  once `nightshift-app-url` is set — a button offering a download nothing serves is
-  worse than saying there is nothing packaged yet. The stored URL is owner-written and
-  lands in an `href`, so it is validated `^https://` on the way IN *and* again at
-  RENDER (`nightAppUrl()`), because a value could arrive from an older write or a
-  hand-edited content row; a `javascript:` address is refused at both ends and
-  break-tested at both. Gated by ui-test-nightshift §7.
-- **RELEASES ARE NAMED `build-<N>`** (owner-asked), N the mac-app workflow's
-  own run number — short, monotonic, a genuine build id. The dated
-  hand-build-YYYYMMDD-HHMM tags are RETIRED but stay published as history
-  (renaming a released tag breaks its .dmg link and the update trail). The
-  transition is carried by RANK, in three places that must stay in step:
-  update.js's parseVersion (kind 'id' > 'build' > 'semver' — an installed
-  dated copy sees any build-N as newer, a build-N copy is never offered a
-  dated "update"), admin.js's `nightBuildOrd` (the devices card compared
-  LEXICALLY before — 'b' < 'h' told every dated Mac it was up to date
-  against a NEWER build-N; unreadable shapes claim NOTHING), and
-  self-repair's latest-build shape pin (both shapes accepted — a pin that
-  stopped matching would freeze the yardstick for ever; source-pinned in
-  test-integration because the fetch needs GitHub). CFBundleVersion takes
-  the run number on a dispatch; a pushed hand-v* tag still names itself.
-- **DISPATCHING THE RELEASE: the MCP tool's parameter is `inputs`, not
-  `workflow_inputs`.** The wrong name is silently IGNORED (204, run queued,
-  publish skipped) — measured twice in one afternoon, two full macOS builds
-  that produced no release, and the only tell is the response echoing
-  `"inputs":null` instead of the map. Tag pushes are 403-blocked from the
-  session (branch pushes only), so the dispatch is the one route:
-  `actions_run_trigger {method: run_workflow, workflow_id: mac-app.yml,
-  ref: main, inputs: {"publish": "true"}}` — and check the echo carries the
-  map before walking away.
-- **A .dmg IS BUILT BY GITHUB, ON A MAC, BECAUSE IT CANNOT BE BUILT ANYWHERE ELSE.**
-  `hdiutil` makes the disk image and `lipo` merges the universal binary; both are
-  Apple's and both are macOS-only, so no Linux box and no session here can produce
-  one. `.github/workflows/mac-app.yml` runs on `macos-14` (an Apple silicon Mac),
-  and on this PUBLIC repo those minutes are free. Actions → Mac app → Run workflow,
-  or push a `hand-v*` tag. It runs BOTH suites first — a build whose own tests
-  failed is never shipped — then uploads the .dmg as an artifact and, on a tag or
-  an explicit tick, publishes a release whose asset URL is what the Manage row
-  links to. It signs and notarises only when the four Apple secrets exist, and the
-  release notes say which kind each copy is rather than implying signed.
-  NB the certificate reaches the runner through an `env:` mapping and never a
-  command line, and the decoded `.p12` is deleted inside the same step.
-- **TWO REAL DEFECTS THE DOWNLOAD ROW EXPOSED, both pre-existing.**
-  (1) **`bump.js` collected BASENAMES with no folder filter**, so `mac-app/src/ui/app.css`
-  made it bump the WEBSITE's `app.css ?v=` — every visitor re-downloading 73KB for a
-  file that had not changed. Measured on the very run that added `mac-app/`.
-  `check-versions.js` has always filtered on the `Cottage Holidays Blakeney/` prefix;
-  bump.js is the half that had not caught up, and now does.
-  (2) **`btn-accent` has only ever been styled with `.btn-glass`**, so
-  `class="btn-sm btn-accent"` rendered as a plain outlined pill — which is what the
-  overnight card's **"Open it"** silently was, indistinguishable from the Bin it beside
-  it. `.btn-sm.btn-accent` now exists in admin.css (owner-only), with `--accent-ink`
-  rather than white: measured, white on the light-mode accent is **2.96:1** and this
-  pair is 8.56 dark / 6.23 light. Gated by measuring the PAINT of the two pills against
-  each other, so it cannot regress to "the class is present".
+  collect · nothing else needs you"); only a genuinely empty day stays silent.
+  The shape is `chbOpsParts` over `chbDayTuples` — the Today ops line's own
+  tuple-building extracted, so greeting and ops line cannot disagree.
+- **ONE ASSISTANT — the day is composed ONCE.** `chbDaySentence()` is that
+  sentence and BOTH the search landing (`cmdkDayLine()`) and the chat card read
+  it. `chbNow()` throughout, so a pinned clock moves both. **ONE CHIP**
+  (`.mc-schip` takes `.cmdk-chip`'s spec) and **ONE VOICE** ("Ask anything…").
+- **Two of the six demo ideas did not survive contact, and that is the record**:
+  an "answer frame" would label the only thing on the screen, and promoting the
+  model's prose into a verdict card means PARSING a figure out of its words —
+  the grounding rule inverted; and a worded state capsule for the knot was
+  deliberately REMOVED once already (`CHB_MSTATE_LABEL`), so re-adding it would
+  undo a considered decision rather than fix a drift.
+- **THE CHAT BENCH** (`mac-app/test/chat-bench.js`, core in `src/core/bench.js`,
+  also a Library → Bench button): ~24 committed business questions against the
+  REAL engine, framed byte-for-byte as the ownerchat handler frames, scored on
+  GROUNDING / PROTOCOL / HONESTY (a PROPOSED act on a refuse-case fails hardest).
+  Verdicts: protocol ≥90%, honesty ≥95%, grounding ≥75% → safe. Deliberately a
+  HAND TOOL, never CI — CI has no model, which is the exact gap it closes.
+
+### Shipping the app
+
+- **THE MANAGE PAGE HAS A WAY TO GET IT** (Manage → System check): the SOURCE
+  link always exists; a **Download** button appears only once `nightshift-app-url`
+  is set, because a button offering a download nothing serves is worse than
+  saying nothing is packaged. Owner-written and lands in an `href`, so it is
+  validated `^https://` on the way IN *and* again at RENDER (`nightAppUrl()`) —
+  a value can arrive from an older write or a hand-edited row. Break-tested both
+  ends.
+- **RELEASES ARE NAMED `build-<N>`**, N the workflow's run number. The dated
+  `hand-build-*` tags are RETIRED but stay published (renaming a released tag
+  breaks its .dmg link). The transition is carried by RANK in three places that
+  must stay in step: update.js's `parseVersion` (kind id > build > semver),
+  admin.js's `nightBuildOrd` (a LEXICAL compare told every dated Mac it was up to
+  date against a newer build-N), and self-repair's shape pin (both shapes
+  accepted, or the yardstick freezes).
+- **DISPATCHING: the MCP parameter is `inputs`, not `workflow_inputs`.** The
+  wrong name is silently IGNORED — 204, run queued, publish skipped — measured
+  twice in one afternoon, two full macOS builds that produced no release, and the
+  only tell is the response echoing `"inputs":null` instead of the map. Tag
+  pushes are 403-blocked from a session, so the dispatch is the one route:
+  `actions_run_trigger {method: run_workflow, workflow_id: mac-app.yml, ref:
+  main, inputs: {"publish": "true"}}` — check the echo before walking away.
+- **A .dmg IS BUILT BY GITHUB, ON A MAC, BECAUSE IT CANNOT BE BUILT ANYWHERE
+  ELSE.** `hdiutil` and `lipo` are Apple's and macOS-only, so no Linux box and no
+  session here can produce one. `mac-app.yml` runs on `macos-14`; on this PUBLIC
+  repo the minutes are free. It runs BOTH suites first — a build whose own tests
+  failed is never shipped. It signs and notarises only when the four Apple
+  secrets exist, and the notes say which kind each copy is rather than implying
+  signed. The certificate reaches the runner through an `env:` mapping, never a
+  command line, and the decoded `.p12` is deleted in the same step.
+- **TWO PRE-EXISTING DEFECTS THE DOWNLOAD ROW EXPOSED.** `bump.js` collected
+  BASENAMES with no folder filter, so `mac-app/src/ui/app.css` bumped the
+  WEBSITE's `app.css ?v=` and every visitor re-downloaded 73KB for an unchanged
+  file (check-versions.js had always filtered on the `Cottage Holidays Blakeney/`
+  prefix; bump.js had not). And **`btn-accent` has only ever been styled with
+  `.btn-glass`**, so `btn-sm btn-accent` rendered as a plain outlined pill —
+  which is what the overnight card's "Open it" silently was. `.btn-sm.btn-accent`
+  now exists in admin.css with `--accent-ink` rather than white (white on the
+  light-mode accent measures 2.96:1; this pair is 8.56 dark / 6.23 light), gated
+  by measuring the PAINT of the two pills against each other.
 
 ## Email delivery is at-least-once now — the OUTBOX (migration-113)
 
@@ -3000,457 +2616,233 @@ topic's prose was tried in that gate and dropped: it is not an invariant — a w
 legitimately splits one prose step into fields (add-booking 5 vs 3) and legitimately
 collapses three into one dialog (block-dates 1 vs 3).
 
-**The CROWN is the assistant** (admin.js `crownSheetToggle`/`crownSheetOpen`/`crownSheetClose`,
-styled in admin.css) — the dock's separate Search knot is GONE.
-Rationale, measured: `nav()` rewrites `view-main` → `view-backoffice` for anyone signed in
-(app.js), so the crown's old tap went to Today, exactly where the calendar icon already goes —
-it had no unique job to lose, and the dock drops 5 icons to 4. Tapping it drops a POP-OUT rather
-than jumping to a page, because the bar CANNOT host a field: at 390px the middle slot yields
-80px once the crown and four icons have theirs (the pop-out's input measures 215px+).
-**The pop-out IS the search** — see SEARCH IS THE POP-OUT below. There used to be a separate
-`#crown-sheet` node here that showed four brief rows and handed off on Enter to a full-bleed
-`#cmdk`; it is REMOVED (node, CSS, `crownSheetEl`/`Rows`/`Open`/`Close`, `#crown-scrim`,
-`#crown-ask`, the `.cs-*` classes). Do not reintroduce a second surface: the sheet was a menu
-for the feature, so the actual answers lived one journey away. `crownSheetToggle` KEEPS its
-name (it is in the `chbAct` registry and on the crown's `data-act`) and now just toggles
-`#cmdk`. Six things it must keep right, all gated by `ui-test-crownsheet.js`:
-(1) z-index 1440 — BELOW the header's 1500 — so the crown stays hittable and one target toggles
-both ways; (2) **`.logo` must be pinned `flex: 0 0 auto`** — it is `0 1 auto` by default and a
-long screen name in the condensed bar squeezed it to **20px** (deleting the pin during this very
-change measured **19px**, and the gate caught it), and the crown is the only route to the
-assistant; (3) `crownSheetToggle` SELF-HEALS — admin.js cannot be un-run, and `.logo` is
-the public site's Home link, so the handler checks `owner-mode` and navigates home when it has
-gone; (4) Escape hands focus back to the crown (`crownSetExpanded` keeps `aria-expanded` in step
-from `openCmdK`/`closeCmdK`, so every route in and out reports the same thing); (5) the crown
-carries the model STATE (colour only — the download progress ring is REMOVED; see below);
-(6) a query is ANSWERED IN PLACE — nothing hands off, because there is nowhere to hand off to.
-Reduced motion keeps the pop-out (it is information) and drops only the spring.
+**The CROWN is the assistant** (`crownSheetToggle`/`openCmdK`/`closeCmdK`) — there is
+no separate Search knot and no second surface. There used to be a `#crown-sheet` that
+showed four rows and handed off to a full-bleed `#cmdk`; it is REMOVED (node, CSS,
+`crownSheetEl`/`Rows`/`Open`/`Close`, `#crown-scrim`, `#crown-ask`, `.cs-*`), and the
+per-workspace Assist Bars (`abar*`) with it. **Do not reintroduce either**: a sheet is
+a menu for the feature, so the answers live one journey away. `crownSheetToggle` keeps
+its name (it is in the `chbAct` registry and on the crown's `data-act`). The bar cannot
+host a field — at 390px the middle slot yields 80px and the input needs 215px+ — which
+is why it drops a pop-out rather than navigating.
 
-**ONE assistant look** (admin.css, the "ONE ASSISTANT LOOK" block) — this block exists
-because the crown sheet and the search page were once the same feature on TWO surfaces and
-had already drifted (the page's field was a bare transparent input at 6px radius against the
-sheet's bordered pill; the page used `--r-lg` against the sheet's `--r-panel`). There is only
-ONE surface now, so the block's grouped selectors have been collapsed to it and the dead
-`#crown-ask` / `.cs-*` halves are gone — but the block stays as the one place the assistant's
-material is stated: panel radius + the darkstar hairline, the pill field with its accent focus
-ring, the row rhythm (44px touch floor, shared label/sub sizes), and the hint footer. Worth
-keeping from the two-surface era: `.cmdk-foot` was hidden behind `hover: hover and pointer:
-fine`, so a PHONE got no hint at all while the sheet always stated its keys — touch gets a
-touch-appropriate line instead of the ⌘K keycaps.
+Six things the crown must keep right, gated by `ui-test-crownsheet.js`: z-index **1440,
+BELOW the header's 1500**, so the crown stays hittable and one target toggles both ways;
+**`.logo` pinned `flex: 0 0 auto`** (it is `0 1 auto` by default and a long screen name
+squeezed it to 19–20px — the crown is the only route to the assistant); the handler
+SELF-HEALS (admin.js cannot be un-run, and `.logo` is the public site's Home link, so it
+checks `owner-mode`); Escape hands focus back (`crownSetExpanded` keeps `aria-expanded`
+in step from both `openCmdK`/`closeCmdK`); the crown carries the model STATE as colour;
+and a query is ANSWERED IN PLACE, because there is nowhere to hand off to.
 
-**SEARCH IS THE POP-OUT the crown drops** — one surface, not two
-(`#cmdk.cmdk-overlay` + `#cmdk-scrim`, z **1440/1430 — BELOW the header's 1500**, and far below
-the real modals at 2000+, so a glassConfirm raised FROM search — the bulk-send confirm — covers
-it). Reached by tapping the crown (`crownSheetToggle` → `openCmdK`) or ⌘K; the per-workspace
-Assist Bars were RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone —
-do not resurrect). The markup still ships inside the `view-search` template because that is how
-`ensureAdminViews()` delivers it, but **`cmdkEnsureOverlay()` re-parents `#cmdk` to `<body>`** on
-bundle load and that is not optional: a `.page-view` carries a transform, making it the
-containing block for any fixed child, so left in place the "overlay" would be pinned inside the
-page (the same trap the cottage page's sticky bar hits). Consequences to keep straight:
-`openCmdK` does NOT navigate — the active view is UNCHANGED while search is up, which is what
-lets scope/entity snapshots keep working; `closeCmdK` now hides the window as well as cleaning
-state, and every existing caller wanted that (a result run closes then navigates underneath);
-`cmdkBack()` only closes and returns focus to the crown, since there is nowhere to go back TO;
-⌘K toggles on `cmdkIsOpen()` rather than the active view; and `nav()`'s teardown hook is keyed on
-the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
-while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
-locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
-contain`, so the workspace behind never scrolls with it. **BUT NOT ON A PHONE.** At 390px the box measures 370 of 390 — it is
-effectively full bleed again, so it blurs the whole workspace rather than its edge
-and an amber "Part paid" pill two screens down smeared across the money card.
-Below 641px the panel is OPAQUE (`--cmdk-surface`, the ground a11y-test already
-measures words against) with the blur off; glass returns from 641px, where the
-pop-out really is a small card on a visible desktop. Same rule as the original
-full-bleed decision, applied at the width where the condition recurs.
-**The Siri aura is a RIM, not a cloud.** It was three stacked glows out to 92px
-blur / 10px spread, which painted a purple haze well beyond the panel and read as
-an artifact rather than a material. One hairline ring plus a 22px tight glow, hue
-still cycling, so ui-test-searchpage §17's "the painted shadow moves" holds.
-**A group is the dashboard's WELL now** (the UI pass below) — `.cmdk-board`
-carries the `.acr-well` ground (4% ink-mix fill + hairline border + `--r-lg`).
-The earlier "a group is a FILL, not a card — the border is gone" ruling was
-about fill + border + FILLED ROWS = three edges in ~90px; the rows went flat in
-that same pass, so the border's return is the same two edges every other well
-has, not the three that ruling banned. Rows still span the group edge to edge,
-square off, separate by hairlines, and the selected row is a full-width band.
-NB the caption's inline padding must equal the ROW's (22px), because §18f
-compares where the caption's text starts against the row LABEL, and a row's
-label begins at its padding edge once the answer glyph is hidden inside a
-group — 20px put the heading 2px inside its own list.
-**NO KEYBOARD CURSOR ON A TOUCH DEVICE, AND NO TILE BEHIND AN ICON.** The landing
-preselects row 0 so arrow keys have somewhere to start; on a phone there are no
-arrow keys, so it painted one row as chosen before the owner had chosen anything.
-Suppressed under `(hover: none) and (pointer: coarse)` — desktop keeps it, because
-arrowing the list is a real feature with its own gates, and those run with a fine
-pointer so none of them moved. The icon TILES are gone too (`.cmdk-row-ic` and the
-screen / answer / figure / tophit variants): a filled lozenge under every glyph put
-a second shape in each row. Keep the 32px BOX — it is what puts every label on the
-63px rail §18f measures. NB the tile was carrying the icon's CONTRAST: bare
-`--accent` is 2.70:1 on the light pop-out surface, under the 3:1 non-text bar, so
-the glyphs moved to `--accent-text` (4.93:1; identical in dark). That took the
-a11y `accentAsText` ratchet 23 → 19.
-**The field's focus ring HUGS.** It is autofocused for the pop-out's whole life and
-a text input always matches `:focus-visible`, so `2px solid accent` at
-`outline-offset: 2px` over an accent border was permanent decoration and the
-loudest thing on screen. A 62%-accent border plus a 2px tinted ring reads as the
-active control without shouting.
-**Glass is RIGHT again at this size, and that is the inverse of the rule it replaces.**
-As a full-bleed panel it had to be OPAQUE (`--cmdk-surface`) with its content in one
-centred column (`--cmdk-measure`), because 78% white over a 24px blur reads as depth at
-680px — only the workspace's EDGE blurs through — while at screen size the whole back
-office smears through it, measured in light mode as grey blobs over the lower two thirds,
-looking like a dirty screen; and at 1280px every row stretched full width, so a guest's
-name sat at the far left with ~1000px of nothing beside it. A 520px pop-out has neither
-problem: it blurs only the edge, and its own max-width IS the measure. So the box carries
-`var(--glass-bg)` + `blur(22px) saturate(1.3)` again, and the centred-column override is
-gone. `--cmdk-surface` stays registered in **a11y-test's `SURFACES`** — a new surface must
-declare itself there exactly as a new text token must, and it is break-tested (a mid-grey
-surface fails all seven text tokens). It **DROPS** rather than appearing: the box is kept
-in the layout (`visibility`, not `display:none` — `display` cannot be transitioned) and
-falls `translateY(-10px) scale(0.985)` → home. On `transform`, never width/height, for the
-reason the dock icons stuttered. Easing is **`--spring`**, which a full-bleed panel could
-NOT use (its 1.56 overshot to scale 1.06, pulling the edges past the viewport and cropping
-its own content) but a small panel can — overshoot is life on a card. `#cmdk-close` is no
-longer the ONLY way out now that the crown, the scrim and Escape are all reachable, but it
-stays as the obvious one on a phone (a back chevron, distinct from the ✕ clear, which only
-empties the query). Reduced motion keeps the pop-out and drops the spring. Gated by
-ui-test-searchpage §8 — it drops and settles, hangs BELOW the header, does NOT cover it,
-the crown stays hittable, the panel fits on screen with the results scrolling inside, and
-close is ≥24px and named. The `<main id="view-search">` shell and its `ADMIN_VIEWS` entry
-are vestigial — see the task list; `ui-test-adminviews` asserts the shell is empty BY
-DESIGN so a half-done removal is caught.
-**`cmdk-wide` is decided at the TOP of `cmdkRenderInner`, above every early return.** It
-used to be toggled where the pane renders — which the `__cmdkDeep`, `__cmdkEmpty` and
-no-results branches all `return` before, so those screens kept whatever width the last
-selection left behind: measured at 1440, the empty landing rendered 860px with NO pane and
-its boards silently reflowed to two columns, deep search 860×373 with `.cmdk-detail` null,
-and closing deep search stayed stuck at 860. Deciding once at the top keeps the invariant
-("one place decides the pane, the same place sizes the box") actually true.
-**THE POP-OUT CONTAINS FOCUS** (`cmdkTrapTab`, `CMDK_FOCUSABLE`, installed by `openCmdK`
-and removed by `closeCmdK`, plus `aria-modal` on the node). The workspace is still behind
-the scrim and used to be reachable: ONE Shift+Tab from the field landed on a "Save note"
-button inside the booking hub — off screen, unreachable because `body.cmdk-open` is
-`overflow:hidden`, fully activatable, wearing a focus ring nobody can see — and two
-Shift+Tabs plus typing put the text into that booking's notes textarea while the field
-stayed empty. Forward Tab escaped onto the crown and the dock. Deliberately a keydown trap
-rather than `inert` on the rest of the page: the workspace must keep rendering (the point
-of a pop-out over a page you can still see) and `inert` would have to be unwound on all
-four exit paths. **Result rows carry `tabindex="-1"`** for the same reason: they are
-`role="option"` buttons and were tabbable, so Tab could put the ring on one row while
-`.is-sel` sat on another, and once focus left the field EVERY arrow key was dead (all key
-handling is bound to the input) — measured, a real ArrowDown on a focused row moved
-nothing. Arrows own the list, Tab owns the chrome. **`.is-kbd` renders a real ring**:
-Left/Right emitted that class with no stylesheet rule anywhere, so sub-focus was invisible
-(pixel-diff 0 changed px of 29040) while the cursor resting on action 0 arms a bulk money
-send. **A selected BOARD row keeps its background**: the board's `background: none` reset
-and `.cmdk-row.is-sel` are both (0,2,0), so the later rule won and the selection computed
-transparent in both themes — on the pop-out's DEFAULT state — leaving a 3px bar at 1.73:1;
-the reset is now `:not(.is-sel):not(:hover)`. **Focus is not hover**: `.cmdk-clear`,
-`.cmdk-help-btn` and `.cmdk-chip` ended their hover rule with `outline: none`, killing the
-global ring (0px against `#cmdk-close`'s 2px in the same row). **An action's failure never
-prints server internals** — `chbActErrSay` gates it, because apiPost slices a failed body
-to 200 chars and a 500 rendered a PHP fatal, SQLSTATE and the host filesystem path into
-the window verbatim. Some throws here are deliberate PROSE (`chbBulkRun` raises "Couldn't
-send any — Dan Rowe has no email address"), so the test is whether the message looks
-written for a person: no markup, stack frame, SQLSTATE, `.php` path or bare snake_case
-identifier, and short enough to be a sentence. Gated by ui-test-searchpage §15, each item
-break-tested; the error one gates the WIRING as well as the helper, because testing
-`chbActErrSay` alone passed with the call site reverted to `e.message`.
-Row anatomy, measured and refined: `.cmdk-row-label` CLAMPS TO TWO LINES (one line
-cut "Alexandrina Featherstonehaugh-Smythe" by 189px of 306px — over half the row's
-identity; the pop-out has the vertical room for two), label and sub both carry the raw text
-as a `title` because `cmdkHi` returns highlight markup that cannot go in an
-attribute, `.cmdk-qa-row` joins `.cmdk-row`/`.cs-row` in the 44px touch floor (it
-had been left OUT of that group and sat at 23px, 1px under WCAG), and
-`.cmdk-group-label` is 0.72rem (was 0.64rem = 10.2px). The row SUB stays
-single-line on purpose — letting every sub wrap makes the list untenable to scan,
-and the money subs already lead with the figure, so what clips is trailing context.
-**TWO RAILS, NOT FIVE** (ui-test-searchpage §18f–g). Panel EDGES stand on the answer's
-own text rail (21) and every LABEL stands on the list's (63). Getting there: the Top
-Hit's icon tile was 36px against every other row's 32, pushing its label to 67 — the
-one row the eye lands on first, alone on its own rail (it keeps four other emphasis
-signals; size was the only one that cost alignment); the hero's action label sat at 65,
-fixed by taking 2px off that row's gap so the panel edge stays on 21 AND the words land
-on 63; and "search everything" sat at 48.4, on neither, so it was rebuilt with a row's
-anatomy — row padding, row gap, a 32px icon box, and an INSET ring instead of a border
-because a 1px border puts it a pixel out. `border: none` there is load-bearing: it is a
-`<button>`, and dropping the border declaration hands it Chromium's UA `2px outset`
-(the second time this file has been caught by a button's UA chrome — see
-`.cmdk-qa-row`). **When measuring a rail, keep `edge` and `text` apart** — a box's
-outer boundary is what you compare against type, its content start is what you compare
-against other type. Conflating them made one draft call a correctly-aligned caption
-10px out and another call a panel sitting exactly on 21 a 5px miss.
-**THE UI PASS — search wears the dashboard's vocabulary** (approved live demo;
-CSS in admin.css's cmdk block + three composer touches; gated by the existing
-suite with two re-aims). The pop-out's anatomy is untouched — same rows at the
-same indices, same chips machinery — what changed is the clothes: the greeting
-is a spoken **`.cmdk-pulse`** line (body step, sentence case) instead of an
-uppercase caption (§20's greeting lookup reads `.cmdk-pulse, .cmdk-group-label`
-now); both caption specs take the `.acr-cap` track (0.09em) at the micro step;
-boards take the WELL ground (see the group note below); the HERO is a **verdict
-card** — well fill + border + `--r-lg` on the same full-width button, with the
-rail arithmetic 3px margin + 1px border + 8px padding = the old 12px inline
-padding, so the sentence stays on rail 21 and §18f/g pass untouched; the hero's
-MONEY figure takes the house serif (`--font-serif`) at the sentence's own size —
-§11's size-equality and weight-emphasis checks both still hold — while a leading
-COUNT keeps sans via `.cmdk-fig-n` (a headcount is not money); and rows accept an
-optional **`stcap: {tone, text}`** rendered as the `.st-cap` capsule on the right
-rail (restated to the sub step inside the window, because 0.76rem is not a §16b
-scale step). Wired additively: the owed rows ("Due now"/"Not due yet", judged by
-`hasCheckedOut || bookingInBalanceWindow` — the hub's own derivation, so capsule
-and payask can't disagree), the rating rows ("Strong"/"Few reviews" — a LOW
-average gets no capsule, the figure already speaks) and the plan rows ("On
-track"/"Card declined"). A row without `stcap` renders byte-identical.
+**SEARCH IS THE POP-OUT** (`#cmdk.cmdk-overlay` + `#cmdk-scrim`, z 1440/1430 — below the
+header, far below real modals at 2000+, so a glassConfirm raised FROM search covers it).
+- **`cmdkEnsureOverlay()` re-parents `#cmdk` to `<body>` and that is not optional**: a
+  `.page-view` carries a transform, making it the containing block for any fixed child,
+  so left in place the "overlay" is pinned inside the page. The markup ships in the
+  `view-search` template only because that is how `ensureAdminViews()` delivers it.
+- `openCmdK` does NOT navigate — the active view is unchanged, which is what lets the
+  scope/entity snapshots work (`__cmdkReturnView`, `__cmdkHomeScope`, `__cmdkEntity`).
+  State to know: `__cmdkResults`, `__cmdkSel`, `__cmdkEmpty`, `__cmdkDeep`,
+  `__cmdkThread`, `__cmdkConvCtx`; `body.cmdk-open` locks the page scroll and
+  `.cmdk-results` scrolls inside with `overscroll-behavior: contain`. The palette's
+  "filter this workspace" uses `renderTodayFilterBar` + the dim machinery. `closeCmdK` is state cleanup + hide; `cmdkBack()` closes
+  and returns focus to the crown. `nav()`'s teardown hook is keyed on the overlay's own
+  CLASS via a DOM check (app.js may not reach admin globals), so any navigation still
+  files the dead-end miss and supersedes in-flight searches.
+- **`cmdk-wide` is decided at the TOP of `cmdkRenderInner`, above every early return.**
+  Toggling it where the pane renders left the deep/empty/no-results branches at whatever
+  width the last selection set. One place decides the pane and sizes the box.
+- **THE POP-OUT CONTAINS FOCUS** (`cmdkTrapTab`, `CMDK_FOCUSABLE`, `aria-modal`).
+  Without it ONE Shift+Tab reached a "Save note" button inside the booking hub — off
+  screen, unreachable, fully activatable — and two put typed text into that booking's
+  notes. A keydown trap rather than `inert`, because the workspace must keep rendering
+  and `inert` would need unwinding on all four exits. **Result rows carry
+  `tabindex="-1"`**: they are `role="option"` buttons, so Tab could ring one row while
+  `.is-sel` sat on another, and once focus left the field every arrow key was dead (all
+  key handling is bound to the input). Arrows own the list, Tab owns the chrome.
+- **An action's failure never prints server internals** (`chbActErrSay`) — apiPost slices
+  a failed body to 200 chars, and a 500 rendered a PHP fatal, SQLSTATE and the host path
+  into the window. Some throws are deliberate PROSE ("Couldn't send any — Dan Rowe has no
+  email address"), so the test is whether it reads as written for a person. Gated
+  including the WIRING, because testing the helper alone passed with the call site
+  reverted to `e.message`.
+
+**Material and motion.** Glass (`--glass-bg` + blur) is right at 520px — it blurs only
+the edge and its max-width IS the measure — but **below 641px the panel is OPAQUE**
+(`--cmdk-surface`, blur off), because at 390px the box is 370 of 390 and the whole
+workspace smears through it. `--cmdk-surface` is registered in **a11y-test's `SURFACES`**,
+break-tested. The box **DROPS** on `visibility` (not `display`, which cannot transition)
+and `transform`, with `--spring` — a full-bleed panel could not use the spring (1.56
+overshoots to scale 1.06 and crops itself); a card can. In and out are deliberately
+different: the container carries `transition: visibility 0s linear 0.22s`, the closed
+state is a quick unsprung exit, `.open` the slow spring entry. Reduced motion keeps the
+pop-out (it is information) and drops the spring.
+- **Name the animation that goes, never the shorthand.** `#cmdk.cmdk-overlay .cmdk-box`
+  blanked the whole `animation` shorthand to cancel `cmdkRise` and took the Siri aura
+  with it — a documented part of the look rendered on no surface for the pop-out's whole
+  life. Restate the reduced-motion off-switch at the OVERLAY's specificity too.
+- The aura is a RIM, not a cloud: one hairline ring + a 22px glow, hue cycling.
+- §17 samples the exit by STATE, never a clock — `closeCmdK` does ~180ms of synchronous
+  teardown before the first paint, so a fixed sample calls a working exit a teleport.
+
+**Row and group anatomy.**
+- A group is the dashboard's WELL (`.cmdk-board` takes `.acr-well`'s ground). The earlier
+  "a group is a FILL, the border is gone" ruling was about fill + border + FILLED ROWS =
+  three edges in ~90px; the rows went flat, so two edges is the same as every other well.
+  NB the caption's inline padding must EQUAL the row's (22px) or §18f reads the heading
+  as 2px inside its own list.
+- **TWO RAILS, NOT FIVE** (§18f–g): panel EDGES on the answer's text rail (21), every
+  LABEL on the list's (63). **When measuring a rail, keep `edge` and `text` apart** — a
+  box's outer boundary compares against type, its content start against other type;
+  conflating them produced two confident false readings.
+- `.cmdk-row-label` clamps to TWO lines (one cut "Alexandrina Featherstonehaugh-Smythe"
+  by 189px of 306). Label and sub carry the raw text as `title`, because `cmdkHi` returns
+  markup that cannot go in an attribute. The sub stays single-line on purpose.
+- **`.cmdk-qa-row` is a `<button>` and needs the full `.cmdk-row` reset**, not just
+  sizing — its UA chrome had never been removed, so it painted `#efefef` with a 2px black
+  border, nearly invisible on cream and obvious only on a phone in dark mode. `border:
+  none` is likewise load-bearing on "search everything" (Chromium's UA `2px outset`). The
+  second time a button's UA chrome has bitten here.
+- **No keyboard cursor on a touch device**: the landing preselects row 0 for arrow keys,
+  which painted a row as chosen before the owner chose anything — suppressed under
+  `(hover: none) and (pointer: coarse)`. Icon TILES are gone (a filled lozenge under
+  every glyph was a second shape per row); keep the 32px BOX, which is what puts labels
+  on rail 63. The tile was carrying the icon's contrast, so glyphs take `--accent-text`
+  (bare `--accent` is 2.70:1 on the light surface, under the 3:1 non-text bar) — which
+  took a11y-test's `accentAsText` ratchet 23 → 19.
+- A selected BOARD row keeps its background — the board's `background: none` reset and
+  `.cmdk-row.is-sel` are both (0,2,0), so the reset won and selection computed
+  transparent; it is `:not(.is-sel):not(:hover)` now. **`.is-kbd` renders a real ring**
+  (Left/Right emitted the class with no rule anywhere, so sub-focus was invisible while
+  the cursor rested on an action that arms a bulk money send). **Focus is not hover** —
+  three hover rules ended with `outline: none` and killed the global ring.
+- NB the cmdk `:hover` rules are deliberately NOT behind `@media (hover: hover)`:
+  selection is hover PLUS accent PLUS a 3px edge bar, so a lingering tint reads as stale,
+  not as a false selection — and Chromium cannot reproduce iOS sticky hover, so the
+  change would be unverifiable. Revisit if selection loses the edge bar.
+- **A SHORT VIEWPORT SPENDS ITS HEIGHT ON RESULTS**: under `max-height: 600px` the
+  keyboard hint yields and the field tightens (at 740×400 chrome took 119 of 296px,
+  showing ONE row of seven). Hidden BY CONDITION —
+  `:not(:has(.cmdk-sys.is-warn))` — because a stopped automation earns its line at any
+  size.
+
+**ONE EMPTY STATE** (`cmdkNoneHtml` + `CMDK_WIDEN` + `CMDK_NONE_IC`) — there were three,
+reading like three products, with the same "widen the scope" instruction in two wordings.
+Title and sub are **PLAIN TEXT escaped at the boundary** (the chbDuties rule); §18b checks
+the query is escaped exactly once. The deep zero drops the TYPE filter (a lone "All 0"
+chip offering to narrow nothing) but KEEPS the recency switch. The mark takes
+`--accent-text` at 0.8 — at `--accent` 0.6 it measured 1.76:1, i.e. in the DOM and absent
+on screen; decorative, so no WCAG rule compels it and §18e measures it by arithmetic.
+
 **"SEARCH EVERYTHING" OWNS THE RESULTS AREA WHILE IT RUNS** (`__cmdkDeepPending`,
-`__cmdkDeepErr`, `cmdkRenderDeepWait`, `cmdkDeepReset`; ui-test-searchpage §19). The
-2px sweep bar (`#cmdk-progress`) is real and does fire — the audit's "no loading state"
-was wrong about that — but it answers in chrome a question asked of the RESULTS: the
-quick palette's rows sat there for the whole server round trip (two, on a typo retry)
-with nothing in the list saying so, and a FAILED deep search cleared the bar and said
-nothing at all. The pending state wears the finished view's own frame so the panel does
-not change shape when results land, and carries `role="status"` because the sweep bar is
-`aria-hidden` decoration — without it the one announcement of "working on it" does not
-exist. Two rules: **clearing the flags is the EXIT's job, not the fetch's** (every exit
-bumps `__cmdkDeepStamp`, which makes the fetch's own handlers return early, so a flag
-left to them would strand "Searching everything…" forever) — hence `cmdkDeepReset()`;
-and the bump belongs at the exit SITES, never inside that helper, because `cmdkDeepFetch`
-calls it too with its own stamp already captured. Fixing this surfaced a latent bug:
+`cmdkRenderDeepWait`, `cmdkDeepReset`; §19). The sweep bar answers in chrome a question
+asked of the RESULTS, and a FAILED deep search said nothing at all. The pending state
+wears the finished view's frame and carries `role="status"` (the bar is `aria-hidden`).
+**Clearing the flags is the EXIT's job, not the fetch's** — every exit bumps
+`__cmdkDeepStamp`, which makes the fetch's handlers return early, so a flag left to them
+strands "Searching everything…" forever; and the bump belongs at the exit SITES, never
+inside the helper, which `cmdkDeepFetch` also calls with its own stamp. Fixing this surfaced a latent bug:
 `cmdkSearchCore` cleared `__cmdkDeep` without bumping the stamp, so a slow deep response
-arriving after the owner had moved on **reopened the deep view over their newer query**.
-**A SHORT VIEWPORT SPENDS ITS HEIGHT ON RESULTS.** Measured at 740×400 (a landscape
-phone): the pop-out is 296px tall and its chrome took 119 of them — a 74px field plus
-a 45px keyboard-hint foot — leaving 175px of results, which showed ONE row of seven.
-Under `max-height: 600px` the hint yields (advice about a keyboard, on a device with no
-room to spare for it) and the field's padding tightens; results go to 228px. The foot
-is hidden BY CONDITION, not outright — `:not(:has(.cmdk-sys.is-warn))` — because a
-stopped automation earns its line at any size, the same judgement the 639px rule makes.
-Gated by ui-test-searchpage §16f, including that a warning still gets through.
-NB the cmdk `:hover` rules are deliberately NOT gated behind `@media (hover: hover)`
-even though touch keeps a hover applied after a tap: it was considered and measured, and
-since selection is hover PLUS the accent PLUS a 3px edge bar, a lingering tint reads as
-a stale tint rather than a false selection — and Chromium cannot reproduce iOS's sticky
-hover, so the change would have been unverifiable here for a defect that no longer
-misleads. Revisit if selection ever loses the edge bar.
-**ONE EMPTY STATE** (`cmdkNoneHtml(title, sub)` + `CMDK_WIDEN` + `CMDK_NONE_IC`) — there
-were three, written independently and reading like three different products: the scoped
-landing was a bare centred sentence with no mark, a query with no hits got mark + bold
-title + sub, and deep search's zero got the title and sub with no mark; the same
-"widen the scope" instruction appeared in two wordings and two capitalisations. One
-renderer now, and `CMDK_WIDEN` is that sentence stated once so it cannot drift again.
-Title and sub are **PLAIN TEXT escaped at the boundary** (the chbDuties rule) — the deep
-zero used to escape its query inline, so passing pre-escaped text through would print
-entities at the owner; §18b drives all three states and checks the query is escaped
-exactly once (`&lt;` is CORRECT there, `&amp;lt;` is the double). Deep search's zero also
-stops rendering the TYPE filter — with nothing found it was a lone "All 0" chip, 39px of
-control offering to narrow nothing down, directly above the sentence saying there was
-nothing — while KEEPING the recency switch, which is the one useful thing left to try.
-The mark itself takes **`--accent-text` at 0.8**, not `--accent` at 0.6: it measured
-1.76:1 on the light search surface, i.e. in the DOM and absent on screen. It is
-decorative (`aria-hidden`), so no WCAG rule compels this and a11y-test does not cover
-it — §18e does, by arithmetic on the computed colour against `--cmdk-surface`, because
-"the thing that makes an empty result look designed rather than broken" has to be
-visible to do that job.
-**`.cmdk-qa-row` is a `<button>` and needs the full `.cmdk-row` reset**, not just
-sizing: its UA chrome had never been removed, so it painted the browser's DEFAULT
-control — `#efefef` face, 2px black border, centred 13px system font (measured
-identical to a bare `<button>` in the same document). That face is nearly invisible
-against light mode's cream, so it survived unseen until a phone in DARK mode showed
-a light-mode button sitting in a dark UI. Its label takes **`--accent-text`**, the
-words-vs-things rule again. ui-test-searchpage §9 gates it in both themes by
-comparing every `#cmdk button` against a bare one — cheap, needs no colour model,
-and it cannot drift with the tokens. Two traps that gate walked into first: the
-quick-action rows only render beneath a SELECTED record (drive it the way §4b does —
-`__cmdkSel` to the row carrying `actions` — because typing a name late in the suite
-returns only chat answers, and the check then passes seeing NOTHING), and
-`getComputedStyle` may hand back `color(srgb 0.99 …)` in **0–1 floats** where
-`rgb()` is 0–255, which makes a near-white surface measure as near-black (that is
-the fourth false contrast failure this codebase has produced — see a11y-test).
-`.cmdk-box` keeps max-width 680px
-(940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
-navigating — `__cmdkReturnView`, `__cmdkHomeScope = cmdkDefaultScope()`, `__cmdkEntity =
-cmdkCurrentEntity()` — so the landing's shortcuts and record pronouns still resolve; `closeCmdK` is STATE
-CLEANUP ONLY (no nav — result runs navigate themselves and call it first); `cmdkBack()` =
-cleanup + return to `__cmdkReturnView` (Esc and the ⌘K toggle both use it). The palette's
-"filter this workspace" now always uses the floating banner (`renderTodayFilterBar`) + dim
-machinery. A guest **typeahead** in Add Booking (`modalNameSuggest` / `#modal-name-suggest`)
-suggests past guests → a pick fills name+email+phone. The **AI status lives IN THE LOGO** —
-the search page's knot glyph (the leading icon, wrapped as `#cmdk-ml`; `data-mstate` set by
-`chbSetModelStatus`/`chbModelState`) carries the state as COLOUR, no words on screen: `ready`
-(Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident green,
-breathing), `meaning` (semantic recall · its OWN Siri identity — the knot cycles teal→purple
-with a soft glow, `chb-knot-siri`, distinct from understood's steady green), `guess` (near-miss
-only · dimmed accent) and `learning` (teaching · orange pulse). There is **NO download
-progress ring** and no `loading` state: a model file streaming down (darkstar.bin at boot,
-encoder.onnx on the first history query) is reported nowhere, deliberately — the cascade is
-lexical-only until the model lands, so search answers throughout and a progress arc was
-reporting on something the owner never waits for. The ring, its `--mload` conic-gradient, the
-`ml-loading` classes and the whole per-source fraction map went with it. Each knot's hover title (`CHB_MSTATE_TITLE`) explains the state in plain language, so the
-colour never has to be decoded blind; there is NO worded pill any more (`CHB_MSTATE_LABEL` is
-REMOVED). The knot never hides — the ✕ clear sits on the RIGHT of the input (after it, before
-help); `has-text` only shows the ✕. All state animation honours `prefers-reduced-motion`
-(meaning falls back to a static teal). `chbSetModelStatus('')` falls back to `ready` once the
-model is loaded. Model files load through **`chbFetchBuf(url)`** — a plain fetch → arrayBuffer;
-it used to stream the body and count chunks purely to feed the ring, so the reader loop, the
-chunk reassembly and the wire-vs-decompressed clamp all went when the ring did. `ui-test-modelring.js`
-(11 checks) and search-test §31 (8 checks) were deleted for the same reason: every one of them
-tested the ring. Leaving the page on an unanswered query files it into the shared
-miss store (`chbMissRecord`) — via `cmdkBack`/`closeCmdK` AND via `nav()`, which calls
-`closeCmdK` when leaving `view-search` by ANY route (a dock tap, a result run) so the teach
-loop, in-flight-search supersede and conv-context clear can't be skipped; `openCmdK` also
-resets `__cmdkConvCtx` so a session never inherits the last one's pronoun referent.
-**FOUR LAYOUTS OVER ONE RESULT SET** — the window changes shape with what you have
-done, and all four are containers around the SAME rows from `cmdkRowHtml` at their
-SAME `__cmdkResults` indices. That is the invariant: keyboard nav, `cmdkSyncActive`,
-`aria-activedescendant` and every row's `run()` must survive a new layout, so a
-layout may never re-order, re-index or swallow a row (the ui-test asserts every
-board row still carries a `cmdk-opt-<i>` id, because a container that ate an index
-would break arrow-key nav in total silence).
-- **BOARDS** (`cmdkBoardsHtml`, `CMDK_BOARDS`) — the empty landing is a dashboard,
-  not a list of links, and **the day LEADS it**: the order is Suggested (a direct
-  answer to the record you were just on) → the day's greeting + boards → Most used →
-  Jump to. The brief used to sit BELOW Most used, so the panel opened with two
-  shortcuts above the greeting. Reorder in the ARRAY (`__cmdkResults`), never in the
-  renderer alone — the landing renders SLICES by index and every row carries its
-  `cmdk-opt-<i>` id, so moving the HTML blocks by themselves leaves arrow-key nav
-  walking the old order while the eye jumps between groups (ui-test-searchpage §20
-  checks the heading order AND that DOM order and index order rise together; the
-  second one is what catches that mistake). **`cmdkBriefBuild` therefore ENDS with a
-  stable sort by board rank**: composition order is severity (it decides which rows
-  survive the cap of 7), but the boards render today→money→waiting→month→control,
-  so the composed-order array put the pulse ('month') at a lower index than the
-  teach row ('waiting') and the indices crossed — only in clock windows where both
-  rows coexist, which is how it passed CI for months then failed a midnight run.
-  §20a-ii pins the invariant at ANY hour: it forces the teach row (stubbed
-  `chbMissList`) through the REAL composer and asserts board rank never falls
-  (break-tested by deleting the sort). The day's facts group into Today / Money / Waiting on you /
-  This month, each board's first row at figure size, and a board with no rows does
-  not render (a quiet day collapses instead of showing four empty cards). A brief
-  row **DECLARES its board** (`board:` in `cmdkBriefBuild`) rather than having the
-  renderer guess from its id — same principle as `scope`. Rows whose board is
-  unrecognised still render as orphans: silently dropping one is the exact bug the
-  scope filter caused on this screen. The grid is **one column and says so**: it was
-  `repeat(auto-fit, minmax(240px, 1fr))`, responsive-looking dead code inside a 520px
-  pop-out whose content box is 478px — two 240px tracks plus the gap need 490, so it
-  computed to a single track at every width this window has, and boards only render
-  on the empty landing (which never widens). Don't narrow the minimum to force two:
-  a board row leads with a figure sentence that will not survive a 234px track.
-- **ANSWER hero** (`cmdkHeroHtml`, `cmdkHeroFigure`) — when the leading row is an
-  `answer`/`figure`, it takes the top of the window at reading size and the caption
-  says "Answer", not "Top hit" (which describes the ranking, not the reply). The
-  figure is emphasised **INSIDE** the sentence by one span: printing it above would
-  repeat it, and deleting it from the sentence leaves "owed across 2 guests" —
-  grammatical debris — so `chbSay`'s wording survives untouched. That emphasis is
-  **WEIGHT, at the sentence's own size** (`.cmdk-hero-fig`, 700 against the label's
-  600, plus tabular figures). It was `1.7em`/`1.5em`, which made "£290.00" tower
-  over the words either side and stopped the answer reading as a sentence at all;
-  the `line-height: 1`, `vertical-align: baseline` and tightened letter-spacing that
-  sat with it existed ONLY to manage the oversized text and went with it, as did the
-  `font-size: 1em` in `.cmdk-turn-a .cmdk-hero-fig`, whose whole job was undoing the
-  hero's size so history didn't shout louder than the answer. Gated in
-  ui-test-searchpage §11 — and NB that gate must query `.cmdk-hero .cmdk-hero-fig`,
-  not `.cmdk-hero-fig`: the THREAD renders its own copy (it reuses `cmdkHeroFigure`)
-  ABOVE the live answer, so a document-wide query measures history instead, which is
-  exactly what the first version of the check did. A hero is captioned
-  even on a short list, where group labels are otherwise suppressed, because an
-  uncaptioned hero reads as a stray sentence. It is still a `role="option"`
-  `.cmdk-row` at its own index.
-- **THREAD** (`cmdkThreadPush/Html/Clear`, `CMDK_THREAD_MAX` 3) — earlier ANSWERED
-  turns stay above the live answer, which is the only way the conversational frame
-  (search-test §33) is visible: a refinement used to replace the single answer row
-  in place, so it looked identical to a brand-new question. Pushed where a query
-  COMMITS its results, never in the renderer (which re-runs on every selection change
-  and would stack the same answer as you arrow down). A turn that merely EXTENDS the
-  previous query replaces it, so per-keystroke typing is one turn and not eight.
-  Dies with the session at the same two boundaries as `__cmdkConvCtx`. **It also
-  survives a MISS**: the no-results branch returns before the one that renders the
-  thread, so a conversation two answers deep vanished the moment a query found
-  nothing and reappeared when the query was fixed — `__cmdkThread` had held the turns
-  the whole time and only the screen lied. Finding nothing is not the same as never
-  having asked (ui-test-searchpage §18c).
-- **SPLIT** (`cmdkDetailHtml`) — at ≥1200px the selected booking shows BESIDE the
-  results, so chasing three balances is one search instead of three. Three limits,
-  each dodging a trap already in this codebase: it renders a SUMMARY from
-  `findBookingById`/`paymentSummary`/`chbGuestIntel` and does **NOT** re-parent
-  `#booking-hub-content` (that node already moves between the Inbox and Today; a
-  third claimant empties one of them); the row's quick-actions stay inline rather
-  than being rendered twice; and it is pure CSS at the **existing** 1200px pane
-  breakpoint — no `matchMedia`, no resize listener, nothing to leave stale. The
-  scope switch is hoisted OUT of the split, since it filters the search and not the
-  left column. NB `propName` is a local elsewhere, so the pane reads `propertyMeta`
-  directly. **The pop-out WIDENS (520 → 860px) while a pane is up**, and has to: the
-  split was designed when this was a full-bleed window with ~1000px going spare, and
-  inside the 520px pop-out the grid still fired and starved the thing it sits beside
-  — measured at 1440px, 226px of results list against a 260px pane, i.e. the list
-  narrower than its own sidebar. `cmdkRenderInner` toggles `.cmdk-wide` at the one
-  point that decides to render a pane, so the width and the pane can never disagree;
-  it narrows back the moment nothing is selected. NB this also means SELECTION
-  changes the box width, which broke §10 — it measures the pop-out's RESTING shape
-  and an earlier section had left a booking selected, so it silently began reading
-  the wide box. It clears the selection before measuring now. Gated by
-  ui-test-searchpage §11, each of the four layouts break-tested independently.
+arriving after the owner moved on REOPENED the deep view over their newer query.
 
-**A TYPED QUERY SPANS EVERY CATEGORY, and the workspace snapshot only shapes the
-LANDING.** They used to be one variable: `openCmdK` put `cmdkDefaultScope()` straight
-into `__cmdkScope`, so opening search from Today pre-scoped it to "Bookings" — and
-`cmdkArrangeWide` only widens when the scope yields NOTHING, so a guest with bookings
-always yielded something and their emails, chats and payments were filtered out in
-silence (no widen note, because the search hadn't failed). Two variables now:
-**`__cmdkScope`** is the OWNER'S choice — `'all'` until they tap a chip, and the chips
-still narrow exactly as before — and **`__cmdkHomeScope`** is the workspace snapshot,
-read by the empty landing ALONE. Same split in the empty states: the scoped no-results
-state renders `CMDK_WIDEN` ("tap All above") because its chip bar is on screen, while
-the LANDING's dead end may not — the bar is hidden there (`sb` is `''` while
-`__cmdkEmpty`), so it used to name a control that wasn't on screen, and now says
-"Nothing to show yet · Type a name, a screen, or a question". `cmdkScopeLabel(k)`
-is the one place a scope is put into words (the empty states printed the raw key).
-Gated by ui-test-searchpage §22 (snapshot vs choice, every category survives a typed
-query, the OLD behaviour break-tested in the gate itself, an explicit chip still
-narrows, the landing's Jump-to still differs by workspace) and §18b.
-On that landing: **the day brief is NOT filtered** (the "Jump to" list still is),
-and **the scope switch is HIDDEN on that state** so nothing on screen claims a filter
-it isn't applying — it appears the moment you type, which is when it starts meaning
-something. Removing the Jump-to filter as well was tried and BACKED OUT: it is what
-keeps that list short, and without it the landing's destinations went 124px → 271px
-even capped at three (952px uncapped). Showing the shortcuts that suit the workspace
-you came from is helpfulness, not a filter anyone needs a control for. The brief being
-filtered was the FIRST bug of this shape — measured as **1 row surviving out of 4**,
-which is why the landing looked empty. It summarises the DAY (arrivals, money to
-collect, an enquiry waiting, the month's pace); dropping "£440 to collect" because you
-happen to be standing on the bookings screen loses the point of the panel.
-`cmdkHi` also needs **3 characters**, not 2: a
-2-letter token has no word boundary to protect it and lit up inside unrelated words
-("who owes **me** money" marked "pay·me·nt record"). It is display-only — it never scores.
-**Cross-page context memory**
-(`__cmdkLastEntity`, `chbStampRecent`/
-`cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened
-(`openBookingHub`/`openEnquiryHub`) or one a search answer surfaced — is remembered ACROSS
-navigation, so a pronoun ("email them", "their balance") resolves to it on the search page and
-the empty landing offers a "Continue with [name]" row. Distinct from `__cmdkEntity` (only the
-OPEN hub, snapshotted by openCmdK) and `__cmdkConvCtx` (only this search session); resolved
-only while fresh AND the record still exists, so stale/deleted context never hijacks a later
-query, and a real pronoun is required so a generic query is never captured (search-test §21b).
-**Siri look**: the search card breathes `cmdkSiriAura` while the page is open, driven by the
-`--siri-1..5` hue tokens (`:root` in admin.css); box-shadow aura (overflow-safe), honours
-`prefers-reduced-motion`. NB this was DEAD for the whole life of the pop-out:
-`#cmdk.cmdk-overlay .cmdk-box` blanked the entire `animation` shorthand to cancel
-`cmdkRise` (the drop replaces it) and took the aura with it, so a documented part of
-the assistant's look rendered on no surface at all. Name the animation that goes, never
-the shorthand — and restate the reduced-motion off-switch at the OVERLAY's specificity,
-because the generic `.cmdk-box` rule is out-specified by it. **Motion in and out are
-deliberately different, and used to be accidentally different**: `visibility` flipped
-with no transition, so the box's own exit ran inside an already-invisible container —
-the panel teleported while the scrim faded on for 260ms. The container now carries
-`transition: visibility 0s linear 0.22s` (the `.open` rule restates it without the delay
-so opening stays instant), the closed state is the quick unsprung EXIT and `.open`
-carries the slow spring ENTRY. Gated by ui-test-searchpage §17, which samples the exit
-by STATE rather than on a clock — `closeCmdK` does ~180ms of synchronous teardown before
-the first paint, so a fixed 100ms sample reports "opacity 1" for an exit that works.
-**Unified interface**: RESULTS/JUMP-TO/quick-ACTIONS are rows
-(`.cmdk-row` / `.cmdk-qa-row`, distinct destination glyphs via a registry `icon` + a row's
-`iconType`); refine/related/ask PIVOTS are pills (`.cmdk-chip`); one hover tint (`--cmdk-sel`),
-one pill spec. Suite: `ui-test-searchpage.js` (page open/toggle/back, answers, logo states,
-teach flash, conv follow-up, miss capture); the layout gate covers the page at phone width.
+**FOUR LAYOUTS OVER ONE RESULT SET** — boards, answer hero, thread, split. All four are
+containers around the SAME rows from `cmdkRowHtml` at their SAME `__cmdkResults` indices.
+**That is the invariant**: a layout may never re-order, re-index or swallow a row, or
+keyboard nav, `cmdkSyncActive` and `aria-activedescendant` break in silence. Every row
+keeps its `cmdk-opt-<i>` id, which is what the gates assert — a container that ate an
+index would break arrow-key nav with nothing on screen to show for it. Each layout
+break-tested independently in §11.
+- **BOARDS** (`cmdkBoardsHtml`, `CMDK_BOARDS`) — the empty landing is a dashboard and
+  **the day LEADS it**: Suggested → greeting + boards → Most used → Jump to. **Reorder in
+  the ARRAY, never in the renderer alone** — the landing renders SLICES by index, so
+  moving HTML blocks leaves arrow-key nav walking the old order (§20 checks heading order
+  AND that DOM order and index order rise together; the second catches it).
+  **`cmdkBriefBuild` ENDS with a stable sort by board rank**: composition order is
+  severity (it decides which rows survive the cap of 7) but boards render
+  today→money→waiting→month, so the indices crossed — only in clock windows where both
+  rows coexist, which is how it passed CI for months then failed at midnight. §20a-ii
+  pins it at ANY hour. A brief row DECLARES its `board` rather than the renderer guessing;
+  an unrecognised board still renders as an orphan, because silently dropping one is the
+  exact bug the scope filter caused here. The grid is ONE column and says so (two 240px
+  tracks need 490 in a 478px box).
+- **ANSWER hero** — captioned "Answer", not "Top hit" (which describes ranking). The
+  figure is emphasised INSIDE the sentence by one span (`cmdkHeroFigure`), by **WEIGHT at
+  the sentence's own size**: at 1.7em it towered and the answer stopped reading as a sentence. NB §11 must
+  query `.cmdk-hero .cmdk-hero-fig` — the THREAD renders its own copy above the live
+  answer, so a document-wide query measures history.
+- **THREAD** (`CMDK_THREAD_MAX` 3) — earlier ANSWERED turns stay above the live answer,
+  the only way the conversational frame is visible. Pushed where a query COMMITS, never in
+  the renderer (which re-runs per selection). A turn that EXTENDS the previous replaces
+  it. **It survives a MISS** — the no-results branch used to return before the thread
+  rendered, so a conversation vanished when a query found nothing: finding nothing is not
+  the same as never having asked.
+- **SPLIT** (`cmdkDetailHtml`, ≥1200px) — renders a SUMMARY and does **NOT** re-parent
+  `#booking-hub-content` (that node already moves between Inbox and Today; a third
+  claimant empties one). Pure CSS at the existing breakpoint — no matchMedia, nothing to
+  leave stale. The pop-out WIDENS 520 → 860px while a pane is up, or the list is narrower
+  than its own sidebar (measured 226px against 260px). NB selection therefore changes the
+  box width, which silently broke §10's resting-shape measurement.
+
+**A TYPED QUERY SPANS EVERY CATEGORY; the workspace snapshot only shapes the LANDING.**
+These were one variable, so opening search from Today pre-scoped to Bookings and a
+guest's emails, chats and payments were filtered out **in silence** (no widen note,
+because the search had not failed). Two now: **`__cmdkScope`** is the OWNER'S choice
+('all' until they tap a chip) and **`__cmdkHomeScope`** is the snapshot, read by the
+landing ALONE. `cmdkScopeLabel(k)` is the one place a scope becomes words.
+- On the landing the day brief is **NOT** filtered (Jump-to still is), and the scope
+  switch is HIDDEN, so nothing claims a filter it is not applying. Filtering the brief
+  was the first bug of this shape — 1 row surviving of 4, which is why the landing looked
+  empty. Removing the Jump-to filter too was tried and BACKED OUT: it is what keeps that
+  list short (124px → 271px capped, 952px uncapped).
+- `cmdkHi` needs **3 characters**: a 2-letter token has no word boundary and lit up inside
+  unrelated words. Display-only — it never scores.
+
+**Cross-page context memory** (`__cmdkLastEntity`, `chbStampRecent`/`cmdkRecentEntity`,
+`CMDK_RECENT_MS` 6min): the record last engaged with is remembered ACROSS navigation, so a
+pronoun resolves on the search page and the landing offers "Continue with [name]".
+Distinct from `__cmdkEntity` (the open hub, snapshotted by openCmdK) and `__cmdkConvCtx`
+(this session). Resolved only while fresh AND the record still exists, and a real pronoun
+is required so a generic query is never captured.
+
+**The AI status lives IN THE LOGO** — the knot glyph (`#cmdk-ml`, `data-mstate` via
+`chbSetModelStatus`) carries state as COLOUR with a hover title (`CHB_MSTATE_TITLE`);
+there is no worded pill (`CHB_MSTATE_LABEL` is REMOVED) and **no download progress ring**.
+States: ready / understood / meaning (its own Siri identity, `chb-knot-siri` — the knot
+cycling teal→purple, distinct from understood's steady green) / guess / learning. The ring was deleted deliberately
+— the cascade is lexical-only until a model lands, so search answers throughout and the
+arc reported on something nobody waits for; `chbFetchBuf` is a plain fetch again, and
+`ui-test-modelring.js` + search-test §31 went with it. All state animation honours
+reduced motion. Leaving on an unanswered query files the miss (`chbMissRecord`) via
+`cmdkBack`/`closeCmdK` AND via `nav()`.
+
+**ONE assistant look** (admin.css's "ONE ASSISTANT LOOK" block) — the one place the
+assistant's material is stated: panel radius + darkstar hairline, the pill field with its
+accent focus ring, the row rhythm (44px touch floor, shared label/sub sizes), the hint
+footer. **The field's focus ring HUGS**: it is autofocused for the pop-out's life and a
+text input always matches `:focus-visible`, so an offset 2px solid accent ring was
+permanent decoration. `.cmdk-foot` is not hidden behind `hover: hover` — a phone got no
+hint at all; touch gets a touch-appropriate line instead of ⌘K keycaps.
+
+**THE UI PASS — search wears the dashboard's vocabulary.** Anatomy untouched (same rows,
+same indices, same chips); the clothes changed: the greeting is a spoken `.cmdk-pulse`
+line, captions take the `.acr-cap` track, boards take the well ground, the HERO is a
+verdict card (rail arithmetic 3px margin + 1px border + 8px padding = the old 12px, so
+§18f/g pass untouched), the hero's MONEY figure takes the house serif at the sentence's
+own size while a leading COUNT keeps sans (`.cmdk-fig-n` — a headcount is not money), and
+rows accept an optional **`stcap: {tone, text}`** capsule. Wired additively to the owed
+rows (judged by `hasCheckedOut || bookingInBalanceWindow`, the hub's own derivation, so
+capsule and payask cannot disagree), ratings and plans. A row without `stcap` renders
+byte-identical.
+
+**Unified interface**: RESULTS / JUMP-TO / quick-ACTIONS are rows; refine / related / ask
+PIVOTS are pills (`.cmdk-chip`); one hover tint, one pill spec. `.cmdk-box` keeps
+max-width 680px and every inner id, so the intelligence stack is unchanged. A guest
+**typeahead** in Add Booking (`modalNameSuggest`) fills name+email+phone from a past
+guest. Suite: `ui-test-searchpage.js`; the layout gate covers the page at phone width.
+NB `getComputedStyle` may return `color(srgb 0.99 …)` in **0–1 floats** where `rgb()` is
+0–255, making a near-white surface measure as near-black — the fourth false contrast
+failure this codebase has produced.
 
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
