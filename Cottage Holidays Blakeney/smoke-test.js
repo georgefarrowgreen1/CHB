@@ -468,8 +468,7 @@ else {
 
 // THE REVIEW FORM PROMISES ONLY WHAT reviews.php DELIVERS. `submit` writes
 // status='pending' and `set_status` can DECLINE one, so "will appear on our site
-// shortly" guaranteed a publication the site does not — and the toast on the very
-// next tap already said "submitted for approval", so one screen made two claims.
+// shortly" guaranteed a publication the site does not.
 //
 // The fresh form used to carry "We read every review before it goes on the site"
 // beside Submit, and this asserted it. That line was REMOVED at the owner's ask:
@@ -498,6 +497,15 @@ else {
     check('…and claims nothing about being published', !/appear on our site|\bshortly\b/i.test(pending));
     check('an approved one still says it is live',
         /live on our home page/i.test(review({ jollyboat: { stars: 5, text: 'Lovely', status: 'approved' } })));
+
+    // THE TOAST IS THE ONLY ACKNOWLEDGEMENT LEFT, so it is pinned: it must
+    // confirm the submission and say nothing about our process. Read from the
+    // SOURCE, because the handler is async and toast() paints from a real click.
+    const submitFn = appScript.slice(appScript.indexOf('async function submitGuestReview'));
+    const submitToast = (submitFn.slice(0, submitFn.indexOf('renderGuestBookings')).match(/toast\((['"])(.*?)\1/) || [, , ''])[2];
+    check('the submit toast confirms it landed', /review has been submitted/i.test(submitToast));
+    check('…and mentions no approval or moderation',
+        !!submitToast && !/approval|approve|moderat|review it|we.ve read/i.test(submitToast));
 
     // THE RATING IS ASKED ONCE. The card used to render a tappable star row AND a
     // <select> of ★ strings in the composer beneath it — two controls for one

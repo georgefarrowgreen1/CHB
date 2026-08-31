@@ -6888,7 +6888,8 @@ async function submitGuestReview(propKey) {
     }
     try {
         await apiPost('reviews.php', { action: 'submit', prop_key: propKey, stars, text });
-        toast('Thanks! Your review has been submitted for approval.');
+        // No "…for approval" — the last mention of moderation a guest met.
+        toast('Thanks! Your review has been submitted.');
         await renderGuestBookings(); // repaint with the new pending state
     } catch (e) {
         glassAlert("Couldn't submit your review: " + e.message);
@@ -18381,7 +18382,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'revfrm2';
+    const BUILD = 'revtst1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
