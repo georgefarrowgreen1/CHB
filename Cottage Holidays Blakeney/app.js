@@ -6831,20 +6831,20 @@ async function submitGuestPhoto() {
 function guestReviewForm(propKey) {
     const existing = myGuestReviews[propKey];
     const meta = propertyMeta[propKey] || { name: propKey };
-    let note = '';
-    if (existing && existing.status === 'approved')
-        note = `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`;
-    // A PENDING REVIEW SAYS WHERE IT IS. This read "Thank you for staying with
-    // us!" — an answer to a question nobody asked, at the one moment the guest is
-    // wondering what became of the review they wrote. Its sibling above names
-    // where an approved one went; this one now does too.
-    else if (existing && existing.status === 'pending')
-        note = `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thanks for your review of ${escapeHtml(meta.name)} — it goes on the site once we&rsquo;ve read it.</div>`;
-    // The line beside Submit says what the site DOES. It promised the review would
-    // appear "shortly", but reviews.php writes status='pending' and set_status can
-    // DECLINE one — and the toast on the next tap said "submitted for approval",
-    // so one screen made two claims. (A JS comment, not an HTML one: a comment in
-    // this template would ship, quoting the wrong sentence back at the guest.)
+    // ONLY AN APPROVED REVIEW GETS A NOTE. A PENDING one used to carry "it goes
+    // on the site once we've read it"; removed at the owner's ask, along with the
+    // "we read every review" line beside Submit — the composer is a rating and a
+    // box, and the moderation is the site's business, not the guest's homework.
+    // The guest is not left without acknowledgement: the toast on submit already
+    // confirms it, and their stars stand filled in the card afterwards.
+    // NB nothing here may promise PUBLICATION — reviews.php writes
+    // status='pending' and set_status can DECLINE one, so a form that says a
+    // review "will appear shortly" guarantees what the site does not (smoke-test
+    // asserts the absence). A JS comment, not an HTML one: a comment inside this
+    // template would ship, quoting the wrong sentence back at the guest.
+    const note = existing && existing.status === 'approved'
+        ? `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
+        : '';
     // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
     // tappable star row — two controls for one question, able to disagree until a
     // tap synced them. The row is the ONE control now and lives HERE, with the
@@ -6863,7 +6863,7 @@ function guestReviewForm(propKey) {
     return `
             <div class="gb2-review">
                 ${note}
-                ${existing ? '' : `<div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>`}
+                ${note ? '' : `<div class="gb2-rev-t">How was ${escapeHtml(meta.name)}?</div>`}
                 ${starRow}
                 <input type="hidden" id="grf-stars-${propKey}" value="${stars}">
                 ${existing ? '' : `<p class="gb2-rev-s">A line or two helps the next couple choose — and helps us too.</p>`}
@@ -18381,7 +18381,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'revfrm1';
+    const BUILD = 'revfrm2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

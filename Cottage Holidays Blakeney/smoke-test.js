@@ -485,9 +485,17 @@ else {
     check('no review yet → no promise that it will be published', !/appear on our site/i.test(fresh));
     check('…nor any other claim about what happens to it', !/\bshortly\b|\bwill be published\b|\bgoes live\b/i.test(fresh));
     check('the button is just "Submit"', />\s*Submit\s*</.test(fresh) && !/Submit review/i.test(fresh));
+    // A PENDING REVIEW GETS NO NOTE. It used to say "goes on the site once we've
+    // read it"; removed at the owner's ask along with the line beside Submit. What
+    // must stay true is that dropping it left no HEADLESS card: the heading was
+    // suppressed whenever a note rendered, so keying it on `existing` rather than
+    // on the note would have shown a pending guest bare stars and nothing else.
     const pending = review({ jollyboat: { stars: 5, text: 'Lovely', status: 'pending' } });
-    check('a pending review says where it IS, not just thank you', /goes on the site once we/i.test(pending));
-    check('…and names the cottage it was about', /Thanks for your review of /i.test(pending));
+    check('a pending review carries no note about moderation',
+        !/goes on the site|we.ve read it|Thanks for your review/i.test(pending));
+    check('…but still gets the heading, so the card is never headless',
+        /How was Jollyboat\?/.test(pending));
+    check('…and claims nothing about being published', !/appear on our site|\bshortly\b/i.test(pending));
     check('an approved one still says it is live',
         /live on our home page/i.test(review({ jollyboat: { stars: 5, text: 'Lovely', status: 'approved' } })));
 
