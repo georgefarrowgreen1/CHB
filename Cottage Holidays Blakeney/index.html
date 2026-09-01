@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=309">
+    <link rel="stylesheet" href="app.css?v=310">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -860,10 +860,12 @@
                     <div class="enq-fg" style="--efd:0.195s;">
                         <label class="terms-accept">
                             <input type="checkbox" id="enq-nodogs" data-act-change="enqLiveSync">
+                            <span class="terms-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>
                             <span>I confirm we will not be bringing a dog with us.</span>
                         </label>
                         <label class="terms-accept">
                             <input type="checkbox" id="enq-terms" data-act-change="enqLiveSync">
+                            <span class="terms-box" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9"/></svg></span>
                             <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
                         </label>
                     </div>
@@ -1305,7 +1307,10 @@
             <div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>
             <button class="reviews-modal-close" data-act="closeChat" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
-        <div class="chat-thread" id="chat-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
+        <div class="chat-threadwrap">
+            <div class="chat-thread" id="chat-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
+            <button type="button" class="chat-newpill" id="chat-newpill" data-act="chatToNewest">New message &darr;</button>
+        </div>
         <div id="chat-intro" class="chat-intro" style="display:none;">
             <div class="chat-intro-label">So we can reply</div>
             <div class="chat-intro-fields">
@@ -1995,7 +2000,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=938"></script>
+    <script defer src="app.js?v=939"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
