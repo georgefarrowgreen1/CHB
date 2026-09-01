@@ -947,12 +947,17 @@ const PINNED = new Date('2026-07-15T09:00:00Z');
   ok(past.prevDisabled, '…and ‹ is disabled there, so it does not look broken');
   ok(past.pickable > 0, '…leaving a month with dates that can actually be picked');
   // Admin back-dates on purpose, so the floor must not apply to the owner.
-  const adminPast = await page.evaluate(() => {
+  const adminPast = await page.evaluate(async () => {
     closeDatePicker();
     dpMode = 'admin';
     dpState.view = new Date(2026, 6, 1);
     dpChangeMonth(-1);
-    const t = document.getElementById('dp-title').innerText;
+    // The month page ANIMATES now (ui-test-flowmotion §1): dpChangeMonth defers
+    // its render behind the grid's 80ms slide, so the title is no longer written
+    // in the same tick. Poll for the change rather than sleeping a guess.
+    const title = () => document.getElementById('dp-title').innerText;
+    for (let i = 0; i < 40 && !/June/i.test(title()); i++) await new Promise((r) => setTimeout(r, 25));
+    const t = title();
     dpMode = 'enquiry';
     return t;
   });

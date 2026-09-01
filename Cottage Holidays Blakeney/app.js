@@ -4764,10 +4764,23 @@ function gb2PastToggle(btn) {
 function gb2Star(propKey, n, btn) {
     const wrap = btn && btn.closest ? btn.closest('.gb2-stars') : null;
     if (wrap) {
-        Array.from(wrap.querySelectorAll('.gb2-star')).forEach((s, i) => {
+        const stars = Array.from(wrap.querySelectorAll('.gb2-star'));
+        stars.forEach((s, i) => {
             s.textContent = i < n ? '★' : '☆';
             s.classList.toggle('is-on', i < n);
+            s.classList.remove('gb2-bow');
         });
+        // THE TAP IS ACKNOWLEDGED, at its own amplitude. The stars already bow on
+        // SUBMIT and nothing happened on the tap. Deliberately NOT the submit bow's
+        // 1.32: reusing it makes tapping a star look exactly as important as finishing
+        // the review, flattening the one moment on this card worth marking. And only
+        // the star you TOUCHED — 3 → 5 lights the fourth too, but the one you chose is
+        // the answer; rippling the run is the submit gesture arriving early.
+        const tapped = stars[n - 1];
+        if (tapped) {
+            void tapped.offsetWidth;
+            tapped.classList.add('gb2-bow');
+        }
     }
     const sel = /** @type {HTMLSelectElement|null} */ (document.getElementById('grf-stars-' + propKey));
     if (sel) sel.value = String(n);
@@ -12456,7 +12469,16 @@ function enquireContinue() {
     const r = document.getElementById('enquire-step-review');
     const d = document.getElementById('enquire-step-details');
     if (r) r.style.display = 'none';
-    if (d) d.style.display = '';
+    if (d) {
+        d.style.display = '';
+        // THE COMMIT IS ACKNOWLEDGED. Everything around this moment moves — the range
+        // fills as a wave, the send is narrated, the sent panel cascades — and the one
+        // moment the guest COMMITS was a bare display swap. Same class and keyframe the
+        // landed dates use; step two names its own blocks in app.css.
+        d.classList.remove('enq-landed');
+        void d.offsetWidth;
+        d.classList.add('enq-landed');
+    }
     setEnqStep(2);
     const box = document.querySelector('.enquire-box');
     if (box) box.scrollTop = 0;
@@ -12707,6 +12729,9 @@ function firstArrivalInGap(gap, minN, arrivalDays) {
     }
     return null;
 }
+// Which availability chips have already been filled this session — see the
+// first-fill rule inside renderCardAvailability.
+const __availShown = new Set();
 function renderCardAvailability() {
     if (!publicAllAvailability) return;
     const tomorrow = ukShiftDays(todayDashed(), 1);
@@ -12727,7 +12752,20 @@ function renderCardAvailability() {
         const html = availChipHtml(firstStart, tomorrow);
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = html;
+            if (!el) return;
+            el.innerHTML = html;
+            // THE WORDS ARRIVE RATHER THAN MATERIALISE. This lands after
+            // loadAvailabilityAll() resolves, so a guest mid-scroll saw a line pop into
+            // existence; nothing MOVES (.card-avail reserves the row), so the fade is
+            // about the arrival, not the space. FIRST FILL PER COTTAGE, and the flag
+            // must outlive the element — renderCottageGrid rebuilds these cards and
+            // every rates load calls this again, so a per-element flag would replay on
+            // each price refresh and flicker the whole grid.
+            if (html && !__availShown.has(id)) {
+                __availShown.add(id);
+                const chip = el.firstElementChild;
+                if (chip) chip.classList.add('avail-chip-in');
+            }
         });
     });
 }
@@ -14019,6 +14057,13 @@ function closeDatePicker() {
     dpProp = null;
     dpTarget = null;
     __dpFocusDay = null; // the next open seats its own tab stop
+    // Kill any in-flight month page and clear its marks: dp-mo-out holds opacity 0
+    // (fill: both), so a close mid-flight would re-open onto an invisible grid.
+    dpMonthAnim++;
+    const g = document.getElementById('dp-grid');
+    if (g) g.classList.remove('dp-mo-out', 'dp-mo-in');
+    const tl = document.getElementById('dp-title');
+    if (tl) tl.classList.remove('dp-mo-fade');
 }
 // TRUE while the built-in calendar is raised ABOVE the glass dialog (opened
 // from a daterange field): the two key handlers below defer to the picker for
@@ -14036,12 +14081,53 @@ function dpMonthFloor() {
     const n = dpToday0();
     return new Date(n.getFullYear(), n.getMonth(), 1);
 }
+// The supersede stamp for the month animation below. Bumped by every page AND by
+// closeDatePicker, so an in-flight one abandons rather than painting into a picker
+// that has since closed or re-opened on another cottage.
+let dpMonthAnim = 0;
+// THE PAGE TRAVELS, so the guest can see which way they went — this was a bare
+// innerHTML swap, the most-repeated gesture in the enquiry flow, and it read as a
+// flicker rather than movement. The GRID alone moves (8px out against the direction,
+// 10px in with it); the month name only cross-fades; the weekday row never moves.
+//
+// THE STAMP IS NOT DECORATION. Synchronous paging cannot get this wrong; an animated
+// one can — three quick taps start three flights and whichever resolves LAST paints
+// its month over the newest. A superseded flight returns before rendering, and the
+// newer one owns the classes (removed, reflowed, re-added — adding a class already
+// present restarts nothing).
 function dpChangeMonth(delta) {
     const next = new Date(dpState.view.getFullYear(), dpState.view.getMonth() + delta, 1);
     const floor = dpMonthFloor();
     if (floor && next < floor) return;
     dpState.view = next;
-    renderDatePicker();
+    const grid = document.getElementById('dp-grid');
+    const title = document.getElementById('dp-title');
+    let still = false;
+    try {
+        still = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) {}
+    // Reduced motion swaps exactly as it always did — and skips the wait with it, or
+    // the page would simply be 80ms slower for nothing.
+    if (still || !grid) {
+        dpMonthAnim++;
+        renderDatePicker();
+        return;
+    }
+    const mine = ++dpMonthAnim;
+    grid.style.setProperty('--dpmx', -delta * 8 + 'px');
+    grid.classList.remove('dp-mo-out', 'dp-mo-in');
+    void grid.offsetWidth;
+    grid.classList.add('dp-mo-out');
+    if (title) title.classList.add('dp-mo-fade');
+    setTimeout(() => {
+        if (mine !== dpMonthAnim) return; // a newer page took over
+        renderDatePicker();
+        grid.style.setProperty('--dpmx', delta * 10 + 'px');
+        grid.classList.remove('dp-mo-out', 'dp-mo-in');
+        void grid.offsetWidth;
+        grid.classList.add('dp-mo-in');
+        if (title) title.classList.remove('dp-mo-fade');
+    }, 80);
 }
 
 function renderDatePicker() {
@@ -16281,15 +16367,36 @@ function updateEnquiryPrice() {
     try {
         const contBtn = document.querySelector('#enquire-step-review [data-act="enquireContinue"]');
         if (contBtn) {
-            let contSub = '';
+            let contDates = '',
+                contFig = '';
             if (checkIn && checkOut) {
                 const cpb = priceBreakdown(activeFrontProperty, adults, children, checkIn, checkOut);
-                if (cpb && cpb.total > 0)
-                    contSub = `${dpSpoken(checkIn)} → ${dpSpokenEnd(checkOut)} · ${gbp(cpb.total + (cpb.damagesDeposit || 0))} all in`;
+                if (cpb && cpb.total > 0) {
+                    contDates = `${dpSpoken(checkIn)} → ${dpSpokenEnd(checkOut)}`;
+                    contFig = gbp(cpb.total + (cpb.damagesDeposit || 0));
+                }
             }
-            contBtn.innerHTML = contSub
-                ? 'Continue<span class="enq-cta-sub">' + escapeHtml(contSub) + '</span>'
+            // AND THE FIGURE SAYS IT RECOMPUTED. Changing the party or the nights made
+            // the number simply BECOME a different number, so the tap and the price read
+            // as unrelated. Only the figure moves (the dates beside it did not change)
+            // and it SETTLES rather than pops — payPop means "this appeared", a flinch on
+            // a figure already on screen. On a CHANGE only: never the first render.
+            const wasFig = contBtn.querySelector('.enq-cta-fig');
+            const wasTxt = wasFig ? wasFig.textContent : '';
+            contBtn.innerHTML = contFig
+                ? 'Continue<span class="enq-cta-sub">' +
+                  escapeHtml(contDates) +
+                  ' · <span class="enq-cta-fig">' +
+                  escapeHtml(contFig) +
+                  '</span> all in</span>'
                 : 'Continue';
+            if (contFig && wasTxt && wasTxt !== contFig) {
+                const nowFig = /** @type {HTMLElement|null} */ (contBtn.querySelector('.enq-cta-fig'));
+                if (nowFig) {
+                    void nowFig.offsetWidth;
+                    nowFig.classList.add('is-fresh');
+                }
+            }
         }
     } catch (e) {}
 
@@ -18461,7 +18568,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dpopen1';
+    const BUILD = 'flowmo1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

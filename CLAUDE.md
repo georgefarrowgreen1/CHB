@@ -1715,6 +1715,88 @@ capsule, wave, receipts, narration, beat, sent moment).
   and every refusal rule in the picker — this pass is connective tissue and motion
   over the gated logic, not a rebuild of it.
 
+## Five small motions — the snaps in the booking flow (approved demo, built)
+
+**Asked for as "what other little ui upgrades/animations can be added", demoed
+side-by-side, refined once, then built.** Five places that SNAPPED. Gated by
+**`ui-test-flowmotion.js`** (30 checks, CI-wired by the runner's own glob,
+deploy-excluded with every `ui-test-*.js`), each break-tested.
+- **THE MONTH PAGE TRAVELS** (`dpChangeMonth` + `.dp-mo-out`/`.dp-mo-in`). It was a
+  bare `innerHTML` swap — the most-repeated gesture in the enquiry flow, reading as
+  a flicker rather than movement. The GRID alone moves (8px out against the
+  direction, 10px in with it, `--dpmx` carrying the signed distance); the month name
+  only CROSS-FADES, being the label rather than the content; the **weekday row never
+  moves**, because it does not change between months and animating it would be motion
+  that means nothing.
+  - **THE SUPERSEDE STAMP IS THE PART THAT IS NOT DECORATION.** Synchronous paging
+    cannot get this wrong; an animated one can — three quick taps start three flights
+    and whichever resolves LAST paints its month over the newest. `dpMonthAnim` is
+    bumped by every page AND by `closeDatePicker` (or a close mid-flight re-opens onto
+    a grid still held at `opacity: 0` by `dp-mo-out`'s `fill: both`), and the newer
+    flight removes-reflows-re-adds the classes, because adding a class already present
+    restarts nothing.
+  - **IT MADE A SYNCHRONOUS FUNCTION VISIBLY ASYNC**, and ui-test-datepicker's
+    admin-back-dating check caught it by reading `#dp-title` in the same tick. No
+    production caller reads the DOM after it (the two ‹ › buttons and the PageUp/Down
+    handler), so the gate polls now — but check the callers before deferring a render.
+- **STEP ONE TO STEP TWO IS ACKNOWLEDGED** (`enquireContinue` adds `.enq-landed`;
+  `#enquire-step-details.enq-landed .enq-fg` in app.css). Everything around that
+  moment already moves — the range fills as a wave, the send is narrated, the sent
+  panel cascades — and the one moment the guest COMMITS was a bare `display` swap.
+  - **THE LABEL/INPUT PAIRS ARE WRAPPED, and that is the whole markup change.** Step
+    two's children were FLAT, so `> *` would have staggered 16 elements and floated a
+    label in before its own field. Six `.enq-fg` wrappers, each carrying its delay
+    inline as `--efd` (the `.dp-day` wave's `--dpd` pattern) — no id, class, handler or
+    inline style inside them touched. **Measured layout-neutral**: every field box in
+    step two is byte-identical before and after, container height 1118px both ways.
+    The gate asserts the INVARIANT rather than the boxes — no `label[for]` may sit in a
+    different `.enq-fg` from the input it names.
+  - **The cadence is deliberately tighter than the three-block one it reuses.** Six
+    groups at `.enq-landed`'s own 0.45s/0.26s settle the last at ~0.8s, too long in
+    front of a form you want to start typing in; 0.36s across 0.195s of stagger lands
+    it at 0.555s, with the heading and first field at ZERO delay so the card reads at
+    once. Focusing the name field was deliberately NOT done — on a phone it opens the
+    keyboard over the form the guest has just been shown.
+- **THE CONTINUE RECEIPT'S FIGURE SETTLES WHEN IT RECOMPUTES** (`.enq-cta-fig`).
+  Changing the party made the number simply BECOME a different number. **A settle, not
+  a pop**: `payPop` opens at `scale(0.5)` because it means "this APPEARED", which on a
+  figure already on screen is a flinch — the lesson `revBow`'s own comment records.
+  Only the FIGURE moves (the dates beside it did not change), it is `tabular-nums` so
+  the button does not re-flow under it, and it fires on a CHANGE only.
+- **AVAILABILITY ARRIVES RATHER THAN MATERIALISES** (`.avail-chip-in`). I first called
+  this a layout shift and it is **not** — `.card-avail` already reserves the line — so
+  what is wrong is only that the words appear mid-scroll with no arrival. **First fill
+  per cottage**, and the flag (`__availShown`) must outlive the ELEMENT:
+  `renderCottageGrid` rebuilds these cards and every rates load calls the renderer
+  again, so a per-element flag would replay on each price refresh and flicker the grid.
+  The weakest of the five — the fetch usually beats the scroll.
+- **A TAPPED STAR BOWS AT ITS OWN AMPLITUDE** (`revBowTap` 1.18/0.28s beside the
+  shipped `revBow` 1.32/0.42s). The stars already bowed on SUBMIT and nothing happened
+  on the tap. Reusing the submit amplitude made tapping a star look exactly as
+  important as finishing the review, which flattens the one moment on that card worth
+  marking — **the ending has to stay bigger than the beginning**. Only the star you
+  TOUCHED (3 → 5 lights the fourth too, but the one chosen is the answer), and
+  `.gb2-stars.is-settling .gb2-star.is-on` at (0,3,0) still outranks `.gb2-bow` at
+  (0,2,0), so a submit wins on a star just tapped.
+- **SAMPLING RULE: SEEK, NEVER RACE — and seek LAST.** Two `evaluate()` round trips
+  are enough to overshoot an 80ms animation, so a fixed sample calls a working slide a
+  teleport (it did, three checks at once). The gate pauses the animation and sets
+  `currentTime`, the discipline ui-test-searchpage §17a already uses on the Siri aura —
+  **but a paused CSS animation does not resume into a clean flight**, so every
+  natural-flow assertion runs BEFORE the seek and waits on STATE
+  (`getAnimations().length === 0`), never a clock.
+- **AND §3 WAS VACUOUS UNTIL IT DROVE THE ROUTE.** Written against markup the gate
+  composed itself, it proved the STYLESHEET and nothing else: deleting the
+  `<span class="enq-cta-fig">` from `updateEnquiryPrice` left it fully green while the
+  other four break-tests fired. It drives the real composer now. Fourth time this shape
+  has bitten — whenever a pure builder gains a field, gate the ROUTE that fills it.
+- **PROSE IS A POOR LEVER ON A BUDGET, again.** Trimming the new comments recovered
+  159 gz bytes of app.css and 198 of app.js against overages of ~1000 and ~2100, so the
+  budgets were raised with the real number stated: **the gate measures the UNSTRIPPED
+  file while the deploy strips comments**, and the actual shipped growth is app.css
+  **+257**, app.js **+664**, index.html **+275** gz — about 1.2KB for all five. Check
+  the stripped size before reading a documentation-heavy pass as performance rot.
+
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
 Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`

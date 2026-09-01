@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=308">
+    <link rel="stylesheet" href="app.css?v=309">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -817,13 +817,22 @@
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
                     <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" data-act-keydown="activate" data-act="enquireBack">← Back</span>
-                    <h2 class="section-title" id="enq-h-details" tabindex="-1" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
-                    <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
-                    <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
-                    <input type="email" class="input-glass" id="enq-email" autocomplete="email" inputmode="email" placeholder="you@email.com" data-act-input="enqLiveSync">
-                    <div class="reg-row">
+                    <!-- THE FORM ASSEMBLES ITSELF (enquireContinue adds .enq-landed).
+                         The label/input pairs are wrapped so a label can never arrive
+                         before its own field, and each group carries its own --efd
+                         delay — the .dp-day wave's --dpd pattern. Wrappers only; no
+                         id, class or handler on anything inside them changed. -->
+                    <h2 class="section-title enq-fg" id="enq-h-details" tabindex="-1" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
+                    <p class="enq-fg" style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
+                    <div class="enq-fg">
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
+                        <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
+                    </div>
+                    <div class="enq-fg" style="--efd:0.035s;">
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
+                        <input type="email" class="input-glass" id="enq-email" autocomplete="email" inputmode="email" placeholder="you@email.com" data-act-input="enqLiveSync">
+                    </div>
+                    <div class="reg-row enq-fg" style="--efd:0.075s;">
                         <div>
                             <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
                             <input type="tel" class="input-glass" id="enq-phone" autocomplete="tel" inputmode="tel" placeholder="Contact number" data-act-input="enqLiveSync">
@@ -835,32 +844,38 @@
                         </div>
                     </div>
                     <!-- Hidden by default; shown only when the server says texts can be sent (applySmsAvailability). -->
-                    <label id="enq-sms-row" style="display:none;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;cursor:pointer;">
+                    <label id="enq-sms-row" class="enq-fg" style="display:none;align-items:center;gap:8px;font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;cursor:pointer;--efd:0.095s;">
                         <input type="checkbox" id="enq-sms-optin"> Text me booking updates (balance reminders &amp; arrival info)
                     </label>
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
-                    <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
-                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
-                    <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
+                    <div class="enq-fg" style="--efd:0.115s;">
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
+                        <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
+                        <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    </div>
+                    <div class="enq-fg" style="--efd:0.155s;">
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
+                        <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
+                    </div>
                     <!-- Two declarations, both required before sending. -->
-                    <label class="terms-accept">
-                        <input type="checkbox" id="enq-nodogs" data-act-change="enqLiveSync">
-                        <span>I confirm we will not be bringing a dog with us.</span>
-                    </label>
-                    <label class="terms-accept">
-                        <input type="checkbox" id="enq-terms" data-act-change="enqLiveSync">
-                        <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
-                    </label>
+                    <div class="enq-fg" style="--efd:0.195s;">
+                        <label class="terms-accept">
+                            <input type="checkbox" id="enq-nodogs" data-act-change="enqLiveSync">
+                            <span>I confirm we will not be bringing a dog with us.</span>
+                        </label>
+                        <label class="terms-accept">
+                            <input type="checkbox" id="enq-terms" data-act-change="enqLiveSync">
+                            <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
+                        </label>
+                    </div>
                     <!-- THE SEND IS NARRATED (enqStepsShow, app.js — the pay screen's
                          #pay-steps anatomy reused): what's happening while it goes,
                          revealed only once the wait has lasted 400ms. -->
                     <div class="pay-steps" id="enq-steps" style="display:none;" role="status" aria-live="polite"></div>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
-                    <button class="btn-glass btn-accent" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
+                    <button class="btn-glass btn-accent enq-fg" style="width: 100%; padding: 18px;--efd:0.195s;" id="enq-submit-btn">Send enquiry</button>
                     <!-- The living line — see enqLiveSync. -->
-                    <p id="enq-live-sub" style="font-size:0.8rem;color:var(--text-muted);text-align:center;margin:10px 0 0;">No payment now — George usually replies the same day to confirm availability.</p>
-                    <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                    <p id="enq-live-sub" class="enq-fg" style="font-size:0.8rem;color:var(--text-muted);text-align:center;margin:10px 0 0;--efd:0.195s;">No payment now — George usually replies the same day to confirm availability.</p>
+                    <a class="btn-glass enq-fg" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;--efd:0.195s;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
                 </div>
 
                 <!-- STEP 3 (only shown to guests who aren't signed in): set a password to
@@ -1980,7 +1995,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=937"></script>
+    <script defer src="app.js?v=938"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
