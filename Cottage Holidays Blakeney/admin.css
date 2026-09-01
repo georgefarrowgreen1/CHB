@@ -5325,6 +5325,13 @@ body.offline-snap .admin-dock-btn[data-view='view-accounts'],
 body.offline-snap .admin-dock-btn[data-view='view-settings'] {
   display: none;
 }
+/* THE SAME RULE FOR A SWITCHED-OFF MAC (chbFrameSync sets .night-off). The
+   AI-chat spark led to a page whose every control meets a server refusal —
+   night-shift off closes the chat doors as well as ingest. The way back is
+   Manage → System check, where the switch is. */
+body.night-off .admin-dock-btn[data-view='view-aichat'] {
+  display: none;
+}
 .ods-mark {
   display: flex;
   align-items: center;
@@ -6517,6 +6524,11 @@ body.offline-snap #admin-rail .rail-row[data-view='view-inbox'],
 body.offline-snap #admin-rail .rail-row[data-view='view-accounts'],
 body.offline-snap #admin-rail .rail-row[data-view='view-settings'],
 body.offline-snap #admin-rail .rail-row[data-rail='cottages'] {
+  display: none;
+}
+/* …and the third trim: a switched-off Mac takes its row with it, or the desktop
+   still offers what the phone no longer does. */
+body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   display: none;
 }
 

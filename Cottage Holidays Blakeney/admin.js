@@ -20381,6 +20381,20 @@ function railToggleTheme() {
 }
 function chbFrameSync() {
     const owner = document.body.classList.contains('owner-mode');
+    // THE HEADER ONLY OFFERS DESTINATIONS THAT WORK. `night-shift` off closes the
+    // chat doors as well as ingest, so the AI-chat spark led to a page whose every
+    // control — the starters, the composer, the send — meets a server refusal, with
+    // a 0.66rem line in the header as the only hint. Same trim offline-snap already
+    // performs on its dead destinations, from the flag the boot payload already
+    // carries: no request, no new state.
+    //
+    // AN UNKNOWN STATE HIDES NOTHING. __nightPre is null until the bootstrap lands,
+    // and treating that as "off" would blink the spark out of the dock on every
+    // boot and back in a moment later. Absent → leave the header alone.
+    try {
+        const np = /** @type {any} */ (window).__nightPre;
+        if (np) document.body.classList.toggle('night-off', !np.on);
+    } catch (e) {}
     // The rail's width boundaries as body CLASSES (see chbRailEnsure) — CSS
     // pairs them with .admin-screen so the one customer view an admin can
     // reach (view-pay) stays exactly what a guest sees.
@@ -24275,6 +24289,11 @@ chbAct('saveNightShift', async function (el) {
     const w = /** @type {any} */ (window);
     w.__nightPre = { on: on ? 1 : 0, n: on ? ((w.__nightPre || {}).n || 0) : 0 };
     __nightOn = on;
+    // The dock and its rail mirror follow the switch immediately — the owner is
+    // looking at Manage, and a spark that survives the tap reads as not-saved.
+    try {
+        chbFrameSync();
+    } catch (e) {}
     if (!on) __nightItems = [];
     try {
         renderNightReady();
