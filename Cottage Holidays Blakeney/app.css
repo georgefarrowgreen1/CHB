@@ -1277,11 +1277,14 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .dp-day.dp-empty {
   cursor: default;
 }
+/* A PAST DAY IS GONE, NOT BOOKED, and must not wear the booked mark. This
+   carried line-through, byte-identical to .dp-booked, so on the 31st every cell
+   was struck under "Crossed-out dates aren't available" — read as fully booked
+   (≈half the month by the 15th). The distinction .dp-out was made for. */
 .dp-day.dp-disabled {
   color: var(--text-muted);
   opacity: 0.3;
   cursor: not-allowed;
-  text-decoration: line-through;
 }
 /* 0.7rem = 11.2px, matching .ac-price and clearing the 10px floor. */
 /* The stay total inside the hint's sentence: weight, not size. Tabular so it does not
@@ -4164,6 +4167,11 @@ a.card {
   text-transform: none;
   letter-spacing: 0;
 }
+/* Tabular, so the sub does not re-flow around the figure while it settles. */
+.enq-cta-fig {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
 .btn-accent.is-sent {
   background: color-mix(in srgb, var(--ok) 15%, transparent);
   border-color: color-mix(in srgb, var(--ok) 45%, transparent);
@@ -4183,6 +4191,28 @@ a.card {
   @keyframes dpWave {
     from { background: transparent; }
   }
+  /* THE MONTH PAGE TRAVELS (dpChangeMonth sets --dpmx, the signed distance).
+     The GRID moves and the TITLE only cross-fades — the month name is the label,
+     the grid is the content. The weekday row is untouched on purpose: it does not
+     change between months, so moving it would be motion that means nothing. */
+  .dp-grid.dp-mo-out {
+    animation: dpMoOut 0.08s ease-in both;
+  }
+  .dp-grid.dp-mo-in {
+    animation: dpMoIn 0.17s var(--fluid-bezier);
+  }
+  @keyframes dpMoOut {
+    to { opacity: 0; transform: translateX(var(--dpmx, 0)); }
+  }
+  @keyframes dpMoIn {
+    from { opacity: 0; transform: translateX(var(--dpmx, 0)); }
+  }
+  .dp-title {
+    transition: opacity 0.11s var(--fluid-bezier);
+  }
+  .dp-title.dp-mo-fade {
+    opacity: 0;
+  }
   #date-picker .dp-day[data-act]:active {
     transform: scale(0.94);
     transition: transform 0.12s ease;
@@ -4201,6 +4231,34 @@ a.card {
   .enq-landed .price-box { animation: payCasc 0.45s var(--spring) 0.05s backwards; }
   .enq-landed .enq-cancel-note { animation: payCasc 0.45s var(--spring) 0.16s backwards; }
   .enq-landed .enq-faq-ask { animation: payCasc 0.45s var(--spring) 0.26s backwards; }
+  /* AND STEP TWO DOES THE SAME ON THE COMMIT (enquireContinue). One rule, the
+     delay carried inline per group as --efd: these blocks are NOT
+     nth-child-countable — the step's children include the back link and two
+     status slots, none of which may cascade. Tighter than the three-block
+     cadence above on purpose: six groups at 0.45s/0.26s settle the last at
+     ~0.8s, too long in front of a form. Heading and first field at zero (the
+     card reads at once), last block at 0.555s. */
+  #enquire-step-details.enq-landed .enq-fg {
+    animation: payCasc 0.36s var(--spring) var(--efd, 0s) backwards;
+  }
+  /* The receipt's figure when it RECOMPUTES: a settle, not a pop. payPop opens at
+     scale(0.5) and means "this appeared", a flinch on a figure already on screen
+     (revBow's note). Only the figure — the dates beside it did not change. */
+  .enq-cta-fig.is-fresh {
+    animation: enqFigSettle 0.34s var(--fluid-bezier);
+  }
+  @keyframes enqFigSettle {
+    from { opacity: 0.25; transform: translateY(3px); }
+  }
+  /* Availability landing on a cottage card: an ARRIVAL into the line
+     .card-avail already reserves, so nothing moves. First fill per cottage —
+     renderCardAvailability owns that decision. */
+  .avail-chip.avail-chip-in {
+    animation: availIn 0.26s var(--fluid-bezier);
+  }
+  @keyframes availIn {
+    from { opacity: 0; transform: translateY(4px); }
+  }
   /* A refusal settles in, it doesn't pop (the decline rule). */
   .enq-modal-msg.show { animation: paySettle 0.5s var(--spring); }
   /* The sent moment cascades behind its drawn tick (the tick + halo come free
@@ -8605,6 +8663,18 @@ body.light-mode .feed-dot-bad {
   animation: revBow 0.42s var(--spring) both;
   animation-delay: var(--rvd, 0s);
 }
+/* A TAP GETS THE SMALLER BOW. Two amplitudes, one grammar: 1.18 acknowledges the
+   choice, 1.32 is the review going in — the ending stays bigger than the
+   beginning. (0,2,0) against the settling rule's (0,3,0), so a submit still wins
+   on a star just tapped. */
+@keyframes revBowTap {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.gb2-star.gb2-bow {
+  animation: revBowTap 0.28s var(--spring);
+}
 /* THE FORM BECOMES A RECORD. A dashed border invites you to fill something in;
    once the rating is given that invitation is spent, so it fades and the block
    goes quiet — the state change said with no words, this card's whole direction. */
@@ -8629,7 +8699,8 @@ body.light-mode .feed-dot-bad {
     opacity 0.18s ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .gb2-stars.is-settling .gb2-star.is-on {
+  .gb2-stars.is-settling .gb2-star.is-on,
+  .gb2-star.gb2-bow {
     animation: none;
   }
   .gb2-fold-out {
