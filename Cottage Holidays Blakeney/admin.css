@@ -20,6 +20,11 @@
    both dark and light back-office themes. */
 :root {
   --darkstar: #a855f7;
+  /* THE UNFOLD CURVE, and it is deliberately NOT --fluid-bezier: measured at
+     the quarters that one is 0.00 · 0.79 · 0.97 · 1.00 — 97% open by its own
+     midpoint, right for a slide and useless for a height, where the eye reads
+     the middle of the travel. This is 0.38 · 0.68 · 0.91. */
+  --unfold: cubic-bezier(0, 0, 0.58, 1);
   /* Siri-style luminous glow palette — the search lights up with this spectrum
      when you engage it (see .cmdk-box). HSL parts so alpha can be mixed
      inline; the hues sweep pink → purple → blue → teal → amber. */
@@ -1232,7 +1237,8 @@ body.light-mode .ny-act {
   cursor: pointer;
   border: 1px solid rgba(255, 167, 38, 0.32);
 }.bhub-money-more {
-  /* The money fold. No display value — it would override [hidden]. */
+  /* The money fold. Its display now comes from .bhub-fold (a collapsing grid),
+     so nothing here may set one. */
   margin-top: 0;
 }/* The payments block unified INTO the header card (the old standalone Payments
    card + its duplicate mini-pipeline are gone): a quiet divider separates it
@@ -4835,10 +4841,73 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* The settled payline's ONE green mark (serif = money, colour = the mark). */
 .bhub-payok { color: var(--ok-text); }
 .bhub-sum-val { color: var(--text-muted); font-size: 0.85rem; }
-.bhub-chev { color: var(--text-muted); font-size: 1.05rem; transition: transform 0.18s ease; }
+.bhub-chev { color: var(--text-muted); font-size: 1.05rem; transition: transform 0.32s var(--unfold); }
 .bhub-fold-row[aria-expanded="true"] .bhub-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .bhub-chev { transition: none; } }
-.bhub-fold { border-top: 1px solid var(--glass-border); padding: 12px 18px 14px; }
+/* ---- THE FOLD MOVES. `bhubFoldToggle` set `f.hidden` — a hard show and hide —
+   while the chevron alone turned, so half the gesture moved. 38 call sites wear
+   this: both hubs, Manage's verdicts, the cottage sections, the Money answers,
+   the key safes, the Inbox, the overnight queue.
+
+   `[hidden]` STAYS THE ONE SWITCH — the load-bearing decision, and what let all
+   eight suites that read this fold pass untouched. It is redefined here as the
+   COLLAPSED state rather than display:none, so `f.hidden` is synchronously true
+   the instant a fold closes and false the instant it opens. `visibility` does
+   the work display:none was doing (out of the tab order and the a11y tree) and
+   transitions with a DELAY on the way out — the .cmdk-box trick — so the fold
+   is still visible while it closes and gone the moment it has. a11y-test and
+   layout-test both skip `visibility: hidden`, so what they measure is unchanged.
+
+   The 0fr→1fr grid collapses only the FIRST track, so `.bhub-fold` must hold
+   exactly ONE element child: bhubFoldGrp, the money fold and the key-safe card
+   wrap theirs in `.bhub-foldin`, the cottage sections already wrapped in
+   `.acr-body`, and the Inbox's folds hold one re-parented folder div. ---- */
+.bhub-fold {
+  border-top: 1px solid var(--glass-border);
+  padding: 12px 18px 14px;
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 0.32s var(--unfold),
+    opacity 0.22s linear,
+    padding-top 0.32s var(--unfold),
+    padding-bottom 0.32s var(--unfold),
+    border-top-width 0.32s var(--unfold),
+    visibility 0s;
+}
+/* `clip` rather than `hidden` where it is supported, with 4px of bleed: the
+   wrapper's edge sits flush with the fold's last row, so a plain hidden cut the
+   FOCUS RING off the last control in every open fold (measured: 0px of room).
+   Declared twice on purpose — an older engine drops the clip pair and keeps
+   hidden, which reveals correctly and only loses the ring again. Putting the
+   padding on this child instead was tried and does not work: a grid item's
+   padding does not collapse with its track, so a closed fold sat 26px high. */
+/* `min-width: 0` is not decoration beside `min-height: 0`: a grid item's
+   automatic minimum size is its MIN-CONTENT size, so the fold's column sized to
+   its widest unbreakable child instead of to the fold — measured, the declined
+   drawer's row came out 515px wide inside a 390px viewport and stopped wrapping.
+   The block axis needs the same release for the 0fr collapse. */
+.bhub-fold > * { min-width: 0; min-height: 0; overflow: hidden; overflow: clip; overflow-clip-margin: 4px; }
+.bhub-fold[hidden] {
+  display: grid;
+  visibility: hidden;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  transition:
+    grid-template-rows 0.32s var(--unfold),
+    opacity 0.22s linear,
+    padding-top 0.32s var(--unfold),
+    padding-bottom 0.32s var(--unfold),
+    border-top-width 0.32s var(--unfold),
+    visibility 0s linear 0.32s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bhub-fold, .bhub-fold[hidden] { transition: none; }
+  .bhub-fold[hidden] { display: none; }
+}
 .bhub-money-grp .bhub-payline { max-width: none; }
 .bhub-payline-subfull { flex: 1 1 100%; }
 /* The when-line's in/out pair never splits across the wrap point — a
@@ -6658,4 +6727,71 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
 }
 .gb-pause strong {
   font-weight: 700;
+}
+
+/* ============================================================================
+   BACK-OFFICE MOTION — four small motions beside the fold above. The measured
+   starting point: app.css carries 99 animations and admin.css 38, and of every
+   row type in the app only .ny-row had an entrance. Each one below earns its
+   place by saying something true; where it would only decorate it is labelled
+   as such and kept to a once-per-visit moment.
+   ========================================================================= */
+
+/* --- The answer ARRIVING (moLand, the Money landing's slow answers). The
+   figure settles in from 4px instead of replacing the placeholder in one frame.
+   `backwards` holds it at opacity 0 through its own stagger delay, so a row
+   that has not had its turn shows nothing rather than flashing the answer and
+   then animating it. inline-block because these are <span>s and a transform
+   does not apply to an inline box. */
+.mo-landed {
+  display: inline-block;
+  animation: moLand 0.36s var(--unfold) var(--mo-land-d, 0s) backwards;
+}
+div.mo-landed { display: block; } /* the row lists under each figure */
+@keyframes moLand {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* --- A FIGURE THAT CHANGED SAYS SO — two grammars, and the difference is the
+   point. The owed capsule was already on screen and has been RECOMPUTED, so it
+   settles; payPop's 0.5→1.2 scale means "this appeared", which on a figure
+   already in front of you is a flinch. A badge genuinely does appear, or goes
+   from 2 to 3, so it gets the pop. */
+.bk-verdict-settle { animation: bkFigSettle 0.34s var(--fluid-bezier); }
+@keyframes bkFigSettle {
+  from { opacity: 0.3; transform: translateY(3px); }
+}
+.dock-badge-pop { animation: dockBadgePop 0.4s var(--spring); }
+@keyframes dockBadgePop {
+  0% { transform: scale(0.4); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* --- THE TIMELINE DRAWING IN. Pure decoration, named as such: a bar tells you
+   nothing by growing. It is here because Today is the screen the owner opens
+   most and it had no moment at all — so it fires ONCE per visit, because
+   renderCalendar runs on every data refresh and tlMaybeExtend pages the window
+   in place. Grows from the check-in edge, staggered down the lanes. */
+.tl-bar.tl-draw {
+  animation: tlDraw 0.44s var(--unfold) var(--tl-draw-d, 0s) backwards;
+  transform-origin: left center;
+}
+@keyframes tlDraw {
+  from { transform: scaleX(0.02); opacity: 0.35; }
+}
+
+/* --- THE FILTER SWITCH: a FADE of the whole body, never a staggered entrance.
+   renderBookings runs on every data refresh as well as every filter change, so
+   a cascade would replay dozens of times a session. Fires only when the filter
+   or the search actually changed — a change of subject. */
+.bk-list-swap { animation: bkListSwap 0.2s linear; }
+@keyframes bkListSwap {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mo-landed, .bk-verdict-settle, .dock-badge-pop, .tl-bar.tl-draw, .bk-list-swap {
+    animation: none;
+  }
 }

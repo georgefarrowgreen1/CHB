@@ -10248,6 +10248,22 @@ function bookingsSetSearch(v) {
         .toLowerCase();
     renderBookings();
 }
+// THE FILTER SWITCH cross-fades — a change of SUBJECT, said in 200ms.
+// Deliberately a fade of the whole body and never a staggered entrance:
+// renderBookings runs on every data refresh as well as every filter change, so
+// a cascade would replay dozens of times a session. That is also why it is
+// keyed on the filter and the search TEXT rather than on the render: a refresh
+// that leaves you looking at the same list must not flicker it.
+let __bkListSubject = null;
+function bkListSwapped(list) {
+    const now = __bookingsFilter + ' ' + __bookingsSearch;
+    const was = __bkListSubject;
+    __bkListSubject = now;
+    if (was === null || was === now) return; // first paint, or a plain refresh
+    list.classList.remove('bk-list-swap');
+    void (/** @type {HTMLElement} */ (list)).offsetWidth;
+    list.classList.add('bk-list-swap');
+}
 function renderBookings() {
     const list = document.getElementById('bookings-list');
     if (!list) return;
@@ -10312,16 +10328,36 @@ function renderBookings() {
         // only a list with nothing owed earns the ✓. An empty list claims nothing.
         const verd = document.getElementById('bookings-verdict');
         if (verd) {
+            // A FIGURE THAT CHANGED SAYS SO. This is recomputed live — a payment
+            // lands, a booking is edited — and the number silently became a
+            // different number. It SETTLES rather than pops: the capsule was
+            // already on screen, so a pop would read as "this appeared".
+            // Compared as WORDS, not as the owed float: rounding means £953.10
+            // and £953.40 print the same capsule, and a settle on a figure that
+            // did not visibly change is motion saying nothing.
+            const was = verd.textContent || '';
             verd.innerHTML = !rows.length
                 ? ''
                 : owed > 0.005
                     ? stCap('warn', `£${Math.round(owed).toLocaleString('en-GB')} to collect`)
                     : stCap('ok', 'All paid up');
+            const now = verd.textContent || '';
+            verd.classList.remove('bk-verdict-settle');
+            // Never on the first paint — an empty `was` is the screen arriving,
+            // not a figure moving.
+            if (was && now && was !== now) {
+                void verd.offsetWidth;
+                verd.classList.add('bk-verdict-settle');
+            }
         }
     }
     if (!rows.length) {
         list.innerHTML =
             `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+        // A filter with nothing in it is a subject change too — and calling it on
+        // BOTH branches is what keeps the memo honest: recording the subject only
+        // when rows exist would make the return trip read as unchanged.
+        bkListSwapped(list);
         // A selection whose booking no longer exists must not linger in the pane.
         if (__hubBookingId && !findBookingById(__hubBookingId)) {
             __hubBookingId = null;
@@ -10332,6 +10368,7 @@ function renderBookings() {
         return;
     }
     list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
+    bkListSwapped(list);
     // Wide split: keep the docked pane in sync — drop a selection whose booking
     // is gone, and open the first listed booking when nothing is selected yet
     // so the dashboard never sits with an empty pane.
@@ -10622,7 +10659,7 @@ function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs) {
                 <span class="bhub-fold-lbl">${label}${sub ? `<small class="bhub-fold-sub">${sub}</small>` : ''}</span>
                 <span class="bhub-fold-right">${sumHtml || ''}<span class="bhub-chev" aria-hidden="true">›</span></span>
             </button>
-            <div class="bhub-fold" id="bhub-fold-${key}"${open ? '' : ' hidden'}>${foldHtml}</div>
+            <div class="bhub-fold" id="bhub-fold-${key}"${open ? '' : ' hidden'}><div class="bhub-foldin">${foldHtml}</div></div>
         </section>`;
 }
 let __hubReturnView = 'view-backoffice';
@@ -11563,7 +11600,7 @@ function renderBookingHub() {
                 ${squareAdminEnabled && !refundBlocked && gt.paid > 0 ? `<button class="bhub-actlink" ${chbAttrs('hubRefundPicker', String(b.id))}>Refund a card payment</button>` : ''}
                 <button class="bhub-actlink" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>`;
-    const moneyMore = `<div class="bhub-money-more bhub-fold" id="bhub-money-more"${moreWasOpen ? '' : ' hidden'}>${fullBox}${agreedNote}${planPanel}${depositLine}${moneyActs}</div>`;
+    const moneyMore = `<div class="bhub-money-more bhub-fold" id="bhub-money-more"${moreWasOpen ? '' : ' hidden'}><div class="bhub-foldin">${fullBox}${agreedNote}${planPanel}${depositLine}${moneyActs}</div></div>`;
     const payBlock = `
         <div class="bhub-headpay">
             ${payAsk}
@@ -16909,6 +16946,28 @@ async function moChaseDue() {
 // ONE accounts.php fetch answers To-move-out, To-give-back, The-books AND
 // the Square-hasn't-said exception (the payload the sweep and Income & tax
 // read, cached into __sweepLiab); the recent feed is its own call.
+// THE ANSWER ARRIVING. moAsyncFill paints "working it out…" into the Money
+// landing's answers and a second fetch replaces each with the real figure — the
+// swap had no transition at all, so a placeholder simply became a number. This
+// is the most honest flourish available in the app: something really did change,
+// and it changed because work finished.
+//
+// No first-fill flag is needed, and that is the difference from the availability
+// chip (which is rebuilt with data that has NOT changed, so its entrance had to
+// be latched): renderMoneyOverview paints the placeholders and only then calls
+// this, so every write in here is an arrival by construction.
+//
+// The index staggers the four answers 90ms apart so they read as ONE delivery
+// rather than four pops. It is the ROW's index, not the call order — the two
+// fetches resolve independently and an order-of-arrival counter would stagger by
+// whichever came back first.
+function moLand(el, i) {
+    if (!el) return;
+    el.style.setProperty('--mo-land-d', (i || 0) * 90 + 'ms');
+    el.classList.remove('mo-landed');
+    void (/** @type {HTMLElement} */ (el)).offsetWidth;
+    el.classList.add('mo-landed');
+}
 function moAsyncFill() {
     const stamp = ++__moFillStamp;
     const alive = (id) => __moFillStamp === stamp && document.getElementById(id);
@@ -16930,6 +16989,8 @@ function moAsyncFill() {
                 moveFig.innerHTML = stCap('unk', P && P.known === 0 ? 'no payouts reported' : P ? 'nothing landed yet' : 'open the screen');
                 if (moveRows) moveRows.textContent = P && P.known === 0 ? 'Square reported no payouts at all in the window — usually a Square-side setting.' : 'The full sums live on the Move money out screen.';
             }
+            moLand(moveFig, 0);
+            moLand(moveRows, 0);
             // To give back — the ring-fenced deposits with their states.
             const backFig = document.getElementById('mo-back-fig');
             const backRows = document.getElementById('mo-back-rows');
@@ -16949,6 +17010,8 @@ function moAsyncFill() {
                 backFig.innerHTML = stCap('unk', 'couldn’t work it out');
                 if (backRows) backRows.textContent = 'The deposits screen has the detail.';
             }
+            moLand(backFig, 1);
+            moLand(backRows, 1);
             // The books — the SERVER'S net (rental + kept − fees − expenses),
             // replacing the client's fee-less estimate.
             const booksFig = document.getElementById('mo-books-fig');
@@ -16960,6 +17023,8 @@ function moAsyncFill() {
                 booksFig.style.color = net < 0 ? 'var(--warn-text)' : 'var(--ok-text)';
                 const br = document.getElementById('mo-books-rows');
                 if (br) br.innerHTML = `${gbp(rep.total || 0)} income · − ${gbp(rep.card_fees || 0)} card fees · − ${gbp(expT)} expenses${(rep.kept_deposits || 0) > 0.005 ? ` · + ${gbp(rep.kept_deposits)} kept deposits` : ''}`;
+                moLand(booksFig, 2);
+                moLand(br, 2);
             }
             // Square-hasn't-said — the exception joins the red section, with
             // the age that makes it an exception (payouts checked, charge old).
@@ -16992,11 +17057,15 @@ function moAsyncFill() {
             if (!list.length) {
                 if (sum) sum.textContent = 'nothing yet';
                 if (rowsEl) rowsEl.textContent = 'Card payments will appear here as they come in.';
+                moLand(sum, 3);
+                moLand(rowsEl, 3);
                 return;
             }
             const latest = list[0];
             if (sum) sum.textContent = `${(latest.name || 'a guest').split(' ')[0]} · ${gbp(Math.abs(parseFloat(latest.amount)) || 0)}`;
             if (rowsEl) rowsEl.innerHTML = list.slice(0, 3).map((p) => `<div class="bhub-kv"><span class="bhub-kv-label">${escapeHtml(p.name || 'Guest')} · ${escapeHtml(String(p.kind || 'payment').replace('_', ' '))}</span><span class="bhub-kv-val">${gbp(Math.abs(parseFloat(p.amount)) || 0)}${p.created_at ? ' · ' + fmtDate(String(p.created_at).slice(0, 10)) : ''}</span></div>`).join('');
+            moLand(sum, 3);
+            moLand(rowsEl, 3);
         })
         .catch(() => {});
 }
@@ -21051,7 +21120,7 @@ function renderKeysafe() {
             + '<button type="button" class="bhub-fold-row" ' + chbAttrs('bhubFoldToggle', key) + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="bhub-fold-' + e(key) + '">'
             + '<span class="bhub-fold-lbl"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span><small class="bhub-fold-sub">' + sub + '</small></span>'
             + '<span class="bhub-fold-right">' + cap + '<span class="bhub-chev" aria-hidden="true">›</span></span></button>'
-            + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '>' + fold + '</div></section>';
+            + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '><div class="bhub-foldin">' + fold + '</div></div></section>';
         return { due, html };
     }).filter(Boolean);
     const dueN = groups.filter((g) => g.due).length;
@@ -26789,6 +26858,18 @@ function renderCalendar() {
     // brief and Pricing already read), rendered as ✦ sparks inside their lanes.
     let tlGaps = [];
     try { tlGaps = chbGapScan(); } catch (e) {}
+    // THE TIMELINE DRAWS IN, ONCE PER VISIT. Pure decoration and named as such
+    // — a bar tells you nothing by growing — but the Today screen is the one the
+    // owner opens most and it had no moment at all. The latch is what keeps it
+    // from wearing out: renderCalendar re-renders on every data refresh and
+    // tlMaybeExtend pages the window in place, so a per-render entrance would
+    // replay it all morning. Same shape as host.__tlScroll below.
+    const tlWantDraw = !(/** @type {any} */ (host).__tlDrew);
+    let tlDrawN = 0;
+    // The stagger caps at 12 steps: a fleet with twenty bars on screen would
+    // otherwise still be arriving a second after the page settled.
+    const drawMark = () =>
+        tlWantDraw ? { c: ' tl-draw', s: `--tl-draw-d:${Math.min(tlDrawN++, 12) * 45}ms;` } : { c: '', s: '' };
     const rows = keys
         .map((k) => {
             const meta = propertyMeta[k] || { name: k, short: k };
@@ -26848,7 +26929,8 @@ function renderCalendar() {
                 const nights = Math.max(1, Math.round((dpParse(b.checkOut) - dpParse(b.checkIn)) / 864e5));
                 const visDays = Math.min(N, idxOf(b.checkOut)) - Math.max(0, idxOf(b.checkIn));
                 const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights}n</i>` : '';
-                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ${nights} night${nights === 1 ? '' : 's'}">${escapeHtml((b.name || 'Guest').split(' ')[0])}${nTag}</button>`;
+                const dm = drawMark();
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}${dm.c}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="${dm.s}grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ${nights} night${nights === 1 ? '' : 's'}">${escapeHtml((b.name || 'Guest').split(' ')[0])}${nTag}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
@@ -26863,10 +26945,12 @@ function renderCalendar() {
                 // the website AND on every connected platform (ical-export publishes
                 // owner blocks), with no route back but the database.
                 if (bl.source === 'owner') {
-                    bars += `<button type="button" class="tl-bar tl-ext tl-own${sp.clip}" data-search="${escapeHtml(('blocked ' + meta.name + ' owner unavailable').toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('tlBlockTap', String(bl.id))} title="${escapeHtml(meta.name)} — blocked · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)} · tap to free these dates" aria-label="Blocked ${escapeHtml(meta.name)} ${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)} — free these dates">Blocked</button>`;
+                    const dm = drawMark();
+                    bars += `<button type="button" class="tl-bar tl-ext tl-own${sp.clip}${dm.c}" data-search="${escapeHtml(('blocked ' + meta.name + ' owner unavailable').toLowerCase())}" style="${dm.s}grid-column:${sp.col}" ${chbAttrs('tlBlockTap', String(bl.id))} title="${escapeHtml(meta.name)} — blocked · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)} · tap to free these dates" aria-label="Blocked ${escapeHtml(meta.name)} ${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)} — free these dates">Blocked</button>`;
                     return;
                 }
-                bars += `<span class="tl-bar tl-ext${sp.clip}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
+                const dm = drawMark();
+                bars += `<span class="tl-bar tl-ext${sp.clip}${dm.c}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="${dm.s}grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             // GAP SPARKS — ✦ on a bounded 2–4 night hole (chbGapScan's rules);
             // tap → the priced offer via tlGapTap, the strip's own plumbing.
@@ -26893,6 +26977,7 @@ function renderCalendar() {
         </div>
         ${rows}
     </div>`;
+    /** @type {any} */ (host).__tlDrew = true;
     if (!host.__tlScroll) {
         host.__tlScroll = true;
         // Escape abandons a half-made range selection (only when one is armed,
