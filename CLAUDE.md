@@ -1715,6 +1715,45 @@ capsule, wave, receipts, narration, beat, sent moment).
   and every refusal rule in the picker — this pass is connective tissue and motion
   over the gated logic, not a rebuild of it.
 
+## A switched-off Mac takes its destination with it
+
+**Reported from a phone (screenshot): the AI-chat page with `night-shift` OFF,
+still offering a composer, three starter questions and a spark in the dock.**
+None of it can work — the switch closes the chat DOORS as well as ingest, so
+every one of those meets a server refusal, with a 0.66rem line in the header
+(`mcPresenceHtml`'s off branch) as the only hint.
+- **`body.night-off`, set in `chbFrameSync`** — the function that already keeps
+  `rail-on`/`rail-fold` in step — hides `.admin-dock-btn[data-view='view-aichat']`
+  and `#admin-rail .rail-row[data-view='view-aichat']`. **The same trim
+  `offline-snap` already performs** on its dead destinations, and it has to cover
+  BOTH: the dock is the nav below 1200 and the rail is the nav above it, so
+  trimming one leaves the other still offering it. Driven off `__nightPre`, the
+  flag the boot payload already carries — no request, no new state.
+- **AN UNKNOWN STATE HIDES NOTHING.** `__nightPre` is null until the bootstrap
+  lands, and `!(null && …)` is true — so a naive read would blink the spark out
+  of the dock on every boot and back a moment later. Absent → leave the header
+  alone; only a loaded flag saying off hides anything. (The unloaded-mirror-mints-
+  no-claim rule, in the chrome.)
+- **The Manage toggle calls `chbFrameSync()` itself**: the owner is looking at the
+  switch, and a spark that survives the tap reads as not-saved.
+- **AND THE RESTORE MUST NOT LAND THERE** — the one consequence the trim creates.
+  `maybeRestoreView` refuses a remembered `view-aichat` while off (the day-sheet
+  reasoning: never restore onto a destination the header no longer offers) and
+  **FORGETS** it rather than keeping it, because the switch is a decision, not a
+  passing condition like a lost signal.
+- **Deliberately NOT done, and it is the half worth revisiting**: the page itself
+  is unchanged. Hiding the button does not make `view-aichat` unreachable — a
+  `?open=` link still gets there — so a dead composer is still reachable by that
+  one route. An off-state card for the page was demoed and NOT built, because the
+  ask was the header; say the word and it is a small addition.
+- Gated by **ui-test-railspine §9** (15 checks: the rail and the dock both ways,
+  exactly one row/button fewer with nothing else trimmed, the unloaded flag hiding
+  nothing, and all three restore cases) — break-tested twice, on the body class
+  and on the restore guard, which fire 6 checks between them.
+- Budgets raised: **admin.js +417, admin.css +245** gz shipped. Both owner-only
+  and immutable-cached, which is the trade CLAUDE.md's own rule names as the
+  cheap one; app.css was untouched.
+
 ## Three guest-side repairs, found by looking (approved demo, built)
 
 **Asked for as "what next in terms of ui enhancements" — so the guest surfaces were

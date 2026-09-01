@@ -467,6 +467,83 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
         return Math.abs(b.left - (window.innerWidth - b.right)) < 40;
     }), 'and below the rail the centred column is untouched — its own gates still hold');
 
+    // ============================================================
+    //  §9 — A SWITCHED-OFF MAC TAKES ITS DESTINATION WITH IT.
+    //  night-shift off closes the chat doors as well as ingest, so the AI-chat
+    //  spark led to a page whose starters, composer and send all meet a server
+    //  refusal. Same trim offline-snap already performs, from the flag the boot
+    //  payload already carries. Both halves are asserted, so this can neither
+    //  erode into "always shown" nor swell into "hidden whenever we don't know".
+    // ============================================================
+    const nightState = async () =>
+        page.evaluate(() => ({
+            cls: document.body.classList.contains('night-off'),
+            rail: (() => {
+                const r = document.querySelector("#admin-rail .rail-row[data-view='view-aichat']");
+                return r ? r.getClientRects().length > 0 : null;
+            })(),
+            railRows: [...document.querySelectorAll('#admin-rail .rail-row')].filter((r) => r.getClientRects().length > 0).length,
+        }));
+    const setNight = async (v) => {
+        await page.evaluate((on) => {
+            /** @type {any} */ (window).__nightPre = on === null ? null : { on: on ? 1 : 0, n: 0 };
+            if (on === null) document.body.classList.remove('night-off');
+            window.chbFrameSync();
+        }, v);
+        await page.waitForTimeout(250);
+    };
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(400);
+    await setNight(true);
+    const nOn = await nightState();
+    ok(nOn.rail === true && !nOn.cls, `the rail offers AI chat while the Mac is ON (${nOn.railRows} rows)`);
+    await setNight(false);
+    const nOff = await nightState();
+    ok(nOff.cls, 'switching it off marks the frame');
+    ok(nOff.rail === false, 'and the rail row goes with it');
+    ok(nOff.railRows === nOn.railRows - 1, `…exactly one row fewer (${nOn.railRows} → ${nOff.railRows}), nothing else trimmed`);
+    await setNight(true);
+    ok((await nightState()).rail === true, 'switching it back on restores the row');
+    // AN UNKNOWN STATE HIDES NOTHING — __nightPre is null until the bootstrap
+    // lands, and treating that as off blinks the spark out on every boot.
+    await setNight(null);
+    const nUnk = await nightState();
+    ok(nUnk.rail === true && !nUnk.cls, 'and an UNLOADED flag hides nothing — absence is not "off"');
+
+    // The header dock is the nav below 1200; the same trim has to reach it.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(450);
+    const dockCount = () =>
+        page.evaluate(() => ({
+            ai: (() => {
+                const b = document.querySelector(".admin-dock-btn[data-view='view-aichat']");
+                return b ? b.getClientRects().length > 0 : null;
+            })(),
+            n: [...document.querySelectorAll('.admin-dock-btn')].filter((b) => b.getClientRects().length > 0).length,
+        }));
+    await setNight(true);
+    const dOn = await dockCount();
+    await setNight(false);
+    const dOff = await dockCount();
+    ok(dOn.ai === true && dOff.ai === false, 'the header dock hides the spark when the Mac is off');
+    ok(dOff.n === dOn.n - 1, `…and keeps every other destination (${dOn.n} → ${dOff.n})`);
+
+    // …and the view restore must not land on a destination the header no longer
+    // offers. Forgotten rather than kept: the switch is a decision.
+    const restore = await page.evaluate(async () => {
+        const mk = (t) => ({ t, at: Date.now() });
+        /** @type {any} */ (window).__nightPre = { on: 0, n: 0 };
+        const offAi = await window.maybeRestoreView(mk('view-aichat'));
+        const offOther = await window.maybeRestoreView(mk('view-inbox'));
+        /** @type {any} */ (window).__nightPre = { on: 1, n: 0 };
+        const onAi = await window.maybeRestoreView(mk('view-aichat'));
+        return { offAi, offOther, onAi };
+    });
+    ok(restore.offAi === false, 'a reload does NOT restore onto AI chat while the Mac is off');
+    ok(restore.offOther === true, '…and every other remembered screen still restores');
+    ok(restore.onAi === true, '…and AI chat restores normally once it is back on');
+    await setNight(true);
+
     if (errs.length) { console.log('  PAGE ERRORS:\n  ' + errs.join('\n  ')); fails += errs.length; }
     console.log(fails ? `RAILSPINE TEST FAILED ❌ (${fails})` : 'RAILSPINE TEST PASSED ✅');
     await done(fails);
