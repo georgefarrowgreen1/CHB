@@ -10347,7 +10347,11 @@ function dayLabel(at) {
         ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
     });
 }
-function chatBubbles(msgs, meRole) {
+// `enter` marks the LAST bubble as arriving (see .chat-row.is-new in app.css).
+// Only ever the last, and only when something actually arrived: every caller
+// rebuilds the whole thread, so an entrance keyed on anything else replays the
+// conversation on each poll.
+function chatBubbles(msgs, meRole, enter) {
     if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
     // Read receipt (owner side only): mark the owner's LATEST reply Read once the
     // guest has opened the thread since it was sent, so the owner can see whether
@@ -10387,23 +10391,83 @@ function chatBubbles(msgs, meRole) {
                 prevDay = dk;
                 sep = `<div class="chat-daysep"><span>${escapeHtml(dayLabel(m.at))}</span></div>`;
             }
-            return `${sep}<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}${m.attachment && !m.body ? ' chat-msg-img' : ''}">${att}${bodyHtml}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
+            // Two wrappers, both load-bearing: .chat-row does the height (the
+            // grid-rows reveal), .chat-rowin keeps the flex column so the
+            // bubble's own align-self still decides which side it sits on.
+            const isLast = enter && i === msgs.length - 1;
+            return `${sep}<div class="chat-row${isLast ? ' is-new' : ''}"><div class="chat-rowin"><div class="chat-msg ${m.role === meRole ? 'me' : 'them'}${m.attachment && !m.body ? ' chat-msg-img' : ''}">${att}${bodyHtml}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div></div></div>`;
         })
         .join('');
 }
-// Empty-thread greeting, styled as a received message so the chat opens
-// looking like a conversation rather than a blank pane (class chat-empty
-// so chatClearEmpty() removes it when the first real bubble arrives).
+// THE EMPTY THREAD'S WELCOME. It leads the pane rather than sitting on its floor
+// (see .chat-thread:has(> .chat-hello) in app.css), which is what lets it say who
+// answers and when — the question a hesitant guest has BEFORE typing, and the
+// reason they might chat instead of enquiring. Same facts the header carries, in
+// the place they are read. Keeps .chat-empty so chatClearEmpty() still removes it.
 function chatHelloHtml() {
+    const host =
+        (typeof siteContent === 'object' && siteContent && siteContent['host-name']) || 'the owner';
     return `<div class="chat-hello chat-empty">
                 <div class="chat-hello-ava" aria-hidden="true"><img src="logo.svg" alt=""></div>
-                <div>
-                    <div class="chat-msg them">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay.</div>
-                    <div class="chat-hello-note">We usually reply within a few hours, by chat and email.</div>
-                </div>
+                <div class="chat-hello-who">${escapeHtml(host)}</div>
+                <div class="chat-hello-role">Owner · Cottage Holidays Blakeney</div>
+                <p class="chat-hello-ask">Ask us anything — about a cottage, your dates, or your stay.</p>
+                <span class="chat-hello-when"><span class="chat-presence-dot" aria-hidden="true"></span>Usually replies within a few hours</span>
             </div>`;
 }
 
+// ---- FOLLOWING THE NEWEST MESSAGE ----
+// The scroll POLICY is unchanged: chatPoll only follows when the reader was
+// within 60px of the bottom, so a reply can never yank them out of the history
+// they are reading. What changes is that the movement is a movement — the old
+// `scrollTop = scrollHeight` teleports.
+//
+// The mechanism is free: the arriving row is GROWING, so scrollHeight rises
+// across its 0.5s. Pinning scrollTop to it each frame keeps the newest bubble on
+// the floor while the thread slides up underneath, inheriting the row's own
+// critically damped curve — no second easing to keep in step.
+const CHAT_NEAR_BOTTOM = 60; // the threshold chatPoll has always used
+function chatNearBottom(el) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight < CHAT_NEAR_BOTTOM;
+}
+let __chatPinStamp = 0;
+function chatFollow(el, animated) {
+    if (!el) return;
+    if (!animated) {
+        el.scrollTop = el.scrollHeight;
+        return;
+    }
+    const mine = ++__chatPinStamp;
+    const t0 = performance.now();
+    (function step() {
+        if (mine !== __chatPinStamp || !document.contains(el)) return; // a newer message took over
+        el.scrollTop = el.scrollHeight;
+        if (performance.now() - t0 < 520) requestAnimationFrame(step);
+    })();
+}
+function chatMotionOff() {
+    try {
+        return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) {
+        return false;
+    }
+}
+// A reply that lands while they are reading up-thread must not move them — and
+// must not arrive silently either.
+function chatNewPill(show) {
+    const el = document.getElementById('chat-newpill');
+    if (el) el.classList.toggle('show', !!show);
+}
+function chatToNewest() {
+    const t = document.getElementById('chat-thread');
+    if (!t) return;
+    try {
+        t.scrollTo({ top: t.scrollHeight, behavior: chatMotionOff() ? 'auto' : 'smooth' });
+    } catch (e) {
+        t.scrollTop = t.scrollHeight;
+    }
+    chatNewPill(false);
+}
 // ---- Floating chat widget (everyone: logged-in guests + anonymous visitors) ----
 function chatGetToken() {
     try {
@@ -10470,6 +10534,7 @@ function chatMsgSig(msgs) {
         (last.body || '').length
     );
 }
+let __chatEnterNext = false;
 async function loadChat() {
     const thread = document.getElementById('chat-thread');
     const intro = document.getElementById('chat-intro');
@@ -10484,8 +10549,13 @@ async function loadChat() {
         const r = await apiPost('messages.php', payload);
         const msgs = r.messages || [];
         __chatSig = chatMsgSig(msgs);
-        thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest') : chatHelloHtml();
-        thread.scrollTop = thread.scrollHeight;
+        // __chatEnterNext is set by sendChat: opening a conversation is not the
+        // same event as a message arriving in one, and only the latter animates.
+        const enter = !!__chatEnterNext && !chatMotionOff();
+        __chatEnterNext = false;
+        thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest', enter) : chatHelloHtml();
+        chatFollow(thread, enter);
+        chatNewPill(false);
         chatSetTyping('chat-thread', !!r.peer_typing);
     } catch (e) {
         // Don't alarm the visitor — show the greeting and let them type.
@@ -10532,9 +10602,14 @@ async function chatPoll() {
             __chatSig = sig;
             const thread = document.getElementById('chat-thread');
             if (thread && msgs.length) {
-                const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
-                thread.innerHTML = chatBubbles(msgs, 'guest');
-                if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if at the bottom
+                // Read the position BEFORE the re-render: afterwards scrollHeight
+                // has already grown by the new row, so a reader sitting exactly
+                // at the bottom would measure as a row's height away.
+                const nearBottom = chatNearBottom(thread);
+                const enter = !chatMotionOff();
+                thread.innerHTML = chatBubbles(msgs, 'guest', enter);
+                if (nearBottom) chatFollow(thread, enter); // only follow if already at the bottom
+                chatNewPill(!nearBottom); // otherwise say a reply landed, and leave them where they are
             }
         }
         // Typing state updates every tick, independent of message changes.
@@ -11167,6 +11242,9 @@ async function sendChat() {
         chatClearAttach();
         const intro = document.getElementById('chat-intro');
         if (intro) intro.style.display = 'none';
+        // Your own message ARRIVES — loadChat cannot tell a send from an open, so
+        // the send says which this is.
+        __chatEnterNext = true;
         await loadChat();
     } catch (e) {
         glassAlert("Couldn't send: " + e.message);
@@ -11632,9 +11710,10 @@ async function adminThreadPoll() {
             __msgThreadSig = sig;
             const thread = document.getElementById('messages-modal-thread');
             if (thread) {
-                const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
-                thread.innerHTML = chatBubbles(msgs, 'admin');
-                if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if already at the bottom
+                const nearBottom = chatNearBottom(thread);
+                const enter = !chatMotionOff();
+                thread.innerHTML = chatBubbles(msgs, 'admin', enter);
+                if (nearBottom) chatFollow(thread, enter); // only autoscroll if already at the bottom
             }
             loadAdminMessages(); // keep the inbox list/badge in sync if a new guest reply landed
         }
@@ -18568,7 +18647,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'flowmo1';
+    const BUILD = 'chatrep1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

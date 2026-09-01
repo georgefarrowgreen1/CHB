@@ -1715,6 +1715,108 @@ capsule, wave, receipts, narration, beat, sent moment).
   and every refusal rule in the picker — this pass is connective tissue and motion
   over the gated logic, not a rebuild of it.
 
+## Three guest-side repairs, found by looking (approved demo, built)
+
+**Asked for as "what next in terms of ui enhancements" — so the guest surfaces were
+DRIVEN at 390px and screenshotted, and only what survived a measurement was
+proposed.** Gated by **`ui-test-guestrepairs.js`** (36 checks), each of the four
+declarations break-tested — the broken run reproduces the original numbers exactly
+(14px/148px, 312/67px, 41px).
+- **THE CHAT OPENED ON A VOID.** `chatHelloHtml()` composes a proper welcome and
+  its own comment says it exists "so the chat opens looking like a conversation
+  rather than a blank pane" — and then `.chat-thread > :first-child { margin-top:
+  auto }` pinned it to the floor: **267px of nothing** above the only thing on a
+  360px pane, ~60% empty, reading as still loading. **It was composed as an intro
+  and positioned as a message.** `:has(> .chat-hello)` centres the empty thread;
+  the instant a real bubble exists the rule stops matching and messages
+  bottom-anchor byte for byte as before (gated both ways). Leading the pane, the
+  welcome can then earn the space — it NAMES who answers (`host-name`, the
+  existing key, falling back to "the owner") and says when, which is the question
+  a hesitant guest has BEFORE typing.
+- **AND MESSAGES ARRIVE LIKE MESSAGES.** Two things at once, and it is the PAIR
+  that reads as iOS rather than as a fade: the thread MAKES ROOM (`.chat-row`,
+  grid-rows 0fr→1fr — the `#pay-steps` reveal) while the bubble GROWS FROM THE
+  CORNER IT HANGS OFF (`transform-origin` bottom right for yours, bottom left for
+  theirs). Both 0.5s, so they are one event.
+  - **A BUBBLE IS A DAMPED SPRING AND A BEZIER CANNOT FAKE IT.** iOS swings past,
+    swings back a fraction, and settles — two swings; a `cubic-bezier` has ONE
+    hump by construction, so it gives the overshoot or the settle, never both.
+    `--ios-bubble` / `--ios-settle` are a damped oscillator's step response
+    sampled into `linear()`: bubble ζ 0.70 ω₀ 20 (**4.6% overshoot, 0.21%
+    counter-swing**), thread **ζ 1.00 critically damped** — a list that springs
+    past its own height has to claw back rows it already showed. **16 stops carry
+    the identical curve as 28** (measured to 3dp), at 60% of the bytes. Bezier
+    behind `@supports`, losing only the second swing.
+  - **THE FADE IS ITS OWN ANIMATION.** Folded into the spring's keyframes it
+    stretches across the overshoot and the settle, so the bubble is still
+    *arriving* at 400ms. Opaque by 140ms; after that only the shape moves.
+  - **TWO WRAPPERS, both load-bearing**: `.chat-row` does the height,
+    `.chat-rowin` keeps the flex column so `.chat-msg`'s own `align-self` still
+    picks its side. And **the wrapper must TAKE the thread's place in the flex
+    column** — `.chat-widget .chat-thread { flex: 1 }` is what makes the thread
+    the growing scrolling region, and an ordinary block between them let it grow
+    to its content (measured **595px**), pushing the name/email fields and the
+    chip row under the composer. Verified layout-identical to the pre-change build
+    across the whole widget.
+  - **ONLY THE LAST ROW EVER CARRIES `is-new`**, and `enter` is opt-in per call:
+    every caller rebuilds the whole thread, so an entrance keyed on anything else
+    replays the conversation on each poll. `loadChat` cannot tell a send from an
+    open, so **the SEND says which it is** (`__chatEnterNext`).
+- **THE SCROLL FOLLOWS THE MESSAGE, and the POLICY is untouched.** `chatPoll` has
+  always refused to autoscroll unless the reader was within 60px of the bottom —
+  that rule is unchanged, and the near-bottom test is still read BEFORE the
+  re-render (afterwards `scrollHeight` has already grown by the new row, so a
+  reader sitting exactly at the bottom measures a row's height away). What was
+  wrong is only that `scrollTop = scrollHeight` TELEPORTS. `chatFollow` pins
+  scrollTop to scrollHeight each frame for the row's 0.5s: the row is GROWING, so
+  the newest bubble stays on the floor while the thread slides up underneath,
+  inheriting the row's own critically damped curve — no second easing to keep in
+  step. Measured: one distinct scrollTop before, twelve after. Stamp-guarded, so a
+  newer message takes over.
+- **AND THE ONE THING THAT IS NEW: a reply could land silently off-screen.** Read
+  up-thread while one arrives and the app correctly leaves you where you are — and
+  then says nothing. `#chat-newpill` is the only addition, shown in exactly that
+  case.
+- **THE SITE'S FIRST LINE ORPHANED A WORD.** "Est. 1983 · Book direct with the
+  owner" broke **312px / 67px** at 390px — one word alone on line two, in tracked
+  uppercase. `text-wrap: balance`; a hard `<br>` would be wrong because the string
+  is owner-editable (`data-edit-text`). **The gate asserts the RATIO, not the
+  pixels** — 21% of the first line — because a ratio compares across widths and
+  type sizes where a pixel figure describes one rendering.
+- **THE TWO DECLARATIONS WERE 18px.** `#enq-nodogs` / `#enq-terms` in a 41px row,
+  3px under this app's own 44px floor. Never a WCAG 2.5.8 failure — the input is
+  inside its label, so the row is the target — the box a guest AIMS at just looked
+  half the size of what they can hit. Row to 44px, box to 24px, **and the tick
+  draws itself** (`termsDraw`, 0.22s — deliberately not `.pay-done-tick`'s 0.9s +
+  halo, which is earned by money landing; the star-bow lesson). It draws on the
+  way IN only: unchecking fades the mark, because undoing a declaration is not a
+  moment.
+  - **The drawn control is the KEYSAFE SWITCH'S OWN TRICK**: the real `<input>`
+    stays, full size, `opacity: 0`, over a `.terms-box` we draw — so every id,
+    gate, `enqLiveSync` handler and the server-side `no_dogs` refusal are
+    untouched. Opacity, never `display:none` (which takes the label's click target
+    and the focus ring with it); the ring is drawn on the box instead.
+  - **NOT WHITE.** `#fff` on `--ok` measures **2.78:1** — under the 3:1 that
+    1.4.11 asks of a non-text mark. `--accent-ink` is the design system's
+    ink-on-a-fill token and reads **6.65:1** on the same green. The check-css
+    ratchet caught the raw hex; the arithmetic caught that white was also wrong.
+  - Deliberately NOT switches, despite borrowing the switch's mechanism: a switch
+    says "on/off, changeable"; a declaration is a statement you are making, and
+    the tick is what the confirmation email and the hub's register row show.
+- **TWO THINGS THE LOOKING PASS GOT WRONG, both corrected before proposing.** The
+  chat's quick-reply chips look clipped mid-word and are not — that is a
+  deliberate mask fade, and the fade is what was being seen. And the chat FAB
+  looked like it sat on the first cottage card; a Range sweep of the INKED text
+  down the whole homepage found it covering none, at any scroll position. The
+  general rule, third time: measure the paint before believing the eye.
+- **AND THE DEMO SLANDERED THE APP TWICE** before the build. Its "today" pane
+  yanked the reader to the bottom on a poll (which `chatPoll` has never done), and
+  then read `nearBottom` AFTER the re-render. Both were the demo's bugs. A
+  before/after demo must be held to the same fidelity as the fix.
+- Budgets raised with the shipped figure stated: the gate measures the UNSTRIPPED
+  file while the deploy strips comments, so app.css read +2568 while the real
+  growth is **+828**; app.js **+569**, index.html **+77** gz.
+
 ## Five small motions — the snaps in the booking flow (approved demo, built)
 
 **Asked for as "what other little ui upgrades/animations can be added", demoed

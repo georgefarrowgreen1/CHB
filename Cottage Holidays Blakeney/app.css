@@ -212,6 +212,14 @@ textarea:focus-visible,
   --font-sans: "Montserrat", sans-serif;
   --fluid-bezier: cubic-bezier(0.25, 1, 0.25, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* A MESSAGE BUBBLE IS A DAMPED SPRING: it swings past, swings back a fraction,
+     settles. A cubic-bezier has one hump by construction, so it gives the
+     overshoot or the settle, never both. These are a damped oscillator's step
+     response sampled into linear() — bubble ζ 0.70 ω₀ 20 (4.6% overshoot, 0.2%
+     counter-swing); thread ζ 1.00, critically damped, because a list that springs
+     past its height claws back rows it already showed. Bezier = the fallback. */
+  --ios-bubble: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ios-settle: cubic-bezier(0.25, 1, 0.25, 1);
   /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
      and a test can override these to fake a notch (env() reports 0px on desktop,
      so the bug is otherwise invisible to CI). Use as
@@ -946,11 +954,8 @@ nav a:focus-visible,
 }
 .input-glass:focus-visible,
 .date-range-trigger:focus-visible,
-.terms-accept input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-color: var(--text-light);
-}
+/* The input itself is transparent now (see .terms-box) — the ring is drawn on
+   the box instead, beside that rule. */
 
 select.input-glass {
   appearance: none;
@@ -1392,23 +1397,86 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 
 /* Terms acceptance checkbox */
+/* THE TWO DECLARATIONS were the smallest controls in the form: an 18px box in a
+   41px row, 3px under this app's own 44px floor. Never a WCAG 2.5.8 failure (the
+   input is inside its label, so the row is the target) — the box a guest aims at
+   just looked half the size of what they can hit. */
 .terms-accept {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   margin: 4px 0 18px;
+  min-height: 44px;
   font-size: 0.85rem;
   color: var(--text-muted);
   line-height: 1.5;
   cursor: pointer;
+  position: relative;
 }
+/* THE REAL INPUT STAYS, at full size and transparent, over a box we draw — the
+   keysafe switch's own trick. Every id, gate and enqLiveSync handler keeps
+   working, and the server-side no_dogs refusal is untouched; only the paint
+   changes. NB opacity, never display:none or visibility:hidden — a hidden
+   checkbox leaves the label's click target and the focus ring behind. */
 .terms-accept input {
-  width: 18px;
-  height: 18px;
-  margin-top: 2px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  margin: 0;
   flex-shrink: 0;
-  accent-color: var(--ok);
+  opacity: 0;
   cursor: pointer;
+  z-index: 1;
+}
+.terms-box {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  align-self: center;
+  border: 1.5px solid var(--glass-highlight);
+  border-radius: 6px;
+  background: var(--glass-bg);
+  display: grid;
+  place-items: center;
+  transition:
+    background 0.16s var(--fluid-bezier),
+    border-color 0.16s var(--fluid-bezier);
+}
+.terms-accept input:checked ~ .terms-box {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.terms-box svg {
+  width: 72%;
+  height: 72%;
+  opacity: 0;
+  transition: opacity 0.12s linear;
+}
+.terms-box svg path {
+  fill: none;
+  /* NOT white. Measured, #fff on --ok is 2.78:1 — under the 3:1 that 1.4.11 asks
+     of a non-text mark. --accent-ink is the design system's ink-on-a-fill token
+     and reads 6.65:1 on the same green. */
+  stroke: var(--accent-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+}
+.terms-accept input:checked ~ .terms-box svg {
+  opacity: 1;
+}
+.terms-accept input:checked ~ .terms-box svg path {
+  stroke-dashoffset: 0;
+}
+/* The focus ring belongs to the box the eye is on, not the invisible input. */
+.terms-accept input:focus-visible ~ .terms-box {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
 }
 .terms-accept a {
   color: var(--text-light);
@@ -1561,6 +1629,12 @@ body.light-mode ::-webkit-scrollbar-thumb {
   color: var(--accent-text);
   font-weight: 600;
   margin: 0 0 14px;
+  /* THE SITE'S FIRST LINE MUST NOT ORPHAN A WORD. Measured at 390px, "Est. 1983 ·
+     Book direct with the owner" broke 312px / 67px — one word alone on line two,
+     in tracked uppercase where it is most visible. A hard <br> would be wrong:
+     the string is owner-editable (data-edit-text), so the break belongs to the
+     browser, not to us. Degrades to today's wrap where balance is unsupported. */
+  text-wrap: balance;
 }
 .hero-scroll-cue {
   position: absolute;
@@ -4259,6 +4333,16 @@ a.card {
   @keyframes availIn {
     from { opacity: 0; transform: translateY(4px); }
   }
+  /* THE TICK DRAWS ITSELF, which is the house's own vocabulary — .pay-done-tick
+     already draws on stroke-dashoffset. Deliberately NOT at the receipt's
+     amplitude: that one runs 0.9s behind a halo because money landed, and
+     spending it on a checkbox is the mistake revBow's own note records. And it
+     draws on the way IN only — unchecking simply fades the mark, because undoing
+     a declaration is not a moment. */
+  .terms-accept input:checked ~ .terms-box svg path {
+    animation: termsDraw 0.22s var(--fluid-bezier) 0.05s both;
+  }
+  @keyframes termsDraw { from { stroke-dashoffset: 20; } }
   /* A refusal settles in, it doesn't pop (the decline rule). */
   .enq-modal-msg.show { animation: paySettle 0.5s var(--spring); }
   /* The sent moment cascades behind its drawn tick (the tick + halo come free
@@ -5159,6 +5243,13 @@ body.light-mode .tag-pimpernel {
   border: 1px solid var(--booked-border);
 }
 
+@supports (animation-timing-function: linear(0, 1)) {
+  :root {
+    --ios-bubble: linear(0.000,0.144,0.420,0.681,0.871,0.982,1.033,1.046,1.040,1.027,1.015,1.006,1.001,0.999,0.998,0.998,1.000);
+    --ios-settle: linear(0.000,0.156,0.408,0.620,0.769,0.864,0.922,0.956,0.976,0.987,1.000);
+  }
+}
+
 /* --- Messaging (owner ↔ guest chat) --- */
 .chat-thread {
   display: flex;
@@ -5173,6 +5264,19 @@ body.light-mode .tag-pimpernel {
            threads still scroll normally. */
 .chat-thread > :first-child {
   margin-top: auto;
+}
+/* …EXCEPT AN EMPTY ONE. chatHelloHtml composes a proper welcome and its own
+   comment says it exists "so the chat opens looking like a conversation rather
+   than a blank pane" — and then the rule above pinned it to the floor, leaving
+   267px of nothing above the only thing on screen (a 360px pane, ~60% empty).
+   It was composed as an intro and positioned as a message. Centred, it leads the
+   pane; the instant a real bubble arrives this stops matching and messages
+   bottom-anchor exactly as before. */
+.chat-thread:has(> .chat-hello) {
+  justify-content: center;
+}
+.chat-thread:has(> .chat-hello) > :first-child {
+  margin-top: 0;
 }
 .chat-msg {
   max-width: 82%;
@@ -5194,6 +5298,93 @@ body.light-mode .tag-pimpernel {
   background: rgba(214, 167, 133, 0.92);
   color: #1a191b;
   border-bottom-right-radius: 5px;
+}
+/* ---- A MESSAGE ARRIVES LIKE A MESSAGE ----
+   Two things at once, and it is the PAIR that reads as iOS rather than as a
+   fade: the thread MAKES ROOM while the bubble GROWS FROM THE CORNER IT HANGS
+   OFF. Hence two wrappers — .chat-row does the height (grid rows 0fr→1fr, the
+   #pay-steps reveal), .chat-rowin keeps the flex column so .chat-msg's own
+   align-self still picks its side. Both 0.5s, so they are one event. Only the
+   LAST row carries .is-new: every re-render rebuilds the thread, so an entrance
+   keyed on anything else replays the conversation on each poll. */
+.chat-row {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.chat-row > .chat-rowin {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chat-row.is-new {
+    animation: chatRowOpen 0.5s var(--ios-settle) both;
+  }
+  .chat-row.is-new > .chat-rowin {
+    overflow: hidden;
+  }
+  /* Transform and opacity are SEPARATE animations: folded into the spring's
+     keyframes the fade would stretch across the overshoot and the settle, so the
+     bubble would still be arriving at 400ms. Opaque by 140ms; after that only
+     the shape moves. */
+  .chat-row.is-new .chat-msg {
+    animation:
+      chatMsgPop 0.5s var(--ios-bubble) both,
+      chatMsgFade 0.14s linear both;
+    transform-origin: bottom left;
+  }
+  .chat-row.is-new .chat-msg.me {
+    transform-origin: bottom right;
+  }
+  @keyframes chatRowOpen { from { grid-template-rows: 0fr; } }
+  @keyframes chatMsgPop { from { transform: scale(0.5) translateY(9px); } }
+  @keyframes chatMsgFade { from { opacity: 0; } }
+}
+/* A reply that lands while the guest is reading up-thread must not move them —
+   chatPoll has always refused to autoscroll then — but saying NOTHING lets it
+   arrive silently off-screen. One pill, and only in that case. */
+/* THE WRAPPER TAKES THE THREAD'S PLACE IN THE FLEX COLUMN. `.chat-widget
+   .chat-thread { flex: 1 }` is what makes the thread the growing scrolling
+   region; an ordinary block between them let it grow to its content — measured
+   595px, pushing the fields and chips under the composer. */
+.chat-threadwrap {
+  position: relative;
+}
+.chat-widget .chat-threadwrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-widget .chat-threadwrap > .chat-thread {
+  min-height: 0;
+}
+.chat-newpill {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%) translateY(6px);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 7px 15px;
+  min-height: 34px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-panel);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.18s var(--fluid-bezier),
+    transform 0.18s var(--fluid-bezier);
+  z-index: 2;
+}
+.chat-newpill.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
 }
 .chat-meta {
   font-size: 0.64rem;
@@ -5261,22 +5452,48 @@ body.light-mode .tag-pimpernel {
   padding: 18px 6px;
 }
 /* Empty-thread greeting: crown avatar + a host-style bubble */
+/* The welcome LEADS the pane now (see :has(> .chat-hello) above), so it composes
+   as an INTRODUCTION rather than a received bubble — which is why this is a
+   centred block and not the old avatar-beside-a-bubble flex row. */
 .chat-hello {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  text-align: left;
-  padding: 6px 2px;
+  display: block;
+  text-align: center;
+  padding: 4px 8px;
 }
-.chat-hello .chat-msg.them {
-  max-width: 100%;
+.chat-hello-who {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text-light);
+}
+.chat-hello-role {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.chat-hello-ask {
+  font-size: 0.86rem;
+  color: var(--text-light);
+  margin: 12px auto 0;
+  max-width: 30ch;
+  line-height: 1.5;
+}
+.chat-hello-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 0.7rem;
+  color: var(--ok-text);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  border-radius: var(--r-pill);
+  padding: 5px 12px;
 }
 .chat-hello-ava {
-  width: 34px;
-  height: 34px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin: 0 auto 10px;
   background: rgba(214, 167, 133, 0.14);
   border: 1px solid var(--glass-border);
   display: flex;
@@ -5284,14 +5501,9 @@ body.light-mode .tag-pimpernel {
   justify-content: center;
 }
 .chat-hello-ava img {
-  width: 19px;
-  height: 19px;
+  width: 28px;
+  height: 28px;
   display: block;
-}
-.chat-hello-note {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin: 6px 0 0 4px;
 }
 /* Header identity: crown avatar + green presence dot */
 .chat-head-ava {
