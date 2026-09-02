@@ -96,7 +96,10 @@ textarea:focus-visible,
   color: #1a191b;
 }
 @media (prefers-reduced-motion: reduce) {
-  * {
+  /* `*` does not match pseudo-elements — 11 of 14 ::before/::after motions kept running. */
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -220,6 +223,13 @@ textarea:focus-visible,
      past its height claws back rows it already showed. Bezier = the fallback. */
   --ios-bubble: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ios-settle: cubic-bezier(0.25, 1, 0.25, 1);
+  /* THE MOTION SYSTEM: four curves, nothing overshoots >0.5%. --settle aliases
+     --ios-settle (one definition); --sheet is ζ 0.86 (peak 1.005). */
+  --out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --in: cubic-bezier(0.42, 0, 1, 1);
+  --settle: var(--ios-settle);
+  --sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --unfold: cubic-bezier(0, 0, 0.58, 1);
   /* iOS SAFE AREAS, read ONCE as tokens: every overlay then insets the same way,
      and a test can override these to fake a notch (env() reports 0px on desktop,
      so the bug is otherwise invisible to CI). Use as
@@ -521,7 +531,9 @@ select,
 }
 /* Touch feedback: a gentle press instead of a sticky hover */
 .card:active {
-  transform: scale(0.97);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 
 /* --- ROUTING SYSTEM --- */
@@ -811,7 +823,7 @@ nav a:hover {
   transition:
     background 0.25s var(--fluid-bezier),
     border-color 0.25s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
   margin-left: 18px;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
@@ -827,7 +839,9 @@ nav a:hover {
   transform: translateY(-1px);
 }
 .account-btn:active {
-  transform: scale(0.94);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .account-btn.logged-in {
   background: rgba(76, 175, 80, 0.25);
@@ -890,7 +904,7 @@ nav a:hover {
   transition:
     background 0.4s var(--fluid-bezier),
     color 0.4s var(--fluid-bezier),
-    transform 0.4s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.4s var(--fluid-bezier);
   display: inline-block;
 }
@@ -909,14 +923,32 @@ nav a:hover {
   }
 }
 .btn-glass:active {
-  transform: scale(0.95);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 /* Busy/disabled state — used while an async action (e.g. sending an enquiry) is in flight. */
-.btn-glass:disabled,
-.btn-glass.is-busy {
+.btn-glass:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* WORK: busy is not disabled — the pay button's spinner, no dimming. */
+.btn-glass.is-busy {
   cursor: progress;
   pointer-events: none;
+}
+.btn-glass.is-busy::before {
+  content: '';
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-right: 8px;
+  vertical-align: -2px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: chbSpin 1s linear infinite;
 }
 /* Clear keyboard focus ring (only for keyboard users, via :focus-visible) so the
            glass UI stays clean for mouse/touch but is fully navigable from the keyboard. */
@@ -1265,7 +1297,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
   transition:
     background 0.2s,
-    border-color 0.2s;
+    border-color 0.2s,
+    transform 320ms var(--settle),
+    filter 320ms var(--settle),
+    opacity 300ms var(--settle);
   user-select: none;
 }
 /* HOVER MUST NOT ERASE THE SELECTION. This tint is (0,4,0) against `.dp-day.dp-start`'s
@@ -1885,7 +1920,7 @@ html.js-reveal .reveal.in-view {
   transition:
     background 0.5s var(--fluid-bezier),
     border-color 0.5s var(--fluid-bezier),
-    transform 0.55s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.5s var(--fluid-bezier);
 }
 a.card {
@@ -2071,7 +2106,7 @@ a.card {
   transform: translateY(-50%);
   font-size: 1.4rem;
   color: var(--text-muted);
-  transition: transform 0.3s var(--fluid-bezier);
+  transition: transform 240ms var(--out);
 }
 .faq-item.open .faq-q::after {
   content: "−";
@@ -2079,7 +2114,7 @@ a.card {
 .faq-a {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.35s var(--fluid-bezier);
+  transition: max-height 320ms var(--unfold);
   color: var(--text-muted);
   font-size: 0.92rem;
   line-height: 1.7;
@@ -2868,6 +2903,20 @@ a.card {
   height: 2px;
   background: var(--glass-border);
   border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+.enq-prog-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 400ms var(--settle);
+}
+.enq-prog-line.done::after {
+  transform: scaleX(1);
 }
 .enq-summary {
   display: flex;
@@ -3584,10 +3633,12 @@ a.card {
   cursor: pointer;
   /* The pill-control press from the #1000 makeover — these are the same
      species of control as the part toggle. */
-  transition: transform 0.18s var(--fluid-bezier), border-color 0.18s var(--fluid-bezier);
+  transition: transform 320ms var(--settle), filter 320ms var(--settle), border-color 0.18s var(--fluid-bezier);
 }
 .pay-ap-opt:active {
-  transform: scale(0.985);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .pay-ap-opt.is-sel {
   border-color: color-mix(in srgb, var(--accent) 62%, transparent);
@@ -4150,13 +4201,13 @@ a.card {
   .pay-step.is-run .pay-step-dot,
   .pj-row.is-run .pj-dot { animation: paySpin 0.8s linear infinite; }
   .pay-step.is-ok .pay-step-dot,
-  .pj-row.is-done .pj-dot { animation: payPop 0.55s var(--spring); }
+  .pj-row.is-done .pj-dot { animation: payPop 280ms var(--out); }
+  /* Appear: from 0.94 on a deceleration — never from half size, never past 1. */
   @keyframes payPop {
-    0% { transform: scale(0.5); }
-    60% { transform: scale(1.2); }
-    100% { transform: scale(1); }
+    0% { transform: scale(0.94); opacity: 0.6; }
+    100% { transform: scale(1); opacity: 1; }
   }
-  .pay-cta.is-paid { animation: payPop2 0.7s var(--spring); }
+  .pay-cta.is-paid { animation: payPop2 320ms var(--settle); }
   @keyframes payPop2 { from { transform: scale(0.96); } }
   .pay-msg.show { animation: paySettle 0.5s var(--spring); } /* unhurried-exempt: bad news is read, not savoured */
   @keyframes paySettle {
@@ -4266,7 +4317,7 @@ a.card {
      render dpPick flagged (dp-anim / dp-wavef), never on a month page. */
   .dp-anim .dp-day.dp-start,
   .dp-anim .dp-day.dp-end {
-    animation: payPop 0.4s var(--spring);
+    animation: payPop 280ms var(--out);
   }
   .dp-wavef .dp-day.dp-in-range {
     animation: dpWave 0.3s var(--fluid-bezier) backwards;
@@ -4298,12 +4349,13 @@ a.card {
     opacity: 0;
   }
   #date-picker .dp-day[data-act]:active {
-    transform: scale(0.94);
-    transition: transform 0.12s ease;
+    transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
   }
   .dp-cap-ok,
   #enq-avail-cap {
-    animation: payPop 0.4s var(--spring);
+    animation: payPop 280ms var(--out);
   }
   #dp-done.is-ready {
     animation: payCasc 0.4s var(--spring);
@@ -4312,9 +4364,9 @@ a.card {
     animation: payPop2 0.45s var(--spring);
   }
   /* Landed dates assemble the form around themselves, one block after another. */
-  .enq-landed .price-box { animation: payCasc 0.45s var(--spring) 0.05s backwards; }
-  .enq-landed .enq-cancel-note { animation: payCasc 0.45s var(--spring) 0.16s backwards; }
-  .enq-landed .enq-faq-ask { animation: payCasc 0.45s var(--spring) 0.26s backwards; }
+  .enq-landed .price-box { animation: payCasc 280ms var(--settle) 0.05s backwards; }
+  .enq-landed .enq-cancel-note { animation: payCasc 280ms var(--settle) 0.16s backwards; }
+  .enq-landed .enq-faq-ask { animation: payCasc 280ms var(--settle) 0.26s backwards; }
   /* AND STEP TWO DOES THE SAME ON THE COMMIT (enquireContinue). One rule, the
      delay carried inline per group as --efd: these blocks are NOT
      nth-child-countable — the step's children include the back link and two
@@ -4322,23 +4374,23 @@ a.card {
      cadence above on purpose: six groups at 0.45s/0.26s settle the last at
      ~0.8s, too long in front of a form. Heading and first field at zero (the
      card reads at once), last block at 0.555s. */
-  #enquire-step-details.enq-landed .enq-fg {
-    animation: payCasc 0.36s var(--spring) var(--efd, 0s) backwards;
-  }
+  /* A step is a settled CROSS, mirrored both ways (.enq-fg/--efd are inert now). */
+  #enquire-step-details.enq-in-fwd { animation: chbCrossFwd 280ms var(--out); }
+  #enquire-step-review.enq-in-back { animation: chbCrossBack 280ms var(--out); }
   /* The receipt's figure when it RECOMPUTES: a settle, not a pop. payPop opens at
      scale(0.5) and means "this appeared", a flinch on a figure already on screen
      (revBow's note). Only the figure — the dates beside it did not change. */
   .enq-cta-fig.is-fresh {
-    animation: enqFigSettle 0.34s var(--fluid-bezier);
+    animation: enqFigSettle 300ms var(--settle);
   }
   @keyframes enqFigSettle {
-    from { opacity: 0.25; transform: translateY(3px); }
+    from { opacity: 0.25; transform: translateY(4px); }
   }
   /* Availability landing on a cottage card: an ARRIVAL into the line
      .card-avail already reserves, so nothing moves. First fill per cottage —
      renderCardAvailability owns that decision. */
   .avail-chip.avail-chip-in {
-    animation: availIn 0.26s var(--fluid-bezier);
+    animation: availIn 280ms var(--out);
   }
   @keyframes availIn {
     from { opacity: 0; transform: translateY(4px); }
@@ -4417,7 +4469,7 @@ a.card {
   animation: payRise 0.42s var(--fluid-bezier);
 }
 .pay-done-tick .ic {
-  animation: payPop 0.5s var(--spring) 0.08s backwards;
+  animation: payPop 280ms var(--out) 0.08s backwards;
 }
 .pay-part-row,
 .pay-express,
@@ -4491,11 +4543,13 @@ a.card {
 }
 #view-pay .pay-full-link,
 #pay-done button {
-  transition: transform 0.18s var(--fluid-bezier);
+  transition: transform 320ms var(--settle), filter 320ms var(--settle);
 }
 #view-pay .pay-full-link:active,
 #pay-done button:active {
-  transform: scale(0.965);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 @media (prefers-reduced-motion: reduce) {
   #pay-body,
@@ -4762,7 +4816,7 @@ textarea.input-glass.field-sm {
   transition:
     background 0.3s var(--fluid-bezier),
     border-color 0.3s var(--fluid-bezier),
-    transform 0.3s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.3s var(--fluid-bezier);
 }
 @media (hover: hover) {
@@ -4774,7 +4828,9 @@ textarea.input-glass.field-sm {
   }
 }
 .gallery-nav:active {
-  transform: translateY(-50%) scale(0.96);
+  transform: translateY(-50%) scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .gallery-nav.prev {
   left: 20px;
@@ -4810,12 +4866,27 @@ textarea.input-glass.field-sm {
   align-items: center;
   justify-content: center;
 }
+.lightbox-stage {
+  position: relative;
+}
 .lightbox-stage img {
   max-width: 92vw;
   max-height: 86vh;
   border-radius: 14px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   object-fit: contain;
+}
+/* CROSS — the next photo decodes on this layer, fades in, then becomes the front image. */
+#lightbox-img2 {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms var(--unfold);
+}
+#lightbox-img2.is-front {
+  opacity: 1;
 }
 .lightbox-nav {
   position: absolute;
@@ -4835,7 +4906,7 @@ textarea.input-glass.field-sm {
   transition:
     background 0.25s var(--fluid-bezier),
     border-color 0.25s var(--fluid-bezier),
-    transform 0.25s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.25s var(--fluid-bezier);
 }
 @media (hover: hover) {
@@ -4846,7 +4917,9 @@ textarea.input-glass.field-sm {
   }
 }
 .lightbox-nav:active {
-  transform: translateY(-50%) scale(0.96);
+  transform: translateY(-50%) scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .lightbox-nav.prev {
   left: 18px;
@@ -5257,6 +5330,7 @@ body.light-mode .tag-pimpernel {
   :root {
     --ios-bubble: linear(0.000,0.144,0.420,0.681,0.871,0.982,1.033,1.046,1.040,1.027,1.015,1.006,1.001,0.999,0.998,0.998,1.000);
     --ios-settle: linear(0.000,0.156,0.408,0.620,0.769,0.864,0.922,0.956,0.976,0.987,1.000);
+    --sheet: linear(0.000,0.128,0.363,0.586,0.756,0.869,0.938,0.976,0.995,1.003,1.005,1.005,1.004,1.002,1.001,1.001,1.000);
   }
 }
 
@@ -5370,6 +5444,7 @@ body.light-mode .tag-pimpernel {
   min-height: 0;
 }
 .chat-newpill {
+  /* Appear */
   position: absolute;
   left: 50%;
   bottom: 10px;
@@ -5387,8 +5462,8 @@ body.light-mode .tag-pimpernel {
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity 0.18s var(--fluid-bezier),
-    transform 0.18s var(--fluid-bezier);
+    opacity 280ms var(--out),
+    transform 280ms var(--out);
   z-index: 2;
 }
 .chat-newpill.show {
@@ -5615,8 +5690,7 @@ body.light-mode .tag-pimpernel {
   align-items: center;
   justify-content: center;
   transition:
-    transform 0.2s var(--spring),
-    filter 0.2s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .chat-send svg {
   width: 20px;
@@ -5628,7 +5702,9 @@ body.light-mode .tag-pimpernel {
   filter: brightness(1.06);
 }
 .chat-send:active {
-  transform: scale(0.94);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 /* Attach-a-photo button (paperclip) — quiet, sits left of the composer */
 .chat-attach-btn {
@@ -5646,7 +5722,7 @@ body.light-mode .tag-pimpernel {
   transition:
     color 0.2s var(--fluid-bezier),
     background 0.2s var(--fluid-bezier),
-    transform 0.2s var(--spring);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .chat-attach-btn svg {
   width: 19px;
@@ -5658,7 +5734,9 @@ body.light-mode .tag-pimpernel {
   transform: translateY(-1px);
 }
 .chat-attach-btn:active {
-  transform: scale(0.94);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .chat-attach-btn.busy {
   opacity: 0.5;
@@ -6610,10 +6688,12 @@ body.owner-mode .chat-widget {
   line-height: 1;
   transition:
     background 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .avail-nav:active {
-  transform: scale(0.9);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .avail-nav:hover {
   background: var(--glass-hover);
@@ -7169,7 +7249,7 @@ body.owner-mode .chat-widget {
   transition:
     border-color 0.25s var(--fluid-bezier),
     background 0.25s var(--fluid-bezier),
-    transform 0.2s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .cancel-card:hover {
   background: var(--glass-hover);
@@ -7872,8 +7952,9 @@ body.light-mode .feed-dot-bad {
   .admin-dock-btn:active,
   .ny-row:active,
   .mo-kpi[data-act]:active {
-    transform: scale(0.98);
-    transition: transform 0.12s var(--spring);
+    transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
   }
 }
 .btn-decline,
@@ -8765,7 +8846,7 @@ body.light-mode .feed-dot-bad {
 .gb2-chev {
   display: inline-block;
   color: var(--text-muted);
-  transition: transform 0.25s var(--fluid-bezier);
+  transition: transform 240ms var(--out);
 }
 .gb2-payline.is-open .gb2-chev {
   transform: rotate(90deg);
@@ -8777,6 +8858,37 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border);
   border-top: none;
   border-radius: 0 0 16px 16px;
+  /* The back office's collapsing grid; [hidden] IS the collapsed state, so fold.hidden stays honest. */
+  display: grid;
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows 320ms var(--unfold),
+    opacity 200ms linear,
+    padding-top 320ms var(--unfold),
+    padding-bottom 320ms var(--unfold),
+    visibility 0s;
+}
+.gb2-fold > .gb2-foldin {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+.gb2-fold[hidden] {
+  display: grid;
+  visibility: hidden;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  transition:
+    grid-template-rows 320ms var(--unfold),
+    opacity 200ms linear,
+    padding-top 320ms var(--unfold),
+    padding-bottom 320ms var(--unfold),
+    visibility 0s linear 320ms;
 }
 /* Inside the well the price box loses its own panel — rows sit directly on
    the well's ground, one container instead of a box in a box. */
@@ -8878,11 +8990,11 @@ body.light-mode .feed-dot-bad {
    The curve has to say "acknowledged", not "arrived". */
 @keyframes revBow {
   0% { transform: scale(1); }
-  45% { transform: scale(1.32); }
+  45% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
 .gb2-stars.is-settling .gb2-star.is-on {
-  animation: revBow 0.42s var(--spring) both;
+  animation: revBow 0.42s var(--out) both;
   animation-delay: var(--rvd, 0s);
 }
 /* A TAP GETS THE SMALLER BOW. Two amplitudes, one grammar: 1.18 acknowledges the
@@ -8891,11 +9003,11 @@ body.light-mode .feed-dot-bad {
    on a star just tapped. */
 @keyframes revBowTap {
   0% { transform: scale(1); }
-  45% { transform: scale(1.18); }
+  45% { transform: scale(1.06); }
   100% { transform: scale(1); }
 }
 .gb2-star.gb2-bow {
-  animation: revBowTap 0.28s var(--spring);
+  animation: revBowTap 0.28s var(--out);
 }
 /* THE FORM BECOMES A RECORD. A dashed border invites you to fill something in;
    once the rating is given that invitation is spent, so it fades and the block
@@ -9054,7 +9166,7 @@ body.light-mode .feed-dot-bad {
   -webkit-tap-highlight-color: transparent;
   transition:
     background 0.2s var(--fluid-bezier),
-    transform 0.2s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     border-color 0.2s ease;
 }
 .hub-tile .ic {
@@ -9066,7 +9178,9 @@ body.light-mode .feed-dot-bad {
   border-color: var(--accent-soft, var(--glass-border));
 }
 .hub-tile:active {
-  transform: scale(0.94);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 /* Experiences tab (local things to do) */
 .exp-filters {
@@ -9090,10 +9204,12 @@ body.light-mode .feed-dot-bad {
     background 0.2s var(--fluid-bezier),
     color 0.2s var(--fluid-bezier),
     border-color 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .exp-chip:active {
-  transform: scale(0.96);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .exp-chip.is-on {
   background: var(--text-light);
@@ -9915,7 +10031,7 @@ body.light-mode .feed-dot-bad {
   align-items: center;
   justify-content: center;
   transition:
-    transform 0.45s var(--spring),
+    transform 320ms var(--sheet),
     width 0.18s var(--fluid-bezier);
 }
 .theme-switch:active .ts-knob {
@@ -9926,8 +10042,8 @@ body.light-mode .feed-dot-bad {
   width: 15px;
   height: 15px;
   transition:
-    opacity 0.3s var(--fluid-bezier),
-    transform 0.45s var(--spring);
+    opacity 300ms var(--out),
+    transform 320ms var(--sheet);
 }
 .theme-switch .ts-i-moon {
   color: #33343a;
@@ -10215,7 +10331,7 @@ p.lead[data-edit-text] {
   display: inline-block;
   font-weight: 400;
   text-decoration: none;
-  transition: transform 0.2s;
+  transition: transform 240ms var(--out);
 }
 .prop-desc-toggle.open::after {
   transform: rotate(90deg);
@@ -10576,7 +10692,9 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
 }
 .admin-dock-btn:active {
   /* Press digs in fast; release springs back (transition below). */
-  transform: scale(0.85);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
   transition-duration: 0.2s, 0.08s;
 }
 /* Current section: a clearly lighter filled pill, like the active tab in the
@@ -10837,12 +10955,34 @@ body.light-mode .hs-field:hover {
   background: rgba(255, 255, 255, 0.18);
 }
 .hs-step:active {
-  transform: scale(0.9);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .hs-count {
   min-width: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  /* ROLL: digits travel through a clipped window (chbRoll). */
+  display: inline-grid;
+  place-items: center;
+  height: 1.4em;
+  overflow: hidden;
+}
+.hs-count > span {
+  grid-area: 1 / 1;
+}
+.hs-count > .out {
+  animation: chbRollOut 320ms var(--settle) forwards;
+}
+.hs-count > .in {
+  animation: chbRollIn 320ms var(--settle) backwards;
+}
+.hs-count.dn > .out {
+  animation-name: chbRollOutDn;
+}
+.hs-count.dn > .in {
+  animation-name: chbRollInDn;
 }
 .enq-guests {
   display: flex;
@@ -10893,14 +11033,16 @@ body.light-mode .hs-field:hover {
     background 0.2s var(--fluid-bezier),
     color 0.2s var(--fluid-bezier),
     border-color 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
   white-space: nowrap;
 }
 .hs-chip:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 .hs-chip:active {
-  transform: scale(0.96);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .hs-chip.is-on {
   background: var(--accent);
@@ -10990,14 +11132,16 @@ body.light-mode .hs-field:hover {
   transition:
     background 0.2s var(--fluid-bezier),
     border-color 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 320ms var(--settle), filter 320ms var(--settle);
 }
 .flex-opt:hover {
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(255, 255, 255, 0.3);
 }
 .flex-opt:active {
-  transform: scale(0.99);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 .flex-opt .fo-dates {
   font-size: 0.9rem;
@@ -11824,7 +11968,8 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
     background 0.35s var(--fluid-bezier),
     color 0.35s var(--fluid-bezier),
     border-color 0.35s var(--fluid-bezier),
-    transform 0.35s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
+    opacity 300ms var(--settle),
     box-shadow 0.35s var(--fluid-bezier);
 }
 @media (hover: hover) {
@@ -11870,7 +12015,9 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
 .cancel-card:active,
 .cal-refresh-btn:active,
 .cal-add-btn:active {
-  transform: scale(0.96);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 /* Full-width list rows: same easing + a gentle press,
 but no lift. */
@@ -11879,12 +12026,14 @@ but no lift. */
   transition:
     background 0.35s var(--fluid-bezier),
     color 0.35s var(--fluid-bezier),
-    transform 0.35s var(--spring),
+    transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.35s var(--fluid-bezier);
 }
 .settings-row:active,
 .msg-thread-row:active {
-  transform: scale(0.997);
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
 }
 
 /* ============================================================
@@ -12045,4 +12194,138 @@ body.light-mode .hero-scroll-cue {
   background: rgba(229, 115, 115, 0.14);
   color: var(--danger-text);
   border-color: var(--danger);
+}
+
+/* THE MOTION SYSTEM — shared keyframes + late assignments. Distances on the 4pt
+   grid; durations from 80·160·240·280·300·320·400·480. */
+@keyframes chbSettle { from { opacity: 0.4; transform: translateY(4px); } }
+@keyframes chbAppear { from { opacity: 0; transform: scale(0.94); } }
+@keyframes chbSpin { to { transform: rotate(360deg); } }
+@keyframes chbDraw { from { stroke-dashoffset: 26; } }
+@keyframes chbNudge { 0% { transform: translateX(0); } 40% { transform: translateX(-4px); } 100% { transform: translateX(0); } }
+@keyframes chbRollOut { to { transform: translateY(-1.2em); opacity: 0; } }
+@keyframes chbRollIn { from { transform: translateY(1.2em); opacity: 0; } }
+@keyframes chbRollOutDn { to { transform: translateY(1.2em); opacity: 0; } }
+@keyframes chbRollInDn { from { transform: translateY(-1.2em); opacity: 0; } }
+@keyframes chbCrossFwd { from { opacity: 0; transform: translateX(8px); } }
+@keyframes chbCrossBack { from { opacity: 0; transform: translateX(-8px); } }
+@keyframes chbMoOut { to { opacity: 0; transform: translateX(calc(var(--mx, 1) * -8px)); } }
+@keyframes chbMoIn { from { opacity: 0; transform: translateX(calc(var(--mx, 1) * 8px)); } }
+
+/* PRESS on the five controls that had none (four on My Stays). */
+.gb2-again,
+.gb2-payline,
+.hub-code-copy,
+.back-link,
+.gb2-links .btn-sm,
+.hs-mode-btn,
+.date-range-trigger,
+header nav a {
+  transition: transform 320ms var(--settle), filter 320ms var(--settle), background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier);
+}
+.gb2-again:active,
+.gb2-payline:active,
+.hub-code-copy:active,
+.back-link:active,
+.gb2-links .btn-sm:active,
+.hs-mode-btn:active,
+.date-range-trigger:active,
+header nav a:active {
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
+}
+
+/* SETTLE — a value landing from a fetch, first fill only. */
+.card-price.is-landed,
+.card-rating.is-landed,
+.lightbox-counter.is-landed {
+  animation: chbSettle 300ms var(--settle);
+}
+/* APPEAR */
+.cottages-list .cott-fav.is-in,
+.hub-count.chb-appear,
+.hub-code.chb-appear,
+.chat-bot.chb-appear {
+  animation: chbAppear 280ms var(--out);
+}
+/* TRAVEL — the pill is a SIBLING (chbSeatPill); a chip keeps its fill until .has-pill. */
+.exp-filters,
+#hs-month-chips,
+.hs-mode {
+  position: relative;
+}
+.chb-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+  transition: translate 320ms var(--sheet), width 320ms var(--sheet), height 320ms var(--sheet);
+}
+.chb-pill.armed { transition: none; }
+.exp-filters .chb-pill { background: var(--text-light); }
+#hs-month-chips .chb-pill { background: var(--accent); }
+.hs-mode .chb-pill { background: var(--accent); border-radius: 10px; }
+.exp-filters > .exp-chip,
+#hs-month-chips > .hs-chip,
+.hs-mode > .hs-mode-btn {
+  position: relative;
+  z-index: 1;
+}
+.exp-filters.has-pill .exp-chip.is-on,
+#hs-month-chips.has-pill .hs-chip.is-on,
+.hs-mode.has-pill .hs-mode-btn.is-on {
+  background: transparent;
+  border-color: transparent;
+}
+/* CROSS — the cottage calendar turns the page like the picker. */
+#avail-cal-grid.chb-mo-out { animation: chbMoOut 160ms var(--in) forwards; }
+#avail-cal-grid.chb-mo-in { animation: chbMoIn 240ms var(--out) backwards; }
+/* DRAW */
+.hub-code-copy { min-width: 116px; text-align: center; }
+.hub-code-copy .cc-tick { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
+.hub-code-copy .cc-tick path { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 26; }
+.hub-code-copy.is-done .cc-tick path { animation: chbDraw 400ms var(--out) both; }
+/* NUDGE */
+.input-glass.is-bad,
+.date-range-trigger.is-bad {
+  border-color: var(--danger);
+  animation: chbNudge 280ms var(--out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gb2-fold,
+  .gb2-fold[hidden] { transition: none; }
+  .gb2-fold[hidden] { display: none; }
+  .btn-glass.is-busy::before { animation: none; }
+  .chb-pill { transition: none; }
+}
+/* UNFOLD — the earlier-stays fold, same mechanism, no box. */
+#gb2-pastfold {
+  display: grid;
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 320ms var(--unfold), opacity 200ms linear, visibility 0s;
+}
+#gb2-pastfold > .gb2-foldin {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+#gb2-pastfold[hidden] {
+  display: grid;
+  visibility: hidden;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 320ms var(--unfold), opacity 200ms linear, visibility 0s linear 320ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  #gb2-pastfold,
+  #gb2-pastfold[hidden] { transition: none; }
+  #gb2-pastfold[hidden] { display: none; }
 }

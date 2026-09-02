@@ -220,18 +220,39 @@ const { boot } = require('./ui-test-lib');
         const forced = await page.evaluate(() => {
             const step = document.getElementById('enquire-step-details');
             step.style.display = '';
-            step.classList.add('enq-landed');
+            step.classList.add('enq-landed', 'enq-in-fwd'); // both classes enquireContinue adds
             const groups = Array.from(step.querySelectorAll('.enq-fg'));
             return { names: groups.map((g) => getComputedStyle(g).animationName), delays: groups.map((g) => getComputedStyle(g).animationDelay) };
         });
         casc.names = forced.names;
         casc.delays = forced.delays;
     }
-    check(casc.names.every((n) => n === 'payCasc'), 'every group runs the house cascade keyframe', casc.names.join(','));
-    const secs = casc.delays.map((d) => parseFloat(d));
-    check(secs[0] === 0, 'the heading is at zero delay — the card reads at once', casc.delays[0]);
-    check(Math.max(...secs) <= 0.2, 'the whole cascade is inside 0.2s of stagger', 'max ' + Math.max(...secs) + 's');
-    check(secs.some((s) => s > 0), 'and it really staggers', casc.delays.join(','));
+    // RE-AIMED (the motion system): a step is a CROSS, not a performance, and it
+    // is MIRRORED. The eleven-animation cascade that greeted step two had no twin
+    // on the way back — Continue was staged and Back was a cut. What is asserted
+    // now is the pair: one settled cross forwards on the STEP, none on the
+    // groups, and the same cross backwards from the other side.
+    check(casc.names.every((n) => n === 'none'), 'the groups no longer cascade one by one', casc.names.join(','));
+    const cross = await page.evaluate(() => {
+        const step = document.getElementById('enquire-step-details');
+        const r = document.getElementById('enquire-step-review');
+        const fwd = { cls: step.classList.contains('enq-in-fwd'), name: getComputedStyle(step).animationName, dur: getComputedStyle(step).animationDuration };
+        // and back: the mirror, only because step two was really showing
+        step.style.display = '';
+        window.enquireBack();
+        const back = { cls: r.classList.contains('enq-in-back'), name: getComputedStyle(r).animationName, dur: getComputedStyle(r).animationDuration };
+        // opening lands on enquireBack too — with step two hidden it must NOT animate
+        r.classList.remove('enq-in-back');
+        window.enquireBack();
+        const open = r.classList.contains('enq-in-back');
+        const kf = (n) => { const x = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } }).find((z) => z.type === CSSRule.KEYFRAMES_RULE && z.name === n); return x ? [...x.cssRules].map((k) => k.style.transform).join('') : ''; };
+        return { fwd, back, open, kfF: kf('chbCrossFwd'), kfB: kf('chbCrossBack') };
+    });
+    check(cross.fwd.cls && cross.fwd.name === 'chbCrossFwd', 'step two arrives on ONE settled cross', cross.fwd.name);
+    check(cross.back.cls && cross.back.name === 'chbCrossBack', 'and Back is its mirror', cross.back.name);
+    check(cross.fwd.dur === cross.back.dur, 'same clock both ways', cross.fwd.dur + ' / ' + cross.back.dur);
+    check(/8px/.test(cross.kfF) && /-8px/.test(cross.kfB), 'travelling opposite ways, 8px on the grid', cross.kfF + ' | ' + cross.kfB);
+    check(!cross.open, 'the modal opening on the review step does not play the Back cross');
 
     // ============================================================
     //  §3 — the receipt figure
