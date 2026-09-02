@@ -1079,7 +1079,19 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 #glass-dialog.open {
   display: flex;
-  animation: fluidFadeIn 0.3s var(--fluid-bezier);
+  animation: chbFadeIn 200ms var(--out);
+}
+/* ALERT — settles DOWN from 1.08; `closing` paints the exit (chbCloseOverlay). */
+#glass-dialog.open .glass-dialog-box {
+  animation: chbAlertIn 240ms var(--out);
+}
+#glass-dialog.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  animation: chbFadeOut 160ms var(--in) forwards;
+}
+#glass-dialog.closing:not(.open) .glass-dialog-box {
+  animation: chbAlertOut 160ms var(--in) forwards;
 }
 .glass-dialog-box {
   width: 100%;
@@ -1220,7 +1232,20 @@ body.light-mode ::-webkit-scrollbar-thumb {
   display: flex;
   /* Visible base state; entrance animation is decorative (no forwards fill). */
   opacity: 1;
-  animation: fluidFadeIn 0.35s var(--fluid-bezier);
+  animation: chbFadeIn 240ms var(--out);
+}
+.datepicker-pop.open .datepicker-card {
+  animation: chbModalIn 400ms var(--sheet);
+}
+/* Exits above the glass dialog: dp-over-glass drops at once (dpOverGlass reads it). */
+.datepicker-pop.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  z-index: 6100;
+  animation: chbFadeOut 240ms var(--in) forwards;
+}
+.datepicker-pop.closing:not(.open) .datepicker-card {
+  animation: chbModalOut 240ms var(--in) forwards;
 }
 .datepicker-card {
   width: 100%;
@@ -2141,7 +2166,18 @@ a.card {
 }
 .reviews-modal.open {
   display: flex;
-  animation: fluidFadeIn 0.3s var(--fluid-bezier);
+  animation: chbFadeIn 240ms var(--out);
+}
+.reviews-modal.open .reviews-modal-box {
+  animation: chbModalIn 400ms var(--sheet);
+}
+.reviews-modal.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  animation: chbFadeOut 240ms var(--in) forwards;
+}
+.reviews-modal.closing:not(.open) .reviews-modal-box {
+  animation: chbModalOut 240ms var(--in) forwards;
 }
 .reviews-modal-box {
   width: 100%;
@@ -2490,7 +2526,15 @@ a.card {
   display: flex;
   /* Visible base state; entrance animation is decorative (no forwards fill). */
   opacity: 1;
-  animation: fluidFadeIn 0.35s var(--fluid-bezier);
+  animation: chbFadeIn 240ms var(--out);
+}
+.photo-lightbox.open img {
+  animation: chbStageIn 240ms var(--out);
+}
+.photo-lightbox.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  animation: chbFadeOut 200ms var(--in) forwards;
 }
 .photo-lightbox img {
   max-width: 92vw;
@@ -4857,7 +4901,15 @@ textarea.input-glass.field-sm {
 }
 .lightbox.open {
   display: flex;
-  animation: fluidFadeIn 0.3s var(--fluid-bezier);
+  animation: chbFadeIn 240ms var(--out);
+}
+.lightbox.open .lightbox-stage {
+  animation: chbStageIn 240ms var(--out);
+}
+.lightbox.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  animation: chbFadeOut 200ms var(--in) forwards;
 }
 .lightbox-stage {
   max-width: 92vw;
@@ -6244,7 +6296,14 @@ body.owner-mode .chat-widget {
 }
 .chat-widget.open {
   display: flex;
-  animation: fluidFadeIn 0.3s var(--fluid-bezier);
+  transform-origin: 100% 100%;
+  animation: chbChatIn 320ms var(--sheet);
+}
+.chat-widget.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  transform-origin: 100% 100%;
+  animation: chbChatOut 200ms var(--in) forwards;
 }
 .chat-widget-head {
   display: flex;
@@ -9677,7 +9736,7 @@ body.light-mode .feed-dot-bad {
   display: flex;
   /* Visible base state; entrance animation is decorative (no forwards fill). */
   opacity: 1;
-  animation: fluidFadeIn 0.4s var(--fluid-bezier);
+  animation: chbFadeIn 240ms var(--out);
 }
 .modal-box {
   width: 100%;
@@ -9693,50 +9752,64 @@ body.light-mode .feed-dot-bad {
   max-height: min(90dvh, calc(100dvh - var(--safe-t) - var(--safe-b) - 40px));
   overflow-y: auto;
 }
-/* Floating glass windows: smooth pop-in (overlay fades, box rises). */
-.pop-modal.open .modal-box {
-  animation: modalPop 0.45s var(--fluid-bezier);
+/* SHEET — the box settles in on --sheet, the scrim only fades; `open` drops at
+   once and `closing` paints an inert exit (`:not(.open)`: a re-open wins). ≤640px
+   a `.chb-sheet` overlay is a BOTTOM SHEET (opted into in the markup). */
+.modal-overlay.open .modal-box,
+.modal-overlay.open .terms-modal-box {
+  animation: chbModalIn 400ms var(--sheet);
 }
-@keyframes modalPop {
-  from {
-    opacity: 0;
-    transform: translateY(26px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+.modal-overlay.closing:not(.open) {
+  display: flex;
+  pointer-events: none;
+  animation: chbFadeOut 240ms var(--in) forwards;
 }
-/* Closing: reverse the pop-in — overlay fades, box drops away. */
-.pop-modal.closing {
-  animation: fluidFadeOut 0.35s var(--fluid-bezier) forwards;
+.modal-overlay.closing:not(.open) .modal-box,
+.modal-overlay.closing:not(.open) .terms-modal-box {
+  animation: chbModalOut 240ms var(--in) forwards;
 }
-.pop-modal.closing .modal-box {
-  animation: modalPopOut 0.35s var(--fluid-bezier) forwards;
+/* Were inline styles, which outrank the sheet rule; :where() keeps class specificity. */
+:where(#waitlist-modal, #photo-upload-modal) .modal-box {
+  max-width: 460px;
 }
-@keyframes fluidFadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+:where(#welcome-modal) .modal-box {
+  max-width: 520px;
 }
-@keyframes modalPopOut {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+@media (max-width: 640px) {
+  .modal-overlay.chb-sheet {
+    align-items: flex-end;
+    padding: max(20px, var(--safe-t)) 0 0;
   }
-  to {
-    opacity: 0;
-    transform: translateY(26px) scale(0.96);
+  .modal-overlay.chb-sheet .modal-box,
+  .modal-overlay.chb-sheet .terms-modal-box {
+    max-width: none;
+    max-height: calc(100dvh - var(--safe-t) - 20px);
+    border-radius: 24px 24px 0 0;
+    border-bottom: 0;
   }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pop-modal.open .modal-box,
-  .pop-modal.closing,
-  .pop-modal.closing .modal-box {
-    animation: none;
+  .modal-overlay.chb-sheet .modal-box {
+    padding-bottom: calc(24px + var(--safe-b));
+  }
+  .modal-overlay.chb-sheet .terms-modal-foot {
+    padding-bottom: calc(18px + var(--safe-b));
+  }
+  .modal-overlay.chb-sheet .modal-box::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    margin: -8px auto 14px;
+    background: currentColor;
+    opacity: 0.22;
+  }
+  .modal-overlay.chb-sheet.open .modal-box,
+  .modal-overlay.chb-sheet.open .terms-modal-box {
+    animation: chbSheetUp 480ms var(--sheet);
+  }
+  .modal-overlay.chb-sheet.closing:not(.open) .modal-box,
+  .modal-overlay.chb-sheet.closing:not(.open) .terms-modal-box {
+    animation: chbSheetDown 280ms var(--in) forwards;
   }
 }
 .modal-label {
@@ -12211,6 +12284,18 @@ body.light-mode .hero-scroll-cue {
 @keyframes chbCrossBack { from { opacity: 0; transform: translateX(-8px); } }
 @keyframes chbMoOut { to { opacity: 0; transform: translateX(calc(var(--mx, 1) * -8px)); } }
 @keyframes chbMoIn { from { opacity: 0; transform: translateX(calc(var(--mx, 1) * 8px)); } }
+/* SHEET / ALERT — visibility rides the exit (out of the tab order, not just sight). */
+@keyframes chbFadeIn { from { opacity: 0; } }
+@keyframes chbFadeOut { to { opacity: 0; visibility: hidden; } }
+@keyframes chbModalIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+@keyframes chbModalOut { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes chbSheetUp { from { transform: translateY(100%); } }
+@keyframes chbSheetDown { to { transform: translateY(100%); } }
+@keyframes chbAlertIn { from { opacity: 0; transform: scale(1.08); } }
+@keyframes chbAlertOut { to { opacity: 0; transform: scale(0.98); } }
+@keyframes chbChatIn { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+@keyframes chbChatOut { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes chbStageIn { from { opacity: 0; transform: scale(0.96); } }
 
 /* PRESS on the five controls that had none (four on My Stays). */
 .gb2-again,
@@ -12302,6 +12387,14 @@ header nav a:active {
   .gb2-fold[hidden] { display: none; }
   .btn-glass.is-busy::before { animation: none; }
   .chb-pill { transition: none; }
+  /* chbCloseOverlay adds no `closing` under reduced motion; belt and braces. */
+  .modal-overlay.closing:not(.open),
+  .reviews-modal.closing:not(.open),
+  .datepicker-pop.closing:not(.open),
+  .lightbox.closing:not(.open),
+  .photo-lightbox.closing:not(.open),
+  .chat-widget.closing:not(.open),
+  #glass-dialog.closing:not(.open) { display: none; }
 }
 /* UNFOLD — the earlier-stays fold, same mechanism, no box. */
 #gb2-pastfold {

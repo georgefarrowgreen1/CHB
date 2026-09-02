@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 589;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 243;
+const ADMIN_CSS_V = 244;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2676,7 +2676,7 @@ function lightboxNav(dir) {
 }
 function closeLightbox() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    document.getElementById('lightbox').classList.remove('open');
+    chbCloseOverlay(document.getElementById('lightbox'));
 }
 // Swipe left/right on touch devices.
 (function () {
@@ -3506,13 +3506,10 @@ function closeGuestDetailsModal() {
     const m = document.getElementById('guest-details-modal');
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
-    m.classList.add('closing');
+    chbCloseOverlay(m);
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
     } catch (e) {}
-    setTimeout(() => {
-        m.classList.remove('open', 'closing');
-    }, 350);
 }
 
 // "Account & Security" floating window: password, passkeys, delete account.
@@ -3538,13 +3535,10 @@ function closeGuestSecurityModal() {
     const m = document.getElementById('guest-security-modal');
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
-    m.classList.add('closing');
+    chbCloseOverlay(m);
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
     } catch (e) {}
-    setTimeout(() => {
-        m.classList.remove('open', 'closing');
-    }, 350);
 }
 async function changeGuestPassword() {
     const cur = document.getElementById('pw-current').value;
@@ -3665,13 +3659,10 @@ function closeGuestAuthModal() {
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     // Play the fade-out, then actually hide it (animation lasts 0.35s).
-    m.classList.add('closing');
+    chbCloseOverlay(m);
     try {
         if (window.setGuestDockOverlay) window.setGuestDockOverlay(null);
     } catch (e) {}
-    setTimeout(() => {
-        m.classList.remove('open', 'closing');
-    }, 350);
 }
 
 function switchGuestTab(which) {
@@ -6830,8 +6821,7 @@ async function openWelcomeBook(propKey) {
 }
 function closeWelcomeModal() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    const m = document.getElementById('welcome-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('welcome-modal'));
 }
 // ---- Guest photo submission (from My Bookings) ----
 let __photoUploadProp = null;
@@ -6854,8 +6844,7 @@ function openPhotoUpload(propKey) {
 }
 function closePhotoUpload() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    const m = document.getElementById('photo-upload-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('photo-upload-modal'));
 }
 async function submitGuestPhoto() {
     // Photo upload posts via a raw fetch (multipart), bypassing apiPost's preview
@@ -7168,7 +7157,7 @@ function closeTermsModal() {
     const m = document.getElementById('terms-modal');
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    m.classList.remove('open');
+    chbCloseOverlay(m);
 }
 
 // The one-line status under the refundable-deposit figure on the invoice. Pure,
@@ -7743,7 +7732,7 @@ function autofillGuestEnquiry() {
 // ---- Styled admin login modal ----
 let adminLoginOnSuccess = null;
 function closeAdminLogin() {
-    document.getElementById('admin-login-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('admin-login-modal'));
     const st = document.getElementById('admin-login-passkey-status');
     if (st) st.style.display = 'none';
     // Reset the 2FA step so the next open starts at the password form again.
@@ -8801,7 +8790,7 @@ function openPhotoLightbox(data) {
 }
 function closePhotoLightbox() {
     const box = document.getElementById('photo-lightbox');
-    if (box) box.classList.remove('open');
+    chbCloseOverlay(box);
     const img = document.getElementById('pl-img');
     if (img) img.src = '';
     document.body.style.overflow = '';
@@ -10568,7 +10557,7 @@ function closeChat() {
     const w = document.getElementById('chat-widget');
     if (w && w.classList.contains('open'))
         overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    if (w) w.classList.remove('open');
+    chbCloseOverlay(w);
     const f = document.getElementById('chat-fab');
     if (f) f.classList.remove('hidden');
     try {
@@ -11347,7 +11336,7 @@ function closeWaitlistModal() {
     const m = document.getElementById('waitlist-modal');
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    m.classList.remove('open');
+    chbCloseOverlay(m);
 }
 async function submitWaitlist() {
     const v = (id) => (document.getElementById(id) || {}).value;
@@ -11795,8 +11784,7 @@ async function adminThreadPoll() {
 }
 function closeMessagesModal() {
     adminThreadStopPolling();
-    const m = document.getElementById('messages-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('messages-modal'));
     __msgThreadId = null;
 }
 // Archive / unarchive the open conversation (kept, hidden from the active inbox).
@@ -12056,8 +12044,7 @@ function openFaqModal(propKey) {
 }
 function closeFaqModal() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    const m = document.getElementById('faq-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('faq-modal'));
 }
 // ---- Amenities, on the guest's own stay ----
 // The SAME list the cottage page prints as pills (amenities-<k>, falling
@@ -12096,8 +12083,7 @@ function openAmenitiesModal(propKey) {
 }
 function closeAmenitiesModal() {
     overlayHistConsume();
-    const m = document.getElementById('amenities-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('amenities-modal'));
 }
 // ---- House rules, on the guest's own stay ----
 // The SAME list the cottage page prints (guestHouseRuleList) — the booking
@@ -12123,8 +12109,7 @@ function openHouseRulesModal(propKey) {
 }
 function closeHouseRulesModal() {
     overlayHistConsume();
-    const m = document.getElementById('houserules-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('houserules-modal'));
 }
 function toggleFaq(id) {
     const item = document.getElementById(id);
@@ -12221,8 +12206,7 @@ function renderPropReviews(propKey) {
 }
 function closeAllReviews() {
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    const m = document.getElementById('reviews-modal');
-    if (m) m.classList.remove('open');
+    chbCloseOverlay(document.getElementById('reviews-modal'));
 }
 
 // ---- Airbnb-style cottage page: subtitle, stat row, feature rows, booking bar ----
@@ -12533,7 +12517,7 @@ function closeEnquireModal() {
     const m = document.getElementById('enquire-modal');
     if (!m || !m.classList.contains('open')) return; // defensive close of an already-closed modal — no history side-effects
     overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
-    m.classList.remove('open');
+    chbCloseOverlay(m);
 }
 function enquireBack() {
     const r = document.getElementById('enquire-step-review');
@@ -13445,7 +13429,7 @@ function glassDialog(opts) {
                         formVals[f.id] = el ? (f.type === 'file' ? (el.files && el.files[0]) || null : el.value) : '';
                     });
                 }
-                o.classList.remove('open');
+                chbCloseOverlay(o);
                 __glassDlgResolve = null;
                 if (opts.type === 'prompt') resolve(ok ? inp.value : null);
                 else if (opts.type === 'form') resolve(ok ? formVals : null);
@@ -13580,7 +13564,7 @@ function showSendConfirm(o) {
             if (e.key === 'Escape') done(false);
         };
         const done = (val) => {
-            ov.classList.remove('open');
+            chbCloseOverlay(ov);
             document.removeEventListener('keydown', esc);
             resolve(val);
         };
@@ -13791,7 +13775,7 @@ document.addEventListener('keydown', (e) => {
         if (m.id === 'date-picker') return closeDatePicker();
         const closer = MODAL_CLOSERS[m.id];
         if (closer) closer();
-        else m.classList.remove('open');
+        else chbCloseOverlay(m);
     } else if (m.id === 'lightbox' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         lightboxNav(e.key === 'ArrowLeft' ? -1 : 1);
@@ -14241,8 +14225,8 @@ function closeDatePicker() {
     // trigger inside the still-open form — Escape would otherwise strand focus
     // on <body> behind a dialog the owner is mid-way through.
     const overGlass = dp.classList.contains('dp-over-glass');
-    dp.classList.remove('open');
-    dp.classList.remove('dp-over-glass');
+    chbCloseOverlay(dp);
+    dp.classList.remove('dp-over-glass'); // the exit keeps its own z-index (CSS)
     // The named trigger first, else whatever had focus when the picker went up — and
     // only if it is still in the document and painting (a re-render replaces nodes).
     let back = overGlass && dpTarget && dpTarget.trigger ? document.getElementById(dpTarget.trigger) : null;
@@ -17263,7 +17247,7 @@ function openModal() {
     }, 120);
 }
 function closeModal() {
-    document.getElementById('edit-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('edit-modal'));
     document.getElementById('modal-error').style.display = 'none';
     // Dismiss the guest typeahead dropdown (pure DOM — no admin dependency).
     const sg = document.getElementById('modal-name-suggest');
@@ -17390,7 +17374,7 @@ function openCustomSetup(name) {
     const err = document.getElementById('newprop-error');
     if (err) err.style.display = 'none';
     __customBooking = { name, setup: s };
-    document.getElementById('overview-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('overview-modal'));
     document.getElementById('newprop-modal').classList.add('open');
     setTimeout(() => {
         const c = document.getElementById('newprop-couple');
@@ -17416,14 +17400,14 @@ function customSetupNext() {
         txnPct: __numField('newprop-txn'),
         override: __numField('newprop-override'),
     };
-    document.getElementById('newprop-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('newprop-modal'));
     openCustomOverview();
 }
 // Cancel the whole custom flow (from step 2). The booking modal stays open behind
 // so the owner can change the property or details.
 function newPropCancel() {
-    document.getElementById('newprop-modal').classList.remove('open');
-    document.getElementById('overview-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('newprop-modal'));
+    chbCloseOverlay(document.getElementById('overview-modal'));
     __customBooking = null;
 }
 // Step 3: build the review summary (property, guest, stay, price) and show it.
@@ -17488,7 +17472,7 @@ function openCustomOverview() {
 }
 // Step 3 → 2: go back to editing the property's pricing.
 function customOverviewBack() {
-    document.getElementById('overview-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('overview-modal'));
     openCustomSetup(__customBooking.name);
 }
 // Step 3 confirm: create the private cottage with the setup values (sized to this
@@ -17543,8 +17527,8 @@ async function confirmCustomBooking() {
     document.getElementById('modal-damages-deposit').value = ''; // cottage default applies
     document.getElementById('modal-price-override').value = s.override > 0 ? s.override : '';
     document.getElementById('modal-payment').value = payment;
-    document.getElementById('overview-modal').classList.remove('open');
-    document.getElementById('newprop-modal').classList.remove('open');
+    chbCloseOverlay(document.getElementById('overview-modal'));
+    chbCloseOverlay(document.getElementById('newprop-modal'));
     __customBooking = null;
     await saveModal();
 }
@@ -18727,8 +18711,7 @@ function closeExperienceSuggest() {
     const m = document.getElementById('exp-suggest-modal');
     if (!m || !m.classList.contains('open')) return;
     overlayHistConsume(); // after the guard: a no-op close must not eat someone else's entry
-    m.classList.add('closing');
-    setTimeout(() => m.classList.remove('open', 'closing'), 350);
+    chbCloseOverlay(m);
 }
 async function submitExperienceSuggestion() {
     const g = (id) => (document.getElementById(id) ? document.getElementById(id).value : '');
@@ -18840,6 +18823,29 @@ function chbNudge(el) {
 // in the next innerHTML rebuild), seated on the selected one; `instant` for a
 // rebuild or a reveal, animated for a choice. A hidden container (0 rects) drops
 // has-pill so the chip keeps its own fill — no JS, no change.
+// SHEET / ALERT — the one exit. `open` drops SYNCHRONOUSLY: every gate, the Tab
+// trap (topOpenDialog) and closeTopOverlay read it, so the state is honest the
+// instant the owner taps. `closing` keeps the node painted for the CSS exit and
+// is dropped once the longest exit has run; the stylesheet's `:not(.open)` means
+// a re-open mid-exit simply wins, and the stale timer then strips a class that
+// no longer selects anything. Under reduced motion there is no exit to paint.
+const __chbCloseTimers = new WeakMap();
+function chbCloseOverlay(el) {
+    if (!el) return;
+    el.classList.remove('open');
+    const prev = __chbCloseTimers.get(el);
+    if (prev) clearTimeout(prev);
+    if (chbReducedMotion()) {
+        el.classList.remove('closing');
+        __chbCloseTimers.delete(el);
+        return;
+    }
+    el.classList.add('closing');
+    __chbCloseTimers.set(el, setTimeout(() => {
+        __chbCloseTimers.delete(el);
+        el.classList.remove('closing');
+    }, 320));
+}
 function chbSeatPill(host, instant) {
     if (!host) return;
     let pill = host.querySelector(':scope > .chb-pill');
@@ -18870,7 +18876,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'motion01';
+    const BUILD = 'motion02';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

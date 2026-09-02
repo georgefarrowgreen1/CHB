@@ -2230,10 +2230,41 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   node-zlib's default level, because python's level-9 gzip undercounted by 740
   bytes and the first raise fell short. tsc budget **714 → 711** (the lightbox
   casts), a11y `accentAsText` **20 → 19**.
-- **Deliberately NOT built in PR-A** (PR-B): every overlay's exit (18 of 22 close
-  functions vanish; five `pop-modal`s have `modalPopOut` and never call it; the
-  sheet family has no exit written), the phone-sheet presentation of the enquiry
-  form, and the glass dialog's settle-down alert.
+- **SHEET and ALERT shipped in PR-B — one exit for every overlay**
+  (`chbCloseOverlay`, app.js; gated by **`ui-test-overlays.js`**, 72 checks,
+  break-tested six ways). Eighteen of the twenty-two close functions vanished
+  their overlay in a frame; four faded on a 350ms timer that kept `open` set
+  while they did. The helper is the fold's `[hidden]` discipline for overlays:
+  **`open` drops SYNCHRONOUSLY** (every gate, `topOpenDialog` and
+  `closeTopOverlay` read it — which is why all 66 test call sites of the close
+  functions ran untouched), `closing` paints an inert exit (`pointer-events:
+  none`; `visibility` rides the last keyframe so a finished overlay leaves the
+  tab order), and **every closing rule is `.closing:not(.open)`** so a re-open
+  mid-exit simply wins and the stale timer strips a class selecting nothing —
+  the glass dialog's queue opens the next confirm INTO the previous one's exit
+  on exactly that. The picker over a glass form keeps **z 6100 while it fades**
+  (`dp-over-glass` drops at once because `dpOverGlass()` reads it; at 2100 the
+  exit played BEHIND the dialog it came from). Every `.modal-overlay` box
+  arrives on `--sheet` while the scrim only FADES — `fluidFadeIn` translated
+  the whole overlay, the box's motion painted twice. ≤640px a `.chb-sheet`
+  overlay (enquiry, terms, waitlist, welcome book, photo upload, suggest) is a
+  **bottom sheet**: edge-attached, top corners only, a grabber, its own
+  `--safe-b` padding, up on `--sheet` 480ms and off on `--in` 280ms; the
+  reviews family and the account screens deliberately are not. **Four inline
+  `max-width` styles moved into `:where()` rules** — an inline style outranks
+  the sheet's `max-width: none`, and a bare `#id .modal-box` rule would outrank
+  the sheet too. ui-test-safearea re-aimed for the sheet cases: a sheet is
+  edge-attached BY DESIGN and carries the home-indicator inset INSIDE as
+  padding, the way the guest-shell auth screens already do. The glass dialog
+  settles DOWN from 1.08 (the iOS alert never rises).
+  **THE GATE FOUND A MODAL THAT COULD NOT PAINT.** `#reviews-modal` sat inside
+  the HOME view's `<main>` — display:none on every other view — and its only
+  openers are the cottage page's "Read all N reviews" button and the footer
+  link, so from the cottage page the button opened nothing visible.
+  ui-test-terms gated the button's presence and never clicked it. It lives at
+  body level with the other overlays now, and §2b asserts by name that it
+  paints from the cottage page. General rule: an overlay's markup belongs at
+  body level; inside a `.page-view` it inherits that view's display.
 
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
