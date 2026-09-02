@@ -1856,6 +1856,88 @@ declarations break-tested — the broken run reproduces the original numbers exa
   file while the deploy strips comments, so app.css read +2568 while the real
   growth is **+828**; app.js **+569**, index.html **+77** gz.
 
+## Five back-office motions (approved demo, built)
+
+**Asked for as "what animation effects can we do next to make the ui more
+polished", demoed side by side, then "Build".** The measured starting point:
+app.css carries **99 animations / 109 transitions** against admin.css's **38 /
+52**, and of every row type in the app only `.ny-row` had an entrance — the
+owner's side of the product barely moved. Gated by **`ui-test-backoffice-motion.js`**
+(42 checks), each declaration break-tested (eight fired).
+
+- **THE FOLD MOVES**, and it is the one that touches everything: `bhubFoldToggle`
+  set `f.hidden` — a hard show and hide — while `.bhub-chev` alone turned, so half
+  the gesture moved. 38 call sites wear it. 0.32s on **`--unfold`**
+  (`cubic-bezier(0,0,.58,1)`), deliberately NOT `--fluid-bezier`, which measures
+  **0.00 · 0.79 · 0.97 · 1.00** at the quarters — 97% open by its own midpoint,
+  right for a slide and useless for a height. `--unfold` is 0.38 · 0.68 · 0.91.
+  - **`[hidden]` STAYS THE ONE SWITCH.** It is redefined as the COLLAPSED state
+    (a 0fr grid) rather than display:none, so `f.hidden` is synchronously true the
+    instant a fold closes and false the instant it opens — which is why **all eight
+    suites that read this fold passed untouched** (hub, manage, money, mailbox,
+    keysafe, nodogs, layout-test, e2e). The alternative — a class plus an async
+    `hidden` on close — would have re-aimed ~30 assertions. `visibility` does what
+    display:none was doing (out of the tab order and the a11y tree) and transitions
+    with a DELAY on the way out (the `.cmdk-box` trick), so the fold is still
+    visible while it closes and gone the moment it has. a11y-test and layout-test
+    both skip `visibility: hidden`, so what they measure is unchanged.
+  - **A 0fr grid collapses only the FIRST track**, so `.bhub-fold` must hold exactly
+    ONE element child. `bhubFoldGrp`, the money fold and the key-safe card wrap
+    theirs in `.bhub-foldin`; the cottage sections already wrapped in `.acr-body`
+    and the Inbox's folds hold one re-parented folder div.
+  - **THE FOCUS RING NEEDED `overflow: clip`, and looking at pixels is what found
+    it.** The wrapper's edge sits flush with the fold's last row, so plain
+    `overflow: hidden` cut the ring off the last control in EVERY open fold —
+    measured 0px of room, and a screenshot shows the ring reduced to a sliver.
+    `overflow: hidden; overflow: clip; overflow-clip-margin: 4px` declared in that
+    order clips for the reveal and lets the ring bleed, with an older engine keeping
+    hidden. **Moving the padding onto the child was tried and does NOT work**: a grid
+    item's padding does not collapse with its track, so a closed fold sat 26px high.
+- **THE ANSWER ARRIVING** (`moLand`): the Money landing's four slow answers settle
+  in from 4px when they land, staggered 90ms by ROW — not by call order, since the
+  two fetches resolve independently. `backwards` holds each at opacity 0 through its
+  own delay rather than flashing the answer and then animating it. **No first-fill
+  flag**, and that is the difference from the availability chip: `renderMoneyOverview`
+  paints the placeholders and only then calls the fill, so every write is an arrival
+  by construction.
+- **A FIGURE THAT CHANGED SAYS SO — two grammars, and the difference is the point.**
+  The bookings caption's owed capsule was already on screen and has been RECOMPUTED,
+  so it SETTLES (3px, 0.34s); `payPop`'s 0.5→1.2 scale means "this appeared", which
+  on a figure already in front of you is a flinch. A dock badge genuinely appears, or
+  goes 2→3, so it POPS. Both fire on a CHANGE only and never on a first paint — the
+  capsule compares its own WORDS (rounding means £953.10 and £953.40 print the same
+  capsule, and a settle on a figure that did not visibly change is motion saying
+  nothing); the badge remembers in `dataset.was`.
+- **THE TIMELINE DRAWS IN — decoration, named as such**, and the only one here that
+  tells you nothing by moving. Bars grow from their check-in edge, staggered 45ms
+  down the lanes and capped at 12 steps. **ONCE per visit** (`host.__tlDrew`, the
+  `host.__tlScroll` shape): `renderCalendar` runs on every data refresh and
+  `tlMaybeExtend` pages the window in place, so a per-render entrance wears out by
+  lunchtime.
+- **THE FILTER SWITCH is a FADE, never a cascade.** `renderBookings` runs on every
+  data refresh as well as every filter change, so a staggered entrance would replay
+  dozens of times a session. Keyed on the filter + search TEXT, not on the render,
+  and recorded on BOTH branches — memoing the subject only when rows exist would make
+  the return trip from an empty filter read as unchanged.
+- **REFUSED, and pinned as decisions**: search results (`__cmdkResults` is rebuilt on
+  every keystroke, so any row entrance replays the whole list as you type — this is
+  also why the filter is a fade); a `nav()` page transition (twenty-odd views toggling
+  `.active`, the offline day sheet among them, which must appear at once); scroll
+  reveal; and anything on the money figures themselves, where motion implies a value
+  is changing when it is not.
+- **NB the gate's own two vacuity traps.** The reduced-motion check reads the
+  stylesheet through the CSSOM, because Chromium's emulation forces every
+  `transition-duration` to ~1e-05s whatever the CSS says. And the badge pop is
+  measured BELOW 1200px: the rail takes over above it and hides the dock outright,
+  and a CSS animation does not run on a display:none element — at 1280 the check
+  passed in both directions while proving nothing.
+- Budgets raised with the real figures: **admin.css 69300 → 70900**, **admin.js
+  545900 → 547300**, **app.js 278200 → 278500** (the badge pop is the one motion that
+  lives in the shared bundle). admin.css and admin.js are owner-only and
+  immutable-cached — the trade CLAUDE.md's own rule names as the cheap one — and note
+  that neither is in the deploy's comment-strip list, which covers the four guest
+  assets only, so those bytes are shipped bytes rather than prose.
+
 ## Five small motions — the snaps in the booking flow (approved demo, built)
 
 **Asked for as "what other little ui upgrades/animations can be added", demoed

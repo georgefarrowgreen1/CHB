@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 585;
+const ADMIN_BUNDLE_V = 586;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 239;
+const ADMIN_CSS_V = 240;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -17054,6 +17054,21 @@ function enquireSkipAccount() {
 // ===================================================================
 //  INBOX
 // ===================================================================
+// A BADGE THAT CHANGED POPS. Unlike the owed capsule (which is recomputed and
+// therefore settles), a badge genuinely APPEARS — from nothing to something, or
+// from 2 to 3 — so the pop is the honest grammar. This function runs from a
+// dozen places, most of them repaints where nothing moved, so it fires on a
+// CHANGE of the shown number only and never on the first paint: `dataset.was` is
+// unset until the badge has been written once.
+function dockBadgePop(el, n) {
+    if (!el) return;
+    const was = el.dataset.was;
+    el.dataset.was = String(n);
+    if (was === undefined || was === String(n) || !n) return;
+    el.classList.remove('dock-badge-pop');
+    void (/** @type {HTMLElement} */ (el)).offsetWidth;
+    el.classList.add('dock-badge-pop');
+}
 function refreshInboxBadge() {
     const n = unseenEnquiries();
     const badge = document.getElementById('inbox-badge');
@@ -17069,6 +17084,7 @@ function refreshInboxBadge() {
     if (dock) {
         dock.textContent = n;
         dock.style.display = n > 0 ? '' : 'none';
+        dockBadgePop(dock, n);
     }
     // The Today pip shows the same pending-enquiries count — keep it in step here
     // too so it can't lag behind the Inbox pip (this runs from far more places than
@@ -17077,6 +17093,7 @@ function refreshInboxBadge() {
     if (today) {
         today.textContent = n;
         today.style.display = n > 0 ? 'flex' : 'none';
+        dockBadgePop(today, n);
     }
     // The rail's Inbox count is this number said in its own slot — refresh it
     // wherever the pips refresh, so the two can never disagree.
@@ -18659,7 +18676,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'macoff1';
+    const BUILD = 'bomo01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
