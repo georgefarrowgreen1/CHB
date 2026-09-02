@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 588;
+const ADMIN_BUNDLE_V = 589;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 242;
+const ADMIN_CSS_V = 243;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2621,6 +2621,7 @@ function updateGalleryCount() {
 
 // ---- Full-screen photo lightbox ----
 let lightboxIndex = 0;
+let __lbStamp = 0;
 function openLightbox(i) {
     const imgs = window.__galleryImages || [];
     if (!imgs.length || !imgs[i]) return; // ignore empty placeholder slides
@@ -2634,9 +2635,40 @@ function renderLightbox() {
     if (!imgs.length) return;
     if (lightboxIndex < 0) lightboxIndex = imgs.length - 1;
     if (lightboxIndex >= imgs.length) lightboxIndex = 0;
-    document.getElementById('lightbox-img').src = imgs[lightboxIndex];
-    document.getElementById('lightbox-counter').textContent =
-        `${lightboxIndex + 1} / ${imgs.length}`;
+    const src = imgs[lightboxIndex];
+    const front = /** @type {HTMLImageElement|null} */ (document.getElementById('lightbox-img'));
+    const back = /** @type {HTMLImageElement|null} */ (document.getElementById('lightbox-img2'));
+    const counter = document.getElementById('lightbox-counter');
+    if (counter) {
+        counter.textContent = `${lightboxIndex + 1} / ${imgs.length}`;
+        counter.classList.remove('is-landed');
+        void counter.offsetWidth;
+        counter.classList.add('is-landed');
+    }
+    if (!front) return;
+    // CROSS. A new photo is not decoded when its src is set, so fading straight
+    // into it shows a blank frame — worse than the cut. The next photo loads on a
+    // second layer, waits on decode(), fades in over the old one, and only then
+    // becomes the in-flow image (already decoded, so that swap is invisible).
+    // Stamp-guarded: a fast swipe shows the newest, never the last to decode.
+    const stamp = ++__lbStamp;
+    if (!back || !front.src || chbReducedMotion()) {
+        front.src = src;
+        return;
+    }
+    back.src = src;
+    const settle = () => {
+        if (stamp !== __lbStamp) return;
+        back.classList.add('is-front');
+        const done = () => {
+            if (stamp !== __lbStamp) return;
+            front.src = src;
+            back.classList.remove('is-front');
+        };
+        back.addEventListener('transitionend', done, { once: true });
+        setTimeout(done, 360);
+    };
+    (back.decode ? back.decode() : Promise.resolve()).then(settle, () => { if (stamp === __lbStamp) front.src = src; });
 }
 function lightboxNav(dir) {
     lightboxIndex += dir;
@@ -4144,8 +4176,13 @@ async function renderGuestBookings() {
         openGuestArea();
         return;
     }
-    if (welcome)
-        welcome.innerText = `Welcome back, ${currentGuest.name.split(' ')[0]} — here are your stays.`;
+    const firstName = currentGuest.name.split(' ')[0];
+    // THE WAIT HAS A SHAPE. The list was 0px until the answer landed and then
+    // 1288px in one frame, under a sentence claiming stays that were not on screen.
+    // The skeleton kit the flexible-date search and the pay screen already use;
+    // only on a COLD list — a refresh keeps the last good cards until replaced.
+    if (welcome) welcome.innerText = `Finding your stays, ${firstName}…`;
+    if (list && !list.querySelector('.gb2, .guest-empty, .guest-booking')) list.innerHTML = CHB_SK_CARD.repeat(2);
     loadPasskeys();
     fillGuestProfile();
 
@@ -4166,12 +4203,14 @@ async function renderGuestBookings() {
         // "Please try again" named no way to try: this screen is reached from a
         // signed-in guest's own account and its only recovery was a page reload
         // they had to think of. Say what happened and offer the retry.
+        if (welcome) welcome.innerText = `Welcome back, ${firstName}.`;
         list.innerHTML = `<div class="glass-panel guest-empty">
                 <p>We couldn't load your stays just now — it looks like the connection dropped.</p>
                 <button type="button" class="btn-primary" style="margin-top:14px;padding:11px 24px;" data-act="renderGuestBookings">Try again</button>
             </div>`;
         return;
     }
+    if (welcome) welcome.innerText = `Welcome back, ${firstName} — here are your stays.`;
     const mine = rows.map((row) => ({
         propKey: row.prop_key,
         booking: mapBookingFromApi(row),
@@ -4409,10 +4448,10 @@ async function renderGuestBookings() {
                         <span class="gb2-pl1">${pl1}</span>
                         <span class="gb2-plr"><span class="gb2-fig">${gbp(gt.total)}</span> <span class="gb2-chev" aria-hidden="true">›</span></span>
                     </button>
-                    <div class="gb2-fold" id="gb2-fold-${b.id}" hidden>
+                    <div class="gb2-fold" id="gb2-fold-${b.id}" hidden><div class="gb2-foldin">
                         ${priceBox}
                         <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
-                    </div>
+                    </div></div>
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
                     ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
@@ -4497,7 +4536,7 @@ async function renderGuestBookings() {
     const pastHtml = pastCards.length
         ? gHdr('Past stays') + gGrid([pastCards[0]]) + (pastCards.length > 1
             ? `<button type="button" class="gb2-pastbtn" aria-expanded="false" ${chbAttrs('gb2PastToggle', CHB_SELF)}>Earlier stays (${pastCards.length - 1}) ›</button>
-               <div id="gb2-pastfold" hidden>${gGrid(pastCards.slice(1))}</div>`
+               <div id="gb2-pastfold" hidden><div class="gb2-foldin">${gGrid(pastCards.slice(1))}</div></div>`
             : '')
         : '';
     // No stays at all: a clear next step instead of an empty page.
@@ -4688,7 +4727,7 @@ async function renderGuestStayWeather() {
 function guestDoorCodeHeroHtml(b) {
     if (b.doorCode) {
         return `
-            <div class="hub-code" role="group" aria-label="Your door code">
+            <div class="hub-code chb-appear" role="group" aria-label="Your door code">
                 <span class="hub-code-cap">Your door code</span>
                 <span class="hub-code-fig">${escapeHtml(b.doorCode)}</span>
                 <button type="button" class="hub-code-copy" ${chbAttrs('guestCopyCode', String(b.doorCode), CHB_SELF)}>Copy code</button>
@@ -4697,7 +4736,7 @@ function guestDoorCodeHeroHtml(b) {
     if (b.doorCodePending && b.checkIn === todayDashed()) {
         const tel = String((typeof siteContent !== 'undefined' && siteContent['contact-phone']) || '').trim();
         return `
-            <div class="hub-code is-locked" role="group" aria-label="Your door code">
+            <div class="hub-code is-locked chb-appear" role="group" aria-label="Your door code">
                 <span class="hub-code-cap">Your door code</span>
                 <span class="hub-code-fig is-masked" aria-label="Not released yet">····</span>
                 <span class="hub-code-sub">Your entry code isn't on the safe yet — it appears here the moment it's set.${tel ? '' : " Get in touch if you're at the door."}</span>
@@ -4806,8 +4845,13 @@ function gb2Star(propKey, n, btn) {
 function guestCopyCode(code, btn) {
     const say = (t) => {
         if (!btn) return;
-        btn.textContent = t;
-        setTimeout(() => { btn.textContent = 'Copy code'; }, 1400);
+        // DRAW, at one width: the label used to swap and the button shrank 8px under
+        // the thumb still on it. The tick draws itself; 'Couldn't copy' stays words.
+        if (/Copied/.test(t)) {
+            btn.innerHTML = '<svg class="cc-tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5 9.5 18 20 6.5"/></svg>Copied';
+            btn.classList.add('is-done');
+        } else btn.textContent = t;
+        setTimeout(() => { btn.classList.remove('is-done'); btn.textContent = 'Copy code'; }, 1400);
     };
     const fallback = () => {
         try {
@@ -4911,7 +4955,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
                     <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong> — ${head}</div>
                     <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${escapeHtml(b.checkInTime || '15:00')} · ${ready}</div>
                 </div>
-                <div class="hub-count" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
+                <div class="hub-count chb-appear" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
             </div>
             ${cta ? `<div class="hub-cta">${cta}</div>` : ''}
             ${guestStayTimelineHtml(propKey, b, gt)}
@@ -11038,7 +11082,7 @@ function chatBot(html) {
     const t = chatThreadEl();
     if (!t) return null;
     const d = document.createElement('div');
-    d.className = 'chat-bot';
+    d.className = 'chat-bot chb-appear';
     d.innerHTML = html + '<div class="cb-meta">Quick answer — type below to reach a person.</div>';
     t.appendChild(d);
     chatScroll();
@@ -11057,7 +11101,7 @@ function chatFaqReply(hit, original) {
     const t = chatThreadEl();
     if (!t) return;
     const d = document.createElement('div');
-    d.className = 'chat-bot';
+    d.className = 'chat-bot chb-appear';
     d.innerHTML =
         escapeHtml(hit.a).replace(/\n/g, '<br>') +
         `<div class="cb-meta">Instant answer from this cottage's info.</div>` +
@@ -12495,7 +12539,17 @@ function enquireBack() {
     const r = document.getElementById('enquire-step-review');
     const d = document.getElementById('enquire-step-details');
     const a = document.getElementById('enquire-step-account');
-    if (r) r.style.display = '';
+    // THE WAY BACK IS THE MIRROR of the way forward — only on a real Back (the
+    // details step was showing), never on the modal's own open, which lands here too.
+    const wasForward = !!(d && d.style.display !== 'none' && d.getClientRects().length);
+    if (r) {
+        r.style.display = '';
+        r.classList.remove('enq-in-back');
+        if (wasForward) {
+            void r.offsetWidth;
+            r.classList.add('enq-in-back');
+        }
+    }
     if (d) d.style.display = 'none';
     if (a) a.style.display = 'none';
     setEnqStep(1);
@@ -12511,6 +12565,8 @@ function setEnqStep(n) {
     if (p1) p1.classList.toggle('done', n >= 2);
     if (p2) p2.classList.toggle('on', n >= 2);
     if (p3) p3.classList.toggle('on', n >= 3);
+    // The connector had no lit state at all — two lit dots on a dead grey line.
+    document.querySelectorAll('.enq-prog-line').forEach((l, i) => l.classList.toggle('done', n >= i + 2));
     // A STEP CHANGE IS ANNOUNCED. Every one of these swapped `display` and left
     // focus wherever it was — which, after the Continue button it was on has just
     // been hidden, is <body>: outside the dialog, so the Tab trap (which only
@@ -12580,9 +12636,9 @@ function enquireContinue() {
         // fills as a wave, the send is narrated, the sent panel cascades — and the one
         // moment the guest COMMITS was a bare display swap. Same class and keyframe the
         // landed dates use; step two names its own blocks in app.css.
-        d.classList.remove('enq-landed');
+        d.classList.remove('enq-landed', 'enq-in-fwd');
         void d.offsetWidth;
-        d.classList.add('enq-landed');
+        d.classList.add('enq-landed', 'enq-in-fwd');
     }
     setEnqStep(2);
     const box = document.querySelector('.enquire-box');
@@ -12707,12 +12763,21 @@ function renderCardRatings() {
             const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
             html = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
             // "Guest favourite" badge for highly-rated cottages (Airbnb-style).
-            if (fav) fav.hidden = !(rs.length >= 3 && avg >= 4.8);
+            if (fav) {
+                const show = rs.length >= 3 && avg >= 4.8;
+                if (show && fav.hidden) fav.classList.add('is-in'); // it arrives, so it appears
+                fav.hidden = !show;
+            }
         }
         // Fill both the cottages-page card and (if present) the homepage card.
         ['card-rating-' + k, 'home-card-rating-' + k].forEach((id) => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = html;
+            if (!el) return;
+            el.innerHTML = html;
+            if (!__priceShown.has(id)) {
+                __priceShown.add(id);
+                el.classList.add('is-landed');
+            }
         });
     });
 }
@@ -12837,6 +12902,7 @@ function firstArrivalInGap(gap, minN, arrivalDays) {
 // Which availability chips have already been filled this session — see the
 // first-fill rule inside renderCardAvailability.
 const __availShown = new Set();
+const __priceShown = new Set(); // first-fill guard for the price + rating settle
 function renderCardAvailability() {
     if (!publicAllAvailability) return;
     const tomorrow = ukShiftDays(todayDashed(), 1);
@@ -12948,7 +13014,14 @@ function renderCardPrices() {
         const html = `from ${gbp(propertyRates[k].coupleRate)} <span>/ night (couple)</span>`;
         ['card-price-' + k, 'home-card-price-' + k].forEach((id) => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = html;
+            if (!el) return;
+            el.innerHTML = html;
+            // SETTLE on the FIRST fill only — the availability chip's own guard. The
+            // flag is keyed on the id because renderCottageGrid rebuilds the cards.
+            if (!__priceShown.has(id)) {
+                __priceShown.add(id);
+                el.classList.add('is-landed');
+            }
         });
     });
 }
@@ -13892,10 +13965,29 @@ async function loadAvailabilityAll(keys) {
 }
 // ---- Read-only availability calendar (cottage page) ----
 let availCalMonth = null; // Date set to the 1st of the displayed month
+let __acMoStamp = 0;
 function availCalMove(delta) {
     if (!availCalMonth) availCalMonth = chbNow();
     availCalMonth = new Date(availCalMonth.getFullYear(), availCalMonth.getMonth() + delta, 1);
-    renderAvailCal();
+    const grid = document.getElementById('avail-cal-grid');
+    if (!grid || chbReducedMotion()) {
+        renderAvailCal();
+        return;
+    }
+    // CROSS — this calendar turns the page the way the picker's does (dpMoOut/In),
+    // supersede-stamped so a fast double-tap paints the newest month, never the
+    // last flight to resolve.
+    const stamp = ++__acMoStamp;
+    grid.style.setProperty('--mx', String(delta > 0 ? 1 : -1));
+    grid.classList.remove('chb-mo-in');
+    grid.classList.add('chb-mo-out');
+    setTimeout(() => {
+        if (stamp !== __acMoStamp) return;
+        renderAvailCal();
+        grid.classList.remove('chb-mo-out');
+        void grid.offsetWidth;
+        grid.classList.add('chb-mo-in');
+    }, 160);
 }
 function renderAvailCal() {
     const grid = document.getElementById('avail-cal-grid');
@@ -14821,10 +14913,8 @@ function hsAdjust(field, delta) {
         const cap = Math.min(MAX_CHILDREN, MAX_TOTAL - heroSearch.adults);
         heroSearch.children = Math.max(0, Math.min(cap, heroSearch.children + delta));
     }
-    const a = document.getElementById('hs-adults');
-    if (a) a.innerText = heroSearch.adults;
-    const c = document.getElementById('hs-children');
-    if (c) c.innerText = heroSearch.children;
+    chbRoll(document.getElementById('hs-adults'), heroSearch.adults);
+    chbRoll(document.getElementById('hs-children'), heroSearch.children);
 }
 // Remember the visitor's last search so it survives a reload / return visit.
 function hsPersist() {
@@ -15008,6 +15098,8 @@ function hsSetMode(mode) {
     if (eb) eb.classList.toggle('is-on', heroSearch.mode === 'exact');
     const fb = document.getElementById('hs-mode-flex-btn');
     if (fb) fb.classList.toggle('is-on', heroSearch.mode === 'flex');
+    chbSeatPill(document.querySelector('.hs-mode'));
+    if (heroSearch.mode === 'flex') chbSeatPill(document.getElementById('hs-month-chips'), true); // it was display:none
     const btn = document.getElementById('hs-search-btn');
     if (btn)
         btn.innerText = heroSearch.mode === 'flex' ? 'Find flexible dates' : 'Check availability';
@@ -15022,8 +15114,7 @@ function hsRun() {
 }
 function hsAdjustNights(delta) {
     heroSearch.nights = Math.max(1, Math.min(14, (heroSearch.nights || 3) + delta));
-    const el = document.getElementById('hs-nights');
-    if (el) el.innerText = heroSearch.nights;
+    chbRoll(document.getElementById('hs-nights'), heroSearch.nights);
     const s = document.getElementById('hs-nights-s');
     if (s) s.style.display = heroSearch.nights === 1 ? 'none' : '';
 }
@@ -15043,12 +15134,14 @@ function hsRenderMonths() {
         html += `<button type="button" class="hs-chip${heroSearch.month === ym ? ' is-on' : ''}" data-ym="${ym}" ${chbAttrs('hsSetMonth', String(ym))}>${lbl}</button>`;
     }
     wrap.innerHTML = html;
+    chbSeatPill(wrap, true);
 }
 function hsSetMonth(ym) {
     heroSearch.month = ym;
     document
         .querySelectorAll('#hs-month-chips .hs-chip')
         .forEach((c) => c.classList.toggle('is-on', c.getAttribute('data-ym') === ym));
+    chbSeatPill(document.getElementById('hs-month-chips'));
     const msg = document.getElementById('hs-msg');
     if (msg) msg.innerText = '';
 }
@@ -16379,15 +16472,17 @@ function enqFirstProblem(propKey) {
     const adults = Math.max(1, parseInt(val('enq-adults'), 10) || 0);
     const children = Math.max(0, parseInt(val('enq-children'), 10) || 0);
     const message = val('enq-message');
-    if (!name || !checkIn || !checkOut) return { msg: 'Please fill in your name and both dates.' };
-    if (!address) return { msg: 'Please enter your UK address.' };
+    if (!name || !checkIn || !checkOut)
+        return { msg: 'Please fill in your name and both dates.', focus: !name ? 'enq-name' : 'enq-date-trigger' };
+    if (!address) return { msg: 'Please enter your UK address.', focus: 'enq-address' };
     // We must be able to reply: an email or a phone number is required, and a
     // typed email has to look like one (the server re-checks both).
     if (!email && !phone)
         return { msg: 'Please give an email address or phone number so we can reply.', focus: 'enq-email' };
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))
         return { msg: 'That email address doesn’t look right — please check it.', focus: 'enq-email' };
-    if (!isUkPostcode(postcode)) return { msg: 'Please enter a valid UK postcode. Outside the UK? Message us and we can help.' };
+    if (!isUkPostcode(postcode))
+        return { msg: 'Please enter a valid UK postcode. Outside the UK? Message us and we can help.', focus: 'enq-postcode' };
     if (!message)
         return { msg: 'Please tell us a little about your party before sending your enquiry.', focus: 'enq-message' };
     if (checkOut <= checkIn) return { msg: 'Your check-out date must be after your check-in date.' };
@@ -16595,8 +16690,7 @@ function enqAdjust(field, delta) {
         v = Math.max(0, Math.min(cap, v));
     }
     input.value = v;
-    const cnt = document.getElementById('enq-' + field + '-count');
-    if (cnt) cnt.textContent = v;
+    chbRoll(document.getElementById('enq-' + field + '-count'), v);
     try {
         onOccupancyInput();
     } catch (e) {}
@@ -16748,7 +16842,8 @@ async function submitEnquiry(propKey) {
         setEnqMsg('details', prob.msg);
         if (prob.focus) {
             const f = document.getElementById(prob.focus);
-            if (f) f.focus();
+            // NUDGE: the message named the field in words and never pointed at it.
+            if (f) { f.focus(); chbNudge(f); }
         }
         // Stale-tab clash: refresh what we hold so the picker can show why
         // (the server re-checks authoritatively either way).
@@ -18519,10 +18614,13 @@ function expBuildFilters() {
     filters.querySelectorAll('.exp-chip').forEach((b) =>
         b.addEventListener('click', () => {
             __expFilter = b.dataset.cat;
-            expBuildFilters();
+            // TRAVEL: toggle in place — a rebuild would destroy the pill mid-flight.
+            filters.querySelectorAll('.exp-chip').forEach((x) => x.classList.toggle('is-on', x.dataset.cat === __expFilter));
+            chbSeatPill(filters);
             expRenderCards();
         }),
     );
+    chbSeatPill(filters, true);
 }
 function expRenderCards() {
     const grid = document.getElementById('exp-grid');
@@ -18685,12 +18783,94 @@ async function submitExperienceSuggestion() {
     }
 }
 
+// ============================================================================
+// THE MOTION SYSTEM — the script half. Four helpers; the behaviours are in
+// app.css (search "THE MOTION SYSTEM"). The spec is the record.
+// ============================================================================
+function chbReducedMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+}
+// PRESS — a constant 4px of depth. A fixed scale moves a 324px button ten times
+// further than a 38px arrow (measured 16.2px against 1.5px), so the scale is
+// computed from the control's width on the way DOWN and read by the :active rule
+// as --sc. One delegated listener, one style write per tap.
+function chbPressDepth(e) {
+    const t = e.target && e.target.closest && e.target.closest('button, [data-act], a.btn-sm, .card, .hs-field, .flex-opt, .dp-day, .back-link, .gb2-payline, header nav a');
+    if (!t) return;
+    const w = t.offsetWidth || 0;
+    if (w > 0) t.style.setProperty('--sc', String(Math.max(0.88, 1 - 4 / w).toFixed(3)));
+}
+document.addEventListener('pointerdown', chbPressDepth, { passive: true });
+// ROLL — a digit changed, and the direction says which way. The old digit leaves
+// through a clipped window while the new one arrives; nothing on a first paint.
+function chbRoll(el, next) {
+    if (!el) return;
+    const want = String(next);
+    let cur = el.querySelector(':scope > span:not(.out)');
+    // The markup ships a bare text node; the FIRST change must roll too, so the
+    // text is adopted into a span before it is asked to leave (the gate caught
+    // the first tap swapping silently and only the second one travelling).
+    if (!cur) {
+        const txt = (el.textContent || '').trim();
+        el.textContent = '';
+        if (txt) { cur = document.createElement('span'); cur.textContent = txt; el.appendChild(cur); }
+    }
+    const had = cur ? cur.textContent : '';
+    if (had === want) return;
+    if (!cur || chbReducedMotion()) { el.textContent = ''; const sp = document.createElement('span'); sp.textContent = want; el.appendChild(sp); return; }
+    const down = Number(want) < Number(had);
+    el.classList.toggle('dn', down);
+    cur.classList.add('out');
+    cur.addEventListener('animationend', () => cur.remove(), { once: true });
+    const fresh = document.createElement('span');
+    fresh.className = 'in';
+    fresh.textContent = want;
+    el.appendChild(fresh);
+    fresh.addEventListener('animationend', () => fresh.classList.remove('in'), { once: true });
+}
+// NUDGE — a refused field is marked, and the mark clears the moment its cause does.
+function chbNudge(el) {
+    if (!el) return;
+    el.classList.remove('is-bad');
+    void el.offsetWidth;
+    el.classList.add('is-bad');
+    el.addEventListener('input', () => el.classList.remove('is-bad'), { once: true });
+}
+// TRAVEL — one mark moves. The pill is a SIBLING of the chips (a child would die
+// in the next innerHTML rebuild), seated on the selected one; `instant` for a
+// rebuild or a reveal, animated for a choice. A hidden container (0 rects) drops
+// has-pill so the chip keeps its own fill — no JS, no change.
+function chbSeatPill(host, instant) {
+    if (!host) return;
+    let pill = host.querySelector(':scope > .chb-pill');
+    if (!pill) {
+        pill = document.createElement('span');
+        pill.className = 'chb-pill';
+        pill.setAttribute('aria-hidden', 'true');
+        host.prepend(pill);
+        instant = true;
+    }
+    const on = host.querySelector('.is-on');
+    if (!on || !on.getClientRects().length) { host.classList.remove('has-pill'); return; }
+    const hb = host.getBoundingClientRect(), r = on.getBoundingClientRect();
+    if (instant) pill.classList.add('armed');
+    pill.style.width = r.width + 'px';
+    pill.style.height = r.height + 'px';
+    pill.style.translate = `${r.left - hb.left}px ${r.top - hb.top}px`;
+    host.classList.add('has-pill');
+    if (instant) requestAnimationFrame(() => requestAnimationFrame(() => pill.classList.remove('armed')));
+}
+window.addEventListener('resize', () => {
+    ['#exp-filters', '#hs-month-chips', '.hs-mode'].forEach((q) => chbSeatPill(document.querySelector(q), true));
+});
+const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton sk-img"></div><div class="skeleton sk-line w60"></div><div class="skeleton sk-line w40"></div></div>';
+
 // ⬇️ BUILD STAMP — keep this as the LAST statement in the script.
 // It only runs if the whole file loaded, so if a truncated upload cuts
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'guest01';
+    const BUILD = 'motion01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

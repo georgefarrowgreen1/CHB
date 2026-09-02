@@ -2141,6 +2141,100 @@ deploy-excluded with every `ui-test-*.js`), each break-tested.
   **+257**, app.js **+664**, index.html **+275** gz — about 1.2KB for all five. Check
   the stripped size before reading a documentation-heavy pass as performance rot.
 
+## The motion system — twelve behaviours, one definition each (built from the spec)
+
+**Asked for as "everything looked at and animated as if Apple's designers had done
+it", after five rounds of measured proposals; the spec artifact (v2, held to the
+HIG) is the record.** The way to animate ~100 controls is not 100 animations: it
+is **twelve shared behaviours** — Press · Settle · Appear · Unfold · Travel ·
+Cross · Sheet · Alert · Draw · Work · Nudge · Roll — on **four curves**, and every
+control assigned to one. PR-A shipped the first ten (Sheet and Alert are PR-B).
+Gated by **`ui-test-motion-system.js`** (57 checks), break-tested six ways in
+isolation — the listener, the roll's adopt branch, the fold's display, the pill's
+seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/2/2).
+- **THE CURVES, and the one rule**: nothing swings past its target by more than
+  0.5%. `--out` (Apple's deceleration), `--in` (leaving), `--settle` (critically
+  damped — an ALIAS of `--ios-settle`, so one definition), `--sheet` (ζ 0.86,
+  peak 1.005, for sheets and travelling pills), `--unfold` (the height curve —
+  **declared in app.css now; admin.css's own copy is gone**, the two were the
+  same value and two definitions drift). `--spring` (1.56, the bezier that
+  overshoots) survives for the one thing built on it — the chat bubble — and
+  **no `:active` rule references it** (gated). `payPop` appears from 0.94 with
+  no 1.2 hump; the star bows are 1.12/1.06, not 1.32/1.18.
+- **PRESS is a constant 4px, not a constant scale.** Measured before: a fixed
+  scale moved the 324px CTA 16.2px and the 38px month arrow 1.5px — a 10.8×
+  spread for one gesture. `chbPressDepth` (one delegated `pointerdown`) writes
+  `--sc = 1 − 4/width` on the way DOWN; every `:active` reads
+  `scale(var(--sc, 0.97))` + `brightness(0.94)`, 80ms down on `--in`, 320ms up
+  on `--settle`. The five inert controls (Home link, Book again, the payline,
+  Copy code, Back to Cottages — four on My Stays) press now.
+  **THE RELEASE IS THE BASE RULE'S TRANSITION, and for 19 controls the base rule
+  is NOT where you think**: app.css ~11805 carries a late shared group
+  ("appended LAST so it standardises the per-component rules") that overrides
+  `.hs-step`, `.dp-day`, `.hub-tile`, `.avail-nav`, the close buttons and
+  fourteen more. A retime on the component's own rule does nothing for those;
+  the group is where the `transform 320ms var(--settle), filter, opacity` lives.
+  And a scripted "does this block already mention filter" check was fooled by
+  `backdrop-filter` in a COMMENT — `.btn-glass` and `.gallery-nav` took the wrong
+  branch and shipped unretimed until the report said MISS.
+- **ROLL adopts the bare text node.** `.hs-count` ships as `<span>2</span>`-less
+  text; the first `chbRoll` used to wrap it silently and only the SECOND tap
+  travelled. The gate caught it ("on the FIRST tap"). `.hs-count` is
+  `inline-grid` with a clipped 1.4em window; up on more, down on fewer.
+- **UNFOLD is the back office's collapsing grid on the guest side** (`.gb2-fold`,
+  `#gb2-pastfold`): `[hidden]` IS the collapsed state, so `fold.hidden` stays
+  true the instant it closes and ui-test-yourstay's reads are untouched; ONE
+  child (`.gb2-foldin`) because a 0fr track collapses only the first; the
+  `.faq-a` max-height and the three chevrons (faq 0.3s, prop-desc 0.2s, gb2-chev
+  0.25s) are one clock now — 240ms `--out`.
+- **TRAVEL: the pill is a SIBLING, and the chips are toggled IN PLACE.**
+  `chbSeatPill` prepends `.chb-pill` to `#exp-filters` / `#hs-month-chips` /
+  `.hs-mode` and seats it on `.is-on`; `expBuildFilters`' click handler used to
+  rebuild the row's innerHTML, which would destroy the pill mid-flight (gated:
+  the tapped chip is still `isConnected` after the move). A chip keeps its own
+  fill until the container carries `.has-pill` — no JS, no change — which is also
+  why a11y-test's `accentAsText` ratchet FELL 20 → 19. The progress connector
+  (`.enq-prog-line`) gained the `.done` state it never had.
+- **CROSS replaced the step cascade, both ways.** The 11-animation `payCasc`
+  stagger that greeted step two had no mirror (forward 11 keyframes, back 1) —
+  a settled 8px cross now, `enq-in-fwd` / `enq-in-back`, and `enquireBack` only
+  plays it when step two was really showing (the modal's own open lands there
+  too). **ui-test-flowmotion §2 was RE-AIMED, not patched**; its forced path had
+  to add `enq-in-fwd` beside `enq-landed`. The cottage calendar turns the page
+  like the picker (`#avail-cal-grid.chb-mo-out/in`, stamp-guarded); the lightbox
+  decodes the next photo on `#lightbox-img2` before fading — never a blank frame.
+- **WORK is not disabled**: `.btn-glass.is-busy` and `:disabled` shared one
+  `opacity: 0.6` rule; busy is the pay button's spinner now, no dimming (gated:
+  busy opacity 1, disabled 0.6). My Stays waits with two `sk-card`s and
+  "Finding your stays, X…" — the welcome sentence used to claim stays over a 0px
+  list — and only on a COLD list, so a refresh keeps the last good cards.
+- **NUDGE**: `enqFirstProblem` names `focus` for name/address/postcode now, and
+  the send caller marks + focuses + nudges (4px, once); the live line's caller
+  does not, because it runs per keystroke.
+- **The killswitch names pseudo-elements** (`*, *::before, *::after`) — 11 of 14
+  `::before/::after` motions ran under reduced motion because `*` cannot match
+  one. **CSSOM serialises `*::before` as `::before`**, so a selectorText regex
+  for the literal fails on a rule that is plainly there (the gate's first
+  version did).
+- **Fixture lessons the gate taught, each one a false "the app is broken":** the
+  rates stub must send `occupancy` (copied verbatim into `occupancyLimits`) or
+  the offline caps clamp 21A to 2 adults and the stepper correctly refuses —
+  read as the roll failing; experiences chips render ONLY for canonical
+  `EXPERIENCE_CATEGORIES` names; `currentGuest` is a module `let` (documented
+  above, re-bitten — `window.currentGuest =` signs nobody in); a `.hs-step`
+  probed by `document.querySelector` is the hero's hidden twin (0px, so
+  `chbPressDepth` rightly writes nothing) — probe PAINTED controls.
+- **Budgets, honestly**: the gate measures the UNSTRIPPED file. Shipped growth
+  (comments stripped, gz) is **app.css +1642, app.js +3059**; prose was trimmed
+  first, then app.css 81400 → 84297 and app.js 278800 → 282442 — set from
+  node-zlib's default level, because python's level-9 gzip undercounted by 740
+  bytes and the first raise fell short. tsc budget **714 → 711** (the lightbox
+  casts), a11y `accentAsText` **20 → 19**.
+- **Deliberately NOT built in PR-A** (PR-B): every overlay's exit (18 of 22 close
+  functions vanish; five `pop-modal`s have `modalPopOut` and never call it; the
+  sheet family has no exit written), the phone-sheet presentation of the enquiry
+  form, and the glass dialog's settle-down alert.
+
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
 Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`

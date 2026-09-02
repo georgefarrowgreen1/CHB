@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=311">
+    <link rel="stylesheet" href="app.css?v=312">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1583,7 +1583,7 @@
     <div id="lightbox" class="lightbox" data-act="backdropClose" data-close="closeLightbox" data-close-in="lightbox-stage">
         <button class="lightbox-close" data-act="closeLightbox" aria-label="Close photo viewer">&times;</button>
         <button class="lightbox-nav prev" data-act="lightboxNav" data-arg="-1" aria-label="Previous photo">&#10094;</button>
-        <div class="lightbox-stage"><img id="lightbox-img" alt="Cottage photo"></div>
+        <div class="lightbox-stage"><img id="lightbox-img" alt="Cottage photo"><img id="lightbox-img2" alt="" aria-hidden="true"></div>
         <button class="lightbox-nav next" data-act="lightboxNav" data-arg="1" aria-label="Next photo">&#10095;</button>
         <div class="lightbox-counter" id="lightbox-counter"></div>
     </div>
@@ -2000,7 +2000,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=943"></script>
+    <script defer src="app.js?v=944"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

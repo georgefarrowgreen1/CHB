@@ -24,7 +24,7 @@
      the quarters that one is 0.00 · 0.79 · 0.97 · 1.00 — 97% open by its own
      midpoint, right for a slide and useless for a height, where the eye reads
      the middle of the travel. This is 0.38 · 0.68 · 0.91. */
-  --unfold: cubic-bezier(0, 0, 0.58, 1);
+  /* --unfold is declared in app.css now (one definition for both sides). */
   /* Siri-style luminous glow palette — the search lights up with this spectrum
      when you engage it (see .cmdk-box). HSL parts so alpha can be mixed
      inline; the hues sweep pink → purple → blue → teal → amber. */
