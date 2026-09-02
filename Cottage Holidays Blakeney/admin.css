@@ -4953,6 +4953,20 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* The cottage page: one fold group per section, the real editor inside. */
 #accom-detail { display: flex; flex-direction: column; gap: 12px; }
 #accom-detail .settings-group { margin-bottom: 0; }
+
+/* ---- A ROW'S DESCRIPTION DOES NOT DROP A LONE WORD. Measured on the Manage
+   index at 360px, 13 of 25 wrapping subs ended on a single short word — "Card
+   payments (Square) & your deposit / policy". `pretty` is the body-text tool
+   for it: it protects the last line without re-flowing the whole block the way
+   `balance` does, so the natural rag above is left alone. (Measured, and worth
+   knowing: `balance` clears more of them — 13 → 1 against `pretty`'s 13 → 8 —
+   but it equalises every line and is specified for headings.) An engine that
+   does not support it simply keeps today's wrapping.
+
+   It lives HERE and not beside the rule in app.css because these rows are
+   owner-only markup, and app.css is the sheet every anonymous visitor pays
+   for. admin.css loads after it, so equal specificity wins on order. ---- */
+.settings-row-sub { text-wrap: pretty; }
 /* scroll-margin: a deep link's block:'start' scroll must land BELOW the
    fixed header, not under it (the app.css anchored-scroll pattern). */
 .ac-card { width: 100%; scroll-margin-top: calc(100px + var(--safe-t)); }

@@ -1856,6 +1856,71 @@ declarations break-tested — the broken run reproduces the original numbers exa
   file while the deploy strips comments, so app.css read +2568 while the real
   growth is **+828**; app.js **+569**, index.html **+77** gz.
 
+## Words the owner can actually read (approved demo, built)
+
+**Asked for as "what next for ui enhancements", then demoed and chosen.** Twenty
+admin screens driven at two widths and measured for what the gates structurally
+cannot see — layout-test measures overflow past the viewport, a11y-test measures
+contrast, targets and names; neither measures COLLISION or TRUNCATION. Three
+survived. Gated by **`ui-test-legibility.js`** (37 checks), each break-tested.
+
+- **THE TIMELINE'S MONTH LABELS WERE PAINTED ON TOP OF EACH OTHER.** `.tl-day b`
+  is `position:absolute; white-space:nowrap` inside a 32–38px column, and
+  **"Aug 2026" measures 59px** against "Aug" at 23px — so a label runs across its
+  neighbours. `tlStartOffset()` is a constant **−2 from TODAY**, so on the 2nd of
+  a month the window opens on the last day of the previous one and the `i === 0`
+  label sits ONE column from the month-start label: measured **26px of overlap at
+  390px, 20px at 900/1280/1440**, reading `Aug 2⩝⩝⩝6`. On the 1st it clears by
+  1–5px, which is not clearance. **A MONTHLY recurrence, not an everyday one** —
+  the first framing of this said "the resting state" and was wrong; reading
+  `tlStartOffset` is what corrected it. The year is the part dropped (the caption
+  directly above already says "September 2026"), and only when a month-start is
+  within two columns — three columns is 96px at the narrowest, which clears 59.
+  **The gate PINS THE CLOCK** (`page.clock.setFixedTime`, the 1st / 2nd /
+  mid-month): on the real clock this would fire one run in thirty, which is a
+  gate that does not fire.
+- **HALF THE WORDS WERE BEING CUT OFF THE VERDICT SUBS.** `.bhub-fold-sub` is
+  `nowrap` + ellipsis and the right rail takes the figure or capsule, so the sub
+  gets 119–213px and the sentence is cut mid-word: measured on Manage @360,
+  `daily jobs and feeds — the f…` **51% lost**, `teach it once and it an…` 47%,
+  `reviews, guest photos, …` 43%; Money @390 `was due 06/08/2026 under the s…`
+  34%. **Fixed by SHORTENING THE COPY** (the owner's choice of three demoed
+  options — the others were two lines on a phone, and the figure dropping to its
+  own line). Eleven strings, written to the narrowest rail: a sub is a caption
+  for a row whose label and capsule already carry the verdict, so it only has to
+  name WHAT, not restate the conclusion — `'daily jobs and feeds'`,
+  `'guest submissions'`, `'paid in, net of fees'`, `'after fees and expenses'`.
+  The dynamic ones shortened too (the miss quote slices at 24 rather than 42; the
+  overdue sub says `due <date>` and names *their plan* only when it is not the
+  standard schedule — the exception is the informative half).
+  **THE KNOWN WEAKNESS IS REAL AND THE GATE IS WHAT HOLDS IT**: the rail a sub
+  gets depends on the capsule beside it, so shortened copy is not self-maintaining
+  — the demo showed one line still cut after a first rewrite, and building it took
+  two measure-and-shorten rounds. §2 fails on any truncated sub at 360 AND 390,
+  and asserts a floor (≥10 chars) so "shorten until it fits" cannot degrade into a
+  stub.
+- **A SETTINGS ROW'S DESCRIPTION DROPPED A LONE WORD** — "Card payments (Square)
+  & your deposit / **policy**", the hero-kicker defect at scale. **`text-wrap:
+  pretty`** (the owner's choice; `balance` was measured as stronger — 13 → 1
+  against pretty's 13 → 8 at 360px — but it equalises every line and is specified
+  for headings, where `pretty` is the body-text tool and leaves the natural rag).
+  Measured effect: **13 → 8 at 360px, 11 → 7 at 390**. It lives in **admin.css,
+  not beside the rule in app.css**, because these rows are owner-only markup and
+  app.css is the sheet every anonymous visitor pays for; admin.css loads after
+  it, so equal specificity wins on order.
+- **§3'S GATE IS SELF-CALIBRATING** rather than pinned to a number: it measures
+  the same page with the rule and again with `text-wrap: wrap !important` injected,
+  and asserts the fixed count is lower by more than noise. A fixed threshold would
+  rot the moment a row's copy changed, and the claim being made is about the
+  declaration's effect, not about a count.
+- **AND ui-test-money's To-collect CHECK WAS RE-AIMED, NOT PATCHED.** It pinned the
+  phrase "overdue one is above"; what it exists to hold is that the zero state
+  never claims *paid up* over an overdue row and points AT that row. It asserts
+  that property now — the wording is copy, and this pass moved it.
+- Budgets raised with the real figures: **admin.js 547300 → 547800**, **admin.css
+  71300 → 71700**. Both owner-only and immutable-cached; app.css was untouched,
+  which is the point of putting the text-wrap rule in admin.css.
+
 ## Five back-office motions (approved demo, built)
 
 **Asked for as "what animation effects can we do next to make the ui more

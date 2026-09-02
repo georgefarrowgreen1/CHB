@@ -9785,12 +9785,12 @@ function manageVerdicts() {
              </div>`);
     });
 
-    const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds — the full check covers the rest',
+    const sysGrp = bhubFoldGrp('mgsys', 'System check', 'daily jobs and feeds',
         stoppedN ? stCap('warn', stoppedN + ' stopped') : sigOk ? stCap('ok', 'All running') : stCap('unk', 'not checked'),
         `<div class="ks-kv"><span class="ks-k">Daily jobs</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : cronStale ? e('stopped — last ran ' + cronAgo) : cron && cron.everRan ? e('✓ ran ' + cronAgo) : 'no run recorded yet'}</small></span></div>
          <div class="ks-kv"><span class="ks-k">Calendar feeds</span><span class="ks-v"><small>${!sigOk ? "couldn't check just now" : trouble.length ? trouble.length + ' in trouble' + (attn ? ' — above' : '') : '✓ all fresh'}</small></span></div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('settingsOpen', 'diagnostics')}>Full system check</button></div>`);
-    const modGrp = bhubFoldGrp('mgmod', 'To approve', 'reviews, guest photos, things to do',
+    const modGrp = bhubFoldGrp('mgmod', 'To approve', 'guest submissions',
         modN ? stCap('warn', modN + ' waiting') : stCap('ok', 'Nothing waiting'),
         `<div class="ks-kv"><span class="ks-k">Reviews</span><span class="ks-v"><small>${mod.rev ? mod.rev + ' waiting' : 'none'}</small></span></div>
          <div class="ks-kv"><span class="ks-k">Guest photos</span><span class="ks-v"><small>${mod.ph ? mod.ph + ' waiting' : 'none'}</small></span></div>
@@ -9803,7 +9803,7 @@ function manageVerdicts() {
          </div>`);
     const topMiss = misses[0];
     const learnGrp = bhubFoldGrp('mglearn', 'Your assistant',
-        topMiss ? e('“' + String(topMiss.t || '').slice(0, 42) + '” found nothing') : guestQ[0] ? e('“' + String(guestQ[0].q || '').slice(0, 42) + '” from guest chat') : 'teach it once and it answers for ever',
+        topMiss ? e('“' + String(topMiss.t || '').slice(0, 24) + '” found nothing') : guestQ[0] ? e('“' + String(guestQ[0].q || '').slice(0, 24) + '” from a guest') : 'teach it once',
         teachN ? stCap('warn', teachN + ' to teach') : stCap('ok', 'Nothing to teach'),
         `<div class="ks-kv"><span class="ks-k">Dead-end searches</span><span class="ks-v"><small>${misses.length || 'none'}</small></span></div>
          <div class="ks-kv"><span class="ks-k">Guests asked these</span><span class="ks-v"><small>${guestQ.length || 'none'}</small></span></div>
@@ -16845,7 +16845,7 @@ function renderMoneyOverview() {
     // cache) into #mo-attn-async.
     let attnRows = '';
     overdueRows.forEach((r, i) => {
-        const why = (r.b.checkOut || '') <= today ? 'the stay is over' : `was due ${fmtDate(r.dueDate)} under ${r.b.balanceDueDate ? 'their plan' : 'the standard schedule'}`;
+        const why = (r.b.checkOut || '') <= today ? 'the stay is over' : `due ${fmtDate(r.dueDate)}${r.b.balanceDueDate ? ' — their plan' : ''}`;
         const remind = !r.arranged && squareAdminEnabled && r.b.email && (r.b.balanceRequestedAt || r.b.depositRequestedAt)
             ? `<button class="bhub-actlink" ${chbAttrs('sendPaymentReminder', String(r.b.id))}>Send a reminder</button>` : '';
         attnRows += bhubFoldGrp('mood' + i,
@@ -16869,24 +16869,24 @@ function renderMoneyOverview() {
         </div>`;
     const collectGrp = collectTotal > 0.005
         ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
-            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' due now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' not due yet' : ''}`),
+            escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
         : bhubFoldGrp('mocollect', '<span style="color:var(--ok-text);">To collect</span>',
             // "Paid up" is a claim — with an overdue row above, the sub AND
             // the capsule both stand down (green ✓ beside a red exception is
             // the colour contradicting the words).
-            overdueRows.length ? `nothing else — the overdue ${overdueRows.length === 1 ? 'one is' : 'ones are'} above` : 'every upcoming booking is paid up',
+            overdueRows.length ? 'see the overdue above' : 'every booking is paid up',
             overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
-    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok-text);">To move out</span>', 'what Square has paid in, net of fees',
+    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok-text);">To move out</span>', 'paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
-    const backGrp = bhubFoldGrp('moback', 'To give back', 'refundable deposits still held',
+    const backGrp = bhubFoldGrp('moback', 'To give back', 'deposits still held',
         `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
         `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
-    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok-text);">The books · ${taxYearShort(curTY)}</span>`, 'income less card fees and logged expenses',
+    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok-text);">The books · ${taxYearShort(curTY)}</span>`, 'after fees and expenses',
         `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok-text);">${gbp(netTY)}</span>`,
         `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
          <div class="bhub-btn-row bhub-act-links">
@@ -16897,7 +16897,7 @@ function renderMoneyOverview() {
         `<span class="bhub-sum-val" id="mo-recent-sum">…</span>`,
         `<div id="mo-recent-rows" class="bhub-mut" style="margin-bottom:6px;">Loading the feed…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'recent')}>Full payment history</button></div>`);
-    const trendsGrp = bhubFoldGrp('motrends', 'Trends &amp; history', 'year on year, the monthly trend, by cottage', '',
+    const trendsGrp = bhubFoldGrp('motrends', 'Trends &amp; history', 'year on year, by cottage', '',
         `${yoyCard}
          <div class="mo-grid2">
             <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
@@ -26842,8 +26842,23 @@ function renderCalendar() {
     for (let i = 0; i < N; i++) {
         const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
         const wknd = d.getDay() === 0 || d.getDay() === 6;
+        // THE YEAR IS WHAT MAKES THE LABEL COLLIDE. `.tl-day b` is absolute +
+        // nowrap inside a 32–38px column, so it runs across its neighbours —
+        // "Aug 2026" measures 59px against "Aug" at 23px. tlStartOffset() is a
+        // constant -2 from TODAY, so on the 2nd of a month the window opens on
+        // the last day of the previous one and the i===0 label sits ONE column
+        // from the month-start label: the two paint on top of each other and it
+        // reads "Aug 2⩝⩝⩝6" (measured 26px of overlap at 390px, 20px at
+        // 900/1280/1440). On the 1st it clears by 1-5px, which is not clearance.
+        // So this is a MONTHLY recurrence on the screen the owner opens most,
+        // not an everyday one — and the fix is a line, so it is still worth it.
+        // The year is the part to drop: the caption directly above the grid
+        // already says "September 2026". Two columns is the threshold because
+        // three (96px at the narrowest) clears the 59px label.
+        const toMonthStart = i === 0 ? new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - d.getDate() + 1 : 99;
+        const crowded = i === 0 && toMonthStart <= 2 && toMonthStart < N;
         const monthTag =
-            d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${d.getMonth() === 0 || i === 0 ? ' ' + d.getFullYear() : ''}</b>` : '';
+            d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${(d.getMonth() === 0 || i === 0) && !crowded ? ' ' + d.getFullYear() : ''}</b>` : '';
         // is-mstart draws the month-boundary rule down the whole column, so
         // mid-scroll you can SEE where a month turns, not just read the label.
         const mstart = d.getDate() === 1 && i > 0;
