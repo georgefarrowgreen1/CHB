@@ -1856,6 +1856,62 @@ declarations break-tested — the broken run reproduces the original numbers exa
   file while the deploy strips comments, so app.css read +2568 while the real
   growth is **+828**; app.js **+569**, index.html **+77** gz.
 
+## Two guest-side repairs (approved demo, built)
+
+**Asked for as "what next for ui enhancement", then demoed and chosen.** Ten
+guest screens driven at three widths with an INK-OVERLAP detector added — the
+last round's timeline collision was caught by eye, not by heuristic. Gated by
+**`ui-test-guestrepairs.js` §5–§6** (19 new checks), both break-tested.
+
+- **A STAY YOU ARE IN WAS FILED UNDER "UPCOMING".** `const upcoming =
+  !hasCheckedOut(b)` means only *has not ended*, so a guest sitting in the
+  cottage saw their booking under **Upcoming stays** with a green **Upcoming**
+  badge and a date range that started yesterday — directly beneath a hub card
+  correctly reading "You're staying at Jollyboat · 3 nights left". The comment
+  above it reasons carefully about the DEPARTURE edge ("Departed is time-aware…
+  the arrival edge stays date-based"), so the past boundary was thought through
+  and the present/future one never was.
+  **`currentStay` was already being computed on the very next line** and used
+  only to build the hub. Three buckets now (`currentCards` beside `upcomingCards`
+  and `pastCards`), a third badge state, and its own **"Staying now"** group above
+  Upcoming. **BOTH HALVES OR NEITHER** — the demo offered a badge-only fix and the
+  gate is what refuses it: §5 asserts the badge AND the heading, and the
+  badge-only break-test fires three checks. Amber, not the upcoming green: it is
+  the vocabulary the in-residence hub already uses, and green beside "3 nights
+  left" read as a stay that had not started. The empty state counts the new bucket
+  too, or a guest whose ONLY stay is in progress would be told they have none.
+- **THE COTTAGE PAGE LISTED AMENITIES ONE PER ROW ON EVERY PHONE.** `.amenities`
+  was `repeat(auto-fit, minmax(200px, 1fr))` + a 15px gap — **two tracks need
+  415px** and the container measures **332/362/402px at 360/390/430**, so it
+  collapsed to one column and "Wifi" took a whole row. `.amenity-sheet` (My Stays)
+  had already been fixed with `flex-wrap` + `flex: 0 1 auto`, twenty lines below in
+  the same stylesheet: **fixed for one route, left for its neighbours**, and the
+  note recording that fix names this exact cause. Measured after: 8 amenities in
+  **5 / 4 / 3 rows** at 360/390/430, against 8 before.
+  **A narrower `minmax` was refused**: two equal columns would give a one-word
+  amenity the same box as "Heritage Coastal Setting". §6 gates that as
+  `distinctWidths > 2` and `full === 0` — no pill spans the container — so the
+  fix cannot erode back into equal columns.
+- **§6 DRIVES `renderAmenities` DIRECTLY, and that is not laziness.** The cottage
+  page reads a module-scoped `activePropAmenities`, so a `content.php` route
+  registered mid-test never reaches it (content lands at boot) and
+  `guestAmenityList` wants an ARRAY, not the JSON string a route would send. The
+  claim being gated is the LAYOUT, and `renderAmenities` is its route.
+- **THE OVERLAP DETECTOR FOUND NOTHING, and that is worth recording**: its hits
+  were the auth modal legitimately stacking over the cottage page behind it and
+  the hidden `.seo-text` crawler block. The alarming-looking "Check availability
+  pill across the subtitle" was the documented `position: fixed` full-page-capture
+  trap — it clears on scroll. **NOT fixed, and left as a note**: at max scroll on a
+  short page, 5px of the last line sits behind that bar; fixture-sensitive enough
+  that it wants a real page before anyone calls it a defect.
+- **A MEASUREMENT LIED BEFORE THE APP DID, for the third time this session.** The
+  first hit-test reported 24 overlaps at every scroll position: `requestAnimationFrame`
+  alone does not commit a `scrollTo` before measuring, so it re-measured the same
+  frame 24 times. Anything that scrolls then measures needs a real timeout.
+- Budget raised app.js 278500 → 278800. The gate measures the UNSTRIPPED file; the
+  REAL shipped growth is **+56 gz bytes** (app.css +9), which is the third bucket
+  and its badge — the rest is comment prose the deploy strips.
+
 ## Words the owner can actually read (approved demo, built)
 
 **Asked for as "what next for ui enhancements", then demoed and chosen.** Twenty
