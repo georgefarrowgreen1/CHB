@@ -2172,11 +2172,21 @@ a.card {
   color: var(--text-light);
 }
 
+/* THE PILLS FLOW, they are not a grid — the same fix .amenity-sheet already
+   carries, and for the same measured reason. `minmax(200px, 1fr)` plus the 15px
+   gap needs 415px for two tracks, and this container is 332/362/402px at
+   360/390/430 — so it collapsed to ONE column on every phone and "Wifi" took a
+   whole row. A narrower minmax would give two EQUAL columns, which is worse: a
+   one-word amenity would still get the same box as "Heritage Coastal Setting".
+   Flowing lets three short ones share a line and a long one take what it needs. */
 .amenities {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 30px;
+}
+.amenities .amenity-pill {
+  flex: 0 1 auto;
 }
 .amenity-pill {
   background: var(--glass-bg);

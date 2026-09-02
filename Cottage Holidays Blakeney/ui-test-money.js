@@ -168,7 +168,12 @@ let mailWillFail = false;
   // row (at the deposit-folded £490 the payments rows quote), not a queue row.
   ok(!ov.attnHidden, 'the overdue balance raises the Needs-attention caption');
   ok(ov.grps.includes('mood0'), 'the overdue booking is an exception row, not a queue row');
-  ok(/To collect/.test(ov.collect) && /overdue one is above/.test(ov.collect), `To collect never claims "paid up" over an overdue row (${ov.collect.slice(0, 90)})`);
+  // Asserted as the PROPERTY, not the phrase: what must never happen is a
+  // paid-up claim over an overdue row, and the sub must point AT that row. The
+  // wording itself is copy and moved once already (it was shortened so the sub
+  // stops being cut off on a phone — see ui-test-legibility §2).
+  ok(/To collect/.test(ov.collect) && !/paid up/i.test(ov.collect) && /overdue/i.test(ov.collect),
+    `To collect never claims "paid up" over an overdue row, and points at it (${ov.collect.slice(0, 90)})`);
   // …and neither does its capsule (break-tested: reverting the capsule to the
   // unconditional green stCap('ok','Paid up') fails this while the sub check
   // above stays green — the sub was fixed first and the capsule shipped on).

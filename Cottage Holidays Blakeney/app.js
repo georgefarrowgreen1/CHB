@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 586;
+const ADMIN_BUNDLE_V = 588;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 240;
+const ADMIN_CSS_V = 242;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4292,6 +4292,13 @@ async function renderGuestBookings() {
         .join('');
 
     const upcomingCards = [],
+        // A STAY YOU ARE IN IS NOT "UPCOMING". `upcoming` below means only "has
+        // not ended", so a guest sitting in the cottage saw their booking filed
+        // under Upcoming stays with a green Upcoming badge and a date range that
+        // started yesterday — directly beneath a hub card correctly reading
+        // "You're staying at Jollyboat · 3 nights left". Three buckets now, off
+        // the `currentStay` that was already being computed for the hub.
+        currentCards = [],
         pastCards = [],
         hubCards = [];
     let preArrivalShown = false; // only the soonest future stay gets the countdown hub
@@ -4321,13 +4328,19 @@ async function renderGuestBookings() {
         const upcoming = !hasCheckedOut(b);
         const currentStay = b.checkIn <= todayStr && !hasCheckedOut(b);
         if (currentStay) currentStays.push({ propKey, bookingId: b.id });
-        const statusTag = upcoming
-            // --ok-text, not white: the tint is 25% #4CAF50 over a near-white
-            // card, so white measured 1.29:1 in the DEFAULT theme — the one badge
-            // marking a live booking was the one you had to hunt for, while both
-            // siblings in this same expression correctly take a -text token.
-            ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:var(--ok-text);border:1px solid var(--booked-border);">Upcoming</span>`
-            : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
+        // Three states, and the middle one is the repair: a stay in progress
+        // says so. Amber rather than the upcoming green — the same vocabulary
+        // the in-residence hub above it already uses, and green beside "3 nights
+        // left" read as a stay that had not started.
+        // --ok-text, not white: the tint is 25% #4CAF50 over a near-white card,
+        // so white measured 1.29:1 in the DEFAULT theme — the one badge marking
+        // a live booking was the one you had to hunt for, while both siblings in
+        // this same expression correctly take a -text token.
+        const statusTag = currentStay
+            ? `<span class="guest-status-badge" style="background:rgba(255,167,38,0.22);color:var(--warn-text);border:1px solid rgba(255,167,38,0.5);">Staying now</span>`
+            : upcoming
+                ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:var(--ok-text);border:1px solid var(--booked-border);">Upcoming</span>`
+                : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
         // One review/photo block per PROPERTY — decide on THIS card, not via
         // reviewShown.has() inside the template (has() is true for every later
         // past card of the same cottage, which duplicated the form + its ids).
@@ -4415,7 +4428,7 @@ async function renderGuestBookings() {
                         ${showPhoto ? guestPhotoButton(propKey) : ''}
                     </div>
                 </div>`;
-        (upcoming ? upcomingCards : pastCards).push(__card);
+        (currentStay ? currentCards : upcoming ? upcomingCards : pastCards).push(__card);
 
         // While a stay is in progress, gather its in-stay actions into one
         // prominent "My Stay" hub (rendered at the top of the list). The
@@ -4461,7 +4474,7 @@ async function renderGuestBookings() {
             // stands. A degraded card states the stay's own facts (server name,
             // dates, ref) and names the way to a person — strictly better than
             // the blank screen a thrown render leaves.
-            (hasCheckedOut(b) ? pastCards : upcomingCards).push(`
+            (hasCheckedOut(b) ? pastCards : (b.checkIn || '') <= todayStr ? currentCards : upcomingCards).push(`
                 <div class="glass-panel guest-booking gb2">
                     <h3 class="gb2-name">${escapeHtml(meta.name)}</h3>
                     <div class="gb2-when">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ref ${bookingRef(b.id)}</div>
@@ -4489,7 +4502,7 @@ async function renderGuestBookings() {
         : '';
     // No stays at all: a clear next step instead of an empty page.
     const emptyState =
-        !hubCards.length && !pendingHtml && !upcomingCards.length && !pastCards.length
+        !hubCards.length && !pendingHtml && !currentCards.length && !upcomingCards.length && !pastCards.length
             ? `<div class="glass-panel" style="text-align:center;padding:34px 22px;">
                     <p style="margin:0 0 16px;color:var(--text-muted);">No stays yet — your bookings and enquiries will appear here.</p>
                     <button class="btn-glass" data-act="nav" data-view="view-cottages">Browse the cottages</button>
@@ -4498,6 +4511,7 @@ async function renderGuestBookings() {
     list.innerHTML =
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
+        (currentCards.length ? gHdr('Staying now') + gGrid(currentCards) : '') +
         (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '') +
         pastHtml +
         emptyState;
@@ -18676,7 +18690,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bomo01';
+    const BUILD = 'guest01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

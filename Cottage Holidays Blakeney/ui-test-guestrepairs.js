@@ -9,7 +9,11 @@
 //       teleporting, with the 60px policy untouched and a pill for the one case
 //       where a reply lands off-screen;
 //    §3 the site's first line no longer orphans a word;
-//    §4 the two declarations clear the house's own 44px floor, with a drawn tick.
+//    §4 the two declarations clear the house's own 44px floor, with a drawn tick;
+//    §5 a stay you are IN is not filed under "Upcoming" — `upcoming` meant only
+//       "has not ended", so a guest in the cottage saw their booking under
+//       Upcoming stays with a green Upcoming badge and dates that had started;
+//    §6 the cottage page's amenities FLOW rather than taking a row each.
 //
 //  Two disciplines this file is built on, both learned the hard way:
 //    · SEEK, never race. Two evaluate() round trips overshoot a 500ms spring, so
@@ -316,6 +320,125 @@ const { boot } = require('./ui-test-lib');
     check(tick.checked, 'clicking the label TEXT ticks it');
     check(tick.anim === 'termsDraw', 'and the tick draws itself', tick.anim + ' ' + tick.dur);
     check(tick.stroke !== 'rgb(255, 255, 255)', 'in an ink that clears 3:1 on the green — not white (2.78:1)', tick.stroke);
+
+    // ============================================================
+    //  §5 — a stay you are IN says so
+    // ============================================================
+    // Driven through the REAL renderGuestBookings with a stubbed my-bookings
+    // payload: one stay that STARTED YESTERDAY and has not ended, one genuinely
+    // future, one past. Asserting on markup the gate composed itself would prove
+    // the stylesheet and nothing else (this file's own second discipline).
+    console.log('\n  §5 a stay in progress is not filed under “Upcoming”');
+    const day = (n) => { const t2 = new Date(); t2.setDate(t2.getDate() + n); return t2.toISOString().slice(0, 10); };
+    await page.route(/my-bookings\.php/, (r) =>
+        r.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                ok: true,
+                guest: { name: 'Guest Tester', email: 'guest@example.com' },
+                bookings: [
+                    // in progress: arrived yesterday, leaves in three days
+                    { id: 3, prop_key: 'jollyboat', name: 'Guest Tester', email: 'guest@example.com', check_in: day(-1), check_out: day(3), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 640, agreed_total: 640 },
+                    { id: 5, prop_key: '21a', name: 'Guest Tester', email: 'guest@example.com', check_in: day(21), check_out: day(25), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'deposit', deposit_paid: 150, agreed_total: 620 },
+                    { id: 6, prop_key: 'pimpernel', name: 'Guest Tester', email: 'guest@example.com', check_in: day(-40), check_out: day(-36), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 500, agreed_total: 500 },
+                ],
+            }),
+        }),
+    );
+    const stays = await page.evaluate(async () => {
+        try { closeChat(); } catch (e) {}
+        currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' };
+        try { setAuthUI(); } catch (e) {}
+        nav('view-guest-bookings');
+        await renderGuestBookings();
+        await new Promise((r) => setTimeout(r, 400));
+        const list = document.getElementById('guest-bookings-list');
+        // Which HEADING is each card under? Read from the painted order, because
+        // the section a card sits in is half the claim being made about it.
+        const nodes = [...list.querySelectorAll('h2, h3, .guest-booking')];
+        let head = '';
+        const cards = [];
+        for (const n of nodes) {
+            if (/^H[23]$/.test(n.tagName) && !n.closest('.guest-booking')) { head = (n.textContent || '').trim(); continue; }
+            if (!n.classList.contains('guest-booking')) continue;
+            const badge = n.querySelector('.guest-status-badge');
+            cards.push({
+                name: ((n.querySelector('h3') || {}).textContent || '').trim().slice(0, 40),
+                head,
+                badge: badge ? (badge.textContent || '').trim() : '',
+            });
+        }
+        // Section headings only — a card's own h3 carries the badge text, which
+        // would otherwise read as a heading called "Pimpernel Past stay".
+        return { cards, heads: [...list.querySelectorAll('h2, h3')].filter((h) => !h.closest('.guest-booking')).map((h) => (h.textContent || '').trim()) };
+    });
+    const inProgress = stays.cards.find((c) => /Jollyboat/i.test(c.name));
+    const future = stays.cards.find((c) => /21A/i.test(c.name));
+    const past = stays.cards.find((c) => /Pimpernel/i.test(c.name));
+    check(!!inProgress && !!future && !!past, 'all three stays render', JSON.stringify(stays.cards.map((c) => c.name)));
+    // BOTH halves of the claim: the badge AND the heading. Fixing one and not
+    // the other is the option this build deliberately did not take.
+    check(!!inProgress && /Staying now/i.test(inProgress.badge), 'the stay in progress is badged “Staying now”', inProgress && inProgress.badge);
+    check(!!inProgress && !/Upcoming/i.test(inProgress.head), '…and it is NOT under “Upcoming stays”', inProgress && inProgress.head);
+    check(!!inProgress && /Staying now/i.test(inProgress.head), '…it has its own group, matching the hub above it', inProgress && inProgress.head);
+    // …and the repair must not swallow the two states that were already right.
+    check(!!future && /Upcoming/i.test(future.badge) && /Upcoming/i.test(future.head), 'a genuinely future stay is still Upcoming', future && future.badge + ' / ' + future.head);
+    check(!!past && /Past/i.test(past.badge) && /Past/i.test(past.head), 'a finished stay is still a Past stay', past && past.badge + ' / ' + past.head);
+    check(stays.heads.filter((h) => /^Staying now$/i.test(h)).length === 1, 'the new group appears exactly once', JSON.stringify(stays.heads));
+
+    // ============================================================
+    //  §6 — the cottage page's amenities flow
+    // ============================================================
+    // .amenity-sheet (My Stays) was fixed with flex-wrap and .amenities (the
+    // cottage page) was left on a grid whose minmax is wider than a phone
+    // column. Measured as ROWS, which is the outcome — a declaration check would
+    // pass on any future layout that happened to stack them another way.
+    console.log('\n  §6 the cottage page’s amenities flow, not one per row');
+    // Seeded into the store the renderer READS (guestAmenityList → siteContent),
+    // not through a route: content lands at boot, long before a route registered
+    // here could intercept it. The list is a deliberate MIX — short names are
+    // what a one-column grid wasted a whole row on, and a long one has to still
+    // get the width it needs.
+    // The list is a deliberate MIX — short names are what a one-column grid
+    // wasted a whole row on, and a long one has to still get the width it needs.
+    // Driven through the REAL renderAmenities: it reads a module-scoped
+    // `activePropAmenities`, so seeding siteContent would not reach it (and
+    // guestAmenityList wants an ARRAY, not the JSON string a route would send).
+    const AMENS = ['Wifi', 'Smeg Chef Kitchen', 'Off-street parking', 'Private Walled Garden',
+        'Dishwasher', 'Heritage Coastal Setting', 'Log burner', 'Bath'];
+    for (const w of [360, 390, 430]) {
+        await page.setViewportSize({ width: w, height: 844 });
+        await page.waitForTimeout(200);
+        const am = await page.evaluate(async (list) => {
+            openProperty('21a');
+            await new Promise((r) => setTimeout(r, 900));
+            activePropAmenities = list;
+            renderAmenities('21a');
+            await new Promise((r) => setTimeout(r, 200));
+            const host = document.querySelector('#view-21a .amenities');
+            if (!host) return { none: true };
+            const pills = [...host.querySelectorAll('.amenity-pill')].filter((e) => e.getClientRects().length);
+            const rows = new Set(pills.map((e) => Math.round(e.getBoundingClientRect().top)));
+            const widths = pills.map((e) => Math.round(e.getBoundingClientRect().width));
+            return {
+                n: pills.length,
+                rows: rows.size,
+                hostW: Math.round(host.getBoundingClientRect().width),
+                distinctWidths: new Set(widths).size,
+                full: widths.filter((x) => x >= Math.round(host.getBoundingClientRect().width) - 2).length,
+            };
+        }, AMENS);
+        check(!am.none && am.n >= 6, `${w}px: the cottage page lists its amenities`, JSON.stringify(am));
+        check(!am.none && am.rows < am.n, `${w}px: they share lines (${am.rows} rows for ${am.n} amenities)`, JSON.stringify(am));
+        // A pill spanning the whole container IS the defect — that is what a
+        // one-column grid produces, and what a too-narrow minmax would reproduce.
+        check(!am.none && am.full === 0, `${w}px: no pill takes the full width`, JSON.stringify(am));
+        // Flowing, not equal columns: a one-word amenity must not get the same
+        // box as "Heritage Coastal Setting".
+        check(!am.none && am.distinctWidths > 2, `${w}px: each pill takes what it needs (${am.distinctWidths} distinct widths)`, JSON.stringify(am));
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
 
     console.log(fails ? `\n  ${fails} GUEST-REPAIR CHECK(S) FAILED ❌` : '\n  GUEST REPAIRS SUITE PASSED ✅');
     await t.done(fails);
