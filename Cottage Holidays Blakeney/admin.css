@@ -658,7 +658,7 @@ body.light-mode .tl-cell {
   gap: 12px;
   width: 100%;
   text-align: left;
-  padding: 14px 16px;
+  padding: 16px;
   /* Joined rows, one material: state is said ONCE, by the capsule — the
      coloured left rail and the tinted icon tile said it twice more. */
   border-radius: 0;
@@ -675,8 +675,8 @@ body.light-mode .tl-cell {
   transform: scale(0.99);
 }#needs-you-list { gap: 0; }
 #needs-you-list .ny-row + .ny-row { border-top-width: 0; }
-#needs-you-list .ny-row:first-child { border-top-left-radius: var(--r-md); border-top-right-radius: var(--r-md); }
-#needs-you-list .ny-row:last-child { border-bottom-left-radius: var(--r-md); border-bottom-right-radius: var(--r-md); }
+#needs-you-list .ny-row:first-child { border-top-left-radius: var(--r-sm); border-top-right-radius: var(--r-sm); }
+#needs-you-list .ny-row:last-child { border-bottom-left-radius: var(--r-sm); border-bottom-right-radius: var(--r-sm); }
 .ny-ic {
   flex: none;
   width: 24px;
@@ -903,7 +903,7 @@ body.light-mode .ny-act {
 .tl-cell.is-selstart {
   outline: 2px solid var(--accent);
   outline-offset: -3px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 /* ---- TODAY wears the dashboard vocabulary (approved demo): one serif
@@ -1589,7 +1589,7 @@ body.light-mode .ny-act {
 }.mo-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   padding: 16px 18px;
   margin-top: 12px;
 }.mo-card-title {
@@ -2401,7 +2401,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
    never shifts layout. */
 .cmdk-reveal {
   animation: cmdkReveal 2.2s var(--fluid-bezier, ease) both;
-  border-radius: var(--r-panel, 14px);
+  border-radius: var(--r-panel);
 }
 @keyframes cmdkReveal {
   0%,
@@ -2428,7 +2428,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   margin: 0 0 14px;
   padding: 10px 14px;
   font-size: 0.85rem;
-  border-radius: var(--r-panel, 14px);
+  border-radius: var(--r-panel);
 }
 .today-filter-bar strong {
   color: var(--accent-text);
@@ -2760,7 +2760,7 @@ body.light-mode .cmdk-editor-input {
   gap: 1px;
   margin: 2px 12px 10px 54px;
   padding: 4px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: color-mix(in srgb, var(--accent) 4%, var(--glass-hover));
   border: 1px solid var(--glass-border);
   -webkit-backdrop-filter: saturate(1.1) blur(6px);
@@ -2853,7 +2853,7 @@ body.light-mode .cmdk-editor-input {
 .coach-ring {
   position: fixed;
   border: 2px solid var(--accent);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   box-shadow: 0 0 0 4px rgba(199, 154, 100, 0.35), 0 0 0 9999px rgba(10, 14, 18, 0.58);
   pointer-events: none;
   transition: left 0.2s var(--fluid-bezier), top 0.2s var(--fluid-bezier), width 0.2s var(--fluid-bezier), height 0.2s var(--fluid-bezier);
@@ -2993,14 +2993,17 @@ body.light-mode .cmdk-editor-input {
   border-radius: var(--r-lg);
 }
 .status-hero-mark {
+  /* A 28px symbol beside the title, not a 46px slab — Apple's checkmark.circle
+     is a mark, not a badge. */
   flex-shrink: 0;
-  width: 46px;
-  height: 46px;
+  width: 28px;
+  height: 28px;
+  margin-top: 6px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 0.95rem;
   font-weight: 700;
   /* White failed on all three fills (sampled dark: ok 2.78, warn 1.73 — the "!"
      did not resolve — danger 2.99). --accent-ink measures 6.71 / 9.65 / 6.24,
@@ -3048,14 +3051,17 @@ body.light-mode .cmdk-editor-input {
   margin-top: 12px;
 }
 .status-rerun {
-  /* measured 42x19 — under the 24x24 minimum for a standalone control. */
+  /* A tinted TEXT BUTTON at the 44px floor — iOS never underlines, and the
+     outlined pill beside it is the other button grammar this card had. */
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 44px;
+  padding: 0 4px;
   background: none;
   border: none;
-  color: var(--text-light);
-  text-decoration: underline;
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: none;
   text-underline-offset: 2px;
   cursor: pointer;
   font: inherit;
@@ -3239,7 +3245,7 @@ body.light-mode .cmdk-editor-input {
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel, 14px);
+  border-radius: var(--r-panel);
   box-shadow: var(--shadow-panel, 0 10px 34px rgba(0, 0, 0, 0.28));
   overflow-y: auto;
   max-height: 232px;
@@ -3560,7 +3566,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   height: min(860px, 92vh);
   padding: 0;
   overflow: hidden;
-  border-radius: var(--r-panel, 22px);
+  border-radius: var(--r-panel);
   /* OPAQUE, unlike the .glass-panel it also carries. The shell frames a whole
      other app; letting the back office show through it put ghosts of the admin
      dock behind the customer's name and made the muted note hard to read. */
@@ -4585,7 +4591,7 @@ body.cmdk-open {
 .bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: 0.82rem; margin-top: 2px; }
 .bhub-feed-mailbody {
     margin-top: 6px; padding: 8px 10px; font-size: 0.82rem; color: var(--text-muted);
-    border: 1px solid var(--glass-border); border-radius: var(--r-md, 12px);
+    border: 1px solid var(--glass-border); border-radius: var(--r-sm);
     max-height: 40vh; overflow: auto;
 }
 .bhub-sticky {
@@ -4824,7 +4830,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .bhub-card.bhub-fold-grp {
   padding: 0;
   overflow: hidden;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   border: 1px solid var(--glass-border);
 }
 /* NB `body.light-mode .glass-panel` is (0,2,1) — it outranks a two-class
@@ -4971,8 +4977,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 #calendar-list .bhub-fold-grp { max-width: 640px; margin-bottom: 16px; } /* owner-asked: clear air between the cottages */
 /* …so the cottages do NOT join into one inset group: each keeps its own corners
    and hairline. An owner's ask outranks the list rule (gated in ui-test-manage §3). */
-#calendar-list .bhub-fold-grp + .bhub-fold-grp { margin-top: 0; border-top-width: 1px; border-top-left-radius: var(--r-md); border-top-right-radius: var(--r-md); }
-#calendar-list .bhub-fold-grp:has(+ .bhub-fold-grp) { border-bottom-left-radius: var(--r-md); border-bottom-right-radius: var(--r-md); }
+#calendar-list .bhub-fold-grp + .bhub-fold-grp { margin-top: 0; border-top-width: 1px; border-top-left-radius: var(--r-sm); border-top-right-radius: var(--r-sm); }
+#calendar-list .bhub-fold-grp:has(+ .bhub-fold-grp) { border-bottom-left-radius: var(--r-sm); border-bottom-right-radius: var(--r-sm); }
 /* Pricing coach + Recent payments wear the unified anatomy (owner-asked).
    pc-well/mf-recon reuse the .acr-well ink-mix ground; the feed keeps its
    gated row classes and takes the well framing by CSS alone. */
@@ -5061,7 +5067,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* day chips: the checkbox fills its label (the chb-switch trick), the chip
    look rides :has(:checked) */
 .acw-days { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; }
-.acw-days .day-check { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 36px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); color: var(--text-muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.acw-days .day-check { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 36px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); color: var(--text-muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; }
 .acw-days .day-check input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .acw-days .day-check:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent-text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .acw-days .day-check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -5074,7 +5080,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    compact glyphs under each thumb — same composer, same data-acts */
 .acp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 14px; }
 .acp-cell { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; background: none; }
-.acp-thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; background-size: cover; background-position: center; }
+.acp-thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-sm); background-size: cover; background-position: center; }
 .acp-main { position: absolute; left: 5px; top: 5px; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
 .acp-n { position: absolute; right: 5px; bottom: 4px; font-size: 0.66rem; color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
 /* (0,2,0) on purpose — app.css's .content-edit-row .accom-photo-actions
@@ -5085,9 +5091,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acp-acts .btn-delete { color: var(--danger-text); }
 .acp-acts .btn-sm[disabled] { opacity: 0.3; }
 /* the home-page-card LIVE PREVIEW (the badge trick) + its photo row */
-.acw-thumb { width: 54px; height: 42px; border-radius: 9px; background-size: cover; background-position: center; flex: 0 0 auto; }
+.acw-thumb { width: 54px; height: 42px; border-radius: var(--r-sm); background-size: cover; background-position: center; flex: 0 0 auto; }
 .acw-linkbtn { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-weight: 600; text-transform: none; letter-spacing: normal; font-size: 0.85rem; padding: 6px 0; }
-.acw-homecard { max-width: 250px; border-radius: 14px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
+.acw-homecard { max-width: 250px; border-radius: var(--r-md); overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
 .acw-hc-img { height: 92px; background-size: cover; background-position: center; background-color: color-mix(in srgb, var(--text-light) 8%, transparent); }
 .acw-hc-t { padding: 9px 12px 3px; font-family: var(--font-serif); font-size: 0.95rem; color: var(--text-light); }
 .acw-hc-m { padding: 0 12px 10px; font-size: 0.72rem; color: var(--text-muted); }
@@ -5200,7 +5206,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .st-cap {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 0.76rem; font-weight: 600; letter-spacing: 0.01em;
-  padding: 4px 11px; border-radius: var(--r-pill); white-space: nowrap;
+  padding: 4px 12px; border-radius: var(--r-pill); white-space: nowrap;
 }
 /* CALM IS QUIET. Three identical green capsules stacked on Manage made the
    settled state the loudest thing on the screen; OK is muted text with a
@@ -5585,7 +5591,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ods-tl-cell.unknown {
   background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-light) 7%, transparent) 0 7px, transparent 7px 14px);
   border: 1px dashed var(--glass-border);
-  border-radius: var(--r-sm, 8px);
+  border-radius: 8px;
 }
 .ods-tl-note {
   color: var(--text-muted);
@@ -5611,7 +5617,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   overflow: auto;
   background: var(--bg-solid, #1d1c20);
   border: 1px solid var(--glass-border);
-  border-radius: 22px 22px 0 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding: 18px 18px calc(18px + var(--safe-b));
   animation: odsEnter 0.28s ease-out;
 }
@@ -5813,7 +5819,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   letter-spacing: 0.3em;
   color: var(--accent-text);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm, 12px);
+  border-radius: var(--r-sm);
   padding: 1px 9px;
   white-space: nowrap;
 }
@@ -5862,7 +5868,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
    measured at 4.09:1 in dark, three times, on the demo behind this screen. */
 #etpl-panel { margin: 8px 0 2px; background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 10px; }
 .etpl-q { width: 100%; margin-bottom: 6px; min-height: 44px; }
-.etpl-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 10px; padding: 9px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
+.etpl-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 9px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
 .etpl-row:hover:not([disabled]) { background: var(--glass-hover); }
 .etpl-row[disabled] { cursor: not-allowed; }
 .etpl-row[disabled] .etpl-row-name { color: var(--text-muted); }
@@ -5883,7 +5889,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .etpl-chip-rank { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
 .etpl-chip-x { width: 26px; height: 26px; border-radius: 50%; background: none; border: 1px solid currentColor; color: inherit; display: grid; place-items: center; font-size: 0.8rem; line-height: 1; cursor: pointer; padding: 0; }
 .etpl-pick { margin: 8px 0 0; border-top: 1px solid var(--glass-border); padding-top: 8px; }
-.etpl-pick-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 10px; padding: 8px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
+.etpl-pick-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 8px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
 .etpl-pick-row:hover { background: var(--glass-hover); }
 .etpl-pick-name { display: block; font-weight: 600; font-size: 0.88rem; }
 .etpl-pick-sub { display: block; font-size: 0.79rem; color: var(--text-muted); }
@@ -5992,7 +5998,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .mc-rail-chip.is-cur{background:var(--text-light);color:var(--dark-grey);border-color:transparent}
 .mc-log{display:flex;flex-direction:column;gap:10px;min-height:46vh;padding:2px}
 /* the welcome — a CARD with starters, never a stranded paragraph */
-.mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:26px;
+.mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:var(--r-panel);
   padding:24px 20px;background:var(--glass-bg);text-align:center}
 .mc-hello-spark{font-size:22px;color:var(--accent-text)}
 .mc-hello h2{font:600 1.3rem var(--font-serif);margin:8px 0 6px}
@@ -6055,7 +6061,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   cursor:pointer;padding:8px 2px;border-radius:8px;flex:0 0 auto;white-space:nowrap;min-height:44px}
 .mc-hand-x{border:0;background:none;color:var(--text-muted);font-size:0.72rem;cursor:pointer;
   padding:6px;border-radius:8px;flex:0 0 auto;min-width:34px;min-height:44px;opacity:0.7}
-.mc-day{border:1px solid var(--glass-border);border-radius:18px;padding:14px 15px;
+.mc-day{border:1px solid var(--glass-border);border-radius:var(--r-lg);padding:14px 15px;
   background:color-mix(in srgb,var(--accent) 6%,transparent);margin:2px 4px 0}
 .mc-day-t{font:600 1rem var(--font-serif);color:var(--text-light);margin-bottom:8px}
 .mc-day-r{display:flex;align-items:center;gap:10px;padding:6px 0;
@@ -6068,7 +6074,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .mc-day-go:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
 .mc-day-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
 /* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
-.mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:16px;
+.mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:var(--r-md);
   padding:12px 14px;background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .mc-act-t{font:700 0.7rem var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;
   color:var(--accent-text);margin-bottom:5px}
@@ -6090,7 +6096,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 /* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
 .ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
   max-width:720px;margin:0 auto;display:none;align-items:center;gap:8px;
-  border:1px solid var(--glass-border);border-radius:28px;padding:8px 8px 8px 18px;
+  border:1px solid var(--glass-border);border-radius:var(--r-pill);padding:8px 8px 8px 18px;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);
   box-shadow:var(--shadow-panel)}
 #view-aichat.active .ac-composer{display:flex}
@@ -6111,9 +6117,9 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ac-pend{flex:1 1 100%;padding:2px 2px 6px}
 .ac-pend[hidden]{display:none}
 .mc-pchip{display:inline-flex;align-items:center;gap:8px;max-width:100%;
-  border:1px solid var(--glass-border);border-radius:14px;padding:5px 6px 5px 5px;
+  border:1px solid var(--glass-border);border-radius:var(--r-md);padding:5px 6px 5px 5px;
   background:color-mix(in srgb,var(--text-light) 4%,transparent)}
-.mc-pthumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto}
+.mc-pthumb{width:34px;height:34px;border-radius:var(--r-sm);object-fit:cover;flex:0 0 auto}
 .mc-pdoc{font-size:1rem;flex:0 0 auto;padding-left:4px}
 .mc-pname{font-size:0.72rem;font-weight:600;color:var(--text-light);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -6122,7 +6128,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   font-size:0.7rem;display:grid;place-items:center}
 .mc-px:hover{color:var(--text-light)}
 /* attachments in the log — the photo bubble and the document chip */
-.mc-photo{align-self:flex-end;max-width:min(62%,260px);max-height:260px;border-radius:18px;
+.mc-photo{align-self:flex-end;max-width:min(62%,260px);max-height:260px;border-radius:var(--r-md);
   border:1px solid var(--glass-border);object-fit:cover}
 .mc-fchip{align-self:flex-end;font-size:0.68rem;font-weight:600;color:var(--text-light);
   border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px;
@@ -6131,7 +6137,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ac-sheet{position:fixed;inset:0;z-index:2050;display:flex;align-items:flex-end;justify-content:center;
   background:rgba(0,0,0,.35)}
 .ac-sheet[hidden]{display:none}
-.ac-sheet-card{width:100%;max-width:420px;margin:0 12px calc(12px + var(--safe-b));border-radius:26px;
+.ac-sheet-card{width:100%;max-width:420px;margin:0 12px calc(12px + var(--safe-b));border-radius:var(--r-panel);
   overflow:hidden;border:1px solid var(--glass-border);
   background:var(--glass-bg);backdrop-filter:blur(28px) saturate(1.4);-webkit-backdrop-filter:blur(28px) saturate(1.4);
   animation:acRise .35s var(--spring)}
@@ -6691,7 +6697,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   color: var(--text-muted);
   background: color-mix(in srgb, var(--text-light) 4%, transparent);
   border: 1px solid var(--glass-border);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   padding: 8px 12px;
   margin: 6px 0 10px;
   line-height: 1.6;
@@ -6868,3 +6874,8 @@ div.mo-landed { display: block; } /* the row lists under each figure */
     animation: none;
   }
 }
+
+/* Move money out: the two fields the owner TYPES money into stand at 44px and
+   17px — the one screen with a figure to enter, and 17px is also what stops iOS
+   zooming the page on focus. */
+#sweep-balance, #sweep-buffer { min-height: 44px; font-size: 1.0625rem; padding: 8px 14px; }

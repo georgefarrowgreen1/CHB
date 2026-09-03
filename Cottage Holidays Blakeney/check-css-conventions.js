@@ -123,6 +123,30 @@ function offGridSpacing(cssRaw) {
     return out;
 }
 
+// A raw corner radius: a `border-radius` (or a per-corner longhand) set to a
+// pixel value that is not one of the three radii — the cell (12), the card (20)
+// and the pill (999) — outside the --r-* token definitions. The whole-site HIG
+// review counted twelve distinct radii on one screen; three is the system, and
+// a new stray value should show up here rather than ship. `0`, `50%` and
+// `var(...)` are fine (a square, a circle, a token); 1–8px are hairline/inner
+// radii (a focus ring, a chip's inner curve) and are left alone.
+function rawRadii(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    css.split('\n').forEach((line, i) => {
+        if (/^\s*--r-[a-z]+\s*:/.test(line)) return;
+        for (const d of line.matchAll(/(?:^|[;{])\s*border-(?:[a-z]+-)?radius\s*:\s*([^;}]+)/g)) {
+            for (const tok of d[1].trim().split(/\s+/)) {
+                const m = tok.match(/^(\d+(?:\.\d+)?)px$/);
+                if (!m) continue;
+                const px = parseFloat(m[1]);
+                if (px > 8 && px !== 12 && px !== 20 && px < 999) out.push(`${i + 1}: ${tok}`);
+            }
+        }
+    });
+    return out;
+}
+
 // Tracked uppercase on words: text-transform: uppercase rule blocks. The
 // sentence-case pass took app.css from 49 to the brand voice's five (nav, the
 // hero kicker and subtitle, the section kicker); counted so the shout cannot
@@ -146,7 +170,7 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css) };
 }
 
 const DIMS = [
@@ -155,6 +179,7 @@ const DIMS = [
     { key: 'rawEnv', label: 'raw env(safe-area-inset)', fix: 'use var(--safe-t/r/b/l) so the account preview can zero it' },
     { key: 'offGrid', label: 'spacing value off the 4pt grid', fix: 'snap to a multiple of 4 (or use a --space-N token); 1–2px hairline nudges are allowed' },
     { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
+    { key: 'rawRadii', label: 'raw corner radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) for a cell or field, var(--r-lg) for a card, var(--r-pill) for a pill' },
 ];
 
 if (update) {
@@ -172,7 +197,7 @@ if (update) {
     }
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii`);
     process.exit(0);
 }
 
