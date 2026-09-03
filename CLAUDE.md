@@ -6186,7 +6186,14 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   match under-counted it by a third (303 against 479). Snapping is done BY
   COMPONENT with layout-test watching, never by sweep: half the off-grid values are
   five numbers (14, 10, 6, 18, 22px) and each is a 2px move, but a sweep across 600
-  sites is a layout question at 600 sites. **And it holds a HARD invariant: every
+  sites is a layout question at 600 sites. **The first batch** (twelve guest rules:
+  `.card` 15→16, `.input-glass` 15→16, `.hs-field` 15/18→16/20, the trust strip,
+  the section kicker's margin, `.modal-box` 35→36 and 26/22→24/24 on phones, the
+  glass dialog and reviews boxes 30→32, the daterange trigger, the terms foot,
+  the footer gap 6→8) took app.css 605 → 586 with every guest suite, layout-test
+  and a11y green — and each is a 1–2px move a screenshot cannot tell apart, which
+  is the point: the grid is felt as consistency, not seen as change. **And it
+  holds a HARD invariant: every
   `btn-*` class used in the markup or the JS templates has a rule** in one of the
   three sheets (round seven's `.btn-primary`, used on seven controls and defined
   nowhere) — vacuity-guarded at ≥5 tokens seen.
