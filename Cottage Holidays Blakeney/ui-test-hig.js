@@ -283,6 +283,41 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   ok(glow.blur !== null && glow.blur <= 4, `the hero button's shadow is a hairline lift, not a 24px glow (${glow.s})`);
   await page.close();
 
+  // ================= §10 THE HEADER IS A BAR (guest + owner, 390) =================
+  console.log('§10 the header is an edge-attached bar of blurred material');
+  const barOf = async (pg) => pg.evaluate(() => {
+    const h = document.querySelector('header');
+    const cs = getComputedStyle(h);
+    const r = h.getBoundingClientRect();
+    const st = document.createElement('style'); st.id = 'safe-probe-hig'; st.textContent = ':root{--safe-t:59px}'; document.head.appendChild(st);
+    const padWithNotch = parseFloat(getComputedStyle(h).paddingTop);
+    st.remove();
+    return { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
+      blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: parseFloat(cs.borderBottomWidth), pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height) };
+  });
+  page = await newPage(390, true);
+  const gbar = await barOf(page);
+  ok(gbar.top === 0 && gbar.left === 0 && gbar.width === gbar.inner, `guest: the bar is edge-attached and full width (${gbar.left},${gbar.top} ${gbar.width}/${gbar.inner})`);
+  ok(gbar.radius === '0px' && gbar.shadow === 'none', `no corners, no drop shadow (${gbar.radius} / ${gbar.shadow})`);
+  ok(/blur\(/.test(gbar.blur || ''), `the bar is blurred material (${gbar.blur})`);
+  ok(gbar.hairline === 1, 'with a hairline below');
+  ok(Math.round(gbar.padWithNotch - gbar.pad) === 59, `the safe-area inset is read into the bar's own padding (${gbar.pad} → ${gbar.padWithNotch})`);
+  ok(gbar.h >= 50 && gbar.h <= 64, `and it is a bar's height, not a pill's (${gbar.h}px)`);
+  await page.close();
+  page = await newPage(390, false);
+  await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
+  const abar = await barOf(page);
+  ok(abar.top === 0 && abar.left === 0 && abar.width === abar.inner && abar.radius === '0px' && abar.shadow === 'none' && /blur\(/.test(abar.blur || ''), `owner: the same bar (${abar.width}/${abar.inner}, ${abar.radius}, ${abar.shadow})`);
+  const cond = await page.evaluate(async () => {
+    const av = document.querySelector('.page-view.active') || document.body;
+    const sp = document.createElement('div'); sp.style.height = '2000px'; av.appendChild(sp);
+    await new Promise((r) => setTimeout(r, 100)); window.scrollTo(0, 600); await new Promise((r) => setTimeout(r, 900));
+    const h = document.querySelector('header'); const out = { condensed: h.classList.contains('header-condensed'), shadow: getComputedStyle(h).boxShadow, top: Math.round(h.getBoundingClientRect().top) };
+    window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 300)); sp.remove(); return out;
+  });
+  ok(cond.condensed && cond.shadow === 'none' && cond.top === 0, `condensed, the bar stays edge-attached and casts no shadow (${cond.shadow}, top ${cond.top})`);
+  await page.close();
+
   // ================= GUEST, 1280 — the sheet stays glass on a desktop =================
   page = await newPage(1280, true);
   await open(page, "openProperty('21a')", 900);

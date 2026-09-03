@@ -24,9 +24,9 @@
    button handler are unchanged — only the location differs. */
 body.guest-app:not(.owner-mode) header {
   display: flex;
-  padding: 10px 14px;
+  padding: calc(8px + var(--safe-t)) 14px 8px;
   gap: 10px;
-  width: calc(100% - 20px);
+  width: 100%;
   /* MUST out-rank the full-page guest screens (chat + auth are z-index 1390):
      the menu has to stay tappable so another tab always gets you out. The old
      bottom dock used 1400 for exactly this reason. */
@@ -124,13 +124,12 @@ body.guest-app:not(.owner-mode) header {
 body.guest-app:not(.owner-mode) header.header-condensed {
   /* The icons now scale rather than shrink their boxes, so the padding is what
      brings the bar's height down. */
-  padding: 3px 12px;
+  padding: calc(3px + var(--safe-t)) 12px 3px;
   /* The blur is deliberately left ALONE. Transitioning backdrop-filter re-blurs
      the bar every frame; setting it instantly instead just moves the cost into
-     one big hitch as the condense starts (measured: a 66ms stall). The bar
-     already reads as condensed from its size and shadow, so changing the blur
-     radius buys nothing for a cost that is visible either way. */
-  box-shadow: var(--shadow-sm, 0 6px 20px rgba(0, 0, 0, 0.18));
+     one big hitch as the condense starts (measured: a 66ms stall). A bar casts
+     no shadow condensed either — the hairline and the size say it. */
+  box-shadow: none;
 }
 body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock,
 body.guest-app:not(.owner-mode) header .logo-mark {
@@ -196,10 +195,10 @@ body.guest-app:not(.owner-mode) .guest-dock-btn:active img {
 /* Clear the header, which now carries the menu (≈58px tall at this padding, plus
    its own 20px top offset and the notch). */
 body.guest-app:not(.owner-mode) .hero {
-  padding-top: calc(100px + var(--safe-t));
+  padding-top: calc(80px + var(--safe-t));
 }
 body.guest-app:not(.owner-mode) .container {
-  padding-top: calc(100px + var(--safe-t));
+  padding-top: calc(80px + var(--safe-t));
 }
 
 /* The guest menu is a centred, floating "pill" — the same look and layout as the
