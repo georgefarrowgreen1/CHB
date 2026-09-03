@@ -12336,6 +12336,27 @@ body.light-mode .hero-scroll-cue {
 @keyframes chbCrossBack { from { opacity: 0; transform: translateX(-8px); } }
 @keyframes chbMoOut { to { opacity: 0; transform: translateX(calc(var(--mx, 1) * -8px)); } }
 @keyframes chbMoIn { from { opacity: 0; transform: translateX(calc(var(--mx, 1) * 8px)); } }
+/* CONTINUOUS CORNERS (the squircle) behind @supports; other engines keep the arc. */
+@supports (corner-shape: superellipse(1.5)) {
+  header,
+  .glass-panel,
+  .card,
+  .modal-box,
+  .reviews-modal-box,
+  .terms-modal-box,
+  .glass-dialog-box,
+  .datepicker-card,
+  .btn-glass,
+  .btn-primary,
+  .btn-sm,
+  .input-glass,
+  .hs-field,
+  .hs-chip,
+  .hs-mode-btn,
+  .chb-sheet .modal-box {
+    corner-shape: superellipse(1.5);
+  }
+}
 /* SHEET / ALERT — visibility rides the exit (out of the tab order, not just sight). */
 @keyframes chbFadeIn { from { opacity: 0; } }
 @keyframes chbFadeOut { to { opacity: 0; visibility: hidden; } }
