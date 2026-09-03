@@ -10651,13 +10651,17 @@ function bhubFoldToggle(key) {
     const btn = document.querySelector(`.bhub-fold-row[data-args*='"${key}"']`);
     if (btn) btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
 }
+// The disclosure indicator, stated once: a stroke chevron (a symbol, never the
+// "›" text glyph). Every row that discloses — fold groups, the payline, the
+// cottage sections, the mailbox context — carries this same span.
+const BHUB_CHEV = '<span class="bhub-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></span>';
 function bhubFoldGrp(key, label, sub, sumHtml, foldHtml, attrs) {
     const open = __bhubOpenFolds.has(key);
     return `
         <section class="bhub-card glass-panel bhub-fold-grp" data-grp="${key}"${attrs || ''}>
             <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${key}">
                 <span class="bhub-fold-lbl">${label}${sub ? `<small class="bhub-fold-sub">${sub}</small>` : ''}</span>
-                <span class="bhub-fold-right">${sumHtml || ''}<span class="bhub-chev" aria-hidden="true">›</span></span>
+                <span class="bhub-fold-right">${sumHtml || ''}${BHUB_CHEV}</span>
             </button>
             <div class="bhub-fold" id="bhub-fold-${key}"${open ? '' : ' hidden'}><div class="bhub-foldin">${foldHtml}</div></div>
         </section>`;
@@ -11538,7 +11542,7 @@ function renderBookingHub() {
     // and Emails pinned their capsules to the right rail. Reported from a
     // phone; the same booking's four rows read as two different layouts.
     const payRow = (mainHtml, figHtml) =>
-        `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${mainHtml}<span class="bhub-fold-right">${figHtml}<span class="bhub-chev" aria-hidden="true">›</span></span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
+        `<button type="button" class="bhub-payline bhub-fold-row bhub-disclose-btn" data-act="bhubMoneyExpand" aria-expanded="${moreWasOpen ? 'true' : 'false'}" aria-controls="bhub-money-more">${mainHtml}<span class="bhub-fold-right">${figHtml}${BHUB_CHEV}</span>${depSub ? `<span class="bhub-payline-sub bhub-payline-subfull">${depSub}</span>` : ''}</button>`;
     const payline = gt.fullyPaid
         ? payRow(paylineMain('Paid in full'), `<span class="bhub-payline-fig">${gbp(gt.total)} <span class="bhub-payok" aria-hidden="true">✓</span></span>`)
         : gt.paid > 0.001
@@ -14333,7 +14337,7 @@ function settingsOpenAccom(k) {
             return `<section class="bhub-card glass-panel bhub-fold-grp ac-card" data-grp="${escapeHtml(key)}">
                 <button type="button" class="bhub-fold-row" ${chbAttrs('bhubFoldToggle', key)} aria-expanded="${open ? 'true' : 'false'}" aria-controls="bhub-fold-${escapeHtml(key)}">
                     <span class="bhub-fold-lbl">${s.label}<small class="bhub-fold-sub">${s.sub}</small></span>
-                    <span class="bhub-fold-right">${right(s.id)}<span class="bhub-chev" aria-hidden="true">›</span></span>
+                    <span class="bhub-fold-right">${right(s.id)}${BHUB_CHEV}</span>
                 </button>
                 <div class="bhub-fold" id="bhub-fold-${escapeHtml(key)}"${open ? '' : ' hidden'}><div class="acr-body">${accomSectionHtml(k, s.id)}</div></div>
             </section>`;
@@ -16871,14 +16875,14 @@ function renderMoneyOverview() {
         ? bhubFoldGrp('mocollect', '<span style="color:var(--warn-text);">To collect</span>',
             escapeHtml(`${dueNowSum > 0.005 ? gbp(dueNowSum) + ' now' : ''}${dueNowSum > 0.005 && laterSum > 0.005 ? ' · ' : ''}${laterSum > 0.005 ? gbp(laterSum) + ' later' : ''}`),
             `<span class="bhub-payline-fig">${gbp(collectTotal)}</span>`, collectFold)
-        : bhubFoldGrp('mocollect', '<span style="color:var(--ok-text);">To collect</span>',
+        : bhubFoldGrp('mocollect', 'To collect',
             // "Paid up" is a claim — with an overdue row above, the sub AND
             // the capsule both stand down (green ✓ beside a red exception is
             // the colour contradicting the words).
             overdueRows.length ? 'see the overdue above' : 'every booking is paid up',
             overdueRows.length ? stCap('unk', 'nothing due') : stCap('ok', 'Paid up'),
             `<div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open Payments &amp; balances</button></div>`);
-    const moveGrp = bhubFoldGrp('momove', '<span style="color:var(--ok-text);">To move out</span>', 'paid in, net of fees',
+    const moveGrp = bhubFoldGrp('momove', 'To move out', 'paid in, net of fees',
         `<span id="mo-move-fig">${stCap('unk', 'working it out…')}</span>`,
         `<div id="mo-move-rows" class="bhub-mut" style="margin-bottom:6px;">Checking the payout data…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'sweep')}>Open Move money out</button></div>`);
@@ -16886,7 +16890,9 @@ function renderMoneyOverview() {
         `<span id="mo-back-fig">${stCap('unk', 'checking…')}</span>`,
         `<div id="mo-back-rows" class="bhub-mut" style="margin-bottom:6px;">Checking…</div>
          <div class="bhub-btn-row bhub-act-links"><button class="bhub-actlink" ${chbAttrs('accountsOpen', 'payments')}>Open the deposits queue</button></div>`);
-    const booksGrp = bhubFoldGrp('mobooks', `<span style="color:var(--ok-text);">The books · ${taxYearShort(curTY)}</span>`, 'after fees and expenses',
+    // A row TITLE stays in ink; the trailing figure carries the state (the
+    // capsule-is-state rule, applied to the landing's own labels).
+    const booksGrp = bhubFoldGrp('mobooks', `The books · ${taxYearShort(curTY)}`, 'after fees and expenses',
         `<span class="bhub-payline-fig" id="mo-books-fig" style="color:var(--ok-text);">${gbp(netTY)}</span>`,
         `<div id="mo-books-rows" class="bhub-mut" style="margin-bottom:6px;">${gbp(receivedTY)} received · ${gbp(expTY)} expenses logged — card fees load with the full report.</div>
          <div class="bhub-btn-row bhub-act-links">
@@ -21119,7 +21125,7 @@ function renderKeysafe() {
         const html = '<section class="bhub-card glass-panel bhub-fold-grp ks-card" data-grp="' + e(key) + '">'
             + '<button type="button" class="bhub-fold-row" ' + chbAttrs('bhubFoldToggle', key) + ' aria-expanded="' + (open ? 'true' : 'false') + '" aria-controls="bhub-fold-' + e(key) + '">'
             + '<span class="bhub-fold-lbl"><span class="prop-tag tag-' + e(pk) + '">' + e(rec.name || (propertyMeta[pk] || {}).name || pk) + '</span><small class="bhub-fold-sub">' + sub + '</small></span>'
-            + '<span class="bhub-fold-right">' + cap + '<span class="bhub-chev" aria-hidden="true">›</span></span></button>'
+            + '<span class="bhub-fold-right">' + cap + BHUB_CHEV + '</span></button>'
             + '<div class="bhub-fold" id="bhub-fold-' + e(key) + '"' + (open ? '' : ' hidden') + '><div class="bhub-foldin">' + fold + '</div></div></section>';
         return { due, html };
     }).filter(Boolean);
@@ -29891,7 +29897,7 @@ function mbxContextHtml(fromEmail, shownName) {
     return `<details class="mbx-ctx-d">
         <summary class="mbx-ctx-drow">
             <span class="mbx-ctx-lbl">${up ? 'Their booking' : 'Known guest'}${named ? '' : ' · ' + mbxEsc(name)}<small>${mbxEsc(subTxt)}</small></span>
-            <span class="mbx-ctx-right">${verdict}<span class="bhub-chev" aria-hidden="true">›</span></span>
+            <span class="mbx-ctx-right">${verdict}${BHUB_CHEV}</span>
         </summary>
         <div class="mbx-ctx">${chips.join('')}</div>
     </details>`;
@@ -30183,7 +30189,7 @@ function mbxEarlierHtml(uid) {
     return `<details class="mbx-ctx-d mbx-earlier">
         <summary class="mbx-ctx-drow">
             <span class="mbx-ctx-lbl">Earlier in this conversation<small>${rest.length} email${rest.length > 1 ? 's' : ''}${rest.some((m) => !m.seen) ? ' · one is unread' : ''}</small></span>
-            <span class="mbx-ctx-right"><span class="bhub-chev" aria-hidden="true">›</span></span>
+            <span class="mbx-ctx-right">${BHUB_CHEV}</span>
         </summary>
         <div class="mbx-chain">
             ${rest

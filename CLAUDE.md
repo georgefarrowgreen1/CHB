@@ -2304,6 +2304,71 @@ even (caps run ~20% wider than lowercase).
   and "Call to discuss" in sentence case) and ui-test-manage's caption check
   re-aimed (sentence case at 600 instead of uppercase).
 
+## The HIG systems — what the whole-site review found stated once each (built)
+
+**Asked for as a whole-site HIG proposal, then "Show me a working demo", then
+"Build it".** Three independent reviews over 66 captures found the same row,
+caption, radius and material stated differently on every screen; the demo layered
+the CSS-only systems over the real app and this PR restates each rule IN PLACE.
+Gated by **`ui-test-hig.js`** (9 sections, ~60 checks), break-tested five ways
+(the sibling join, the spine media, the sheet surface, the pay CTA, the calm
+capsule — 2/4/1/1/1 fire).
+- **ONE MATERIAL FOR LISTS.** `bhubFoldGrp` sections (hub, Payments, Manage, Inbox,
+  night-ready) and `#needs-you-list .ny-row`s JOIN: no shadow, a hairline, radius
+  only on a run's ends, `.bhub-fold-grp + .bhub-fold-grp { margin-top: -12px }`
+  closing the containers' own gap (a caption or card between two keeps it). **NB
+  `body.light-mode .glass-panel` is (0,2,1)** — it outranked the two-class rule and
+  the shadow stayed while the gate said "none" on the rule; restated at that
+  specificity, with the glass-panel hover LIFT opted out (a list cell does not rise).
+  The Needs-you rail (`border-left`) and the icon tile fill are gone: the capsule
+  says the state once. **ONE EXEMPTION, gated**: `#calendar-list`'s per-cottage
+  groups keep their own corners and 16px of air — an owner's ask ("clear air
+  between the cottages", ui-test-manage §3) outranks the list rule, and the join
+  rule left them 5px apart, which is neither.
+- **THE CHEVRON IS `BHUB_CHEV`** — one stroke-SVG span constant used at all seven
+  disclosure sites (one of them string-concatenated, hence the constant rather than
+  a template). `.bhub-chev` is a 14px box; the `›` glyph is gone. ui-test-hub and
+  backoffice-motion read its rect and transform, both untouched.
+- **ONE CAPTION TIER.** Tracked uppercase stays for section headers OUTSIDE a container
+  (`bhub-grpcap`, `bo-sec-title`, `cmdk-board-cap`, `acr-cap`); `bhub-next-cap`,
+  `bhub-eyebrow`, `bhub-msg-cap` and `ny-act` are sentence case at 0.82–0.84rem/600
+  ("Next · 3 of 5 · Balance", "Enquiry · asked yesterday"). admin.css uppercase
+  ratchet 34 → **30**.
+- **CALM IS QUIET.** `.st-cap.is-ok` is muted text with `.st-tick` as the one green
+  mark; warn/danger keep their tint. Payments' four answer titles lost their inline
+  `--ok-text` (a title stays in ink; the trailing figure carries the state). The hub ⋯
+  is a circle (`--r-pill`), matching the sticky's phone/mail buttons.
+- **THE PHONE'S CHROME.** ≤640 the spine is the sentence then ONE scrolling row of
+  32px chips (`.spine-duties` flex/nowrap/overflow-x auto; hit region `-6px 0` so the
+  chip still reaches 44) — 77px tall at 390 against ~200. **Two traps the row
+  taught**: a column flex that still WRAPS sizes its one line to the items'
+  max-content (597px at 390 — the page scrolled sideways, railspine §5 caught it),
+  so `flex-wrap: nowrap` is load-bearing; and a scroll container CLIPS its
+  children's `::before` hit regions, so the row carries 8px of padding cancelled
+  by margin to keep the 44px reach inside the scroll box (smallthings §4 caught
+  that one). And **`#admin-head-title`
+  is `display: none` below 480**: with six dock icons the slot painted "T." for Today
+  and "D" for Debbie. ui-test-adminmenu was RE-AIMED, not patched — hidden at 390,
+  named at 480 (a new case), the name still SET at both.
+- **GUEST: WELLS LIFT, SHEETS ARE OPAQUE.** `--well-bg` (white 55% light / 5% dark)
+  replaces the black-alpha stains on `.enq-host`, `.date-range-trigger`,
+  `.guest-price-box`; `.bkflow` is no longer a box in a box. ≤640 the `.chb-sheet`
+  boxes and `.datepicker-card` take `--sheet-surface` (the search window's own
+  `#f7f4ee` / `#14181d`, already in a11y SURFACES) with no blur — blur over the scrim
+  composited to flat grey. At 1280 the modal keeps its glass (gated). The pay button
+  takes the accent (green stays for done); free calendar nights are unfilled with a
+  hairline; `.avail-cell`/`.dp-day` take `--r-sm`; `.back-link` is 500/1rem in
+  accent-text; footer links are sentence case in two left columns at 44px ≤480;
+  `.btn-glass.btn-accent`'s 24px rose glow is a 2px lift; `.hub-count` drops its
+  border; `.chat-meta` lifts to the 11px floor.
+- **NOT built from the demo**: the search rows' shadows (they are inset selection
+  edges, not drop shadows — the metric miscounted them) and the cottage page's sans
+  h2 (the overriding rule was not found; verify before claiming). Still proposals: the
+  type scale, the header as a bar, radii tokens beyond cells, grid batch two.
+- Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
+  rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
+  chevron constant).
+
 ## Seven small things — round seven of the measured sweep (built)
 
 **Asked for as "keep going" after the HIG assessment; nineteen guest and owner

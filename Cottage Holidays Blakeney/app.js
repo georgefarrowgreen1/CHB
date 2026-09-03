@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 590;
+const ADMIN_BUNDLE_V = 591;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 246;
+const ADMIN_CSS_V = 247;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4444,7 +4444,7 @@ async function renderGuestBookings() {
                         <div class="gb2-addr">${escapeHtml(addr || 'Address available on confirmation.')} · in ${escapeHtml(b.checkInTime || '15:00')} / out ${escapeHtml(b.checkOutTime || '10:00')}</div>
                     </div></div>
                     ${upcoming ? guestFlowHtml(propKey, b, payToken) : guestDepositTrackerHtml(b)}
-                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
+                    ${upcoming && !gt.fullyPaid && payToken && !bookingOwnerArranged(b) ? `<div class="gb2-cta"><button class="btn-glass btn-sm" style="background:var(--accent);border-color:transparent;color:var(--accent-ink);" ${chbAttrs('openPayView', String(payToken), b.dbId)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay ${guestPayCta(b, gt).word} ${gbp(guestPayCta(b, gt).amount)}</button></div>` : ''}
                     ${bookAgainLead}
                     ${showReview ? guestReviewForm(propKey) : ''}
                     <div class="card-actions gb2-links">
@@ -18878,7 +18878,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'case01';
+    const BUILD = 'higsys01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

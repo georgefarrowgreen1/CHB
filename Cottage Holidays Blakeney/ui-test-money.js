@@ -188,7 +188,12 @@ let mailWillFail = false;
   }));
   ok(capChk.badCap && capChk.dotGone, 'the overdue figure is a red warning capsule, and it is the row\'s one mark');
   ok(ov.pulse, 'the pulse line is present');
-  ok(ov.gaps.length >= 5 && ov.gaps.every((g) => g >= 8), `every block has breathing room between it and the next (${ov.gaps.join(',')})`);
+  // RE-AIMED for the inset-group material: adjacent answers JOIN (gap 0, one
+  // hairline between) and the AIR sits between RUNS — at the caption that
+  // separates the exceptions from the five answers. Both halves asserted, so
+  // the list can neither drift back to islands nor lose its section break.
+  ok(ov.gaps.length >= 5 && ov.gaps.every((g) => g === 0 || g >= 8), `every block either joins its neighbour or has air (${ov.gaps.join(',')})`);
+  ok(ov.gaps.some((g) => g === 0) && ov.gaps.some((g) => g >= 8), 'adjacent answers join, and the caption break keeps its air');
   ok(ov.rails.lefts.length === 1 && ov.rails.rights.length === 1, `every card stands on ONE rail (lefts ${ov.rails.lefts.join('/')}, rights ${ov.rails.rights.join('/')})`);
   // The books figure is the SERVER'S net once the async fill lands
   // (656.20 rental + 50 kept − 9.80 fees − 120 expenses = 576.40).

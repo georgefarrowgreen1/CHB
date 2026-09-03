@@ -114,6 +114,11 @@ textarea:focus-visible,
 :root {
   --dark-grey: #121316;
   --glass-bg: rgba(255, 255, 255, 0.018);
+  /* A WELL LIFTS, IT DOES NOT STAIN: the inset note/field/box ground (light
+     mode paints it white at 55%; black alpha made the notes the darkest thing). */
+  --well-bg: rgba(255, 255, 255, 0.05);
+  /* A phone SHEET is opaque over the scrim (the search window's own surface). */
+  --sheet-surface: #14181d;
   --glass-hover: rgba(255, 255, 255, 0.06);
   --glass-border: rgba(255, 255, 255, 0.06);
   --glass-highlight: rgba(255, 255, 255, 0.15);
@@ -267,6 +272,8 @@ html.theme-light-boot body,
 body.light-mode {
   --dark-grey: #f5f1e9; /* warm linen / sand page ground */
   --glass-bg: rgba(255, 255, 255, 0.78); /* frosted white glass */
+  --well-bg: rgba(255, 255, 255, 0.55);
+  --sheet-surface: #f7f4ee;
   --glass-hover: rgba(255, 255, 255, 0.92);
   --glass-border: rgba(28, 46, 58, 0.12);
   --glass-highlight: rgba(28, 46, 58, 0.2);
@@ -1137,7 +1144,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
 /* ---- Custom glass date-range picker (customer booking form) ---- */
 .date-range-trigger {
   width: 100%;
-  background: rgba(0, 0, 0, 0.14);
+  background: var(--well-bg);
   border: 1px solid var(--glass-border);
   color: var(--text-light);
   padding: 16px;
@@ -1315,7 +1322,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   justify-content: center;
   font-size: 0.85rem;
   color: var(--text-light);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   border: 1px solid transparent;
   transition:
@@ -2221,8 +2228,10 @@ a.card {
   align-items: start;
 }
 .back-link {
-  color: var(--text-muted);
-  font-size: 0.9rem;
+  /* A back link is a quiet control in the accent ink, not a 600-weight line
+     heavier than the subtitle beneath it. */
+  color: var(--accent-text);
+  font-size: 1rem;
   cursor: pointer;
   display: inline-block;
   /* Padded hit area: this is the ONLY back control on every drilled Manage
@@ -2230,7 +2239,7 @@ a.card {
      unchanged (padding replaces most of the old 20px margin). */
   padding: 10px 14px 10px 0;
   margin-bottom: 10px;
-  font-weight: 600;
+  font-weight: 500;
 }
 .back-link:hover {
   color: var(--text-light);
@@ -3001,7 +3010,7 @@ a.card {
   padding: 12px 14px;
   border: 1px solid var(--glass-border);
   border-radius: var(--r-md);
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--well-bg);
 }
 .enq-host-ic {
   width: 40px;
@@ -5507,7 +5516,7 @@ body.light-mode .tag-pimpernel {
   transform: translateX(-50%) translateY(0);
 }
 .chat-meta {
-  font-size: 0.64rem;
+  font-size: 0.7rem;
   opacity: 0.7;
   margin-top: 4px;
 }
@@ -6753,7 +6762,7 @@ body.owner-mode .chat-widget {
   align-items: center;
   justify-content: center;
   font-size: 0.82rem;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   color: var(--text-light);
   line-height: 1.04;
 }
@@ -6768,8 +6777,11 @@ body.owner-mode .chat-widget {
 .avail-cell.empty {
   background: transparent;
 }
+/* FREE IS THE DEFAULT, NOT THE MARK: a free night is an unfilled hairline cell;
+   only a taken night carries a mark (27 green tiles a month said nothing). */
 .avail-cell.free {
-  background: rgba(76, 175, 80, 0.12);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--glass-border);
 }
 .avail-cell.taken {
   background: rgba(255, 255, 255, 0.04);
@@ -8570,7 +8582,6 @@ body.light-mode .feed-dot-bad {
   padding: 8px 10px;
   border-radius: var(--r-md, 14px);
   background: var(--info-bg, rgba(56, 132, 197, 0.16));
-  border: 1px solid var(--info, rgba(56, 132, 197, 0.5));
   line-height: 1;
 }
 .hub-count-n {
@@ -9422,12 +9433,11 @@ body.light-mode .feed-dot-bad {
 /* Booking flow on a My Stays card — the same unified progress the owner sees,
    guest-worded. A wrapping row of stage pills (done / now / upcoming) + one
    clear next step the guest can act on. */
+/* No box in a box: the progress pills sit in the card's own flow under their
+   caption — a grey well inside a white card was three nested surfaces. */
 .bkflow {
   margin: 16px 0 4px;
-  padding: 15px 16px 14px;
-  border-radius: 16px;
-  background: rgba(127, 127, 127, 0.06);
-  border: 1px solid var(--glass-border, rgba(127, 127, 127, 0.16));
+  padding: 4px 0 0;
 }
 .bkflow-lbl {
   font-size: 0.76rem;
@@ -9582,7 +9592,7 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
 }
 .guest-price-box {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--well-bg);
   border: 1px solid var(--glass-border);
   border-radius: 14px;
   padding: 16px 18px;
@@ -9780,6 +9790,15 @@ body.light-mode .feed-dot-bad {
   .modal-overlay.chb-sheet .modal-box {
     padding-bottom: calc(24px + var(--safe-b));
   }
+  /* A SHEET IS OPAQUE: blur over the dark scrim composited the body to flat
+     mid-grey (~#d5d5d5). Apple sheets are opaque over a scrim; vibrancy is for bars. */
+  .modal-overlay.chb-sheet .modal-box,
+  .modal-overlay.chb-sheet .terms-modal-box,
+  .datepicker-card {
+    background: var(--sheet-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   .modal-overlay.chb-sheet .terms-modal-foot {
     padding-bottom: calc(18px + var(--safe-b));
   }
@@ -9856,9 +9875,22 @@ body.light-mode .feed-dot-bad {
   gap: 8px 24px;
   margin: 2px 0 16px;
 }
+/* A SITEMAP IS NOT THE BRAND VOICE: nine caps links wrapped to four centred
+   lines at 390. Sentence case, two left-aligned columns on a phone, 44px rows. */
+@media (max-width: 480px) {
+  .footer-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    justify-items: start;
+    gap: 0 16px;
+    text-align: left;
+  }
+}
 .footer-links a {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.9rem;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
   text-decoration: none;
   transition: color 0.2s var(--fluid-bezier);
@@ -9869,8 +9901,8 @@ body.light-mode .feed-dot-bad {
      to hit with a thumb. */
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 2px 0;
+  min-height: 44px;
+  padding: 0;
 }
 .footer-links a:hover,
 .footer-links a:focus-visible {
@@ -11157,7 +11189,8 @@ body.light-mode .hs-field:hover {
   border-color: transparent;
   font-weight: 600;
   padding: 17px;
-  box-shadow: 0 8px 24px var(--accent-soft);
+  /* No filled button glows: a rose-tinted 24px drop under an accent fill. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 #hs-search-btn:hover,
 /* In the back office the accent is a COLOUR, not a size: an accent action

@@ -135,7 +135,13 @@ const { boot } = require('./ui-test-lib');
     // cleanly, so this is where §1 ends.
     const mid = await page.evaluate(async () => {
         window.dpChangeMonth(1);
-        await new Promise((r) => requestAnimationFrame(r));
+        // Seek in the SAME task as the page: dpChangeMonth adds the class
+        // synchronously and swaps to the in-phase on an 80ms timer, so waiting
+        // even one frame under a loaded runner (CI runs three suites at once)
+        // could land after the out-phase had ended — the sample then read
+        // dpMoIn and called a working slide a teleport. getAnimations() flushes
+        // style, so the out animation is readable at once and the pause below
+        // holds it before any timer can fire.
         const g = document.getElementById('dp-grid');
         const tl = document.getElementById('dp-title');
         const wd = document.querySelector('.dp-weekdays');
