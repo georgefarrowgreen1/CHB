@@ -121,6 +121,8 @@ textarea:focus-visible,
   --sheet-surface: #14181d;
   --glass-hover: rgba(255, 255, 255, 0.06);
   --glass-border: rgba(255, 255, 255, 0.06);
+  /* The header BAR's material: the page ground at 72% under a 20px blur. */
+  --bar-bg: rgba(20, 24, 29, 0.72);
   --glass-highlight: rgba(255, 255, 255, 0.15);
   /* Mobile menu: heavily frosted dark glass — page shows through, blurred */
   --mobile-glass: rgba(18, 19, 22, 0.38);
@@ -276,6 +278,7 @@ body.light-mode {
   --sheet-surface: #f7f4ee;
   --glass-hover: rgba(255, 255, 255, 0.92);
   --glass-border: rgba(28, 46, 58, 0.12);
+  --bar-bg: rgba(247, 244, 238, 0.72);
   --glass-highlight: rgba(28, 46, 58, 0.2);
   /* Mobile menu: heavily frosted light glass — page shows through, blurred */
   --mobile-glass: rgba(245, 241, 233, 0.42);
@@ -617,15 +620,17 @@ select,
 }
 
 /* --- RESPONSIVE HEADER --- */
+/* THE HEADER IS A BAR (approved demo): edge-attached, full width, blurred page
+   ground, a hairline, no shadow — the pill's own shadow was the heaviest thing
+   on most screens. The safe-area inset lives in the bar's PADDING (gated), and
+   padding-inline is .container's own 1200px centring, so nothing inside moves. */
 header {
   position: fixed;
-  top: calc(20px + var(--safe-t));
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  max-width: 1200px;
+  top: 0;
+  left: 0;
+  width: 100%;
   z-index: 1000;
-  padding: 15px 30px;
+  padding: calc(8px + var(--safe-t)) max(16px, calc((100% - 1200px) / 2)) 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -635,19 +640,32 @@ header {
     opacity 0.45s var(--fluid-bezier);
   will-change: transform;
 }
-/* Hidden state: slide up out of view while keeping horizontal centering */
+/* The bar's MATERIAL, restated at (0,2,2): `body.light-mode .glass-panel` is
+   (0,2,1) and would otherwise put its drop shadow and 28px radius back. */
+header.glass-panel,
+body.light-mode header.glass-panel {
+  background: var(--bar-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 0;
+  border-bottom: 1px solid var(--glass-border);
+  border-radius: 0;
+  box-shadow: none;
+}
+/* Hidden state: slide up out of view */
 header.header-hidden {
-  transform: translateX(-50%) translateY(-150%);
+  transform: translateY(-150%);
   opacity: 0;
   pointer-events: none;
 }
 /* The header is a glass-panel, but it must NOT lift/shift on hover the way
-           cards do — that hover transform was overriding its centering and making
-           it jump. Pin its transform in every non-hidden state. */
+   cards do. Pin its transform in every non-hidden state. */
 header.glass-panel:not(.header-hidden):hover,
 header.glass-panel:not(.header-hidden):active,
 header.glass-panel:not(.header-hidden):focus-within {
-  transform: translateX(-50%);
+  transform: none;
+  background: var(--bar-bg);
+  box-shadow: none;
 }
 .logo {
   display: flex;
@@ -1881,7 +1899,8 @@ html.js-reveal .reveal.in-view {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: calc(clamp(90px, 12vw, 120px) + var(--safe-t)) clamp(16px, 4vw, 20px) var(--space-5);
+  /* Clears the bar (54px on a phone, 62px on a desktop) plus a beat of air. */
+  padding: calc(clamp(78px, 8vw, 92px) + var(--safe-t)) clamp(16px, 4vw, 20px) var(--space-5);
 }
 .container.wide {
   max-width: 1500px;
@@ -10462,9 +10481,7 @@ p.lead[data-edit-text] {
     --r-panel: 28px;
   } /* header + all panels share the tighter phone curvature */
   header {
-    padding: 12px 18px;
-    width: calc(100% - 24px);
-    top: calc(10px + var(--safe-t));
+    padding: calc(8px + var(--safe-t)) 16px 8px;
   }
   nav ul {
     display: none;
@@ -10711,7 +10728,7 @@ body.owner-mode .footer-meta {
            and needs nothing reserved at the bottom (the 110px that cleared the old
            floating dock was just a void once it moved). */
 body.owner-mode .container {
-  padding-top: calc(100px + var(--safe-t));
+  padding-top: calc(80px + var(--safe-t));
   padding-bottom: 40px;
 }
 /* Nothing floats over the footer any more. */

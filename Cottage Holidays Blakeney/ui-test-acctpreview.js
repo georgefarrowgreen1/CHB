@@ -208,13 +208,17 @@ const acctPayload = {
         const set = (v) => {
             const st = document.getElementById('safe-probe') || document.createElement('style');
             st.id = 'safe-probe';
-            st.textContent = `:root{--safe-t:${v}px;--safe-b:${v}px;}`;
+            // The bar TRANSITIONS its padding (the condense), so a synchronous
+            // read after flipping the token would catch the old value mid-flight.
+            st.textContent = `:root{--safe-t:${v}px;--safe-b:${v}px;} header{transition:none!important}`;
             document.head.appendChild(st);
         };
+        // The header is an edge-attached BAR: the inset is read into its own
+        // padding-top (its `top` is 0 by design), so that is the property measured.
         set(59);
-        const at59 = { header: px('header', 'top'), container: px('.container', 'paddingTop') };
+        const at59 = { header: px('header', 'paddingTop'), container: px('.container', 'paddingTop') };
         set(0);
-        const at0 = { header: px('header', 'top'), container: px('.container', 'paddingTop') };
+        const at0 = { header: px('header', 'paddingTop'), container: px('.container', 'paddingTop') };
         set(59); // leave the notch simulated for anything after this
         return { at59, at0 };
     });
@@ -223,7 +227,7 @@ const acctPayload = {
     ok(responds.at59.container - responds.at0.container === SAFE_T,
         `so does the page body (${responds.at0.container}px → ${responds.at59.container}px)`);
     const dbl = await inFrame.evaluate(() => ({
-        headerTop: Math.round(parseFloat(getComputedStyle(document.querySelector('header')).top) || 0),
+        headerTop: Math.round(parseFloat(getComputedStyle(document.querySelector('header')).paddingTop) || 0),
         containerPad: Math.round(parseFloat(getComputedStyle(document.querySelector('.container')).paddingTop) || 0),
     }));
     ok(dbl.headerTop === responds.at0.header,

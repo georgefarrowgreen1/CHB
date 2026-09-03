@@ -261,13 +261,15 @@ function stub(page, mode, mine) {
     const supports = CSS.supports('corner-shape', 'superellipse(1.5)');
     const panel = getComputedStyle(document.querySelector('.glass-panel')).cornerShape;
     const btn = getComputedStyle(document.querySelector('.btn-glass')).cornerShape;
-    const r = parseFloat(getComputedStyle(document.querySelector('header')).borderTopLeftRadius);
+    // The header is an edge-attached BAR now (radius 0 by design), so the
+    // "radius untouched" half reads a panel that still has one: the first card.
+    const r = parseFloat(getComputedStyle(document.querySelector('.card.glass-panel') || document.querySelector('.glass-panel:not(header)')).borderTopLeftRadius);
     return { rule, supports, panel, btn, r };
   });
   ok(cs7.rule && /superellipse\(1\.5\)/.test(cs7.rule.cond) && /\.glass-panel/.test(cs7.rule.sel) && /\.btn-glass/.test(cs7.rule.sel), 'the squircle is declared behind @supports for panels and buttons', JSON.stringify(cs7.rule));
   if (cs7.supports) ok(cs7.panel === 'superellipse(1.5)' && cs7.btn === 'superellipse(1.5)', `…and this engine draws it (${cs7.panel} / ${cs7.btn})`);
   else console.log('  · this engine has no corner-shape; the arc stays (declaration checked above)');
-  ok(cs7.r >= 24, `…with the radius itself untouched (header ${cs7.r}px)`);
+  ok(cs7.r >= 20, `…with the radius itself untouched (card ${cs7.r}px)`);
   await page.close();
 
   // ============================================================

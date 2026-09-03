@@ -1656,9 +1656,9 @@ body.owner-mode header .logo-text {
 }
 body.owner-mode header {
   display: flex;
-  padding: 10px 14px;
+  padding: calc(8px + var(--safe-t)) 14px 8px;
   gap: 10px;
-  width: calc(100% - 20px);
+  width: 100%;
   /* The floating dock sat at 1500 so it stayed above the back office; the header
      inherits that job now. Still below the real modals (2000+), which SHOULD
      cover the nav. */
@@ -1754,8 +1754,8 @@ body.owner-mode header .logo-mark {
   will-change: transform;
 }
 body.owner-mode header.header-condensed {
-  padding: 3px 12px;
-  box-shadow: var(--shadow-sm, 0 6px 20px rgba(0, 0, 0, 0.18));
+  padding: calc(3px + var(--safe-t)) 12px 3px;
+  box-shadow: none;
 }
 body.owner-mode header.header-condensed .admin-dock {
   transform: scale(0.895);

@@ -2363,8 +2363,19 @@ capsule — 2/4/1/1/1 fire).
   border; `.chat-meta` lifts to the 11px floor.
 - **NOT built from the demo**: the search rows' shadows (they are inset selection
   edges, not drop shadows — the metric miscounted them) and the cottage page's sans
-  h2 (the overriding rule was not found; verify before claiming). Still proposals: the
-  type scale, the header as a bar, radii tokens beyond cells, grid batch two.
+  h2 (the overriding rule was not found; verify before claiming).
+- **THE HEADER IS A BAR** (the demo was asked for, then "Build all"): edge-attached,
+  full width, `--bar-bg` (the page ground at 72%) under a 20px blur, a hairline, no
+  shadow — the pill's own shadow was the heaviest thing on most screens. ONE rule in
+  app.css with the material restated at (0,2,2) (`body.light-mode .glass-panel` is
+  (0,2,1)); guest-app.css and admin.css follow (width 100%, no condensed shadow).
+  **The safe-area inset moved from `top` into the bar's PADDING** —
+  ui-test-acctpreview §C, which measures that the inset is read once and never twice
+  inside the preview frame, reads `padding-top` now. `padding-inline` is
+  `.container`'s own 1200px centring arithmetic, so the crown and nav sit where they
+  did. Containers start higher (90–120 → 78–92 + inset; owner/shell 100 → 80). Gated
+  by ui-test-hig §10; ui-test-smallthings §7's "radius untouched" half reads a card,
+  the bar having none by design.
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
   rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).
