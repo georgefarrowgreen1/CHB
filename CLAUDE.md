@@ -2390,6 +2390,35 @@ capsule — 2/4/1/1/1 fire).
   carries ONE close (the foot markup + both rules deleted), `.dp-day` is 44px tall
   in a 16/12-padded card, and grid batch two's named declarations are snapped
   (app.css offGrid 581 → 573). Gated by **`ui-test-radii.js`** (§1–§5).
+- **ONE TYPE SCALE** ("Build all", PR-3): eight steps as `--fs-*` tokens in app.css's
+  `:root` — micro 11 · caption 12 · sub 13 · body 15 · headline 17 · title 22 ·
+  display 28 · hero 34 — in **rem** (a reader's own text size still scales the page),
+  and every `font-size` in the three sheets, the two markup files and both JS
+  bundles' templates is one of them (nearest step, ties down: 16 → 15). Before: 61
+  distinct declared sizes in app.css, 55 in admin.css, ~210 inline. What the
+  mechanical rewrite could NOT judge, each done by hand: `body` and the bare `h1–h3,
+  h5, h6` get element defaults (the UA's 16/32/24/18.72/10.72 are not steps and a
+  stray span or section h2 inherited them); `--fs-h2`/`--fs-h3` alias title/headline
+  and `--fs-h1`'s clamp FLOOR is the display step (a phone read 30.4); the fluid
+  `clamp()` sites (logo, hero p, `.lead`, `.card-title`, `.cal-month-title`, terms h2,
+  `.heritage-num`, `.guestwords-quote`) are a phone step + a desktop step behind ONE
+  `@media (min-width: 641px)` block at the foot — the pair Apple's text styles state
+  per size class; **the mobile `input, select, textarea { 16px !important }` and
+  `.input-glass` take HEADLINE (17), never body (15)** — 16 → 15 there would bring
+  back iOS's zoom-on-focus; the `font:` SHORTHAND (16 sites, `.tl-seg button` among
+  them) needed its own pass — a `font-size:` regex sees none of them; and the
+  `--cmdk-fs-*` scale is untouched (its own gate, §16b). Gates: **`ui-test-typescale.js`**
+  sweeps every painted size on 12 guest + owner screens at 390/1280 (tolerance 0.3px —
+  0.8rem's 12.8 fails; `#cmdk`, the timeline day cells and sizes over 36px excluded by
+  name; vacuity ≥8 per screen) and **`check-css-conventions` ratchets `rawType`** (any
+  rem/px `font-size`, longhand or in a `font:` shorthand, ≤40px) at **0** in all three
+  sheets. The sweep found what the rewrite missed on its first run (18 screens off) and
+  the three shorthand buttons on its second, which is the gate doing its job. NB the
+  budget gate reads the UNSTRIPPED file: app.css raw gz +379 while the SHIPPED
+  (comment-stripped) file fell 102 bytes and admin.css 159 — a `var(--fs-sub)` gzips
+  better than forty spellings of 0.8rem. One gate re-aimed: ui-test-chat-layout's
+  "hit its cap" compared clientHeight to a border-box `max-height` (two hairlines
+  apart) and failed the day the field took one more line at 17px; it reads offsetHeight.
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
   rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).

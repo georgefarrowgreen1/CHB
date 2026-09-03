@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 591;
+const ADMIN_BUNDLE_V = 592;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 249;
+const ADMIN_CSS_V = 250;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4016,7 +4016,7 @@ async function loadPasskeys() {
         const keys = res.passkeys || [];
         if (keys.length === 0) {
             box.innerHTML =
-                '<p style="font-size:0.82rem;color:var(--text-muted);">No passkeys yet.</p>';
+                '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No passkeys yet.</p>';
             return;
         }
         box.innerHTML = keys
@@ -4024,7 +4024,7 @@ async function loadPasskeys() {
                 (
                     k,
                 ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
-                    <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
+                    <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deletePasskey', k.id)}>Remove</button>
                 </div>`,
             )
@@ -4104,7 +4104,7 @@ function guestPriceBoxHtml(p, o) {
     const depShow = o.dep > 0 ? o.dep : Math.round((Number(o.depWas) || 0) * 100) / 100;
     if (depShow > 0) {
         const say = depositInvoiceStatus(depShow, o.holdStatus, o.damagesReturned, o.settledDate);
-        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
+        rows.push(`<p style="color:var(--text-muted);font-size:var(--fs-caption);margin:6px 0 0;">Refundable damages deposit ${gbp(depShow)} — ${escapeHtml(say.charAt(0).toLowerCase() + say.slice(1))}</p>`);
     }
     if (o.note) rows.push(o.note);
     return `<div class="guest-price-box">${rows.join('')}</div>`;
@@ -4259,8 +4259,8 @@ async function renderGuestBookings() {
         // fact available here.
         const returning = completedStays > 0;
         list.innerHTML = `<div class="glass-panel guest-empty">
-                    <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
-                    <p style="font-size:0.95rem;">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
+                    <p style="font-size:var(--fs-title);font-weight:600;margin-bottom:8px;">${returning ? 'Nothing booked at the moment' : 'No Bookings Yet'}</p>
+                    <p style="font-size:var(--fs-body);">${returning ? "Anything you book will show up here. If you were expecting to see a stay, reply to your confirmation email and we'll look into it." : 'Once you book one of our cottages, it will appear here.'}</p>
                     <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">${returning ? 'Book again' : 'Browse Cottages'}</button>
                 </div>`;
         return;
@@ -4298,16 +4298,16 @@ async function renderGuestBookings() {
                             <div class="guest-ref">Awaiting confirmation</div>
                             <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(checkIn)} · ${checkInTime}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(checkOut)} · ${checkOutTime}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(party)}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:1rem;color:var(--warn-text);">Awaiting confirmation</span></div>
-                                <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:var(--fs-body);">${fmtDate(checkIn)} · ${checkInTime}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:var(--fs-body);">${fmtDate(checkOut)} · ${checkOutTime}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:var(--fs-body);">${escapeHtml(party)}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:var(--fs-body);color:var(--warn-text);">Awaiting confirmation</span></div>
+                                <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:var(--fs-body);">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
                             </div>
                             ${guestPriceBoxHtml(p, {
                                 dep: p.damagesDeposit || 0,
                                 total: displayGrandTotal(p.total, p, 'none'),
-                                note: `<p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>`,
+                                note: `<p style="color:var(--text-muted);font-size:var(--fs-caption);text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>`,
                             })}
                             </div>
                             <div class="card-actions">
@@ -4508,14 +4508,14 @@ async function renderGuestBookings() {
                 <div class="glass-panel guest-booking gb2">
                     <h3 class="gb2-name">${escapeHtml(meta.name)}</h3>
                     <div class="gb2-when">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ref ${bookingRef(b.id)}</div>
-                    <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 8px;">We couldn't show everything for this stay just now — your booking is safe. Message us and we'll help.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 8px;">We couldn't show everything for this stay just now — your booking is safe. Message us and we'll help.</p>
                     <div class="card-actions gb2-links"><button class="btn-sm btn-edit" data-act="toggleChat">Message us</button></div>
                 </div>`);
             try { console.error('My Stays card failed for', propKey, e); } catch (e2) {}
         }
     });
     const gHdr = (t) =>
-        `<h3 style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
+        `<h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
     // Each section's cards sit in their own .gb-grid so the desktop two-up
     // layout works per section (an odd last card spans the full row).
     const gGrid = (cards) => `<div class="gb-grid">${cards.join('')}</div>`;
@@ -5001,8 +5001,8 @@ async function renderInStayTides() {
     if (lows.length) parts.push(`<strong>Low</strong> ${lows.join(' & ')}`);
     if (highs.length) parts.push(`<strong>High</strong> ${highs.join(' & ')}`);
     const html = `<div style="background:rgba(66,165,245,0.12);border:1px solid rgba(66,165,245,0.3);border-radius:12px;padding:12px 14px;">
-                <div style="font-size:0.85rem;color:var(--text-light);">🌊 Today's tides at Blakeney — ${parts.join(' · ')}</div>
-                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:5px;">Lovely beach &amp; coast-path walking around low water; seal-trip boats sail near high tide.</div>
+                <div style="font-size:var(--fs-sub);color:var(--text-light);">🌊 Today's tides at Blakeney — ${parts.join(' · ')}</div>
+                <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:5px;">Lovely beach &amp; coast-path walking around low water; seal-trip boats sail near high tide.</div>
             </div>`;
     els.forEach((el) => {
         el.innerHTML = html;
@@ -6778,7 +6778,7 @@ async function openWelcomeBook(propKey) {
     const bodyEl = document.getElementById('welcome-modal-body');
     if (titleEl) titleEl.textContent = (meta.name || 'Your cottage') + ' — welcome book';
     if (bodyEl)
-        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>`;
+        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">Loading…</p>`;
     const m = document.getElementById('welcome-modal');
     overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
@@ -6803,20 +6803,20 @@ async function openWelcomeBook(propKey) {
                 : `<button type="button" class="btn-primary" style="padding:11px 24px;" data-act="toggleChat">Message us about paying</button>`;
         }
         if (bodyEl)
-            bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">${msg || "Couldn't load the welcome book — please try again."}</p>${way}`;
+            bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">${msg || "Couldn't load the welcome book — please try again."}</p>${way}`;
         return;
     }
     if (!bodyEl) return;
     if (!sections.length) {
-        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Your host hasn't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
+        bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);">Your host hasn't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
         return;
     }
     bodyEl.innerHTML = sections
         .map(
             (s) => `
                 <div style="margin-bottom:18px;">
-                    <h4 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 6px;">${escapeHtml(s.title)}</h4>
-                    <div style="font-size:0.9rem;color:var(--text-light);line-height:1.6;white-space:pre-line;">${escapeHtml(s.body)}</div>
+                    <h4 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 6px;">${escapeHtml(s.title)}</h4>
+                    <div style="font-size:var(--fs-body);color:var(--text-light);line-height:1.6;white-space:pre-line;">${escapeHtml(s.body)}</div>
                 </div>`,
         )
         .join('');
@@ -6905,7 +6905,7 @@ function guestReviewForm(propKey) {
     // asserts the absence). A JS comment, not an HTML one: a comment inside this
     // template would ship, quoting the wrong sentence back at the guest.
     const note = existing && existing.status === 'approved'
-        ? `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
+        ? `<div style="font-size:var(--fs-sub);color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`
         : '';
     // THE RATING IS ASKED ONCE. A <select> of ★ strings used to sit beneath the
     // tappable star row — two controls for one question, able to disagree until a
@@ -10145,7 +10145,7 @@ function hubLedgerRowHtml(p, bookingId, refundOff) {
                           // button SHRANK under a long ledger line (measured 10px
                           // narrower than its own label at 390px) — the text half
                           // wraps, the control never squeezes.
-                          `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;flex:0 0 auto;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount), carried)}>Refund</button>`
+                          `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:var(--fs-caption);flex:0 0 auto;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount), carried)}>Refund</button>`
                         : '';
                 const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
                 const label =
@@ -11888,7 +11888,7 @@ async function accomSavePhotos(k, imgs) {
     if (wrap)
         wrap.innerHTML = imgs.length
             ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('')
-            : '<p style="font-size:0.85rem;color:var(--text-muted);">No photos yet — add the first below.</p>';
+            : '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No photos yet — add the first below.</p>';
 }
 function accomReplacePhoto(k, i) {
     pickAndUpload('gallery-' + k, async (url) => {
@@ -12023,7 +12023,7 @@ function openFaqModal(propKey) {
     // which reads as broken rather than as empty, on a guest surface whose whole
     // job is answering questions. Name the alternative instead: a person.
     if (!faqs.length) {
-        body.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;margin:6px 2px 14px;">There's nothing here yet for ${escapeHtml(meta.name)} — but ask us anything and we'll answer.</p>
+        body.innerHTML = `<p style="color:var(--text-muted);font-size:var(--fs-body);margin:6px 2px 14px;">There's nothing here yet for ${escapeHtml(meta.name)} — but ask us anything and we'll answer.</p>
             <button type="button" class="btn-primary" style="padding:11px 24px;" data-act="toggleChat">Message us</button>`;
         overlayHistPush();
         m.classList.add('open');
@@ -12198,7 +12198,7 @@ function renderPropReviews(propKey) {
             : '';
     wrap.style.display = '';
     wrap.innerHTML = `
-                <h3 class="section-title" style="text-align:left;font-size:1.6rem;margin-bottom:14px;">Guest reviews</h3>
+                <h3 class="section-title" style="text-align:left;font-size:var(--fs-display);margin-bottom:14px;">Guest reviews</h3>
                 <div class="prop-reviews-head">
                     <span class="prop-reviews-score">★ ${avg.toFixed(1)}</span>
                     <span class="prop-reviews-count">${count} review${count === 1 ? '' : 's'}</span>
@@ -12234,7 +12234,7 @@ function renderPropStats(propKey) {
         ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(2)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
         : `<div class="prop-stat"><div class="prop-stat-top">New</div><div class="prop-stat-sub">no reviews yet</div></div>`;
     const favCell = fav
-        ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:0.82rem;letter-spacing:0;">Guest favourite</div></div>`
+        ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:var(--fs-sub);letter-spacing:0;">Guest favourite</div></div>`
         : '';
     const reviewsCell = count
         ? `<div class="prop-stat"><div class="prop-stat-top">${count}</div><div class="prop-stat-sub">review${count === 1 ? '' : 's'}</div></div>`
@@ -12638,17 +12638,17 @@ function enquireContinue() {
 async function loadGuestPhotosAdmin() {
     const wrap = document.getElementById('photos-admin');
     if (!wrap) return;
-    wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+    wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p>`;
     let rows = [];
     try {
         const r = await apiPost('photos.php', { action: 'list_admin' });
         rows = r.photos || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load (run migrate.php?): ${escapeHtml(e.message || '')}</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load (run migrate.php?): ${escapeHtml(e.message || '')}</p>`;
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My Bookings.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My Bookings.</p>`;
         return;
     }
     wrap.innerHTML = `<div class="guest-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">${rows
@@ -12659,8 +12659,8 @@ async function loadGuestPhotosAdmin() {
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
                     <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
-                        <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
-                        ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
+                        <div style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
+                        ${p.caption ? `<div style="font-size:var(--fs-sub);margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
                         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
                             ${pend ? `<button class="btn-sm btn-edit" ${chbAttrs('moderatePhoto', p.id, 'approve')}>Approve</button>` : ''}
                             ${pend ? `<button class="btn-sm btn-delete" ${chbAttrs('moderatePhoto', p.id, 'reject')}>Reject</button>` : ''}
@@ -13583,7 +13583,7 @@ function showSendConfirm(o) {
         f.srcdoc =
             o.html && o.html.trim()
                 ? o.html
-                : '<pre style="font:14px system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
+                : '<pre style="font:var(--fs-sub) system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
                   escapeHtml(o.text || '(empty)') +
                   '</pre>';
         const sendBtn = ov.querySelector('#send-confirm-send');
@@ -15338,9 +15338,9 @@ function renderFlexResults(results, tooSmall, nights, ym) {
     if (!fitKeys.length)
         html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;"><p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.</p><button class="btn-glass" data-act="nav" data-view="view-cottages">Browse all cottages</button></div>`;
     else if (tooSmall > 0)
-        html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
+        html += `<p style="grid-column:1/-1;text-align:center;font-size:var(--fs-sub);color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
     html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
-                <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Want a different length or month?</p>
+                <p style="color:var(--text-muted);font-size:var(--fs-body);margin-bottom:12px;">Want a different length or month?</p>
                 <button type="button" class="btn-glass btn-glass-ghost" data-act="backToSearch">Change your search</button>
             </div>`;
     grid.innerHTML = html;
@@ -15423,7 +15423,7 @@ function renderHeroResults(results, tooSmall) {
         ? ` (±${heroSearch.flex} day${heroSearch.flex === 1 ? '' : 's'})`
         : '';
     const sub = (t) =>
-        `<h3 style="grid-column:1/-1;text-align:center;font-family:var(--font-serif);font-weight:400;margin:22px 0 2px;font-size:1.25rem;">${escapeHtml(t)}</h3>`;
+        `<h3 style="grid-column:1/-1;text-align:center;font-family:var(--font-serif);font-weight:400;margin:22px 0 2px;font-size:var(--fs-title);">${escapeHtml(t)}</h3>`;
     const reqRange = `${dpPretty(heroSearch.checkin)} – ${dpPretty(heroSearch.checkout)}`;
     const card = (key, r) => {
         const nights = nightsBetween(r.ci, r.co);
@@ -15476,7 +15476,7 @@ function renderHeroResults(results, tooSmall) {
                 availKeys.length === 1
                     ? 'Only 1 cottage left for your dates — book soon'
                     : `${availKeys.length} of ${fitKeys.length} cottages still free for your dates`;
-            html += `<div class="hs-scarcity" style="grid-column:1/-1;text-align:center;background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:8px 16px;font-size:0.82rem;font-weight:600;margin-bottom:2px;">${msg}</div>`;
+            html += `<div class="hs-scarcity" style="grid-column:1/-1;text-align:center;background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:8px 16px;font-size:var(--fs-sub);font-weight:600;margin-bottom:2px;">${msg}</div>`;
         }
         html += availKeys.map((k) => card(k, results[k])).join('');
         html += fitKeys
@@ -15488,7 +15488,7 @@ function renderHeroResults(results, tooSmall) {
                 `Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.`,
             );
         else if (tooSmall > 0)
-            html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
+            html += `<p style="grid-column:1/-1;text-align:center;font-size:var(--fs-sub);color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
     } else {
         const X = filter,
             xName = propertyMeta[X] ? propertyMeta[X].name : X;
@@ -15522,7 +15522,7 @@ function renderHeroResults(results, tooSmall) {
     }
     const wlProp = filter !== 'any' ? filter : '';
     html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
-                <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Can't see what you're looking for?</p>
+                <p style="color:var(--text-muted);font-size:var(--fs-body);margin-bottom:12px;">Can't see what you're looking for?</p>
                 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
                     <button type="button" class="btn-glass btn-glass-ghost" data-act="backToSearch">Change your search</button>
                     <button type="button" class="btn-glass" ${chbAttrs('openWaitlistModal', { prop: wlProp, checkIn: heroSearch.checkin || '', checkOut: heroSearch.checkout || '' })}>Notify me if dates become available</button>
@@ -16606,7 +16606,7 @@ function updateEnquiryPrice() {
 
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
-        box.innerHTML = `<p style="color: var(--text-light); font-size: 0.95rem; text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size: 0.8rem;">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+        box.innerHTML = `<p style="color: var(--text-light); font-size:var(--fs-body); text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size:var(--fs-sub);">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
         enqAvailSync(null);
         try {
             enqReactSync(false, adults, children);
@@ -16637,10 +16637,10 @@ function updateEnquiryPrice() {
     } catch (e) {}
     const sched = !ruleErr && avail !== 'taken' ? enqScheduleHtml(p, checkIn) : '';
     box.innerHTML = `
-                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
+                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
                 ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
                 ${sched}
-                <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
+                <p style="color: var(--text-muted); font-size:var(--fs-caption); text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 && !sched ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
         updateBookBar();
@@ -17923,7 +17923,7 @@ function updateModalPriceCore() {
         parseInt(document.getElementById('modal-children').value, 10) || 0,
     );
     if (!checkIn || !checkOut || checkOut <= checkIn) {
-        box.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Enter valid dates to see the total.</p>`;
+        box.innerHTML = `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">Enter valid dates to see the total.</p>`;
         return;
     }
     // "New property…" chosen → it'll be created as a private cottage on save;
@@ -17931,8 +17931,8 @@ function updateModalPriceCore() {
     if (!propKey) {
         const nm = cur.newName;
         box.innerHTML = nm
-            ? `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">“${escapeHtml(nm)}” will be created as a new private cottage — you'll set its nightly rate when you save, then the total appears here.</p>`
-            : `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Type the new property's name to continue.</p>`;
+            ? `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">“${escapeHtml(nm)}” will be created as a new private cottage — you'll set its nightly rate when you save, then the total appears here.</p>`
+            : `<p style="color: var(--text-muted); font-size:var(--fs-sub); text-align: center; margin: 0;">Type the new property's name to continue.</p>`;
         return;
     }
     const depEl = document.getElementById('modal-damages-deposit');
@@ -17979,11 +17979,11 @@ function updateModalPriceCore() {
                 <div class="price-row"><span>Transaction fee (${a.transactionPct || 0}%)</span><span>${gbp(a.txFee || 0)}</span></div>
                 ${aDep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(aDep)}</span></div>` : ''}
                 <div class="price-row total"><span>Agreed total${aDep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(agreedGrand)}</span></div>
-                <p style="font-size:0.75rem;color:var(--text-muted);margin:8px 0 0;">Agreed price — locked at the rates in effect when booked. Changing the dates or party reprices at today's rates.</p>`;
+                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">Agreed price — locked at the rates in effect when booked. Changing the dates or party reprices at today's rates.</p>`;
                 return;
             }
             if (stayChanged) {
-                repriceNote = `<p style="font-size:0.75rem;color:var(--warn);margin:8px 0 0;">New price at today's rates — saving replaces the agreed ${gbp(agreedGrand)}.</p>`;
+                repriceNote = `<p style="font-size:var(--fs-caption);color:var(--warn);margin:8px 0 0;">New price at today's rates — saving replaces the agreed ${gbp(agreedGrand)}.</p>`;
             }
         }
     }
@@ -18077,7 +18077,7 @@ function trimPaidBookingFields(hide) {
         if (!note && anchor && anchor.parentNode) {
             note = document.createElement('p');
             note.id = 'modal-paid-note';
-            note.style.cssText = 'font-size:0.8rem;color:var(--text-muted);margin:10px 0 4px;';
+            note.style.cssText = 'font-size:var(--fs-sub);color:var(--text-muted);margin:10px 0 4px;';
             anchor.parentNode.insertBefore(note, anchor.nextSibling);
         }
         if (note) note.textContent = 'Paid in full — manage payments (refunds, deposit return) on the booking’s Payments card.';
@@ -18105,7 +18105,7 @@ function lockBookingMove(lock) {
         if (!note) {
             note = document.createElement('p');
             note.id = 'modal-move-locked';
-            note.style.cssText = 'margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);';
+            note.style.cssText = 'margin:6px 0 0;font-size:var(--fs-sub);color:var(--text-muted);';
             trig.parentNode.insertBefore(note, trig.nextSibling);
         }
         note.textContent = 'The guest has arrived — the dates and cottage are locked. You can still edit the other details.';
@@ -18878,7 +18878,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higradii1';
+    const BUILD = 'higtype01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

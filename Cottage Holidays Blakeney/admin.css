@@ -108,7 +108,7 @@ body.light-mode {
   gap: 6px;
   padding: 3px 11px;
   border-radius: var(--r-pill);
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   border: 1px solid transparent;
 }.bk-chip .bk-dot {
@@ -204,7 +204,7 @@ body.light-mode {
 /* What the drawer is, said once above the rows. */
 .enq-declined-lead {
   margin: 2px 0 14px;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   line-height: 1.55;
   color: var(--text-muted);
   max-width: 52ch;
@@ -214,7 +214,7 @@ body.light-mode {
 .enq-declined-msg {
   display: block;
   margin-top: 3px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   font-style: italic;
   color: var(--text-muted);
   overflow: hidden;
@@ -233,14 +233,14 @@ body.light-mode {
   padding: 4px 6px 4px 10px;
   border: 1px solid var(--glass-border);
   border-radius: var(--r-pill, 999px);
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-light);
   max-width: 100%;
 }.compose-attach-chip button {
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  font-size: 1rem;
+  font-size: var(--fs-body);
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
@@ -262,20 +262,20 @@ body.light-mode {
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
-  font-size: 1.05rem;
+  font-size: var(--fs-headline);
   background: rgba(199, 154, 100, 0.18);
   color: var(--accent);
   border: 1px solid rgba(199, 154, 100, 0.3);
 }.enq-ctx-name {
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   line-height: 1.35;
   min-width: 0;
   overflow-wrap: anywhere;
 }.enq-ctx-row {
   display: flex;
   align-items: flex-start;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   padding: 3px 0;
 }.enq-ctx-txt {
   flex: 1;
@@ -288,14 +288,14 @@ body.light-mode {
   display: inline-flex;
 }.enq-ctx-mut {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
 }.enq-ctx-quote {
   margin-top: 10px;
   padding: 8px 12px;
   border-left: 2px solid var(--accent);
   background: rgba(128, 128, 128, 0.06);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   font-style: italic;
   color: var(--text-muted);
   max-height: 84px;
@@ -326,7 +326,7 @@ body.light-mode {
   gap: 10px;
   flex-wrap: wrap;
 }.money-status {
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-light);
   display: inline-flex;
   align-items: center;
@@ -348,7 +348,7 @@ body.light-mode {
   border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--glass-border);
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
 }@media (min-width: 1200px) {#bookings-detail-pane .bhub-grid,
   #inbox-detail-pane .bhub-grid {
@@ -422,14 +422,14 @@ body.light-mode {
   #money-panel .bk-row-top .prop-tag { margin-right: auto; }
 }
 .bk-row-name {
-  font-size: 1rem;
+  font-size: var(--fs-body);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }.bk-row-dates {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -450,7 +450,7 @@ body.light-mode {
     transform 0.3s var(--spring),
     color 0.2s var(--fluid-bezier);
   color: var(--text-muted);
-  font-size: 1.1rem;
+  font-size: var(--fs-headline);
   flex-shrink: 0;
 }.tl-inner {
   display: inline-block;
@@ -467,7 +467,7 @@ body.light-mode {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-muted);
   background: var(--dark-grey); /* the page ground — solid so bars slide under it */
@@ -487,7 +487,7 @@ body.light-mode {
   grid-row: 1;
   position: relative;
   text-align: center;
-  font-size: 0.7rem; /* the 11px floor — 0.66 was 10.6px on every day of the timeline */
+  font-size: var(--fs-micro); /* the 11px floor — 0.66 was 10.6px on every day of the timeline */
   color: var(--text-muted);
   padding-top: 14px;
   border-left: 1px solid rgba(255, 255, 255, 0.04);
@@ -496,14 +496,14 @@ body.light-mode {
   opacity: 0.55;
   margin-right: 2px;
   /* was 0.58rem = 9.3px, then 0.66 = 10.6 */
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
 }.tl-day b {
   position: absolute;
   top: 0;
   left: 2px;
   /* was 0.62rem = 9.9px; this is the month label, the only thing telling you
      where you are in a timeline that scrolls for months. */
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.04em;
   color: var(--text-light);
   white-space: nowrap;
@@ -551,7 +551,7 @@ body.light-mode .tl-cell {
 .tl-bar .tl-n {
   font-style: normal;
   font-weight: 400;
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   opacity: 0.75;
   margin-left: 4px;
   white-space: nowrap;
@@ -562,7 +562,7 @@ body.light-mode .tl-cell {
 }.tl-wrap.tl-compact .tl-day i {
   display: none;
 }.tl-wrap.tl-compact .tl-day {
-  font-size: 0.7rem; /* the 11px floor (compact was 9.6px) */
+  font-size: var(--fs-micro); /* the 11px floor (compact was 9.6px) */
 }
 /* Live "now" playhead: a thin accent line through today that advances with the
    clock (positioned in JS by tlPlaceNowLine), so by evening it reaches today's
@@ -625,14 +625,14 @@ body.light-mode .tl-cell {
    fold group (.bhub-fold-grp, shared with the hub and the Manage verdicts), so
    only the prose inside a fold needs saying here. */
 .night-lede {
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   margin: 0 0 10px;
   max-width: 62ch;
 }
 #night-ready .bhub-fold-grp { margin-bottom: 10px; }
 .night-src {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin: 0 0 10px;
 }
@@ -641,7 +641,7 @@ body.light-mode .tl-cell {
    turned into markup. */
 .night-body {
   white-space: pre-line;
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   line-height: 1.62;
   color: var(--text-light);
   overflow-wrap: anywhere;
@@ -697,18 +697,18 @@ body.light-mode .tl-cell {
   gap: 2px;
 }.ny-label {
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   line-height: 1.35;
 }.ny-sub {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }.ny-act {
   flex: none;
-  font-size: 0.84rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--accent-text);
   white-space: nowrap;
@@ -728,7 +728,7 @@ body.light-mode .ny-act {
    real tap target — they were bespoke 21px buttons with hardcoded hex colours
    that vanished on the light theme. */
 .lead-star {
-  font-size: 19px;
+  font-size: var(--fs-headline);
   line-height: 1;
   background: none;
   border: 0;
@@ -783,7 +783,7 @@ body.light-mode .ny-act {
   background: transparent;
   color: var(--text-light);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   border-radius: var(--r-sm);
   cursor: pointer;
 }.bhub-menu button:hover {
@@ -797,7 +797,7 @@ body.light-mode .ny-act {
 .bhub-menu .bhub-menu-note {
   margin: 0;
   padding: 9px 14px;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   line-height: 1.45;
   color: var(--text-muted);
   border-top: 1px solid var(--glass-border);
@@ -823,7 +823,7 @@ body.light-mode .ny-act {
   border: 0;
   border-radius: var(--r-pill);
   border-left: 3px solid;
-  font: 600 0.7rem var(--font-sans);
+  font: 600 var(--fs-micro) var(--font-sans);
   color: var(--text-light);
   cursor: pointer;
   white-space: nowrap;
@@ -878,7 +878,7 @@ body.light-mode .ny-act {
   position: absolute;
   top: 1px;
   right: 2px;
-  font-size: 0.6rem;
+  font-size: var(--fs-micro);
   line-height: 1;
   color: var(--info-text);
 }
@@ -894,7 +894,7 @@ body.light-mode .ny-act {
   background: none;
   border: none;
   color: var(--accent-text);
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   line-height: 1;
   cursor: pointer;
 }
@@ -918,13 +918,13 @@ body.light-mode .ny-act {
   backdrop-filter: none;
 }
 .cal-header-bar .cal-month-title {
-  font-size: 1.05rem;
+  font-size: var(--fs-headline);
   font-weight: 500;
 }
 .cal-actions .cal-add-btn {
   text-transform: none;
   letter-spacing: 0.01em;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
 }
 .bk-caprow {
   display: flex;
@@ -935,14 +935,14 @@ body.light-mode .ny-act {
 .bk-caprow .bo-sec-title {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   letter-spacing: 0.09em;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 #bookings-summary {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 #bookings-verdict { margin-left: auto; }
@@ -977,14 +977,14 @@ body.light-mode .ny-act {
 }@media (max-width: 640px) {.tl-label {
     flex-basis: 54px;
     padding: 0 6px;
-    font-size: 0.7rem;
+    font-size: var(--fs-micro);
   }.tl-day {
-    font-size: 0.7rem; /* the 11px floor (was 9.9px on a phone) */
+    font-size: var(--fs-micro); /* the 11px floor (was 9.9px on a phone) */
   }}#mbx-reader .bhub-card {
   animation: bhubIn 0.4s var(--fluid-bezier) both;
 }.mbx-when {
   margin-left: auto;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   white-space: nowrap;
 }.bk-row.mbx-unread .bk-row-name {
@@ -1011,25 +1011,25 @@ body.light-mode .ny-act {
   margin-bottom: 14px;
 }
 .mbx-head-from {
-  font-size: 0.98rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-light);
   overflow-wrap: anywhere;
 }
 .mbx-head-addr {
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-light);
   opacity: 0.85;
   overflow-wrap: anywhere;
 }
 .mbx-head-when {
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
 }
 /* One caption style for every group in this card. */
 .mbx-cap {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1039,7 +1039,7 @@ body.light-mode .ny-act {
 .mbx-text {
   white-space: pre-wrap;
   word-break: break-word;
-  font: 0.94rem/1.6 var(--font-sans);
+  font: var(--fs-body)/1.6 var(--font-sans);
   color: var(--text-light);
   padding: 12px 0 2px;
   margin: 0;
@@ -1099,7 +1099,7 @@ body.light-mode .ny-act {
   border: none;
   border-top: 1px solid var(--glass-border);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   text-align: left;
   cursor: pointer;
@@ -1160,7 +1160,7 @@ body.light-mode .ny-act {
   border-radius: var(--r-pill);
   background: rgba(127, 127, 127, 0.07);
   color: var(--text-light);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   text-decoration: none;
   transition: background 0.2s var(--fluid-bezier);
 }.mbx-att:hover {
@@ -1215,16 +1215,16 @@ body.light-mode .ny-act {
 }.bhub-name {
   font-family: var(--font-serif);
   font-weight: 400;
-  font-size: 1.9rem;
+  font-size: var(--fs-display);
   margin: 8px 0 4px;
 }.bhub-ref {
   margin-left: 8px;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   letter-spacing: 0.06em;
 }.bhub-sub {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }.bhub-actions {
   display: flex;
   gap: 8px;
@@ -1248,7 +1248,7 @@ body.light-mode .ny-act {
   max-width: 620px;
 }.bhub-headpay-cap {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -1264,20 +1264,20 @@ body.light-mode .ny-act {
 }.bhub-payline-label {
   display: block;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
 }.bhub-payline-sub {
   display: block;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 2px;
 }.bhub-payline-fig {
   font-family: var(--font-serif);
-  font-size: 1.35rem;
+  font-size: var(--fs-title);
   white-space: nowrap;
   flex-shrink: 0;
 }.bhub-payline-of {
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
 }/* Quiet text-link button — information (the breakdown opener), never competing
    with the real action buttons below it. */
@@ -1290,7 +1290,7 @@ body.light-mode .ny-act {
   background: none;
   border: none;
   padding: 6px 0 2px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   cursor: pointer;
   font-family: inherit;
@@ -1319,7 +1319,7 @@ body.light-mode .ny-act {
    competes with the card's own words ("NEXT · 3 OF 5 · BALANCE"). */
 .bhub-next-cap {
   flex: 1 1 100%;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--warn-text);
 }.bhub-next {
@@ -1333,7 +1333,7 @@ body.light-mode .ny-act {
   border-radius: var(--r-lg);
   background: rgba(255, 167, 38, 0.09);
   border: 1px solid rgba(255, 167, 38, 0.26);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }.bhub-next.is-clear {
   background: rgba(76, 175, 80, 0.08);
   border-color: rgba(76, 175, 80, 0.22);
@@ -1352,7 +1352,7 @@ body.light-mode .ny-act {
 }.bhub-next.is-gone .bhub-next-cap {
   color: var(--danger-text);
 }.bhub-eyebrow {
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--text-muted);
   margin-top: 8px;
@@ -1364,12 +1364,12 @@ body.light-mode .ny-act {
   padding: 14px 18px 6px;
 }.bhub-msg-cap {
   display: block;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
 }.bhub-msg-text {
-  font-size: 0.94rem;
+  font-size: var(--fs-body);
   line-height: 1.55;
   margin: 0 0 6px;
 }.bhub-msg-draft {
@@ -1384,7 +1384,7 @@ body.light-mode .ny-act {
 }
 .bhub-next-btn {
   padding: 12px 22px; /* the standard action-button geometry (.cal-add-btn) */
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
 }.bhub-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1398,7 +1398,7 @@ body.light-mode .ny-act {
 }.bhub-card-title {
   font-family: var(--font-serif);
   font-weight: 400;
-  font-size: 1.15rem;
+  font-size: var(--fs-headline);
   margin: 0 0 14px;
 }.bhub-btn-row {
   display: flex;
@@ -1416,7 +1416,7 @@ body.light-mode .ny-act {
   align-items: center;
   gap: 5px;
   padding: 6px 12px;
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   color: var(--ok-text);
   background: rgba(76, 175, 80, 0.1);
@@ -1424,11 +1424,11 @@ body.light-mode .ny-act {
   border-radius: var(--r-pill);
 }.bhub-mut {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   margin-top: 8px;
 }.bhub-empty {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   padding: 10px 0;
 }.bhub-hist-row {
   display: grid;
@@ -1436,7 +1436,7 @@ body.light-mode .ny-act {
   gap: 10px;
   padding: 7px 0;
   border-bottom: 1px solid var(--glass-border);
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
 }.bhub-hist-row:last-child {
   border-bottom: 0;
 }.bhub-hist-when {
@@ -1460,7 +1460,7 @@ body.light-mode .ny-act {
   border: 1px solid var(--glass-border);
   color: var(--text-light);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   transition: background 0.2s var(--fluid-bezier);
   cursor: pointer;
   text-align: left;
@@ -1487,7 +1487,7 @@ body.light-mode .ny-act {
   }}@media (max-width: 640px) {.bhub-card {
     padding: 16px;
   }.bhub-name {
-    font-size: 1.6rem;
+    font-size: var(--fs-display);
   }.bhub-btn-row {
     display: grid;
     /* minmax(0,…) lets a column shrink below a long label's natural width */
@@ -1503,7 +1503,7 @@ body.light-mode .ny-act {
   }}.money-deposit strong {
   color: var(--text-light);
 }.money-owed {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   margin: 4px 0 4px;
 }.money-owed strong {
@@ -1515,11 +1515,11 @@ body.light-mode .ny-act {
   border-color: rgba(255, 167, 38, 0.5);
 }.inbox-empty-inline {
   color: var(--text-muted);
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   padding: 4px 4px 24px 4px;
 }.accounts-stat .value {
   font-family: var(--font-serif);
-  font-size: 2rem;
+  font-size: var(--fs-hero);
   color: var(--text-light);
 }.accounts-stat.headline .value {
   color: var(--ok-text);
@@ -1534,14 +1534,14 @@ body.light-mode .ny-act {
   width: 100%;
   border-collapse: collapse;
   margin-top: 10px;
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }.accounts-table th,
 .accounts-table td {
   text-align: left;
   padding: 12px 14px;
   border-bottom: 1px solid var(--glass-border);
 }.accounts-table th {
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
@@ -1569,17 +1569,17 @@ body.light-mode .ny-act {
   border-radius: var(--r-lg);
   padding: 16px 18px;
 }.mo-kpi .mo-label {
-  font-size: 0.66rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
 }.mo-kpi .mo-value {
   font-family: var(--font-serif);
-  font-size: 1.55rem;
+  font-size: var(--fs-title);
   line-height: 1.1;
   margin-top: 4px;
 }.mo-kpi .mo-sub {
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 3px;
 }.mo-value.mo-good {
@@ -1593,7 +1593,7 @@ body.light-mode .ny-act {
   padding: 16px 18px;
   margin-top: 12px;
 }.mo-card-title {
-  font-size: 0.68rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
@@ -1634,7 +1634,7 @@ body.light-mode .ny-act {
   gap: 12px;
   flex-wrap: wrap;
 }.accounts-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 24px;
   line-height: 1.6;
@@ -1724,7 +1724,7 @@ body.owner-mode #admin-head-title {
   text-overflow: ellipsis;
   text-align: center;
   font-family: var(--font-serif);
-  font-size: 1rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   /* 4px, not 8: the slot is ~56px at 390px — 8px ellipsized "Debbie". */
   padding: 0 4px;
@@ -1808,11 +1808,11 @@ body.owner-mode header.header-condensed .logo-mark {
 }
 .empty-state-title {
   font-family: var(--font-serif);
-  font-size: 1.2rem;
+  font-size: var(--fs-headline);
   color: var(--text-light);
 }
 .empty-state-sub {
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   max-width: 340px;
   line-height: 1.5;
 }
@@ -2026,7 +2026,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 /* Ambient guest intelligence (booking hub): the directory + history speak up. */
 .bhub-intel-line {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   margin: 2px 0 6px;
 }
 #hub-intel-card .bhub-stay-row span:nth-child(2) {
@@ -2427,7 +2427,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   gap: 12px;
   margin: 0 0 14px;
   padding: 10px 14px;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   border-radius: var(--r-panel);
 }
 .today-filter-bar strong {
@@ -2871,7 +2871,7 @@ body.light-mode .cmdk-editor-input {
   animation: cmdkFade 0.18s var(--fluid-bezier);
 }
 .coach-tip-text {
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   line-height: 1.45;
   margin-bottom: 10px;
 }
@@ -2886,7 +2886,7 @@ body.light-mode .cmdk-editor-input {
   min-height: 44px;
   padding: 7px 20px;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   cursor: pointer;
 }
 .coach-tip-btn:hover {
@@ -2904,7 +2904,7 @@ body.light-mode .cmdk-editor-input {
   pointer-events: auto;
 }
 .coach-tip-step {
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2922,7 +2922,7 @@ body.light-mode .cmdk-editor-input {
   background: none;
   border: none;
   color: rgba(244, 245, 247, 0.7);
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   min-height: 44px;
   padding: 7px 10px;
@@ -3003,7 +3003,7 @@ body.light-mode .cmdk-editor-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 700;
   /* White failed on all three fills (sampled dark: ok 2.78, warn 1.73 — the "!"
      did not resolve — danger 2.99). --accent-ink measures 6.71 / 9.65 / 6.24,
@@ -3019,12 +3019,12 @@ body.light-mode .cmdk-editor-input {
 .status-hero-text { min-width: 0; flex: 1; }
 .status-hero-title {
   font-family: var(--font-serif);
-  font-size: 1.4rem;
+  font-size: var(--fs-title);
   line-height: 1.15;
   color: var(--text-light);
 }
 .status-hero-sub {
-  font-size: 0.86rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   margin-top: 4px;
 }
@@ -3035,7 +3035,7 @@ body.light-mode .cmdk-editor-input {
   margin-top: 13px;
 }
 .status-count {
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   padding: 3px 10px;
   border-radius: var(--r-pill);
@@ -3046,7 +3046,7 @@ body.light-mode .cmdk-editor-input {
 .status-count.danger { color: var(--danger-text); }
 .status-count.optional { color: var(--text-muted); }
 .status-hero-meta {
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 12px;
 }
@@ -3069,7 +3069,7 @@ body.light-mode .cmdk-editor-input {
 }
 .status-group { max-width: 640px; margin: 0 0 20px; }
 .status-group-title {
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
@@ -3077,7 +3077,7 @@ body.light-mode .cmdk-editor-input {
   margin: 0 0 10px;
 }
 .status-group-note {
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   margin: -2px 0 12px;
   line-height: 1.45;
@@ -3111,12 +3111,12 @@ body.light-mode .cmdk-editor-input {
   flex-wrap: wrap;
 }
 .status-item-label {
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-light);
 }
 .status-item-chip {
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -3129,13 +3129,13 @@ body.light-mode .cmdk-editor-input {
 .status-item-chip.fail { color: var(--danger-text); }
 .status-item-chip.optional { color: var(--text-muted); }
 .status-item-detail {
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   line-height: 1.45;
   margin-top: 3px;
 }
 .status-item-hint {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   opacity: 0.85;
   line-height: 1.4;
@@ -3148,7 +3148,7 @@ body.light-mode .cmdk-editor-input {
 .status-okcat { margin-bottom: 16px; }
 .status-okcat:last-child { margin-bottom: 4px; }
 .status-okcat-title {
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
@@ -3163,7 +3163,7 @@ body.light-mode .cmdk-editor-input {
   margin-bottom: 9px;
 }
 .status-okrow-label {
-  font-size: 0.86rem;
+  font-size: var(--fs-sub);
   font-weight: 500;
   color: var(--text-light);
 }
@@ -3203,13 +3203,13 @@ body.light-mode .cmdk-editor-input {
   flex-wrap: wrap;
 }
 .status-insight-label {
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-light);
   flex-shrink: 0;
 }
 .status-insight-value {
-  font-size: 0.84rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   text-align: right;
 }
@@ -3223,7 +3223,7 @@ body.light-mode .cmdk-editor-input {
   text-decoration: underline;
   text-underline-offset: 2px;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   cursor: pointer;
   padding: 0;
   margin-left: 6px;
@@ -3273,10 +3273,10 @@ body.light-mode .cmdk-editor-input {
 }
 .modal-suggest-nm {
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
 }
 .modal-suggest-sub {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 /* ONE chip language — refine/pivot/ask suggestion pills (.cmdk-chip). Primary
@@ -3374,7 +3374,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   margin-bottom: 6px;
 }
 .sl-model {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   line-height: 1.5;
   margin: 0 0 14px;
   color: var(--text);
@@ -3395,19 +3395,19 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   border: 1px solid var(--glass-border);
 }
 .sl-stat-n {
-  font-size: 1.5rem;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--accent-text, var(--accent));
   line-height: 1;
 }
 .sl-stat-l {
-  font-size: 0.74rem;
+  font-size: var(--fs-caption);
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .sl-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin: 14px 0 0;
 }
@@ -3434,12 +3434,12 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   flex: 1 1 220px;
 }
 .sl-q {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text);
 }
 .sl-meta {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 .sl-row-acts {
@@ -3458,7 +3458,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   opacity: 1;
 }
 .sl-empty {
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   margin: 4px 0;
   line-height: 1.5;
@@ -3467,7 +3467,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
 /* Search learning — test sandbox + teach-to-any picker */
 .sl-probe-label {
   display: block;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   margin-bottom: 8px;
 }
@@ -3480,7 +3480,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   gap: 10px;
 }
 .sl-probe-badge {
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   font-weight: 600;
   padding: 5px 11px;
   border-radius: var(--r-pill);
@@ -3501,7 +3501,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   background: color-mix(in srgb, var(--text-muted) 10%, transparent);
 }
 .sl-probe-ans {
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   color: var(--text);
 }
 .sl-more {
@@ -3509,7 +3509,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   margin-top: 8px;
 }
 .sl-more > summary {
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   color: var(--accent-text, var(--accent));
   cursor: pointer;
   list-style: none;
@@ -3613,7 +3613,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
 }
 .acct-preview-title {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   /* Let a long customer name wrap to a second line rather than ellipsising it
      away on a phone — the name is the one thing this bar has to get across.
@@ -3625,7 +3625,7 @@ body.darkstar-ready.owner-mode .logo.logo-assist:not(.ml-learning) .logo-mark {
   overflow: hidden;
 }
 .acct-preview-note {
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -4587,10 +4587,10 @@ body.cmdk-open {
    do. The ledger row is scoped to #hub-history because hubLedgerRowHtml is
    SHARED with the Payments screen, where the ledger is the content rather than
    one strand of a story. */
-#hub-history .bhub-ledger-row { font-size: 0.82rem; }
-.bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: 0.82rem; margin-top: 2px; }
+#hub-history .bhub-ledger-row { font-size: var(--fs-sub); }
+.bhub-feed-mail summary { cursor: pointer; color: var(--accent-text); font-size: var(--fs-sub); margin-top: 2px; }
 .bhub-feed-mailbody {
-    margin-top: 6px; padding: 8px 10px; font-size: 0.82rem; color: var(--text-muted);
+    margin-top: 6px; padding: 8px 10px; font-size: var(--fs-sub); color: var(--text-muted);
     border: 1px solid var(--glass-border); border-radius: var(--r-sm);
     max-height: 40vh; overflow: auto;
 }
@@ -4648,7 +4648,7 @@ body.cmdk-open {
     display: flex; flex-direction: column; gap: 6px;
 }
 .bhub-plan-cap {
-    font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: var(--fs-micro); letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--text-muted);
 }
 .bhub-plan-row {
@@ -4657,7 +4657,7 @@ body.cmdk-open {
        INTERLEAVED with them ("Asked 31/07 · reminded" tangled mid-sentence,
        measured with a 36-char guest name + custom plan at 390px). */
     display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 10px; font-size: 0.88rem; color: var(--text-light);
+    gap: 10px; font-size: var(--fs-body); color: var(--text-light);
 }
 .bhub-plan-what { min-width: 0; }
 @media (max-width: 640px) {
@@ -4669,7 +4669,7 @@ body.cmdk-open {
    MID-PARENTHETICAL through the figures (owner's screenshot), which is the
    interleave defect again at the character level. No parentheses needed once
    it's a line. */
-.bhub-plan-why { display: block; color: var(--text-muted); font-size: 0.76rem; margin-top: 1px; }
+.bhub-plan-why { display: block; color: var(--text-muted); font-size: var(--fs-caption); margin-top: 1px; }
 /* The facts at sentence weight (600 — weight, not size), the states in the
    readable ink rather than the mute: the owner reported the whole panel as
    washed-out grey beside the payline. The custom badge is the chip
@@ -4681,12 +4681,12 @@ body.cmdk-open {
     /* 0.62rem measured 9.9px — under the app's own 10px floor, on the badge that
        says whether a booking's money follows the standard plan or a custom one.
        a11y-test §4 caught it once the booking hub became a scene there. */
-    border-radius: 999px; font-size: 0.65rem; letter-spacing: 0.1em;
+    border-radius: 999px; font-size: var(--fs-micro); letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--accent-text);
 }
 /* The standard badge is QUIET — custom stays the one that draws the eye. */
 .bhub-plan-tag.is-std { border-color: var(--glass-border); color: var(--text-muted); }
-.bhub-plan-state { flex: 0 0 auto; font-size: 0.78rem; color: var(--text-light); white-space: nowrap; }
+.bhub-plan-state { flex: 0 0 auto; font-size: var(--fs-caption); color: var(--text-light); white-space: nowrap; }
 .bhub-plan-ok { color: var(--ok-text); }
 .bhub-plan .bhub-actlink { border-top: 1px solid var(--glass-border); margin-top: 2px; }
 
@@ -4695,14 +4695,14 @@ body.cmdk-open {
    offer; the owner's floor is an accent LINE ACROSS the ladder and the rungs
    beneath it DIM — one device saying one thing, never strikethrough plus a
    warn colour both shouting it. */
-.apfl-rung { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 2px; font-size: 0.8rem; }
+.apfl-rung { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 2px; font-size: var(--fs-sub); }
 .apfl-rung.is-dim { opacity: 0.55; }
 .apfl-lead { color: var(--text-muted); white-space: nowrap; }
 .apfl-dots { flex: 1; border-bottom: 1px dotted var(--glass-border); transform: translateY(-4px); }
 .apfl-offer { font-weight: 600; color: var(--text-light); text-align: right; }
 .apfl-line { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
 .apfl-line::before, .apfl-line::after { content: ''; flex: 1; height: 2px; border-radius: 1px; background: var(--accent); }
-.apfl-line span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); white-space: nowrap; }
+.apfl-line span { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent-text); white-space: nowrap; }
 
 /* THE HUB'S ACTION HIERARCHY — one loud control, then ACTION ROWS.
    The payask band is the single call to action. The complementary actions
@@ -4721,7 +4721,7 @@ body.cmdk-open {
     display: flex; align-items: center; justify-content: space-between;
     width: 100%; text-align: left; gap: 12px;
     background: none; border: none; padding: 10px 2px; min-height: 44px;
-    font-family: inherit; font-size: 0.88rem; color: var(--accent-text);
+    font-family: inherit; font-size: var(--fs-body); color: var(--accent-text);
     cursor: pointer;
 }
 .bhub-actlink::after { content: '›'; color: var(--text-muted); flex: 0 0 auto; }
@@ -4745,11 +4745,11 @@ body.cmdk-open {
 .bhub-kv {
     display: flex; gap: 12px; align-items: baseline;
     padding: 8px 0; border-top: 1px solid var(--glass-border);
-    font-size: 0.9rem;
+    font-size: var(--fs-body);
 }
 .bhub-kv:first-child { border-top: none; padding-top: 2px; }
 .bhub-kv-label {
-    flex: 0 0 84px; font-size: 0.68rem; letter-spacing: 0.1em;
+    flex: 0 0 84px; font-size: var(--fs-micro); letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--text-muted);
 }
 .bhub-kv-val { min-width: 0; overflow-wrap: anywhere; color: var(--text-light); }
@@ -4785,7 +4785,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   min-width: 44px;
   min-height: 44px; /* the phone floor (was 36) */
   padding: 4px 12px;
-  font-size: 1.15rem;
+  font-size: var(--fs-headline);
   line-height: 1;
   letter-spacing: 0.05em;
 }
@@ -4796,10 +4796,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    itself — a date input ignores placeholders, so without the hint it was an
    unexplained empty pill. Styled here, not app.css, which stays flat. */
 .glass-dialog-title {
-    font-family: var(--font-serif); font-weight: 400; font-size: 1.2rem;
+    font-family: var(--font-serif); font-weight: 400; font-size: var(--fs-headline);
     margin: 0 0 8px; color: var(--text-light);
 }
-.gdf-hint { font-size: 0.76rem; color: var(--text-muted); margin: 4px 0 10px; }
+.gdf-hint { font-size: var(--fs-caption); color: var(--text-muted); margin: 4px 0 10px; }
 
 /* Chip STATUS DOTS — green done, red outstanding; flex:none so a pill can
    never squash the circle (the pipeline's dots were ovals for exactly that
@@ -4816,7 +4816,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* ---- Disclosure groups — one summary row, detail unfolding in place. ---- */
 .bhub-grpcap {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -4869,14 +4869,14 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   cursor: pointer;
 }
 @media (hover: hover) { .bhub-fold-row:hover { background: var(--glass-hover); } }
-.bhub-fold-lbl { font-weight: 600; font-size: 0.95rem; min-width: 0; }
-.bhub-fold-sub { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.bhub-fold-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
+.bhub-fold-sub { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; }
 .bhub-fold-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.bhub-sum-ok { color: var(--ok-text); font-size: 0.85rem; }
-.bhub-sum-warn { color: var(--warn-text); font-size: 0.85rem; }
+.bhub-sum-ok { color: var(--ok-text); font-size: var(--fs-sub); }
+.bhub-sum-warn { color: var(--warn-text); font-size: var(--fs-sub); }
 /* The settled payline's ONE green mark (serif = money, colour = the mark). */
 .bhub-payok { color: var(--ok-text); }
-.bhub-sum-val { color: var(--text-muted); font-size: 0.85rem; }
+.bhub-sum-val { color: var(--text-muted); font-size: var(--fs-sub); }
 /* The disclosure indicator is a SYMBOL (a 14px stroke chevron), not a text
    glyph — "›" set in light grey at 12px is what iOS never draws. */
 .bhub-chev { display: inline-flex; width: 14px; height: 14px; flex: none; color: var(--text-muted); opacity: 0.6; transition: transform 0.32s var(--unfold); }
@@ -4985,9 +4985,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .pc-well { padding: 14px 16px; }
 .pc-well .acw-acts { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding-top: 12px; }
 .mf-recon { max-width: 640px; padding: 4px 16px; margin: 0 0 16px; }
-.mf-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; font-size: 0.88rem; color: var(--text-muted); }
+.mf-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; font-size: var(--fs-body); color: var(--text-muted); }
 .mf-line + .mf-line { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
-.mf-line .acw-fig { font-size: 1.05rem; color: var(--text-light); }
+.mf-line .acw-fig { font-size: var(--fs-headline); color: var(--text-light); }
 .mf-recon .os-sub { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 0 6px; margin-top: 0; }
 /* One material, one radius, one rail: .mf-list comes from the same innerHTML as
    .mf-recon above it, and had 15px corners against its 22 on a 680px rail. */
@@ -5019,33 +5019,33 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* FLAT body — the .rate-prop panel spent 26px a side and starved the labels. */
 .acr-body { padding-top: 2px; }
 .acr-lbl { flex: 1 1 auto; }
-.acr-cap { font-size: 0.7rem; letter-spacing: 0.09em; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 14px 2px 6px; }
+.acr-cap { font-size: var(--fs-micro); letter-spacing: 0.09em; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin: 14px 2px 6px; }
 .acr-well { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); }
 /* A sentence UNDER a well, saying where what you just typed shows up. */
-.acr-note { font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); margin: 8px 4px 0; }
+.acr-note { font-size: var(--fs-sub); line-height: 1.5; color: var(--text-muted); margin: 8px 4px 0; }
 .acr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
 .acr-row + .acr-row, .acr-row + .acr-status { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
-.acr-lbl { font-size: 0.9rem; min-width: 0; }
-.acr-lbl small { display: block; font-size: 0.73rem; color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
+.acr-lbl { font-size: var(--fs-body); min-width: 0; }
+.acr-lbl small { display: block; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 3px; line-height: 1.45; }
 .acr-lbl small em { font-style: normal; color: var(--accent-text); font-weight: 600; }
 .acr-step { display: flex; align-items: center; flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 3px; }
-.acr-step button { width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--accent-text); font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.acr-step button { width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--accent-text); font-size: var(--fs-title); line-height: 1; cursor: pointer; }
 .acr-step button:active { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .acr-val { display: flex; align-items: baseline; justify-content: center; gap: 1px; min-width: 54px; }
-.acr-val input { width: 46px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.acr-val input { width: 46px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline); text-align: center; appearance: textfield; -moz-appearance: textfield; }
 .acr-val input::-webkit-outer-spin-button, .acr-val input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.acr-unit { font-size: 0.72rem; color: var(--text-muted); }
+.acr-unit { font-size: var(--fs-caption); color: var(--text-muted); }
 .acr-status { padding: 9px 14px 11px; }
-.acr-status small { font-size: 0.73rem; line-height: 1.5; color: var(--text-muted); }
+.acr-status small { font-size: var(--fs-caption); line-height: 1.5; color: var(--text-muted); }
 .acr-status small.is-on { color: var(--ok-text); }
 .acr-ota { display: flex; align-items: center; gap: 2px; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 0 14px; height: 42px; flex: 0 0 102px; }
 .acr-ota:focus-within { border-color: var(--accent); }
-.acr-ota input { width: 100%; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: right; outline: none; appearance: textfield; -moz-appearance: textfield; }
+.acr-ota input { width: 100%; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline); text-align: right; outline: none; appearance: textfield; -moz-appearance: textfield; }
 .acr-ota input::-webkit-outer-spin-button, .acr-ota input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .acr-preview { margin: 0 14px 12px; border-top: 1px dashed color-mix(in srgb, var(--text-light) 9%, transparent); padding-top: 10px; }
-.acr-pvcap { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 7px; }
+.acr-pvcap { font-size: var(--fs-micro); color: var(--text-muted); margin-bottom: 7px; }
 /* Ink + outline only — no accent tint under accent-text (the §1b pair rule). */
-.acr-badge { display: inline-flex; align-items: center; font-size: 0.8rem; font-weight: 600; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; padding: 6px 12px; }
+.acr-badge { display: inline-flex; align-items: center; font-size: var(--fs-sub); font-weight: 600; color: var(--accent-text); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 999px; padding: 6px 12px; }
 .acr-badge.is-none { color: var(--text-muted); border-color: color-mix(in srgb, var(--text-light) 9%, transparent); font-weight: 400; }
 /* ---- The rest of the cottage editors on the same vocabulary (approved
    demo): label-above FIELD rows, quiet action rows at a well's foot, pill
@@ -5053,21 +5053,21 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    FLATTENED inside a well (they keep their classes + data-attrs, so every
    add-row handler and collect function is untouched). ---- */
 .acw-frow { padding: 11px 14px 12px; }
-.acw-frow label { display: block; font-size: 0.73rem; color: var(--text-muted); margin-bottom: 6px; }
+.acw-frow label { display: block; font-size: var(--fs-caption); color: var(--text-muted); margin-bottom: 6px; }
 .acw-frow .input-glass { width: 100%; margin: 0; }
 .acw-frow + .acw-frow, .acw-frow + .acr-row, .acr-row + .acw-frow, .acw-frow + .acw-acts, .acr-row + .acw-acts, .acw-list + .acw-acts, .acw-days + .acw-acts { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
 .acw-acts { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; }
-.acw-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 6px 0; font-weight: 600; text-transform: none; letter-spacing: normal; font-size: 0.85rem; }
+.acw-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 6px 0; font-weight: 600; text-transform: none; letter-spacing: normal; font-size: var(--fs-sub); }
 .acw-acts .btn-edit { color: var(--accent-text); }
 .acw-acts .btn-delete { color: var(--danger-text); }
-.acw-tip { display: block; margin-top: 7px; font-size: 0.72rem; line-height: 1.5; color: var(--ok-text); }
-.acw-pill { flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 14px; color: var(--text-light); font-family: var(--font-serif); font-size: 0.98rem; appearance: none; -webkit-appearance: none; }
-.acw-fig { font-family: var(--font-serif); font-size: 1rem; flex: 0 0 auto; }
-.acw-fig small { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-sans); }
+.acw-tip { display: block; margin-top: 7px; font-size: var(--fs-caption); line-height: 1.5; color: var(--ok-text); }
+.acw-pill { flex: 0 0 auto; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 14px; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-body); appearance: none; -webkit-appearance: none; }
+.acw-fig { font-family: var(--font-serif); font-size: var(--fs-body); flex: 0 0 auto; }
+.acw-fig small { font-size: var(--fs-micro); color: var(--text-muted); font-family: var(--font-sans); }
 /* day chips: the checkbox fills its label (the chb-switch trick), the chip
    look rides :has(:checked) */
 .acw-days { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; }
-.acw-days .day-check { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 36px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); color: var(--text-muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.acw-days .day-check { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 36px; border-radius: var(--r-sm); border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); color: var(--text-muted); font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
 .acw-days .day-check input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .acw-days .day-check:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent-text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .acw-days .day-check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -5081,22 +5081,22 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px 14px; }
 .acp-cell { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; background: none; }
 .acp-thumb { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--r-sm); background-size: cover; background-position: center; }
-.acp-main { position: absolute; left: 5px; top: 5px; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
-.acp-n { position: absolute; right: 5px; bottom: 4px; font-size: 0.66rem; color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
+.acp-main { position: absolute; left: 5px; top: 5px; font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
+.acp-n { position: absolute; right: 5px; bottom: 4px; font-size: var(--fs-micro); color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
 /* (0,2,0) on purpose — app.css's .content-edit-row .accom-photo-actions
    sets wrap and would win at equal specificity. 4 × 22px fits the ~91px cell. */
 .acp-cell .acp-acts { display: flex; justify-content: center; gap: 0; flex-wrap: nowrap; margin: 0; }
-.acp-cell .acp-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 4px 0; min-width: 22px; width: 22px; font-size: 0.85rem; line-height: 1; margin: 0; }
+.acp-cell .acp-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 4px 0; min-width: 22px; width: 22px; font-size: var(--fs-sub); line-height: 1; margin: 0; }
 .acp-acts .btn-edit { color: var(--accent-text); }
 .acp-acts .btn-delete { color: var(--danger-text); }
 .acp-acts .btn-sm[disabled] { opacity: 0.3; }
 /* the home-page-card LIVE PREVIEW (the badge trick) + its photo row */
 .acw-thumb { width: 54px; height: 42px; border-radius: var(--r-sm); background-size: cover; background-position: center; flex: 0 0 auto; }
-.acw-linkbtn { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-weight: 600; text-transform: none; letter-spacing: normal; font-size: 0.85rem; padding: 6px 0; }
+.acw-linkbtn { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-weight: 600; text-transform: none; letter-spacing: normal; font-size: var(--fs-sub); padding: 6px 0; }
 .acw-homecard { max-width: 250px; border-radius: var(--r-md); overflow: hidden; border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); }
 .acw-hc-img { height: 92px; background-size: cover; background-position: center; background-color: color-mix(in srgb, var(--text-light) 8%, transparent); }
-.acw-hc-t { padding: 9px 12px 3px; font-family: var(--font-serif); font-size: 0.95rem; color: var(--text-light); }
-.acw-hc-m { padding: 0 12px 10px; font-size: 0.72rem; color: var(--text-muted); }
+.acw-hc-t { padding: 9px 12px 3px; font-family: var(--font-serif); font-size: var(--fs-body); color: var(--text-light); }
+.acw-hc-m { padding: 0 12px 10px; font-size: var(--fs-caption); color: var(--text-muted); }
 /* iOS-style on/off switch (owner-asked; the keysafe keeper first). The REAL
    checkbox sits ON TOP at full size (opacity 0) so gates that click/read it
    by id keep working; the track + thumb underneath draw the state. The row's
@@ -5104,7 +5104,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 :root {
   --sw-thumb: #fff; /* the switch thumb — white in both themes, the iOS look */
 }
-.chb-switch-row { display: flex; align-items: flex-start; gap: 12px; font-size: 0.85rem; margin-bottom: 14px; cursor: pointer; }
+.chb-switch-row { display: flex; align-items: flex-start; gap: 12px; font-size: var(--fs-sub); margin-bottom: 14px; cursor: pointer; }
 .chb-switch { position: relative; flex: 0 0 auto; width: 46px; height: 28px; margin-top: 1px; }
 .chb-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .chb-switch-track { position: absolute; inset: 0; border-radius: 999px; background: color-mix(in srgb, var(--text-light) 16%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent); transition: background 0.25s; pointer-events: none; }
@@ -5121,8 +5121,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    .settings-sec and are untouched. Labels drop the letterspaced caps for the
    captions' voice; field labels take the frow look. */
 .settings-sec .accounts-stat { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); padding: 14px; }
-.settings-sec .accounts-stat .label { font-size: 0.7rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
-.settings-sec .modal-label, .settings-sec .host-edit-label { font-size: 0.72rem; color: var(--text-muted); }
+.settings-sec .accounts-stat .label { font-size: var(--fs-micro); letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.settings-sec .modal-label, .settings-sec .host-edit-label { font-size: var(--fs-caption); color: var(--text-muted); }
 /* person-rows inside a well (waitlist, guest accounts): a row + its quiet
    action line as one unit, hairline-separated. */
 .acw-prow + .acw-prow { border-top: 1px solid color-mix(in srgb, var(--text-light) 6%, transparent); }
@@ -5130,7 +5130,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    leads, the verdict pills sit in one quiet action line. */
 .acw-qrow { border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-md); background: color-mix(in srgb, var(--text-light) 4%, transparent); padding: 13px 14px; margin-bottom: 10px; }
 .acw-modacts { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-.acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; padding: 7px 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.acw-modacts button { border: 1px solid color-mix(in srgb, var(--text-light) 12%, transparent); background: none; border-radius: 999px; padding: 7px 14px; font-size: var(--fs-caption); font-weight: 600; cursor: pointer; }
 .acw-modacts .mod-ok { color: var(--ok-text); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .acw-modacts .mod-no { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .acw-modacts .mod-mut { color: var(--text-muted); }
@@ -5148,7 +5148,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 @media (min-width: 901px) { .sg-cards { grid-template-columns: repeat(2, 1fr); align-items: start; } }
 .sg-band { background: color-mix(in srgb, var(--text-light) 4%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 8%, transparent); border-radius: var(--r-lg); overflow: hidden; }
 .sg-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 2px 16px; }
-.sg-name { flex: 1 1 auto; min-width: 0; border: 0; background: none; font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); padding: 6px 0; }
+.sg-name { flex: 1 1 auto; min-width: 0; border: 0; background: none; font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); padding: 6px 0; }
 .sg-name::placeholder { color: var(--text-muted); font-style: italic; }
 .sg-del { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--danger-text); cursor: pointer; }
 .sg-del .ic { width: 15px; height: 15px; }
@@ -5157,26 +5157,26 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    rgba(0,0,0,.18) — a dark-first value never added to the light-mode fix list,
    so these painted mid-grey slabs reading as disabled fields (sampled ground
    190 against the rates editor's 231; ink 3.30:1 / 3.24:1, under AA). */
-.sg-dt { flex: 1 1 auto; text-align: center; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 10px; font-family: var(--font-serif); font-size: 0.95rem; }
-.sg-dt-empty { color: var(--text-muted); font-family: inherit; font-size: 0.88rem; }
+.sg-dt { flex: 1 1 auto; text-align: center; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; padding: 9px 10px; font-family: var(--font-serif); font-size: var(--fs-body); }
+.sg-dt-empty { color: var(--text-muted); font-family: inherit; font-size: var(--fs-body); }
 .sg-arr { flex: 0 0 auto; color: var(--text-muted); }
-.sg-len { text-align: center; font-size: 0.72rem; color: var(--text-muted); padding: 0 16px 10px; min-height: 1em; }
+.sg-len { text-align: center; font-size: var(--fs-caption); color: var(--text-muted); padding: 0 16px 10px; min-height: 1em; }
 .sg-rows { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
 .sg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
 .sg-row + .sg-row { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); }
-.sg-cot { display: flex; align-items: center; gap: 9px; font-size: 0.9rem; font-weight: 500; min-width: 0; }
+.sg-cot { display: flex; align-items: center; gap: 9px; font-size: var(--fs-body); font-weight: 500; min-width: 0; }
 .sg-cot .legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-.sg-price { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; width: 112px; min-height: 42px; padding: 0 14px; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; color: var(--text-muted); font-size: 0.85rem; }
-.sg-price input { width: 100%; min-width: 0; min-height: 40px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem; text-align: right; font-variant-numeric: tabular-nums; }
-.sg-price input::placeholder { color: var(--text-muted); font-family: var(--font-sans); font-size: 0.85rem; }
-.sg-foot { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 16px 10px; font-size: 0.74rem; color: var(--text-muted); }
+.sg-price { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; width: 112px; min-height: 42px; padding: 0 14px; background: color-mix(in srgb, var(--text-light) 6%, transparent); border: 1px solid color-mix(in srgb, var(--text-light) 9%, transparent); border-radius: 999px; color: var(--text-muted); font-size: var(--fs-sub); }
+.sg-price input { width: 100%; min-width: 0; min-height: 40px; border: 0; background: none; color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline); text-align: right; font-variant-numeric: tabular-nums; }
+.sg-price input::placeholder { color: var(--text-muted); font-family: var(--font-sans); font-size: var(--fs-sub); }
+.sg-foot { border-top: 1px solid color-mix(in srgb, var(--text-light) 7%, transparent); padding: 8px 16px 10px; font-size: var(--fs-caption); color: var(--text-muted); }
 .sg-actions { margin-top: 14px; }
-.sg-add { border: 0; background: none; color: var(--accent-text); font-size: 0.9rem; font-weight: 600; cursor: pointer; padding: 10px 2px; min-height: 44px; }
+.sg-add { border: 0; background: none; color: var(--accent-text); font-size: var(--fs-body); font-weight: 600; cursor: pointer; padding: 10px 2px; min-height: 44px; }
 #sg-savebar { position: sticky; bottom: calc(10px + var(--safe-b)); z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 8px 8px 16px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: var(--shadow-soft); }
-#season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; color: var(--text-muted); }
-.sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.9rem; font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
-#pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: 0.76rem;  font-weight: 600; color: var(--text-muted);  }
-.ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
+#season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sub); color: var(--text-muted); }
+.sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--fs-body); font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
+#pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: var(--fs-caption);  font-weight: 600; color: var(--text-muted);  }
+.ac-saved { font-size: var(--fs-micro); font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold
    group full-width (cross-axis auto margins cancel stretch — the rail rule). */
@@ -5205,7 +5205,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    pairs a11y-test §1b discovers and measures. ---- */
 .st-cap {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 0.76rem; font-weight: 600; letter-spacing: 0.01em;
+  font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.01em;
   padding: 4px 12px; border-radius: var(--r-pill); white-space: nowrap;
 }
 /* CALM IS QUIET. Three identical green capsules stacked on Manage made the
@@ -5217,7 +5217,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .st-cap.is-bad { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
 .st-cap.is-unk { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
 .st-wic { width: 13px; height: 13px; flex: 0 0 auto; }
-.st-tick { font-size: 0.72rem; }
+.st-tick { font-size: var(--fs-caption); }
 /* The answers' identity glyphs (the folder switch's own strokes, back on the
    fold labels the landing replaced it with). */
 /* DIRECT children only. The three answer rows wrap their text in .iv-lwrap, so
@@ -5237,8 +5237,8 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   min-height: 48px; padding: 10px 2px; cursor: pointer; list-style: none;
 }
 .mbx-ctx-drow::-webkit-details-marker { display: none; }
-.mbx-ctx-lbl { font-weight: 600; font-size: 0.92rem; min-width: 0; }
-.mbx-ctx-lbl small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbx-ctx-lbl { font-weight: 600; font-size: var(--fs-body); min-width: 0; }
+.mbx-ctx-lbl small { display: block; font-weight: 400; font-size: var(--fs-caption); color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mbx-ctx-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .mbx-ctx-d .bhub-chev { transition: transform 0.18s ease; }
 .mbx-ctx-d[open] > .mbx-ctx-drow .bhub-chev { transform: rotate(90deg); }
@@ -5271,7 +5271,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
    and year select above them are left-aligned) — centring only these made
    two columns of one page. */
 #accounts-content .bhub-fold-grp { max-width: 640px; }
-.mo-pulse { font-size: 0.9rem; color: var(--text-muted); width: 100%; max-width: 640px; margin: 2px auto 0; }
+.mo-pulse { font-size: var(--fs-body); color: var(--text-muted); width: 100%; max-width: 640px; margin: 2px auto 0; }
 /* On rail screens the answers align with the title's own left rail — the
    title started at one edge and the centred 640px column at another, two
    starting lines on one screen. LONGHAND margin-left only (the .mo-pulse
@@ -5300,7 +5300,7 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 /* Every row in these folds names a GUEST (or a Due-now marker) — sentence
    case at reading size, not the reference cards' 84px uppercase column. */
 #money-overview .bhub-kv-label {
-  flex: 1 1 auto; font-size: 0.9rem; letter-spacing: 0; text-transform: none;
+  flex: 1 1 auto; font-size: var(--fs-body); letter-spacing: 0; text-transform: none;
   color: var(--text-light); min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -5329,15 +5329,15 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 .modal-x {
     position: absolute; top: 16px; right: 16px; width: 36px; height: 36px;
     border-radius: 50%; border: 1px solid var(--glass-border); background: none;
-    color: var(--text-light); font-family: inherit; font-size: 0.92rem; cursor: pointer; z-index: 3;
+    color: var(--text-light); font-family: inherit; font-size: var(--fs-body); cursor: pointer; z-index: 3;
 }
 .modal-sec {
-    font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: var(--fs-micro); letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--text-muted); margin: 2px 0 12px; padding-top: 16px;
     border-top: 1px solid var(--glass-border);
 }
 .modal-cols .modal-col:first-child > .modal-sec:first-child { border-top: none; padding-top: 4px; }
-.modal-hint { font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 18px; }
+.modal-hint { font-size: var(--fs-caption); color: var(--text-muted); margin: -12px 0 18px; }
 .modal-foot {
     /* Docked outside the scroller, on the OPAQUE theme surface. Glass +
        backdrop blur was tried and MEASURED: inside the box's backdrop root
@@ -5351,10 +5351,10 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 /* The figure never clips (the bhub-sticky rule): the wrapper won't shrink. */
 .modal-foot-total { flex: 0 0 auto; }
 .modal-foot-cap {
-    display: block; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+    display: block; font-size: var(--fs-micro); letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--text-muted); white-space: nowrap;
 }
-.modal-foot-fig { font-family: var(--font-serif); font-size: 1.2rem; color: var(--text-light); white-space: nowrap; }
+.modal-foot-fig { font-family: var(--font-serif); font-size: var(--fs-headline); color: var(--text-light); white-space: nowrap; }
 /* The consequence line: first payment + due date, or the clash warning —
    filled by modalFootSync, add mode only. A full-width SECOND LINE of the
    bar (the foot wraps): inside the no-shrink figure wrapper a long sentence
@@ -5362,7 +5362,7 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 .modal-foot { flex-wrap: wrap; }
 .modal-foot-sub {
     flex: 1 1 100%; order: 3; margin-top: -4px;
-    font-size: 0.7rem; color: var(--text-muted);
+    font-size: var(--fs-micro); color: var(--text-muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .modal-foot .btn-glass { flex: 1; min-height: 46px; margin-left: auto; }
@@ -5370,32 +5370,32 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 .modal-steprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .modal-step-lbl { flex: 1 1 auto; min-width: 0; }
 .modal-step-lbl .modal-label, .modal-steprow .modal-label { margin: 0; }
-.modal-step-lbl small { display: block; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.modal-step-lbl small { display: block; font-size: var(--fs-micro); color: var(--text-muted); margin-top: 2px; }
 .modal-step {
     display: inline-flex; align-items: center; flex: 0 0 auto;
     background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); border-radius: 999px;
 }
 .modal-step button {
     width: 42px; height: 40px; border: 0; background: none; border-radius: 999px;
-    color: var(--accent-text); font-size: 1.2rem; line-height: 1; cursor: pointer; font-family: inherit;
+    color: var(--accent-text); font-size: var(--fs-headline); line-height: 1; cursor: pointer; font-family: inherit;
 }
 .modal-step button:disabled { color: var(--text-muted); opacity: 0.4; cursor: default; }
 .modal-step input {
     /* height 40 = the pill's own — and WCAG 2.5.8's 24px floor (a11y §5). */
     width: 58px; height: 40px; border: 0; background: none; text-align: center; padding: 0;
-    color: var(--text-light); font-family: var(--font-serif); font-size: 1.05rem;
+    color: var(--text-light); font-family: var(--font-serif); font-size: var(--fs-headline);
     font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
 }
 .modal-step input::-webkit-outer-spin-button, .modal-step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* The verdict capsule on the dates row — ✓ free / ⚠ overlaps, the a11y §1b
    discovered pair (status ink on its own tint). The trigger's text yields. */
 #modal-date-trigger .date-range-text { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.modal-date-verdict { flex: 0 0 auto; font-size: 0.72rem; font-weight: 600; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.modal-date-verdict { flex: 0 0 auto; font-size: var(--fs-caption); font-weight: 600; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
 .modal-date-verdict.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 15%, transparent); }
 .modal-date-verdict.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 16%, transparent); }
 /* The availability SUMMARY strip — the grid sits behind its Calendar toggle. */
 .mav-strip {
-    display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-light);
+    display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); color: var(--text-light);
     border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 13px; margin: 0 0 14px;
 }
 .mav-strip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ok); }
@@ -5403,7 +5403,7 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
 .mav-strip-txt { min-width: 0; }
 .mav-toggle {
     margin-left: auto; flex: 0 0 auto; background: none; border: none; padding: 6px;
-    font-family: inherit; font-size: 0.76rem; color: var(--accent-text); cursor: pointer;
+    font-family: inherit; font-size: var(--fs-caption); color: var(--accent-text); cursor: pointer;
 }
 @media (min-width: 901px) {
     #edit-modal .modal-box { max-width: 860px; }
@@ -5417,19 +5417,19 @@ body.rail-on.admin-screen #accounts-index > .settings-group {
   padding: 5px 11px;
   border-radius: var(--r-pill);
   border: 1px solid var(--glass-border);
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   color: var(--text-light);
   background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
 }
 /* HOW THE OFFER IS DOING — Money on the way's footer: figure-first tiles (the
    money overview's own vocabulary) + the floor's feedback sentence. */
 .mo-uptake { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
-.mo-uptake-cap { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.mo-uptake-cap { font-size: var(--fs-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
 .mo-tiles { display: flex; gap: 8px; }
 .mo-tile { flex: 1; min-width: 0; padding: 10px 8px; border: 1px solid var(--glass-border); border-radius: var(--r-md); text-align: center; }
-.mo-tile-fig { font-size: 1.05rem; font-weight: 700; color: var(--text-light); font-variant-numeric: tabular-nums; }
-.mo-tile-lbl { font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-top: 2px; }
-.mo-floorline { margin: 10px 0 0; font-size: 0.78rem; line-height: 1.55; color: var(--text-light); }
+.mo-tile-fig { font-size: var(--fs-headline); font-weight: 700; color: var(--text-light); font-variant-numeric: tabular-nums; }
+.mo-tile-lbl { font-size: var(--fs-micro); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-top: 2px; }
+.mo-floorline { margin: 10px 0 0; font-size: var(--fs-caption); line-height: 1.55; color: var(--text-light); }
 .mo-ap-row {
   background: none;
   border: 0;
@@ -5473,7 +5473,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   background: color-mix(in srgb, var(--info) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
   color: var(--info-text);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   line-height: 1.45;
 }
 /* the banner's living parts: the probe whisper and the STALE grade — a
@@ -5499,16 +5499,16 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-queue .ods-qlabel {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }
 .ods-queue .ods-qsub {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 /* ── THE UNIFIED SECTIONS: the online Today's anatomy on the sheet ── */
 .ods-opsline {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
   margin: -4px 0 10px;
 }
 .ods-opsline .ods-src {
@@ -5538,7 +5538,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-duty .ods-duty-go {
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   flex: 0 0 auto;
 }
 /* the BOUNDED timeline: lanes and bars for exactly the days the rows vouch
@@ -5557,7 +5557,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   align-items: center;
 }
 .ods-tl-day {
-  font-size: 0.68rem;
+  font-size: var(--fs-micro);
   color: var(--text-muted);
   text-align: center;
 }
@@ -5582,7 +5582,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-tl-cell.has i {
   font-style: normal;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -5595,7 +5595,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-tl-note {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   margin-top: 8px;
 }
 /* the read-only hub card — the booking hub's grouped-row shape, bounded */
@@ -5622,12 +5622,12 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   animation: odsEnter 0.28s ease-out;
 }
 .ods-hub h3 {
-  font-size: 1.25rem;
+  font-size: var(--fs-title);
   margin: 0 0 2px;
 }
 .ods-hub-cap {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   margin-bottom: 10px;
 }
 .ods-kv {
@@ -5636,12 +5636,12 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   gap: 14px;
   padding: 9px 2px;
   border-bottom: 1px solid var(--glass-border);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }
 .ods-kv b {
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   flex: 0 0 auto;
 }
 .ods-kv span {
@@ -5656,7 +5656,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-hub-foot {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   margin: 12px 0 0;
 }
 .ods-hub-close {
@@ -5691,7 +5691,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 /* the coast line — tides + weather from the snapshot, readable with no data */
 .ods-coast {
   margin: 8px 0 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
 }
 .ods-mark span {
@@ -5713,7 +5713,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   box-shadow: none;
 }
 .ods-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--info-text);
   background: color-mix(in srgb, var(--info) 10%, transparent);
   border-radius: var(--r-sm);
@@ -5736,7 +5736,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ods-empty {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }
 .ods-ops {
   background: var(--glass-bg);
@@ -5748,7 +5748,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ods-ops summary {
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
   min-height: 30px;
   display: flex;
   align-items: center;
@@ -5757,7 +5757,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: var(--fs-body);
   line-height: 1.6;
   margin: 8px 0 0;
   color: var(--text-light);
@@ -5787,7 +5787,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   gap: 12px;
   padding: 9px 0;
   border-bottom: 1px solid var(--glass-border);
-  font-size: 0.86rem;
+  font-size: var(--fs-sub);
 }
 .ks-kv:last-of-type {
   border-bottom: 0;
@@ -5804,7 +5804,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ks-v small {
   color: var(--text-muted);
   font-weight: 400;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
 }
 /* The label's provenance line stacks under it — inline it ran into the
    label ("Safe is set tosince 05/08", caught on the build's screenshot). */
@@ -5815,7 +5815,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ks-code {
   font-family: var(--font-serif);
-  font-size: 1.6rem;
+  font-size: var(--fs-display);
   letter-spacing: 0.3em;
   color: var(--accent-text);
   border: 1px solid var(--glass-border);
@@ -5825,7 +5825,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .ks-hist summary {
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: var(--fs-sub);
   color: var(--text-muted);
   padding: 8px 0 2px;
   min-height: 44px;
@@ -5835,31 +5835,31 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .ks-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   margin-top: 4px;
 }
 .ks-table th {
   text-align: left;
   color: var(--text-muted);
   font-weight: 500;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 3px 8px 6px 0;
   border-bottom: 1px solid var(--glass-border);
 }
-.ks-table .ks-code { font-size: 0.95rem; letter-spacing: 0.18em; }
+.ks-table .ks-code { font-size: var(--fs-body); letter-spacing: 0.18em; }
 .ks-table td {
   padding: 7px 8px 7px 0;
   border-bottom: 1px solid var(--glass-border);
   font-variant-numeric: tabular-nums;
 }
 .ks-table .ks-code {
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
 }
 .ks-note {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   margin: 10px 0 0;
 }
 
@@ -5872,32 +5872,32 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .etpl-row:hover:not([disabled]) { background: var(--glass-hover); }
 .etpl-row[disabled] { cursor: not-allowed; }
 .etpl-row[disabled] .etpl-row-name { color: var(--text-muted); }
-.etpl-row-name { display: block; font-weight: 600; font-size: 0.9rem; }
-.etpl-uses { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-left: 8px; }
-.etpl-row-sub { display: block; font-size: 0.8rem; color: var(--text-muted); line-height: 1.45; }
-.etpl-row-no { display: block; font-size: 0.78rem; color: var(--danger-text); font-weight: 600; margin-top: 2px; }
+.etpl-row-name { display: block; font-weight: 600; font-size: var(--fs-body); }
+.etpl-uses { font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); margin-left: 8px; }
+.etpl-row-sub { display: block; font-size: var(--fs-sub); color: var(--text-muted); line-height: 1.45; }
+.etpl-row-no { display: block; font-size: var(--fs-caption); color: var(--danger-text); font-weight: 600; margin-top: 2px; }
 .etpl-carryrow { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
-.etpl-carry { font-size: 0.75rem; font-weight: 600; color: var(--accent-text); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 1px 8px; }
+.etpl-carry { font-size: var(--fs-caption); font-weight: 600; color: var(--accent-text); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 1px 8px; }
 .etpl-carry.is-off { color: var(--text-muted); text-decoration: line-through; }
-.etpl-none { font-size: 0.83rem; color: var(--text-muted); margin: 6px 2px; }
+.etpl-none { font-size: var(--fs-sub); color: var(--text-muted); margin: 6px 2px; }
 .etpl-actbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
-.etpl-actlab { flex: 1 1 140px; min-width: 0; font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
-.etpl-undo { background: none; border: none; color: var(--accent-text); font-size: 0.78rem; font-weight: 600; text-decoration: underline; min-height: 44px; padding: 0 2px; cursor: pointer; font-family: inherit; }
+.etpl-actlab { flex: 1 1 140px; min-width: 0; font-size: var(--fs-caption); font-weight: 600; color: var(--text-muted); }
+.etpl-undo { background: none; border: none; color: var(--accent-text); font-size: var(--fs-caption); font-weight: 600; text-decoration: underline; min-height: 44px; padding: 0 2px; cursor: pointer; font-family: inherit; }
 .etpl-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
-.etpl-chip { display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; font-weight: 600; color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 7px 6px 12px; }
+.etpl-chip { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sub); font-weight: 600; color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 6px 7px 6px 12px; }
 .etpl-chip.is-primary { border-color: var(--accent); }
-.etpl-chip-rank { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
-.etpl-chip-x { width: 26px; height: 26px; border-radius: 50%; background: none; border: 1px solid currentColor; color: inherit; display: grid; place-items: center; font-size: 0.8rem; line-height: 1; cursor: pointer; padding: 0; }
+.etpl-chip-rank { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.etpl-chip-x { width: 26px; height: 26px; border-radius: 50%; background: none; border: 1px solid currentColor; color: inherit; display: grid; place-items: center; font-size: var(--fs-sub); line-height: 1; cursor: pointer; padding: 0; }
 .etpl-pick { margin: 8px 0 0; border-top: 1px solid var(--glass-border); padding-top: 8px; }
 .etpl-pick-row { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: var(--r-sm); padding: 8px 10px; min-height: 44px; color: var(--text-light); cursor: pointer; font: inherit; }
 .etpl-pick-row:hover { background: var(--glass-hover); }
-.etpl-pick-name { display: block; font-weight: 600; font-size: 0.88rem; }
-.etpl-pick-sub { display: block; font-size: 0.79rem; color: var(--text-muted); }
-.etpl-offcap { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 8px 2px 3px; }
-.etpl-offrow { font-size: 0.79rem; color: var(--text-muted); margin: 0 2px 4px; line-height: 1.45; }
+.etpl-pick-name { display: block; font-weight: 600; font-size: var(--fs-body); }
+.etpl-pick-sub { display: block; font-size: var(--fs-sub); color: var(--text-muted); }
+.etpl-offcap { font-size: var(--fs-caption); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin: 8px 2px 3px; }
+.etpl-offrow { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 2px 4px; line-height: 1.45; }
 .etpl-offrow strong { color: var(--text-light); }
 /* Manage page */
-.etpl-mcap { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 12px; }
+.etpl-mcap { font-size: var(--fs-sub); color: var(--text-muted); margin: 0 0 12px; }
 .etpl-mrow { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--glass-border); }
 .etpl-mrow.is-edit { display: block; }
 .etpl-mmain { min-width: 0; }
@@ -5906,7 +5906,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .etpl-mrow:not(.is-edit) .etpl-mbtns { margin-top: 0; }
 .etpl-del { color: var(--danger-text); }
 .etpl-cbxrow { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 4px; }
-.etpl-cbx { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 8px 13px; min-height: 44px; cursor: pointer; }
+.etpl-cbx { display: inline-flex; align-items: center; gap: 7px; font-size: var(--fs-sub); color: var(--text-light); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; padding: 8px 13px; min-height: 44px; cursor: pointer; }
 .etpl-cbx input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
 
 /* The composer, iOS-restyled (scoped — the modal only ever opens for the
@@ -5915,10 +5915,10 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
    nowrap is what CLIPPED "✨ Draft reply" off the right edge at 390px, and
    SUBJECT/MESSAGE shouting over quiet grouped fields is the pre-restyle look
    the rest of the back office has already left behind. */
-#enq-email-modal .modal-label { text-transform: none; letter-spacing: 0.02em; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
-#enq-email-modal .btn-sm { text-transform: none; letter-spacing: 0; font-size: 0.8rem; font-weight: 600; padding: 9px 14px; min-height: 40px; border-radius: 999px; }
+#enq-email-modal .modal-label { text-transform: none; letter-spacing: 0.02em; font-size: var(--fs-sub); font-weight: 600; margin-bottom: 6px; }
+#enq-email-modal .btn-sm { text-transform: none; letter-spacing: 0; font-size: var(--fs-sub); font-weight: 600; padding: 9px 14px; min-height: 40px; border-radius: 999px; }
 #enq-email-modal .enq-ctx { border-radius: var(--r-lg); }
-#enq-email-modal .etpl-actlab { font-size: 0.8rem; }
+#enq-email-modal .etpl-actlab { font-size: var(--fs-sub); }
 /* The context card under a long name + long email at 390px: the who-row WRAPS
    (the cottage tag drops under rather than squeezing the name to a mid-word
    break), the name block owns the leftover width, and the address — which has
@@ -5937,12 +5937,12 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
    under the owner's message. Shown so they don't retype the address and the
    guest read everything twice. */
 .arv-facts { border: 1px solid var(--glass-border); border-radius: var(--r-lg); padding: 12px 14px; margin-top: 10px; }
-.arv-cap { font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
-.arv-row { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; padding: 5px 0; font-size: 0.82rem; }
+.arv-cap { font-size: var(--fs-micro); letter-spacing: 0.09em; text-transform: uppercase; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.arv-row { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; padding: 5px 0; font-size: var(--fs-sub); }
 .arv-row + .arv-row { border-top: 1px solid var(--glass-border); }
 .arv-row span { color: var(--text-muted); flex: 0 0 auto; }
 .arv-row b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
-.arv-note { font-size: 0.76rem; color: var(--text-muted); margin: 9px 0 0; }
+.arv-note { font-size: var(--fs-caption); color: var(--text-muted); margin: 9px 0 0; }
 
 /* THE SET-UP FOLD on the Overnight work card. The card carries the switch and
    the download — the two an owner touches — and everything about connecting a
@@ -5951,11 +5951,11 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .night-setup { margin-top: 14px; }
 .night-setup > summary {
     cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
-    font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+    font-size: var(--fs-caption); letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
     color: var(--text-muted); padding: 6px 0; min-height: 44px;
 }
 .night-setup > summary::-webkit-details-marker { display: none; }
-.night-setup > summary::after { content: '›'; font-size: 1rem; transition: transform 0.18s var(--fluid-bezier); }
+.night-setup > summary::after { content: '›'; font-size: var(--fs-body); transition: transform 0.18s var(--fluid-bezier); }
 .night-setup[open] > summary::after { transform: rotate(90deg); }
 .night-setup > summary:hover { color: var(--accent-text); }
 
@@ -5972,13 +5972,13 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   border:1px solid var(--glass-border);border-radius:999px;padding:3px 5px 3px 13px;margin:0 0 8px;
   background:var(--glass-bg);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter)}
 .ac-more{margin-left:auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--glass-border);
-  background:none;color:var(--text-muted);font-size:14px;cursor:pointer;flex:0 0 auto}
+  background:none;color:var(--text-muted);font-size: var(--fs-sub);cursor:pointer;flex:0 0 auto}
 .ac-more:hover{background:var(--btn-hover)}
-.mc-pres{display:inline-flex;align-items:center;gap:6px;font-size:0.66rem;font-weight:600;color:var(--text-muted)}
+.mc-pres{display:inline-flex;align-items:center;gap:6px;font-size: var(--fs-micro);font-weight:600;color:var(--text-muted)}
 /* In the page's bar the presence is the ONE line of text, so it steps up —
    contextual, because renderMacChat rebuilds the node and a class would be
    lost in the swap. */
-.ac-hd .mc-pres{font-size:0.68rem;gap:6px}
+.ac-hd .mc-pres{font-size: var(--fs-micro);gap:6px}
 .ac-hd .mc-pres .mc-dot{width:6px;height:6px}
 .mc-pres .mc-dot{width:7px;height:7px;border-radius:50%;background:var(--ok-text)}
 .mc-pres.is-on{color:var(--ok-text)}
@@ -5992,7 +5992,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .mc-rail::-webkit-scrollbar{display:none}
 .mc-rail-chip{flex:0 0 auto;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   border:1px solid var(--glass-border);background:color-mix(in srgb,var(--text-light) 4%,transparent);
-  color:var(--text-muted);border-radius:999px;padding:8px 14px;font:600 0.7rem var(--font-sans);
+  color:var(--text-muted);border-radius:999px;padding:8px 14px;font:600 var(--fs-micro) var(--font-sans);
   cursor:pointer;min-height:34px}
 .mc-rail-chip:hover{background:var(--btn-hover)}
 .mc-rail-chip.is-cur{background:var(--text-light);color:var(--dark-grey);border-color:transparent}
@@ -6000,9 +6000,9 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 /* the welcome — a CARD with starters, never a stranded paragraph */
 .mc-hello{margin:8vh auto 0;max-width:400px;border:1px solid var(--glass-border);border-radius:var(--r-panel);
   padding:24px 20px;background:var(--glass-bg);text-align:center}
-.mc-hello-spark{font-size:22px;color:var(--accent-text)}
-.mc-hello h2{font:600 1.3rem var(--font-serif);margin:8px 0 6px}
-.mc-hello p{color:var(--text-muted);font-size:0.78rem;margin:0 0 14px;line-height:1.55}
+.mc-hello-spark{font-size: var(--fs-title);color:var(--accent-text)}
+.mc-hello h2{font:600 var(--fs-title) var(--font-serif);margin:8px 0 6px}
+.mc-hello p{color:var(--text-muted);font-size: var(--fs-caption);margin:0 0 14px;line-height:1.55}
 .mc-starters{display:flex;flex-direction:column;gap:8px}
 /* ONE CHIP. The starters, search's refinements and the day rows' actions all
    mean "tap this to go on" — they were three shapes for one idea. This is the
@@ -6015,7 +6015,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   min-height:44px;transition:border-color 0.2s var(--fluid-bezier),background 0.2s var(--fluid-bezier)}
 .mc-schip:hover{border-color:var(--accent);background:var(--btn-hover)}
 .mc-go{color:var(--accent-text);font-weight:700}
-.mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size:0.85rem;line-height:1.55;overflow-wrap:break-word}
+.mc-bub{max-width:82%;padding:10px 14px;border-radius:20px;font-size: var(--fs-sub);line-height:1.55;overflow-wrap:break-word}
 .mc-you{align-self:flex-end;background:color-mix(in srgb,var(--accent) 17%,transparent);
   border-bottom-right-radius:7px;white-space:pre-wrap}
 .mc-mac{align-self:flex-start;background:color-mix(in srgb,var(--text-light) 6%,transparent);
@@ -6023,7 +6023,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .mc-mac p{margin:0.35em 0}.mc-mac p:first-child{margin-top:0}.mc-mac p:last-child{margin-bottom:0}
 .mc-money{font-weight:700;color:var(--accent-text);font-variant-numeric:tabular-nums}
 /* the journey — capsules IN the log, one live region each */
-.mc-jcap{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;font-size:0.66rem;font-weight:600;
+.mc-jcap{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;font-size: var(--fs-micro);font-weight:600;
   color:var(--text-muted);border:1px solid var(--glass-border);border-radius:999px;padding:5px 13px;
   background:color-mix(in srgb,var(--text-light) 3%,transparent)}
 .mc-jcap.is-warn{color:var(--warn-text);border-color:color-mix(in srgb,var(--warn-text) 40%,transparent)}
@@ -6033,18 +6033,18 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .mc-tick{color:var(--ok-text);font-weight:800}
 .mc-think{align-self:flex-start;max-width:82%}
 .mc-think summary{list-style:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
-  font-size:0.66rem;font-weight:700;color:var(--text-muted);
+  font-size: var(--fs-micro);font-weight:700;color:var(--text-muted);
   border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
 .mc-think summary::-webkit-details-marker{display:none}
-.mc-think-b{margin-top:6px;font-size:0.75rem;line-height:1.5;color:var(--text-muted);
+.mc-think-b{margin-top:6px;font-size: var(--fs-caption);line-height:1.5;color:var(--text-muted);
   border-left:2px solid var(--glass-border);padding:2px 0 2px 11px;white-space:pre-wrap}
-.mc-chip{align-self:flex-start;font-size:0.66rem;font-weight:600;color:var(--text-muted);
+.mc-chip{align-self:flex-start;font-size: var(--fs-micro);font-weight:600;color:var(--text-muted);
   border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px}
 .mc-live{display:flex;flex-direction:column;gap:8px}
 .mc-caret{display:inline-block;width:6px;height:13px;border-radius:2px;background:var(--accent);
   vertical-align:-2px;animation:mcCaret .9s steps(1) infinite}
 @keyframes mcCaret{50%{opacity:0}}
-.mc-meta{align-self:flex-start;font-size:0.64rem;color:var(--text-muted);padding-left:4px}
+.mc-meta{align-self:flex-start;font-size: var(--fs-micro);color:var(--text-muted);padding-left:4px}
 /* THE WELCOME CARRIES THE DAY — quiet days render nothing here. */
 /* HANDOFF: one quiet offer above the log — never an alert, always
    dismissible, and never a filled pill: it must yield to the conversation
@@ -6053,45 +6053,45 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   border:1px solid color-mix(in srgb, var(--text-light) 12%, transparent);border-radius:var(--r-lg);
   background:color-mix(in srgb, var(--text-light) 4%, transparent)}
 .mc-hand-i{color:var(--text-muted);flex:0 0 auto;display:flex;align-items:center}
-.mc-hand-t{flex:1 1 auto;min-width:0;font-size:0.78rem;line-height:1.35;color:var(--text-muted)}
+.mc-hand-t{flex:1 1 auto;min-width:0;font-size: var(--fs-caption);line-height:1.35;color:var(--text-muted)}
 .mc-hand-q{color:var(--text-light);font-weight:500}
-.mc-hand-d{display:block;font-size:0.74rem;color:var(--text-muted);opacity:0.85;
+.mc-hand-d{display:block;font-size: var(--fs-caption);color:var(--text-muted);opacity:0.85;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
-.mc-hand-go{border:0;background:none;color:var(--accent-text);font-size:0.8rem;font-weight:600;
+.mc-hand-go{border:0;background:none;color:var(--accent-text);font-size: var(--fs-sub);font-weight:600;
   cursor:pointer;padding:8px 2px;border-radius:8px;flex:0 0 auto;white-space:nowrap;min-height:44px}
-.mc-hand-x{border:0;background:none;color:var(--text-muted);font-size:0.72rem;cursor:pointer;
+.mc-hand-x{border:0;background:none;color:var(--text-muted);font-size: var(--fs-caption);cursor:pointer;
   padding:6px;border-radius:8px;flex:0 0 auto;min-width:34px;min-height:44px;opacity:0.7}
 .mc-day{border:1px solid var(--glass-border);border-radius:var(--r-lg);padding:14px 15px;
   background:color-mix(in srgb,var(--accent) 6%,transparent);margin:2px 4px 0}
-.mc-day-t{font:600 1rem var(--font-serif);color:var(--text-light);margin-bottom:8px}
+.mc-day-t{font:600 var(--fs-body) var(--font-serif);color:var(--text-light);margin-bottom:8px}
 .mc-day-r{display:flex;align-items:center;gap:10px;padding:6px 0;
-  border-top:1px solid var(--glass-border);font-size:0.78rem;color:var(--text-light)}
+  border-top:1px solid var(--glass-border);font-size: var(--fs-caption);color:var(--text-light)}
 .mc-day-l{flex:1;min-width:0}
 .mc-day-go{border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:999px;
   min-height:32px;padding:0 12px;cursor:pointer;flex:0 0 auto;
   background:color-mix(in srgb,var(--accent) 9%,transparent);color:var(--text-light);
-  font:700 0.7rem var(--font-sans)}
+  font:700 var(--fs-micro) var(--font-sans)}
 .mc-day-go:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
-.mc-day-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
+.mc-day-note{margin-top:8px;font-size: var(--fs-micro);color:var(--text-muted)}
 /* THE ACTION CARD — a proposal, never a deed: confirm or dismiss. */
 .mc-act{align-self:flex-start;max-width:82%;border:1px solid var(--glass-border);border-radius:var(--r-md);
   padding:12px 14px;background:color-mix(in srgb,var(--accent) 7%,transparent)}
-.mc-act-t{font:700 0.7rem var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;
+.mc-act-t{font:700 var(--fs-micro) var(--font-sans);letter-spacing:0.06em;text-transform:uppercase;
   color:var(--accent-text);margin-bottom:5px}
-.mc-act-f{font-size:0.8rem;line-height:1.5;color:var(--text-light)}
+.mc-act-f{font-size: var(--fs-sub);line-height:1.5;color:var(--text-light)}
 .mc-act-btns{display:flex;gap:8px;margin-top:10px}
 .mc-act-go{border:0;border-radius:999px;padding:0 16px;min-height:38px;cursor:pointer;
-  background:var(--accent);color:var(--accent-ink);font:700 0.76rem var(--font-sans)}
+  background:var(--accent);color:var(--accent-ink);font:700 var(--fs-caption) var(--font-sans)}
 .mc-act-no{border:1px solid var(--glass-border);border-radius:999px;padding:0 14px;min-height:38px;
-  cursor:pointer;background:none;color:var(--text-muted);font:600 0.76rem var(--font-sans)}
+  cursor:pointer;background:none;color:var(--text-muted);font:600 var(--fs-caption) var(--font-sans)}
 .mc-act-no:hover{color:var(--text-light);background:var(--btn-hover)}
-.mc-act-note{margin-top:8px;font-size:0.62rem;color:var(--text-muted)}
-.mc-act.is-done{background:color-mix(in srgb,var(--ok) 10%,transparent);font-size:0.74rem;font-weight:600;color:var(--text-light)}
-.mc-act.is-off{background:none;font-size:0.72rem;color:var(--text-muted)}
+.mc-act-note{margin-top:8px;font-size: var(--fs-micro);color:var(--text-muted)}
+.mc-act.is-done{background:color-mix(in srgb,var(--ok) 10%,transparent);font-size: var(--fs-caption);font-weight:600;color:var(--text-light)}
+.mc-act.is-off{background:none;font-size: var(--fs-caption);color:var(--text-muted)}
 /* the follow-up: one quiet chip in the sign-off — never a second proposal */
 .mc-act-next{display:block;margin-top:8px;border:1px solid var(--glass-border);border-radius:999px;
   padding:6px 12px;min-height:32px;background:none;color:var(--accent-text);
-  font:600 0.68rem var(--font-sans);cursor:pointer}
+  font:600 var(--fs-micro) var(--font-sans);cursor:pointer}
 .mc-act-next:hover{background:var(--btn-hover)}
 /* THE FLOATING COMPOSER — a glass capsule above the home indicator. */
 .ac-composer{position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:1400;
@@ -6101,7 +6101,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   box-shadow:var(--shadow-panel)}
 #view-aichat.active .ac-composer{display:flex}
 .ac-composer input{flex:1;min-width:0;border:0;background:none;color:var(--text-light);
-  font:400 0.9rem var(--font-sans);outline:none;min-height:38px}
+  font:400 var(--fs-body) var(--font-sans);outline:none;min-height:38px}
 .ac-composer input::placeholder{color:var(--text-muted)}
 .ac-send{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
   background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;
@@ -6120,17 +6120,17 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   border:1px solid var(--glass-border);border-radius:var(--r-md);padding:5px 6px 5px 5px;
   background:color-mix(in srgb,var(--text-light) 4%,transparent)}
 .mc-pthumb{width:34px;height:34px;border-radius:var(--r-sm);object-fit:cover;flex:0 0 auto}
-.mc-pdoc{font-size:1rem;flex:0 0 auto;padding-left:4px}
-.mc-pname{font-size:0.72rem;font-weight:600;color:var(--text-light);min-width:0;
+.mc-pdoc{font-size: var(--fs-body);flex:0 0 auto;padding-left:4px}
+.mc-pname{font-size: var(--fs-caption);font-weight:600;color:var(--text-light);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mc-px{width:26px;height:26px;border-radius:50%;border:0;cursor:pointer;flex:0 0 auto;
   background:color-mix(in srgb,var(--text-light) 8%,transparent);color:var(--text-muted);
-  font-size:0.7rem;display:grid;place-items:center}
+  font-size: var(--fs-micro);display:grid;place-items:center}
 .mc-px:hover{color:var(--text-light)}
 /* attachments in the log — the photo bubble and the document chip */
 .mc-photo{align-self:flex-end;max-width:min(62%,260px);max-height:260px;border-radius:var(--r-md);
   border:1px solid var(--glass-border);object-fit:cover}
-.mc-fchip{align-self:flex-end;font-size:0.68rem;font-weight:600;color:var(--text-light);
+.mc-fchip{align-self:flex-end;font-size: var(--fs-micro);font-weight:600;color:var(--text-light);
   border:1px solid var(--glass-border);border-radius:999px;padding:5px 12px;
   background:color-mix(in srgb,var(--accent) 10%,transparent)}
 /* the … sheet — where Clear went */
@@ -6143,7 +6143,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   animation:acRise .35s var(--spring)}
 @keyframes acRise{from{transform:translateY(30px);opacity:0}}
 .ac-sheet-card button{display:block;width:100%;border:0;background:none;color:var(--text-light);
-  font:600 0.88rem var(--font-sans);padding:15px 18px;text-align:center;cursor:pointer;
+  font:600 var(--fs-body) var(--font-sans);padding:15px 18px;text-align:center;cursor:pointer;
   border-bottom:1px solid var(--glass-border);min-height:44px}
 .ac-sheet-card button:hover{background:var(--btn-hover)}
 .ac-sheet-card button.ac-quiet{color:var(--text-muted);font-weight:500}
@@ -6179,7 +6179,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 }
 .spine-day {
   font-family: var(--font-serif);
-  font-size: 1.02rem;
+  font-size: var(--fs-headline);
   font-weight: 600;
   color: var(--text-light);
   line-height: 1.35;
@@ -6192,7 +6192,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   padding: 6px 13px 6px 11px;
   border-radius: var(--r-pill);
@@ -6236,7 +6236,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .spine-cnt {
   display: none;
   align-items: center;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   padding: 4px 10px;
   border-radius: var(--r-pill);
@@ -6273,7 +6273,7 @@ body.rail-on.admin-screen #day-spine {
 /* Full state: the sentence owns its line and the chips sit UNDER it — the
    prototype's stacked anatomy, not a crowded single row. */
 body.rail-on.admin-screen .spine-day {
-  font-size: 1.3rem;
+  font-size: var(--fs-title);
   line-height: 1.28;
   text-wrap: balance;
   flex: 1 1 100%;
@@ -6283,7 +6283,7 @@ body.rail-on.admin-screen #day-spine.spine-cond {
   flex-wrap: nowrap;
 }
 body.rail-on.admin-screen #day-spine.spine-cond .spine-day {
-  font-size: 0.98rem;
+  font-size: var(--fs-body);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6303,13 +6303,13 @@ body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
      items' max-content (597px at 390) and the row overflowed the page sideways. */
   #day-spine { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; min-width: 0; }
   .spine-day { min-width: 0; }
-  .spine-day { font-size: 1.02rem; }
+  .spine-day { font-size: var(--fs-headline); }
   /* A scroll container CLIPS its children's overflow — including the chips'
      ::before hit region (-6px) — so the row carries 6px of padding cancelled by
      margin: the region stays inside the scroll box and still reaches 44. */
   .spine-duties { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 8px 0; margin: -8px 0; min-width: 0; }
   .spine-duties::-webkit-scrollbar { display: none; }
-  .spine-duty { flex: none; min-height: 32px; padding: 4px 12px; font-size: 0.8rem; max-width: 260px; }
+  .spine-duty { flex: none; min-height: 32px; padding: 4px 12px; font-size: var(--fs-sub); max-width: 260px; }
 }
 
 /* ---- The rail: the dock's destinations plus Cottages, as a left column
@@ -6381,7 +6381,7 @@ body.rail-on.admin-screen main.container {
 }
 .rail-bname {
   font-family: var(--font-serif);
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   line-height: 1.2;
   color: var(--text-light);
@@ -6393,7 +6393,7 @@ body.rail-on.admin-screen main.container {
 .rail-bsub {
   display: block;
   font-family: var(--font-sans);
-  font-size: 0.6rem;
+  font-size: var(--fs-micro);
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -6415,7 +6415,7 @@ body.rail-on.admin-screen main.container {
   border-radius: var(--r-pill);
   background: none;
   color: var(--text-muted);
-  font: 500 0.82rem var(--font-sans);
+  font: 500 var(--fs-sub) var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
@@ -6429,7 +6429,7 @@ body.rail-on.admin-screen main.container {
 }
 .rail-kbd {
   margin-left: auto;
-  font-size: 0.64rem;
+  font-size: var(--fs-micro);
   border: 1px solid color-mix(in srgb, var(--text-light) 10%, transparent);
   border-radius: 5px;
   padding: 1px 5px;
@@ -6447,7 +6447,7 @@ body.rail-on.admin-screen main.container {
   border-radius: var(--r-pill);
   background: none;
   color: var(--text-muted);
-  font: 500 0.74rem var(--font-sans);
+  font: 500 var(--fs-caption) var(--font-sans);
   cursor: pointer;
 }
 .rail-theme-ic,
@@ -6537,7 +6537,7 @@ body.rail-on.admin-screen .bo-today-head h1 {
 }
 body.rail-on.admin-screen #today-date {
   font-family: var(--font-serif);
-  font-size: 1.3rem;
+  font-size: var(--fs-title);
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-light);
@@ -6587,7 +6587,7 @@ body.rail-on.admin-screen .ac-hd {
   border-radius: var(--r-sm);
   background: none;
   color: var(--text-light);
-  font: 500 0.88rem var(--font-sans);
+  font: 500 var(--fs-body) var(--font-sans);
   text-align: left;
   cursor: pointer;
 }
@@ -6650,7 +6650,7 @@ body.rail-on.admin-screen .ac-hd {
 }
 .rail-cnt {
   margin-left: auto;
-  font-size: 0.74rem;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -6690,10 +6690,10 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
 .gb-starline {
   color: var(--accent-text);
   letter-spacing: 2px;
-  font-size: 0.92rem;
+  font-size: var(--fs-body);
 }
 .gb-record {
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   background: color-mix(in srgb, var(--text-light) 4%, transparent);
   border: 1px solid var(--glass-border);
@@ -6712,7 +6712,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   align-items: center;
 }
 .gb-star {
-  font-size: 1.6rem;
+  font-size: var(--fs-display);
   line-height: 1.2;
   background: none;
   border: 0;
@@ -6730,7 +6730,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   border: 0;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.76rem;
+  font-size: var(--fs-caption);
   font-weight: 700;
   color: var(--accent-text);
   padding: 8px 2px;
@@ -6742,7 +6742,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   justify-content: space-between;
   padding: 7px 0;
   border-bottom: 1px solid var(--glass-border);
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   color: var(--text-light);
 }
 .gb-cat:last-of-type {
@@ -6772,7 +6772,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   margin-top: 5px;
 }
 .gb-pill {
-  font-size: 0.66rem;
+  font-size: var(--fs-micro);
   font-weight: 700;
   border-radius: 999px;
   padding: 2px 9px;
@@ -6788,7 +6788,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   color: var(--warn-text);
 }
 .gb-note {
-  font-size: 0.78rem;
+  font-size: var(--fs-caption);
   color: var(--text-muted);
   font-style: italic;
   margin-top: 5px;
@@ -6799,7 +6799,7 @@ body.night-off #admin-rail .rail-row[data-view='view-aichat'] {
   border: 1px solid color-mix(in srgb, var(--warn-text) 55%, transparent);
   border-radius: var(--r-lg);
   color: var(--warn-text);
-  font-size: 0.82rem;
+  font-size: var(--fs-sub);
   line-height: 1.65;
   padding: 11px 15px;
   margin: 0 0 12px;
@@ -6878,4 +6878,4 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 /* Move money out: the two fields the owner TYPES money into stand at 44px and
    17px — the one screen with a figure to enter, and 17px is also what stops iOS
    zooming the page on focus. */
-#sweep-balance, #sweep-buffer { min-height: 44px; font-size: 1.0625rem; padding: 8px 14px; }
+#sweep-balance, #sweep-buffer { min-height: 44px; font-size: var(--fs-headline); padding: 8px 14px; }

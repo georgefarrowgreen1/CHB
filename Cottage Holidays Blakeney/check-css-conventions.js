@@ -147,6 +147,27 @@ function rawRadii(cssRaw) {
     return out;
 }
 
+// A raw text size: `font-size` set to a rem/px value under 40px instead of one of
+// the eight --fs-* steps (11 · 12 · 13 · 15 · 17 · 22 · 28 · 34). app.css shipped
+// 45 distinct sizes and admin.css 42 before the scale; ui-test-typescale measures
+// the PAINT on the walked screens, this counts the declarations so a stray size
+// cannot ship on a screen the sweep does not walk. Display sizes over 40px, em,
+// %, clamp() and var() are outside the rule (the hero title is fluid by design).
+function rawType(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    css.split('\n').forEach((line, i) => {
+        if (/^\s*--[a-z-]+\s*:/.test(line)) return;
+        // the longhand, and the size inside a `font:` shorthand (after any style/weight)
+        const re = /(?:^|[;{])\s*font(?:-size\s*:\s*|\s*:\s*(?:(?:normal|italic|[1-9]00|bold)\s+)*)(\d*\.?\d+)(rem|px)\b/g;
+        for (const d of line.matchAll(re)) {
+            const px = d[2] === 'px' ? parseFloat(d[1]) : parseFloat(d[1]) * 16;
+            if (px > 0 && px <= 40) out.push(`${i + 1}: ${d[1]}${d[2]}`);
+        }
+    });
+    return out;
+}
+
 // Tracked uppercase on words: text-transform: uppercase rule blocks. The
 // sentence-case pass took app.css from 49 to the brand voice's five (nav, the
 // hero kicker and subtitle, the section kicker); counted so the shout cannot
@@ -170,7 +191,7 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css), rawRadii: rawRadii(css), rawType: rawType(css) };
 }
 
 const DIMS = [
@@ -180,6 +201,7 @@ const DIMS = [
     { key: 'offGrid', label: 'spacing value off the 4pt grid', fix: 'snap to a multiple of 4 (or use a --space-N token); 1–2px hairline nudges are allowed' },
     { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
     { key: 'rawRadii', label: 'raw corner radius off the three (12 / 20 / pill)', fix: 'use var(--r-sm) for a cell or field, var(--r-lg) for a card, var(--r-pill) for a pill' },
+    { key: 'rawType', label: 'raw font-size off the eight steps', fix: 'use var(--fs-micro/caption/sub/body/headline/title/display/hero) — 11 · 12 · 13 · 15 · 17 · 22 · 28 · 34' },
 ];
 
 if (update) {
@@ -197,7 +219,7 @@ if (update) {
     }
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase, ${next[f].rawRadii} raw radii, ${next[f].rawType} raw type`);
     process.exit(0);
 }
 
