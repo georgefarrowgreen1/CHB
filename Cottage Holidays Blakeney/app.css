@@ -2626,6 +2626,15 @@ a.card {
   flex-shrink: 0;
   color: var(--text-muted);
 }
+/* A note must not end on a lone word (admin.css's settings rows had this; the guest notes did not). */
+.card p,
+.things-note,
+.pay-error p,
+.amenity-sheet-note,
+#exp-empty p,
+#exp-grid p {
+  text-wrap: pretty;
+}
 .things-note {
   font-size: 0.9rem;
   color: var(--text-muted);
@@ -2913,7 +2922,7 @@ a.card {
   .enq-prog-step {
     /* floor was 0.46rem = 7.4px on a narrow phone; 2.35vw put a 390px iPhone at
        9.2px. Lifted so the smallest phone still clears ~10px. */
-    font-size: clamp(0.62rem, 2.6vw, 0.72rem);
+    font-size: clamp(0.7rem, 2.6vw, 0.72rem); /* the 11px floor: 0.62 landed at 10.1px on a 390 phone */
     letter-spacing: 0.5px;
     padding-left: 19px;
   }
@@ -5132,6 +5141,7 @@ body.modal-open {
   color: var(--text-muted);
 }
 .cal-refresh-btn {
+  position: relative; /* the hit region below */
   background: transparent;
   border: 1px solid var(--glass-border);
   color: var(--text-muted);
@@ -5311,7 +5321,7 @@ body.light-mode .ov-card {
 }
 .prop-tag {
   display: inline-block;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 3px 10px;
@@ -6687,7 +6697,7 @@ body.owner-mode .chat-widget {
 .btn-sm {
   padding: 8px 14px;
   border-radius: 18px;
-  font-size: 0.68rem;
+  font-size: 0.7rem; /* the 11px floor — 0.68 was 10.9px on a control */
   text-transform: uppercase;
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -6739,8 +6749,8 @@ body.owner-mode .chat-widget {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   color: var(--text-light);
-  width: 40px; /* comfortable touch target (was 34px) */
-  height: 40px;
+  width: 44px; /* the phone floor (was 34, then 40) */
+  height: 44px;
   border-radius: 50%;
   cursor: pointer;
   font-size: 1.1rem;
@@ -6764,7 +6774,7 @@ body.owner-mode .chat-widget {
 }
 .avail-cal-grid .avail-dow {
   text-align: center;
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -8289,6 +8299,39 @@ body.light-mode .feed-dot-bad {
 
 
 /* Editorial kickers: the small-caps accent line above section titles. */
+/* THE HOUSE PRIMARY — seven guest controls used the class with no rule behind it
+   and drew as the browser's grey default; check-css-conventions now requires one. */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 12px 26px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-sans);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px var(--accent-soft);
+  transition: transform 320ms var(--settle), filter 320ms var(--settle), box-shadow 0.3s var(--fluid-bezier);
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+.btn-primary:active {
+  transform: scale(var(--sc, 0.97));
+  filter: brightness(0.94);
+  transition: transform 80ms var(--in), filter 80ms var(--in);
+}
+.btn-primary:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+}
 .section-kicker {
   font-size: 0.72rem;
   letter-spacing: 2.6px;
@@ -8619,7 +8662,7 @@ body.light-mode .feed-dot-bad {
   margin-top: 14px;
 }
 .gtl-cap {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -9434,7 +9477,7 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border, rgba(127, 127, 127, 0.16));
 }
 .bkflow-lbl {
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -9584,7 +9627,7 @@ body.light-mode .feed-dot-bad {
 }
 .guest-status-badge {
   display: inline-block;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   padding: 4px 12px;
@@ -10870,6 +10913,15 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
     transform: none;
   }
 }
+/* HIT REGIONS: the 38px dock buttons and the 32px refresh keep their look; an
+   invisible inset takes the region past 44 (neighbours overlap in the gap — no dead strip). */
+.admin-dock-btn::before,
+.cal-refresh-btn::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+}
 /* Hover label so each icon's purpose is unmistakable (desktop). */
 .admin-dock-btn::after {
   content: attr(data-label);
@@ -10967,7 +11019,7 @@ body.light-mode .hs-field:hover {
 }
 .hs-label {
   display: block;
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 1.3px;
   color: var(--text-muted);
@@ -11093,7 +11145,7 @@ body.light-mode .hs-field:hover {
 }
 .hs-chip {
   flex: 1 1 auto;
-  min-height: 40px; /* comfortable touch target */
+  min-height: 44px; /* the phone floor */
   padding: 9px 8px;
   border-radius: var(--r-sm);
   border: 1px solid var(--glass-border);
@@ -11139,7 +11191,7 @@ body.light-mode .hs-field:hover {
 }
 .hs-mode-btn {
   flex: 1 1 0;
-  min-height: 40px; /* comfortable touch target */
+  min-height: 44px; /* the phone floor */
   padding: 9px 14px;
   border-radius: 10px;
   border: none;

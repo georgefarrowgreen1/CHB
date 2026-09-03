@@ -180,6 +180,25 @@ for (const f of FILES) {
     }
 }
 
+// ---- A CLASS WITH NO RULE IS INVISIBLE TO EVERY GATE. `.btn-primary` was used
+// on seven guest controls (the last-morning check-out tap among them) and defined
+// nowhere, so they rendered as the browser's default grey button — and the suites
+// read text and names, never paint, while a stylesheet scan has nothing to scan.
+// Every btn-* token used in the markup or the JS templates must have a rule in
+// one of the three sheets. Hard, not a ratchet: the count is zero and stays zero.
+console.log('\n== Button classes have rules (hard invariant, not a ratchet) ==');
+{
+    const sheets = FILES.map((f) => stripComments(fs.readFileSync(path.join(DIR, f), 'utf8'))).join('\n');
+    const markup = ['index.html', 'admin-views.html', 'app.js', 'admin.js', 'guest-app.js']
+        .map((f) => { try { return fs.readFileSync(path.join(DIR, f), 'utf8'); } catch (e) { return ''; } }).join('\n');
+    const used = new Set();
+    for (const m of markup.matchAll(/class=["']([^"'`]*)["']/g)) for (const tok of m[1].split(/\s+/)) if (/^btn-[a-z0-9-]+$/.test(tok)) used.add(tok);
+    const unstyled = [...used].filter((tok) => !new RegExp('\\.' + tok.replace(/-/g, '\\-') + '(?![a-z0-9-])').test(sheets));
+    if (used.size < 5) { failed++; console.log(`  ✗ only ${used.size} btn-* classes found in the markup — the scan is not seeing the templates`); }
+    else if (unstyled.length) { failed++; console.log(`  ✗ ${unstyled.length} button class(es) with no rule in any stylesheet: ${unstyled.join(', ')} — they render as the browser's default button`); }
+    else console.log(`  ✓ every btn-* class the markup uses has a rule (${used.size} classes)`);
+}
+
 console.log('\n== CSS conventions (ratchet) ==');
 for (const f of FILES) {
     for (const { key, label, fix } of DIMS) {

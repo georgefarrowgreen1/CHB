@@ -662,6 +662,18 @@ body.guest-app:not(.owner-mode):has(#chat-widget.open) #guest-msg-fab {
 body.guest-app:not(.owner-mode):has(#view-privacy.page-view.active) #guest-msg-fab {
   display: none;
 }
+/* And on My Stays while a stay hub is up: the hub's Contact host IS the chat, and
+   the pill sat on the countdown badge (364px² of "days to go", measured). */
+body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active .my-stay-hub) #guest-msg-fab {
+  display: none;
+}
+/* HIT REGION to 44 for the 38px (34 condensed) dock buttons; ::after is the hover label. */
+.guest-dock-btn::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+}
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
    just belt-and-braces — visibility never depends on the animation running. */

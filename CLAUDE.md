@@ -2266,6 +2266,62 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   paints from the cottage page. General rule: an overlay's markup belongs at
   body level; inside a `.page-view` it inherits that view's display.
 
+## Seven small things — round seven of the measured sweep (built)
+
+**Asked for as "keep going" after the HIG assessment; nineteen guest and owner
+screens driven at 390 and 1280 with every control inventoried.** Gated by
+**`ui-test-smallthings.js`** (28 checks), break-tested six ways.
+- **`.btn-primary` HAD NO RULE.** Seven guest controls used it — the last-morning
+  "We've left the cottage" tap, both empty-state "Message us" buttons, the welcome
+  book's pay/message buttons, both "Try again"s — and rendered as the browser's
+  default button (measured: `#efefef`, 2px black outset, square corners). No gate
+  could see it: the suites read text and names, never paint, and a class with no
+  rule is invisible to a stylesheet scan because there is nothing to scan.
+  **check-css-conventions now carries a HARD invariant**: every `btn-*` token used
+  in the markup or the JS templates must have a rule in one of the three sheets
+  (vacuity-guarded at ≥5 tokens seen). The gate asserts the PAINT (background ≠
+  the UA grey, border 0, pill, 44) — and NB read `--accent` off `document.body`,
+  where light mode retunes it; reading `:root` compares against the dark value.
+- **THE MESSAGES PILL STANDS DOWN ON MY STAYS while a hub is up** (`:has(…
+  .my-stay-hub) #guest-msg-fab`, the privacy-page mechanism): every hub carries
+  Contact host, which opens the same chat, and at 390px the pill covered 364px² of
+  the countdown badge's "days to go". A guest with no hub keeps it.
+- **THE COUNTDOWN IS SAID ONCE.** The pre-arrival head read "Jollyboat — 10 days"
+  beside a badge reading "10 DAYS TO GO"; the duplicate forced the name onto two
+  lines (a 180px column). Title = the name; ui-test-yourstay's two pins re-aimed
+  to assert the ABSENCE in the title and the figure on the badge.
+- **HIT REGIONS, NOT BIGGER CONTROLS.** The docks' 38px buttons (34 condensed),
+  the spine's 34px chips and the 32px calendar refresh keep their look; a
+  `::before` at `inset: -5px` takes the region past 44 (the HIG's own allowance).
+  `::after` on both docks is the hover label, so the region is `::before`.
+  Neighbours overlap inside the 6px gap ON PURPOSE — a tab bar's contiguity — so
+  the gate accepts a probe landing on a sibling dock button, never on nothing. The
+  spine chips grow vertically only (`inset: -5px 0`), being already wide. Where a
+  control was simply short — the hero's mode switch and ± chips, the cottage
+  calendar's ‹ ›, the hub ⋯ — it stands at 44 now. The `.tl-seg` group stays 32:
+  a documented small-control family, and its `overflow: hidden` would clip a
+  region anyway.
+- **THE 11px FLOOR.** a11y §4's floor is 11 (Apple's 11pt), up from 10. Nineteen
+  declarations between 0.6 and 0.68rem were lifted to 0.7 — the timeline day
+  numbers (9.9px on a phone, 9.6 compact), the cottage calendar's weekday row,
+  the hero labels, `.btn-sm` (10.9px uppercase on a control), the stay captions,
+  every `prop-tag`, the enquiry step labels (a `clamp()` whose floor was 0.62rem)
+  and the hub/settings caps the a11y scenes walk. **Still under 11 and left, by
+  name**: the mac-chat notes (`.mc-day-note`/`.mc-act-note` 0.62), the rail
+  keycaps, `.acp-main`, `.pay-amount-label` 0.62, `.exp-tag`, `.needs-reply-pill`,
+  `.chat-bot .cb-meta`, `.gwx-s`, `.mav-dow`, `.oq-count` — none on a screen the
+  scenes or the gate walk; the a11y count is a ratchet at 0 on the walked screens,
+  not a whole-site census. The changeover ↺ glyph stays 0.6 (a mark, not words).
+- **THE RAG**: `text-wrap: pretty` on the guest notes (`.card p`, `.things-note`,
+  `.pay-error p`, `#exp-empty p`, `#exp-grid p`). The gate counts the WORDS on the
+  last line by ranging each word — "it below." with the rule, "below." with
+  `text-wrap: wrap` injected — because a width threshold is a guess dressed as a
+  number, and `pretty` only promises no lone word.
+- **A STUB THAT MATCHES `bookings.php` MATCHES `my-bookings.php` TOO.** The gate's
+  first draft served the owner's booking list to the guest (a 6-day badge from a
+  stay the guest never had) because `url.includes('bookings.php')` sat above the
+  my-bookings branch. Order the specific route first.
+
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
 Three additions to `view-pay` (index.html) rendered by `openPayView`/`payWithToken`
