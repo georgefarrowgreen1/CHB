@@ -658,32 +658,32 @@ body.light-mode .tl-cell {
   gap: 12px;
   width: 100%;
   text-align: left;
-  padding: 13px 16px;
-  border-radius: var(--r-panel);
-  border-left: 3px solid var(--warn);
+  padding: 14px 16px;
+  /* Joined rows, one material: state is said ONCE, by the capsule — the
+     coloured left rail and the tinted icon tile said it twice more. */
+  border-radius: 0;
+  border: 1px solid var(--glass-border);
+  box-shadow: none;
   cursor: pointer;
   animation: bhubIn 0.35s var(--fluid-bezier) both;
   transition:
     transform 0.25s var(--spring),
     box-shadow 0.25s var(--fluid-bezier);
 }#needs-you-list .ny-row:nth-child(2) { animation-delay: 0.05s; }#needs-you-list .ny-row:nth-child(3) { animation-delay: 0.1s; }#needs-you-list .ny-row:nth-child(4) { animation-delay: 0.15s; }.ny-row:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
+  background: var(--glass-hover);
 }.ny-row:active {
   transform: scale(0.99);
-}.ny-danger {
-  border-left-color: var(--danger);
-}.ny-ok {
-  border-left-color: var(--ok);
-}.ny-ic {
+}#needs-you-list { gap: 0; }
+#needs-you-list .ny-row + .ny-row { border-top-width: 0; }
+#needs-you-list .ny-row:first-child { border-top-left-radius: var(--r-md); border-top-right-radius: var(--r-md); }
+#needs-you-list .ny-row:last-child { border-bottom-left-radius: var(--r-md); border-bottom-right-radius: var(--r-md); }
+.ny-ic {
   flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(127, 127, 127, 0.08);
   color: var(--warn-text);
 }.ny-danger .ny-ic {
   color: var(--danger-text);
@@ -708,10 +708,8 @@ body.light-mode .tl-cell {
   text-overflow: ellipsis;
 }.ny-act {
   flex: none;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--accent-text);
   white-space: nowrap;
 }/* Manage → Pricing reuses .ny-row: there the sub carries the DECISION copy
@@ -1316,11 +1314,12 @@ body.light-mode .ny-act {
   text-underline-offset: 3px;
 }/* The stage caption ("Next · 2 of 6 · Deposit") — the pipeline folded to
    one line of words. Full-width inside the card's wrap. */
+/* A caption INSIDE a tinted card is sentence case: tracked uppercase is the
+   grouped-list section header, which sits outside a container. Inside one it
+   competes with the card's own words ("NEXT · 3 OF 5 · BALANCE"). */
 .bhub-next-cap {
   flex: 1 1 100%;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--warn-text);
 }.bhub-next {
@@ -1353,10 +1352,8 @@ body.light-mode .ny-act {
 }.bhub-next.is-gone .bhub-next-cap {
   color: var(--danger-text);
 }.bhub-eyebrow {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-top: 8px;
 }.bhub-eyebrow-warn {
@@ -1367,10 +1364,8 @@ body.light-mode .ny-act {
   padding: 14px 18px 6px;
 }.bhub-msg-cap {
   display: block;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
 }.bhub-msg-text {
@@ -1743,6 +1738,12 @@ body.owner-mode #admin-head-title {
 body.owner-mode header.header-condensed #admin-head-title.has-title {
   opacity: 1;
   transform: none;
+}
+/* Below 480px the slot between the crown and six dock icons is one character
+   wide ("T." for Today, "D" for Debbie, measured at 390). A letter is not a
+   name: the title stands down there; the page's own heading names the screen. */
+@media (max-width: 479px) {
+  body.owner-mode #admin-head-title { display: none; }
 }
 /* ---- Condensing bar. The icons SCALE (one composited transform) rather than
    animating their width/height: animating layout on every button relaid out the
@@ -4772,7 +4773,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* (.bhub-foot is GONE — the ⋯ menu lives in the header top-right, dropdown
    opening downward.) */
 .bhub-menu-btn {
-  /* Chrome, not a pill — the words live in aria-label/title. */
+  /* Chrome, not a pill — the words live in aria-label/title. A CIRCLE, like the
+     sticky bar's phone/mail buttons: it was the only square control on the page. */
+  border-radius: var(--r-pill);
   min-width: 44px;
   min-height: 44px; /* the phone floor (was 36) */
   padding: 4px 12px;
@@ -4815,7 +4818,34 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   margin: 20px 4px 8px;
 }
 .bhub-grpcap.is-attn { color: var(--danger-text); }
-.bhub-card.bhub-fold-grp { padding: 0; overflow: hidden; border-radius: var(--r-lg); }
+/* ONE MATERIAL FOR LISTS — inset groups, not islands: adjacent fold groups JOIN
+   (no shadow, a hairline, outer radius on the run's ends only). The -12px is
+   the containers' own gap; a caption or card between two groups keeps it. */
+.bhub-card.bhub-fold-grp {
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  border: 1px solid var(--glass-border);
+}
+/* NB `body.light-mode .glass-panel` is (0,2,1) — it outranks a two-class
+   selector, so the flat material is restated at that specificity, and the
+   glass-panel hover LIFT is opted out: a list cell does not rise to the pointer. */
+.bhub-card.bhub-fold-grp, body.light-mode .bhub-card.bhub-fold-grp,
+#needs-you-list .ny-row, body.light-mode #needs-you-list .ny-row { box-shadow: none; }
+@media (hover: hover) {
+  .bhub-card.bhub-fold-grp:hover, body.light-mode .bhub-card.bhub-fold-grp:hover,
+  #needs-you-list .ny-row:hover, body.light-mode #needs-you-list .ny-row:hover { transform: none; box-shadow: none; }
+}
+.bhub-fold-grp + .bhub-fold-grp {
+  margin-top: -12px;
+  border-top-width: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.bhub-fold-grp:has(+ .bhub-fold-grp) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .bhub-fold-row {
   /* A <button>: the FULL reset (the .cmdk-qa-row lesson). */
   display: flex;
@@ -4841,7 +4871,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 /* The settled payline's ONE green mark (serif = money, colour = the mark). */
 .bhub-payok { color: var(--ok-text); }
 .bhub-sum-val { color: var(--text-muted); font-size: 0.85rem; }
-.bhub-chev { color: var(--text-muted); font-size: 1.05rem; transition: transform 0.32s var(--unfold); }
+/* The disclosure indicator is a SYMBOL (a 14px stroke chevron), not a text
+   glyph — "›" set in light grey at 12px is what iOS never draws. */
+.bhub-chev { display: inline-flex; width: 14px; height: 14px; flex: none; color: var(--text-muted); opacity: 0.6; transition: transform 0.32s var(--unfold); }
+.bhub-chev svg { width: 100%; height: 100%; }
 .bhub-fold-row[aria-expanded="true"] .bhub-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .bhub-chev { transition: none; } }
 /* ---- THE FOLD MOVES. `bhubFoldToggle` set `f.hidden` — a hard show and hide —
@@ -5165,7 +5198,11 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   font-size: 0.76rem; font-weight: 600; letter-spacing: 0.01em;
   padding: 4px 11px; border-radius: var(--r-pill); white-space: nowrap;
 }
-.st-cap.is-ok { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 24%, transparent); }
+/* CALM IS QUIET. Three identical green capsules stacked on Manage made the
+   settled state the loudest thing on the screen; OK is muted text with a
+   green tick, and the tint is kept for warn and danger — the states that ask. */
+.st-cap.is-ok { color: var(--text-muted); background: none; border: 0; padding: 0; gap: 8px; }
+.st-cap.is-ok .st-tick { color: var(--ok-text); }
 .st-cap.is-warn { color: var(--warn-text); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); }
 .st-cap.is-bad { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 13%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent); }
 .st-cap.is-unk { color: var(--text-muted); background: color-mix(in srgb, var(--text-muted) 10%, transparent); border: 1px solid color-mix(in srgb, var(--text-muted) 18%, transparent); font-weight: 500; }
@@ -6157,7 +6194,7 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
 .spine-duty::before {
   content: '';
   position: absolute;
-  inset: -5px 0;
+  inset: -6px 0;
   border-radius: inherit;
 }
 /* The ellipsis lives on a CHILD span — on the flex chip itself,
@@ -6249,10 +6286,14 @@ body.rail-on.admin-screen #day-spine.spine-cond .spine-duties {
 body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
   display: inline-flex;
 }
+/* ON A PHONE THE SPINE CONDENSES: the sentence, then ONE scrolling row of 32px
+   chips (stacked, they cost a quarter of the fold on every owner subpage). */
 @media (max-width: 640px) {
-  #day-spine { margin-bottom: 14px; padding-bottom: 12px; }
-  .spine-day { font-size: 0.95rem; }
-  .spine-duty { font-size: 0.73rem; max-width: 100%; }
+  #day-spine { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; }
+  .spine-day { font-size: 1.02rem; }
+  .spine-duties { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  .spine-duties::-webkit-scrollbar { display: none; }
+  .spine-duty { flex: none; min-height: 32px; padding: 4px 12px; font-size: 0.8rem; max-width: 260px; }
 }
 
 /* ---- The rail: the dock's destinations plus Cottages, as a left column

@@ -95,6 +95,7 @@ const stub = (page) => page.route(/\.php/, (r) => {
                 btnW: cb ? Math.round(cb.width) : null,
                 title: ttl ? ttl.textContent : null,
                 titleOpacity: ttl ? getComputedStyle(ttl).opacity : null,
+                titleHidden: ttl ? getComputedStyle(ttl).display === 'none' : null,
                 condensed: h.classList.contains('header-condensed'),
                 hidden: h.classList.contains('header-hidden'),
                 // B) the guest shell's slot must not linger in the admin bar
@@ -159,7 +160,12 @@ const stub = (page) => page.route(/\.php/, (r) => {
     check(s.menuHittable, 'and still tappable');
     check(s.dx !== null && Math.abs(s.dx) <= 1, `the pill stays centred once condensed (off by ${s.dx}px)`);
     check(Math.abs(s.indW - s.btnW) <= 1, `and still matches its size (${s.indW} vs ${s.btnW})`);
-    check(s.titleOpacity === '1' && !!s.title, `the condensed bar names the screen ("${s.title}")`);
+    // At 390 the slot between the crown and six dock icons is one character wide
+    // — it painted "T." for Today. A letter is not a name, so the title STANDS
+    // DOWN below 480 (the page's own heading names the screen) and paints where
+    // a name fits. Both halves gated: hidden here, named at 480 below.
+    check(s.titleHidden === true, 'at 390 the condensed bar carries NO title — the slot is a letter wide');
+    check(!!s.title, `the name is still SET, ready for a width that fits ("${s.title}")`);
 
     const back = await page.evaluate(async () => {
         window.scrollTo(0, 0);
@@ -173,6 +179,29 @@ const stub = (page) => page.route(/\.php/, (r) => {
     });
     check(!back.condensed, 'scrolling back to the top expands it again');
     check(back.titleOpacity === '0', 'and the title hides again, so the page heading is not echoed');
+
+    // ---- where a name FITS (480), the condensed bar names the screen ----
+    await page.setViewportSize({ width: 480, height: 844 });
+    const wide = await page.evaluate(async () => {
+        const av = document.querySelector('.page-view.active') || document.body;
+        const spacer = document.createElement('div');
+        spacer.id = 'scroll-spacer';
+        spacer.style.height = '2000px';
+        av.appendChild(spacer);
+        await new Promise((r) => setTimeout(r, 100));
+        window.scrollTo(0, 600);
+        await new Promise((r) => setTimeout(r, 900));
+        const ttl = document.getElementById('admin-head-title');
+        const out = { title: ttl ? ttl.textContent : null, opacity: ttl ? getComputedStyle(ttl).opacity : null, display: ttl ? getComputedStyle(ttl).display : null };
+        window.scrollTo(0, 0);
+        await new Promise((r) => setTimeout(r, 400));
+        spacer.remove();
+        await new Promise((r) => setTimeout(r, 800));
+        return out;
+    });
+    check(wide.display !== 'none' && wide.opacity === '1' && !!wide.title, `at 480 the condensed bar names the screen ("${wide.title}")`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(500);
 
     // ---- switching screens moves the pill and renames the bar ----
     const moved = await page.evaluate(async () => {
