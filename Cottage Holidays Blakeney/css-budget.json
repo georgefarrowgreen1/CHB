@@ -4,21 +4,24 @@
     "breakpoints": 12,
     "rawHex": 70,
     "rawEnv": 0,
-    "offGrid": 581,
-    "uppercase": 5
+    "offGrid": 573,
+    "uppercase": 5,
+    "rawRadii": 0
   },
   "admin.css": {
     "breakpoints": 1,
     "rawHex": 2,
     "rawEnv": 0,
     "offGrid": 478,
-    "uppercase": 30
+    "uppercase": 30,
+    "rawRadii": 0
   },
   "guest-app.css": {
     "breakpoints": 1,
     "rawHex": 5,
     "rawEnv": 0,
     "offGrid": 15,
-    "uppercase": 0
+    "uppercase": 0,
+    "rawRadii": 0
   }
 }

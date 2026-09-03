@@ -2376,6 +2376,20 @@ capsule — 2/4/1/1/1 fire).
   did. Containers start higher (90–120 → 78–92 + inset; owner/shell 100 → 80). Gated
   by ui-test-hig §10; ui-test-smallthings §7's "radius untouched" half reads a card,
   the bar having none by design.
+- **THREE RADII** ("Build all"): the CELL `--r-sm` 12 (list cells, fields, chips,
+  calendar and picker cells — fold groups and Needs-you rows moved from `--r-md`),
+  the CARD `--r-lg` **20** (was 22; every card/well/to-do card reads it) and the
+  PILL; sheets keep `--r-panel`. Every raw px radius was mapped onto a token (the
+  minified `.mc-*` chat rules carry `border-radius:` with no space, which a spaced
+  sed missed — sweep both forms), and **`check-css-conventions` ratchets `rawRadii`**:
+  any px radius over 8 that is not 12/20/pill, outside the token definitions. Both
+  sheets are at **0**. `.status-hero-mark` is a 28px symbol, `.status-rerun` a tinted
+  text button at 44, the income headline's stripe is gone, the two Move-money-out
+  fields stand at 44px/17px, the chat header is a ≤60px bar (title 1.15rem/1.2,
+  avatar 32, padding 6 — the ✕ is the 44px floor that sets it), the terms sheet
+  carries ONE close (the foot markup + both rules deleted), `.dp-day` is 44px tall
+  in a 16/12-padded card, and grid batch two's named declarations are snapped
+  (app.css offGrid 581 → 573). Gated by **`ui-test-radii.js`** (§1–§5).
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
   rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).

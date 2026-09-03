@@ -165,7 +165,7 @@ textarea:focus-visible,
                pill = chips/toggles. --r-panel drops to 28px on phones (≤768). */
   --r-sm: 12px;
   --r-md: 16px;
-  --r-lg: 22px;
+  --r-lg: 20px;
   --r-panel: 40px;
   --r-pill: 999px;
   /* Spacing scale — one rhythm for section padding, stack gaps and insets.
@@ -919,7 +919,7 @@ nav a:hover {
      than it's worth; the rim gives the Liquid-Glass edge cheaply. */
   box-shadow: var(--glass-rim);
   padding: 12px 28px;
-  border-radius: 30px;
+  border-radius: var(--r-pill);
   color: var(--text-light);
   cursor: pointer;
   font-size: 0.9rem;
@@ -1192,7 +1192,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .date-range-trigger.field-sm {
   padding: 9px 12px;
   min-height: 44px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   margin: 6px 0 0;
   font-size: 0.85rem;
 }
@@ -1274,7 +1274,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .datepicker-card {
   width: 100%;
   max-width: 380px;
-  padding: 22px;
+  padding: 16px 12px;
   border-radius: var(--r-lg);
   /* THE CAP .modal-box HAS AND THIS NEVER GOT: uncapped and unscrollable, a
      472px card in a 360px landscape viewport sliced both month buttons off the
@@ -1331,6 +1331,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 .dp-day {
   aspect-ratio: 1;
+  min-height: 44px;
   display: flex;
   /* Column + tight leading, so a night carries its price under its number in one square
      cell — .avail-cell's recipe on the cottage page. */
@@ -1453,16 +1454,16 @@ body.light-mode ::-webkit-scrollbar-thumb {
   background: var(--text-light);
   color: var(--dark-grey);
   font-weight: 700;
-  border-radius: 10px 0 0 10px;
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
 }
 .dp-day.dp-end {
   background: var(--text-light);
   color: var(--dark-grey);
   font-weight: 700;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
 .dp-day.dp-start.dp-end {
-  border-radius: 10px;
+  border-radius: var(--r-sm);
 }
 .dp-foot {
   display: flex;
@@ -1634,14 +1635,6 @@ body.light-mode ::-webkit-scrollbar-thumb {
 .terms-term {
   color: var(--text-light);
   font-weight: 600;
-}
-.terms-modal-foot {
-  padding: 20px 32px;
-  border-top: 1px solid var(--glass-border);
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
 }
 
 /* --- HERO & LAYOUT --- */
@@ -2088,7 +2081,7 @@ a.card {
   margin-top: 30px;
 }
 .review-card {
-  padding: 26px 28px;
+  padding: 24px 28px;
   border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
@@ -2555,7 +2548,7 @@ a.card {
 .photo-lightbox img {
   max-width: 92vw;
   max-height: 82vh;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
 }
 .photo-lightbox .pl-cap {
@@ -2735,7 +2728,7 @@ a.card {
   background: rgba(255, 255, 255, 0.92);
   color: #1a191b;
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   padding: 9px 14px;
   font-size: 0.85rem;
   font-weight: 600;
@@ -2915,7 +2908,7 @@ a.card {
   gap: 10px;
   /* No right inset: the close X is in-flow on its own line above, so this row
      gets the full width — which is what keeps the three labels from clipping. */
-  margin: 26px 0 24px;
+  margin: 24px 0;
 }
 .enq-prog-step {
   font-size: 0.78rem;
@@ -2996,7 +2989,7 @@ a.card {
 .enq-summary-img {
   width: 76px;
   height: 76px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background-size: cover;
   background-position: center;
   background-color: var(--dark-grey);
@@ -3026,7 +3019,7 @@ a.card {
   gap: 12px;
   align-items: center;
   margin-top: 16px;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 1px solid var(--glass-border);
   border-radius: var(--r-md);
   background: var(--well-bg);
@@ -3233,7 +3226,7 @@ a.card {
   gap: 10px;
   margin-top: 18px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   background: rgba(76, 175, 80, 0.12);
   border: 1px solid rgba(76, 175, 80, 0.3);
   font-size: 0.83rem;
@@ -3533,7 +3526,7 @@ a.card {
   -apple-pay-button-style: white-outline;
   height: 48px;
   width: 100%;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   border: none;
 }
@@ -4710,7 +4703,7 @@ body.owner-mode #reserve-enquire-btn {
 .input-glass.field-sm {
   width: auto;
   padding: 9px 12px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   margin-bottom: 0;
   font-size: 0.85rem;
 }
@@ -4804,11 +4797,11 @@ textarea.input-glass.field-sm {
     )
     0 0 / 200% 100%;
   animation: shimmerBg 1.4s linear infinite;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
 }
 .sk-card {
   padding: 15px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
 }
 .sk-img {
   height: clamp(180px, 30vw, 250px);
@@ -4935,7 +4928,7 @@ textarea.input-glass.field-sm {
 .lightbox-stage img {
   max-width: 92vw;
   max-height: 86vh;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   object-fit: contain;
 }
@@ -5240,7 +5233,7 @@ body.modal-open {
 .price-box {
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 18px 20px;
   margin-bottom: 20px;
 }
@@ -5274,7 +5267,7 @@ body.modal-open {
 .ov-card {
   background: rgba(0, 0, 0, 0.2);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 14px 18px;
 }
 body.light-mode .ov-card {
@@ -5427,7 +5420,7 @@ body.light-mode .tag-pimpernel {
 }
 .chat-msg {
   max-width: 82%;
-  padding: 9px 13px;
+  padding: 8px 12px;
   border-radius: var(--r-md);
   font-size: 0.88rem;
   line-height: 1.5;
@@ -5655,8 +5648,8 @@ body.light-mode .tag-pimpernel {
 }
 /* Header identity: crown avatar + green presence dot */
 .chat-head-ava {
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   flex-shrink: 0;
   background: rgba(214, 167, 133, 0.12);
@@ -5848,7 +5841,7 @@ body.light-mode .tag-pimpernel {
   width: 40px;
   height: 40px;
   object-fit: cover;
-  border-radius: var(--r-xs, 8px);
+  border-radius: 8px;
   flex-shrink: 0;
 }
 .chat-attach-preview span {
@@ -5926,7 +5919,7 @@ body.light-mode .tag-pimpernel {
   max-width: 90%;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 10px 12px;
   margin: 8px 14px;
   font-size: 0.82rem;
@@ -5989,7 +5982,7 @@ body.light-mode .tag-pimpernel {
   text-align: left;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 12px 14px;
   color: var(--text-light);
   cursor: pointer;
@@ -6135,7 +6128,7 @@ body.light-mode .tag-pimpernel {
 #chat-away-editor {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel, 18px);
+  border-radius: var(--r-panel);
   padding: 20px 22px;
 }
 /* Inbox search + "Needs reply" filter chip */
@@ -6314,18 +6307,21 @@ body.owner-mode .chat-widget {
   animation: chbChatOut 200ms var(--in) forwards;
 }
 .chat-widget-head {
+  /* A 52px bar for a title and a status line — it was 72px. */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 12px;
+  padding: 4px 16px;
   border-bottom: 1px solid var(--glass-border);
 }
 .chat-widget-title {
   font-family: var(--font-serif);
-  font-size: 1.2rem;
+  font-size: 1.15rem;
+  line-height: 1.2;
 }
 .chat-widget-sub {
+  line-height: 1.3;
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 2px;
@@ -6692,7 +6688,7 @@ body.owner-mode .chat-widget {
 
 .btn-sm {
   padding: 8px 14px;
-  border-radius: 18px;
+  border-radius: var(--r-pill);
   font-size: 0.8rem; /* the 11px floor — 0.68 was 10.9px on a control */
   cursor: pointer;
   border: 1px solid var(--glass-border);
@@ -7307,7 +7303,7 @@ body.owner-mode .chat-widget {
   width: 100%;
   background: var(--glass-bg);
   border: 1.5px solid var(--glass-border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   padding: 18px 20px;
   color: var(--text-light);
   transition:
@@ -8045,9 +8041,8 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
 }
 
-.accounts-stat.headline {
-  border-left: 4px solid var(--ok);
-}
+/* The income headline's green stripe is gone: its figure already carries the
+   state, and a stripe on a 20px card bent into a tab at the corners. */
 
 
 
@@ -8188,7 +8183,7 @@ body.light-mode .feed-dot-bad {
   width: 100%;
   padding: 13px;
   margin: 26px 0 6px;
-  border-radius: var(--r-md, 14px);
+  border-radius: var(--r-md);
   border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
@@ -8216,7 +8211,7 @@ body.light-mode .feed-dot-bad {
   background: rgba(214, 167, 133, 0.08);
   border: 1px solid rgba(214, 167, 133, 0.3);
   border-left: 3px solid var(--accent);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 12px 16px 12px 18px;
   margin: 12px 0 4px;
 }
@@ -8230,7 +8225,7 @@ body.light-mode .feed-dot-bad {
   display: inline-block;
   font-size: 0.7rem;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: rgba(214, 167, 133, 0.18);
   color: var(--accent-text);
   margin-left: 6px;
@@ -8599,7 +8594,7 @@ body.light-mode .feed-dot-bad {
   justify-content: center;
   min-width: 62px;
   padding: 8px 10px;
-  border-radius: var(--r-md, 14px);
+  border-radius: var(--r-md);
   background: var(--info-bg, rgba(56, 132, 197, 0.16));
   line-height: 1;
 }
@@ -8892,12 +8887,12 @@ body.light-mode .feed-dot-bad {
   gap: 10px;
   width: 100%;
   min-height: 44px;
-  padding: 13px 16px;
+  padding: 12px 16px;
   margin: 0 0 16px;
   cursor: pointer;
   background: rgba(127, 127, 127, 0.06);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: var(--r-md);
   color: var(--text-light);
   font-family: var(--font-sans);
   font-size: 0.86rem;
@@ -8905,7 +8900,7 @@ body.light-mode .feed-dot-bad {
   text-align: left;
 }
 .gb2-payline.is-open {
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--r-md) var(--r-md) 0 0;
   border-bottom: none;
   margin-bottom: 0;
 }
@@ -8942,7 +8937,7 @@ body.light-mode .feed-dot-bad {
   background: rgba(127, 127, 127, 0.06);
   border: 1px solid var(--glass-border);
   border-top: none;
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 var(--r-md) var(--r-md);
   /* The back office's collapsing grid; [hidden] IS the collapsed state, so fold.hidden stays honest. */
   display: grid;
   grid-template-rows: 1fr;
@@ -9238,7 +9233,7 @@ body.light-mode .feed-dot-bad {
   gap: 7px;
   min-height: 78px;
   padding: 12px 8px;
-  border-radius: 14px;
+  border-radius: var(--r-md);
   cursor: pointer;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-border);
@@ -9613,7 +9608,7 @@ body.light-mode .feed-dot-bad {
 .guest-price-box {
   background: var(--well-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 16px 18px;
   max-width: 360px;
 }
@@ -9692,7 +9687,7 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border);
   color: var(--text-light);
   padding: 9px 12px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   font-family: var(--font-sans);
   text-align: right;
 }
@@ -9722,7 +9717,7 @@ body.light-mode .feed-dot-bad {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--glass-border);
   padding: 6px 10px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 .day-check input {
@@ -9803,7 +9798,7 @@ body.light-mode .feed-dot-bad {
   .modal-overlay.chb-sheet .terms-modal-box {
     max-width: none;
     max-height: calc(100dvh - var(--safe-t) - 20px);
-    border-radius: 24px 24px 0 0;
+    border-radius: var(--r-panel) var(--r-panel) 0 0;
     border-bottom: 0;
   }
   .modal-overlay.chb-sheet .modal-box {
@@ -9817,9 +9812,6 @@ body.light-mode .feed-dot-bad {
     background: var(--sheet-surface);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-  }
-  .modal-overlay.chb-sheet .terms-modal-foot {
-    padding-bottom: calc(18px + var(--safe-b));
   }
   .modal-overlay.chb-sheet .modal-box::before {
     content: '';
@@ -10307,7 +10299,7 @@ body.light-mode .theme-switch .ts-i-sun {
   z-index: 1405;
   max-width: min(80vw, 380px);
   padding: 8px 14px;
-  border-radius: var(--r-md, 10px);
+  border-radius: var(--r-sm);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(10px);
@@ -10359,7 +10351,7 @@ body.has-queued .offline-pill {
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: #f5f5f7;
   padding: 11px 26px;
-  border-radius: 30px;
+  border-radius: var(--r-pill);
   font-size: 0.85rem;
   cursor: pointer;
   backdrop-filter: blur(10px);
@@ -10372,7 +10364,7 @@ body.has-queued .offline-pill {
   justify-content: center;
   width: 160px;
   height: 160px;
-  border-radius: 40px;
+  border-radius: var(--r-panel);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(20px);
@@ -10925,7 +10917,7 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   white-space: nowrap;
   letter-spacing: 0.3px;
   padding: 7px 11px;
-  border-radius: 9px;
+  border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   opacity: 0;
   pointer-events: none;
@@ -11174,14 +11166,14 @@ body.light-mode .hs-field:hover {
   gap: 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
   padding: 4px;
 }
 .hs-mode-btn {
   flex: 1 1 0;
   min-height: 44px; /* the phone floor */
   padding: 9px 14px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -11390,7 +11382,7 @@ body.light-mode .hs-field:hover {
     padding: 14px;
   }
   .cottages-list .card-img-wrap {
-    border-radius: 14px;
+    border-radius: var(--r-md);
     margin-bottom: 12px;
     overflow: hidden;
   }
@@ -11551,7 +11543,7 @@ body.light-mode .datepicker-pop {
   background: rgba(255, 167, 38, 0.16);
   color: var(--warn-text);
   border: 1px solid rgba(255, 167, 38, 0.4);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   padding: 7px 10px;
   font-size: 0.76rem;
   line-height: 1.35;
@@ -12391,7 +12383,7 @@ header nav a:active {
 .chb-pill.armed { transition: none; }
 .exp-filters .chb-pill { background: var(--text-light); }
 #hs-month-chips .chb-pill { background: var(--accent); }
-.hs-mode .chb-pill { background: var(--accent); border-radius: 10px; }
+.hs-mode .chb-pill { background: var(--accent); border-radius: var(--r-sm); }
 .exp-filters > .exp-chip,
 #hs-month-chips > .hs-chip,
 .hs-mode > .hs-mode-btn {
