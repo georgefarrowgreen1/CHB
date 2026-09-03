@@ -84,7 +84,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   let h = await hub(page);
   ok(!!h, 'the pre-arrival countdown hub renders for an upcoming stay');
   ok(h && h.n === '10' && /days to go/.test(h.u), `countdown reads 10 days to go (${h && h.n} / ${h && h.u})`);
-  ok(h && /Jollyboat/.test(h.title) && /10 days/.test(h.title), `hub names the cottage + countdown (${h && h.title.trim()})`);
+  // The countdown is said ONCE, on the badge — the title used to repeat it and the
+  // duplicate forced the name onto two lines beside the badge at 390px.
+  ok(h && /Jollyboat/.test(h.title) && !/\d+ days|Tomorrow/.test(h.title), `hub names the cottage, and the countdown only on the badge (${h && h.title.trim()})`);
   ok(h && h.tiles === 6, `hub carries the planning tiles (${h && h.tiles})`);
   ok(h && /balance/i.test(h.sub) && h.pay, 'balance-due stay shows the balance note + Pay CTA');
   // 2a-ii) THE ASK IS NOT THE SMALLEST TYPE IN THE CARD, AND NOTHING HERE IS UNDER
@@ -221,7 +223,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // 4) Tomorrow wording at +1 day.
   page = await openPage({ name: 'Soon Guest', email: 's@x.co' }, [mk('21a', d(1), d(3), { payment: 'unpaid', pay_token: 'tok2' })]);
   h = await hub(page);
-  ok(h && h.n === '1' && /day to go/.test(h.u) && /Tomorrow/.test(h.title), `+1 day reads "Tomorrow" / 1 day to go (${h && h.title.trim()})`);
+  ok(h && h.n === '1' && /day to go/.test(h.u) && !/Tomorrow/.test(h.title), `+1 day reads 1 day to go on the badge, and the title does not say it again (${h && h.title.trim()})`);
   await page.close();
 
   // 5) Two upcoming stays → exactly one hub, for the soonest.

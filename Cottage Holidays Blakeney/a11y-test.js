@@ -317,12 +317,13 @@ const SCAN = (INTERACTIVE) => {
         }
         if (!named) res.unnamed.push(desc(el));
     }
-    // (b) text below 10px is not readable at arm's length
+    // (b) text below 11px is not readable at arm's length — Apple's floor (11pt),
+    //     raised from 10 once the five 0.66/0.68rem classes were lifted to 0.7
     for (const el of document.querySelectorAll('body *')) {
         if (!vis(el)) continue;
         if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 3)) continue;
         const size = parseFloat(getComputedStyle(el).fontSize);
-        if (size < 10) res.tiny.push(`${desc(el)} ${size.toFixed(1)}px`);
+        if (size < 11) res.tiny.push(`${desc(el)} ${size.toFixed(1)}px`);
     }
     // (c) WCAG 2.2 2.5.8 — 24x24 for a standalone control. Links inside prose are
     // explicitly exempt by the success criterion, so they are excluded.
@@ -482,8 +483,8 @@ const stub = (page) => page.route(/\.php/, (r) => {
 
     console.log('\n== 4. no text under 10px ==');
     const ti = [...totals.tiny];
-    if (ti.length > budget.tinyText) ti.slice(0, 12).forEach((x) => console.log('     ' + x));
-    ok(ti.length <= budget.tinyText, `sub-10px text nodes: ${ti.length} (budget ${budget.tinyText})`);
+    if (ti.length > budget.tinyText) ti.slice(0, 40).forEach((x) => console.log('     ' + x));
+    ok(ti.length <= budget.tinyText, `sub-11px text nodes: ${ti.length} (budget ${budget.tinyText})`);
     if (ti.length < budget.tinyText) console.log(`     ↓ lower "tinyText" to ${ti.length} in a11y-budget.json in this PR`);
 
     console.log('\n== 5. standalone controls are at least 24×24 (WCAG 2.2 2.5.8) ==');

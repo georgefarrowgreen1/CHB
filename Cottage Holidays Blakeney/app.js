@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 589;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 244;
+const ADMIN_CSS_V = 245;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4868,7 +4868,9 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
     const days = nightsBetween(todayDashed(), b.checkIn);
     const big = days <= 0 ? '!' : String(days);
     const unit = days === 1 ? 'day to go' : 'days to go';
-    const head = days === 1 ? 'Tomorrow' : `${days} days`;
+    // The countdown is the BADGE's ("10 days to go"); the title used to say it
+    // again ("Jollyboat — 10 days") and the duplicate forced the name onto two
+    // lines beside the badge at 390px (a 180px column). One figure, one line.
     // The one outstanding thing before arrival (balance beats details), else all set.
     let ready, cta = '';
     // AN OWNER-ARRANGED STAY HAS NO ONLINE TASK. Its money is settled by hand
@@ -4943,7 +4945,7 @@ function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
             <div class="hub-head">
                 <span class="legend-swatch swatch-${propKey}"></span>
                 <div class="hub-head-text">
-                    <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong> — ${head}</div>
+                    <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong></div>
                     <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${escapeHtml(b.checkInTime || '15:00')} · ${ready}</div>
                 </div>
                 <div class="hub-count chb-appear" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
@@ -18876,7 +18878,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'motion02';
+    const BUILD = 'round07';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
