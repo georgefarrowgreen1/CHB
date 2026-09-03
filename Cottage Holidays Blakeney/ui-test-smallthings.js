@@ -147,6 +147,12 @@ function stub(page, mode, mine) {
   const slop = (page, sel, sides) => page.evaluate(([s, sd]) => {
     const els = [...document.querySelectorAll(s)].filter((e) => e.getClientRects().length);
     const res = els.map((e) => {
+      // A control you must SCROLL to (the spine's chips are one scrolling row on
+      // a phone now) is still a control: bring it into view before probing —
+      // elementFromPoint returns null outside the viewport, which reads as a
+      // dead region rather than an off-screen one. `nearest` moves nothing
+      // that is already on screen.
+      e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       const r = e.getBoundingClientRect();
       const probes = { L: [r.left - 3, r.top + r.height / 2], R: [r.right + 3, r.top + r.height / 2], T: [r.left + r.width / 2, r.top - 3], B: [r.left + r.width / 2, r.bottom + 3] };
       const want = (sd || 'LRTB').split('');

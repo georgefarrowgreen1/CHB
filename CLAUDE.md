@@ -2340,7 +2340,13 @@ capsule — 2/4/1/1/1 fire).
   is a circle (`--r-pill`), matching the sticky's phone/mail buttons.
 - **THE PHONE'S CHROME.** ≤640 the spine is the sentence then ONE scrolling row of
   32px chips (`.spine-duties` flex/nowrap/overflow-x auto; hit region `-6px 0` so the
-  chip still reaches 44) — 77px tall at 390 against ~200. And **`#admin-head-title`
+  chip still reaches 44) — 77px tall at 390 against ~200. **Two traps the row
+  taught**: a column flex that still WRAPS sizes its one line to the items'
+  max-content (597px at 390 — the page scrolled sideways, railspine §5 caught it),
+  so `flex-wrap: nowrap` is load-bearing; and a scroll container CLIPS its
+  children's `::before` hit regions, so the row carries 8px of padding cancelled
+  by margin to keep the 44px reach inside the scroll box (smallthings §4 caught
+  that one). And **`#admin-head-title`
   is `display: none` below 480**: with six dock icons the slot painted "T." for Today
   and "D" for Debbie. ui-test-adminmenu was RE-AIMED, not patched — hidden at 390,
   named at 480 (a new case), the name still SET at both.
@@ -2360,7 +2366,7 @@ capsule — 2/4/1/1/1 fire).
   h2 (the overriding rule was not found; verify before claiming). Still proposals: the
   type scale, the header as a bar, radii tokens beyond cells, grid batch two.
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
-  rules, comments stripped at deploy), admin.css 71827 → 73100, admin.js +150 (the
+  rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).
 
 ## Seven small things — round seven of the measured sweep (built)

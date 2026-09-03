@@ -6293,9 +6293,15 @@ body.rail-on.admin-screen #day-spine.spine-cond .spine-cnt {
 /* ON A PHONE THE SPINE CONDENSES: the sentence, then ONE scrolling row of 32px
    chips (stacked, they cost a quarter of the fold on every owner subpage). */
 @media (max-width: 640px) {
-  #day-spine { flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; }
+  /* NOWRAP is load-bearing: a column that still WRAPS sizes its one line to the
+     items' max-content (597px at 390) and the row overflowed the page sideways. */
+  #day-spine { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; min-width: 0; }
+  .spine-day { min-width: 0; }
   .spine-day { font-size: 1.02rem; }
-  .spine-duties { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  /* A scroll container CLIPS its children's overflow — including the chips'
+     ::before hit region (-6px) — so the row carries 6px of padding cancelled by
+     margin: the region stays inside the scroll box and still reaches 44. */
+  .spine-duties { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 8px 0; margin: -8px 0; min-width: 0; }
   .spine-duties::-webkit-scrollbar { display: none; }
   .spine-duty { flex: none; min-height: 32px; padding: 4px 12px; font-size: 0.8rem; max-width: 260px; }
 }
