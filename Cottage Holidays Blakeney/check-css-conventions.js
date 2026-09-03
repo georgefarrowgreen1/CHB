@@ -98,6 +98,31 @@ function rawEnvInsets(cssRaw) {
     return out;
 }
 
+// A spacing value off the 4pt grid: padding / margin / gap set to a pixel value
+// of 3px or more that is not a multiple of 4 (1–2px are hairlines and optical
+// nudges, which the grid allows). The HIG's 8pt grid with a 4pt minor is the
+// brief; measured before this ratchet, 62% of the app's pixel spacing sat on
+// neither. Counted so a cleanup locks in and a new stray value shows up —
+// snapping is done by component, with layout-test watching, never by sweep.
+function offGridSpacing(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    // Declarations are matched anywhere on a line, several per line — admin.css
+    // joins many rules onto one line (`}.x { padding: 6px; }`), and a start-of-line
+    // match under-counted it by a third (303 against 472, measured).
+    css.split('\n').forEach((line, i) => {
+        for (const d of line.matchAll(/(?:^|[;{])\s*(?:padding|margin|gap|row-gap|column-gap)(?:-top|-right|-bottom|-left)?\s*:\s*([^;}]+)/g)) {
+            for (const tok of d[1].trim().split(/\s+/)) {
+                const m = tok.match(/^-?(\d+(?:\.\d+)?)px$/);
+                if (!m) continue;
+                const px = parseFloat(m[1]);
+                if (px >= 3 && px % 4 !== 0) out.push(`${i + 1}: ${tok}`);
+            }
+        }
+    });
+    return out;
+}
+
 // --- run ------------------------------------------------------------------
 const found = {};
 for (const f of FILES) {
@@ -108,13 +133,14 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css) };
 }
 
 const DIMS = [
     { key: 'breakpoints', label: 'stray media-query width', fix: 'use one of 480 / 640 / 900 / 1200 (or the complement of one)' },
     { key: 'rawHex', label: 'raw hex colour', fix: 'use an existing :root token (or add one) — see DESIGN.md' },
     { key: 'rawEnv', label: 'raw env(safe-area-inset)', fix: 'use var(--safe-t/r/b/l) so the account preview can zero it' },
+    { key: 'offGrid', label: 'spacing value off the 4pt grid', fix: 'snap to a multiple of 4 (or use a --space-N token); 1–2px hairline nudges are allowed' },
 ];
 
 if (update) {
@@ -126,13 +152,13 @@ if (update) {
     } catch (e) {}
     next.comment =
         prev.comment ||
-        'CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, and raw env(safe-area-inset-*) outside the four --safe-* definitions. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint instead. Re-baseline after a cleanup with: node check-css-conventions.js --update';
+        'CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, raw env(safe-area-inset-*) outside the four --safe-* definitions, and spacing values (padding/margin/gap, 3px+) off the 4pt grid. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint instead. Re-baseline after a cleanup with: node check-css-conventions.js --update';
     for (const f of FILES) {
         next[f] = Object.fromEntries(DIMS.map((d) => [d.key, found[f][d.key].length]));
     }
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env()`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing`);
     process.exit(0);
 }
 

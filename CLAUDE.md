@@ -6178,6 +6178,18 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   deliberately does NOT count breakpoint complements, hex in a `--token:`
   declaration, hex in a `var(--x, #fallback)`, or mask/mask-image alpha channels
   (#000/#fff there are not theme colours) — a noisy gate gets worked around.
+  **It also counts SPACING OFF THE 4pt GRID** (`offGrid`: padding/margin/gap pixel
+  values of 3px+ that are not multiples of 4; 1–2px hairline nudges are allowed —
+  the HIG's 8pt grid with its 4pt minor). Baselined at app.css 605 / admin.css 479
+  / guest-app.css 16, measured with the declarations matched ANYWHERE on a line —
+  admin.css joins rules onto one line (`}.x { padding: 6px; }`) and a start-of-line
+  match under-counted it by a third (303 against 479). Snapping is done BY
+  COMPONENT with layout-test watching, never by sweep: half the off-grid values are
+  five numbers (14, 10, 6, 18, 22px) and each is a 2px move, but a sweep across 600
+  sites is a layout question at 600 sites. **And it holds a HARD invariant: every
+  `btn-*` class used in the markup or the JS templates has a rule** in one of the
+  three sheets (round seven's `.btn-primary`, used on seven controls and defined
+  nowhere) — vacuity-guarded at ≥5 tokens seen.
   **`a11y-test.js`** (browser-core job, ratchets against `a11y-budget.json`) is the
   accessibility gate: §1 every text token's contrast BY ARITHMETIC against the real
   surfaces of both themes (no rendering, so no flake), **§1b the same tokens on their
