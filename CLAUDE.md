@@ -6061,6 +6061,18 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   fully future), and read expected rates from the model the way §35's `decCur` does
   rather than writing the number down. To check a change here, shift the clock and
   sweep: a 12-month pass plus month/day/year boundaries, DST and a leap day.
+  **The PHP twin: test-integration's `$ukToday`.** The harness runs on UTC while
+  db.php sets Europe/London, so a bare `date('Y-m-d')` in that file is the
+  server's YESTERDAY between 23:00 and midnight UTC under BST. The rule is
+  stated at the top of the file and two later sections (the memory dates, §30's
+  last-morning window) were written against `date()` anyway — caught by a CI
+  run that started at 00:03 London time. Compare a server-stamped date against
+  `$ukToday`/`$ukPlus(n)`, never `date()`.
+  **And a runner-load flake is a check that slept instead of waiting**: the hub
+  focus-ring pixel sample (500ms after the fold toggle) and the mailbox
+  folder-row read (300ms after openInbox's refetch) each failed once under CI's
+  3-suite load and pass alone; both now wait on state (`getAnimations()`
+  empty + open, the row present). Same rule as the safe-area suite's settle.
 - `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`,
   `php test-pricing.php`, `php test-reply.php`, the real-browser `node e2e-test.js`,
   and the design gate `node layout-test.js` (layout invariants — no horizontal
