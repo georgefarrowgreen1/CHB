@@ -880,9 +880,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const opener = document.querySelector('#inbox-landing .bhub-fold-row[data-arg="messages"]');
     if (opener && (document.getElementById('iv-fold-messages') || {}).hidden) opener.click();
     renderMessagesList();
-    await new Promise((r) => setTimeout(r, 300));
-    const row = document.querySelector('.msg-inbox-controls');
-    const inp = document.getElementById('msg-search');
+    // Wait for the controls row by STATE, not a clock: under the 3-suite runner
+    // load a fixed 300ms read "row false inp false" once — openInbox's refetch
+    // was still landing and re-rendering the folder underneath.
+    let row = null, inp = null;
+    for (let i = 0; i < 40 && !(row && inp); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      row = document.querySelector('.msg-inbox-controls');
+      inp = document.getElementById('msg-search');
+      if (!row) renderMessagesList();
+    }
     if (!row || !inp) return { why: 'row ' + !!row + ' inp ' + !!inp + ' folds ' + document.querySelectorAll('#inbox-landing .bhub-fold-row').length };
     if (!row.getClientRects().length) return { why: 'the controls row never painted' };
     const chip = document.getElementById('msg-unanswered');
