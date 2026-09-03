@@ -5132,7 +5132,7 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 #sg-savebar { position: sticky; bottom: calc(10px + var(--safe-b)); z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 8px 8px 16px; background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: var(--shadow-soft); }
 #season-grid-msg { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; color: var(--text-muted); }
 .sg-save { flex: 0 0 auto; border: 0; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 0.9rem; font-weight: 600; padding: 12px 20px; min-height: 44px; cursor: pointer; }
-#pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: 0.7rem; letter-spacing: 0.09em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+#pricing-body .settings-section-label, #sec-pricing .settings-section-label { font-size: 0.76rem;  font-weight: 600; color: var(--text-muted);  }
 .ac-saved { font-size: 0.7rem; font-weight: 600; color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); border-radius: 20px; padding: 3px 8px; margin-right: 7px; opacity: 0; transition: opacity 0.3s; }
 .ac-saved.on { opacity: 1; }
 /* Search learning + Website content: the same 12px verdict rail, every fold

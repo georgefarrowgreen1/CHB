@@ -264,6 +264,29 @@ function stub(page, mode, mine) {
   ok(cs7.r >= 24, `…with the radius itself untouched (header ${cs7.r}px)`);
   await page.close();
 
+  // ============================================================
+  console.log('\n  §8 sentence case on the controls; the brand voice keeps its caps');
+  page = await open('guest', UPCOMING);
+  const sc = await page.evaluate(() => {
+    const tt = (q) => { const e = document.querySelector(q); return e ? getComputedStyle(e).textTransform + '/' + getComputedStyle(e).letterSpacing : 'missing'; };
+    const h2 = [...document.querySelectorAll('h2.section-title.text-center')][0];
+    return { btn: tt('.btn-glass'), kicker: tt('.section-kicker'), heroK: tt('.hero-kicker'), hsLabel: tt('.hs-label'), heritage: tt('.heritage-label'), ornament: h2 ? getComputedStyle(h2, '::after').content : 'no h2', cta: (document.querySelector('.btn-glass.btn-accent') || {}).textContent || '' };
+  });
+  ok(/^none\/normal$/.test(sc.btn) && /^none\//.test(sc.hsLabel) && /^none\//.test(sc.heritage), `buttons, field labels and stat captions read as sentences (${sc.btn}; ${sc.hsLabel}; ${sc.heritage})`);
+  ok(/^uppercase\//.test(sc.kicker) && /^uppercase\//.test(sc.heroK), `the section and hero kickers keep the brand's tracked caps (${sc.kicker}; ${sc.heroK})`);
+  ok(sc.ornament === 'none', `the gradient flourish under centred titles is gone (::after ${sc.ornament})`);
+  ok(/^[A-Z][a-z]+ [a-z]/.test(sc.cta.trim()), `the CTA's own string is sentence case (“${sc.cta.trim()}”)`);
+  await page.evaluate(() => openGuestArea());
+  await page.waitForTimeout(800);
+  const sc2 = await page.evaluate(() => {
+    const tt = (q) => { const e = document.querySelector(q); return e ? getComputedStyle(e).textTransform : 'missing'; };
+    const call = [...document.querySelectorAll('.btn-sm')].find((b) => /call to/i.test(b.textContent));
+    return { sm: tt('.btn-sm'), badge: tt('.guest-status-badge'), cap: tt('.gtl-cap'), call: call ? call.textContent.trim() : 'missing', weight: getComputedStyle(document.querySelector('.btn-sm')).fontWeight };
+  });
+  ok(sc2.sm === 'none' && sc2.badge === 'none' && sc2.cap === 'none' && Number(sc2.weight) >= 600, `My Stays: small buttons, badges and captions are sentence case at 600 (${sc2.sm}/${sc2.badge}/${sc2.cap}, ${sc2.weight})`);
+  ok(sc2.call === 'Call to discuss', `…and the Title Case the caps used to hide is corrected (“${sc2.call}”)`);
+  await page.close();
+
   console.log(fails ? `\n  SMALL-THINGS SUITE FAILED ❌ (${fails})` : '\n  SMALL-THINGS SUITE PASSED ✅');
   await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

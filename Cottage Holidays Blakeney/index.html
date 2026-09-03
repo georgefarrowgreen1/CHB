@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=316">
+    <link rel="stylesheet" href="app.css?v=317">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -814,20 +814,20 @@
                     <h2 class="section-title enq-fg" id="enq-h-details" tabindex="-1" style="font-size:1.6rem;margin:0 0 4px;text-align:left;">Your details<span class="enq-dot todo" id="enq-details-dot" aria-hidden="true"></span></h2>
                     <p class="enq-fg" style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Just enough to reply to you — nothing more.</p>
                     <div class="enq-fg">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
+                        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your name</label>
                         <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name" data-act-input="enqLiveSync">
                     </div>
                     <div class="enq-fg" style="--efd:0.035s;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
+                        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
                         <input type="email" class="input-glass" id="enq-email" autocomplete="email" inputmode="email" placeholder="you@email.com" data-act-input="enqLiveSync">
                     </div>
                     <div class="reg-row enq-fg" style="--efd:0.075s;">
                         <div>
-                            <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
                             <input type="tel" class="input-glass" id="enq-phone" autocomplete="tel" inputmode="tel" placeholder="Contact number" data-act-input="enqLiveSync">
                         </div>
                         <div>
-                            <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
                             <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" data-act-input="enqPostcode" data-arg="enq-postcode" data-arg2="enq-pc-status" data-act-change="enqPostcode" data-arg="enq-postcode" data-arg2="enq-pc-status" data-arg3="true">
                             <p id="enq-pc-status" role="status" aria-live="polite" style="font-size: 0.75rem; min-height: 1.1em; margin: 0 0 8px;"></p>
                         </div>
@@ -837,12 +837,12 @@
                         <input type="checkbox" id="enq-sms-optin"> Text me booking updates (balance reminders &amp; arrival info)
                     </label>
                     <div class="enq-fg" style="--efd:0.115s;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
+                        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK address</label>
                         <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;" data-act-input="enqLiveSync"></textarea>
                         <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     </div>
                     <div class="enq-fg" style="--efd:0.155s;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
+                        <label style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
                         <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
                     </div>
                     <!-- Two declarations, both required before sending. -->
@@ -866,7 +866,7 @@
                     <button class="btn-glass btn-accent enq-fg" style="width: 100%; padding: 18px;--efd:0.195s;" id="enq-submit-btn">Send enquiry</button>
                     <!-- The living line — see enqLiveSync. -->
                     <p id="enq-live-sub" class="enq-fg" style="font-size:0.8rem;color:var(--text-muted);text-align:center;margin:10px 0 0;--efd:0.195s;">No payment now — George usually replies the same day to confirm availability.</p>
-                    <a class="btn-glass enq-fg" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;--efd:0.195s;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                    <a class="btn-glass enq-fg" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;--efd:0.195s;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to discuss</a>
                 </div>
 
                 <!-- STEP 3 (only shown to guests who aren't signed in): set a password to
@@ -1122,8 +1122,8 @@
             </div>
             <div>
                 <div style="display: flex; gap: 10px; margin-bottom: 28px;">
-                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" data-act="switchGuestTab" data-arg="login">Log In</button>
-                    <button class="toggle-btn guest-tab" id="tab-register" style="flex:1;" data-act="switchGuestTab" data-arg="register">Create Account</button>
+                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" data-act="switchGuestTab" data-arg="login">Log in</button>
+                    <button class="toggle-btn guest-tab" id="tab-register" style="flex:1;" data-act="switchGuestTab" data-arg="register">Create account</button>
                 </div>
 
                 <!-- LOGIN -->
@@ -1136,7 +1136,7 @@
                         <p style="font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:10px;">Fast, password-free sign-in with your device.</p>
                         <div style="display:flex;align-items:center;gap:12px;margin:22px 0 18px;">
                             <span style="flex:1;height:1px;background:var(--glass-border);"></span>
-                            <span style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">or use your password</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">or use your password</span>
                             <span style="flex:1;height:1px;background:var(--glass-border);"></span>
                         </div>
                     </div>
@@ -1145,7 +1145,7 @@
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
                     <div id="login-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log In</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log in</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
                         <!-- role=alert like every other message element in this file:
@@ -1175,13 +1175,13 @@
                             <input type="text" class="input-glass" id="reg-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code">
                         </div>
                     </div>
-                    <label class="modal-label" for="reg-address">UK Address</label>
+                    <label class="modal-label" for="reg-address">UK address</label>
                     <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
                     <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="authPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
                     <div id="reg-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestRegister">Create Account</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestRegister">Create account</button>
                 </div>
             </div>
             </div><!-- /.auth-form-col -->
@@ -1201,7 +1201,7 @@
                  call button so the two sit together, not at opposite ends. -->
             <div class="guest-head-actions">
                 <button id="acct-settings-btn" class="btn-sm btn-edit" data-act="openGuestDetailsModal" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
-                <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to discuss</a>
             </div>
         </div>
         <div id="guest-bookings-list">
@@ -1369,7 +1369,7 @@
             <input type="email" class="input-glass input-locked" id="profile-email" readonly title="To change your email, contact us.">
             <label class="modal-label">Phone</label>
             <input type="tel" class="input-glass" id="profile-phone" placeholder="Contact number">
-            <label class="modal-label">UK Address</label>
+            <label class="modal-label">UK address</label>
             <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
             <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
@@ -1378,7 +1378,7 @@
             <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log out</button>
             </div>
             </div><!-- /.auth-form-col -->
         </div>
@@ -1451,7 +1451,7 @@
                 <p style="color:var(--text-muted);margin:0 0 18px;">Under UK GDPR you can ask to see the personal data we hold about you, correct it, or request its deletion. From your account page you can update your contact details and address, <strong>download a copy of all the data we hold about you</strong>, and delete your account (deletion works as described above). For anything else, please get in touch using the contact details on the site.</p>
 
                 <h3 style="font-family:var(--font-serif);margin:0 0 8px;">Contact</h3>
-                <p style="color:var(--text-muted);margin:0;">If you have any questions about your data, please contact us via the “Call to Discuss” number shown on the booking page. This notice is provided for transparency and may be updated from time to time.</p>
+                <p style="color:var(--text-muted);margin:0;">If you have any questions about your data, please contact us via the “Call to discuss” number shown on the booking page. This notice is provided for transparency and may be updated from time to time.</p>
             </div>
         </div>
     </main>
@@ -1624,11 +1624,11 @@
                 <label class="modal-label">Password</label>
                 <input type="password" class="input-glass" id="admin-login-pass" placeholder="Password" autocomplete="current-password"
                        data-act-keydown="enterCall" data-fn="submitAdminLogin">
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Log In</button>
+                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Log in</button>
                 <div id="admin-login-passkey-retry" style="display:none;margin-top:18px;">
                     <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;">
                         <span style="flex:1;height:1px;background:var(--glass-border);"></span>
-                        <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">or</span>
+                        <span style="font-size:0.78rem;color:var(--text-muted);">or</span>
                         <span style="flex:1;height:1px;background:var(--glass-border);"></span>
                     </div>
                     <button class="btn-sm btn-edit" style="width:100%;" data-act="submitAdminPasskey"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Sign in with a passkey</button>
@@ -1764,7 +1764,7 @@
                 </div>
             </div>
 
-            <label class="modal-label" for="modal-address">Home Address</label>
+            <label class="modal-label" for="modal-address">Home address</label>
             <textarea class="input-glass" id="modal-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
@@ -2002,7 +2002,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=948"></script>
+    <script defer src="app.js?v=949"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

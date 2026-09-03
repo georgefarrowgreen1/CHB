@@ -897,9 +897,7 @@ nav a:hover {
   border-radius: 30px;
   color: var(--text-light);
   cursor: pointer;
-  text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 1px;
+  font-size: 0.9rem;
   white-space: nowrap;
   transition:
     background 0.4s var(--fluid-bezier),
@@ -907,6 +905,7 @@ nav a:hover {
     transform 320ms var(--settle), filter 320ms var(--settle),
     box-shadow 0.4s var(--fluid-bezier);
   display: inline-block;
+  font-weight: 600;
 }
 /* Liquid Glass hover: the glass brightens and lifts but stays translucent (Apple's
    controls don't invert to a solid fill). Text stays the readable body colour. */
@@ -1300,11 +1299,10 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 .dp-weekday {
   text-align: center;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.72rem;
   color: var(--text-muted);
   padding-bottom: 8px;
+  font-weight: 600;
 }
 .dp-day {
   aspect-ratio: 1;
@@ -1994,9 +1992,7 @@ a.card {
 }
 .card-meta {
   font-size: 0.8rem;
-  text-transform: uppercase;
   color: var(--text-muted);
-  letter-spacing: 1px;
   margin-bottom: 15px;
 }
 .card-rating {
@@ -2086,8 +2082,6 @@ a.card {
 .review-who {
   font-size: 0.8rem;
   color: var(--text-light);
-  letter-spacing: 1px;
-  text-transform: uppercase;
   margin-top: auto;
 }
 .review-who span {
@@ -2229,8 +2223,6 @@ a.card {
 .back-link {
   color: var(--text-muted);
   font-size: 0.9rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
   cursor: pointer;
   display: inline-block;
   /* Padded hit area: this is the ONLY back control on every drilled Manage
@@ -2238,6 +2230,7 @@ a.card {
      unchanged (padding replaces most of the old 20px margin). */
   padding: 10px 14px 10px 0;
   margin-bottom: 10px;
+  font-weight: 600;
 }
 .back-link:hover {
   color: var(--text-light);
@@ -2355,10 +2348,8 @@ a.card {
   margin-top: 3px;
 }
 .prop-stat-sub {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-top: 4px;
 }
 .prop-stat .ic {
@@ -2422,10 +2413,8 @@ a.card {
   color: var(--text-light);
 }
 .host-stats span {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 .host-lines {
   display: flex;
@@ -2453,12 +2442,11 @@ a.card {
   margin: 0;
 }
 .host-edit-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   display: block;
   margin: 14px 0 5px;
+  font-weight: 600;
 }
 /* Guest photo wall (UGC) */
 .guest-photo-grid {
@@ -2902,15 +2890,14 @@ a.card {
   margin: 26px 0 24px;
 }
 .enq-prog-step {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   white-space: nowrap;
   position: relative;
   /* Room for the 12px dot plus a clear gap between it and the label text. */
   padding-left: 26px;
   transition: color 0.3s var(--fluid-bezier);
+  font-weight: 600;
 }
 /* Narrow phones: the label size is FLUID, not a tuned constant — the flex:1
    connectors shrink to nothing first, then the nowrap labels are the floor, so
@@ -2998,11 +2985,10 @@ a.card {
   margin-top: 4px;
 }
 .enq-field-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   margin: 18px 0 6px;
+  font-weight: 600;
 }
 /* The enquiry form's personable layer (the approved demo): the family-run
    trust note, the returning-guest banner, the quiet seasonal reaction, the
@@ -3199,11 +3185,9 @@ a.card {
   border: 1.5px solid var(--text-muted);
 }
 .enq-sched-when {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   flex: 0 0 92px;
 }
 .enq-sched-what {
@@ -3283,10 +3267,9 @@ a.card {
   background: var(--glass-bg);
 }
 .pay-amount-label {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
   color: var(--text-muted);
+  font-weight: 600;
 }
 .pay-amount {
   font-family: var(--font-serif);
@@ -3437,11 +3420,10 @@ a.card {
   background: color-mix(in srgb, var(--glass-bg) 60%, transparent);
 }
 .pay-sec-cap {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
   color: var(--text-muted);
   margin-bottom: 10px;
+  font-weight: 600;
 }
 .pay-sec-amt {
   color: var(--accent-text);
@@ -3506,9 +3488,7 @@ a.card {
   align-items: center;
   gap: 12px;
   color: var(--text-muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
   margin: 18px 0 12px;
 }
 .sq-or::before,
@@ -3917,10 +3897,8 @@ a.card {
   text-align: left;
 }
 .pay-journey-cap {
-  font-size: 0.68rem;
-  letter-spacing: 0.09em;
+  font-size: 0.74rem;
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-muted);
   padding: 12px 15px 0;
 }
@@ -4033,10 +4011,8 @@ a.card {
   text-align: left;
 }
 .pay-steps-cap {
-  font-size: 0.68rem;
-  letter-spacing: 0.09em;
+  font-size: 0.74rem;
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-muted);
   padding: 11px 15px 2px;
 }
@@ -4114,10 +4090,8 @@ a.card {
   text-align: left;
 }
 .pay-track-cap {
-  font-size: 0.68rem;
-  letter-spacing: 0.09em;
+  font-size: 0.74rem;
   font-weight: 600;
-  text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 12px;
 }
@@ -5306,11 +5280,11 @@ body.light-mode .ov-card {
   min-width: 0; /* grid item may shrink — long values wrap instead of colliding */
 }
 .booking-detail-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
+  font-size: 0.76rem;
   color: var(--text-muted);
   display: block;
   margin-bottom: 4px;
+  font-weight: 600;
 }
 .booking-detail-value {
   font-size: 1.1rem;
@@ -5321,12 +5295,11 @@ body.light-mode .ov-card {
 }
 .prop-tag {
   display: inline-block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.74rem;
   padding: 3px 10px;
   border-radius: 20px;
   margin-bottom: 12px;
+  font-weight: 600;
 }
 .tag-21a {
   background: var(--prop-21a-bg);
@@ -5688,11 +5661,10 @@ body.light-mode .tag-pimpernel {
   border-radius: var(--r-lg);
 }
 .chat-intro-label {
-  font-size: 0.66rem;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
+  font-size: 0.72rem;
   color: var(--text-muted);
   margin-bottom: 8px;
+  font-weight: 600;
 }
 .chat-intro-fields {
   display: grid;
@@ -6200,10 +6172,8 @@ body.light-mode .tag-pimpernel {
   vertical-align: middle;
   background: rgba(255, 183, 77, 0.16);
   color: var(--warn-text);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 600;
   padding: 2px 7px;
   border-radius: var(--r-pill);
   margin-left: 6px;
@@ -6472,10 +6442,8 @@ body.owner-mode .chat-widget {
   width: 56px;
   padding-top: 1px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  font-size: 0.68rem;
-  letter-spacing: 0.05em;
-  font-weight: 700;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 .email-meta-value {
   color: var(--text-light);
@@ -6697,9 +6665,7 @@ body.owner-mode .chat-widget {
 .btn-sm {
   padding: 8px 14px;
   border-radius: 18px;
-  font-size: 0.7rem; /* the 11px floor — 0.68 was 10.9px on a control */
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.8rem; /* the 11px floor — 0.68 was 10.9px on a control */
   cursor: pointer;
   border: 1px solid var(--glass-border);
   background: transparent;
@@ -6718,6 +6684,7 @@ body.owner-mode .chat-widget {
   justify-content: center;
   gap: 6px;
   line-height: 1.2;
+  font-weight: 600;
 }
 .btn-sm:hover {
   transform: translateY(-2px);
@@ -6774,11 +6741,10 @@ body.owner-mode .chat-widget {
 }
 .avail-cal-grid .avail-dow {
   text-align: center;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.72rem;
   color: var(--text-muted);
   padding-bottom: 4px;
+  font-weight: 600;
 }
 .avail-cell {
   aspect-ratio: 1;
@@ -7159,10 +7125,8 @@ body.owner-mode .chat-widget {
   padding-left: 8px;
 }
 .act-sev {
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   border-radius: var(--r-pill);
   padding: 2px 8px;
   flex-shrink: 0;
@@ -8044,11 +8008,10 @@ body.light-mode .feed-dot-bad {
   padding: 24px 26px;
 }
 .accounts-stat .label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   margin-bottom: 10px;
+  font-weight: 600;
 }
 
 .accounts-stat.headline {
@@ -8234,15 +8197,14 @@ body.light-mode .feed-dot-bad {
 }
 .exp-tag {
   display: inline-block;
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.7rem;
   padding: 1px 7px;
   border-radius: 10px;
   background: rgba(214, 167, 133, 0.18);
   color: var(--accent-text);
   margin-left: 6px;
   vertical-align: middle;
+  font-weight: 600;
 }
 .exp-receipt img {
   height: 30px;
@@ -8364,9 +8326,7 @@ body.light-mode .feed-dot-bad {
   color: var(--text-light);
 }
 .heritage-label {
-  font-size: 0.7rem;
-  letter-spacing: 1.8px;
-  text-transform: uppercase;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
@@ -8620,12 +8580,11 @@ body.light-mode .feed-dot-bad {
   color: var(--info-text, var(--text-light));
 }
 .hub-count-u {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.74rem;
   color: var(--text-muted);
   margin-top: 3px;
   text-align: center;
+  font-weight: 600;
 }
 .hub-warn {
   color: var(--warn-text);
@@ -8662,10 +8621,8 @@ body.light-mode .feed-dot-bad {
   margin-top: 14px;
 }
 .gtl-cap {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.76rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 6px;
 }
@@ -8758,10 +8715,8 @@ body.light-mode .feed-dot-bad {
 }
 .gwx-dn {
   display: block;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .gwx-ic {
@@ -8802,10 +8757,8 @@ body.light-mode .feed-dot-bad {
 }
 .hub-code-cap {
   display: block;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 600;
   color: var(--ok-text);
 }
 .hub-code-fig {
@@ -9477,10 +9430,8 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border, rgba(127, 127, 127, 0.16));
 }
 .bkflow-lbl {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-size: 0.76rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 10px;
 }
@@ -9610,9 +9561,7 @@ body.light-mode .feed-dot-bad {
   gap: 10px;
 }
 .guest-ref {
-  font-size: 0.72rem;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  font-size: 0.78rem;
   color: var(--text-muted);
   margin-bottom: 16px;
 }
@@ -9627,11 +9576,10 @@ body.light-mode .feed-dot-bad {
 }
 .guest-status-badge {
   display: inline-block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.74rem;
   padding: 4px 12px;
   border-radius: 20px;
+  font-weight: 600;
 }
 .guest-price-box {
   background: rgba(0, 0, 0, 0.2);
@@ -9724,13 +9672,12 @@ body.light-mode .feed-dot-bad {
   border-color: var(--text-light);
 }
 .rule-divider {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   margin: 18px 0 12px;
   padding-top: 14px;
   border-top: 1px solid var(--glass-border);
+  font-weight: 600;
 }
 .arrival-days {
   display: flex;
@@ -9856,12 +9803,11 @@ body.light-mode .feed-dot-bad {
   }
 }
 .modal-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.78rem;
   color: var(--text-muted);
   display: block;
   margin-bottom: 5px;
+  font-weight: 600;
 }
 /* Paired fields in the Add/Edit Booking modal (email+phone, date+time, adults+
    children). Replaces fixed 130px inline columns that cramped narrow phones:
@@ -10024,11 +9970,10 @@ body.light-mode .feed-dot-bad {
   font-weight: 600;
 }
 .toast-date {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
   margin-top: 6px;
+  font-weight: 600;
 }
 .toast-dismiss {
   margin-top: 12px;
@@ -10098,12 +10043,10 @@ body.light-mode .feed-dot-bad {
   color: var(--text-muted);
   padding: 8px 18px;
   border-radius: 20px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--glass-border);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 0.82rem;
 }
 .toggle-btn:hover {
   color: var(--text-light);
@@ -10203,10 +10146,8 @@ body.light-mode .theme-switch .ts-i-sun {
   padding: 11px 22px;
   border-radius: var(--r-lg);
   cursor: pointer;
-  font-weight: 500;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-weight: 600;
+  font-size: 0.78rem;
   font-family: var(--font-sans);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -10368,12 +10309,11 @@ body.has-queued .offline-pill {
   color: #f5f5f7;
   padding: 11px 26px;
   border-radius: 30px;
-  font-size: 0.8rem;
-  letter-spacing: 1px;
-  text-transform: uppercase;
+  font-size: 0.85rem;
   cursor: pointer;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  font-weight: 600;
 }
 .loading-glass {
   display: flex;
@@ -11019,11 +10959,10 @@ body.light-mode .hs-field:hover {
 }
 .hs-label {
   display: block;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1.3px;
+  font-size: 0.76rem;
   color: var(--text-muted);
   margin-bottom: 3px;
+  font-weight: 600;
 }
 .hs-value {
   font-size: 0.98rem;
@@ -11217,7 +11156,6 @@ body.light-mode .hs-field:hover {
   color: #1b1208;
   border-color: transparent;
   font-weight: 600;
-  letter-spacing: 0.5px;
   padding: 17px;
   box-shadow: 0 8px 24px var(--accent-soft);
 }
@@ -11672,10 +11610,8 @@ body.light-mode .datepicker-pop {
    learning inject the same class), so the caps style must apply there too. */
 .settings-index .settings-section-label,
 .settings-sec .settings-section-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1.3px;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 600;
   color: var(--text-muted);
   margin: 22px 6px 8px;
 }
@@ -11965,31 +11901,10 @@ body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
   }
 }
 
-/* ---- Section-title flourish (motion polish) ----
-   Centred homepage titles carry a short gradient rule that draws in as the
-   title scroll-reveals (the .reveal/.in-view system in app.js; static when
-   JS or motion is unavailable, so nothing depends on it). */
+/* The gradient flourish under centred titles is GONE (the sentence-case pass):
+   the serif title carries the hierarchy; a rule beneath it was decoration. */
 h2.section-title.text-center {
   position: relative;
-  padding-bottom: 16px;
-}
-h2.section-title.text-center::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 56px;
-  height: 2px;
-  border-radius: 2px;
-  transform: translateX(-50%);
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-}
-html.js-reveal h2.section-title.text-center.reveal::after {
-  transform: translateX(-50%) scaleX(0);
-  transition: transform 0.8s var(--fluid-bezier) 0.25s;
-}
-html.js-reveal h2.section-title.text-center.reveal.in-view::after {
-  transform: translateX(-50%) scaleX(1);
 }
 
 /* The login brand panel only shows on the wide split layout below; on mobile and
@@ -12290,15 +12205,14 @@ body.light-mode .hero-scroll-cue {
   white-space: nowrap;
 }
 .notify-primary-tag {
-  font-size: 0.64rem;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  font-size: 0.7rem;
   color: var(--text-muted);
   background: var(--glass-hover);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-pill);
   padding: 3px 10px;
   flex-shrink: 0;
+  font-weight: 600;
 }
 .notify-remove {
   width: 28px;
