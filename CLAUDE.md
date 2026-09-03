@@ -2266,6 +2266,44 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   paints from the cottage page. General rule: an overlay's markup belongs at
   body level; inside a `.page-view` it inherits that view's display.
 
+## Sentence case on the controls — the brand keeps its caps where they are the voice (built)
+
+**HIG proposal 4, demoed on the real pages and then "Build it".** app.css carried
+**49** `text-transform: uppercase` rule blocks; the pass leaves **five** — the nav,
+the hero kicker and subtitle, and the section kicker, which ARE the brand's voice —
+and converts the other forty-four: every button (`.btn-glass` 0.8→0.9rem 600,
+`.btn-sm` 0.7→0.8rem 600), field and card labels (`.modal-label`, `.hs-label`,
+`.enq-field-label` …), captions (`.gtl-cap`, `.bkflow-lbl`, the pay screen's,
+`.accounts-stat .label`, `.settings-section-label`), chips and badges
+(`.prop-tag`, `.guest-status-badge`, `.exp-tag`), back links, step labels, the
+weekday rows, the stat captions. Sentence case at 600 weight is the house label
+(the invoice's own rule, applied to the screens); tracking is removed with the
+caps — it was compensating for them. Sizes step UP by 0.06–0.1rem because
+lowercase at the caps' size reads smaller; measured, the widths come out close to
+even (caps run ~20% wider than lowercase).
+- **The ornament under centred section titles is gone** — a 2px gradient rule the
+  serif title never needed; its `padding-bottom: 16px` went with it.
+- **Caps hide Title Case.** "Log In", "Create Account", "Log Out", "Change
+  Password", "Call to Discuss", "Your Name", "UK Address", "Tax Year" all read as
+  one shout under uppercase and as wrong the moment it came off; corrected in the
+  strings. **And the stylesheet ratchet cannot see an INLINE `style="text-transform:
+  uppercase"`** — nine of them in index.html (the enquiry form's six labels, the two
+  auth dividers) and admin-views.html (the tax-year label) were converted by hand;
+  a markup scan for the attribute is the check that would catch the next one.
+- **`check-css-conventions` counts uppercase rule blocks** (`uppercase`: app.css
+  5, admin.css 34, guest-app.css 0; may only fall) — the shout cannot creep back one
+  control at a time. admin.css's 34 are the owner-side captions (`.bhub-eyebrow`,
+  `.acr-cap`, `.bhub-next-cap`, the cmdk captions …), deliberately NOT converted in
+  this pass: the demo was the guest surfaces, and the shared button classes carry
+  the change into the back office already. The ONE admin rule converted is the
+  Pricing page's `.settings-section-label` override — the same class the Manage
+  index wears, and one class must be one look (ui-test-manage's caption check
+  caught the split the moment app.css changed and admin.css had not).
+- Gated by ui-test-smallthings §8 (computed `none/normal` on buttons, labels and
+  captions; `uppercase` still on both kickers; the `::after` gone; the CTA's string
+  and "Call to discuss" in sentence case) and ui-test-manage's caption check
+  re-aimed (sentence case at 600 instead of uppercase).
+
 ## Seven small things — round seven of the measured sweep (built)
 
 **Asked for as "keep going" after the HIG assessment; nineteen guest and owner

@@ -669,7 +669,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     settingsOpen('pricing');
     await new Promise((r) => setTimeout(r, 300));
     const pb = document.getElementById('pricing-body');
-    return { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => getComputedStyle(l).textTransform === 'uppercase') : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
+    // the caption vocabulary is sentence case at 600 (the sentence-case pass)
+    return { caps: pb ? [...pb.querySelectorAll('.settings-section-label')].every((l) => { const cs = getComputedStyle(l); return cs.textTransform === 'none' && Number(cs.fontWeight) >= 600; }) : false, has: pb ? pb.querySelectorAll('.settings-section-label').length >= 2 : false };
   });
   ok(p3d.has && p3d.caps, 'Pricing wears the caption vocabulary over its idea rows');
 

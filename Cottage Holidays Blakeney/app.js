@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 589;
+const ADMIN_BUNDLE_V = 590;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 245;
+const ADMIN_CSS_V = 246;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2380,7 +2380,7 @@ function applySavedTheme() {
     } catch (e) {}
     setThemeLabel();
 }
-// Point both "Call to Discuss" buttons at the configured phone number.
+// Point both "Call to discuss" buttons at the configured phone number.
 // Prefers the value saved in Settings (siteContent['contact-phone']),
 // falling back to the constants above.
 function wireCallButtons() {
@@ -13890,7 +13890,7 @@ document.addEventListener('keydown', (e) => {
     }).observe(document.body, { childList: true, subtree: true });
 })();
 
-// Phone number for the "Call to Discuss" buttons. The live value is set in
+// Phone number for the "Call to discuss" buttons. The live value is set in
 // Back Office → Settings & Fees and stored with site content; these are just
 // fallbacks used before content loads or if it was never set.
 const CONTACT_PHONE_DIAL = '+440000000000'; // fallback dial number
@@ -18878,7 +18878,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'grid01';
+    const BUILD = 'case01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

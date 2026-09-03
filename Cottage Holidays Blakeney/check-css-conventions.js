@@ -123,6 +123,19 @@ function offGridSpacing(cssRaw) {
     return out;
 }
 
+// Tracked uppercase on words: text-transform: uppercase rule blocks. The
+// sentence-case pass took app.css from 49 to the brand voice's five (nav, the
+// hero kicker and subtitle, the section kicker); counted so the shout cannot
+// creep back one control at a time.
+function uppercaseRules(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    const re = /([^{}]+)\{([^}]*)\}/g;
+    let m;
+    while ((m = re.exec(css))) if (/text-transform:\s*uppercase/.test(m[2])) out.push(m[1].trim().replace(/\s+/g, ' ').slice(0, 60));
+    return out;
+}
+
 // --- run ------------------------------------------------------------------
 const found = {};
 for (const f of FILES) {
@@ -133,7 +146,7 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css), offGrid: offGridSpacing(css), uppercase: uppercaseRules(css) };
 }
 
 const DIMS = [
@@ -141,6 +154,7 @@ const DIMS = [
     { key: 'rawHex', label: 'raw hex colour', fix: 'use an existing :root token (or add one) — see DESIGN.md' },
     { key: 'rawEnv', label: 'raw env(safe-area-inset)', fix: 'use var(--safe-t/r/b/l) so the account preview can zero it' },
     { key: 'offGrid', label: 'spacing value off the 4pt grid', fix: 'snap to a multiple of 4 (or use a --space-N token); 1–2px hairline nudges are allowed' },
+    { key: 'uppercase', label: 'text-transform: uppercase rule', fix: 'sentence case at 600 weight is the house label; tracked caps are the brand voice on the kickers and nav only' },
 ];
 
 if (update) {
@@ -158,7 +172,7 @@ if (update) {
     }
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env(), ${next[f].offGrid} off-grid spacing, ${next[f].uppercase} uppercase`);
     process.exit(0);
 }
 
