@@ -163,7 +163,16 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
   // clip-margin deleted, and the ring is exactly the kind of thing the property
   // does not tell you about, so this samples the paint.
   await page.evaluate(() => bhubFoldToggle('guest'));
-  await page.waitForTimeout(500);
+  // Sample by STATE, never a clock: the fold's 320ms unfold is a transition the
+  // fold reports through getAnimations() until it is done, and a fixed 500ms on
+  // a loaded runner sampled the strip while the wrapper's edge was still moving
+  // — 0 red px on CI for a ring that paints (measured, once). Wait for no
+  // animation in flight and the fold open, then a settled frame.
+  await page.waitForFunction(() => {
+    const f = document.getElementById('bhub-fold-guest');
+    return f && f.getAnimations({ subtree: true }).length === 0 && f.getBoundingClientRect().height > 60;
+  }, { timeout: 8000 });
+  await page.waitForTimeout(120);
   // The probe is a ZERO-HEIGHT element flush with the wrapper's bottom edge, so
   // its whole ring lies BELOW that edge — inside the fold's own 14px padding,
   // which is what the clip margin has to let through.

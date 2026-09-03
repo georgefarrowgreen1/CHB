@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=312">
+    <link rel="stylesheet" href="app.css?v=313">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -457,17 +457,6 @@
             <div class="guestwords-meta" id="guestwords-meta"></div>
         </section>
 
-        <!-- ALL REVIEWS MODAL (per-cottage "read all reviews") -->
-        <div id="reviews-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-label="Guest reviews">
-            <div class="reviews-modal-box glass-panel">
-                <div class="reviews-modal-head">
-                    <h2 class="section-title" style="margin:0;font-size:1.6rem;">Guest Words</h2>
-                    <button class="reviews-modal-close" data-act="closeAllReviews" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-                </div>
-                <div class="reviews-modal-body" id="reviews-modal-list"></div>
-            </div>
-        </div>
-
     </main>
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
@@ -566,8 +555,8 @@
     </main>
 
     <!-- Suggest-an-experience form (guest) -->
-    <div id="exp-suggest-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Suggest an experience" data-act="backdropClose" data-close="closeExperienceSuggest">
-        <div class="modal-box glass-panel" style="max-width:480px;">
+    <div id="exp-suggest-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Suggest an experience" data-act="backdropClose" data-close="closeExperienceSuggest">
+        <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" data-act="closeExperienceSuggest" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
@@ -730,7 +719,7 @@
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
-        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-focus="#enq-date-trigger" data-act="backdropClose" data-close="closeEnquireModal">
+        <div id="enquire-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-focus="#enq-date-trigger" data-act="backdropClose" data-close="closeEnquireModal">
             <div class="modal-box enquire-box glass-panel">
                 <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
@@ -1265,8 +1254,8 @@
     </div>
 
     <!-- ================= GUEST PHOTO UPLOAD ================= -->
-    <div id="photo-upload-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Share a photo" data-act="backdropClose" data-close="closePhotoUpload">
-        <div class="modal-box glass-panel" style="max-width:460px;">
+    <div id="photo-upload-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Share a photo" data-act="backdropClose" data-close="closePhotoUpload">
+        <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Share a photo</h3>
                 <button class="reviews-modal-close" data-act="closePhotoUpload" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1287,8 +1276,8 @@
          breakdown discloses in place — bhubMoneyExpand(), admin.js.) -->
 
     <!-- ================= IN-STAY WELCOME BOOK ================= -->
-    <div id="welcome-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Welcome" data-act="backdropClose" data-close="closeWelcomeModal">
-        <div class="modal-box glass-panel" style="max-width:520px;">
+    <div id="welcome-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Welcome" data-act="backdropClose" data-close="closeWelcomeModal">
+        <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="welcome-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Welcome book</h3>
                 <button class="reviews-modal-close" data-act="closeWelcomeModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1334,8 +1323,8 @@
     </div>
 
     <!-- ================= WAITLIST / NOTIFY ME (guest) ================= -->
-    <div id="waitlist-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Join the waitlist" data-act="backdropClose" data-close="closeWaitlistModal">
-        <div class="modal-box glass-panel" style="max-width:460px;">
+    <div id="waitlist-modal" class="modal-overlay pop-modal chb-sheet" role="dialog" aria-modal="true" aria-label="Join the waitlist" data-act="backdropClose" data-close="closeWaitlistModal">
+        <div class="modal-box glass-panel">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Notify me</h3>
                 <button class="reviews-modal-close" data-act="closeWaitlistModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1548,6 +1537,19 @@
         </div>
     </div>
 
+    <!-- ALL REVIEWS MODAL (per-cottage "read all reviews"). At BODY level, like every
+         other overlay: it used to sit inside the home view's <main>, which is display:none
+         on the cottage page — the one screen whose "Read all N reviews" button opens it. -->
+    <div id="reviews-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-label="Guest reviews">
+        <div class="reviews-modal-box glass-panel">
+            <div class="reviews-modal-head">
+                <h2 class="section-title" style="margin:0;font-size:1.6rem;">Guest Words</h2>
+                <button class="reviews-modal-close" data-act="closeAllReviews" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="reviews-modal-body" id="reviews-modal-list"></div>
+        </div>
+    </div>
+
     <div id="faq-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="faq-modal-title">
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
@@ -1647,7 +1649,7 @@
         </div>
     </div>
 
-    <div id="terms-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Booking terms and conditions">
+    <div id="terms-modal" class="modal-overlay chb-sheet" role="dialog" aria-modal="true" aria-label="Booking terms and conditions">
         <div class="glass-panel terms-modal-box">
             <div class="terms-modal-head">
                 <div>
@@ -2000,7 +2002,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=944"></script>
+    <script defer src="app.js?v=945"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

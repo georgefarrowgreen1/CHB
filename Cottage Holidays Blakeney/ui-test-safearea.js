@@ -100,14 +100,26 @@ const BOTTOM = 34;
             if (!el) return { missing: true };
             const b = el.getBoundingClientRect();
             if (b.height < 10) return { hidden: true };
-            return { top: Math.round(b.top), bottom: Math.round(b.bottom), vh: window.innerHeight };
+            const ov = el.closest('.modal-overlay');
+            return {
+                top: Math.round(b.top), bottom: Math.round(b.bottom), vh: window.innerHeight,
+                // A BOTTOM SHEET (.chb-sheet, ≤640px) is edge-attached on purpose — its
+                // box runs to the screen edge and carries the inset INSIDE as padding,
+                // the way the guest-shell auth screens do (below).
+                sheet: !!(ov && ov.classList.contains('chb-sheet') && window.innerWidth <= 640),
+                padBottom: parseFloat(getComputedStyle(el).paddingBottom),
+            };
         }, c);
         if (r.err || r.missing || r.hidden) {
             check(false, `${c.name} — could not measure (${r.err || (r.missing ? 'panel not found' : 'not visible')})`);
             continue;
         }
         check(r.top >= TOP, `${c.name}: top clears the Dynamic Island (${r.top} ≥ ${TOP})`);
-        check(r.bottom <= r.vh - BOTTOM + 1, `${c.name}: bottom clears the home indicator (${r.bottom} ≤ ${r.vh - BOTTOM})`);
+        if (r.sheet) {
+            check(r.bottom <= r.vh + 1 && r.padBottom >= BOTTOM, `${c.name}: a sheet — edge-attached, reserving the home indicator inside (padding ${r.padBottom}px ≥ ${BOTTOM})`);
+        } else {
+            check(r.bottom <= r.vh - BOTTOM + 1, `${c.name}: bottom clears the home indicator (${r.bottom} ≤ ${r.vh - BOTTOM})`);
+        }
     }
 
     // The guest-shell auth screens are full-page SCROLLERS — the panel runs to the

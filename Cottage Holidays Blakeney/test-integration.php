@@ -3518,9 +3518,10 @@ http($admin, 'POST', '/nightshift.php', ['action' => 'chat_clear']);
 // ── THE GROUNDING PACK + MEMORY — every ask arrives already knowing ─────
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save',
     'items' => ['Never dogs — allergy promise to guests', '   ', 'Boiler man is Colin']]);
+// Dated by the SERVER, so compared against the server's clock ($ukToday).
 it_check('ground: memories save trimmed — and each line is DATED today by the server',
     count($r['json']['memory'] ?? []) === 2
-    && ($r['json']['memory'][0]['at'] ?? '') === date('Y-m-d'), $r['raw']);
+    && ($r['json']['memory'][0]['at'] ?? '') === $ukToday, $r['raw']);
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_thread']);
 it_check('ground: the thread carries the memory list back, dated',
     ($r['json']['memory'][0]['t'] ?? '') === 'Never dogs — allergy promise to guests'
@@ -3537,7 +3538,7 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save',
 $mm = $r['json']['memory'] ?? [];
 it_check('ground: a resave keeps standing dates, adopts legacy as unknown, dates only the NEW line today',
     ($mm[0]['at'] ?? 'x') === '2026-03-01' && ($mm[1]['at'] ?? 'x') === ''
-    && ($mm[2]['at'] ?? '') === date('Y-m-d'), json_encode($mm));
+    && ($mm[2]['at'] ?? '') === $ukToday, json_encode($mm));
 // ADD-ONE MODE (the remember card): the SERVER merges, because the phone's
 // mirror can be stale — replace semantics from a stale device silently
 // deleted lines another device had added. Appends dated today, keeps every
@@ -3547,7 +3548,7 @@ $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'a
 $mm = $r['json']['memory'] ?? [];
 it_check('memory add-one: appends dated today and keeps every standing line + date',
     count($mm) === 4 && ($mm[3]['t'] ?? '') === 'Gate code for the yard is on the keyring'
-    && ($mm[3]['at'] ?? '') === date('Y-m-d') && ($mm[0]['at'] ?? 'x') === '2026-03-01', json_encode($mm));
+    && ($mm[3]['at'] ?? '') === $ukToday && ($mm[0]['at'] ?? 'x') === '2026-03-01', json_encode($mm));
 $r = http($admin, 'POST', '/nightshift.php', ['action' => 'chat_memory_save', 'add' => 'Gate code for the yard is on the keyring']);
 it_check('memory add-one: a duplicate changes nothing and says already',
     count($r['json']['memory'] ?? []) === 4 && ($r['json']['already'] ?? false) === true, $r['raw']);
@@ -3560,7 +3561,7 @@ $rootDb->prepare("UPDATE content SET item_value = ? WHERE item_key = 'mac-chat-m
     ->execute([json_encode(json_encode([
         ['t' => 'Never dogs — allergy promise to guests', 'at' => '2026-03-01'],
         ['t' => 'Boiler man is Colin', 'at' => ''],
-        ['t' => 'Check-in is 3pm sharp', 'at' => date('Y-m-d')],
+        ['t' => 'Check-in is 3pm sharp', 'at' => $ukToday],
     ]))]);
 
 // ── CHAT CONTINUITY — a local Mac conversation becomes a web one ─────────
@@ -3981,10 +3982,14 @@ $slotDb = null;
 // the owner is told ONCE — the activity row is the observable half of the tell,
 // written beside alert_owner in the same try.
 echo "\n== \u{00A7}30 the check-out tap ==\n";
-$coToday = date('Y-m-d');
-$coYest = date('Y-m-d', strtotime('-1 day'));
-$coTom = date('Y-m-d', strtotime('+1 day'));
-$coIn = date('Y-m-d', strtotime('-3 days'));
+// THE SERVER'S TODAY, not the harness's ($ukToday, the rule stated at the top):
+// guest-checkout.php judges the last morning on Europe/London, and between
+// 23:00 and midnight UTC a bare date() here is a day behind it — measured, the
+// window checks read "already ended" for a stay that leaves today.
+$coToday = $ukToday;
+$coYest = $ukPlus(-1);
+$coTom = $ukPlus(1);
+$coIn = $ukPlus(-3);
 // Three stays on one guest email: leaving TODAY (the live one), leaving
 // tomorrow (button locked), left yesterday (moot).
 $rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Tap Guest','tapguest@gmail.com','$coIn','$coToday',2,0,'paid',400,400,400,0,3)");

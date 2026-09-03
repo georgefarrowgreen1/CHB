@@ -2230,10 +2230,41 @@ seating, the killswitch and the connector each fail their NAMED checks (3/1/2/2/
   node-zlib's default level, because python's level-9 gzip undercounted by 740
   bytes and the first raise fell short. tsc budget **714 → 711** (the lightbox
   casts), a11y `accentAsText` **20 → 19**.
-- **Deliberately NOT built in PR-A** (PR-B): every overlay's exit (18 of 22 close
-  functions vanish; five `pop-modal`s have `modalPopOut` and never call it; the
-  sheet family has no exit written), the phone-sheet presentation of the enquiry
-  form, and the glass dialog's settle-down alert.
+- **SHEET and ALERT shipped in PR-B — one exit for every overlay**
+  (`chbCloseOverlay`, app.js; gated by **`ui-test-overlays.js`**, 72 checks,
+  break-tested six ways). Eighteen of the twenty-two close functions vanished
+  their overlay in a frame; four faded on a 350ms timer that kept `open` set
+  while they did. The helper is the fold's `[hidden]` discipline for overlays:
+  **`open` drops SYNCHRONOUSLY** (every gate, `topOpenDialog` and
+  `closeTopOverlay` read it — which is why all 66 test call sites of the close
+  functions ran untouched), `closing` paints an inert exit (`pointer-events:
+  none`; `visibility` rides the last keyframe so a finished overlay leaves the
+  tab order), and **every closing rule is `.closing:not(.open)`** so a re-open
+  mid-exit simply wins and the stale timer strips a class selecting nothing —
+  the glass dialog's queue opens the next confirm INTO the previous one's exit
+  on exactly that. The picker over a glass form keeps **z 6100 while it fades**
+  (`dp-over-glass` drops at once because `dpOverGlass()` reads it; at 2100 the
+  exit played BEHIND the dialog it came from). Every `.modal-overlay` box
+  arrives on `--sheet` while the scrim only FADES — `fluidFadeIn` translated
+  the whole overlay, the box's motion painted twice. ≤640px a `.chb-sheet`
+  overlay (enquiry, terms, waitlist, welcome book, photo upload, suggest) is a
+  **bottom sheet**: edge-attached, top corners only, a grabber, its own
+  `--safe-b` padding, up on `--sheet` 480ms and off on `--in` 280ms; the
+  reviews family and the account screens deliberately are not. **Four inline
+  `max-width` styles moved into `:where()` rules** — an inline style outranks
+  the sheet's `max-width: none`, and a bare `#id .modal-box` rule would outrank
+  the sheet too. ui-test-safearea re-aimed for the sheet cases: a sheet is
+  edge-attached BY DESIGN and carries the home-indicator inset INSIDE as
+  padding, the way the guest-shell auth screens already do. The glass dialog
+  settles DOWN from 1.08 (the iOS alert never rises).
+  **THE GATE FOUND A MODAL THAT COULD NOT PAINT.** `#reviews-modal` sat inside
+  the HOME view's `<main>` — display:none on every other view — and its only
+  openers are the cottage page's "Read all N reviews" button and the footer
+  link, so from the cottage page the button opened nothing visible.
+  ui-test-terms gated the button's presence and never clicked it. It lives at
+  body level with the other overlays now, and §2b asserts by name that it
+  paints from the cottage page. General rule: an overlay's markup belongs at
+  body level; inside a `.page-view` it inherits that view's display.
 
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
@@ -6030,6 +6061,18 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   fully future), and read expected rates from the model the way §35's `decCur` does
   rather than writing the number down. To check a change here, shift the clock and
   sweep: a 12-month pass plus month/day/year boundaries, DST and a leap day.
+  **The PHP twin: test-integration's `$ukToday`.** The harness runs on UTC while
+  db.php sets Europe/London, so a bare `date('Y-m-d')` in that file is the
+  server's YESTERDAY between 23:00 and midnight UTC under BST. The rule is
+  stated at the top of the file and two later sections (the memory dates, §30's
+  last-morning window) were written against `date()` anyway — caught by a CI
+  run that started at 00:03 London time. Compare a server-stamped date against
+  `$ukToday`/`$ukPlus(n)`, never `date()`.
+  **And a runner-load flake is a check that slept instead of waiting**: the hub
+  focus-ring pixel sample (500ms after the fold toggle) and the mailbox
+  folder-row read (300ms after openInbox's refetch) each failed once under CI's
+  3-suite load and pass alone; both now wait on state (`getAnimations()`
+  empty + open, the row present). Same rule as the safe-area suite's settle.
 - `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`,
   `php test-pricing.php`, `php test-reply.php`, the real-browser `node e2e-test.js`,
   and the design gate `node layout-test.js` (layout invariants — no horizontal
