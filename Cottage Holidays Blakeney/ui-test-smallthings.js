@@ -246,6 +246,24 @@ function stub(page, mode, mine) {
   ok(rag && rag.without.lastWords.length === 1, `…which the plain wrap really did leave (“${rag && rag.without.lastWords.join(' ')}”) — the rule does the work`);
   await page.close();
 
+  // ============================================================
+  console.log('\n  §7 continuous corners, behind @supports');
+  page = await open('guest', null);
+  const cs7 = await page.evaluate(() => {
+    let rule = null;
+    for (const sheet of document.styleSheets) { let rules; try { rules = sheet.cssRules; } catch (e) { continue; } for (const r of rules) { if (r.type === CSSRule.SUPPORTS_RULE && /corner-shape/.test(r.conditionText)) { rule = { cond: r.conditionText, sel: [...r.cssRules].map((x) => x.selectorText || '').join(',') }; } } }
+    const supports = CSS.supports('corner-shape', 'superellipse(1.5)');
+    const panel = getComputedStyle(document.querySelector('.glass-panel')).cornerShape;
+    const btn = getComputedStyle(document.querySelector('.btn-glass')).cornerShape;
+    const r = parseFloat(getComputedStyle(document.querySelector('header')).borderTopLeftRadius);
+    return { rule, supports, panel, btn, r };
+  });
+  ok(cs7.rule && /superellipse\(1\.5\)/.test(cs7.rule.cond) && /\.glass-panel/.test(cs7.rule.sel) && /\.btn-glass/.test(cs7.rule.sel), 'the squircle is declared behind @supports for panels and buttons', JSON.stringify(cs7.rule));
+  if (cs7.supports) ok(cs7.panel === 'superellipse(1.5)' && cs7.btn === 'superellipse(1.5)', `…and this engine draws it (${cs7.panel} / ${cs7.btn})`);
+  else console.log('  · this engine has no corner-shape; the arc stays (declaration checked above)');
+  ok(cs7.r >= 24, `…with the radius itself untouched (header ${cs7.r}px)`);
+  await page.close();
+
   console.log(fails ? `\n  SMALL-THINGS SUITE FAILED ❌ (${fails})` : '\n  SMALL-THINGS SUITE PASSED ✅');
   await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

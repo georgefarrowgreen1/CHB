@@ -2321,6 +2321,14 @@ screens driven at 390 and 1280 with every control inventoried.** Gated by
   first draft served the owner's booking list to the guest (a 6-day badge from a
   stay the guest never had) because `url.includes('bookings.php')` sat above the
   my-bookings branch. Order the specific route first.
+- **CONTINUOUS CORNERS, behind `@supports (corner-shape: superellipse(1.5))`**
+  (HIG proposal 3): header, panels, cards, modal boxes, the dialog, the picker
+  card, buttons, fields and chips take the squircle iOS draws; Safari 26 and
+  Chromium 139+ render it, every other engine keeps the circular arc at zero
+  cost, and no radius changes — the curve, not the size. Measured: this
+  container's Chromium 141 draws it (`CSS.supports` true, computed
+  `superellipse(1.5)`). Gated by ui-test-smallthings §7 (the CSSOM rule, the
+  computed value where the engine supports it, the radius untouched).
 
 ## The guest pay screen tells the WHOLE money story (the approved v2 + motion)
 
