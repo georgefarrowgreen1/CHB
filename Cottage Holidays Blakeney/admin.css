@@ -4969,6 +4969,10 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
   .settings-index #manage-verdicts { column-span: all; max-width: 640px; }
 }
 #calendar-list .bhub-fold-grp { max-width: 640px; margin-bottom: 16px; } /* owner-asked: clear air between the cottages */
+/* …so the cottages do NOT join into one inset group: each keeps its own corners
+   and hairline. An owner's ask outranks the list rule (gated in ui-test-manage §3). */
+#calendar-list .bhub-fold-grp + .bhub-fold-grp { margin-top: 0; border-top-width: 1px; border-top-left-radius: var(--r-md); border-top-right-radius: var(--r-md); }
+#calendar-list .bhub-fold-grp:has(+ .bhub-fold-grp) { border-bottom-left-radius: var(--r-md); border-bottom-right-radius: var(--r-md); }
 /* Pricing coach + Recent payments wear the unified anatomy (owner-asked).
    pc-well/mf-recon reuse the .acr-well ink-mix ground; the feed keeps its
    gated row classes and takes the well framing by CSS alone. */

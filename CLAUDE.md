@@ -2321,7 +2321,10 @@ capsule — 2/4/1/1/1 fire).
   the shadow stayed while the gate said "none" on the rule; restated at that
   specificity, with the glass-panel hover LIFT opted out (a list cell does not rise).
   The Needs-you rail (`border-left`) and the icon tile fill are gone: the capsule
-  says the state once.
+  says the state once. **ONE EXEMPTION, gated**: `#calendar-list`'s per-cottage
+  groups keep their own corners and 16px of air — an owner's ask ("clear air
+  between the cottages", ui-test-manage §3) outranks the list rule, and the join
+  rule left them 5px apart, which is neither.
 - **THE CHEVRON IS `BHUB_CHEV`** — one stroke-SVG span constant used at all seven
   disclosure sites (one of them string-concatenated, hence the constant rather than
   a template). `.bhub-chev` is a 14px box; the `›` glyph is gone. ui-test-hub and
@@ -2357,7 +2360,7 @@ capsule — 2/4/1/1/1 fire).
   h2 (the overriding rule was not found; verify before claiming). Still proposals: the
   type scale, the header as a bar, radii tokens beyond cells, grid batch two.
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
-  rules, comments stripped at deploy), admin.css 71827 → 72900, admin.js +150 (the
+  rules, comments stripped at deploy), admin.css 71827 → 73100, admin.js +150 (the
   chevron constant).
 
 ## Seven small things — round seven of the measured sweep (built)
