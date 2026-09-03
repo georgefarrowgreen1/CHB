@@ -21,7 +21,12 @@
 // ============================================================
 const { bootBrowser } = require('./ui-test-lib');
 
-const d = (n) => { const x = new Date(); x.setUTCHours(12, 0, 0, 0); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+// The LONDON date, shifted at UTC noon. The first version took the UTC date, which
+// is yesterday's between 23:00 and midnight UTC under BST while the page's
+// todayDashed() reads Europe/London — measured at 00:12 BST: the last-morning
+// fixture rendered as already ended and "10 days to go" read 9. TZ is pinned to
+// Europe/London by ui-test-lib, so the local parts are the London ones.
+const d = (n) => { const x = new Date(); return new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate() + n, 12)).toISOString().slice(0, 10); };
 const GUEST = { id: 9, name: 'Priya Patel', email: 'p@x.co', phone: '', address: '', postcode: '' };
 const stay = (o) => Object.assign({ prop_key: 'jollyboat', propKey: 'jollyboat', name: 'Priya Patel', check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 400, agreed_total: 400, agreed_nightly: 390, agreed_txn_fee: 10, agreed_nights: 3, damages_deposit: 50, hold_status: 'charged', hold_amount: 50 }, o);
 const UPCOMING = [stay({ id: 71, check_in: d(10), check_out: d(13), payment: 'deposit', deposit_paid: 100, pay_token: 'tok71' })];
@@ -240,16 +245,31 @@ function stub(page, mode, mine) {
       const lastTop = tops[tops.length - 1];
       return { n: tops.length, lastWords: words.filter((x) => x.top === lastTop).map((x) => x.w) };
     };
-    const withRule = measure();
-    const st = document.createElement('style'); st.textContent = '#view-experiences p { text-wrap: wrap !important; }'; document.head.appendChild(st);
-    await new Promise((r) => requestAnimationFrame(r));
-    const without = measure();
-    st.remove();
-    return { rule: getComputedStyle(p).textWrap || getComputedStyle(p).textWrapStyle, withRule, without };
+    // CALIBRATE THE WIDTH, never pin it: whether the plain wrap orphans a word
+    // depends on the sentence, the type size and the column together, and the
+    // day the body step moved 16 → 15 the fixture width simply stopped orphaning.
+    // So the sweep walks the column narrower from its natural width until the
+    // plain wrap DOES leave a lone word, and asks the rule at that width. No
+    // width orphaning at all is a failed calibration, reported as such.
+    const rule = getComputedStyle(p).textWrap || getComputedStyle(p).textWrapStyle;
+    const st = document.createElement('style'); st.textContent = '#view-experiences p { text-wrap: wrap !important; }';
+    const natural = Math.round(p.getBoundingClientRect().width);
+    let hit = null;
+    for (let w = natural; w >= 180 && !hit; w -= 4) {
+      p.style.width = w + 'px';
+      document.head.appendChild(st);
+      await new Promise((r) => requestAnimationFrame(r));
+      const without = measure();
+      st.remove();
+      await new Promise((r) => requestAnimationFrame(r));
+      if (without.n >= 2 && without.lastWords.length === 1) hit = { w, without, withRule: measure() };
+    }
+    p.style.width = '';
+    return { rule, natural, ...(hit || { w: null, without: { n: 0, lastWords: [] }, withRule: { n: 0, lastWords: [] } }) };
   });
   ok(rag && /pretty/.test(rag.rule), `the note carries text-wrap: pretty (${rag && rag.rule})`);
-  ok(rag && rag.withRule.n >= 2 && rag.withRule.lastWords.length >= 2, `…and its last line is not a lone word (“${rag && rag.withRule.lastWords.join(' ')}”)`, JSON.stringify(rag));
-  ok(rag && rag.without.lastWords.length === 1, `…which the plain wrap really did leave (“${rag && rag.without.lastWords.join(' ')}”) — the rule does the work`);
+  ok(rag && rag.w !== null && rag.without.lastWords.length === 1, `the plain wrap leaves a lone word at some column (“${rag && rag.without.lastWords.join(' ')}” at ${rag && rag.w}px of ${rag && rag.natural})`, JSON.stringify(rag));
+  ok(rag && rag.withRule.n >= 2 && rag.withRule.lastWords.length >= 2, `…and at that column the rule does the work — its last line is not a lone word (“${rag && rag.withRule.lastWords.join(' ')}”)`, JSON.stringify(rag));
   await page.close();
 
   // ============================================================

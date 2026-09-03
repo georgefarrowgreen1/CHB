@@ -2419,6 +2419,12 @@ capsule — 2/4/1/1/1 fire).
   better than forty spellings of 0.8rem. One gate re-aimed: ui-test-chat-layout's
   "hit its cap" compared clientHeight to a border-box `max-height` (two hairlines
   apart) and failed the day the field took one more line at 17px; it reads offsetHeight.
+  Two more in ui-test-smallthings, neither about type: its `d()` took the UTC date
+  while the page reads Europe/London, so between 23:00 and midnight UTC under BST the
+  last-morning fixture had already ended and "10 days to go" read 9 (the documented
+  clock class, caught because the gauntlet ran across midnight); and §6's rag
+  calibration pinned the column, which stopped orphaning at 15px — it SWEEPS the
+  column narrower until the plain wrap does orphan and asks the rule there.
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
   rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).
