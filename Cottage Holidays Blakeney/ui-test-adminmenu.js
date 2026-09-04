@@ -82,7 +82,11 @@ const stub = (page) => page.route(/\.php/, (r) => {
                 inkVsBar: (() => {
                     const rgb = (v) => (v.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
                     const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-                    const bar = rgb(getComputedStyle(h).backgroundColor);
+                    // The bar's fill rides header::before now (graded from the page
+                    // ground, ui-test-hig §10), so the header's own background is
+                    // transparent: the ground the icons sit on is the body's.
+                    const own = getComputedStyle(h).backgroundColor;
+                    const bar = rgb(/rgba\(.*,\s*0\)|transparent/.test(own) ? getComputedStyle(document.body).backgroundColor : own);
                     if (!bar.length || !dock) return null;
                     const bl = lum(bar);
                     return [...dock.querySelectorAll('.admin-dock-btn')]

@@ -2554,9 +2554,6 @@ window.addEventListener('resize', () => {
     function update() {
         const y = window.scrollY;
         const menuOpen = document.getElementById('mobileMenu').classList.contains('open');
-        // At rest the bar is the page ground (see app.css `at-top`): iOS's nav bar
-        // until content scrolls under it, and the one colour Safari's strip can match.
-        header.classList.toggle('at-top', y <= 24);
 
         // In the guest shell the header CARRIES THE MENU, so it must never slide
         // away — hiding it would take the customer's navigation with it. Instead it
@@ -18895,7 +18892,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'restbar1';
+    const BUILD = 'gradbar1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

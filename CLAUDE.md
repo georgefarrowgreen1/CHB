@@ -2410,6 +2410,36 @@ capsule — 2/4/1/1/1 fire).
   EQUALS the theme-color meta's) and ui-test-safearea (which scrolls before it
   asks for the blur); the resting HEIGHT is the one to assert — condensed it is
   45px by design.
+  **SUPERSEDED — THE BAR HAS A TOP AND NO BOTTOM** (four demos, then "Perfect,
+  build it"). The at-rest switch closed the seam at rest only; scrolled, a flat
+  strip still met a translucent band. The seam is at ONE edge, the top, so the
+  fill is graded spatially: `header.glass-panel::before` carries the fill, the
+  blur AND a mask, in one `@supports (color-mix and mask-image)` block at the
+  foot of app.css — the page GROUND held solid for 16px below the join, eased
+  (color-mix stops, smoothstep) into `--bar-bg` through the bar where the crown
+  and icons sit, then fill and blur dissolving together over a 44px tail (the
+  masked backdrop blur iOS draws its own edgeless bars with). No hairline (the
+  header's border is transparent — and the z:-1 layer paints OVER the header's
+  own border anyway, per painting order, so a restored hairline is invisible:
+  the gate catches it by declaration). `at-top` is GONE (rule, toggle, markup).
+  Two traps, both measured: **THE SOLID RUN IS `--dark-grey`, NOT `--bar-bg`** —
+  the strip is theme-color = the ground, and the material's tint differs by 2–5
+  per channel; two near-equal flats on one row read as a line, which is exactly
+  what the owner still saw after the first fade. And **A PIXEL GATE OVER THE
+  PAGE GROUND IS VACUOUS HERE**: the material over its own ground is nearly the
+  ground, so a deleted mask stepped 2/255 — ui-test-hig §10 measures the tail
+  over a CONTRASTING spacer (black under light, white under dark), where the
+  eased tail steps ≤6, a hairline ~23, an unmasked edge ~176. Declared on the
+  header (not :root) so `var(--safe-t)` resolves where the preview frame zeroes
+  it; solid through the inset so the installed clock sits on ground. Gates:
+  ui-test-hig §10 (the layer's fill/blur/mask, the 44px overhang, the top row's
+  PAINT = theme-color, the fill's first stop = ground and last = the 72%
+  material, the contrast-ground step), break-tested four ways; ui-test-safearea
+  and ui-test-adminmenu re-aimed to read the layer / the body ground. NB Chromium
+  serialises a resolved color-mix() stop as `color(srgb …)`, not `rgb()`, and
+  the a11y home scene once caught `#cmdk-sys` under 12-suite load (passes
+  alone — a load flake, not a finding). app.css budget 86300 → 87000 (+364 gz
+  shipped, comments stripped).
 - **THREE RADII** ("Build all"): the CELL `--r-sm` 12 (list cells, fields, chips,
   calendar and picker cells — fold groups and Needs-you rows moved from `--r-md`),
   the CARD `--r-lg` **20** (was 22; every card/well/to-do card reads it) and the
