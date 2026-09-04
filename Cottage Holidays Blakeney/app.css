@@ -12433,3 +12433,17 @@ header nav a:active {
 /* The rag: pretty is the default for prose; a booking ref and "£X to pay" hold as units. */
 p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
 .gb2-ref, .gb2-pl-unit { white-space: nowrap; }
+
+/* AT REST THE BAR IS THE PAGE: the ground, no blur, no hairline until content scrolls
+   under it (iOS's nav bar) — and the colour Safari tints its status-bar strip with,
+   so bar and strip agree at the top. The hover opt-outs are restated. */
+header.glass-panel.at-top, header.glass-panel.at-top:hover, header.glass-panel.at-top:active, header.glass-panel.at-top:focus-within,
+body.light-mode header.glass-panel.at-top, body.light-mode header.glass-panel.at-top:hover, body.light-mode header.glass-panel.at-top:active, body.light-mode header.glass-panel.at-top:focus-within {
+  background: var(--dark-grey);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-color: transparent;
+}
+header.glass-panel {
+  transition: transform 0.45s var(--fluid-bezier), opacity 0.45s var(--fluid-bezier), background-color 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier);
+}

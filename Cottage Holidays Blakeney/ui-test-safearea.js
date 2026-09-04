@@ -217,6 +217,10 @@ const BOTTOM = 34;
         // acctpreview lesson: a mid-transition read is a number that means nothing).
         s.textContent = ':root { --safe-t: 59px; } header { transition: none !important; }';
         document.head.appendChild(s);
+        // At rest the bar is the page ground (no blur — ui-test-hig §10); the frosted
+        // material is what shows under the strip once content scrolls beneath it.
+        const sp = document.createElement('div'); sp.style.height = '2000px'; (document.querySelector('.page-view.active') || document.body).appendChild(sp);
+        window.scrollTo(0, 200);
         await new Promise((r) => setTimeout(r, 400));
         const h = document.querySelector('header');
         const cs = getComputedStyle(h);

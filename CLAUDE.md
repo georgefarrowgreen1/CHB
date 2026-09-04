@@ -2397,6 +2397,19 @@ capsule — 2/4/1/1/1 fire).
   chrome and always flat, and an installed app that has not reloaded to the new
   build — iOS caches the manifest at install, so the honest check is remove and
   re-add to the Home Screen once this has deployed.
+  **AND AT REST THE BAR IS THE PAGE** (third screenshot, and it was SAFARI — the
+  address bar at the bottom: the strip there is the browser's, tinted with
+  theme-color, and no page can frost it). So the only way bar and strip can agree
+  is for the bar to BE the ground at the top of a page, which is what an iOS nav
+  bar does anyway: the page's own ground until content scrolls under it, the
+  frosted material only then. `header.at-top` (setupHeaderScroll, y ≤ 24, every
+  mode; in the markup for the first paint) paints the bar `--dark-grey` with no
+  blur and a transparent hairline; scrolled, the material returns. The frosted bar
+  over the hero photo — a pink band under a cream strip — was the same defect from
+  the other side. Gated in ui-test-hig §10 (BOTH states, and the resting colour
+  EQUALS the theme-color meta's) and ui-test-safearea (which scrolls before it
+  asks for the blur); the resting HEIGHT is the one to assert — condensed it is
+  45px by design.
 - **THREE RADII** ("Build all"): the CELL `--r-sm` 12 (list cells, fields, chips,
   calendar and picker cells — fold groups and Needs-you rows moved from `--r-md`),
   the CARD `--r-lg` **20** (was 22; every card/well/to-do card reads it) and the
