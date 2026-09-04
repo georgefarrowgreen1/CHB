@@ -93,11 +93,15 @@ const { boot } = require('./ui-test-lib');
         ta.dispatchEvent(new Event('input', { bubbles: true }));
         await new Promise((r) => setTimeout(r, 250));
         const max = parseFloat(getComputedStyle(ta).maxHeight);
-        return { client: ta.clientHeight, scroll: ta.scrollHeight, max, bottom: Math.round(ta.getBoundingClientRect().bottom), vh: window.innerHeight };
+        // `max-height` caps the BORDER box (box-sizing: border-box) while clientHeight is
+        // the content box, two hairlines shorter — so "has it hit the cap" is asked of
+        // offsetHeight. Read against clientHeight the check failed the day the field's
+        // type moved to the 17px step and the sentence took one more line.
+        return { client: ta.clientHeight, box: ta.offsetHeight, scroll: ta.scrollHeight, max, bottom: Math.round(ta.getBoundingClientRect().bottom), vh: window.innerHeight };
     });
     check(typed.client > 50, `the box GROWS with what you type (${typed.client}px)`);
-    check(typed.scroll <= typed.client + 1 || typed.client >= typed.max - 1,
-        `nothing is clipped — it fits (${typed.scroll} in ${typed.client}) or has hit its ${typed.max}px cap`);
+    check(typed.scroll <= typed.client + 1 || typed.box >= typed.max - 1,
+        `nothing is clipped — it fits (${typed.scroll} in ${typed.client}) or has hit its ${typed.max}px cap (box ${typed.box})`);
     check(typed.bottom <= typed.vh, `the grown box stays on screen (${typed.bottom} of ${typed.vh})`);
 
     // ---- and it returns to one line after sending ----

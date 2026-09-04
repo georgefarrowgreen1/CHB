@@ -60,7 +60,7 @@ body.guest-app:not(.owner-mode) #guest-head-title {
   text-overflow: ellipsis;
   text-align: center;
   font-family: var(--font-serif);
-  font-size: 1rem;
+  font-size: var(--fs-body);
   color: var(--text-light);
   padding: 0 8px;
   opacity: 0;
@@ -230,7 +230,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
   align-items: center;
   justify-content: center;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.3px;
   white-space: nowrap;
@@ -449,7 +449,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   transform: translateX(-50%) translateY(4px);
   background: rgba(20, 20, 22, 0.96);
   color: #fff;
-  font-size: 0.72rem;
+  font-size: var(--fs-caption);
   font-weight: 500;
   white-space: nowrap;
   letter-spacing: 0.3px;

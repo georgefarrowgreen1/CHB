@@ -6,7 +6,8 @@
     "rawEnv": 0,
     "offGrid": 573,
     "uppercase": 5,
-    "rawRadii": 0
+    "rawRadii": 0,
+    "rawType": 0
   },
   "admin.css": {
     "breakpoints": 1,
@@ -14,7 +15,8 @@
     "rawEnv": 0,
     "offGrid": 478,
     "uppercase": 30,
-    "rawRadii": 0
+    "rawRadii": 0,
+    "rawType": 0
   },
   "guest-app.css": {
     "breakpoints": 1,
@@ -22,6 +24,7 @@
     "rawEnv": 0,
     "offGrid": 15,
     "uppercase": 0,
-    "rawRadii": 0
+    "rawRadii": 0,
+    "rawType": 0
   }
 }

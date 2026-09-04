@@ -326,7 +326,7 @@
         <!-- DRILL-DOWN PANEL -->
         <div id="accounts-panel" style="display:none;">
             <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="accounts-back" data-act="accountsBack">‹ Back</span>
-            <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+            <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:var(--fs-display);margin:6px 0 18px;"></h2>
 
             <!-- Payments & balances -->
             <div class="accounts-sec" id="asec-payments" style="display:none;">
@@ -342,7 +342,7 @@
             <!-- Income & tax -->
             <div class="accounts-sec" id="asec-income" style="display:none;">
                 <div style="margin-bottom:8px;">
-                    <label style="font-size:0.78rem;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Tax year (6 April – 5 April)</label>
+                    <label style="font-size:var(--fs-caption);font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">Tax year (6 April – 5 April)</label>
                     <select class="input-glass" id="accounts-year" style="margin:0;min-width:200px;" data-act-change="renderAccounts"></select>
                 </div>
                 <div id="accounts-content"><!-- JS injects the net profit headline + income/expenses/net lines + CSV export here --></div>
@@ -351,17 +351,17 @@
 
             <!-- Move money out (deposit liability vs bank balance) -->
             <div class="accounts-sec" id="asec-sweep" style="display:none;">
-                <div id="sweep-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div id="sweep-body"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Expenses manager -->
             <div class="accounts-sec" id="asec-expenses" style="display:none;">
-                <div id="expenses-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div id="expenses-body"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Pricing coach (revenue tool) -->
             <div class="accounts-sec" id="asec-pricingcoach" style="display:none;">
-                <div id="pricingcoach-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div id="pricingcoach-body"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
         </div>
     </template>
@@ -470,15 +470,15 @@
                 </button>
                 <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" data-act="settingsOpen" data-arg="photos">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -584,7 +584,7 @@
         <!-- DRILL-DOWN PANEL -->
         <div id="settings-panel" style="display:none;">
             <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="settings-back" data-act="settingsBack">‹ Back</span>
-            <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+            <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:var(--fs-display);margin:6px 0 18px;"></h2>
 
             <!-- Enquiries -->
             <!-- Notifications (owner push) -->
@@ -594,7 +594,7 @@
 
             <!-- Experiences (local things to do + guest suggestions) -->
             <div class="settings-sec" id="sec-experiences" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local things to do, shown to signed-in guests on the Experiences tab. Add your own, reorder them, and review guest suggestions.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local things to do, shown to signed-in guests on the Experiences tab. Add your own, reorder them, and review guest suggestions.</p>
                 <div id="exp-admin"><!-- JS injects pending suggestions + the editable list here --></div>
             </div>
 
@@ -634,20 +634,20 @@
                  the server, so the field is left blank and blank means "keep it". -->
             <div class="settings-sec" id="sec-sms" style="display:none;">
                 <div style="max-width:640px;">
-                <p id="sms-state" role="status" aria-live="polite" style="font-size:0.88rem;font-weight:600;margin:0 0 4px;line-height:1.45;">Checking…</p>
-                <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 6px;line-height:1.5;">Only guests who tick &ldquo;Text me booking updates&rdquo; are texted — a balance nudge and their arrival details, never marketing. The three details below are on your <strong>Twilio</strong> Console dashboard (twilio.com).</p>
+                <p id="sms-state" role="status" aria-live="polite" style="font-size:var(--fs-body);font-weight:600;margin:0 0 4px;line-height:1.45;">Checking…</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 6px;line-height:1.5;">Only guests who tick &ldquo;Text me booking updates&rdquo; are texted — a balance nudge and their arrival details, never marketing. The three details below are on your <strong>Twilio</strong> Console dashboard (twilio.com).</p>
                 <div class="acr-cap">Twilio account</div>
                 <div class="acr-well">
                     <div class="acr-row"><span class="acr-lbl">Send booking texts</span><span class="chb-switch"><input type="checkbox" id="sms-on" aria-label="Send booking texts"><span class="chb-switch-track" aria-hidden="true"></span></span></div>
                     <div class="acw-frow"><label for="sms-sid">Account SID</label><input type="text" id="sms-sid" class="input-glass" placeholder="AC…" autocomplete="off" spellcheck="false" style="font-family:monospace;"><small class="acw-tip" style="color:var(--text-muted);">Starts <code>AC</code>. Not a secret — it just names your account.</small></div>
                     <div class="acw-frow"><label for="sms-token">Auth token</label><input type="password" id="sms-token" class="input-glass" placeholder="leave blank to keep the saved one" autocomplete="new-password" spellcheck="false" style="font-family:monospace;"><small class="acw-tip" style="color:var(--text-muted);" id="sms-token-state">Stored encrypted, and never shown again once saved.</small></div>
                     <div class="acw-frow"><label for="sms-from">Your Twilio number</label><input type="tel" id="sms-from" class="input-glass" placeholder="+447700900000" autocomplete="off" spellcheck="false" style="font-family:monospace;"><small class="acw-tip" style="color:var(--text-muted);">In full international form, starting <code>+44</code>. It must be a number Twilio says can send SMS.</small></div>
-                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="saveSmsSettings">Save</button><span id="sms-msg" style="font-size:0.82rem;"></span></div>
+                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="saveSmsSettings">Save</button><span id="sms-msg" style="font-size:var(--fs-sub);"></span></div>
                 </div>
                 <div class="acr-cap">Send yourself a test</div>
                 <div class="acr-well">
                     <div class="acw-frow"><label for="sms-test-to">Your mobile number</label><input type="tel" id="sms-test-to" class="input-glass" placeholder="07700 900000" autocomplete="tel" inputmode="tel"><small class="acw-tip" style="color:var(--text-muted);">The only way to catch a number that can't send texts before a real reminder goes missing.</small></div>
-                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="sendSmsTest">Send test text</button><span id="sms-test-msg" style="font-size:0.82rem;"></span></div>
+                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="sendSmsTest">Send test text</button><span id="sms-test-msg" style="font-size:var(--fs-sub);"></span></div>
                 </div>
                 </div>
             </div>
@@ -658,20 +658,20 @@
                 <div class="acr-cap">Tide data — worldtides.info</div>
                 <div class="acr-well">
                     <div class="acw-frow"><label for="apikey-tides-input">WorldTides API key</label><input type="text" id="apikey-tides-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;"><small class="acw-tip" style="color:var(--text-muted);">Powers the tide-times widget on each cottage page — a free key from worldtides.info (Account → API key). Stored encrypted; never shown on the public site. Leave blank to hide the widget.</small></div>
-                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="saveApiKey" data-arg="tides">Save key</button><span id="apikey-tides-msg" style="font-size:0.82rem;color:var(--ok);"></span></div>
+                    <div class="acw-acts"><button class="btn-sm btn-edit" data-act="saveApiKey" data-arg="tides">Save key</button><span id="apikey-tides-msg" style="font-size:var(--fs-sub);color:var(--ok);"></span></div>
                 </div>
                 </div>
             </div>
 
             <!-- Seasonal rates — all cottages in one grid -->
             <div class="settings-sec" id="sec-seasongrid" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Each season is one card — the same dates apply across every cottage, and each cottage gets its own nightly price.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 14px;">Each season is one card — the same dates apply across every cottage, and each cottage gets its own nightly price.</p>
                 <div id="season-grid-wrap"></div>
             </div>
 
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
-                <span id="diag-msg" style="font-size:0.82rem;"></span>
-                <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
+                <span id="diag-msg" style="font-size:var(--fs-sub);"></span>
+                <div id="migrate-result" style="display:none;font-size:var(--fs-sub);margin-bottom:16px;"></div>
                 <!-- Verdict-first status read-out (loadDiagnostics builds the hero,
                      the attention/optional groups, the collapsed pass list, then
                      the Maintenance cards). "Re-run" lives in the hero. -->
@@ -687,10 +687,10 @@
                         <button class="btn-sm btn-edit" data-act="sendWeeklyEmailNow" data-arg="analytics" data-pass="self">Send my weekly analytics now</button>
                         <button class="btn-sm btn-edit" data-act="diagnoseReplyEmail" data-pass="self">Check reply-by-email</button>
                     </div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:10px 0 0;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</p>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:6px 0 0;">The two weekly emails normally arrive on a Monday. These buttons send you this week's for real &mdash; nothing goes to any guest.</p>
-                    <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
-                    <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:10px 0 0;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">The two weekly emails normally arrive on a Monday. These buttons send you this week's for real &mdash; nothing goes to any guest.</p>
+                    <div id="diag-samples" style="font-size:var(--fs-sub);margin-top:8px;"></div>
+                    <div id="reply-diag" style="font-size:var(--fs-sub);margin-top:10px;"></div>
                 </details>
                 <!-- The public status page had NO link anywhere in the app: the
                      one page you want when something looks wrong could only be
@@ -699,7 +699,7 @@
                      misbehaving, and it must not depend on this app to render. -->
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Public status page</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 12px;">A login-free page anyone can check — you, a guest, or whoever looks after the site. Shows whether the website, bookings, card payments and email are working, plus the last 30 days.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">A login-free page anyone can check — you, a guest, or whoever looks after the site. Shows whether the website, bookings, card payments and email are working, plus the last 30 days.</p>
                     <a class="btn-sm btn-edit" href="/status" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">Open the status page</a>
                 </div>
             </div>
@@ -744,17 +744,17 @@
                     <input class="input-glass" id="host-f-badge" data-act-change="saveHostText" data-arg="host-badge" data-pass="value">
                     <label class="host-edit-label" for="host-f-years">Years of experience</label>
                     <input class="input-glass" id="host-f-years" data-act-change="saveHostText" data-arg="host-years" data-pass="value">
-                    <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
+                    <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
                     <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
                     <input class="input-glass" id="host-f-school" data-act-change="saveHostText" data-arg="host-school" data-pass="value">
                     <label class="host-edit-label" for="host-f-work">"My work" line</label>
                     <input class="input-glass" id="host-f-work" data-act-change="saveHostText" data-arg="host-work" data-pass="value">
                     <label class="host-edit-label" for="host-f-bio">Bio</label>
                     <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" data-act-change="saveHostText" data-arg="host-bio" data-pass="value"></textarea>
-                    <p id="host-save-msg" style="font-size:0.82rem;color:var(--ok);min-height:1em;margin:4px 0 0;"></p>
+                    <p id="host-save-msg" style="font-size:var(--fs-sub);color:var(--ok);min-height:1em;margin:4px 0 0;"></p>
                     <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
                         <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to discuss" buttons</label>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
+                        <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;">
                             <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
                             <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
@@ -768,7 +768,7 @@
             <!-- Reviews (moderation) -->
             <div class="settings-sec" id="sec-reviews" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
 
                     <!-- Per-cottage review links to share with EXTERNAL (Airbnb/Vrbo) guests.
                          Rendered from the live cottage list by renderReviewLinks(). -->
@@ -779,7 +779,7 @@
                          book-direct follow-up. Rendered by loadLeadModeration(). -->
                     <div id="lead-moderation"></div>
 
-                    <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                    <div id="guest-review-moderation"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
 
                     <!-- Import + Google-link are occasional setup tasks, tucked under a
                          disclosure so the "approve" queue above leads. -->
@@ -790,15 +790,15 @@
                          shown on the cottage page tagged with its source and counts toward
                          that cottage's rating. Stored in siteContent.reviews. -->
                     <div style="margin-top:14px;">
-                        <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
+                        <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
+                        <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                             <select class="input-glass field-sm" id="bulk-rev-prop" style="flex:1 1 160px;min-width:140px;" title="Which cottage these reviews are for" aria-label="Which cottage these reviews are for"></select>
                             <select class="input-glass field-sm" id="bulk-rev-source" style="flex:0 1 150px;" title="Where these reviews came from" aria-label="Where these reviews came from"></select>
                             <select class="input-glass field-sm" id="bulk-rev-stars" style="flex:0 1 120px;" title="Default star rating" aria-label="Default star rating"></select>
                         </div>
                         <textarea id="bulk-rev-text" class="input-glass" rows="6" style="resize:vertical;" aria-label="Paste reviews to import" placeholder="Paste reviews here — one per block, e.g.&#10;&#10;Jane (London)&#10;We loved every minute — spotless cottage, perfect spot for the coast path.&#10;&#10;Mark&#10;Brilliant week. Catherine was a wonderful, attentive host. We'll be back!"></textarea>
-                        <p style="font-size:0.74rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Put the guest's name on the first line and their review underneath; leave a blank line between each review. A line that's just ★★★★★ or “5 stars” sets that review's rating. Dates are ignored. You can edit every row below before saving.</p>
+                        <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Put the guest's name on the first line and their review underneath; leave a blank line between each review. A line that's just ★★★★★ or “5 stars” sets that review's rating. Dates are ignored. You can edit every row below before saving.</p>
                         <button class="btn-sm btn-edit" style="margin-top:10px;" data-act="bulkImportReviews">Add pasted reviews below ↓</button>
 
                         <div id="reviews-editor" style="margin-top:18px;"></div>
@@ -813,11 +813,11 @@
                          primary button (great for search ranking). Leave blank to skip. -->
                     <div style="margin-top:24px;border-top:1px solid var(--glass-border);padding-top:18px;">
                         <label class="modal-label" for="google-review-url-input">Google review link (optional)</label>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
+                        <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
                         <input type="url" id="google-review-url-input" class="input-glass" placeholder="https://g.page/r/…/review" autocomplete="off" spellcheck="false">
                         <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
                             <button class="btn-sm btn-edit" data-act="saveGoogleReviewUrl">Save link</button>
-                            <span id="google-review-url-msg" style="font-size:0.8rem;"></span>
+                            <span id="google-review-url-msg" style="font-size:var(--fs-sub);"></span>
                         </div>
                     </div>
                     </details>
@@ -826,34 +826,34 @@
 
             <!-- Analytics (first-party, cookie-free) -->
             <div class="settings-sec" id="sec-analytics" style="display:none;">
-                <div id="analytics-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div id="analytics-body"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Waitlist / notify-me -->
             <div class="settings-sec" id="sec-waitlist" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates become available. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
-                <div id="waitlist-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates become available. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
+                <div id="waitlist-body"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Guest photos (UGC moderation) -->
             <div class="settings-sec" id="sec-photos" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Photos guests shared from their stays. Approve the ones you'd like to show in the gallery on each cottage page — nothing appears publicly until you approve it.</p>
-                <div id="photos-admin"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Photos guests shared from their stays. Approve the ones you'd like to show in the gallery on each cottage page — nothing appears publicly until you approve it.</p>
+                <div id="photos-admin"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Newsletter / seasonal broadcast -->
             <div class="settings-sec" id="sec-newsletter" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
-                <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
+                <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
                 <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
-                    <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Compose broadcast</h3>
+                    <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 12px;">Compose broadcast</h3>
                     <label class="modal-label" for="nl-subject">Subject</label>
                     <input type="text" id="nl-subject" class="input-glass" placeholder="e.g. Autumn by the Norfolk coast — midweek offer" style="margin-bottom:12px;">
                     <label class="modal-label" for="nl-body">Message</label>
                     <textarea id="nl-body" class="input-glass" rows="8" placeholder="Write your update…" style="resize:vertical;"></textarea>
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                         <button class="btn-glass" style="width:auto;padding:11px 22px;" data-act="sendBroadcast">Send to subscribers</button>
-                        <span id="nl-send-msg" style="font-size:0.82rem;"></span>
+                        <span id="nl-send-msg" style="font-size:var(--fs-sub);"></span>
                     </div>
                 </div>
             </div>
@@ -862,18 +862,18 @@
             <div class="settings-sec" id="sec-security" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Admin Password</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
                     <button class="btn-sm btn-edit" data-act="changeAdminPassword">Change password</button>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Passkeys (Face ID / Touch ID)</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
                     <button class="btn-sm btn-edit" data-act="addAdminPasskey">＋ Add a passkey</button>
                     <div id="admin-passkey-list" style="margin-top:14px;"></div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Two-step sign-in</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Manage → Notifications) — it stays off until then, so you can't be locked out.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Manage → Notifications) — it stays off until then, so you can't be locked out.</p>
                     <label class="chb-switch-row" style="margin-bottom:0;"><span class="chb-switch"><input type="checkbox" id="admin-2fa-toggle" data-act-change="saveContentToggle" data-key="admin-2fa-enabled"><span class="chb-switch-track" aria-hidden="true"></span></span><span>Require an email code on new devices</span></label>
                 </div>
             </div>
@@ -886,10 +886,10 @@
 
             <!-- Calendar sync (cottage list → per-cottage detail) -->
             <div class="settings-sec" id="sec-calendar" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb, Vrbo &amp; Booking.com, per cottage — copy your link out, paste theirs in.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb, Vrbo &amp; Booking.com, per cottage — copy your link out, paste theirs in.</p>
                 <details class="help-disclosure" style="max-width:640px;margin:0 0 16px;">
                     <summary>How it works</summary>
-                    <p style="font-size:0.82rem;color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into each platform. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into each platform. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
                 </details>
                 <div id="calendar-list" class="settings-index"></div>
                 <div id="calendar-detail" style="display:none;"></div>
@@ -905,7 +905,7 @@
             <div class="settings-sec" id="sec-payments" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Card payments status</div>
-                    <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <p id="sq-settings-status" style="font-size:var(--fs-body);margin:8px 0 4px;">Checking…</p>
                     <div class="acr-row" style="padding-left:0;padding-right:0;">
                         <span class="acr-lbl">Deposit to request<small>of the total, asked on approval</small></span>
                         <span class="acr-step"><button type="button" data-act="occStep" data-args='["sq-deposit-pct","-1","1"]' aria-label="Deposit percent — less">−</button><span class="acr-val"><input type="number" id="sq-deposit-pct" min="1" max="100" step="1" aria-label="Deposit percent"><span class="acr-unit">%</span></span><button type="button" data-act="occStep" data-args='["sq-deposit-pct","1","1"]' aria-label="Deposit percent — more">+</button></span>
@@ -913,15 +913,15 @@
                     <div class="acw-acts" style="padding-left:0;border-top:0;"><button class="btn-sm btn-edit" data-act="saveDepositPct">Save</button></div>
                     <details class="help-disclosure">
                         <summary>How payment reminders work</summary>
-                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
-                        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                        <p style="font-size:var(--fs-sub);color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+                        <p style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
                     </details>
                 </div>
                 <!-- The floor under the monthly offer — the ladder is rendered by
                      renderInstalFloor/apFloorLadderHtml (admin.js). -->
                 <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
                     <div class="label">Monthly payments</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 10px;">Guests paying a deposit can be offered the rest in monthly instalments. Plans already shrink as the stay approaches — each payment needs a month of room. This sets your floor beneath that; a plan a guest has already agreed keeps running whatever you choose.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 10px;">Guests paying a deposit can be offered the rest in monthly instalments. Plans already shrink as the stay approaches — each payment needs a month of room. This sets your floor beneath that; a plan a guest has already agreed keeps running whatever you choose.</p>
                     <label class="modal-label" for="instal-floor">Only offer monthly payments when the balance is due…</label>
                     <select id="instal-floor" class="input-glass" style="max-width:340px;" data-act-change="instalFloorPreview">
                         <option value="">Whenever a plan fits — no minimum</option>
@@ -941,33 +941,33 @@
                      there IS a choice to make. -->
                 <div class="accounts-stat" style="max-width:640px;margin-top:14px;" id="sq-loc-card" hidden>
                     <div class="label">Which Square location is this site?</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 10px;">Your Square account has more than one location. The money screens read payouts and bank accounts for the one you pick here — leave it unset and Square answers for your main location, which may not be this business.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 10px;">Your Square account has more than one location. The money screens read payouts and bank accounts for the one you pick here — leave it unset and Square answers for your main location, which may not be this business.</p>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                         <label for="sq-location" class="sr-only">Square location</label>
                         <select id="sq-location" class="input-glass field-sm" style="margin:0;min-width:200px;"></select>
                         <button class="btn-sm btn-edit" data-act="saveSquareLocation">Save</button>
                     </div>
-                    <p id="sq-loc-msg" style="font-size:0.82rem;color:var(--text-muted);margin:10px 0 0;"></p>
+                    <p id="sq-loc-msg" style="font-size:var(--fs-sub);color:var(--text-muted);margin:10px 0 0;"></p>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
                     <div class="label">Bank transfer details</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 12px;">Used when you chase a guest who paid in cash or by transfer — they get these details instead of a card link. Guests who paid by card carry on getting the card link.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">Used when you chase a guest who paid in cash or by transfer — they get these details instead of a card link. Guests who paid by card carry on getting the card link.</p>
                     <label class="modal-label" for="bacs-details">Account name, sort code and account number</label>
                     <textarea class="input-glass" id="bacs-details" rows="4" placeholder="Cottage Holidays Blakeney&#10;Sort code: 00-00-00&#10;Account: 12345678"></textarea>
                     <div style="margin-top:10px;">
                         <button class="btn-sm btn-edit" data-act="saveBacsDetails">Save</button>
                     </div>
-                    <p id="bacs-details-warn" style="font-size:0.82rem;color:var(--warn-text);margin:12px 0 0;display:none;">Nothing saved yet — until you add these, a cash-paying guest is asked to reply for your bank details.</p>
+                    <p id="bacs-details-warn" style="font-size:var(--fs-sub);color:var(--warn-text);margin:12px 0 0;display:none;">Nothing saved yet — until you add these, a cash-paying guest is asked to reply for your bank details.</p>
                 </div>
                 <div class="accounts-stat" id="sq-webhook-card" style="max-width:640px;margin-top:14px;">
                     <div class="label">Automatic payment updates</div>
-                    <p id="sq-webhook-status" aria-live="polite" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <p id="sq-webhook-status" aria-live="polite" style="font-size:var(--fs-body);margin:8px 0 4px;">Checking…</p>
                     <div style="margin-top:12px;">
                         <button class="btn-sm btn-edit" id="sq-webhook-connect" data-act="connectSquareWebhook" data-pass="self" style="display:none;">Connect</button>
                     </div>
                     <details class="help-disclosure">
                         <summary>What this does</summary>
-                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;">When connected, Square tells your site the moment a payment settles or a refund completes — so card <strong>fees</strong>, the <strong>net payout</strong> and <strong>refund statuses</strong> fill in automatically, instead of only when you open Payments. One tap sets it up; there's nothing to paste.</p>
+                        <p style="font-size:var(--fs-sub);color:var(--text-light);margin-top:8px;line-height:1.6;">When connected, Square tells your site the moment a payment settles or a refund completes — so card <strong>fees</strong>, the <strong>net payout</strong> and <strong>refund statuses</strong> fill in automatically, instead of only when you open Payments. One tap sets it up; there's nothing to paste.</p>
                     </details>
                 </div>
             </div>
@@ -979,8 +979,8 @@
                      spill past the card's 640px edge. -->
                 <div class="accounts-stat" style="max-width:960px;">
                     <div class="label">Reset a guest's password</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
-                    <div id="guest-admin-list" style="margin-top:4px;overflow-x:auto;"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
+                    <div id="guest-admin-list" style="margin-top:4px;overflow-x:auto;"><p style="font-size:var(--fs-sub);color:var(--text-muted);">Loading…</p></div>
                 </div>
             </div>
 

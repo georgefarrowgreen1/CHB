@@ -9396,7 +9396,7 @@ function cmdkPickCottage(sec) {
     const rows = keys
         .map((k) => {
             const m = propertyMeta[k] || {};
-            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:0.95rem;color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:13px;padding:14px 16px;margin:0 0 8px;cursor:pointer;">
+            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:var(--fs-body);color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:13px;padding:14px 16px;margin:0 0 8px;cursor:pointer;">
                         <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${escapeHtml(m.accent || '#c6885e')};"></span>
                         <span style="flex:1;">${escapeHtml(m.name || k)}</span>
                         <svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5;"><path d="M9 6l6 6-6 6"/></svg>
@@ -9405,10 +9405,10 @@ function cmdkPickCottage(sec) {
         .join('');
     ov.innerHTML = `<div class="modal-box glass-panel" style="max-width:380px;padding:22px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0;">Which cottage?</h3>
-                <button type="button" id="cpick-x" aria-label="Cancel" style="background:none;border:0;font-size:1.5rem;line-height:1;color:var(--text-muted);cursor:pointer;">×</button>
+                <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Which cottage?</h3>
+                <button type="button" id="cpick-x" aria-label="Cancel" style="background:none;border:0;font-size:var(--fs-title);line-height:1;color:var(--text-muted);cursor:pointer;">×</button>
             </div>
-            <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 16px;">Choose which cottage to edit${secLabel ? ' — <strong style="color:var(--text-light);">' + escapeHtml(secLabel) + '</strong>' : ''}.</p>
+            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 16px;">Choose which cottage to edit${secLabel ? ' — <strong style="color:var(--text-light);">' + escapeHtml(secLabel) + '</strong>' : ''}.</p>
             ${rows}
         </div>`;
     document.body.appendChild(ov);
@@ -9867,8 +9867,8 @@ function renderCottagesOverview() {
                 <span style="font-weight:600;line-height:1.25;">${escapeHtml(meta.name || k)}</span>
                 <span class="settings-row-chev" style="flex-shrink:0;">›</span>
             </div>
-            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">from £${Math.round(r.coupleRate || 0)}/night</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">${pct}% booked in ${monthName}</div>
+            <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:3px;">from £${Math.round(r.coupleRate || 0)}/night</div>
+            <div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${pct}% booked in ${monthName}</div>
             <div style="height:6px;border-radius:999px;background:rgba(128,128,128,0.18);margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${accent};border-radius:999px;"></div></div>
         </button>`;
     };
@@ -9892,7 +9892,7 @@ function adminLoading(id, what) {
     const el = document.getElementById(id);
     if (!el || el.firstElementChild) return; // already has real content — leave it
     el.innerHTML =
-        '<p class="admin-loading" role="status" style="font-size:0.85rem;color:var(--text-muted);margin:14px 0;">Loading ' +
+        '<p class="admin-loading" role="status" style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0;">Loading ' +
         escapeHtml(what || 'this') +
         '…</p>';
 }
@@ -10504,7 +10504,7 @@ function showEmailPreview(subject, html, text) {
     f.srcdoc =
         html && html.trim()
             ? html
-            : '<pre style="font:14px system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
+            : '<pre style="font:var(--fs-sub) system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
               escapeHtml(text || '(empty)') +
               '</pre>';
     ov.classList.add('open');
@@ -11243,13 +11243,13 @@ function gbSummaryHtml(gb) {
     if (!gb) return '';
     const l = gb.latest;
     const hist = gb.all.length > 1
-        ? `<div class="bhub-mut" style="font-size:0.74rem;">usually ${gbStars(Math.round(gb.all.reduce((s, r) => s + r.overall, 0) / gb.all.length)).replace(/☆+$/, '')} — ${gb.all.slice(1).map((r) => r.overall + '★').join(', ')} on the earlier ${gb.all.length === 2 ? 'stay' : 'stays'}</div>`
+        ? `<div class="bhub-mut" style="font-size:var(--fs-caption);">usually ${gbStars(Math.round(gb.all.reduce((s, r) => s + r.overall, 0) / gb.all.length)).replace(/☆+$/, '')} — ${gb.all.slice(1).map((r) => r.overall + '★').join(', ')} on the earlier ${gb.all.length === 2 ? 'stay' : 'stays'}</div>`
         : '';
     const pills = ['clean', 'rules', 'comms'].filter((c) => l[c])
         .map((c) => `<span class="gb-pill ${l[c] === 'poor' ? 'is-poor' : 'is-good'}">${{ clean: 'Cleanliness', rules: 'House rules', comms: 'Communication' }[c]}${l[c] === 'poor' ? ' — poor' : ' ✓'}</span>`)
         .join('');
     return `<div class="gb-sum">
-            <div><span class="gb-starline">${gbStars(l.overall)}</span> <span class="bhub-mut" style="font-size:0.74rem;">your rating${gbWhen(l.at) ? ' · ' + escapeHtml(gbWhen(l.at)) : ''}</span></div>
+            <div><span class="gb-starline">${gbStars(l.overall)}</span> <span class="bhub-mut" style="font-size:var(--fs-caption);">your rating${gbWhen(l.at) ? ' · ' + escapeHtml(gbWhen(l.at)) : ''}</span></div>
             ${hist}
             ${pills ? `<div class="gb-pills">${pills}</div>` : ''}
             ${l.note ? `<div class="gb-note">“${escapeHtml(l.note)}”</div>` : ''}
@@ -11303,8 +11303,8 @@ function hubGuestBookCard(propKey, b) {
         <button class="gb-more" ${chbAttrs('gbDetail', String(b.id))}>${d.detail ? 'Hide detail ‹' : 'Add detail — categories & a note ›'}</button>
         ${d.detail ? `
             ${seg('clean', 'Cleanliness')}${seg('rules', 'House rules')}${seg('comms', 'Communication')}
-            <textarea id="gb-note-${b.id}" class="input-glass" rows="2" maxlength="500" aria-label="A note to your future self (private)" placeholder="A note to your future self — factual and professional." style="margin:8px 0 0;resize:vertical;font-size:0.86rem;">${escapeHtml(d.note)}</textarea>
-            <div class="bhub-mut" style="font-size:0.7rem;margin-top:4px;">Keep it factual — like any record about a person, a guest can ask what's held about them.</div>` : ''}
+            <textarea id="gb-note-${b.id}" class="input-glass" rows="2" maxlength="500" aria-label="A note to your future self (private)" placeholder="A note to your future self — factual and professional." style="margin:8px 0 0;resize:vertical;font-size:var(--fs-sub);">${escapeHtml(d.note)}</textarea>
+            <div class="bhub-mut" style="font-size:var(--fs-micro);margin-top:4px;">Keep it factual — like any record about a person, a guest can ask what's held about them.</div>` : ''}
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:9px;">
             ${r ? `<button class="btn-sm btn-edit" ${chbAttrs('gbRemove', String(b.id))}>Remove</button>` : ''}
             <button class="btn-sm btn-edit" ${chbAttrs('gbSave', String(b.id))}>Save to the guest book</button>
@@ -11808,7 +11808,7 @@ function renderBookingHub() {
         ? `“${escapeHtml(noteFirst.length > 44 ? noteFirst.slice(0, 43) + '…' : noteFirst)}”`
         : 'Add a private note — only you see it';
     const noteCard = bhubFoldGrp('note', 'Your note', noteSub, '', `
-            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
+            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:var(--fs-body);">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>`);
 
     // ---- Activity — the chronological feed behind a summary row stating the
@@ -13599,12 +13599,12 @@ function renderSearchLearning() {
 async function renderPricingCoach() {
     const wrap = document.getElementById('pricingcoach-body');
     if (!wrap) return;
-    wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Analysing your bookings &amp; demand…</p>`;
+    wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Analysing your bookings &amp; demand…</p>`;
     let d;
     try {
         d = await apiGet('pricing-suggest.php?action=suggest');
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load suggestions${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load suggestions${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
         return;
     }
     const sugg = Array.isArray(d.suggestions) ? d.suggestions : [];
@@ -13612,7 +13612,7 @@ async function renderPricingCoach() {
     // The pulse leads (the landing anatomy): what the ideas are drawn from.
     const intro = `<p class="mo-pulse" style="margin:2px 0 10px;">Ideas from your own bookings &amp; demand — nothing changes until you tap <strong>Apply</strong>.</p>`;
     const since = sig.searches60
-        ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
+        ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
         : '';
     // Demand radar strip: the weeks guests actually searched for, with the
     // unmet portion flagged in amber — a glance at where interest lands.
@@ -13630,7 +13630,7 @@ async function renderPricingCoach() {
                                 String(w.week).replace(' ', 'T'),
                             ).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
                             const unmet = w.missed > 0;
-                            return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;padding:6px 12px;border-radius:var(--r-pill);background:rgba(0,0,0,0.18);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'color-mix(in srgb, var(--text-light) 9%, transparent)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
+                            return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-caption);padding:6px 12px;border-radius:var(--r-pill);background:rgba(0,0,0,0.18);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'color-mix(in srgb, var(--text-light) 9%, transparent)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
                         })
                         .join('')}</div>
                 </div>`
@@ -13640,7 +13640,7 @@ async function renderPricingCoach() {
             intro +
             since +
             radar +
-            `<div class="acr-well pc-well" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
+            `<div class="acr-well pc-well" style="max-width:640px;"><p style="font-size:var(--fs-body);color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
         return;
     }
     // The verdict capsule vocabulary the rest of the back office wears —
@@ -13653,9 +13653,9 @@ async function renderPricingCoach() {
             : '';
         return `<div class="acr-well pc-well" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
-                        <strong style="font-size:0.98rem;">${escapeHtml(s.title)}</strong>${badge(op)}
+                        <strong style="font-size:var(--fs-body);">${escapeHtml(s.title)}</strong>${badge(op)}
                     </div>
-                    <p style="font-size:0.86rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">${escapeHtml(s.detail)}</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 0;line-height:1.5;">${escapeHtml(s.detail)}</p>
                     ${applyBtn ? `<div class="acw-acts" style="margin-top:12px;">${applyBtn}</div>` : ''}
                 </div>`;
     };
@@ -13672,7 +13672,7 @@ async function applyPricingSuggestion(propKey, field, value, id) {
         });
         const el = document.getElementById('psug-' + id);
         if (el)
-            el.innerHTML = `<p style="font-size:0.92rem;color:var(--ok-text);margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
+            el.innerHTML = `<p style="font-size:var(--fs-body);color:var(--ok-text);margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
         try {
             toast('Weekend pricing updated.');
         } catch (e) {}
@@ -13764,7 +13764,7 @@ function loadContentEditor() {
             `<button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(k))}>Save</button></div>`;
     });
     wrap.innerHTML =
-        '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>' +
+        '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>' +
         bhubFoldGrp('wc-images', 'Images', 'the hero banner &amp; site-wide pictures', stCap(nImgs ? 'ok' : 'unk', nImgs ? nImgs + ' image' + (nImgs === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${imgRows}</div>`) +
         bhubFoldGrp('wc-text', 'Text &amp; wording', 'site name, menu labels, hero words', stCap(nTexts ? 'ok' : 'unk', nTexts ? nTexts + ' field' + (nTexts === 1 ? '' : 's') : 'none found'), `<div class="sl-fold-body">${textRows}</div>`);
 }
@@ -14002,7 +14002,7 @@ async function renderAccomList() {
     list.style.display = '';
     const emptyHint = Object.keys(propertyMeta).length
         ? ''
-        : '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add accommodation” below to create your first one.</p>';
+        : '<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add accommodation” below to create your first one.</p>';
     list.innerHTML =
         emptyHint +
         `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
@@ -14023,9 +14023,9 @@ async function renderAccomList() {
                           ? `Private · ${o.pct}% booked this month · ${o.nights}/${o.total} nights`
                           : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
                     const badge = arch
-                        ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· removed</span>'
+                        ? ' <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:600;">· removed</span>'
                         : priv
-                          ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· private</span>'
+                          ? ' <span style="font-size:var(--fs-micro);color:var(--text-muted);font-weight:600;">· private</span>'
                           : '';
                     return `
                     <button class="settings-row" ${chbAttrs('settingsOpenAccom', String(k))} ${arch ? 'style="opacity:0.55;"' : ''}>
@@ -14308,7 +14308,7 @@ function settingsOpenAccom(k) {
             // already in hand — an unloaded mirror mints no claim.
             try {
                 if (id === 'photos') return nPhotos ? stCap('ok', nPhotos + ' photo' + (nPhotos === 1 ? '' : 's')) : stCap('unk', 'none yet');
-                if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:1.05rem;">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span></span>`;
+                if (id === 'rates' && r.coupleRate) return `<span class="ac-saved" id="ac-saved-${k}">✓ Saved</span><span id="ac-fig-${k}" style="font-family:var(--font-serif);font-size:var(--fs-headline);">${gbp(Number(r.coupleRate)).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span></span>`;
                 if (id === 'amenities') {
                     const ams = accomAmenityList(k);
                     return ams.length ? stCap('ok', ams.length + ' amenit' + (ams.length === 1 ? 'y' : 'ies')) : stCap('unk', 'none yet');
@@ -14423,7 +14423,7 @@ function acrSync(k, quiet) {
         }
     }
     const fig = document.getElementById('ac-fig-' + k);
-    if (fig && couple > 0) fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:0.75rem;color:var(--text-muted);">/night</span>`;
+    if (fig && couple > 0) fig.innerHTML = `${gbp(couple).replace('.00', '')}<span style="font-size:var(--fs-caption);color:var(--text-muted);">/night</span>`;
     if (!quiet) {
         const sv = document.getElementById('ac-saved-' + k);
         if (sv) {
@@ -14574,7 +14574,7 @@ function cancelPickerHtml(propKey) {
                 </button>`;
         })
         .join('');
-    return `<p style="font-size:0.85rem;color:var(--text-muted);max-width:560px;margin:0 0 16px;">Choose the cancellation policy guests see on the <strong>${escapeHtml(propertyMeta[propKey].name)}</strong> page.</p><div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy">${cards}</div>`;
+    return `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:560px;margin:0 0 16px;">Choose the cancellation policy guests see on the <strong>${escapeHtml(propertyMeta[propKey].name)}</strong> page.</p><div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy">${cards}</div>`;
 }
 function settingsOpenCancel(propKey) {
     adminHistPush('view-settings', 'cancel', { prop: propKey });
@@ -14640,8 +14640,8 @@ function agoLabel(at) {
 function feedStatusHtml(s) {
     if (!s || !s.at) return '';
     if (s.ok)
-        return `<div style="font-size:0.72rem;color:var(--text-muted);margin:-2px 0 8px;">Synced ${agoLabel(s.at)} · ${s.events} booked range${s.events === 1 ? '' : 's'}</div>`;
-    return `<div style="font-size:0.72rem;color:var(--warn);margin:-2px 0 8px;">⚠ Not syncing (${escapeHtml(s.error || 'error')})${s.ok_at ? ' — still using the dates from ' + agoLabel(s.ok_at) : ''}</div>`;
+        return `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin:-2px 0 8px;">Synced ${agoLabel(s.at)} · ${s.events} booked range${s.events === 1 ? '' : 's'}</div>`;
+    return `<div style="font-size:var(--fs-caption);color:var(--warn);margin:-2px 0 8px;">⚠ Not syncing (${escapeHtml(s.error || 'error')})${s.ok_at ? ' — still using the dates from ' + agoLabel(s.ok_at) : ''}</div>`;
 }
 // The channel-sync box markup for ONE cottage.
 function calendarPropBoxHtml(key, label, data) {
@@ -14649,22 +14649,22 @@ function calendarPropBoxHtml(key, label, data) {
     const status = (data.status && data.status.sources) || {};
     const inputs = SYNC_SOURCES.map((p) => {
         const f = feeds.find((x) => x.source === p.source);
-        return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
+        return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:var(--fs-sub);margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
     }).join('');
     return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
-                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
+                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
                     <div style="display:flex;gap:8px;margin-bottom:14px;">
-                        <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;flex:1;min-width:0;">
+                        <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:var(--fs-sub);flex:1;min-width:0;">
                         <button class="btn-sm btn-edit" ${chbAttrs('copyIcalExport', String(key))} style="flex-shrink:0;">Copy</button>
                     </div>
-                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
+                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
                     ${inputs}
                     <div style="margin-top:2px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('runSync', String(key))}>Sync now</button>
-                        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;white-space:nowrap;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
+                        <span style="font-size:var(--fs-sub);color:var(--text-muted);margin-left:8px;white-space:nowrap;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
                     </div>
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
+                    <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
                 </div>`;
 }
 // Copy the export feed URL (mirrors the copyPayLink idiom).
@@ -14720,7 +14720,7 @@ async function loadCalendarSync() {
             html += `<p style="color:var(--danger);">${escapeHtml(label)}: ${escapeHtml(e.message)}</p>`;
             continue;
         }
-        html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${escapeHtml(label)}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
+        html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:var(--fs-headline);margin-bottom:10px;">${escapeHtml(label)}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
     }
     box.innerHTML = html;
 }
@@ -14785,7 +14785,7 @@ async function loadGuestList() {
     try {
         res = await apiPost('auth.php', { action: 'guest_crm' });
     } catch (e) {
-        box.innerHTML = `<p style="color:var(--danger);font-size:0.85rem;">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
+        box.innerHTML = `<p style="color:var(--danger);font-size:var(--fs-sub);">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
         return;
     }
     const guests = res.guests || [];
@@ -14807,13 +14807,13 @@ async function loadGuestList() {
     // chip, the facts as the sub, lifetime spend as the serif figure. Same
     // data-gemail hooks, same actions, same handlers.
     box.innerHTML = `
-                <p style="color:var(--text-muted);font-size:0.82rem;margin:0 0 10px;">${guests.length} past guest${guests.length === 1 ? '' : 's'} · ${repeatPct}% have stayed more than once · ranked by lifetime spend</p>
+                <p style="color:var(--text-muted);font-size:var(--fs-sub);margin:0 0 10px;">${guests.length} past guest${guests.length === 1 ? '' : 's'} · ${repeatPct}% have stayed more than once · ranked by lifetime spend</p>
                 <div class="acr-well">
                         ${guests
                             .map(
                                 (g) => `<div class="acw-prow" data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
                             <div class="acr-row" style="padding-bottom:4px;">
-                                <span class="acr-lbl">${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<small>${g.stays} stay${g.stays === 1 ? '' : 's'} · last ${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'} · favourite: ${escapeHtml(propName(g.fav_prop))} · ${escapeHtml(g.email || '')}</small></span>
+                                <span class="acr-lbl">${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:var(--fs-micro);font-weight:600;">Returning</span>' : ''}<small>${g.stays} stay${g.stays === 1 ? '' : 's'} · last ${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'} · favourite: ${escapeHtml(propName(g.fav_prop))} · ${escapeHtml(g.email || '')}</small></span>
                                 <span class="acw-fig">${gbp(g.ltv || 0).replace('.00', '')}</span>
                             </div>
                             <div class="acw-acts" style="border-top:0;padding-top:0;">
@@ -15147,7 +15147,7 @@ async function renderAccounts() {
         : '';
 
     const quarterly = `<div class="feed-list" style="padding:4px 16px;">
-                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
+                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
                     ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
                 </div>`;
 
@@ -15207,7 +15207,7 @@ function pickExpenseReceipt() {
         const prev = document.getElementById('exp-receipt-prev');
         if (prev)
             prev.innerHTML =
-                '<span id="exp-scan-status" style="font-size:0.75rem;color:var(--text-muted);">Reading…</span>';
+                '<span id="exp-scan-status" style="font-size:var(--fs-caption);color:var(--text-muted);">Reading…</span>';
         try {
             let img = file;
             if (isHeic(file)) {
@@ -15378,7 +15378,7 @@ function receiptCardHtml(r) {
     const items = (r.items || [])
         .map(
             (it) =>
-                `<div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem;"><span>${escapeHtml(it.name)}</span><span style="color:var(--text-muted);">${gbp(it.price)}</span></div>`,
+                `<div style="display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-sub);"><span>${escapeHtml(it.name)}</span><span style="color:var(--text-muted);">${gbp(it.price)}</span></div>`,
         )
         .join('');
     return `<div style="display:flex;justify-content:space-between;gap:12px;margin-top:4px;"><span style="color:var(--text-muted);">Supplier</span><strong>${escapeHtml(r.supplier || '—')}</strong></div>
@@ -15432,7 +15432,7 @@ async function renderSweep(refetch) {
     if (openNow) __sweepWorkingsOpen = openNow.open;
     if (refetch !== false) __sweepLiab = null;
     if (!__sweepLiab) {
-        box.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Working out what Square will claw back…</p>`;
+        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Working out what Square will claw back…</p>`;
         try {
             const rep = await apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed())));
             __sweepLiab = rep.deposit_liability || { error: true };
@@ -15505,7 +15505,7 @@ async function renderSweep(refetch) {
                         <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${st.date ? ` · ${st.when} ${st.date === today ? 'today' : fmtDate(st.date)}` : ''}</span>
                         <span style="white-space:nowrap;">${gbp(it.net)}</span>
                     </div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${st.note}</div>
+                    <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">${st.note}</div>
                     ${/* the button for these rows is lifted out of the fold — see needsConfirm */ ''}
                 </div>`;
         })
@@ -15603,7 +15603,7 @@ async function renderSweep(refetch) {
                 <span>${who}${when}</span>
                 <span style="white-space:nowrap;font-weight:600;">${gbp(it.movable)}</span>
             </div>
-            ${notes.length ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${notes.join(' · ')}</div>` : ''}
+            ${notes.length ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">${notes.join(' · ')}</div>` : ''}
             ${canMark && it.txn_id != null
                 ? `<div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" aria-label="Mark ${escapeHtml(it.name || 'this guest')}${when}, ${gbp(it.movable)}, as transferred out" ${chbAttrs('sweepMarkOneTransferred', String(it.txn_id))}>I've transferred this one</button></div>`
                 : ''}
@@ -15614,11 +15614,11 @@ async function renderSweep(refetch) {
             ? ''
             : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                 <div class="label">${label}</div>
-                ${note ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">${note}</p>` : '<div style="height:6px;"></div>'}
+                ${note ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">${note}</p>` : '<div style="height:6px;"></div>'}
                 <div>${rows.map((r) => txRow(r, canMark)).join('')}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(total)}</span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(total)}</span>
                 </div>
                </div>`;
     // Fallback for an install with no payout data at all (Square off, or the cron
@@ -15666,22 +15666,22 @@ async function renderSweep(refetch) {
     const answer = `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Transfer out</div>
             ${hasBal && short > 0
-                ? `<p style="margin:6px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
+                ? `<p style="margin:6px 0 0;color:var(--danger);font-size:var(--fs-body);"><strong>Nothing — don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it, so top it up before the next refund goes out.</p>`
                 : transferOut === null
-                  ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">${movedItems.length
+                  ? `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 0;">${movedItems.length
                         ? `You have already transferred everything Square has paid in${P.moved ? ` — ${gbp(P.moved)}` : ''}. Type what the account holds below if you want the exact figure.`
                         : `Type what the account holds below and I'll work it out.`}</p>`
-                  : `<div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
-                     <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">${hasBal
+                  : `<div style="font-family:var(--font-display);font-size:var(--fs-display);margin:4px 0 2px;color:var(--ok-text);">${gbp(transferOut)}</div>
+                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">${hasBal
                         ? (L.count || disp > 0 || buf > 0 ? ringNote : 'Nothing has to stay behind.')
                         : `Of the payments Square has paid in${L.count || disp > 0 || buf > 0 ? `, after holding ${gbp(ring - buf)} back` : ''}${movedItems.length ? `, and not counting ${gbp(P.moved)} you have already transferred` : ''}. Your account may also hold older money — type the balance below for the exact figure.`}</p>`}
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:14px;">
-                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Balance now</span>
+                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:var(--fs-caption);color:var(--text-muted);margin-bottom:4px;">Balance now</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
-                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Extra cushion (optional)</span>
+                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:var(--fs-caption);color:var(--text-muted);margin-bottom:4px;">Extra cushion (optional)</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
             </div>
-            <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">${est
+            <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">${est
                 ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''} — an <strong>estimate</strong>, so correct it if the account says otherwise.`
                 : `There's no bank feed, so the balance is the one figure I can't work out for you.`}</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
@@ -15737,7 +15737,7 @@ async function renderSweep(refetch) {
         ? ''
         : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
             <div class="label">Waiting on your confirmation</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Refunded, but our records haven't seen it leave your Square balance — so it is still held back from the figure above.</p>
+            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">Refunded, but our records haven't seen it leave your Square balance — so it is still held back from the figure above.</p>
             ${needsConfirm.map((it) => `<div class="act-row" style="display:block;">
                 <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
                     <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}</span>
@@ -15749,7 +15749,7 @@ async function renderSweep(refetch) {
     const alertHtml = !alerts.length
         ? ''
         : `<div class="accounts-stat sweep-alerts" style="max-width:620px;margin-top:14px;">
-            ${alerts.map(([tone, html]) => `<p style="font-size:0.85rem;margin:0 0 8px;color:var(--${tone === 'danger' ? 'danger' : tone === 'warn' ? 'warn-text' : 'text-muted'});">${html}</p>`).join('')}
+            ${alerts.map(([tone, html]) => `<p style="font-size:var(--fs-sub);margin:0 0 8px;color:var(--${tone === 'danger' ? 'danger' : tone === 'warn' ? 'warn-text' : 'text-muted'});">${html}</p>`).join('')}
            </div>`.replace(/<\/p>\s*<\/div>/, '</p></div>');
 
     // THE WORKINGS — checkable, one tap away. <details> is native, keyboard-
@@ -15764,19 +15764,19 @@ async function renderSweep(refetch) {
         ? ''
         : `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
-            <div style="font-family:var(--font-display);font-size:1.5rem;margin:4px 0 2px;">${gbp(ring - buf)}</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
+            <div style="font-family:var(--font-display);font-size:var(--fs-title);margin:4px 0 2px;">${gbp(ring - buf)}</div>
+            <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 10px;">${L.count} damage deposit${L.count === 1 ? '' : 's'} still held${disp > 0 ? `, plus ${gbp(disp)} under dispute` : ''}.</p>
             <div>${rows}</div>
            </div>`;
 
     const workings =
         held +
-        `<p style="font-size:0.85rem;color:var(--text-muted);margin:14px 0 4px;max-width:620px;">
+        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0 4px;max-width:620px;">
             ${L.count === 0
                 ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
                 : `Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee when ${L.count === 1 ? 'it goes' : 'they go'} back, so ${gbp(L.net)} is what actually leaves.`}
          </p>` +
-        `<p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;max-width:620px;">${notBalance}</p>` +
+        `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;max-width:620px;">${notBalance}</p>` +
         (T && T.count && P
             ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it. Tick one off once you've moved it.", true) +
               txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
@@ -15784,7 +15784,7 @@ async function renderSweep(refetch) {
               (movedItems.length
                 ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                     <div class="label">Already transferred out</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">You told me these have left the account, so they are not counted above. Put one back if that was wrong.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">You told me these have left the account, so they are not counted above. Put one back if that was wrong.</p>
                     ${movedItems.map((it) => `<div class="act-row" style="display:block;">
                         <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
                             <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].name || propertyMeta[it.prop_key].short)}` : ''}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
@@ -15799,7 +15799,7 @@ async function renderSweep(refetch) {
                               date the money came IN and two bare dates would be
                               indistinguishable. */ ''}
                         ${Number(it.moved_at) > 0
-                            ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">You marked this on ${fmtDate(new Date(Number(it.moved_at) * 1000).toISOString().slice(0, 10))}</div>`
+                            ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);margin-top:2px;">You marked this on ${fmtDate(new Date(Number(it.moved_at) * 1000).toISOString().slice(0, 10))}</div>`
                             : ''}
                         <div class="bhub-btn-row" style="margin-top:6px;"><button class="btn-sm btn-edit" ${chbAttrs('sweepUnmarkTransferred', String(it.txn_id != null ? it.txn_id : ''))}>Not transferred after all</button></div>
                     </div>`).join('')}
@@ -15809,7 +15809,7 @@ async function renderSweep(refetch) {
                     </div>
                    </div>`
                 : '') +
-              `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
+              `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;max-width:620px;">
                     ${P.fees > 0 ? `Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.<br>` : ''}
                     ${locWhy ? locWhy.trim() + '<br>' : ''}
                     ${P.truncated ? 'Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
@@ -15817,13 +15817,13 @@ async function renderSweep(refetch) {
             : T && T.count
               ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                 <div class="label">Movable, payment by payment</div>
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
                 <div>${txFlat}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
-                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:var(--fs-headline);">${gbp(T.movable)}</span>
                 </div>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
+                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account.</p>
                </div>`
               : '');
 
@@ -15832,10 +15832,10 @@ async function renderSweep(refetch) {
         alertHtml +
         confirmHtml +
         `<details class="sweep-detail"${__sweepWorkingsOpen ? ' open' : ''} style="max-width:620px;margin-top:14px;">
-            <summary style="cursor:pointer;padding:12px 2px;font-size:0.85rem;color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
+            <summary style="cursor:pointer;padding:12px 2px;font-size:var(--fs-sub);color:var(--accent-text);line-height:20px;">Show how these figures are worked out</summary>
             <div style="padding-top:4px;">${workings}</div>
          </details>` +
-        `<p style="font-size:0.78rem;color:var(--text-muted);margin:14px 0 0;max-width:620px;">
+        `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:14px 0 0;max-width:620px;">
             ${P
                 ? P.checked
                     ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
@@ -16042,7 +16042,7 @@ function renderExpenses() {
                   const items = rowsByYear[y];
                   const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                   return `<div style="margin-top:18px;">
-                    <div style="display:flex;justify-content:space-between;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:var(--fs-sub);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
                     ${items
                         .map(
                             (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
@@ -16060,7 +16060,7 @@ function renderExpenses() {
                 </div>`;
               })
               .join('')
-        : `<p style="font-size:0.85rem;color:var(--text-muted);margin-top:14px;">No expenses logged yet.</p>`;
+        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:14px;">No expenses logged yet.</p>`;
 
     wrap.innerHTML = `
                 ${chart}
@@ -16073,7 +16073,7 @@ function renderExpenses() {
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
-                        <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
+                        <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-sub);color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
                         <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <button class="btn-sm btn-edit exp-add-btn" data-act="addExpense">Add</button>
                         <button class="btn-sm exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button>
@@ -16325,7 +16325,7 @@ function renderDepositsDue() {
                     <div class="money-row-head">
                         <div><span class="prop-tag tag-${propKey}">${escapeHtml(propertyMeta[propKey] ? propertyMeta[propKey].name : propKey)}</span>
                             <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:var(--fs-sub);">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
                     <!-- KEEP IS RAIL-BLIND. This was gated on holdStatus === 'charged',
@@ -16614,19 +16614,19 @@ function chbMoneyOnTheWayHtml() {
     const rowH = (r) => `
         <button type="button" class="act-row mo-ap-row" ${chbAttrs('openBookingHub', String(r.id))} style="width:100%;text-align:left;justify-content:space-between;gap:10px;align-items:center;">
             <span style="min-width:0;">
-                <strong style="font-size:0.86rem;${r.failed ? 'color:var(--danger-text);' : ''}">${escapeHtml(r.name)}</strong>
-                <span style="display:block;color:var(--text-muted);font-size:0.76rem;">${escapeHtml(r.prop)} · ${escapeHtml(r.prog)}</span>
+                <strong style="font-size:var(--fs-sub);${r.failed ? 'color:var(--danger-text);' : ''}">${escapeHtml(r.name)}</strong>
+                <span style="display:block;color:var(--text-muted);font-size:var(--fs-caption);">${escapeHtml(r.prop)} · ${escapeHtml(r.prog)}</span>
             </span>
             <span style="flex:none;text-align:right;">
-                <span style="display:block;font-size:0.92rem;font-weight:600;font-variant-numeric:tabular-nums;${r.failed ? 'color:var(--danger-text);' : 'color:var(--text-light);'}">${r.failed ? 'stopped' : gbp(r.fig)}</span>
-                <span style="display:block;font-size:0.74rem;${r.failed ? 'color:var(--accent-text);font-weight:600;' : 'color:var(--text-muted);'}">${r.failed ? 'Fix ›' : fmtDate(r.next)}</span>
+                <span style="display:block;font-size:var(--fs-body);font-weight:600;font-variant-numeric:tabular-nums;${r.failed ? 'color:var(--danger-text);' : 'color:var(--text-light);'}">${r.failed ? 'stopped' : gbp(r.fig)}</span>
+                <span style="display:block;font-size:var(--fs-caption);${r.failed ? 'color:var(--accent-text);font-weight:600;' : 'color:var(--text-muted);'}">${r.failed ? 'Fix ›' : fmtDate(r.next)}</span>
             </span>
         </button>`;
     return `
     <div class="glass-panel" style="padding:18px;margin-top:16px;">
         <div class="bhub-headpay-cap" style="margin-bottom:4px;">Money on the way</div>
-        <p style="margin:0 0 10px;font-size:0.8rem;color:var(--text-muted);">
-            <strong style="color:var(--text-light);font-size:1.05rem;">${gbp(total)}</strong> arranged across
+        <p style="margin:0 0 10px;font-size:var(--fs-sub);color:var(--text-muted);">
+            <strong style="color:var(--text-light);font-size:var(--fs-headline);">${gbp(total)}</strong> arranged across
             <strong style="color:var(--text-light);">${live.length} plan${live.length === 1 ? '' : 's'}</strong>${needs ? ` — ${needs === 1 ? 'one needs' : needs + ' need'} you` : ''}.
         </p>
         ${thisM > 0 || nextM > 0 ? `<div style="display:flex;gap:8px;margin-bottom:10px;">${thisM > 0 ? chip(`This month · ${gbp(thisM)}`) : ''}${nextM > 0 ? chip(`${nextMName} · ${gbp(nextM)}`) : ''}</div>` : ''}
@@ -16909,7 +16909,7 @@ function renderMoneyOverview() {
             <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
             <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
                 <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
-                    <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
+                    <div class="mo-sub" style="font-size:var(--fs-sub);">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
                 <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
          </div>`);
 
@@ -17164,7 +17164,7 @@ function renderMoneyPanel() {
         })
         .join('');
     el.innerHTML = `${owedBanner}
-                <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
                 <div class="bk-list">${cards}</div>`;
 }
 // paymentStatusLabel / paymentStatusMeta (the ledger wording + traffic-light dot
@@ -17617,7 +17617,7 @@ async function loadAdminPasskeys() {
         const keys = res.passkeys || [];
         if (keys.length === 0) {
             box.innerHTML =
-                '<p style="font-size:0.82rem;color:var(--text-muted);">No passkeys yet. Your password is still your way in.</p>';
+                '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No passkeys yet. Your password is still your way in.</p>';
             return;
         }
         box.innerHTML = keys
@@ -17625,7 +17625,7 @@ async function loadAdminPasskeys() {
                 (
                     k,
                 ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
-                    <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
+                    <span style="font-size:var(--fs-body);">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:var(--fs-caption);"> · added ${fmtDate((k.created_at || '').split(' ')[0])}</span></span>
                     <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
                 </div>`,
             )
@@ -17738,8 +17738,8 @@ function renderNotifyPrefs() {
         ).join('') +
         `<div class="acr-row"><span class="acr-lbl">Quiet hours<small>urgent alerts always get through</small></span>
             <span style="display:flex;gap:6px;align-items:center;">
-            <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
-            <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
+            <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
+            <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
             </span></div>
         </div>`;
 }
@@ -17842,8 +17842,8 @@ function renderNotifySettings() {
             : 'Not enabled yet on this device.';
     wrap.innerHTML = `<div class="accounts-stat" style="max-width:560px;">
                 <div class="label">Owner alerts on this device</div>
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Get a notification on this device for new enquiries, guest messages, payments, and when a new version of your site goes live. Enable it once on each device (phone, laptop) you want alerts on.</p>
-                <p style="font-size:0.82rem;color:var(--text-light);margin:0 0 14px;">${status}</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Get a notification on this device for new enquiries, guest messages, payments, and when a new version of your site goes live. Enable it once on each device (phone, laptop) you want alerts on.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-light);margin:0 0 14px;">${status}</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button class="btn-sm btn-edit" data-act="enableOwnerPush">Enable on this device</button>
                     <button class="btn-sm btn-edit" data-act="testOwnerPush">Send test</button>
@@ -17851,18 +17851,18 @@ function renderNotifySettings() {
             </div>
             <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
                 <div class="label">What interrupts you</div>
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Turn off a kind of alert, or set quiet hours, and it stops buzzing your devices — it still lands in the activity log, and anything urgent (a calendar sync that could double-book you) always gets through.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Turn off a kind of alert, or set quiet hours, and it stops buzzing your devices — it still lands in the activity log, and anything urgent (a calendar sync that could double-book you) always gets through.</p>
                 <div id="notify-prefs-body">${skelRows(2)}</div>
             </div>
             <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
                 <div class="label">Email recipients</div>
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
                 <div id="notify-emails-list">${skelRows(2)}</div>
                 <form data-act-submit="addNotifyEmail" data-pass="event" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
                     <input type="email" id="notify-email-input" class="input-glass field-sm" placeholder="name@example.com" autocomplete="off" style="flex:1;min-width:200px;margin:0;">
                     <button type="submit" class="btn-sm btn-edit">Add address</button>
                 </form>
-                <p id="notify-email-msg" style="font-size:0.8rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
+                <p id="notify-email-msg" style="font-size:var(--fs-sub);margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
             </div>`;
     loadNotifyEmails();
     renderNotifyPrefs();
@@ -17921,7 +17921,7 @@ async function loadNotifyEmails() {
     try {
         d = await apiPost('notify-recipients.php', { action: 'list' });
     } catch (e) {
-        box.innerHTML = `<p style="font-size:0.82rem;color:var(--danger);">Couldn't load the list.</p>`;
+        box.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger);">Couldn't load the list.</p>`;
         return;
     }
     renderNotifyEmails(d.primary, d.extras || []);
@@ -18549,12 +18549,12 @@ function apFloorLadderRows(floor) {
 }
 function apFloorLadderHtml(floor) {
     const { rows, line } = apFloorLadderRows(floor);
-    let html = '<div style="font-size:0.7rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">What guests are offered, by time left</div>';
+    let html = '<div style="font-size:var(--fs-micro);letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">What guests are offered, by time left</div>';
     rows.forEach((r, i) => {
         if (i === line) html += `<div class="apfl-line"><span>Your floor · ${floor} months</span></div>`;
         html += `<div class="apfl-rung${r.dim ? ' is-dim' : ''}"><span class="apfl-lead">${r.lead}</span><span class="apfl-dots"></span><span class="apfl-offer">${r.offer}</span></div>`;
     });
-    html += '<p style="font-size:0.76rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Cut-offs include a week\'s clearance for the advance-notice email, and each payment must be at least £50 — a small balance may offer fewer.</p>';
+    html += '<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Cut-offs include a week\'s clearance for the advance-notice email, and each payment must be at least £50 — a small balance may offer fewer.</p>';
     return html;
 }
 function renderInstalFloor() {
@@ -18960,7 +18960,7 @@ function holdControls(b) {
         const actions = left
             ? `<button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Approve &amp; refund</button>
                <button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>`
-            : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`;
+            : `<span style="color:var(--text-muted);font-size:var(--fs-caption);">refundable after checkout</span>`;
         return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
     }
     if (st === 'returned')
@@ -22423,7 +22423,7 @@ async function loadAdminMessages() {
     } catch (e) {
         stampLoaded();
         if (list)
-            list.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">Couldn't load messages.</p>`;
+            list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load messages.</p>`;
         return;
     }
     stampLoaded();
@@ -22525,7 +22525,7 @@ function renderMessagesList() {
               })
               .join('') +
           `<p id="msg-noresults" class="msg-noresults" style="display:none;">No conversations match.</p>`
-        : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
+        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
     list.innerHTML = controls + rows;
     // Dock the Show-archived toggle to the right of the "Guest messages" heading
     // (frees the controls row; reads better on mobile). Guard: the slot only
@@ -22587,7 +22587,7 @@ function renderChatAnswersEditor() {
                 `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
             );
         }).join('') +
-        '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:0.72rem;">✓ Saves by itself as you edit</span></div></div>';
+        '<div class="acw-acts"><span class="mut" style="color:var(--ok-text);font-size:var(--fs-caption);">✓ Saves by itself as you edit</span></div></div>';
 }
 // Away / auto-reply settings: enable, message, and optional office hours.
 function renderChatAwayEditor() {
@@ -22613,8 +22613,8 @@ function renderChatAwayEditor() {
             <div class="acw-frow"><label>Auto-reply message</label><textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We\u2019re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>
             <div class="acr-row"><span class="acr-lbl">Only outside these hours<small>leave both as \u201c—\u201d to auto-reply any time you haven\u2019t just replied</small></span>
                 <span style="display:flex;gap:6px;align-items:center;">
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
-                <select class="acw-pill" style="font-family:var(--font-sans);font-size:0.85rem;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select>
+                <select class="acw-pill" style="font-family:var(--font-sans);font-size:var(--fs-sub);" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select>
                 </span></div>
         </div>`;
 }
@@ -22832,7 +22832,7 @@ function accomSectionHtml(k, sec) {
             const imgs = accomImages(k);
             return `<div class="acr-cap">Gallery — the first photo is the main image</div>
                     <div class="acr-well">
-                        <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
+                        <div id="accom-photos-${k}" class="acp-grid">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0;">No photos yet — add the first below.</p>'}</div>
                         <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button></div>
                     </div>`;
         }
@@ -22848,7 +22848,7 @@ function accomSectionHtml(k, sec) {
                         <div class="acw-acts">
                             <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add amenity</button>
                             <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save amenities</button>
-                            <span id="accom-am-msg-${k}" style="font-size:0.8rem;"></span>
+                            <span id="accom-am-msg-${k}" style="font-size:var(--fs-sub);"></span>
                         </div>
                     </div>
                     <p class="acr-note">One per row, a few words each. They show as pills on the cottage page and behind the <strong>Amenities</strong> tile on the guest&rsquo;s own stay.</p>`;
@@ -22864,7 +22864,7 @@ function accomSectionHtml(k, sec) {
                         <div class="acw-frow"><label for="accom-t-tagline-${k}">Price tagline</label><input type="text" class="input-glass" id="accom-t-tagline-${k}" value="${escapeHtml(tv('tagline', ''))}"></div>
                         <div class="acw-frow"><label for="accom-t-desc-${k}">Description</label><textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea></div>
                         <div class="acw-frow"><label for="accom-t-location-${k}">Location blurb</label><input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}"></div>
-                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;"></span></div>
+                        <div class="acw-acts"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:var(--fs-sub);"></span></div>
                     </div>`;
         }
         case 'rates': {
@@ -23361,7 +23361,7 @@ async function loadAnalytics(days = 30) {
     try {
         d = await apiGet('track.php?action=summary&days=' + days);
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
         return;
     }
     __analyticsSummary = d; // stashed for the CSV export below
@@ -23395,7 +23395,7 @@ async function loadAnalytics(days = 30) {
         `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
     const grid2 = (a, b) => `<div class="mo-grid2">${a}${b}</div>`;
     const emptyNote = (t) =>
-        `<p style="font-size:0.82rem;color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
+        `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
 
     // Category palette — colour bars by meaning rather than one flat hue.
     const HUE = {
@@ -23470,7 +23470,7 @@ async function loadAnalytics(days = 30) {
     const peak = daily.reduce((mx, r) => Math.max(mx, r.views), 0);
     const trendHtml = daily.length
         ? osVBars(trendItems) +
-          `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">peak ${peak}/day · ${winDays <= 30 ? 'by day' : winDays <= 120 ? 'by week' : 'by month'}</div>`
+          `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:4px;">peak ${peak}/day · ${winDays <= 30 ? 'by day' : winDays <= 120 ? 'by week' : 'by month'}</div>`
         : emptyNote('No visits recorded yet — check back once guests have browsed the site.');
 
     // ---- funnels (green→amber so drop-off reads at a glance) ----
@@ -23507,7 +23507,7 @@ async function loadAnalytics(days = 30) {
         { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
         { label: 'Started a payment', value: ev.pay_start || 0 },
     ]);
-    const convDonut = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">${osDonut(Math.round(convPct), 'var(--accent)')}<div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">${bookings} booking${bookings === 1 ? '' : 's'} from ${uniq} unique visitor${uniq === 1 ? '' : 's'} this ${winLabel}.</div></div>`;
+    const convDonut = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">${osDonut(Math.round(convPct), 'var(--accent)')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">${bookings} booking${bookings === 1 ? '' : 's'} from ${uniq} unique visitor${uniq === 1 ? '' : 's'} this ${winLabel}.</div></div>`;
 
     // ---- audience: new/returning + devices ----
     const mixMax = Math.max(mix.new || 0, mix.returning || 0, 1);
@@ -23550,7 +23550,7 @@ async function loadAnalytics(days = 30) {
         ? osHBars(
               engines.map((e) => ({ label: e.name, value: e.count, max: enMax, color: '#5BA8FF' })),
           ) +
-          `<p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Search engines hide the words people typed — connect Google Search Console for the actual terms.</p>`
+          `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Search engines hide the words people typed — connect Google Search Console for the actual terms.</p>`
         : emptyNote('No search-engine visits yet.');
     const sources = Array.isArray(d.sources) ? d.sources : [];
     const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
@@ -23671,7 +23671,7 @@ async function loadAnalytics(days = 30) {
 
                 <div class="ana-group-title">On-site behaviour</div>
                 ${grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml))}
-                ${grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))}
+                ${grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:var(--fs-sub);color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))}
 
                 <div class="ana-group-title">What guests are searching for</div>
                 ${moCard(
@@ -23681,8 +23681,8 @@ async function loadAnalytics(days = 30) {
                         <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
                         <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
                     </div>
-                    ${topMonthsHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:0.74rem;color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
+                    ${topMonthsHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
+                    ${recentNoHtml ? `<div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:var(--fs-sub);color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:var(--fs-caption);color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
                 `,
                 )}` +
         exportRow;
@@ -23698,7 +23698,7 @@ async function loadWaitlist() {
         const r = await apiGet('waitlist.php');
         rows = r.waitlist || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load the waitlist${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load the waitlist${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
         return;
     }
     if (!rows.length) {
@@ -23746,19 +23746,19 @@ async function loadNewsletter() {
     try {
         r = await apiGet('newsletter.php');
     } catch (e) {
-        stats.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load subscribers${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+        stats.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load subscribers${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
         return;
     }
     const active = r.active || 0,
         total = r.total || 0;
     const recent = (r.recent || []).filter((s) => !s.unsubscribed_at).slice(0, 12);
     const list = recent.length
-        ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:10px;">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
-        : `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
+        ? `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">${recent.map((s) => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
+        : `<div style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
     stats.innerHTML = `<div class="accounts-stat" style="max-width:640px;">
                 <div style="display:flex;gap:26px;flex-wrap:wrap;">
-                    <div><div class="today-card-value" style="font-size:1.7rem;">${active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Active subscribers</div></div>
-                    <div><div class="today-card-value" style="font-size:1.7rem;">${total - active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Active subscribers</div></div>
+                    <div><div class="today-card-value" style="font-size:var(--fs-display);">${total - active}</div><div style="font-size:var(--fs-caption);color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
                 </div>${list}</div>`;
 }
 // ---- System check (Manage → System check) ----
@@ -23848,12 +23848,12 @@ async function loadDiagnostics() {
     const msg = document.getElementById('diag-msg');
     if (msg) msg.textContent = '';
     if (!body) return;
-    body.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Running checks…</p>`;
+    body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Running checks…</p>`;
     let r;
     try {
         r = await apiPost('diagnostics.php', { action: 'run' });
     } catch (e) {
-        body.innerHTML = `<p style="font-size:0.85rem;color:var(--danger);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
+        body.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--danger);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
         return;
     }
     const checks = r.checks || [];
@@ -24024,14 +24024,14 @@ async function loadDiagnostics() {
                 <div class="status-group-title status-maint-title">Maintenance</div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Backups</div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
-                    <div id="backup-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
+                    <div id="backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" ${chbAttrs('runBackupNow', CHB_SELF)}>Back up now</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('verifyBackupNow', CHB_SELF)}>Verify latest</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download">Download latest</button>
                     </div>
-                    <div id="files-backup-status" style="font-size:0.82rem;color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
+                    <div id="files-backup-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" ${chbAttrs('runFilesBackupNow', CHB_SELF)}>Archive files now</button>
                         <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download_files">Download files</button>
@@ -24040,12 +24040,12 @@ async function loadDiagnostics() {
                          passphrase the Monday email carries the report only — the
                          backup itself stays on the server, downloadable above. -->
                     <div class="acr-cap" style="margin-top:18px;">The emailed copy</div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:6px 0 10px;">The backup holds every guest's name, address, phone and messages, and an email lives in your inbox for ever — so it is only attached once you set a passphrase to lock it with. <strong>Keep the passphrase somewhere other than that inbox</strong>; without it the file cannot be opened, by you or anyone else.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0 10px;">The backup holds every guest's name, address, phone and messages, and an email lives in your inbox for ever — so it is only attached once you set a passphrase to lock it with. <strong>Keep the passphrase somewhere other than that inbox</strong>; without it the file cannot be opened, by you or anyone else.</p>
                     <label class="modal-label" for="backup-pass">Backup passphrase</label>
                     <input type="password" class="input-glass" id="backup-pass" autocomplete="new-password" placeholder="a few unrelated words" style="max-width:340px;">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveBackupPass', CHB_SELF)}>Save passphrase</button>
-                        <span id="backup-pass-state" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                        <span id="backup-pass-state" style="font-size:var(--fs-sub);color:var(--text-muted);"></span>
                     </div>
                 </div>
                 <!-- OVERNIGHT WORK. Off by default, and off is byte-for-byte the
@@ -24058,12 +24058,12 @@ async function loadDiagnostics() {
                      hands it to whoever opens the page. -->
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Overnight work</div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A machine on your own network can work while nobody is asking &mdash; drafting replies, reading the week, answering the questions guests keep asking &mdash; and leave what it made on Today under &ldquo;Ready for you&rdquo;. Nothing it produces is ever sent, published or charged: you open it, use it or bin it.</p>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">A machine on your own network can work while nobody is asking &mdash; drafting replies, reading the week, answering the questions guests keep asking &mdash; and leave what it made on Today under &ldquo;Ready for you&rdquo;. Nothing it produces is ever sent, published or charged: you open it, use it or bin it.</p>
                     <div class="acr-row" style="padding-left:0;padding-right:0;">
                         <span class="acr-lbl">Accept overnight work<small>off is exactly today&rsquo;s back office &mdash; no card, and anything sent in is refused</small></span>
                         <span class="chb-switch"><input type="checkbox" id="night-shift-toggle" ${chbChange('saveNightShift')} aria-label="Accept overnight work"><span class="chb-switch-track" aria-hidden="true"></span></span>
                     </div>
-                    <div id="night-shift-state" style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;"></div>
+                    <div id="night-shift-state" style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:10px;"></div>
                     <!-- TWO THINGS ON THE CARD: the switch above, and the
                          download. Asked for, and right — those are the two an
                          owner touches. Everything about CONNECTING a Mac is
@@ -24075,16 +24075,16 @@ async function loadDiagnostics() {
                          pairing, and without it a Mac can connect only with the
                          daily-jobs secret — the thing we just took away from
                          it. -->
-                    <div id="night-app-get" style="font-size:0.8rem;color:var(--text-muted);margin-top:14px;"></div>
+                    <div id="night-app-get" style="font-size:var(--fs-sub);color:var(--text-muted);margin-top:14px;"></div>
                     <details class="night-setup">
                         <summary>Set up a Mac</summary>
-                        <div id="night-key-row" style="font-size:0.8rem;color:var(--text-muted);"></div>
+                        <div id="night-key-row" style="font-size:var(--fs-sub);color:var(--text-muted);"></div>
                     </details>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
-                    <div id="hero-opt-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
+                    <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
+                    <div id="hero-opt-status" style="font-size:var(--fs-sub);color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
                 </div>`;
     refreshBackupStatus();
@@ -24647,7 +24647,7 @@ function renderTestCentreList() {
     if (title) title.textContent = SETTINGS_TITLES.testcentre;
     if (!list) return;
     list.style.display = '';
-    list.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
+    list.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
                 <div class="settings-group">${TC_PAGES.map(
                     (p) => `
                     <button class="settings-row" ${chbAttrs('tcOpen', String(p.id))}>
@@ -24687,9 +24687,9 @@ function tcPageStage() {
         ['Guest view', 'Switch seats (the banner button) — My Stays shows an arrival-day stay, a balance to pay with the test card, and a finished stay asking for a review.'],
     ];
     return `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">One tap fills staging with a realistic pretend business — bookings in every money state, enquiries, a chat, a review to moderate, expenses and a waitlist entry — so every screen has something real to say. Stays are priced with the real model and never seeded over existing dates. All of it is tagged and comes out again via <strong>Test data → Remove all</strong>.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">One tap fills staging with a realistic pretend business — bookings in every money state, enquiries, a chat, a review to moderate, expenses and a waitlist entry — so every screen has something real to say. Stays are priced with the real model and never seeded over existing dates. All of it is tagged and comes out again via <strong>Test data → Remove all</strong>.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" ${chbAttrs('tcSeedStage', CHB_SELF)}>Set the stage</button>
-                <div id="tc-stage-msg" style="font-size:0.82rem;margin:8px 0 14px;"></div>
+                <div id="tc-stage-msg" style="font-size:var(--fs-sub);margin:8px 0 14px;"></div>
                 <div class="rule-divider">What you'll find</div>
                 <div class="settings-group">${items
                     .map(
@@ -24771,9 +24771,9 @@ function tcPageFeatures() {
         ],
     ];
     return `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Seeds demo data — sample bookings, Airbnb/Vrbo blocks, searches, reviews, GPS pins and a weekend uplift — so you can try everything we've built recently. All of it is tagged and removable in one click via <strong>Test data → Remove all</strong>.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Seeds demo data — sample bookings, Airbnb/Vrbo blocks, searches, reviews, GPS pins and a weekend uplift — so you can try everything we've built recently. All of it is tagged and removable in one click via <strong>Test data → Remove all</strong>.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" ${chbAttrs('tcSeedFeatures', CHB_SELF)}>Seed demo data</button>
-                <div id="tc-seed-msg" style="font-size:0.82rem;margin:8px 0 14px;"></div>
+                <div id="tc-seed-msg" style="font-size:var(--fs-sub);margin:8px 0 14px;"></div>
                 <div class="rule-divider">What to try</div>
                 <div class="settings-group">${items
                     .map(
@@ -24829,10 +24829,10 @@ function tcPagePreview() {
         )
         .join('');
     return `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" data-act="tcPreview" data-arg="index.html">Open homepage as a guest ↗</button>
                 <div class="rule-divider">Jump straight to a cottage page</div>
-                ${cottages || '<p style="font-size:0.85rem;color:var(--text-muted);">No live cottages.</p>'}</div>`;
+                ${cottages || '<p style="font-size:var(--fs-sub);color:var(--text-muted);">No live cottages.</p>'}</div>`;
 }
 function tcPreview(path) {
     const sep = path.indexOf('?') !== -1 ? '&' : '?';
@@ -24854,9 +24854,9 @@ const TC_EMAILS = [
 ];
 function tcPageEmails() {
     return `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Sends real samples to your owner inbox (subject prefixed <strong>[TEST]</strong>) using dummy data, so you can check wording, formatting &amp; delivery.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Sends real samples to your owner inbox (subject prefixed <strong>[TEST]</strong>) using dummy data, so you can check wording, formatting &amp; delivery.</p>
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:12px;" ${chbAttrs('tcSendEmail', 'all', CHB_SELF)}>Send all samples</button>
-                <div id="tc-email-msg" style="font-size:0.82rem;margin-bottom:12px;"></div>
+                <div id="tc-email-msg" style="font-size:var(--fs-sub);margin-bottom:12px;"></div>
                 <div class="settings-group">${TC_EMAILS.map(
                     ([w, l]) => `
                     <div class="settings-row" style="cursor:default;">
@@ -24921,25 +24921,25 @@ async function tcRenderBooking() {
     tcOwnerEmail = data.owner_email || '';
     tcSquare = data.square || { enabled: false, production: false };
     const bk = data.bookings || [];
-    const intro = `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
+    const intro = `<p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
     const sqNote = tcSquare.production
-        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:0.8rem;color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
+        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:var(--fs-sub);color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
         : tcSquare.enabled
-          ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
-          : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
+          ? `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
+          : `<p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
     const guestBtn = `<button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:14px;" ${chbAttrs('tcGuestLogin', CHB_SELF)}>Log in as a test guest ↗</button>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 14px;">Opens the guest app (My Stays, in-stay hub, arrival reveal, chat) signed in as a test guest. Tip: open in a private window to stay signed in as admin here.</p>`;
+                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:-6px 0 14px;">Opens the guest app (My Stays, in-stay hub, arrival reveal, chat) signed in as a test guest. Tip: open in a private window to stay signed in as admin here.</p>`;
     if (!bk.length) {
-        detail.innerHTML = `<div class="rate-prop">${intro}${tcPresetButtons()}${sqNote}<div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
+        detail.innerHTML = `<div class="rate-prop">${intro}${tcPresetButtons()}${sqNote}<div id="tc-bk-msg" style="font-size:var(--fs-sub);margin-top:12px;"></div></div>`;
         return;
     }
     const rows = bk
         .map((b) => {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
-                    <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:0.6rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
-                    <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
-                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
+                    <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
+                    <div style="font-size:var(--fs-sub);color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
+                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, CHB_SELF)}>Open pay page ↗</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcMarkPaid', b.id, CHB_SELF)}>Mark paid in full</button>
@@ -24947,7 +24947,7 @@ async function tcRenderBooking() {
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
                     </div>
-                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
+                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'pre_arrival', CHB_SELF)}>Pre-arrival email</button>
                         <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'balance_reminder', CHB_SELF)}>Balance reminder</button>
@@ -24958,7 +24958,7 @@ async function tcRenderBooking() {
         .join('');
     detail.innerHTML = `<div class="rate-prop">${intro}${sqNote}${guestBtn}${rows}
                 <div class="rule-divider">Create another</div>${tcPresetButtons()}
-                <div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
+                <div id="tc-bk-msg" style="font-size:var(--fs-sub);margin-top:12px;"></div></div>`;
 }
 // Date presets so the owner can target date-gated features (mid-stay hub,
 // pre-arrival, post-stay review) — not just a far-future booking.
@@ -25208,7 +25208,7 @@ async function tcRenderData() {
     // (reusing the owner's real account is left alone).
     const showGuest = guest && guest.created;
     if (!bk.length && !enq.length && !showGuest) {
-        detail.innerHTML = `<div class="rate-prop"><p style="font-size:0.95rem;color:var(--text-light);">No test data — you're clean. ✓</p><p style="font-size:0.82rem;color:var(--text-muted);">Anything the Test centre creates shows here for one-tap removal.</p></div>`;
+        detail.innerHTML = `<div class="rate-prop"><p style="font-size:var(--fs-body);color:var(--text-light);">No test data — you're clean. ✓</p><p style="font-size:var(--fs-sub);color:var(--text-muted);">Anything the Test centre creates shows here for one-tap removal.</p></div>`;
         return;
     }
     const bRows = bk
@@ -25239,7 +25239,7 @@ async function tcRenderData() {
         : '';
     const total = bk.length + enq.length + (showGuest ? 1 : 0);
     detail.innerHTML = `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">${total} test record${total === 1 ? '' : 's'}. These never count toward your real revenue.</p>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">${total} test record${total === 1 ? '' : 's'}. These never count toward your real revenue.</p>
                 ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
                 ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
                 ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
@@ -25356,17 +25356,17 @@ function renderReviewLinks() {
             const name = (propertyMeta[k] || {}).name || k;
             const url = origin + '/review/' + slug;
             return `<div style="margin-bottom:14px;">
-                        <div style="font-size:0.8rem;font-weight:600;color:var(--text-light);margin-bottom:5px;">${escapeHtml(name)}</div>
+                        <div style="font-size:var(--fs-sub);font-weight:600;color:var(--text-light);margin-bottom:5px;">${escapeHtml(name)}</div>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" data-act="selectSelf" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
+                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" data-act="selectSelf" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:var(--fs-sub);flex:1;min-width:0;">
                             <button class="btn-sm btn-edit" style="flex-shrink:0;" ${chbAttrs('copyReviewLink', k)}>Copy</button>
                         </div>
                     </div>`;
         })
         .join('');
     wrap.innerHTML = `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:16px;margin:0 0 20px;background:var(--glass-bg);">
-                <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Review links to share with guests</div>
-                <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
+                <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Review links to share with guests</div>
+                <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
                 ${rows}
             </div>`;
 }
@@ -25419,28 +25419,28 @@ function leadCardHtml(l) {
             : `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'approved')}>Approve &amp; publish</button>` +
               (l.status === 'pending' ? `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'declined')}>Decline</button>` : '');
     const excluded = ar > 0 && ar < 3
-        ? `<div style="font-size:0.72rem;color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
+        ? `<div style="font-size:var(--fs-caption);color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
         : '';
     return `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">
                     <strong>${escapeHtml(l.name)}</strong>
                     <span style="color:var(--text-muted);">${escapeHtml(cott)}</span>
-                    <span style="font-size:0.68rem;letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
+                    <span style="font-size:var(--fs-micro);letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
                     <span class="star-static">${stars}</span>
                     <span style="margin-left:auto;">${leadStatusPill(l.status)}</span>
                 </div>
-                <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(l.review_text)}”</div>
-                <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:10px;">${contact}</div>
+                <div style="font-size:var(--fs-body);color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(l.review_text)}”</div>
+                <div style="font-size:var(--fs-caption);color:var(--text-muted);margin-bottom:10px;">${contact}</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">${actions}
                     <button class="btn-sm btn-delete" ${chbAttrs('deleteLead', l.id)}>Delete</button>
                 </div>
                 <div style="margin-top:12px;border-top:1px dashed var(--glass-border);padding-top:12px;">
-                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
+                    <div style="font-size:var(--fs-caption);text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
                         <svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                         Rate this guest — private, never shown to them</div>
                     <div class="lead-prate" data-id="${l.id}" data-val="${ar}" style="display:flex;gap:3px;margin-bottom:8px;">${priv}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                        <input class="input-glass field-sm" id="lead-note-${l.id}" placeholder="Private note (optional)" value="${escapeHtml(l.admin_note || '')}" style="flex:1;min-width:160px;font-size:0.82rem;">
+                        <input class="input-glass field-sm" id="lead-note-${l.id}" placeholder="Private note (optional)" value="${escapeHtml(l.admin_note || '')}" style="flex:1;min-width:160px;font-size:var(--fs-sub);">
                         <button class="btn-sm btn-edit" ${chbAttrs('saveLeadRating', l.id)}>Save rating</button>
                     </div>
                     ${excluded}
@@ -25506,10 +25506,10 @@ async function loadLeadModeration() {
     const pend = rows.filter((r) => r.status === 'pending').length;
     wrap.innerHTML =
         `<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
-            <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0;">External guest reviews</h3>
-            ${pend ? `<span style="font-size:0.72rem;font-weight:600;color:var(--accent-ink);background:var(--warn);border-radius:20px;padding:2px 9px;">${pend} new</span>` : ''}
+            <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">External guest reviews</h3>
+            ${pend ? `<span style="font-size:var(--fs-caption);font-weight:600;color:var(--accent-ink);background:var(--warn);border-radius:20px;padding:2px 9px;">${pend} new</span>` : ''}
         </div>
-        <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;">Left via your review links. Approve to publish on the site; rate the guest privately to control who gets the book-direct follow-up.</p>` +
+        <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 12px;">Left via your review links. Approve to publish on the site; rate the guest privately to control who gets the book-direct follow-up.</p>` +
         rows.map(leadCardHtml).join('');
 }
 
@@ -25528,7 +25528,7 @@ async function loadGuestReviewModeration() {
         const r = await apiPost('reviews.php', { action: 'list_admin' });
         rows = r.reviews || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load (run migration-guest-reviews.sql?): ${escapeHtml(e.message)}</p>`;
+        wrap.innerHTML = `<p style="font-size:var(--fs-sub);color:var(--text-muted);">Couldn't load (run migration-guest-reviews.sql?): ${escapeHtml(e.message)}</p>`;
         return;
     }
     if (!rows.length) {
@@ -25551,12 +25551,12 @@ async function loadGuestReviewModeration() {
               .map(
                   (r) => `
                 <div id="modrev-${r.id}" class="acw-qrow">
-                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:var(--fs-sub);">
                         <span class="star-static" style="color:var(--accent-text);">${stars(r.stars)}</span>
                         ${stCap('warn', 'waiting')}
                     </div>
-                    <div style="font-size:0.88rem;margin:7px 0 3px;line-height:1.5;">“${escapeHtml(r.review_text)}”</div>
-                    <div style="font-size:0.73rem;color:var(--text-muted);">${escapeHtml(r.name)} · ${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</div>
+                    <div style="font-size:var(--fs-body);margin:7px 0 3px;line-height:1.5;">“${escapeHtml(r.review_text)}”</div>
+                    <div style="font-size:var(--fs-caption);color:var(--text-muted);">${escapeHtml(r.name)} · ${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</div>
                     <div class="acw-modacts">
                         <button class="mod-ok" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
                         <button class="mod-no" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
@@ -25565,7 +25565,7 @@ async function loadGuestReviewModeration() {
                 </div>`,
               )
               .join('')
-        : `<p style="font-size:0.85rem;color:var(--text-muted);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> No reviews waiting — you're all caught up.</p>`;
+        : `<p style="font-size:var(--fs-sub);color:var(--text-muted);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> No reviews waiting — you're all caught up.</p>`;
 
     // Only reviews awaiting a decision are shown here. Approved reviews appear
     // on the public site; declined ones are simply hidden.
@@ -25849,7 +25849,7 @@ function renderSeasonGrid() {
                     <span id="season-grid-msg" role="status"></span>
                     <button type="button" class="sg-save" data-act="saveSeasonGrid">Save all cottages</button>
                 </div>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:12px 0 0;max-width:640px;">Leave a price blank and that cottage keeps its normal base rate for those dates. Removing a card removes the season from every cottage when you save.</p>`;
+                <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:12px 0 0;max-width:640px;">Leave a price blank and that cottage keeps its normal base rate for those dates. Removing a card removes the season from every cottage when you save.</p>`;
     sgSync();
 }
 function addSeasonGridRow() {
@@ -26103,7 +26103,7 @@ async function checkCronHealth() {
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
                 <div>
                     <strong>Your daily automation looks stopped</strong> — ${detail}. While it's off, pre-arrival emails, balance reminders, guest re-invites and weekly backups won't send.
-                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a data-act="navDiagnostics" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
+                    <div style="margin-top:6px;font-size:var(--fs-sub);">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a data-act="navDiagnostics" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
                 </div>`;
     el.style.display = '';
 }
@@ -26389,7 +26389,7 @@ async function sendSampleEmails(btn) {
                     .filter((x) => !x.ok)
                     .map(
                         (x) =>
-                            `<div style="color:var(--danger);font-size:0.8rem;">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`,
+                            `<div style="color:var(--danger);font-size:var(--fs-sub);">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`,
                     )
                     .join('');
     } catch (e) {
@@ -26644,9 +26644,9 @@ function osVBars(items, fmt) {
                 const h = Math.max(3, Math.round(((i.value || 0) / peak) * AREA));
                 const tick = !dense || ix % every === 0 || ix === items.length - 1;
                 return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
-                    ${dense ? '' : `<span style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
+                    ${dense ? '' : `<span style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>`}
                     <div class="osv-bar" style="width:100%;max-width:36px;min-width:2px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}px;"></div>
-                    <span class="osv-tick" style="font-size:0.65rem;color:var(--text-muted);white-space:nowrap;">${tick ? escapeHtml(i.short || i.label) : ''}</span>
+                    <span class="osv-tick" style="font-size:var(--fs-micro);color:var(--text-muted);white-space:nowrap;">${tick ? escapeHtml(i.short || i.label) : ''}</span>
                 </div>`;
             })
             .join('') +
@@ -26659,7 +26659,7 @@ function osHBars(items) {
         .map((i) => {
             const pct = Math.max(2, Math.round(((i.value || 0) / (i.max || 1)) * 100));
             return `<div style="margin-bottom:9px;">
-                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.8rem;margin-bottom:4px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(i.label)}</span><span style="color:var(--text-muted);">${escapeHtml(i.valLabel != null ? i.valLabel : String(i.value))}</span></div>
+                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:var(--fs-sub);margin-bottom:4px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(i.label)}</span><span style="color:var(--text-muted);">${escapeHtml(i.valLabel != null ? i.valLabel : String(i.value))}</span></div>
                     <div style="height:8px;border-radius:5px;background:var(--glass-border);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${i.color || 'var(--accent)'};border-radius:5px;transition:width 0.5s var(--fluid-bezier);"></div></div>
                 </div>`;
         })
@@ -27545,7 +27545,7 @@ function chbMacDraftBtnHtml(act, arg1, arg2, cls) {
     if (p.listening) {
         return `<button type="button" class="${cls || 'bhub-actlink bhub-msg-draft'}" ${chbAttrs(act, arg1, arg2 || '')}>✨ Draft on your Mac</button>`;
     }
-    return `<span class="bhub-mut" style="font-size:12px;">Your Mac is asleep · ${escapeHtml(p.words)}</span>`;
+    return `<span class="bhub-mut" style="font-size:var(--fs-caption);">Your Mac is asleep · ${escapeHtml(p.words)}</span>`;
 }
 async function chbAskMac(kind, payload, waitMs, holdS) {
     const filed = await apiPost('nightshift.php', Object.assign({ action: 'ask', kind }, payload));
@@ -29540,7 +29540,7 @@ async function loadExperiencesAdmin() {
         const r = await apiPost('experiences.php', { action: 'list_admin' });
         rows = r.experiences || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
+        wrap.innerHTML = `<p style="color:var(--danger);font-size:var(--fs-body);">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
         return;
     }
     __expAdmin = rows;
@@ -29548,11 +29548,11 @@ async function loadExperiencesAdmin() {
     const published = rows.filter((r) => r.status === 'published');
     let html = '';
     if (pending.length) {
-        html += `<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 10px;">Suggestions to review (${pending.length})</h3>`;
+        html += `<h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0 0 10px;">Suggestions to review (${pending.length})</h3>`;
         html += pending.map(expPendingHtml).join('');
         html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
     }
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">＋ Add experience</button></div>`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">＋ Add experience</button></div>`;
     html +=
         `<div id="exp-admin-list">` +
         (published.length
@@ -29574,9 +29574,9 @@ function expPendingHtml(r) {
         : '';
     return `<div class="glass-panel" style="padding:14px 16px;margin-bottom:10px;border:1px solid var(--accent-soft, var(--glass-border));">
                 ${thumb}
-                <div style="font-weight:600;">${escapeHtml(r.title)}${r.category ? ` <span style="font-size:0.7rem;color:var(--text-muted);">· ${escapeHtml(r.category)}</span>` : ''}</div>
-                <div style="font-size:0.84rem;color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
-                <div style="font-size:0.74rem;color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
+                <div style="font-weight:600;">${escapeHtml(r.title)}${r.category ? ` <span style="font-size:var(--fs-micro);color:var(--text-muted);">· ${escapeHtml(r.category)}</span>` : ''}</div>
+                <div style="font-size:var(--fs-sub);color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
+                <div style="font-size:var(--fs-caption);color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
                 <div style="display:flex;gap:8px;margin-top:10px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('expApprove', r.id)}>Approve &amp; publish</button>
                     <button class="btn-sm btn-delete" ${chbAttrs('expReject', r.id)}>Reject</button>
@@ -30316,7 +30316,7 @@ function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
                 <button class="btn-glass btn-accent cal-add-btn" id="mbx-send-btn" data-act="mailboxSend">Send</button>
                 <button class="btn-glass cal-add-btn" data-act="renderMailboxList">Cancel</button>
             </div>
-            <p id="mbx-msg" role="alert" style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;"></p>
+            <p id="mbx-msg" role="alert" style="font-size:var(--fs-sub);color:var(--danger);margin:8px 0 0;"></p>
         </div>`;
     const focusEl = document.getElementById(presetTo ? 'mbx-text' : 'mbx-to');
     if (focusEl) focusEl.focus();
