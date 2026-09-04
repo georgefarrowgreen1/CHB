@@ -2387,9 +2387,16 @@ capsule — 2/4/1/1/1 fire).
   ui-test-safearea (Safari keeps the meta; installed, gone + the header at top 0
   padded past the 59px inset with its blur — NB freeze the header's transition
   before reading its padding, the acctpreview trap, 54 of 67 measured mid-flight).
-  **NOT verifiable here**: no iOS. If the band survives on the phone, the next lever
-  is the manifest's `theme_color`, which some iOS versions also honour — left alone
-  because Android's chrome reads it and iOS caches the manifest at install.
+  **The band survived the meta fix** (second screenshot, light mode: a cream band,
+  the LIGHT theme-colour, over the frosted bar) — so the next lever was pulled: the
+  manifest's `theme_color` is GONE, and the meta removal is keyed on
+  `navigator.standalone` ALONE (the iOS-only signal), so an installed ANDROID app
+  keeps its meta, which is what colours its status bar without the manifest value.
+  Both halves gated in ui-test-safearea. **Still not verifiable here** (no iOS), and
+  two things on the phone can still show a band: Safari, whose strip is its own
+  chrome and always flat, and an installed app that has not reloaded to the new
+  build — iOS caches the manifest at install, so the honest check is remove and
+  re-add to the Home Screen once this has deployed.
 - **THREE RADII** ("Build all"): the CELL `--r-sm` 12 (list cells, fields, chips,
   calendar and picker cells — fold groups and Needs-you rows moved from `--r-md`),
   the CARD `--r-lg` **20** (was 22; every card/well/to-do card reads it) and the
