@@ -603,10 +603,13 @@ if (typeof ctx.bookingFlow === 'function') {
     // Guest My Stays renderer: progress pills + an actionable next step.
     if (typeof ctx.guestFlowHtml === 'function') {
         const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: fIn, checkOut: fOut }, 'paytok');
-        check('guestFlowHtml renders progress pills + the details CTA', /bkflow-step/.test(html) && /Add your details/.test(html) && /guest-details\.php/.test(html));
-        // A guest who's currently in-house → the Stay step reads GREEN (is-staying).
+        // ROUND EIGHT: the journey is a CAPTION in the hub's grammar, not a pill strip —
+        // it names the ASK ("Deposit"), never the stage's past-tense label, and the
+        // actionable next step follows it.
+        check('guestFlowHtml renders the journey caption + the details CTA', /bkflow-cap/.test(html) && !/bkflow-step/.test(html) && /Next · 2 of \d · Deposit/.test(html) && /Add your details/.test(html) && /guest-details\.php/.test(html));
+        // A guest who's currently in-house → the caption is the live step, marked staying.
         const staying = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 400, checkIn: '2000-01-01', checkOut: '2999-01-01' }, 't');
-        check('the Stay step is green (is-staying) while the guest is in-house', /is-now is-staying/.test(staying));
+        check('the caption names the stay as the live step while the guest is in-house', /bkflow-cap" data-staying="1">Next · \d of \d · Your stay/.test(staying));
     }
 }
 

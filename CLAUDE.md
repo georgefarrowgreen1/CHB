@@ -2439,6 +2439,73 @@ capsule — 2/4/1/1/1 fire).
   clock class, caught because the gauntlet ran across midnight); and §6's rag
   calibration pinned the column, which stopped orphaning at 15px — it SWEEPS the
   column narrower until the plain wrap does orphan and asks the rule there.
+- **ROUND EIGHT** ("What next", demoed as sliders, then "Build all"): the current build
+  driven again after the three PRs above — twelve screens at 390 and 1280, probed for
+  truncation, orphans, sub-44 targets and ink overlap, then looked at. Nine survived,
+  all built, gated by **`ui-test-round8.js`** (47 checks) plus two re-aims:
+  - **The cottage title painted Montserrat.** `[data-edit-text] { font-family:
+    inherit }` ties with `.section-title` on specificity and sits later, so the one
+    page title carrying the attribute — the cottage's h1 — lost the serif at 28/48px
+    while every other title kept it. The old note's "verify before claiming" is
+    settled: `.section-title[data-edit-text]` at (0,2,0). Measured by computed face.
+  - **Reach 44, where round seven never went**: the search chrome (clear 24, pin and
+    help 32, close 34, chips and scope 29), the hub's contact links (email 25px, the
+    tel link 19px tall), the picker's month arrows (38), Today's money pill (26), the
+    deposit stepper's ± (38) and the theme switch (32). `::after` hit regions on all
+    of them; nothing on screen changed size. The gate measures the EFFECTIVE region
+    (element box grown by any absolutely-positioned pseudo), the same arithmetic the
+    demo's green/red boxes drew.
+  - **A sub may take two lines.** `.ny-sub`, `.bhub-fold-sub` and `.cmdk-row-sub`
+    are a two-line clamp now (`-webkit-box`), and the gate asserts NO sub loses words
+    at 360 or 390 — sideways OR past the clamp — on Today, the enquiry hub, the Inbox
+    landing and the search rows. **The copy half is real and the gate found it at
+    360**: beside a 102px "Due now" capsule the search row's sub has 144px, and
+    "£960.00 still due · Pimpernel · out 25/09/2026" needed a third line; it reads
+    "£960.00 due · Pimpernel" — the capsule carries the urgency the date implied
+    (golden's `still due` pin re-aimed to `due`).
+  - **The lane monogram**: below 640 the timeline lane (54px) paints the cottage's
+    INITIAL beside its dot — "J", "P" — where the short names read "Jolly" and
+    "Pimp" (and even "Pimp" was clipped 7%); a code of up to three characters (21A)
+    keeps its code; the full name rides `aria-label`; above 640 the short name still
+    paints. Both spans are in the markup, CSS chooses.
+  - **State said once on the bookings list**: `.bk-row.pay-*`'s 3px rail is
+    `transparent` (kept, so geometry is unchanged); the chip is the state.
+  - **The guest's journey is a caption.** `guestFlowHtml` renders `.bkflow-cap`
+    ("Next · 3 of 7 · Balance") in place of the five-pill strip — the ASK per stage
+    key, never the past-tense `glabel`; a stay in progress carries `data-staying`
+    and the ok ink. The pill CSS is gone; search-test's two flow checks re-aimed.
+  - **The rag is the default**: `p`, the when-line, feature subs, the stayed-before
+    chip, the quoted enquiry message, the accounts note, settings subs and search
+    row labels wrap `pretty`. And two units hold: `.gb2-ref` (the ref stayed alone
+    on a line even under pretty — pretty avoids a lone WORD, and "CHB-000003" is
+    one) and `.gb2-pl-unit` ("£300.00 to pay" broke before "pay" beside the serif
+    figure).
+  - **Small**: `.bhub-kv-label` reads at 13px sentence case on a 96px column; the
+    bookings caption says "· 3 upcoming" (it wrapped as "· 3 bookings / upcoming"
+    beside its capsule at 390).
+  - **THE SEARCH WINDOW IS ON THE APP'S SCALE** (the one decision, taken): the six
+    `--cmdk-fs-*` tokens resolve to app steps (hero → title 22, lead → headline 17,
+    body and row → 15, sub → caption 12, micro → 11) and the phone's hero
+    re-declaration is gone. ui-test-searchpage §16c now asserts five DISTINCT
+    descending sizes ≥1px apart and that every token IS an app step; §16b reads the
+    tokens so it passed untouched; ui-test-typescale sweeps the window (its `#cmdk`
+    exclusion removed, a search-answer state added at both widths).
+  - NB the sweep's first gate run reported the search sub as `display: flow-root`
+    — Chromium reports `-webkit-box` that way; the clamp works, read `scrollHeight`
+    against `clientHeight` to know. **And a hit region inflates `scrollHeight`**:
+    ui-test-searchpage §13's overflow detector read `scrollHeight − clientHeight`
+    and flagged the scope chips (+8) the moment their `::after` region landed —
+    no text had moved. It measures the INK now (a Range over the element's text
+    against its box), break-tested against the original clamp defect it exists
+    for (+100 restored, 0 clean). The property is not the pixel, again. **And
+    a11y §8 had pinned the rail** ("a guest arriving today gets the sea-blue
+    traffic-light edge") — it asserts the CHIP now: its dot is `--info` and its
+    ink clears AA on its own 14% tint, composited from the TOKEN, because reading
+    the computed `color-mix` tint back gave `color(srgb …)` in 0–1 floats and a
+    false 4.37:1 where §1b measures 4.64 — the sixth false contrast reading this
+    codebase has produced, same trap as the first four. Budgets raised with the trade: app.css +100,
+    app.js +288 (the caption + units), admin.js +250 (the monogram), admin.css +500
+    (the regions and the clamp).
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
   rules, comments stripped at deploy), admin.css 71827 → 73300, admin.js +150 (the
   chevron constant).

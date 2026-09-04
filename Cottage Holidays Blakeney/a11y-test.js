@@ -634,19 +634,22 @@ const stub = (page) => page.route(/\.php/, (r) => {
                     document.body.appendChild(sel);
                     const chev = getComputedStyle(sel).backgroundImage;
                     sel.remove();
-                    // The row a paid guest arriving TODAY gets. Its class was generated
-                    // and styled by nothing, so read the painted edge rather than the CSS.
-                    const row = document.createElement('button');
-                    row.className = 'bk-row glass-panel pay-arrive';
-                    document.body.appendChild(row);
-                    const edge = getComputedStyle(row);
-                    const arrive = { w: edge.borderLeftWidth, c: edge.borderLeftColor };
-                    row.remove();
+                    // The state a paid guest arriving TODAY gets. It used to be a 3px rail
+                    // on the row (a generated class styled by nothing until it was given
+                    // --info); round eight retired every bookings-row rail — the chip says
+                    // the state once — so the chip is what must carry the sea-blue: its
+                    // dot IS --info and its ink clears AA on its own 14% tint.
+                    const chip = document.createElement('span');
+                    chip.className = 'bk-chip arrive';
+                    chip.innerHTML = '<span class="bk-dot"></span>Arriving';
+                    document.body.appendChild(chip);
+                    const arrive = { dot: getComputedStyle(chip.querySelector('.bk-dot')).backgroundColor, ink: getComputedStyle(chip).color, tint: getComputedStyle(chip).backgroundColor };
+                    chip.remove();
                     return {
                         chev, arrive,
                         okText: tok('--ok-text'), accentInk: tok('--accent-ink'),
                         accent: tok('--accent'), ok: tok('--ok'),
-                        warn: tok('--warn'), danger: tok('--danger'), info: tok('--info'),
+                        warn: tok('--warn'), danger: tok('--danger'), info: tok('--info'), infoText: tok('--info-text'),
                     };
                 }, theme);
                 const rgb = (v) => {
@@ -673,8 +676,16 @@ const stub = (page) => page.route(/\.php/, (r) => {
                     const v = cr(r.accentInk, fill);
                     ok(v >= 4.5, `${theme}: the Status hero's ${name} glyph resolves on its disc (${v.toFixed(2)}:1)`);
                 }
-                ok(parseFloat(r.arrive.w) >= 3 && cr(r.arrive.c, r.info) < 1.05,
-                    `${theme}: a guest arriving today gets the sea-blue traffic-light edge (${r.arrive.w} ${r.arrive.c})`);
+                // The chip's tint is --info at 14% over the card; composite it the way
+                // the Upcoming badge is (from the TOKEN — the computed color-mix comes
+                // back as `color(srgb …)` in 0–1 floats, the documented false-contrast
+                // trap, which read this pair as 4.37 where §1b measures 4.64), then ask
+                // the ink.
+                const arriveFill = over(rgb(r.info), 0.14, card);
+                const arriveInk = cr(r.arrive.ink, arriveFill);
+                const dotIsInfo = cr(r.arrive.dot, r.info) < 1.05 || cr(r.arrive.dot, r.infoText) < 1.05;
+                ok(dotIsInfo, `${theme}: a guest arriving today gets the sea-blue state chip — its dot is --info (${r.arrive.dot})`);
+                ok(arriveInk >= 4.5, `${theme}: …and the chip's ink is legible on its own tint (${arriveInk.toFixed(2)}:1)`);
             }
         } finally {
             await p3.close();

@@ -183,7 +183,7 @@ const CASES = [
     // ---- Payments: who owes / paid / deposits. Heads are now CONVERSATIONAL
     // (chbSay), so golden asserts the CORRECT content — the total, the salient
     // guest, the count — not the exact phrasing (which varies by design). ----
-    { q: 'who owes me money', head: /£1,600/, any: /Cara Dunn.*£600.*still due/ },
+    { q: 'who owes me money', head: /£1,600/, any: /Cara Dunn.*£600.*due/ },
     { q: 'who owes', head: /£1,600/ },
     { q: 'outstanding balances', head: /£1,600/, not: /Alice Marsh/ },
     { q: "who hasn't paid", head: /£1,600/ },

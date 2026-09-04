@@ -9465,80 +9465,17 @@ body.light-mode .feed-dot-bad {
   border-radius: var(--r-panel);
 }
 /* Booking flow on a My Stays card — the same unified progress the owner sees,
-   guest-worded. A wrapping row of stage pills (done / now / upcoming) + one
-   clear next step the guest can act on. */
-/* No box in a box: the progress pills sit in the card's own flow under their
-   caption — a grey well inside a white card was three nested surfaces. */
+   guest-worded. One caption naming the step + one clear next step the guest can
+   act on, in the card's own flow (no well). */
 .bkflow {
   margin: 16px 0 4px;
   padding: 4px 0 0;
 }
-.bkflow-lbl {
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-.bkflow-steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-.bkflow-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  color: var(--text-muted);
-  padding: 5px 11px;
-  border-radius: 999px;
-  background: rgba(127, 127, 127, 0.1);
-  border: 1px solid transparent;
-}
-.bkflow-step .bkflow-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.45;
-  flex-shrink: 0;
-}
-.bkflow-step.is-done {
-  color: var(--ok-text);
-  background: rgba(76, 175, 80, 0.13);
-  border-color: rgba(76, 175, 80, 0.26);
-}
-.bkflow-step.is-done .bkflow-dot {
-  opacity: 1;
-}
-.bkflow-step.is-now {
-  color: var(--text-light, #fff);
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 46%, transparent);
-  box-shadow: 0 3px 10px -5px color-mix(in srgb, var(--accent) 60%, transparent);
-}
-.bkflow-step.is-now .bkflow-dot {
-  opacity: 1;
-  background: var(--accent);
-  animation: bkflowPulse 2s ease-in-out infinite;
-}
-@keyframes bkflowPulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bkflow-step.is-now .bkflow-dot { animation: none; }
-}
-/* Green while the guest is actually staying (matches the owner's pipeline). */
-.bkflow-step.is-now.is-staying {
-  color: var(--ok-text);
-  background: rgba(76, 175, 80, 0.14);
-  border-color: rgba(76, 175, 80, 0.3);
-}
-.bkflow-step.is-now.is-staying .bkflow-dot {
-  background: var(--ok);
-}
+/* THE JOURNEY IS A CAPTION (round eight): the owner's hub grammar, "Next · 3 of
+   5 · Balance", in place of the five-pill pipeline the card kept after the hub gave
+   its own up; the sentence beneath says what to do. */
+.bkflow-cap { font-size: var(--fs-sub); font-weight: 600; color: var(--accent-text); margin: 0 0 8px; }
+.bkflow-cap[data-staying] { color: var(--ok-text); }
 .bkflow-next {
   display: flex;
   align-items: center;
@@ -12484,3 +12421,15 @@ header nav a:active {
   .heritage-num { font-size: 2.7rem; }
   .guestwords-quote { font-size: var(--fs-display); }
 }
+
+/* ===== ROUND EIGHT (measured sweep after the header / radii / type-scale PRs) ===== */
+/* The cottage title in the serif: [data-edit-text]{font-family:inherit} tied with
+   .section-title and sat later, so the cottage h1 alone painted Montserrat. */
+.section-title[data-edit-text] { font-family: var(--font-serif); }
+/* Reach 44: the picker's month arrows and the theme switch take hit regions. */
+.dp-nav-btn { position: relative; }
+.dp-nav-btn::after { content: ''; position: absolute; inset: -3px; }
+.theme-switch::after { content: ''; position: absolute; inset: -6px; }
+/* The rag: pretty is the default for prose; a booking ref and "£X to pay" hold as units. */
+p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
+.gb2-ref, .gb2-pl-unit { white-space: nowrap; }
