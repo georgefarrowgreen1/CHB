@@ -2376,6 +2376,20 @@ capsule — 2/4/1/1/1 fire).
   did. Containers start higher (90–120 → 78–92 + inset; owner/shell 100 → 80). Gated
   by ui-test-hig §10; ui-test-smallthings §7's "radius untouched" half reads a card,
   the bar having none by design.
+  **AND THE STATUS-BAR STRIP WEARS IT IN THE INSTALLED APP** (owner screenshot: a
+  solid dark band above the frosted bar). The header already extends under the
+  status bar and `black-translucent` is declared — but **iOS 15+ paints a standalone
+  web app's status bar with `theme-color` and ignores the translucent style while
+  that meta exists**. `setThemeLabel` REMOVES the meta when standalone
+  (`navigator.standalone` / `display-mode: standalone`, detected inline because
+  `isStandalonePwa` is admin-only) and keeps it theme-matched in Safari, where the
+  strip is the browser's own chrome and cannot be frosted by any page. Gated in
+  ui-test-safearea (Safari keeps the meta; installed, gone + the header at top 0
+  padded past the 59px inset with its blur — NB freeze the header's transition
+  before reading its padding, the acctpreview trap, 54 of 67 measured mid-flight).
+  **NOT verifiable here**: no iOS. If the band survives on the phone, the next lever
+  is the manifest's `theme_color`, which some iOS versions also honour — left alone
+  because Android's chrome reads it and iOS caches the manifest at install.
 - **THREE RADII** ("Build all"): the CELL `--r-sm` 12 (list cells, fields, chips,
   calendar and picker cells — fold groups and Needs-you rows moved from `--r-md`),
   the CARD `--r-lg` **20** (was 22; every card/well/to-do card reads it) and the
