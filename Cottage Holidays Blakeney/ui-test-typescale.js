@@ -53,7 +53,8 @@ const SWEEP = () => {
   const STEPS = [11, 12, 13, 15, 17, 22, 28, 34];
   const els = [], off = {}, sizes = new Set();
   for (const el of document.querySelectorAll('body *')) {
-    if (el.closest('#cmdk, .tl-wrap, #cal-body, svg, script, style, #loading-overlay')) continue;
+    // The search window joined the app scale in round eight, so it is swept too.
+    if (el.closest('.tl-wrap, #cal-body, svg, script, style, #loading-overlay')) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     if (!el.getClientRects().length) continue;
@@ -111,6 +112,12 @@ const judge = (name, r) => {
     page = await newPage(w, false);
     await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
     judge(`today ${w}`, await page.evaluate(SWEEP));
+    // The search window: on the app's scale since round eight (its own six tokens
+    // resolve to app steps), so the answered state is swept like any screen.
+    await open(page, "(async () => { openCmdK(); })()", 900);
+    await open(page, "(async () => { const i = document.getElementById('cmdk-input'); if (i) { i.value = 'who owes me money'; i.dispatchEvent(new Event('input', { bubbles: true })); } })()", 1200);
+    judge(`search answer ${w}`, await page.evaluate(SWEEP));
+    await open(page, "(async () => { closeCmdK(); })()", 400);
     await open(page, "(async () => { await openBookingHub('b2'); })()", 1200); judge(`booking hub ${w}`, await page.evaluate(SWEEP));
     await open(page, "(async () => { await openEnquiryHub(11); })()", 1200); judge(`enquiry hub ${w}`, await page.evaluate(SWEEP));
     await open(page, "(async () => { await openInbox(); inboxFolder('enquiries'); })()", 1000); judge(`inbox ${w}`, await page.evaluate(SWEEP));

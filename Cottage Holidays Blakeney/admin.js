@@ -5432,7 +5432,10 @@ function cmdkIntent(q) {
         const bulk = chbBulkBalanceAction(rows);
         if (bulk) head.actions = [bulk];
         return [head].concat(rows.map((x) => {
-            const r = bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`);
+            // "£340.00 due · Jollyboat": the sub has 144px beside its "Due now" capsule
+            // at 360, where "still due … · out 13/09/2026" needed a third line (round
+            // eight's sub gate). The capsule carries the urgency the date implied.
+            const r = bk(x.pk, x.b, `${gbp(x.ps.balance)} due · ${propName(x.pk)}`);
             // Due NOW = finished stay or inside the window — the hub's own
             // derivation, so the capsule and the payask cannot disagree.
             try { r.stcap = hasCheckedOut(x.b) || bookingInBalanceWindow(x.b) ? { tone: 'warn', text: 'Due now' } : { tone: 'unk', text: 'Not due yet' }; } catch (e) {}
@@ -10319,9 +10322,10 @@ function renderBookings() {
                 if (!due.fullyPaid) owed += Math.max(0, due.balance || 0);
             }
         });
-        sum.textContent = rows.length
-            ? `· ${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}`
-            : '';
+        // "· 3 upcoming", not "· 3 bookings upcoming": the caption beside it already
+        // says Bookings, and the longer form wrapped onto two lines beside the
+        // verdict capsule at 390 (round eight).
+        sum.textContent = rows.length ? `· ${rows.length} ${label}` : '';
         // The money moved from summary PROSE into the caption's VERDICT capsule —
         // COMPUTED from the rows on screen, never asserted (the To-collect
         // zero-state rule): money due anywhere in the list keeps it amber, and
@@ -26984,8 +26988,14 @@ function renderCalendar() {
             const priv = meta.unlisted ? lock : '';
             // The lane label carries the cottage's accent dot, tying it to its bars.
             const dot = `<span class="tl-label-dot" style="background:${meta.accent || 'var(--accent)'}"></span>`;
+            // Below 640 the lane column is 54px, where the short names read "Jolly"
+            // and "Pimp" (and even "Pimp" clipped). The MONOGRAM carries the lane
+            // there — the initial, or a code of up to three characters as it is —
+            // with the full name announced; the short name still reads above 640.
+            const short = String(meta.short || meta.name);
+            const mono = short.length <= 3 ? short : String(meta.name || short).trim().charAt(0).toUpperCase();
             return `<div class="tl-row">
-                <div class="tl-label" title="${escapeHtml(meta.name)}">${dot}${priv}${escapeHtml(meta.short || meta.name)}</div>
+                <div class="tl-label" title="${escapeHtml(meta.name)}" aria-label="${escapeHtml(meta.name)}">${dot}${priv}<span class="tl-name">${escapeHtml(short)}</span><span class="tl-mono" aria-hidden="true">${escapeHtml(mono)}</span></div>
                 <div class="tl-lane" style="grid-template-columns:repeat(${N}, var(--tl-day-w, 38px))">${cells}${bars}</div>
             </div>`;
         })

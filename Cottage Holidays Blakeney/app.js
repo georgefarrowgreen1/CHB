@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 592;
+const ADMIN_BUNDLE_V = 593;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 250;
+const ADMIN_CSS_V = 251;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4399,7 +4399,7 @@ async function renderGuestBookings() {
         const pl1 = gt.fullyPaid
             ? `Paid in full <span class="gb2-tick">✓</span>`
             : gt.paid > 0
-                ? `Paid ${gbp(gt.paid)} — ${gbp(gt.balance)} to pay`
+                ? `Paid ${gbp(gt.paid)} — <span class="gb2-pl-unit">${gbp(gt.balance)} to pay</span>` // one unit beside the serif figure: measured breaking "£300.00 to / pay" at 390
                 : 'Still to pay'; // the figure on the right IS the number — say it once
         const priceBox = guestPriceBoxHtml(p, {
             dep: gt.dep,
@@ -4442,7 +4442,7 @@ async function renderGuestBookings() {
                 <div class="glass-panel guest-booking gb2">
                     <div class="gb2-band" style="background:var(--prop-${propKey}, var(--accent));" aria-hidden="true"></div>
                     <h3 class="gb2-name"><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
-                    <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · ref ${bookingRef(b.id)}</div>
+                    <div class="gb2-when">${escapeHtml(spokenWhen)} · ${gnights} night${gnights === 1 ? '' : 's'}${b.guests ? ' · ' + escapeHtml(b.guests) : ''} · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
                     <button type="button" class="gb2-payline" aria-expanded="false" ${chbAttrs('gb2Toggle', String(b.id), CHB_SELF)}>
                         <span class="gb2-pl1">${pl1}</span>
                         <span class="gb2-plr"><span class="gb2-fig">${gbp(gt.total)}</span> <span class="gb2-chev" aria-hidden="true">›</span></span>
@@ -4515,7 +4515,7 @@ async function renderGuestBookings() {
             (hasCheckedOut(b) ? pastCards : (b.checkIn || '') <= todayStr ? currentCards : upcomingCards).push(`
                 <div class="glass-panel guest-booking gb2">
                     <h3 class="gb2-name">${escapeHtml(meta.name)}</h3>
-                    <div class="gb2-when">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ref ${bookingRef(b.id)}</div>
+                    <div class="gb2-when">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · <span class="gb2-ref">ref ${bookingRef(b.id)}</span></div>
                     <p style="font-size:var(--fs-sub);color:var(--text-muted);margin:0 0 8px;">We couldn't show everything for this stay just now — your booking is safe. Message us and we'll help.</p>
                     <div class="card-actions gb2-links"><button class="btn-sm btn-edit" data-act="toggleChat">Message us</button></div>
                 </div>`);
@@ -9635,13 +9635,17 @@ function guestFlowHtml(propKey, b, payToken) {
     const flow = bookingFlow(propKey, b);
     const stages = flow.stages;
     const cur = bookingFlowCursor(stages);
-    const steps = stages
-        .map((s, i) => {
-            // In-progress stay reads GREEN (a live "you're here now" state).
-            const cls = s.done ? 'is-done' : s.now || i === cur ? 'is-now' + (s.key === 'stay' && s.now ? ' is-staying' : '') : '';
-            return `<span class="bkflow-step ${cls}"><span class="bkflow-dot"></span>${escapeHtml(s.glabel)}</span>`;
-        })
-        .join('');
+    // THE JOURNEY IS A CAPTION, NOT A STRIP — the owner's hub gave up its pill
+    // pipeline for "Next · 3 of 5 · Balance" and this card kept five pills saying
+    // the same journey the timeline above it already tells. One grammar on both
+    // sides: the caption names the ASK (what the step is for, not its past-tense
+    // label), the sentence beneath says what to do. `cur` is -1 once every stage
+    // is done; a stay in progress is the live step.
+    const ASK = { booked: 'Booked', deposit: 'Deposit', details: 'Your details', paid: 'Balance', arrival: 'Arrival info', stay: 'Your stay', depositback: 'Deposit back' };
+    const nowIdx = stages.findIndex((s) => s.now);
+    const at = nowIdx >= 0 ? nowIdx : cur;
+    const cap = at < 0 ? 'Every step done' : `Next · ${at + 1} of ${stages.length} · ${ASK[stages[at].key] || stages[at].glabel}`;
+    const steps = `<div class="bkflow-cap"${at >= 0 && stages[at].now ? ' data-staying="1"' : ''}>${escapeHtml(cap)}</div>`;
     const gt = flow.gt;
     let next;
     if (flow.hasReg && !b.regSubmitted && b.regUrl) {
@@ -9661,7 +9665,7 @@ function guestFlowHtml(propKey, b, payToken) {
     } else {
         next = `<div class="bkflow-next is-clear"><span>You’re all set — we can’t wait to welcome you.</span></div>`;
     }
-    return `<div class="bkflow"><div class="bkflow-lbl">Your booking progress</div><div class="bkflow-steps">${steps}</div>${next}</div>`;
+    return `<div class="bkflow">${steps}${next}</div>`;
 }
 
 
@@ -18886,7 +18890,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'frostbar1';
+    const BUILD = 'round8a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

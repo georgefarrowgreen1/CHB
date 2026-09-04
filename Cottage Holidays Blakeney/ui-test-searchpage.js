@@ -1066,16 +1066,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       probe.style.fontSize = root.getPropertyValue(`--cmdk-fs-${k}`).trim();
       return { k, px: parseFloat(getComputedStyle(probe).fontSize) };
     });
+    const app = ['micro', 'caption', 'sub', 'body', 'headline', 'title', 'display', 'hero'].map((k) => { probe.style.fontSize = root.getPropertyValue(`--fs-${k}`).trim(); return parseFloat(getComputedStyle(probe).fontSize); });
     probe.remove();
+    // ROUND EIGHT: the window sits on the APP's scale now (11 · 12 · 15 · 17 · 22 —
+    // body and row deliberately share the 15px step, the one pair the old scale
+    // tolerated at 0.8px apart). So the claim is about DISTINCT sizes: they descend,
+    // none is closer than the app scale's own tightest neighbours (micro/caption, 1px),
+    // and every token resolves to an app step — the sweep in ui-test-typescale walks
+    // the window too.
     const out = [];
-    for (let i = 0; i < px.length - 1; i++) out.push({ pair: px[i].k + '/' + px[i + 1].k, gap: +(px[i].px - px[i + 1].px).toFixed(2) });
-    return { out, min: Math.min(...out.map((g) => g.gap)), descending: out.every((g) => g.gap > 0) };
+    for (let i = 0; i < px.length - 1; i++) if (px[i].px !== px[i + 1].px) out.push({ pair: px[i].k + '/' + px[i + 1].k, gap: +(px[i].px - px[i + 1].px).toFixed(2) });
+    return { out, min: Math.min(...out.map((g) => g.gap)), descending: out.every((g) => g.gap > 0), distinct: new Set(px.map((p) => p.px)).size, offApp: px.filter((p) => !app.some((a) => Math.abs(a - p.px) <= 0.3)).map((p) => p.k + '=' + p.px) };
   });
-  ok(gaps.descending, 'TYPE: the steps descend — no two share a size');
-  // 0.8px is body/row, the one close pair, tolerated because prose and a list label
-  // never appear as peers (see the token block). Anything TIGHTER than that is the
-  // noise this scale exists to remove.
-  ok(gaps.min >= 0.8, `TYPE: …and none is closer than the one pair that is allowed to be (min ${gaps.min}px, ${gaps.out.find((g) => g.gap === gaps.min).pair})`);
+  ok(gaps.descending && gaps.distinct === 5, `TYPE: the steps descend — five distinct sizes (${gaps.distinct})`);
+  ok(gaps.min >= 1, `TYPE: …and no two distinct steps are closer than the app scale's own neighbours (min ${gaps.min}px, ${gaps.out.find((g) => g.gap === gaps.min).pair})`);
+  ok(gaps.offApp.length === 0, `TYPE: every search step IS an app step (${gaps.offApp.join(', ') || 'all six'})`);
 
   // 16c) A quick action is subordinate to the record it hangs under. `font: inherit`
   // took the document's 16px/400, so "Email" was set larger and lighter than the
