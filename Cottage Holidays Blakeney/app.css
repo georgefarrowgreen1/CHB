@@ -12434,15 +12434,41 @@ header nav a:active {
 p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
 .gb2-ref, .gb2-pl-unit { white-space: nowrap; }
 
-/* AT REST THE BAR IS THE PAGE: the ground, no blur, no hairline until content scrolls
-   under it (iOS's nav bar) — and the colour Safari tints its status-bar strip with,
-   so bar and strip agree at the top. The hover opt-outs are restated. */
-header.glass-panel.at-top, header.glass-panel.at-top:hover, header.glass-panel.at-top:active, header.glass-panel.at-top:focus-within,
-body.light-mode header.glass-panel.at-top, body.light-mode header.glass-panel.at-top:hover, body.light-mode header.glass-panel.at-top:active, body.light-mode header.glass-panel.at-top:focus-within {
-  background: var(--dark-grey);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border-bottom-color: transparent;
+/* THE BAR HAS A TOP AND NO BOTTOM (owner-approved live demo). The seam with iOS's
+   status strip is at ONE edge, the top, so the fill is graded: the page GROUND
+   (--dark-grey = theme-color, the strip's exact colour — NOT --bar-bg, two near-equal
+   tints on one row read as a line) held solid 16px below the join, then eased into
+   the material through the bar, then fill AND blur dissolving over a 44px tail. No
+   hairline, no edge: measured, adjacent rows step <3/255 (the hairline stepped 13–32).
+   One pseudo-element carries fill, blur and a mask (iOS's own masked backdrop blur);
+   solid through the safe-area inset so the installed clock sits on ground; declared
+   on the header so var(--safe-t) resolves where the preview frame zeroes it. Engines
+   without color-mix/mask keep the flat material. The at-top switch is gone. */
+@supports (color: color-mix(in srgb, red, blue)) and ((mask-image: linear-gradient(#000, #0000)) or (-webkit-mask-image: linear-gradient(#000, #0000))) {
+  header.glass-panel, header.glass-panel:not(.header-hidden):hover, header.glass-panel:not(.header-hidden):active, header.glass-panel:not(.header-hidden):focus-within,
+  body.light-mode header.glass-panel, body.light-mode header.glass-panel:not(.header-hidden):hover, body.light-mode header.glass-panel:not(.header-hidden):active, body.light-mode header.glass-panel:not(.header-hidden):focus-within {
+    --bar-fill: linear-gradient(to bottom, var(--dark-grey) 0, var(--dark-grey) calc(var(--safe-t) + 16px), color-mix(in srgb, var(--dark-grey) 95.7%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.125), color-mix(in srgb, var(--dark-grey) 84.4%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.25), color-mix(in srgb, var(--dark-grey) 68.4%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.375), color-mix(in srgb, var(--dark-grey) 50%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.5), color-mix(in srgb, var(--dark-grey) 31.6%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.625), color-mix(in srgb, var(--dark-grey) 15.6%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.75), color-mix(in srgb, var(--dark-grey) 4.3%, var(--bar-bg)) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 0.875), var(--bar-bg) calc(var(--safe-t) + 16px + (100% - 60px - var(--safe-t)) * 1), var(--bar-bg) 100%);
+    --bar-mask: linear-gradient(to bottom, #000 0, #000 calc(45% + var(--safe-t) * 0.55), rgba(0, 0, 0, 0.957) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.0688), rgba(0, 0, 0, 0.844) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.1375), rgba(0, 0, 0, 0.684) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.2063), rgba(0, 0, 0, 0.5) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.275), rgba(0, 0, 0, 0.316) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.3438), rgba(0, 0, 0, 0.156) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.4125), rgba(0, 0, 0, 0.043) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.4813), rgba(0, 0, 0, 0) calc(45% + var(--safe-t) * 0.55 + (100% - var(--safe-t)) * 0.55));
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom-color: transparent;
+  }
+  header.glass-panel::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: calc(100% + 44px);
+    z-index: -1;
+    pointer-events: none;
+    background: var(--bar-fill);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-mask-image: var(--bar-mask);
+    mask-image: var(--bar-mask);
+  }
 }
 header.glass-panel {
   transition: transform 0.45s var(--fluid-bezier), opacity 0.45s var(--fluid-bezier), background-color 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier);

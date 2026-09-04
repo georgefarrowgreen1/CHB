@@ -217,14 +217,14 @@ const BOTTOM = 34;
         // acctpreview lesson: a mid-transition read is a number that means nothing).
         s.textContent = ':root { --safe-t: 59px; } header { transition: none !important; }';
         document.head.appendChild(s);
-        // At rest the bar is the page ground (no blur — ui-test-hig §10); the frosted
-        // material is what shows under the strip once content scrolls beneath it.
+        // The bar's material rides header::before (graded, ui-test-hig §10): it is the
+        // layer that occupies the strip once content scrolls beneath the bar.
         const sp = document.createElement('div'); sp.style.height = '2000px'; (document.querySelector('.page-view.active') || document.body).appendChild(sp);
         window.scrollTo(0, 200);
         await new Promise((r) => setTimeout(r, 400));
         const h = document.querySelector('header');
-        const cs = getComputedStyle(h);
-        return { meta: !!document.querySelector('meta[name="theme-color"]'), top: Math.round(h.getBoundingClientRect().top), pad: Math.round(parseFloat(cs.paddingTop)), blur: cs.backdropFilter || cs.webkitBackdropFilter };
+        const cs = getComputedStyle(h); const ps = getComputedStyle(h, '::before');
+        return { meta: !!document.querySelector('meta[name="theme-color"]'), top: Math.round(h.getBoundingClientRect().top), pad: Math.round(parseFloat(cs.paddingTop)), blur: ps.backdropFilter || ps.webkitBackdropFilter };
     });
     check(!installed.meta, 'installed, the theme-color meta is gone so black-translucent applies');
     check(installed.top === 0 && installed.pad >= TOP, `…and the frosted bar occupies the strip: header at top 0, padded ${installed.pad}px for a ${TOP}px inset`);

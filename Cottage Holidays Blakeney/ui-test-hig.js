@@ -285,42 +285,81 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
 
   // ================= §10 THE HEADER IS A BAR (guest + owner, 390) =================
   console.log('§10 the header is an edge-attached bar of blurred material');
-  // AT REST THE BAR IS THE PAGE (owner screenshot, Safari): no blur, no hairline,
-  // the page's own ground — the colour Safari tints its status-bar strip with, so
-  // the two agree at the top of a page. Scrolled, it is the frosted material. The
-  // probe measures BOTH, and freezes the header's transition so neither read is
-  // mid-flight (the acctpreview trap).
-  const barOf = async (pg) => pg.evaluate(async () => {
-    const h = document.querySelector('header');
-    const fz = document.createElement('style'); fz.textContent = 'header{transition:none!important}'; document.head.appendChild(fz);
-    window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 150));
-    const rest = (() => { const cs = getComputedStyle(h); return { bg: cs.backgroundColor, blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: cs.borderBottomColor, atTop: h.classList.contains('at-top'), h: Math.round(h.getBoundingClientRect().height) }; })();
-    const ground = getComputedStyle(document.body).backgroundColor;
-    const tc = document.querySelector('meta[name="theme-color"]');
-    const probe = document.createElement('span'); probe.style.backgroundColor = tc ? tc.getAttribute('content') : ''; document.body.appendChild(probe);
-    const themeRgb = getComputedStyle(probe).backgroundColor; probe.remove();
-    const av = document.querySelector('.page-view.active') || document.body;
-    const sp = document.createElement('div'); sp.className = 'hig-spacer'; sp.style.height = '2000px'; av.appendChild(sp);
-    window.scrollTo(0, 120); await new Promise((r) => setTimeout(r, 300));
-    const cs = getComputedStyle(h);
-    const r = h.getBoundingClientRect();
-    const st = document.createElement('style'); st.id = 'safe-probe-hig'; st.textContent = ':root{--safe-t:59px}'; document.head.appendChild(st);
-    const padWithNotch = parseFloat(getComputedStyle(h).paddingTop);
-    st.remove();
-    const out = { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
-      blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: parseFloat(cs.borderBottomWidth), hairlineColor: cs.borderBottomColor, pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height), rest, ground, themeRgb };
-    window.scrollTo(0, 0); sp.remove(); fz.remove(); await new Promise((r) => setTimeout(r, 150));
-    return out;
-  });
+  // THE BAR HAS A TOP AND NO BOTTOM (owner-approved live demo). The fill and the blur
+  // ride header::before, graded: the page GROUND (= theme-color, the colour Safari
+  // tints its strip with) held solid for 16px below the join, blending into the
+  // material through the bar, then fill and blur dissolving over a 44px tail. The
+  // probe reads the declaration AND the paint: the top row of the bar IS the ground,
+  // no hairline, and walking a pixel column down the bar over flat ground finds no
+  // step — the hairline this replaced stepped 13–32/255. The header's transition is
+  // frozen so no read is mid-flight (the acctpreview trap).
+  const barOf = async (pg) => {
+    const facts = await pg.evaluate(async () => {
+      const h = document.querySelector('header');
+      const fz = document.createElement('style'); fz.id = 'hig-fz'; fz.textContent = 'header{transition:none!important}'; document.head.appendChild(fz);
+      window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 150));
+      const ps = getComputedStyle(h, '::before');
+      const rest = { bg: getComputedStyle(h).backgroundColor, blurSelf: getComputedStyle(h).backdropFilter || getComputedStyle(h).webkitBackdropFilter, hairline: getComputedStyle(h).borderBottomColor, h: Math.round(h.getBoundingClientRect().height),
+        fill: ps.backgroundImage, blur: ps.backdropFilter || ps.webkitBackdropFilter, mask: ps.maskImage || ps.webkitMaskImage, layerH: parseFloat(ps.height) };
+      const ground = getComputedStyle(document.body).backgroundColor;
+      const tc = document.querySelector('meta[name="theme-color"]');
+      const probe = document.createElement('span'); probe.style.backgroundColor = tc ? tc.getAttribute('content') : ''; document.body.appendChild(probe);
+      const themeRgb = getComputedStyle(probe).backgroundColor; probe.remove();
+      const av = document.querySelector('.page-view.active') || document.body;
+      // The spacer is the CONTRASTING colour — black under a light bar, white under a
+      // dark one — because over the page ground the material is nearly the ground's
+      // own colour and an unmasked edge would measure as nothing (break-tested: over
+      // the ground a deleted mask stepped 2/255; over the contrast it steps ~170).
+      const gl = (ground.match(/[\d.]+/g) || [0, 0, 0]).map(Number); const dark = 0.2126 * gl[0] + 0.7152 * gl[1] + 0.0722 * gl[2] < 128;
+      const sp = document.createElement('div'); sp.className = 'hig-spacer'; sp.style.cssText = 'height:3000px;background:' + (dark ? '#fff' : '#000'); av.appendChild(sp);
+      window.scrollTo(0, 120); await new Promise((r) => setTimeout(r, 300));
+      const cs = getComputedStyle(h);
+      const r = h.getBoundingClientRect();
+      const st = document.createElement('style'); st.id = 'safe-probe-hig'; st.textContent = ':root{--safe-t:59px}'; document.head.appendChild(st);
+      const padWithNotch = parseFloat(getComputedStyle(h).paddingTop);
+      st.remove();
+      return { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
+        hairline: cs.borderBottomColor, pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height), rest, ground, themeRgb };
+    });
+    // The paint: a pixel column at x=195 (clear of the crown and the icons) from the
+    // top of the screen to 50px below the bar, at rest (over the hero) and scrolled
+    // deep (over the spacer's flat ground).
+    const column = async (y) => {
+      await pg.evaluate((y) => window.scrollTo(0, y), y); await pg.waitForTimeout(350);
+      const png = await pg.screenshot({ clip: { x: 0, y: 0, width: 390, height: 200 } });
+      return pg.evaluate(async ([src, hh]) => {
+        const img = new Image(); img.src = 'data:image/png;base64,' + src; await img.decode();
+        const k = img.width / 390; const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+        const n = Math.round((hh + 50) * k); const d = x.getImageData(Math.round(195 * k), 0, 1, n).data;
+        const px = (i) => [d[i * 4], d[i * 4 + 1], d[i * 4 + 2]]; const l = (p) => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+        let max = 0, at = 0; for (let i = 1; i < n; i++) { const s = Math.abs(l(px(i)) - l(px(i - 1))); if (s > max) { max = s; at = Math.round(i / k); } }
+        return { top: px(1), bottom: px(Math.round((hh - 3) * k)), step: +max.toFixed(1), at };
+      }, [png.toString('base64'), facts.rest.h]);
+    };
+    const atRest = await column(0); const deep = await column(2400);
+    await pg.evaluate(async () => { window.scrollTo(0, 0); document.querySelector('.hig-spacer')?.remove(); document.getElementById('hig-fz')?.remove(); await new Promise((r) => setTimeout(r, 150)); });
+    return { ...facts, atRest, deep };
+  };
   const transparent = (c) => /rgba\(.*,\s*0\)|transparent/.test(c);
+  const near = (a, b, tol = 3) => a && b && a.every((v, i) => Math.abs(v - b[i]) <= tol);
   page = await newPage(390, true);
   const gbar = await barOf(page);
   ok(gbar.top === 0 && gbar.left === 0 && gbar.width === gbar.inner, `guest: the bar is edge-attached and full width (${gbar.left},${gbar.top} ${gbar.width}/${gbar.inner})`);
   ok(gbar.radius === '0px' && gbar.shadow === 'none', `no corners, no drop shadow (${gbar.radius} / ${gbar.shadow})`);
-  ok(gbar.rest.atTop && gbar.rest.bg === gbar.ground && (gbar.rest.blur === 'none' || !gbar.rest.blur) && transparent(gbar.rest.hairline), `at rest the bar IS the page ground with no blur and no hairline (${gbar.rest.bg} = ${gbar.ground})`);
-  ok(gbar.rest.bg === gbar.themeRgb, `…which is the colour Safari tints its status-bar strip with (theme-color ${gbar.themeRgb})`);
-  ok(/blur\(/.test(gbar.blur || ''), `scrolled, the bar is blurred material (${gbar.blur})`);
-  ok(gbar.hairline === 1 && !transparent(gbar.hairlineColor), 'with a hairline below');
+  ok(transparent(gbar.rest.bg) && (gbar.rest.blurSelf === 'none' || !gbar.rest.blurSelf) && transparent(gbar.rest.hairline) && transparent(gbar.hairline), 'the bar itself paints nothing: no fill, no blur, no hairline at rest or scrolled');
+  ok(/linear-gradient/.test(gbar.rest.fill) && /blur\(/.test(gbar.rest.blur || '') && /linear-gradient/.test(gbar.rest.mask || ''), `its layer carries the graded fill, the blur and the mask (${gbar.rest.blur})`);
+  // The bar's rect carries its 1px (transparent) border; the layer sizes off the padding box.
+  ok(Math.abs(gbar.rest.layerH - gbar.rest.h - 44) <= 1, `…and overhangs the bar by the 44px tail (${gbar.rest.layerH} for a ${gbar.rest.h}px bar)`);
+  ok(near(gbar.atRest.top, rgb(gbar.themeRgb)) && near(gbar.atRest.top, rgb(gbar.ground)), `the top row of the bar IS the page ground — the colour Safari tints its strip with (${gbar.atRest.top.join(',')} vs theme-color ${gbar.themeRgb})`);
+  // The fill BLENDS, top to bottom: its first stop is the ground and its last is the
+  // material at 72% — read off the declaration, since the harness serves no hero photo
+  // for a pixel at the bar's foot to show through.
+  // NB Chromium serialises a resolved color-mix() stop as color(srgb …), not rgb().
+  const stops = (gbar.rest.fill.match(/rgba?\([^)]*\)|color\([^)]*\)/g) || []);
+  ok(stops.length >= 6 && near(rgb(stops[0]).slice(0, 3), rgb(gbar.ground), 1) && /0\.72\)$/.test(stops[stops.length - 1]) && stops[0] !== stops[stops.length - 1], `…and its fill grades from that ground to the 72% material (${stops.length} stops: ${stops[0]} → ${stops[stops.length - 1]})`);
+  // The eased 44px tail's steepest row-to-row change over full contrast is ~5/255; a
+  // hairline is ~23 and an unmasked edge ~170.
+  ok(gbar.deep.step < 12, `over a contrasting ground no row steps from the one above it — no hairline, no fill edge, no blur edge (largest ${gbar.deep.step}/255 at y${gbar.deep.at})`);
   ok(Math.round(gbar.padWithNotch - gbar.pad) === 59, `the safe-area inset is read into the bar's own padding (${gbar.pad} → ${gbar.padWithNotch})`);
   // The resting height: scrolled, the bar condenses to ~45px by design.
   ok(gbar.rest.h >= 50 && gbar.rest.h <= 64, `and it is a bar's height, not a pill's (${gbar.rest.h}px at rest, ${gbar.h} condensed)`);
@@ -328,7 +367,7 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
   page = await newPage(390, false);
   await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
   const abar = await barOf(page);
-  ok(abar.top === 0 && abar.left === 0 && abar.width === abar.inner && abar.radius === '0px' && abar.shadow === 'none' && /blur\(/.test(abar.blur || ''), `owner: the same bar (${abar.width}/${abar.inner}, ${abar.radius}, ${abar.shadow})`);
+  ok(abar.top === 0 && abar.left === 0 && abar.width === abar.inner && abar.radius === '0px' && abar.shadow === 'none' && /blur\(/.test(abar.rest.blur || '') && abar.deep.step < 12, `owner: the same bar (${abar.width}/${abar.inner}, ${abar.radius}, ${abar.shadow}, step ${abar.deep.step})`);
   const cond = await page.evaluate(async () => {
     const av = document.querySelector('.page-view.active') || document.body;
     const sp = document.createElement('div'); sp.style.height = '2000px'; av.appendChild(sp);
