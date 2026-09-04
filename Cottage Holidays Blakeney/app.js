@@ -2349,15 +2349,17 @@ function nav(viewId, anchorId = null) {
 
 // ---- Light / dark theme toggle ----
 function setThemeLabel() {
-    // Safari's strip takes theme-color and follows the theme. INSTALLED, the meta
-    // goes: iOS 15+ paints a standalone app's status bar with it and ignores
-    // black-translucent while it exists, so the frosted header (already under the
-    // inset) was capped by a solid band. Inline detection — isStandalonePwa is admin-only.
+    // Safari's strip takes theme-color and follows the theme. INSTALLED ON iOS, the
+    // meta goes: iOS 15+ paints a standalone app's status bar with it (and, failing
+    // that, with the manifest's theme_color — gone too) and ignores black-translucent
+    // while either exists, so the frosted header (already under the inset) was
+    // capped by a solid band. `navigator.standalone` is the iOS-ONLY signal on
+    // purpose: an installed Android app keeps the meta, which is what colours its
+    // status bar now that the manifest carries no theme_color. Inline detection —
+    // isStandalonePwa is admin-only.
     const tc = document.querySelector('meta[name="theme-color"]');
     if (tc) {
-        const standalone = /** @type {any} */ (window.navigator).standalone === true
-            || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        if (standalone) tc.remove();
+        if (/** @type {any} */ (window.navigator).standalone === true) tc.remove();
         else tc.setAttribute('content', document.body.classList.contains('light-mode') ? '#f5f1e9' : '#121316');
     }
     // Manage → Appearance row shows the live mode (the footer toggle is hidden
@@ -18890,7 +18892,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'round8a';
+    const BUILD = 'frostbar2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

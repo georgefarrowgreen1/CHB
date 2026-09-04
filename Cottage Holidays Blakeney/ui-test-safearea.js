@@ -226,6 +226,24 @@ const BOTTOM = 34;
     check(installed.top === 0 && installed.pad >= TOP, `…and the frosted bar occupies the strip: header at top 0, padded ${installed.pad}px for a ${TOP}px inset`);
     check(/blur/.test(installed.blur), `…with its blur intact (${installed.blur})`);
     await app.close();
+    // The SECOND thing iOS paints the strip with once the meta is gone is the
+    // manifest's theme_color (reported from the phone as a cream band, the light
+    // value, after the meta fix deployed). So the manifest carries none — and an
+    // installed ANDROID app, which reports only display-mode: standalone, keeps its
+    // meta, because that is what colours its status bar without the manifest value.
+    const manifest = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'manifest.json'), 'utf8'));
+    check(!('theme_color' in manifest), 'the manifest carries no theme_color for iOS to paint the strip with');
+    const android = await t.browser.newPage({ viewport: { width: 393, height: 852 } });
+    await android.addInitScript(() => {
+        const mm = window.matchMedia.bind(window);
+        window.matchMedia = (q) => (q === '(display-mode: standalone)' ? { matches: true, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} } : mm(q));
+        if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
+    });
+    await android.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+    await android.waitForTimeout(1200);
+    const droid = await android.evaluate(() => { const tc = document.querySelector('meta[name="theme-color"]'); return { present: !!tc, content: tc && tc.getAttribute('content') }; });
+    check(droid.present && /^#/.test(droid.content || ''), `an installed Android app keeps the theme-color meta (${droid.content}) — its status bar reads it`);
+    await android.close();
 
     console.log(fails ? `\n  ${fails} SAFE-AREA CHECK(S) FAILED ❌` : '\n  SAFE-AREA SUITE PASSED ✅');
     await t.done(fails);
