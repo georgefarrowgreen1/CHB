@@ -285,24 +285,45 @@ const rgb = (v) => (String(v).match(/[\d.]+/g) || []).map(Number);
 
   // ================= §10 THE HEADER IS A BAR (guest + owner, 390) =================
   console.log('§10 the header is an edge-attached bar of blurred material');
-  const barOf = async (pg) => pg.evaluate(() => {
+  // AT REST THE BAR IS THE PAGE (owner screenshot, Safari): no blur, no hairline,
+  // the page's own ground — the colour Safari tints its status-bar strip with, so
+  // the two agree at the top of a page. Scrolled, it is the frosted material. The
+  // probe measures BOTH, and freezes the header's transition so neither read is
+  // mid-flight (the acctpreview trap).
+  const barOf = async (pg) => pg.evaluate(async () => {
     const h = document.querySelector('header');
+    const fz = document.createElement('style'); fz.textContent = 'header{transition:none!important}'; document.head.appendChild(fz);
+    window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 150));
+    const rest = (() => { const cs = getComputedStyle(h); return { bg: cs.backgroundColor, blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: cs.borderBottomColor, atTop: h.classList.contains('at-top'), h: Math.round(h.getBoundingClientRect().height) }; })();
+    const ground = getComputedStyle(document.body).backgroundColor;
+    const tc = document.querySelector('meta[name="theme-color"]');
+    const probe = document.createElement('span'); probe.style.backgroundColor = tc ? tc.getAttribute('content') : ''; document.body.appendChild(probe);
+    const themeRgb = getComputedStyle(probe).backgroundColor; probe.remove();
+    const av = document.querySelector('.page-view.active') || document.body;
+    const sp = document.createElement('div'); sp.className = 'hig-spacer'; sp.style.height = '2000px'; av.appendChild(sp);
+    window.scrollTo(0, 120); await new Promise((r) => setTimeout(r, 300));
     const cs = getComputedStyle(h);
     const r = h.getBoundingClientRect();
     const st = document.createElement('style'); st.id = 'safe-probe-hig'; st.textContent = ':root{--safe-t:59px}'; document.head.appendChild(st);
     const padWithNotch = parseFloat(getComputedStyle(h).paddingTop);
     st.remove();
-    return { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
-      blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: parseFloat(cs.borderBottomWidth), pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height) };
+    const out = { top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), inner: window.innerWidth, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow,
+      blur: cs.backdropFilter || cs.webkitBackdropFilter, hairline: parseFloat(cs.borderBottomWidth), hairlineColor: cs.borderBottomColor, pad: parseFloat(cs.paddingTop), padWithNotch, h: Math.round(r.height), rest, ground, themeRgb };
+    window.scrollTo(0, 0); sp.remove(); fz.remove(); await new Promise((r) => setTimeout(r, 150));
+    return out;
   });
+  const transparent = (c) => /rgba\(.*,\s*0\)|transparent/.test(c);
   page = await newPage(390, true);
   const gbar = await barOf(page);
   ok(gbar.top === 0 && gbar.left === 0 && gbar.width === gbar.inner, `guest: the bar is edge-attached and full width (${gbar.left},${gbar.top} ${gbar.width}/${gbar.inner})`);
   ok(gbar.radius === '0px' && gbar.shadow === 'none', `no corners, no drop shadow (${gbar.radius} / ${gbar.shadow})`);
-  ok(/blur\(/.test(gbar.blur || ''), `the bar is blurred material (${gbar.blur})`);
-  ok(gbar.hairline === 1, 'with a hairline below');
+  ok(gbar.rest.atTop && gbar.rest.bg === gbar.ground && (gbar.rest.blur === 'none' || !gbar.rest.blur) && transparent(gbar.rest.hairline), `at rest the bar IS the page ground with no blur and no hairline (${gbar.rest.bg} = ${gbar.ground})`);
+  ok(gbar.rest.bg === gbar.themeRgb, `…which is the colour Safari tints its status-bar strip with (theme-color ${gbar.themeRgb})`);
+  ok(/blur\(/.test(gbar.blur || ''), `scrolled, the bar is blurred material (${gbar.blur})`);
+  ok(gbar.hairline === 1 && !transparent(gbar.hairlineColor), 'with a hairline below');
   ok(Math.round(gbar.padWithNotch - gbar.pad) === 59, `the safe-area inset is read into the bar's own padding (${gbar.pad} → ${gbar.padWithNotch})`);
-  ok(gbar.h >= 50 && gbar.h <= 64, `and it is a bar's height, not a pill's (${gbar.h}px)`);
+  // The resting height: scrolled, the bar condenses to ~45px by design.
+  ok(gbar.rest.h >= 50 && gbar.rest.h <= 64, `and it is a bar's height, not a pill's (${gbar.rest.h}px at rest, ${gbar.h} condensed)`);
   await page.close();
   page = await newPage(390, false);
   await open(page, "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", 1400);
