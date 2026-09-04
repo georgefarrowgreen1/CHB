@@ -2497,7 +2497,13 @@ capsule — 2/4/1/1/1 fire).
     and flagged the scope chips (+8) the moment their `::after` region landed —
     no text had moved. It measures the INK now (a Range over the element's text
     against its box), break-tested against the original clamp defect it exists
-    for (+100 restored, 0 clean). The property is not the pixel, again. Budgets raised with the trade: app.css +100,
+    for (+100 restored, 0 clean). The property is not the pixel, again. **And
+    a11y §8 had pinned the rail** ("a guest arriving today gets the sea-blue
+    traffic-light edge") — it asserts the CHIP now: its dot is `--info` and its
+    ink clears AA on its own 14% tint, composited from the TOKEN, because reading
+    the computed `color-mix` tint back gave `color(srgb …)` in 0–1 floats and a
+    false 4.37:1 where §1b measures 4.64 — the sixth false contrast reading this
+    codebase has produced, same trap as the first four. Budgets raised with the trade: app.css +100,
     app.js +288 (the caption + units), admin.js +250 (the monogram), admin.css +500
     (the regions and the clamp).
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
