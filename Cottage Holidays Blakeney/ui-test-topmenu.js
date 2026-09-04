@@ -243,6 +243,35 @@ const { boot, ok } = require('./ui-test-lib');
     check(stay.authOpen, '?open=stay lands a signed-out guest on the sign-in, not the bare homepage');
     check(stay.urlClean, '…and the URL is tidied so a refresh does not repeat it');
 
+    // I) THE HALO FOLLOWS THE MARK. The "you are on Home" glow was a background on
+    //    .logo, a box that never moves, while the mark scales about its left edge
+    //    when the bar condenses — so the glow sat right of the crown (owner
+    //    screenshot). It rides .logo::before now, scaled on the same clock about
+    //    the same edge. Measured as a RELATIONSHIP in both states: the halo's centre
+    //    (its box under its own transform) against the mark's painted centre.
+    const halo = await page.evaluate(async () => {
+        const fz = document.createElement('style'); fz.textContent = 'header,header *,header .logo::before{transition:none!important}'; document.head.appendChild(fz);
+        const logo = document.querySelector('header .logo'); const mark = logo.querySelector('.logo-mark');
+        setActiveTab('view-main'); await new Promise((r) => setTimeout(r, 150));
+        const read = () => {
+            const ps = getComputedStyle(logo, '::before'); const lr = logo.getBoundingClientRect(); const mr = mark.getBoundingClientRect();
+            const m = ps.transform.match(/matrix\(([^)]+)\)/); const s = m ? parseFloat(m[1].split(',')[0]) : 1;
+            const ox = parseFloat(ps.transformOrigin) || 0; // px from the pseudo's left edge
+            // The pseudo spans the logo box; the gradient's centre is 50% across it.
+            const haloCx = lr.left + ox + (lr.width / 2 - ox) * s;
+            return { s: +s.toFixed(3), on: parseFloat(ps.opacity), dx: +(haloCx - (mr.left + mr.width / 2)).toFixed(1), markW: +mr.width.toFixed(1) };
+        };
+        window.scrollTo(0, 0); await new Promise((r) => setTimeout(r, 200)); const rest = read();
+        const sp = document.createElement('div'); sp.style.height = '2000px'; document.querySelector('.page-view.active').appendChild(sp);
+        window.scrollTo(0, 300); await new Promise((r) => setTimeout(r, 300)); const cond = read();
+        const condensed = document.querySelector('header').classList.contains('header-condensed');
+        window.scrollTo(0, 0); sp.remove(); await new Promise((r) => setTimeout(r, 200)); fz.remove();
+        return { rest, cond, condensed };
+    });
+    check(halo.rest.on === 1 && halo.rest.s === 1 && Math.abs(halo.rest.dx) <= 1.5, `at rest the Home halo is on and centred behind the crown (offset ${halo.rest.dx}px)`);
+    check(halo.condensed && halo.cond.s < 0.9 && halo.cond.markW < halo.rest.markW, `condensed, the mark and the halo both scale (${halo.rest.markW} → ${halo.cond.markW}px, halo ×${halo.cond.s})`);
+    check(Math.abs(halo.cond.dx) <= 1.5, `…and the halo stays centred behind the crown (offset ${halo.cond.dx}px)`);
+
     console.log(fails ? `\n  ${fails} TOP-MENU CHECK(S) FAILED ❌` : '\n  TOP-MENU SUITE PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
