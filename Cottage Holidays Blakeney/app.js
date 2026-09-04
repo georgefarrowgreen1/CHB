@@ -2349,9 +2349,17 @@ function nav(viewId, anchorId = null) {
 
 // ---- Light / dark theme toggle ----
 function setThemeLabel() {
-    // Keep the browser/PWA chrome colour in step with the active theme.
+    // Safari's strip takes theme-color and follows the theme. INSTALLED, the meta
+    // goes: iOS 15+ paints a standalone app's status bar with it and ignores
+    // black-translucent while it exists, so the frosted header (already under the
+    // inset) was capped by a solid band. Inline detection — isStandalonePwa is admin-only.
     const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute('content', document.body.classList.contains('light-mode') ? '#f5f1e9' : '#121316');
+    if (tc) {
+        const standalone = /** @type {any} */ (window.navigator).standalone === true
+            || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        if (standalone) tc.remove();
+        else tc.setAttribute('content', document.body.classList.contains('light-mode') ? '#f5f1e9' : '#121316');
+    }
     // Manage → Appearance row shows the live mode (the footer toggle is hidden
     // on admin screens, so this row is the back office's switch).
     const v = document.getElementById('theme-row-value');
@@ -18878,7 +18886,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'higtype01';
+    const BUILD = 'frostbar1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

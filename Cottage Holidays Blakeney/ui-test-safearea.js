@@ -189,6 +189,44 @@ const BOTTOM = 34;
     });
     check(plain === '20px', `a device with no insets keeps the original 20px pad (${plain})`);
 
+    // ---- The status-bar strip wears the frosted bar in the INSTALLED app ----
+    // Reported from a phone: a solid dark band above the frosted header. The header
+    // already extends under the status bar (the inset lives in its padding) and
+    // black-translucent is declared — but iOS 15+ paints a standalone web app's
+    // status bar with theme-color and ignores the translucent style while that meta
+    // exists. So installed, setThemeLabel removes the meta; in Safari it stays and
+    // follows the theme, because there the strip is the browser's own chrome.
+    console.log('\n  the status-bar strip: theme-color in Safari, gone when installed');
+    const safari = await page.evaluate(() => {
+        const tc = document.querySelector('meta[name="theme-color"]');
+        return { present: !!tc, content: tc && tc.getAttribute('content'), light: document.body.classList.contains('light-mode') };
+    });
+    check(safari.present && safari.content === (safari.light ? '#f5f1e9' : '#121316'),
+        `in Safari the meta stays and follows the theme (${safari.content}, ${safari.light ? 'light' : 'dark'})`);
+    const app = await t.browser.newPage({ viewport: { width: 393, height: 852 } });
+    await app.addInitScript(() => {
+        // iOS's own signal for an installed web app.
+        Object.defineProperty(navigator, 'standalone', { get: () => true, configurable: true });
+        if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
+    });
+    await app.goto(t.base + '/index.html', { waitUntil: 'domcontentloaded' });
+    await app.waitForTimeout(1200);
+    const installed = await app.evaluate(async () => {
+        const s = document.createElement('style');
+        // The header transitions its padding, so the probe freezes it (the
+        // acctpreview lesson: a mid-transition read is a number that means nothing).
+        s.textContent = ':root { --safe-t: 59px; } header { transition: none !important; }';
+        document.head.appendChild(s);
+        await new Promise((r) => setTimeout(r, 400));
+        const h = document.querySelector('header');
+        const cs = getComputedStyle(h);
+        return { meta: !!document.querySelector('meta[name="theme-color"]'), top: Math.round(h.getBoundingClientRect().top), pad: Math.round(parseFloat(cs.paddingTop)), blur: cs.backdropFilter || cs.webkitBackdropFilter };
+    });
+    check(!installed.meta, 'installed, the theme-color meta is gone so black-translucent applies');
+    check(installed.top === 0 && installed.pad >= TOP, `…and the frosted bar occupies the strip: header at top 0, padded ${installed.pad}px for a ${TOP}px inset`);
+    check(/blur/.test(installed.blur), `…with its blur intact (${installed.blur})`);
+    await app.close();
+
     console.log(fails ? `\n  ${fails} SAFE-AREA CHECK(S) FAILED ❌` : '\n  SAFE-AREA SUITE PASSED ✅');
     await t.done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
