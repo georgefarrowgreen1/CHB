@@ -710,8 +710,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
           const cs = getComputedStyle(el);
           if (cs.display === 'none' || cs.visibility === 'hidden') return;
           if (/hidden|clip|auto|scroll/.test(cs.overflowY) || /hidden|clip|auto|scroll/.test(cs.overflow)) return;
-          const over = el.scrollHeight - el.clientHeight;
-          if (over > 2) found.push(`[${q}] ${el.className || el.tagName} box ${el.clientHeight} content ${el.scrollHeight} (+${over})`);
+          // The INK, not scrollHeight: an absolutely positioned hit region (::after,
+          // inset -8px — round eight's reach-44 on the chips) inflates scrollHeight
+          // by its downward extent while no text paints anywhere new. A Range over
+          // the element's text measures what is actually drawn against the box.
+          const rg = document.createRange(); rg.selectNodeContents(el);
+          const tb = rg.getBoundingClientRect(), b = el.getBoundingClientRect();
+          const over = Math.max(tb.bottom - b.bottom, b.top - tb.top, 0);
+          if (over > 2) found.push(`[${q}] ${el.className || el.tagName} box ${Math.round(b.height)} ink ${Math.round(tb.height)} (+${Math.round(over)})`);
         });
       }
       return found;

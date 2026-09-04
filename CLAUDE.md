@@ -2492,7 +2492,12 @@ capsule — 2/4/1/1/1 fire).
     exclusion removed, a search-answer state added at both widths).
   - NB the sweep's first gate run reported the search sub as `display: flow-root`
     — Chromium reports `-webkit-box` that way; the clamp works, read `scrollHeight`
-    against `clientHeight` to know. Budgets raised with the trade: app.css +100,
+    against `clientHeight` to know. **And a hit region inflates `scrollHeight`**:
+    ui-test-searchpage §13's overflow detector read `scrollHeight − clientHeight`
+    and flagged the scope chips (+8) the moment their `::after` region landed —
+    no text had moved. It measures the INK now (a Range over the element's text
+    against its box), break-tested against the original clamp defect it exists
+    for (+100 restored, 0 clean). The property is not the pixel, again. Budgets raised with the trade: app.css +100,
     app.js +288 (the caption + units), admin.js +250 (the monogram), admin.css +500
     (the regions and the clamp).
 - Budgets raised with the trade named: app.css 85077 → 85600 (the sheet/well/footer
