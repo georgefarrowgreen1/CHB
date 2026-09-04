@@ -571,8 +571,17 @@ jobs:
           # swapped, because the second attempt re-resolves the host rather
           # than inheriting the stalled socket. Bounded at 6 minutes, which
           # is comfortably past every healthy run measured (30-401s).
+          #
+          # AND THE RETRY FIRST CLEARS THE LOCK. `timeout` kills npx, not the
+          # apt-get it spawned as root — measured on both legs of one run: the
+          # first attempt timed out on a stalled mirror, and the retry died in
+          # seconds on "Could not get lock /var/lib/apt/lists/lock … held by
+          # process 2146 (apt-get)", so the retry that exists for exactly this
+          # case never ran. Kill the orphan and wait for its lock to go.
           timeout 360 npx playwright install-deps ${{ matrix.engine }} \
             || { echo "apt was slow — one more go on a fresh connection"; \
+                 sudo pkill -9 -f 'apt-get' || true; \
+                 for i in 1 2 3 4 5 6; do sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break; sleep 5; done; \
                  sudo apt-get update -q || true; \
                  timeout 420 npx playwright install-deps ${{ matrix.engine }}; }
           npx playwright install ${{ matrix.engine }}
