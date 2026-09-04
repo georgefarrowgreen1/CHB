@@ -99,7 +99,9 @@ const { boot, ok } = require('./ui-test-lib');
             hidden: h.classList.contains('header-hidden'),
             onScreen: r.bottom > 0 && r.top < window.innerHeight,
             pad: cs.paddingTop,
-            blur: cs.backdropFilter || cs.webkitBackdropFilter || '',
+            // The bar's material rides header::before (the graded bar, ui-test-hig §10):
+            // the blur lives on the layer, the header itself paints nothing.
+            blur: (() => { const ps = getComputedStyle(h, '::before'); return ps.backdropFilter || ps.webkitBackdropFilter || cs.backdropFilter || cs.webkitBackdropFilter || ''; })(),
             menuHittable: (() => {
                 const b = document.querySelector('#guest-dock-slot .guest-dock-btn');
                 if (!b) return false;
@@ -113,7 +115,7 @@ const { boot, ok } = require('./ui-test-lib');
     check(!scrolled.hidden, 'the header is NEVER hidden in the guest shell (the menu is in it)');
     check(scrolled.onScreen, 'it is still on screen after scrolling 600px');
     check(scrolled.menuHittable, 'the menu is still tappable while scrolled');
-    check(/blur/.test(scrolled.blur), `the condensed bar deepens its blur (${scrolled.blur.slice(0, 34)})`);
+    check(/blur/.test(scrolled.blur), `the condensed bar is still the blurred material (${scrolled.blur.slice(0, 34)})`);
 
     const expanded = await page.evaluate(async () => {
         window.scrollTo(0, 0);
