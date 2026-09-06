@@ -94,7 +94,7 @@ function stub(page, mode, mine) {
   await page.close();
 
   // ============================================================
-  console.log('\n  §2 the messages pill stands down on My Stays, and nowhere else');
+  console.log('\n  §2 the messages pill stands down where it would cover something');
   page = await open('guest', UPCOMING);
   ok(await painted(page, '#guest-msg-fab'), 'on the homepage the pill is there');
   await page.evaluate(() => openGuestArea());
@@ -124,6 +124,20 @@ function stub(page, mode, mine) {
   await page.waitForTimeout(900);
   ok(await page.evaluate(() => !document.querySelector('#view-guest-bookings.active .my-stay-hub')), '(fixture) a guest with nothing booked has no hub');
   ok(await painted(page, '#guest-msg-fab'), 'a guest with no hub keeps the pill — there is no Contact host to stand in for it');
+  // PR2 added two more stand-downs, and the "nowhere else" this section used to
+  // claim is no longer true: the pay screen (where the pill covered the journey's
+  // £50.00 figure and, in part mode, the card form's Postcode label) and
+  // Experiences (where it covered the first card's full-width Directions button).
+  // The trade is real and deliberate: the guest dock has no Messages tab, so the
+  // chat route is gone on those two views — the same trade the privacy-page rule
+  // already makes. ui-test-reach §1 owns the ink sweep; these two are the
+  // presence half, here beside the My Stays case they extend.
+  await page.evaluate(() => nav('view-experiences'));
+  await page.waitForTimeout(700);
+  ok(!(await painted(page, '#guest-msg-fab')), 'on Experiences the pill is gone — it sat on the first card\u2019s Directions button');
+  await page.evaluate(() => nav('view-main'));
+  await page.waitForTimeout(400);
+  ok(await painted(page, '#guest-msg-fab'), '…and it returns on the homepage');
   await page.close();
 
   // ============================================================

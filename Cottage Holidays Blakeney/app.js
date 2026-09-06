@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 593;
+const ADMIN_BUNDLE_V = 595;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 251;
+const ADMIN_CSS_V = 254;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -925,10 +925,20 @@ function updateOnlineStatus() {
             b.style.display = n > 0 ? 'flex' : 'none';
         }
         const pill = document.getElementById('offline-pill');
-        if (pill)
-            pill.title =
+        if (pill) {
+            // The ACCESSIBLE NAME moves with the title. It used to write `title`
+            // alone, so the markup's static aria-label ("Offline — tap to see
+            // what's waiting to send") outranked it and a screen reader was
+            // told "offline" while the pill said "Reconnecting… — 2 changes
+            // waiting to sync". aria-label wins over title, so setting only the
+            // one nobody hears is the announcement never changing.
+            const say =
                 (offline ? 'No internet connection' : 'Reconnecting…') +
-                (n ? ` — ${n} change${n === 1 ? '' : 's'} waiting to sync` : '');
+                (n ? ` — ${n} change${n === 1 ? '' : 's'} waiting to sync` : '') +
+                ' — tap to see what’s waiting to send';
+            pill.title = say;
+            pill.setAttribute('aria-label', say);
+        }
     } catch (e) {}
 }
 // Ask the service worker to replay the queue in the background (when supported).
@@ -3442,7 +3452,9 @@ function renderStayedBefore() {
                       year: 'numeric',
                   })
                 : '';
-            html = `<div class="stayed-before-chip">You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
+            // The accent lives on the MARK, not on the words — see the
+            // .stayed-before-chip rule for the measurement that moved it.
+            html = `<div class="stayed-before-chip"><span class="sb-tick" aria-hidden="true">✓</span>You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
         }
     }
     el.innerHTML = html;
@@ -3468,7 +3480,12 @@ async function saveGuestProfile() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3558,7 +3575,12 @@ async function changeGuestPassword() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -3831,7 +3853,12 @@ async function requestMagicLink() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // ONE CLASS PAIR, not a raw fill used as ink: --ok / --danger are FILL
+            // tokens and measured 2.33-2.74:1 as words on the light ground.
+            // .auth-msg.is-ok / .is-bad are status text on their OWN tint, which is
+            // also the shape a11y-test S1b discovers - so these lines are measured
+            // on every run instead of by luck.
+            msg.className = 'auth-msg ' + (ok ? 'is-ok' : 'is-bad');
             msg.style.display = 'block';
         }
     };
@@ -6867,7 +6894,9 @@ async function submitGuestPhoto() {
     const msg = document.getElementById('pu-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -10332,7 +10361,7 @@ function showChangeoverToasts() {
                         <span class="toast-prop"><span class="legend-swatch swatch-${c.propKey}"></span> ${escapeHtml(meta.name)}</span><br>
                         <strong>${escapeHtml(c.leaving.name || 'Guest')}</strong> checks out (by ${c.leaving.checkOutTime || '10:00'}) and
                         <strong>${escapeHtml(c.arriving.name || 'Guest')}</strong> checks in (from ${escapeHtml(c.arriving.checkInTime || '15:00')}).
-                        <div class="toast-date">${c.date}</div>
+                        <div class="toast-date">${fmtDate(c.date)}</div>
                     </div>
                     <button class="btn-sm btn-edit toast-dismiss">Got it — dismiss</button>`;
         const dismiss = () => dismissChangeover(c.key, el);
@@ -11403,7 +11432,9 @@ async function submitNewsletter(ev) {
     const email = ((el && el.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.textContent = t;
         }
     };
@@ -11880,18 +11911,25 @@ function accomImages(k) {
         : ((propertyContent[k] || {}).images || []).slice();
 }
 function accomPhotoRow(k, url, i, n) {
-    // A grid CELL now (the unified editors): thumb + MAIN badge + order
-    // number, the same four actions as compact glyphs beneath. Classes and
-    // data-acts unchanged — accomSavePhotos re-renders through this composer,
-    // so reorder/replace/remove keep working on every repaint.
+    // A grid CELL (the unified editors): thumb + MAIN badge + order number, and
+    // the four actions behind ONE ⋯ menu — the hub's own bhubMenu, so the
+    // markup, the click-away, Escape and the placement are all the existing
+    // mechanism. They were four 22px glyphs jammed edge to edge with the
+    // destructive ✕ 22px from Replace, and a 44px hit region at a 22px pitch
+    // would have overlapped its neighbour by half. Every data-act is unchanged —
+    // accomSavePhotos re-renders through this composer, so reorder / replace /
+    // remove keep working on every repaint.
     return `<div class="content-edit-row accom-photo-row acp-cell">
                 <div class="exp-edit-thumb acp-thumb" style="background-image:url('${escapeHtml(url)}');">${i === 0 ? '<span class="acp-main">MAIN</span>' : ''}<span class="acp-n">${i + 1}</span></div>
                 <div class="accom-photo-label sr-only">Photo ${i + 1}${i === 0 ? ' · main' : ''}</div>
                 <div class="accom-photo-actions acp-acts">
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move photo ${i + 1} earlier" title="Move earlier">↑</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move photo ${i + 1} later" title="Move later">↓</button>
-                    <button class="btn-sm btn-edit" ${chbAttrs('accomReplacePhoto', String(k), i)} aria-label="Replace photo ${i + 1}" title="Replace">⟳</button>
-                    <button class="btn-sm btn-delete" ${chbAttrs('accomRemovePhoto', String(k), i)} aria-label="Remove photo ${i + 1}" title="Remove">✕</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false" aria-label="Photo ${i + 1} options" title="Move, replace or remove">⋯</button>
+                    <div class="bhub-menu glass-panel acp-menu" role="menu" style="display:none;">
+                        <button role="menuitem" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move photo ${i + 1} earlier">Move earlier</button>
+                        <button role="menuitem" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move photo ${i + 1} later">Move later</button>
+                        <button role="menuitem" ${chbAttrs('accomReplacePhoto', String(k), i)} aria-label="Replace photo ${i + 1}">Replace photo</button>
+                        <button role="menuitem" class="bhub-menu-danger" ${chbAttrs('accomRemovePhoto', String(k), i)} aria-label="Remove photo ${i + 1}">Remove photo</button>
+                    </div>
                 </div></div>`;
 }
 async function accomSavePhotos(k, imgs) {
@@ -12248,7 +12286,10 @@ function renderPropStats(propKey) {
         ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(2)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
         : `<div class="prop-stat"><div class="prop-stat-top">New</div><div class="prop-stat-sub">no reviews yet</div></div>`;
     const favCell = fav
-        ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:var(--fs-sub);letter-spacing:0;">Guest favourite</div></div>`
+        ? // ONE RULE FOR .prop-stat-sub: the inline style here overrode the class
+          // with a second size and a second ink, so the two sub-captions in the same
+          // row disagreed. The class already says --fs-caption / --text-muted.
+          `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub">Guest favourite</div></div>`
         : '';
     const reviewsCell = count
         ? `<div class="prop-stat"><div class="prop-stat-top">${count}</div><div class="prop-stat-sub">review${count === 1 ? '' : 's'}</div></div>`
@@ -13045,7 +13086,11 @@ function injectPropColors() {
                 `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}` +
                 // Light mode: accent-on-pale-tint is too faint — darken towards ink
                 // (same treatment app.css gives the three built-in cottages).
-                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 55%,#1b2a34);}` +
+                // 45%, NOT 55 — and it must match app.css's own three literals or an
+                // owner-ADDED cottage ships under AA while the built-in three pass.
+                // Measured by pixel at 55%: 21A 3.75:1, Jollyboat 4.15:1 on the light
+                // list card; at 45% they clear the mark with a shade to spare.
+                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 45%,#1b2a34);}` +
                 // Timeline bar text INHERITS the theme ink (matches the built-in bars).
                 `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);}`;
         });
@@ -18740,7 +18785,9 @@ async function submitExperienceSuggestion() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+            // The INK tokens, never the fills (--ok as words measured 2.18-2.53:1
+            // on the light ground; the -text variants exist for exactly this).
+            msg.style.color = ok ? 'var(--ok-text)' : 'var(--danger-text)';
             msg.style.display = 'block';
         }
     };
@@ -18892,7 +18939,7 @@ const CHB_SK_CARD = '<div class="card glass-panel sk-card"><div class="skeleton 
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'halofix1';
+    const BUILD = 'higchrome2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

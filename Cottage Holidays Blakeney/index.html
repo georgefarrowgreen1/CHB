@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=47">
+    <link rel="stylesheet" href="guest-app.css?v=49">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=324">
+    <link rel="stylesheet" href="app.css?v=327">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -382,7 +382,10 @@
             <div class="hero-content glass-panel" id="hero-search-panel">
                 <p class="section-kicker reveal">Plan your escape</p>
                 <h2 class="section-title text-center reveal" style="margin-bottom: 6px;">Check availability</h2>
-                <p class="text-center" style="color: var(--text-muted); font-size:var(--fs-body); margin: 0 auto 6px; max-width: 460px; text-wrap: balance;">Live prices &amp; availability across all our cottages — book direct with the owner.</p>
+                <!-- sizing in app.css (.avail-lead): it is one of Home's centred
+                     blocks, and the ≤640 rule that clears the Messages pill has to
+                     be able to reach it (an inline max-width outranks a rule). -->
+                <p class="text-center avail-lead">Live prices &amp; availability across all our cottages — book direct with the owner.</p>
                 <div class="hero-search">
                     <!-- Search mode: exact dates (default) or flexible (length + month) -->
                     <div class="hs-mode" role="group" aria-label="Search mode">
@@ -823,7 +826,7 @@
                     </div>
                     <div class="reg-row enq-fg" style="--efd:0.075s;">
                         <div>
-                            <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
+                            <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone (optional)</label>
                             <input type="tel" class="input-glass" id="enq-phone" autocomplete="tel" inputmode="tel" placeholder="Contact number" data-act-input="enqLiveSync">
                         </div>
                         <div>
@@ -842,7 +845,7 @@
                         <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     </div>
                     <div class="enq-fg" style="--efd:0.155s;">
-                        <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
+                        <label style="font-size:var(--fs-caption); font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party</label>
                         <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;" data-act-input="enqLiveSync"></textarea>
                     </div>
                     <!-- Two declarations, both required before sending. -->
@@ -1144,7 +1147,7 @@
                     <input type="text" class="input-glass" id="login-email" name="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" placeholder="you@email.com">
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
-                    <div id="login-error" role="alert" style="color:var(--danger);font-size:var(--fs-sub);margin-bottom:12px;display:none;"></div>
+                    <div id="login-error" class="auth-msg is-bad" role="alert" style="margin-bottom:12px;display:none;"></div>
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log in</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:var(--fs-sub);">Email me a sign-in link instead</a>
@@ -1152,7 +1155,7 @@
                              this is the ONLY report either flow makes, and without it a
                              refusal ("Please enter a valid email address") was written
                              to a silent div with focus left where it was. -->
-                        <div id="magic-link-msg" role="alert" style="display:none;font-size:var(--fs-sub);margin-top:10px;"></div>
+                        <div id="magic-link-msg" class="auth-msg" role="alert" style="display:none;margin-top:10px;"></div>
                     </div>
                     <p id="passkey-hint" style="display:none;font-size:var(--fs-caption);color:var(--text-muted);text-align:center;margin-top:16px;">Tip: after logging in, add a passkey in your account for one-tap sign-in next time.</p>
                 </div>
@@ -1180,7 +1183,7 @@
                     <p style="font-size:var(--fs-caption); color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="authPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
-                    <div id="reg-error" role="alert" style="color:var(--danger);font-size:var(--fs-sub);margin-bottom:12px;display:none;"></div>
+                    <div id="reg-error" class="auth-msg is-bad" role="alert" style="margin-bottom:12px;display:none;"></div>
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestRegister">Create account</button>
                 </div>
             </div>
@@ -1374,7 +1377,7 @@
             <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
             <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="detailsPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
-            <div id="profile-msg" style="font-size:var(--fs-sub);margin:4px 0 10px;display:none;"></div>
+            <div id="profile-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
@@ -1408,7 +1411,7 @@
             <input type="password" class="input-glass" id="pw-new" autocomplete="new-password" placeholder="At least 4 characters">
             <label class="modal-label">Confirm new password</label>
             <input type="password" class="input-glass" id="pw-confirm" autocomplete="new-password" placeholder="Re-type the new password">
-            <div id="pw-msg" style="font-size:var(--fs-sub);margin:4px 0 10px;display:none;"></div>
+            <div id="pw-msg" class="auth-msg" style="margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:13px;" data-act="changeGuestPassword">Update password</button>
 
             <h3 style="font-family:var(--font-serif);font-size:var(--fs-headline);margin:26px 0 6px;">Passkeys</h3>
@@ -1983,23 +1986,26 @@
         <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
         <div class="footer-newsletter" id="footer-newsletter">
             <p style="font-size:var(--fs-caption);color:var(--text-muted);margin:0 0 8px;">Our occasional Blakeney news &amp; offers — no spam, unsubscribe any time.</p>
-            <form data-act-submit="submitNewsletter" data-pass="event" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:420px;margin:0 auto;">
-                <input type="email" id="nl-email" name="email" autocomplete="email" placeholder="you@example.com" required aria-label="Your email address for Blakeney news and offers"
-                    style="flex:1;min-width:180px;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);font-size:var(--fs-sub);">
-                <button type="submit" class="btn-glass" style="padding:9px 18px;font-size:var(--fs-sub);width:auto;">Sign up</button>
+            <!-- Sizing lives in app.css (.footer-newsletter): the four inline
+                 declarations here were a 36px field and a 36px button at 13px
+                 with a 10px radius, none of which the rawRadii / rawType
+                 ratchets can see. -->
+            <form data-act-submit="submitNewsletter" data-pass="event">
+                <input type="email" id="nl-email" name="email" class="input-glass" autocomplete="email" placeholder="you@example.com" required aria-label="Your email address for Blakeney news and offers">
+                <button type="submit" class="btn-glass">Sign up</button>
             </form>
             <p id="nl-msg" style="font-size:var(--fs-caption);margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
         </div>
-        <p class="footer-nap" style="font-size:var(--fs-micro);color:var(--text-muted);opacity:0.55;margin:14px 0 4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
+        <p class="footer-nap">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
         <p class="footer-meta" style="font-size:var(--fs-caption);color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a data-act="nav" data-view="view-privacy" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
-        <p style="margin-top: 4px; font-size:var(--fs-micro); color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
+        <p class="footer-build">Build <span id="build-stamp">—</span></p>
     </footer>
 
     <!-- Same-day changeover notifications (back office) -->
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=959"></script>
+    <script defer src="app.js?v=962"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
