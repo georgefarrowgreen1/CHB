@@ -242,6 +242,16 @@ textarea:focus-visible,
   --fs-hero: 2.125rem;      /* 34 */
   --fs-h2: var(--fs-title);
   --fs-h3: var(--fs-headline);
+  /* THE LAYER ORDER, STATED: bars < sheets < dialogs < toasts.
+     Thirty z-index values on two unrelated scales, one of them a real collision:
+     `.toast-stack` (2000) EQUALLED `.modal-overlay` (2000), so a toast stacked
+     over a modal by source order alone. This pass routes only the TOAST layer
+     onto these tokens; the site-wide re-route and a `rawZ` ratchet are a
+     follow-on, one layer at a time with ui-test-overlays green between each. */
+  --z-bar: 1400;
+  --z-sheet: 1900;
+  --z-dialog: 2000;
+  --z-toast: 2600;
   /* Ambient background blobs (themeable) */
   --blob-1: #2a2d3a;
   --blob-2: #1b1e28;
@@ -8657,6 +8667,39 @@ body.light-mode .feed-dot-bad {
   max-width: 760px;
   margin: 16px auto 2px;
 }
+.avail-lead {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  /* 8, not the inline 6 it replaces — on the 4pt grid now it is a rule the
+     ratchet can see (a 2px move under a caption). */
+  margin: 0 auto 8px;
+  max-width: 460px;
+  text-wrap: balance;
+}
+/* HOME IS THE ONE VIEW WHERE THE PILL STAYS AND THE CONTENT MOVES — it is the
+   one page with no other route to a person, so guest-app.css's stand-downs stop
+   short of it. The pill (x314–378 at 390) crossed every CENTRED block in turn:
+   15.3×19 of "…is available 7 Sept", 36.3×30 of the guest quote, 20×16 of the
+   trust strip and 28×19 of the availability caption (the last two found by the
+   gate, not the audit — same defect, same fix, stated once).
+   SYMMETRIC on purpose: `padding-right` alone decentres a centred serif quote,
+   a worse defect than the one being fixed. Blocks that span the container take
+   padding; a block already narrower takes a max-width, since padding inside a
+   centred box moves nothing. */
+@media (max-width: 640px) {
+  #late-avail {
+    max-width: calc(100% - 144px);
+  }
+  .avail-lead {
+    max-width: calc(100% - 80px);
+  }
+  .home-guestwords,
+  .home-trust {
+    /* 80, not 72: these two are full-bleed sections (0–390 on a phone), so the
+       inset is off the VIEWPORT edge and 72 left the quote 3px under the pill. */
+    padding-inline: 80px;
+  }
+}
 .late-avail {
   display: flex;
   align-items: center;
@@ -9408,7 +9451,8 @@ body.light-mode .feed-dot-bad {
   border: 1px solid var(--glass-border);
   color: var(--text-muted);
   border-radius: var(--r-pill);
-  padding: 7px 14px;
+  /* 8, not 7: the chip is 33px and its hit region (below) reaches 47. */
+  padding: 8px 14px;
   font-family: var(--font-sans);
   font-size: var(--fs-caption);
   font-weight: 600;
@@ -9997,7 +10041,9 @@ body.light-mode .feed-dot-bad {
   /* Clear the home indicator / rounded corner on iOS. */
   bottom: max(24px, var(--safe-b));
   right: max(24px, var(--safe-r));
-  z-index: 2000;
+  /* THE TOAST LAYER — the last word about what just happened, so it sits above
+     the dialog layer. It was 2000, .modal-overlay's own value. */
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -10100,10 +10146,30 @@ body.light-mode .feed-dot-bad {
     bottom: 12px;
     right: 12px;
   }
+  /* AND IT CLEARS THE MESSAGES PILL: the receipt toast landed on it, a 64×40px
+     collision of two fixed elements. Keyed on the SHELL, not on
+     `#guest-msg-fab:not([hidden])` — the pill is stood down with `display`,
+     never the attribute, so that selector always matches and would lift every
+     toast on every screen. Where the pill IS down the toast just sits higher. */
+  body.guest-app:not(.owner-mode) .toast-stack {
+    bottom: calc(12px + 72px);
+  }
 }
 /* General-purpose auto-dismiss toast (success/info confirmations) */
 #app-toasts {
-  z-index: 2600;
+  z-index: var(--z-toast);
+}
+/* THE CHANGEOVER CARD IS NOT A TOAST — it is a standing card on Today, and at
+   2000 it painted OVER the assistant (1440), covering 183px of the pop-out
+   including its foot. It drops to the bar layer and stands down while the
+   pop-out is up. `.toast-stack` itself must NOT be lowered: #app-toasts shares
+   the class, and an action toast ("Sent 2 of 3", Undo) has to stay above the
+   pop-out that raised it. */
+#changeover-toasts {
+  z-index: var(--z-bar);
+}
+body.cmdk-open #changeover-toasts {
+  visibility: hidden;
 }
 .toast.toast-mini {
   border-left-color: var(--ok);
@@ -10359,6 +10425,15 @@ body.light-mode .theme-switch .ts-i-sun {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+}
+/* REACH 44 — a region, not a bigger mark (it is 34px and opens the tray). NB no
+   `position: relative`: the pill is already `fixed`, which is itself a
+   containing block (.oq-count relies on that), and `relative` would un-fix it. */
+.offline-pill::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
 }
 /* THE SYNC STRIP — the reconnect replay, visible: one status element updated
    in place ("Sending 2 of 3 — Payment — Marcus…"), final state lingering a
@@ -11694,9 +11769,18 @@ body.light-mode .modal-box {
   -webkit-backdrop-filter: blur(14px) saturate(140%) !important;
   color: var(--map-ink) !important;
   border: none !important;
-  width: 34px !important;
-  height: 34px !important;
-  line-height: 34px !important;
+  /* THE FLOOR. These were the only sub-44 controls on the cottage page besides
+     the 42px pin, and they are STACKED — a region would overlap its neighbour,
+     so the button grows. NOT removed below 640: taking the only zoom affordance
+     leaves keyboard and non-pinch users with none. */
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  /* stated here rather than left to Leaflet's own stylesheet: `width` does
+     nothing to an inline anchor, so the floor would depend on a third party. */
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
   font-size: var(--fs-headline) !important;
   transition:
     background 0.25s var(--fluid-bezier),
@@ -12599,6 +12683,90 @@ header nav a:active {
 /* The rag: pretty is the default for prose; a booking ref and "£X to pay" hold as units. */
 p, .gb2-when, .prop-feature-sub, .stayed-before-chip { text-wrap: pretty; }
 .gb2-ref, .gb2-pl-unit { white-space: nowrap; }
+
+/* ===== PR2 — EVERYTHING MEETS THE THUMB (the guest half) =====
+   HIT REGIONS, NOT BIGGER CONTROLS, wherever the paint is deliberate: an
+   absolutely-positioned ::before grown past the box, VERTICAL ONLY (inset:
+   -Npx 0) wherever neighbours sit side by side, so a region never steals the
+   tap next door. Nothing on any of these screens moves. */
+
+/* The crown is the ONLY Home control on a phone (the dock's Home button is
+   hidden and the mark carries the current state) and it measured 61.9×34.
+   .nav-indicator is a separate node sized from the anchor's box, so the region
+   changes no geometry. NB it is ::after, not ::before — guest-app.css already
+   owns .logo::before (the Home halo, and that one is pointer-events: none). */
+.logo { position: relative; }
+.logo::after { content: ''; position: absolute; inset: -5px 0; }
+/* The four availability steppers: 40×40 (the ± chips beside them were raised to
+   44 in round seven, these were not). */
+.hs-step { position: relative; }
+.hs-step::before { content: ''; position: absolute; inset: -2px; border-radius: 50%; }
+/* The chat's quick-reply chips: 130×31 in a 41px row. The row is an
+   overflow-x:auto scroller, which CLIPS a child's ::before — the padding
+   cancelled by an equal negative margin is what keeps the reach inside the
+   scroll box (the .spine-duties lesson); the row's own top padding is already
+   10px, so only the bottom needs it. */
+.chat-chip { position: relative; }
+.chat-chip::before { content: ''; position: absolute; inset: -7px 0; }
+.chat-quick { padding-bottom: 8px; margin-bottom: -8px; }
+/* The chat intro fields were 40px. An <input> paints no ::before, so this one is
+   a size, not a region. */
+.chat-intro-fields .input-glass { min-height: 44px; }
+/* Desktop: the three primary nav links (80.6×38.8) and the account button
+   (42×42). The account button takes a REGION and not a 44px BOX — the resting
+   bar measures 63px and ui-test-hig §10 asserts 50–64px, so two more pixels of
+   button would push it over. */
+nav ul li a:not(.btn-glass)::before { content: ''; position: absolute; inset: -3px 0; }
+.account-btn { position: relative; }
+.account-btn::before { content: ''; position: absolute; inset: -1px; border-radius: 50%; }
+/* The late-availability card's "Check dates" (112.6×33.6). */
+.late-avail .btn-sm { position: relative; }
+.late-avail .btn-sm::before { content: ''; position: absolute; inset: -6px 0; }
+/* The 38px round close shared by the chat head and the reviews/terms sheets. */
+.reviews-modal-close { position: relative; }
+.reviews-modal-close::before { content: ''; position: absolute; inset: -3px; border-radius: 50%; }
+/* THE FOOTER NEWSLETTER WAS FOUR INLINE STYLES — a 36px field and a 36px button
+   at 13px with a 10px radius, none of which the rawRadii / rawType ratchets can
+   see. Stated here instead, on the tokens, at the floor. */
+.footer-newsletter form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; max-width: 420px; margin: 0 auto; }
+.footer-newsletter .input-glass { flex: 1; min-width: 180px; width: auto; min-height: 44px; margin: 0; padding: 12px 16px; font-size: var(--fs-sub); border-radius: var(--r-sm); }
+.footer-newsletter .btn-glass { width: auto; padding: 12px 24px; font-size: var(--fs-sub); }
+/* Sign-in: the password-less route was a 200×16 inline <a> — the ONLY way in for
+   a guest who has no password — and the Log in / Create account segments were
+   170×40 at 11px, the screen's primary control. */
+#magic-link-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 12px; }
+.guest-tab { min-height: 44px; }
+@media (max-width: 480px) {
+  /* the ≤480 --fs-micro override is right for the admin toggles it was written
+     for and wrong for these two: 11px on the screen's own primary control. */
+  .toggle-btn.guest-tab { font-size: var(--fs-sub); }
+}
+.hub-code-copy { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+/* Experiences: six 31px chips wrapping to THREE rows at 390 (109px between the
+   lead and the first card). One nowrap scrolling row, with the padding /
+   negative-margin trick so the scroll box does not clip the regions it is
+   there to hold. .exp-filters keeps `position: relative` — chbSeatPill's
+   travelling pill is a child of it. */
+.exp-chip { position: relative; }
+.exp-chip::before { content: ''; position: absolute; inset: -7px 0; }
+@media (max-width: 640px) {
+  .exp-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* padding cancelled by margin: the row keeps the 4px it had above it and
+       costs nothing below, while the regions live inside the scroll box. */
+    padding: 8px 0;
+    margin: -4px 0 -8px;
+  }
+  .exp-filters::-webkit-scrollbar { display: none; }
+  /* LOAD-BEARING: a flex item's default is `flex-shrink: 1`, so under nowrap the
+     chips SQUEEZE instead of the row scrolling — measured, every label wrapped
+     to two lines and the chip grew to 48px, which hid the missing hit region
+     from the gate's own break-test. They hold their width; the ROW scrolls. */
+  .exp-filters .exp-chip { flex: 0 0 auto; white-space: nowrap; }
+}
 
 /* THE BAR HAS A TOP AND NO BOTTOM (owner-approved live demo). The seam with iOS's
    status strip is at ONE edge, the top, so the fill is graded: the page GROUND

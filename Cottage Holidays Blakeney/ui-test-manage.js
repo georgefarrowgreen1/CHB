@@ -330,14 +330,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       gridDisplay: grid ? getComputedStyle(grid).display : '',
       cells: cells.length,
       mainFirst: cells.length ? !!cells[0].querySelector('.acp-main') && !cells[1].querySelector('.acp-main') : false,
-      acts: cells.length ? ['accomMovePhoto', 'accomReplacePhoto', 'accomRemovePhoto'].every((fn) => cells[0].querySelector(`[data-act="${fn}"]`)) : false,
+      // RE-AIMED (PR2): the four actions were 22px bare glyphs jammed edge to
+      // edge with the destructive ✕ 22px from Replace, and at that pitch a 44px
+      // hit region overlaps its neighbour by half — so they moved behind ONE ⋯
+      // menu (the hub's own bhubMenu). What must hold is the same three
+      // data-acts, now inside the OPENED menu, and nothing painted before it.
+      hidden: cells.length ? ['accomMovePhoto', 'accomReplacePhoto', 'accomRemovePhoto'].every((fn) => { const el = cells[0].querySelector(`[data-act="${fn}"]`); return el && el.getClientRects().length === 0; }) : false,
+      acts: (() => {
+        if (!cells.length) return false;
+        const btn = cells[0].querySelector('.bhub-menu-btn');
+        if (!btn) return false;
+        btn.click();
+        const menu = cells[0].querySelector('.bhub-menu');
+        return !!menu && menu.getClientRects().length > 0
+          && ['accomMovePhoto', 'accomReplacePhoto', 'accomRemovePhoto'].every((fn) => menu.querySelector(`[data-act="${fn}"]`));
+      })(),
       pvLive,
       saved,
     };
   });
   ok(pb.gridDisplay === 'grid' && pb.cells >= 3, `the gallery is a grid of cells (${pb.cells})`);
   ok(pb.mainFirst, 'MAIN badges the first photo and only the first');
-  ok(pb.acts, 'each cell keeps reorder / replace / remove on the real data-acts');
+  ok(pb.hidden, 'the four glyph buttons are gone — nothing painted under the thumbnail');
+  ok(pb.acts, 'each cell keeps reorder / replace / remove on the real data-acts, inside the ⋯ menu');
   ok(pb.pvLive === 'The Flint Loft', `the tile preview follows the title as you type (${pb.pvLive})`);
   ok(pb.saved.length === 2, `Save card writes both content keys (${pb.saved.join(', ')})`);
 

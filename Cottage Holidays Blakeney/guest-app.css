@@ -660,7 +660,32 @@ body.guest-app:not(.owner-mode) #chat-widget {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   z-index: 1390;
-  padding: calc(96px + var(--safe-t)) 0 calc(16px + var(--safe-b));
+  /* THE SAME NUMBER EVERY OTHER GUEST CONTAINER USES. The 96 dates from the
+     taller pre-bar shell (the containers were brought 100 → 80 when the bar
+     shipped and this padding was not), and the bar is 55px at rest / 45
+     condensed — so "Chat with us" landed at y 96 under a 41–51px band of bare
+     ground. */
+  padding: calc(80px + var(--safe-t)) 0 calc(16px + var(--safe-b));
+}
+/* AND IT ARRIVES LIKE A SHEET, not like the desktop popover it inherits.
+   .chat-widget.open plays chbChatIn — 0.98 → 1 from the BOTTOM-RIGHT CORNER
+   with a 12px rise — which on a screen that covers the whole page reads as a
+   flicker. The house's own sheet keyframes, at the house's own sheet timings
+   (the .chb-sheet block in app.css). The open/closing CLASSES are untouched;
+   ui-test-overlays reads those, not the animation. */
+body.guest-app:not(.owner-mode) #chat-widget.open {
+  transform-origin: 50% 100%;
+  animation: chbSheetUp 480ms var(--sheet);
+}
+body.guest-app:not(.owner-mode) #chat-widget.closing:not(.open) {
+  transform-origin: 50% 100%;
+  animation: chbSheetDown 280ms var(--in) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.guest-app:not(.owner-mode) #chat-widget.open,
+  body.guest-app:not(.owner-mode) #chat-widget.closing:not(.open) {
+    animation: none;
+  }
 }
 
 /* The header account pill is gone; the messages bubble now lives in the dock as
@@ -693,6 +718,32 @@ body.guest-app:not(.owner-mode):has(#view-privacy.page-view.active) #guest-msg-f
 /* And on My Stays while a stay hub is up: the hub's Contact host IS the chat, and
    the pill sat on the countdown badge (364px² of "days to go", measured). */
 body.guest-app:not(.owner-mode):has(#view-guest-bookings.page-view.active .my-stay-hub) #guest-msg-fab {
+  display: none;
+}
+/* AND ON THE PAY SCREEN — it covers MONEY. Measured at 390 in every state: the
+   pill paints x314–378 / y764–824, over the journey's "Deposit back" figure
+   (£50.00 at x276–331, so it reads "£50.0"), over the card form's Postcode
+   label in part mode, over the right end of "Place £75.00 hold" on the legacy
+   rail and over the repair card's "Save new card" copy. THE TRADE, stated: the
+   guest dock has no Messages tab, so this removes the chat route on this view —
+   the same trade the privacy rule above already makes, and the pay screen's own
+   error copy and the footer both name a way to reach a person. */
+body.guest-app:not(.owner-mode):has(#view-pay.page-view.active) #guest-msg-fab {
+  display: none;
+}
+/* And on Experiences, where the pill sits on the FIRST card's full-width
+   "Directions" pill (the card's action row spans x33–357 whatever the flex
+   basis, so a right-hand half-width button still ends at 357 against the pill's
+   left edge at 324 — narrowing the button does NOT clear it). Six of 61 scroll
+   positions put a control under the corner. Same trade as above; the cards' own
+   Call button dials the experience, not the host. */
+body.guest-app:not(.owner-mode):has(#view-experiences.page-view.active) #guest-msg-fab {
+  display: none;
+}
+/* And over the account sheets: at 390 the pill (z 1400) floats above the sign-in
+   sheet (z 1390) and covers the word "for" in its last line — the ONE line that
+   names the password-less route. */
+body.guest-app:not(.owner-mode):has(#guest-auth-modal.open, #guest-details-modal.open, #guest-security-modal.open) #guest-msg-fab {
   display: none;
 }
 /* HIT REGION to 44 for the 38px (34 condensed) dock buttons; ::after is the hover label. */

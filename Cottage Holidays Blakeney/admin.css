@@ -5093,9 +5093,9 @@ button.bhub-icbtn { font-family: inherit; cursor: pointer; padding: 0; }
 .acp-main { position: absolute; left: 5px; top: 5px; font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 2px 7px; }
 .acp-n { position: absolute; right: 5px; bottom: 4px; font-size: var(--fs-micro); color: rgba(255, 255, 255, 0.9); background: rgba(0, 0, 0, 0.45); border-radius: 8px; padding: 1px 6px; }
 /* (0,2,0) on purpose — app.css's .content-edit-row .accom-photo-actions
-   sets wrap and would win at equal specificity. 4 × 22px fits the ~91px cell. */
+   sets wrap and would win at equal specificity. ONE ⋯ button now (see the
+   PR2 block at the foot of this file for why the four glyphs went). */
 .acp-cell .acp-acts { display: flex; justify-content: center; gap: 0; flex-wrap: nowrap; margin: 0; }
-.acp-cell .acp-acts .btn-sm { background: none; border: 0; box-shadow: none; padding: 4px 0; min-width: 22px; width: 22px; font-size: var(--fs-sub); line-height: 1; margin: 0; }
 .acp-acts .btn-edit { color: var(--accent-text); }
 .acp-acts .btn-delete { color: var(--danger-text); }
 .acp-acts .btn-sm[disabled] { opacity: 0.3; }
@@ -5489,6 +5489,16 @@ body.night-off .admin-dock-btn[data-view='view-aichat'] {
    snapshot past 6h turns the strip amber, because "saved yesterday evening"
    deserves a different colour of trust. No wifi-off glyph of its own: the
    floating pill is the one mark, and the functional one (it opens the tray) */
+/* AND IT RESERVES THE CORNER THE PILL SITS IN. The floating #offline-pill is
+   fixed at top calc(var(--safe-t) + 70px) / right 14px, 34×34 — measured at 390
+   it overlapped this banner by 476px² and its bottom edge sat 1.27px above the
+   banner's own "Try again". Moving the pill risks a new collision with the
+   header; reserving 52px of the banner's right rail costs nothing and keeps the
+   one mark where every other screen has it. Deliberately NOT a second wifi-off
+   glyph in the banner — the pill is the one mark (owner-pinned). */
+body.offline-snap .ods-mark {
+  padding-right: 52px;
+}
 .ods-mark .ods-probe {
   font-style: italic;
   opacity: 0.85;
@@ -6918,3 +6928,67 @@ div.mo-landed { display: block; } /* the row lists under each figure */
 @media (max-width: 640px) { .tl-label .tl-name { display: none; } .tl-label .tl-mono { display: inline; } }
 /* The rag on the owner side: prose and quoted messages wrap without a lone last word. */
 .bhub-msg-text, .accounts-note, .settings-row-sub, .cmdk-row-label { text-wrap: pretty; }
+
+/* ===== PR2 — EVERYTHING MEETS THE THUMB (the owner half) =====
+   Hit regions, not bigger controls, and VERTICAL ONLY (inset: -Npx 0) wherever
+   the controls sit side by side — a horizontal region between contiguous
+   segments steals a neighbour's taps. These rules live in admin.css rather than
+   beside their base rules in app.css: the markup is owner-only, app.css is the
+   sheet every anonymous visitor pays for, and admin.css loads after it so an
+   equal-specificity tie goes to the override. */
+
+/* THE SEGMENTED SWITCHES — one fix for all four families (Today's booking
+   filters, the Inbox folder switch, the enquiry tabs and sort, the mailbox
+   Inbox|Sent). They were 31–37px with no region, INSIDE their own
+   `overflow-x: auto` scroller, which clips a child's ::before — so the region
+   has to fit within the seg's own padding rather than reach past it. 3 → 4px of
+   track, a 36px floor on the segment, and a 4px region: 44 exactly, nothing
+   negative-margined over its neighbours, and the scroll box clips nothing. */
+.inbox-sort.seg { padding: 4px; }
+.inbox-sort.seg .inbox-sort-btn { position: relative; min-height: 36px; }
+.inbox-sort.seg .inbox-sort-btn::before { content: ''; position: absolute; inset: -4px 0; }
+/* The messages toolbar's two 40px fields. Scoped, NOT `.input-glass.field-sm`
+   globally — field-sm is used at ~30 sites and raising them all is a layout
+   question at thirty places (the .date-range-trigger.field-sm precedent). */
+#msg-search, #msg-canned { min-height: 44px; }
+/* THE ACTIVITY LOG'S FOURTEEN FILTER CHIPS keep flex-wrap and take the region.
+   A nowrap scroller would hide 12 of the 14 behind a swipe on the one screen
+   whose job is finding a past event; the 8px row gap means two regions meet in
+   dead space, never over a chip's own box. */
+.act-log-chip { position: relative; }
+.act-log-chip::before { content: ''; position: absolute; inset: -6px 0; }
+/* EXPENSES: Edit and Remove were 26×21 and 22×21 glyphs 2px apart — Remove one
+   stray thumb from Edit. The box grows to 32 and the region to 44 in BOTH axes,
+   and the pair's gap goes 2 → 12 (admin.js) so the 44px regions ABUT at a 44px
+   pitch instead of overlapping onto the destructive one. */
+.feed-del { position: relative; min-width: 32px; min-height: 32px; padding: 8px; }
+.feed-del::before { content: ''; position: absolute; inset: -6px; }
+/* Manage rollup: none of these moves layout by more than 4–8px. */
+#health-pill { min-height: 44px; }
+.acw-days .day-check { min-height: 44px; }
+select.acw-pill { min-height: 44px; }
+#season-grid-body .sg-name { min-height: 44px; }
+/* The hub's "▶ Show email" was a 21px disclosure — the only sub-44 (and sub-24)
+   control on the phone hub. The PAINT stays a text link; the reach is 44. */
+.bhub-feed-mail summary { position: relative; display: inline-flex; align-items: center; min-height: 32px; }
+.bhub-feed-mail summary::before { content: ''; position: absolute; inset: -6px 0; }
+/* The assistant's deep-search chips (27px) and its "‹ Back" (31px) — round
+   eight gave the scope chips a region and missed these two. */
+.cmdk-deep-chip, .cmdk-deep-head .cmdk-back { position: relative; }
+.cmdk-deep-chip::after, .cmdk-deep-head .cmdk-back::after { content: ''; position: absolute; inset: -9px 0; }
+/* The AI chat page: six controls under the floor. NB `.mc-chip` is deliberately
+   NOT here — it is a plain <div> the composer emits as a status line, and a
+   region on it would be a phantom target. */
+.mc-day-go, .mc-rail-chip, .mc-think > summary, .ac-more, .mc-act-go, .mc-act-no { position: relative; }
+.mc-day-go::before, .mc-act-go::before, .mc-act-no::before { content: ''; position: absolute; inset: -6px 0; }
+.mc-rail-chip::before { content: ''; position: absolute; inset: -5px 0; }
+.mc-think > summary::before { content: ''; position: absolute; inset: -8px 0; }
+.ac-more::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
+/* THE PHOTO GRID IS ONE ⋯ MENU, not four 22px glyphs. At a 22px pitch a 44px
+   region overlaps its neighbours by ~22px and the neighbour is the destructive
+   Remove, so the docks' contiguity allowance does not apply — the four actions
+   move into the hub's own overflow menu instead, keeping every data-act. */
+.acp-cell .acp-acts { position: relative; }
+.acp-cell .acp-acts .bhub-menu-btn { background: none; border: 0; box-shadow: none; padding: 2px 8px; }
+.acp-menu { min-width: 180px; }
+.acp-menu button { min-height: 44px; }

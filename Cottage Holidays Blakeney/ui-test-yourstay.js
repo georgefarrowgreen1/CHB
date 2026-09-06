@@ -114,7 +114,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       // winning a specificity fight, which a computed read answers exactly. The
       // painted height rides along in the message for context.
       short: (() => {
-        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass')]
+        // .hub-code-copy joins the sweep (PR2): it is a control on this screen
+        // and it was 40px, but it is neither .btn-sm nor .btn-glass, so the
+        // sweep could not see it.
+        const all = [...document.querySelectorAll('#view-guest-bookings .btn-sm, #view-guest-bookings .btn-glass, #view-guest-bookings .hub-code-copy')]
           .filter((e) => e.getClientRects().length)
           .map((e) => ({
             min: parseFloat(getComputedStyle(e).minHeight) || 0,
